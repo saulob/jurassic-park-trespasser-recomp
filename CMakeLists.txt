@@ -35,7 +35,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 set(PCRECOMP "${CMAKE_SOURCE_DIR}/external/pcrecomp" CACHE PATH "pcrecomp checkout (tools/fetch_pcrecomp.py)")
-set(TRESPASSER_GEN_OPT "/O2" CACHE STRING "optimisation for the lifted C (/Od compiles much faster)")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  set(JPT_GEN_OPT_DEFAULT "/O2")
+else()
+  set(JPT_GEN_OPT_DEFAULT "/Od")
+endif()
+set(TRESPASSER_GEN_OPT "${JPT_GEN_OPT_DEFAULT}" CACHE STRING "optimisation for the lifted C (/Od compiles much faster)")
 option(TRESPASSER_TRACE "build the lifted code with RECOMP_TRACE (--calltrace, --firsthit, ...)" OFF)
 
 if(NOT EXISTS "${PCRECOMP}/runtime/native32/native32.c")

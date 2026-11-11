@@ -46,11 +46,12 @@ original code, and which are Windows.
 ## Quick start
 
 ```powershell
-.\tools\build.ps1          # fetches, extracts, analyses, lifts and builds what is out of date
-.\tools\run.ps1            # opens the launcher, then the game, from the current build (builds nothing)
+.\tools\build.ps1 -Run     # builds what is out of date, then opens the launcher and the game
+.\tools\build.ps1          # builds only
 ```
 
-`build.ps1` is for the first build and after changing code; `run.ps1` is the normal way to play.
+Nothing that is already current is redone, so the same command is the normal way to build and to play.
+`.\tools\run.ps1` is an optional shortcut that starts the existing build without checking for changes.
 
 The first run needs your disc image (`-Iso`, `TRESPASSER_ISO` or `config\local.json`) and about
 20 minutes of analysis. Later runs redo only what changed. Details, options and what to do when

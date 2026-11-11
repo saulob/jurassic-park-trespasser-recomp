@@ -9,6 +9,7 @@
   default, with the x64-hosted x86 MSVC). -Arch x64 builds the 64-bit host groundwork only (docs\X64_MIGRATION.md):
   it cannot run the game yet, so -Run is refused with it.
   Development configuration: RelWithDebInfo in build\cmake\msvc-<arch>; -Config Release uses build\cmake\msvc-<arch>-release.
+  The development default compiles the lifted C with /Od (several times faster); Release uses /O2.
   Each run writes one log, build\logs\trespasser_NNN.log (the next free number): the build and, with -Run, the
   game's own output after it and its exit code. The terminal shows progress and problems only.
 .PARAMETER Run
@@ -24,8 +25,8 @@
 .PARAMETER Config
   RelWithDebInfo (default) or Release.
 .PARAMETER GenOpt
-  Compiler optimisation for the lifted C, for example /Od for much faster compiles. Default: what the build folder
-  already uses, else /O2.
+  Advanced. Compiler optimisation for the lifted C (it never regenerates it; changing it recompiles all of it).
+  Default: what the build folder already uses, else /Od for RelWithDebInfo and /O2 for Release.
 .PARAMETER Trace
   Builds with RECOMP_TRACE (--calltrace, --firsthit, ...). Default: what the build folder already uses.
 .PARAMETER BuildDir
@@ -45,10 +46,10 @@
   .\tools\build.ps1
   .\tools\build.ps1 -Run
   .\tools\build.ps1 -Run -VerboseRuntime
-  .\tools\build.ps1 -GenOpt /Od -Run -GameArgs "--renderer","d3d11"
-  .\tools\build.ps1 -GenOpt /Od -Run -GameArgs "--watchdog","120"
-  .\tools\build.ps1 -Arch x86 -GenOpt /Od -Run
-  .\tools\build.ps1 -Arch x64 -GenOpt /Od
+  .\tools\build.ps1 -Run -GameArgs "--renderer","d3d11"
+  .\tools\build.ps1 -Run -GameArgs "--watchdog","120"
+  .\tools\build.ps1 -GenOpt /O2
+  .\tools\build.ps1 -Arch x64
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
@@ -320,7 +321,8 @@ if ($Arch -eq 'x86') { Sync-LauncherDependencies }
 
 $cache = Join-Path $buildDir 'CMakeCache.txt'
 $cached = Test-Path -LiteralPath $cache
-$genOptWanted = if ($GenOpt) { $GenOpt } elseif ($cached -and (Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT')) { Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT' } else { '/O2' }
+$defaultGenOpt = if ($Config -eq 'Release') { '/O2' } else { '/Od' }
+$genOptWanted = if ($GenOpt) { $GenOpt } elseif ($cached -and (Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT')) { Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT' } else { $defaultGenOpt }
 $traceOn = if ($PSBoundParameters.ContainsKey('Trace')) { $Trace.IsPresent } else { $cached -and ((Get-CmakeCacheValue $cache 'TRESPASSER_TRACE') -eq 'ON') }
 $traceWanted = if ($traceOn) { 'ON' } else { 'OFF' }
 

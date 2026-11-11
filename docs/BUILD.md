@@ -19,14 +19,13 @@ switches to it for the session.
 ## Build
 
 ```powershell
-.\tools\build.ps1           # build what is out of date (first build, and after changing code)
-.\tools\run.ps1             # normal start: the launcher, then the game, from the current build
+.\tools\build.ps1 -Run      # normal command: build what is out of date, then start the launcher and the game
+.\tools\build.ps1           # build only
 ```
 
-`run.ps1` runs `build\cmake\msvc-x86\trespasser.exe` from the repository root and builds nothing; without the
-executable it tells you to run `build.ps1` first. Its arguments go to `trespasser.exe` unchanged
-(`.\tools\run.ps1 --launcher`, `.\tools\run.ps1 --renderer software`). The executable numbers its own log,
-`build\logs\trespasser_NNN.log`, so no `--log-file` is needed.
+Neither needs another option: the configuration is MSVC x86, RelWithDebInfo, with the lifted C compiled at `/Od`
+for fast incremental builds. `.\tools\run.ps1` is an optional shortcut that starts the existing
+`build\cmake\msvc-x86\trespasser.exe` without building or checking anything; its arguments go to the game unchanged.
 
 Point it at your disc image the first time, by `-Iso "E:\path\to\Trespasser_EN.iso"`, the
 `TRESPASSER_ISO` variable, or `config\local.json` (see `config\local.example.json`). The image
@@ -69,7 +68,7 @@ from before this layout stay in `logs\`.
 | `-Arch x86` / `-Arch x64` | `x86` (default) is the playable 32-bit host in `build\cmake\msvc-x86`. `x64` builds only the 64-bit host groundwork (`trespasser_x64_probe`, `x64_tests`) in `build\cmake\msvc-x64` with the native x64 tools; it cannot run the game, so `-Run` is refused (`docs\X64_MIGRATION.md`) |
 | `-Clean` | delete this configuration's build folder first; `game\`, the image, `analysis\`, `src\recomp\gen\` and `logs\` are kept |
 | `-Config Release` | build `build\cmake\msvc-x86-release` instead of RelWithDebInfo |
-| `-GenOpt /Od` | optimisation of the lifted C; `/Od` compiles several times faster and runs slower. Default: what the build folder already uses, else `/O2` |
+| `-GenOpt /O2` | advanced: optimisation of the lifted C (compiler flags only, it never regenerates the C, but changing it recompiles all of it). Default: what the build folder already uses, else `/Od` for RelWithDebInfo and `/O2` for Release |
 | `-Trace` | build with `RECOMP_TRACE` (`--calltrace`, `--firsthit`); default: what the build folder already uses |
 | `-BuildDir`, `-Jobs N` | another build folder (`-Clean` only removes folders under `build\`); parallel compile jobs |
 | `-Iso PATH` | disc image, when the game files must be extracted |
@@ -89,7 +88,7 @@ The stages can also be run by hand: `py -3 tools\fetch_pcrecomp.py`,
 ## Running
 
 `.\tools\build.ps1 -Run` is the development loop: it builds, then starts `trespasser.exe` and stays attached until the
-game exits. Playing without rebuilding is `.\tools\run.ps1`. It does not start a second copy if `trespasser.exe` from that build folder is
+game exits. `.\tools\run.ps1` starts the current build without the build step. Neither starts a second copy if `trespasser.exe` from that build folder is
 already running, and it cannot rebuild while one is.
 
 The script closes its log, starts the game with `--log-file` naming that same file, and reopens
