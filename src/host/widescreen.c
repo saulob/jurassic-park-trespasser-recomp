@@ -1,7 +1,7 @@
 /*
- * True widescreen: the game runs gameplay at a widescreen mode of its own (jpt_aspects) and its main camera keeps the
- * vertical field of view of the original 4:3 view (Hor+). The camera projects, clips and culls before anything becomes
- * a D3DTLVERTEX or a software span, so both renderers and the 2D overlay follow without other changes.
+ * True widescreen: the game runs gameplay at a widescreen mode of its own (jpt_aspects) and its main camera, with the
+ * render cameras copied from it, keeps the vertical field of view of the original 4:3 view (Hor+). The camera
+ * projects, clips and culls before anything becomes a D3DTLVERTEX or a software span, so both renderers follow.
  */
 #include "host.h"
 
@@ -15,12 +15,13 @@
 #define PROPS_SIZE 0x58u
 #define PROPS_IN_CAMERA 0x74u
 #define PROP_PERSPECTIVE 0x34u
+#define PROP_FAR 0x3Cu
 #define PROP_TAN_HALF_WIDTH 0x48u
 #define PROP_ASPECT 0x4Cu
 
 static recomp_func_t s_enum_modes_lifted, s_set_properties_lifted;
 static int s_wide;
-static unsigned long s_corrections;
+static unsigned long s_corrections, s_view_copies;
 
 static float rdf(uint32_t va) { return *(float*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
@@ -30,9 +31,20 @@ static void enum_modes_uncapped(void) {
     s_enum_modes_lifted();
 }
 
-static int is_main_camera(uint32_t self) {
+static uint32_t main_camera(void) {
     uint32_t holder = MEM32(MAIN_CAMERA_HOLDER);
-    return holder && MEM32(holder + 0x14) == self;
+    return holder ? MEM32(holder + 0x14) : 0;
+}
+
+/* The renderer draws each frame through cameras built from the main camera's stored properties (CRenderDB paint:
+ * backdrop and scene), while terrain, occlusion and sky use the main camera itself; all must share one frustum. */
+static int has_main_view(uint32_t self, uint32_t props) {
+    uint32_t cam = main_camera(), own = cam + PROPS_IN_CAMERA;
+    if (!cam) return 0;
+    if (cam == self) return 1;
+    return MEM32(props) == MEM32(own) && MEM32(props + 4) == MEM32(own + 4) &&
+           MEM32(props + PROP_TAN_HALF_WIDTH) == MEM32(own + PROP_TAN_HALF_WIDTH) &&
+           MEM32(props + PROP_ASPECT) == MEM32(own + PROP_ASPECT);
 }
 
 /* The caller's properties are the 4:3 ones; the camera gets tan(half width) widened by (W/H)/(4/3) and the true W/H
@@ -43,10 +55,12 @@ static void camera_set_properties(void) {
     uint8_t copy[PROPS_SIZE];
     float w, h, tan_half, aspect;
     double scale;
-    if (g_alias_entry || !props || !is_main_camera(self) || !MEM8(props + PROP_PERSPECTIVE)) {
+    int is_main;
+    if (g_alias_entry || !props || !MEM8(props + PROP_PERSPECTIVE) || !has_main_view(self, props)) {
         s_set_properties_lifted();
         return;
     }
+    is_main = self == main_camera();
     w = rdf(props);
     h = rdf(props + 4);
     tan_half = rdf(props + PROP_TAN_HALF_WIDTH);
@@ -64,9 +78,10 @@ static void camera_set_properties(void) {
     MEM32(slot) = props;
     wrf(self + PROPS_IN_CAMERA + PROP_TAN_HALF_WIDTH, tan_half);
     wrf(self + PROPS_IN_CAMERA + PROP_ASPECT, aspect);
-    if (s_corrections++ < 4)
-        host_log("widescreen", "main camera %.0fx%.0f: horizontal view x%.4f (tan %.4f -> %.4f), vertical view kept",
-                 w, h, scale, tan_half, tan_half * scale);
+    if (is_main ? s_corrections++ < 4 : s_view_copies++ < 2)
+        host_log("widescreen", "%s %.0fx%.0f (far %.0f): horizontal view x%.4f (tan %.4f -> %.4f), vertical view kept",
+                 is_main ? "main camera" : "DEBUG_SAULO render copy of the main camera", w, h,
+                 rdf(self + PROPS_IN_CAMERA + PROP_FAR), scale, tan_half, tan_half * scale);
 }
 
 static int redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body, const char* name) {
