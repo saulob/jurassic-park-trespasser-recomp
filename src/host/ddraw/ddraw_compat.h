@@ -1,0 +1,151 @@
+#ifndef TRESPASSER_DDRAW_COMPAT_H
+#define TRESPASSER_DDRAW_COMPAT_H
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <ddraw.h>
+#include <d3d.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/* Every interface pointer handed to the game is a face: lpVtbl first, as COM requires. */
+typedef struct {
+    const void* vtbl;
+    void* owner;
+    int version;
+} dd_face_t;
+
+#define DD_OWNER(type, This) ((type*)((dd_face_t*)(This))->owner)
+#define DD_VERSION(This) (((dd_face_t*)(This))->version)
+
+typedef struct dd_device dd_device_t;
+typedef struct dd_surface dd_surface_t;
+typedef struct dd_clipper dd_clipper_t;
+typedef struct dd_palette dd_palette_t;
+
+struct dd_device {
+    dd_face_t dd1, dd2, dd4;
+    LONG refs;
+    int released;
+    int surfaces;
+    HWND window;
+    DWORD coop;
+    DWORD mode_width, mode_height;
+    int mode_set;
+    dd_surface_t* primary;
+    int window_saved;
+    LONG saved_style, saved_exstyle;
+    RECT saved_rect;
+    DDGAMMARAMP gamma;
+    int gamma_changed;
+};
+
+struct dd_surface {
+    dd_face_t s1, s2, s3, s4, gamma;
+    LONG refs;
+    dd_device_t* device;
+    dd_surface_t* root;
+    dd_surface_t* next;
+    int orphaned;
+    int lost;
+    DWORD caps;
+    DWORD back_buffers;
+    DWORD width, height;
+    LONG pitch;
+    DDPIXELFORMAT format;
+    BYTE* bits;
+    HBITMAP dib;
+    HDC dc;
+    HGDIOBJ dc_previous;
+    int dc_out;
+    int locked;
+    int has_src_key, has_dst_key;
+    DDCOLORKEY src_key, dst_key;
+    dd_clipper_t* clipper;
+    dd_palette_t* palette;
+};
+
+struct dd_clipper {
+    dd_face_t face;
+    LONG refs;
+    HWND window;
+};
+
+struct dd_palette {
+    dd_face_t face;
+    LONG refs;
+    DWORD caps;
+    PALETTEENTRY entries[256];
+};
+
+typedef struct {
+    const char* name;
+    unsigned long calls;
+} dd_method_t;
+
+void dd_lock(void);
+void dd_unlock(void);
+void dd_begin(dd_method_t* m);
+HRESULT dd_done(dd_method_t* m, HRESULT hr);
+HRESULT dd_unsupported(dd_method_t* m, const char* reason, HRESULT hr);
+void dd_log(const char* fmt, ...);
+
+/* A method body runs under the layer's lock; the macros keep begin, unlock and done paired. */
+#define DD_BEGIN(method) dd_method_t* dd_method_ = (method); dd_begin(dd_method_); dd_lock()
+#define DD_METHOD(label) static dd_method_t dd_label_ = { label, 0 }; DD_BEGIN(&dd_label_)
+#define DD_RETURN(hr) do { HRESULT dd_hr_ = (hr); dd_unlock(); return dd_done(dd_method_, dd_hr_); } while (0)
+#define DD_UNSUPPORTED(label, reason, hr) do { static dd_method_t dd_method_ = { label, 0 }; dd_begin(&dd_method_); \
+    return dd_unsupported(&dd_method_, reason, hr); } while (0)
+
+void dd_format_rgb565(DDPIXELFORMAT* pf);
+int dd_format_supported(const DDPIXELFORMAT* pf);
+int dd_format_bytes(const DDPIXELFORMAT* pf);
+int dd_format_equal(const DDPIXELFORMAT* a, const DDPIXELFORMAT* b);
+
+void dd_display_size(const dd_device_t* d, DWORD* width, DWORD* height);
+HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version, void** out);
+void* dd_surface_face(dd_surface_t* s, int version);
+void dd_surface_added(dd_device_t* d);
+void dd_surface_removed(dd_device_t* d);
+void dd_device_mode_changed(dd_device_t* d);
+void dd_present(dd_surface_t* front, int vsync);
+
+HRESULT dd_create_clipper(DWORD flags, IDirectDrawClipper** out);
+HRESULT dd_create_palette(DWORD flags, const PALETTEENTRY* entries, IDirectDrawPalette** out);
+void dd_clipper_addref(dd_clipper_t* c);
+void dd_clipper_release(dd_clipper_t* c);
+void dd_palette_addref(dd_palette_t* p);
+void dd_palette_release(dd_palette_t* p);
+dd_clipper_t* dd_clipper_from(void* iface);
+dd_palette_t* dd_palette_from(void* iface);
+
+extern const IDirectDrawSurfaceVtbl dd_surface1_vtbl;
+extern const IDirectDrawSurface2Vtbl dd_surface2_vtbl;
+extern const IDirectDrawSurface3Vtbl dd_surface3_vtbl;
+extern const IDirectDrawSurface4Vtbl dd_surface4_vtbl;
+extern const IDirectDrawGammaControlVtbl dd_gamma_vtbl;
+int dd_is_surface_face(const void* iface);
+int dd_device_vtables_complete(void);
+int dd_surface_vtables_complete(void);
+int dd_object_vtables_complete(void);
+
+HRESULT WINAPI compat_DirectDrawCreate(GUID* guid, LPDIRECTDRAW* out, IUnknown* outer);
+HRESULT WINAPI compat_DirectDrawEnumerateA(LPDDENUMCALLBACKA callback, LPVOID context);
+HRESULT WINAPI compat_DirectDrawEnumerateExA(LPDDENUMCALLBACKEXA callback, LPVOID context, DWORD flags);
+HRESULT WINAPI compat_DirectDrawCreateClipper(DWORD flags, LPDIRECTDRAWCLIPPER* out, IUnknown* outer);
+HRESULT WINAPI compat_DirectDrawCreateEx(GUID* guid, LPVOID* out, REFIID riid, IUnknown* outer);
+
+/* D3D11 presentation (d3d11_present.c). */
+typedef struct {
+    char description[128];
+    UINT vendor, device, subsystem, revision;
+    LARGE_INTEGER driver_version;
+    SIZE_T dedicated_video_memory;
+} dd_adapter_t;
+
+int present_adapter(dd_adapter_t* out);
+void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
+                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync);
+void present_release(void);
+
+#endif

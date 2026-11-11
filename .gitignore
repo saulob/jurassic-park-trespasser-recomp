@@ -1,0 +1,35 @@
+build/
+out/
+logs/
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+__pycache__/
+*.pyc
+
+# Local configuration (paths to the user's own disc image)
+config/local.json
+
+# pcrecomp checkout fetched by tools/fetch_pcrecomp.py
+external/
+
+# Regenerated analysis and lifted code: derived from the retail binary
+analysis/
+src/recomp/gen/
+
+# Retail game files are never committed
+game/
+*.iso
+*.exe
+*.dll
+*.tpa
+*.scn
+*.grf
+*.swp
+*.pid
+*.spz
+*.smk
+*.wtd
+*.ddf
+*.tga

@@ -1,0 +1,59 @@
+{
+  "about": "Instruction encodings capstone does not decode. The lift driver decodes the listed bytes as the equivalent canonical encoding; the game file is never modified.",
+  "fixups": [
+    {
+      "va": "0x0055470D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0055499D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x00554B2D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x00554CFD",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x00554E8D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x00554FDF",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x005550F2",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0060E3E4",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0060E585",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    }
+  ]
+}

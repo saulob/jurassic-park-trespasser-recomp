@@ -1,0 +1,16 @@
+{
+  "disc_path": "setup/tpassp6.exe",
+  "installed_name": "trespass.exe",
+  "sha256": "d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed",
+  "size": 2568192,
+  "file_version": "1.0.116",
+  "pe_timestamp": "1998-10-09T17:06:31Z",
+  "image_base": "0x00400000",
+  "size_of_image": "0x00347000",
+  "entry_point": "0x00626BE2",
+  "selfmod": { "start": "0x0063B000", "size": "0x00009B75" },
+  "pcrecomp": {
+    "url": "https://github.com/sp00nznet/pcrecomp",
+    "commit": "91998d6d1be9482946a23b7f441062e27d88a152"
+  }
+}
