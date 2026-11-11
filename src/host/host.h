@@ -36,7 +36,8 @@ void shim_MessageBoxA(void);
 void shim_DialogBoxParamA(void);
 void shim_OutputDebugStringA(void);
 
-void guest_registry_init(const char* game_dir);
+/* The store lives in user_dir. Installed Directory (saves, level swap files) is user_dir, Data Drive is game_dir. */
+void guest_registry_init(const char* game_dir, const char* user_dir);
 void registry_show_ddraw_cert_dialog(void);
 void registry_software_water(void);
 void shim_RegOpenKeyExA(void);
@@ -48,6 +49,7 @@ void shim_RegCloseKey(void);
 
 int io_trace_init(void);
 void io_trace_summary(void);
+void io_trace_user_dir(const char* dir);
 void io_trace_release_swap_files(void);
 void shim_CreateFileA(void);
 void shim_CloseHandle(void);
@@ -84,6 +86,10 @@ void diagnostics_process_ending(void);
 
 /* window_host.c: the game window, its presentation surface, the cursor and closing. */
 void window_host_init(void);
+/* trespasser.ini's Display settings; F11 writes display_mode back to settings_path. */
+void window_host_configure(int borderless, int monitor, int window_w, int window_h, int stretch, int show_fps,
+                           const char* settings_path);
+int window_host_monitor_size(int monitor, int* width, int* height);
 void window_host_set_display(HWND window, int width, int height);
 void window_host_clear_display(HWND window);
 HWND window_host_surface(HWND window);
@@ -147,7 +153,10 @@ int guest_restore_direct3d(void);
 int guest_request_display_restart(void);
 
 /* d3d11_renderer.c: --renderer, --render-resolution, --texture-filter, --msaa */
-void d3dr_configure(int hardware, unsigned width, unsigned height, int filter, unsigned msaa);
+/* box 0x0: the original compatibility size; otherwise each target is the largest of its surface's shape inside it. */
+void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, unsigned anisotropy, unsigned msaa);
+/* d3d11_present.c: Off never waits for the vertical blank; On keeps the game's own Flip request. */
+void present_set_vsync(int on);
 int d3dr_startup(void);
 int d3dr_hardware(void);
 int d3dr_set_hardware(int hardware);
@@ -166,6 +175,15 @@ int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
 /* guest_overrides.c: host equivalents of hot lifted functions, byte-exact with them (tests/water_tests.c). */
 void guest_overrides_install(void);
+/* Points the lifted function's incremental-link thunk at replacement; *body keeps the lifted code. */
+int guest_override_redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body);
+/* widescreen.c: gameplay at the aspect's own mode with a Hor+ main camera; 0 for 4:3 or when a site is missing. */
+int widescreen_install(int aspect);
+int widescreen_active(void);
+/* dd_device.c: one more 16 bpp mode, listed whatever the desktop size. */
+void dd_set_extra_mode(DWORD width, DWORD height);
+/* registry.c: "Width"/"Height" answer this gameplay mode whatever is stored (the launcher's Aspect Ratio decides). */
+void registry_gameplay_size(int width, int height);
 
 /* exit_policy.c */
 int host_exit_code_for_guest_return(int code);

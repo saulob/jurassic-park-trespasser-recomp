@@ -49,7 +49,7 @@ void d3d_fill_device_desc(D3DDEVICEDESC* desc);
 void d3d_objects_counts(unsigned long* render_states, unsigned long* stage_states, unsigned long* failed_calls);
 
 /* d3d11_renderer.c */
-enum { D3DR_FILTER_POINT, D3DR_FILTER_BILINEAR, D3DR_FILTER_TRILINEAR, D3DR_FILTER_ANISOTROPIC };
+enum { D3DR_FILTER_ORIGINAL, D3DR_FILTER_POINT, D3DR_FILTER_BILINEAR, D3DR_FILTER_TRILINEAR, D3DR_FILTER_ANISOTROPIC };
 
 int d3dr_hardware(void);
 int d3dr_startup(void);

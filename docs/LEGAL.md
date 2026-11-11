@@ -28,6 +28,11 @@ test for a data file, and it passes because the file is present at the configure
 | [sp00nznet/themovies](https://github.com/sp00nznet/themovies) | MIT | `tools/run_lift.py`, `src/host/main.c` and `src/host/diagnostics.c` follow the structure of its `run_lift.py` and `host.c` |
 | [sp00nznet/trespasser](https://github.com/sp00nznet/trespasser) | MIT | its reconnaissance documents were the checklist for `docs/ANALYSIS.md`; no code was taken |
 | capstone, pefile | BSD-3-Clause, MIT | Python libraries, installed by the user |
+| [ocornut/imgui](https://github.com/ocornut/imgui) | MIT | fetched at a pinned commit into `external/` (not committed); compiled into the launcher |
+| [TekRantGaming/trg-launcher](https://github.com/TekRantGaming/trg-launcher) | MIT | fetched at a pinned commit into `external/` (not committed) and patched with `launcher/patches/trg-launcher`, the series of Dragon's Crown Pro PC and 13 Sentinels |
+| [libsdl-org/SDL](https://github.com/libsdl-org/SDL) 3.4.10 | zlib | fetched at a pinned commit into `external/` (not committed); built as a static library for the launcher window |
+| [memononen/nanosvg](https://github.com/memononen/nanosvg) | zlib | vendored in `launcher/third_party/nanosvg` (from 13 Sentinels), draws the sidebar icons |
+| Launcher icons and sponsor heart | CC0, CC BY (`display.svg`), MIT (`bug-report.svg`) | `assets/launcher`; sources in `assets/launcher/icons/SOURCES.md`, notices in `packaging/licenses/THIRD-PARTY-LICENSES.txt` |
 
 `src/host/selfmod.c` adapts the register hand-over of pcrecomp's `gen_bridge`.
 MIT requires the copyright notice to accompany substantial copies: "Copyright (c) 2026 sp00nz".

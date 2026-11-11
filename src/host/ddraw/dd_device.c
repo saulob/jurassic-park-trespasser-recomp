@@ -57,10 +57,29 @@ static int mode_fits(DWORD width, DWORD height) {
     return width <= (DWORD)GetSystemMetrics(SM_CXSCREEN) && height <= (DWORD)GetSystemMetrics(SM_CYSCREEN);
 }
 
+static DWORD s_extra_w, s_extra_h;
+
+void dd_set_extra_mode(DWORD width, DWORD height) {
+    s_extra_w = width;
+    s_extra_h = height;
+}
+
 static int mode_listed(DWORD width, DWORD height) {
+    if (s_extra_w && width == s_extra_w && height == s_extra_h) return 1;
     for (int i = 0; i < MODE_COUNT; i++)
         if (k_modes[i].width == width && k_modes[i].height == height) return mode_fits(width, height);
     return 0;
+}
+
+static int mode_enumerated(int i, DWORD* width, DWORD* height) {
+    if (i < MODE_COUNT) {
+        *width = k_modes[i].width;
+        *height = k_modes[i].height;
+        return mode_fits(*width, *height) && !(*width == s_extra_w && *height == s_extra_h);
+    }
+    *width = s_extra_w;
+    *height = s_extra_h;
+    return s_extra_w != 0;
 }
 
 static void fill_mode_desc(DDSURFACEDESC2* desc, DWORD size, DWORD width, DWORD height, int refresh) {
@@ -186,12 +205,13 @@ static HRESULT enum_modes(void* This, DWORD flags, const DDSURFACEDESC2* filter,
     DD_BEGIN(version == 4 ? &s_enum_modes4 : &s_enum_modes1);
     if (!callback) DD_RETURN(DDERR_INVALIDPARAMS);
     if (filter && filter->dwSize != size) DD_RETURN(DDERR_INVALIDPARAMS);
-    for (int i = 0; i < MODE_COUNT; i++) {
-        if (!mode_fits(k_modes[i].width, k_modes[i].height)) continue;
-        if (filter && (filter->dwFlags & DDSD_WIDTH) && filter->dwWidth != k_modes[i].width) continue;
-        if (filter && (filter->dwFlags & DDSD_HEIGHT) && filter->dwHeight != k_modes[i].height) continue;
+    for (int i = 0; i <= MODE_COUNT; i++) {
+        DWORD w, h;
+        if (!mode_enumerated(i, &w, &h)) continue;
+        if (filter && (filter->dwFlags & DDSD_WIDTH) && filter->dwWidth != w) continue;
+        if (filter && (filter->dwFlags & DDSD_HEIGHT) && filter->dwHeight != h) continue;
         if (filter && (filter->dwFlags & DDSD_PIXELFORMAT) && filter->ddpfPixelFormat.dwRGBBitCount != DISPLAY_BPP) continue;
-        fill_mode_desc(&desc, size, k_modes[i].width, k_modes[i].height, refresh);
+        fill_mode_desc(&desc, size, w, h, refresh);
         if (((HRESULT(WINAPI*)(DDSURFACEDESC2*, LPVOID))callback)(&desc, context) == DDENUMRET_CANCEL) break;
     }
     DD_RETURN(DD_OK);

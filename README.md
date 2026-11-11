@@ -25,8 +25,10 @@ You need your own English disc. Nothing from the game is in this repository.
 | First level loads | not attempted |
 | Gameplay | not attempted |
 
-Out of scope until boot is stable: widescreen, high resolutions, uncapped frame rate,
-controller support, translations, mods.
+A launcher installs the game from your disc image and sets display and graphics options:
+render resolution up to 4K and native, true widescreen (Hor+) up to 32:9, MSAA, anisotropic
+filtering, VSync ([LAUNCHER](docs/LAUNCHER.md)). Not yet: uncapped frame rate, controller support,
+translations, mods, draw distance and LOD changes, x64.
 
 ## How it works
 
@@ -45,8 +47,10 @@ original code, and which are Windows.
 
 ```powershell
 .\tools\build.ps1          # fetches, extracts, analyses, lifts and builds what is out of date
-.\tools\build.ps1 -Run     # the same, then starts the game (trespasser.exe --run)
+.\tools\run.ps1            # opens the launcher, then the game, from the current build (builds nothing)
 ```
+
+`build.ps1` is for the first build and after changing code; `run.ps1` is the normal way to play.
 
 The first run needs your disc image (`-Iso`, `TRESPASSER_ISO` or `config\local.json`) and about
 20 minutes of analysis. Later runs redo only what changed. Details, options and what to do when
@@ -59,9 +63,14 @@ config/        target fingerprint, decoder fixups, extra entry points
 tools/         disc extraction, analysis and lift drivers
 src/host/      the runtime host (hand-written)
 src/recomp/gen lifted C (generated, ignored by Git)
-docs/          ANALYSIS, ARCHITECTURE, BUILD, LEGAL
+launcher/      the launcher: pages, disc image reader, installer (C++)
+assets/        launcher header art, sponsor heart and page icons
+packaging/     third-party licence notices
+src/common/    settings file and display arithmetic shared by host, launcher and tests
+docs/          ANALYSIS, ARCHITECTURE, BUILD, LAUNCHER, LEGAL
 external/      pcrecomp checkout (fetched, ignored by Git)
-game/          your extracted game files (ignored by Git)
+game/          your installed game files (ignored by Git)
+user/          trespasser.ini, the game's registry store, saves (ignored by Git)
 analysis/      regenerated analysis output (ignored by Git)
 logs/          one log per run (ignored by Git)
 ```

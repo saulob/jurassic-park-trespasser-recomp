@@ -22,6 +22,7 @@ static crt_fopen_t s_crt_fopen;
 static crt_open_t s_crt_open;
 static LONG s_success_lines, s_failure_lines, s_resolved_misses, s_repeated_successes;
 static char s_game_dir[MAX_PATH];
+static char s_user_dir[MAX_PATH];
 static char s_last_success[2 * MAX_PATH + 32];
 static struct {
     HANDLE handle;
@@ -42,17 +43,27 @@ int io_trace_init(void) {
 
 static int is_relative(const char* path) { return path[0] != '\\' && path[0] != '/' && !strchr(path, ':'); }
 
-/* The working directory is the game folder, so a relative miss is the same search step. */
+void io_trace_user_dir(const char* dir) { strncpy(s_user_dir, dir, sizeof s_user_dir - 1); }
+
+static size_t under(const char* path, const char* dir) {
+    size_t n = strlen(dir);
+    return n && !_strnicmp(path, dir, n) && path[n] == '\\' ? n : 0;
+}
+
+/* The working directory is the game folder, so a relative miss is the same search step; so is a miss under the user
+ * folder, which the game knows as its Installed Directory. */
 static int answered_by_data_folder(const char* path, DWORD error) {
     char alternative[2 * MAX_PATH];
-    size_t dir = strlen(s_game_dir);
-    if (!dir || !path || !path[0] || strpbrk(path, "*?")) return 0;
+    size_t dir;
+    if (!s_game_dir[0] || !path || !path[0] || strpbrk(path, "*?")) return 0;
     if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) return 0;
     if (is_relative(path)) {
         if (!_strnicmp(path, "data\\", 5)) return 0;
         _snprintf(alternative, sizeof alternative - 1, "%s\\data\\%s", s_game_dir, path);
     } else {
-        if (_strnicmp(path, s_game_dir, dir) || path[dir] != '\\' || !_strnicmp(path + dir + 1, "data\\", 5)) return 0;
+        dir = under(path, s_game_dir);
+        if (!dir) dir = under(path, s_user_dir);
+        if (!dir || !_strnicmp(path + dir + 1, "data\\", 5)) return 0;
         _snprintf(alternative, sizeof alternative - 1, "%s\\data%s", s_game_dir, path + dir);
     }
     alternative[sizeof alternative - 1] = 0;
@@ -90,7 +101,7 @@ static void report(const char* api, const char* path, int ok, DWORD error) {
 
 void io_trace_summary(void) {
     if (s_resolved_misses || s_repeated_successes)
-        host_log("file", "not listed above: %ld lookups under the game folder answered by its data subfolder, %ld "
+        host_log("file", "not listed above: %ld lookups under the game or user folder answered by the data subfolder, %ld "
                  "repeats of the previous successful open", s_resolved_misses, s_repeated_successes);
 }
 

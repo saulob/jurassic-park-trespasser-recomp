@@ -12,6 +12,7 @@
 #include "d3d_legacy.h"
 #include "d3d11_shaders.h"
 #include "host.h"
+#include "jpt_display.h"
 #include "page_guard.h"
 #include "target_sync.h"
 
@@ -129,7 +130,7 @@ typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MA
 static struct {
     int requested, hardware, prepared, prepare_failed;
     int filter;
-    unsigned msaa_request, fixed_w, fixed_h;
+    unsigned msaa_request, fixed_w, fixed_h, anisotropy;
     ID3D11Device* dev;
     ID3D11DeviceContext* ctx;
     unsigned generation;
@@ -210,7 +211,7 @@ static struct {
     d3dr_target_t* deferred;
 } R;
 
-static const char* const k_filter_names[] = { "point", "bilinear", "trilinear", "anisotropic" };
+static const char* const k_filter_names[] = { "original", "point", "bilinear", "trilinear", "anisotropic" };
 
 static void log_hr(const char* what, HRESULT hr) { host_log("d3d11", "%s failed, HRESULT 0x%08lX", what, (unsigned long)hr); }
 
@@ -246,11 +247,12 @@ static void perf_add(int category, int64_t start) {
 
 /* ---- configuration and start-up ---- */
 
-void d3dr_configure(int hardware, unsigned width, unsigned height, int filter, unsigned msaa) {
+void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, unsigned anisotropy, unsigned msaa) {
     R.requested = hardware;
-    R.fixed_w = width;
-    R.fixed_h = height;
+    R.fixed_w = box_w;
+    R.fixed_h = box_h;
     R.filter = filter;
+    R.anisotropy = anisotropy < 2 ? 2 : anisotropy > 16 ? 16 : anisotropy;
     R.msaa_request = msaa;
 }
 
@@ -520,6 +522,13 @@ static int prepare_hardware(void) {
     return 1;
 }
 
+static const char* anisotropy_text(void) {
+    static char text[16];
+    if (R.filter != D3DR_FILTER_ANISOTROPIC) return "";
+    _snprintf(text, sizeof text - 1, " %ux", R.anisotropy);
+    return text;
+}
+
 static void log_renderer_line(void) {
     if (!R.hardware) {
         host_log("renderer", "Renderer: Software RGB565: SelfMod rasterises, D3D11 presents");
@@ -527,11 +536,11 @@ static void log_renderer_line(void) {
     }
     host_log("renderer", "Renderer: D3D11 hardware (Direct3D 6 translated: IDirect3D3/Device3/Viewport3/Texture2)");
     if (R.fixed_w)
-        host_log("renderer", "render resolution %ux%u, texture filter %s, MSAA requested %ux", R.fixed_w, R.fixed_h,
-                 k_filter_names[R.filter], R.msaa_request);
+        host_log("renderer", "render box %ux%u (each target keeps its surface's shape inside it), texture filter %s%s, "
+                 "MSAA requested %ux", R.fixed_w, R.fixed_h, k_filter_names[R.filter], anisotropy_text(), R.msaa_request);
     else
-        host_log("renderer", "render resolution auto (4:3 covering the presentation area), texture filter %s, MSAA "
-                 "requested %ux", k_filter_names[R.filter], R.msaa_request);
+        host_log("renderer", "render resolution original (compatibility size covering the presentation area), texture "
+                 "filter %s%s, MSAA requested %ux", k_filter_names[R.filter], anisotropy_text(), R.msaa_request);
 }
 
 int d3dr_startup(void) {
@@ -627,8 +636,10 @@ static UINT supported_samples(void) {
 static void choose_size(UINT legacy_w, UINT legacy_h, UINT* w, UINT* h) {
     int view_w = 0, view_h = 0;
     if (R.fixed_w) {
-        *w = R.fixed_w;
-        *h = R.fixed_h;
+        jpt_size_t box = { (int)R.fixed_w, (int)R.fixed_h };
+        jpt_size_t size = jpt_render_target(box, (int)legacy_w, (int)legacy_h);
+        *w = (UINT)size.width;
+        *h = (UINT)size.height;
         return;
     }
     window_host_view_size(&view_w, &view_h);
@@ -679,7 +690,7 @@ static int create_target_resources(d3dr_target_t* t) {
     t->height = h;
     t->generation = R.generation;
     memset(&t->dirty, 0, sizeof t->dirty);
-    host_log("d3d11", "render target %ux%u B8G8R8A8 for the game's %ux%u back buffer, %ux MSAA%s", w, h, t->legacy_w,
+    host_log("d3d11", "3D render target %ux%u B8G8R8A8 (rasterised at this size) for the game's %ux%u logical screen, %ux MSAA%s", w, h, t->legacy_w,
              t->legacy_h, samples, samples < R.msaa_request ? " (requested level unsupported: reduced)" : "");
     host_log("d3d11", "depth buffer %ux%u D24_UNORM_S8_UINT", w, h);
     return 1;
@@ -726,9 +737,9 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
     s->target = t;
     dev->backend = t;
     R.devices++;
-    host_log("d3d", "Direct3D device #%u: %lux%lu target at %ux%u, %ux MSAA, %u textures alive, texture filter %s, "
+    host_log("d3d", "Direct3D device #%u: %lux%lu target at %ux%u, %ux MSAA, %u textures alive, texture filter %s%s, "
              "mipmaps %s", R.devices, s->width, s->height, t->width, t->height, t->samples, R.textures_alive,
-             k_filter_names[R.filter], R.generate_mips ? "generated" : "none (as the game's textures)");
+             k_filter_names[R.filter], anisotropy_text(), R.generate_mips ? "generated" : "none (as the game's textures)");
     return DD_OK;
 }
 
@@ -1118,10 +1129,11 @@ static ID3D11RasterizerState* raster_for(const d3d_device_t* dev, int multisampl
     return *slot;
 }
 
-/* The game's point filtering stays point; where it asks for linear the configured quality applies. */
+/* Original, trilinear and anisotropic keep the game's point filtering; bilinear and point override it. */
 static ID3D11SamplerState* sampler_for(const d3d_device_t* dev) {
-    int mag = d3dt_mag_linear(dev->stage[0][D3DTSS_MAGFILTER]) == 1 && R.filter != D3DR_FILTER_POINT;
-    int min = d3dt_min_linear(dev->stage[0][D3DTSS_MINFILTER]) == 1 && R.filter != D3DR_FILTER_POINT;
+    int forced = R.filter == D3DR_FILTER_POINT || R.filter == D3DR_FILTER_BILINEAR;
+    int mag = forced ? R.filter == D3DR_FILTER_BILINEAR : d3dt_mag_linear(dev->stage[0][D3DTSS_MAGFILTER]) == 1;
+    int min = forced ? R.filter == D3DR_FILTER_BILINEAR : d3dt_min_linear(dev->stage[0][D3DTSS_MINFILTER]) == 1;
     int u = d3dt_address(dev->stage[0][D3DTSS_ADDRESSU]), v = d3dt_address(dev->stage[0][D3DTSS_ADDRESSV]);
     ID3D11SamplerState** slot;
     if (!u) u = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -1133,7 +1145,7 @@ static ID3D11SamplerState* sampler_for(const d3d_device_t* dev) {
         UINT anisotropy = 1;
         if (mag && min && R.filter == D3DR_FILTER_ANISOTROPIC) {
             f = D3D11_FILTER_ANISOTROPIC;
-            anisotropy = 16;
+            anisotropy = R.anisotropy;
         } else if (mag && min) {
             f = mips ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
         } else if (mag) {

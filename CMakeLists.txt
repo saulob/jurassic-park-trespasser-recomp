@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(trespasser_recomp C)
+project(trespasser_recomp VERSION 0.1.0 LANGUAGES C CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "pcrecomp's native32 runtime is MSVC x86 inline assembly: build with cl (see tools/build.ps1)")
@@ -61,6 +61,7 @@ set(HOST_SOURCES
   src/host/selfmod.c
   src/host/guest_overrides.c
   src/host/water_kernels.c
+  src/host/widescreen.c
   src/host/diagnostics.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
@@ -82,6 +83,72 @@ set(PCRECOMP_SOURCES
   ${PCRECOMP}/runtime/recomp32/recomp_trace.c
 )
 
+# Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
+add_library(jpt_common STATIC src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_monitors.c
+  src/common/jpt_user_data.c)
+target_include_directories(jpt_common PUBLIC src/common)
+target_compile_options(jpt_common PRIVATE /W4)
+target_compile_definitions(jpt_common PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+# The launcher: TRG Launcher in an SDL3 window with an SDL renderer and Dear ImGui, as in the other ports
+# (config/launcher_deps.txt, fetched and patched by tools/build.ps1); closed before the game creates its window.
+# TRG's downloader is not built: no HTTP.
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/external/imgui" CACHE PATH "Dear ImGui checkout (config/launcher_deps.txt)")
+set(TRG_DIR "${CMAKE_SOURCE_DIR}/external/trg-launcher" CACHE PATH "patched TRG Launcher checkout (config/launcher_deps.txt)")
+set(SDL_DIR "${CMAKE_SOURCE_DIR}/external/SDL" CACHE PATH "SDL 3 checkout (config/launcher_deps.txt)")
+if(NOT EXISTS "${TRG_DIR}/include/trg/launcher.h" OR NOT EXISTS "${IMGUI_DIR}/imgui.h" OR
+   NOT EXISTS "${SDL_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "launcher sources missing: run tools/build.ps1, which fetches them (config/launcher_deps.txt)")
+endif()
+set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC ON CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+add_subdirectory(${SDL_DIR} ${CMAKE_BINARY_DIR}/SDL EXCLUDE_FROM_ALL)
+
+# TRG Launcher (C++17: in C++20 u8string() is another type) and Dear ImGui with its SDL3 backends.
+add_library(trg_core STATIC ${TRG_DIR}/src/settings.cpp ${TRG_DIR}/src/platform.cpp)
+target_include_directories(trg_core PUBLIC ${TRG_DIR}/include)
+target_link_libraries(trg_core PUBLIC shell32 ole32 comdlg32)
+add_library(imgui_sdl STATIC ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp
+  ${IMGUI_DIR}/imgui_widgets.cpp ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer3.cpp)
+target_include_directories(imgui_sdl PUBLIC ${IMGUI_DIR})
+target_link_libraries(imgui_sdl PUBLIC SDL3::SDL3-static)
+add_library(trg_ui STATIC ${TRG_DIR}/src/launcher.cpp ${TRG_DIR}/src/headers.cpp)
+target_link_libraries(trg_ui PUBLIC trg_core imgui_sdl)
+set_target_properties(trg_core imgui_sdl trg_ui PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+# The sidebar's page icons (assets/launcher/icons/*.svg) as a table of byte arrays, page_icons.cpp.
+file(GLOB JPT_PAGE_ICONS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/launcher/icons/*.svg)
+list(SORT JPT_PAGE_ICONS)
+set(JPT_PAGE_ICON_LIST ${CMAKE_BINARY_DIR}/generated/page_icons.txt)
+file(CONFIGURE OUTPUT ${JPT_PAGE_ICON_LIST} CONTENT "${JPT_PAGE_ICONS}")
+set(JPT_PAGE_ICON_SOURCE ${CMAKE_BINARY_DIR}/generated/page_icon_data.cpp)
+add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
+  COMMAND ${CMAKE_COMMAND} -DINPUT_LIST=${JPT_PAGE_ICON_LIST} -DOUTPUT=${JPT_PAGE_ICON_SOURCE} -DSYMBOL=kPageIconFiles
+          -P ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  DEPENDS ${JPT_PAGE_ICON_LIST} ${JPT_PAGE_ICONS} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  COMMENT "Embedding the page icons")
+
+# The port's launcher. The core (game files, disc image reader, installer, settings, page model, icons) needs no window;
+# the tests link only it.
+add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/game_files.cpp launcher/game_install.cpp
+  launcher/settings.cpp launcher/system_info.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
+  launcher/launcher_log.cpp ${JPT_PAGE_ICON_SOURCE})
+target_include_directories(jpt_launcher_core PUBLIC launcher)
+target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 dxgi)
+add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/host.cpp)
+target_link_libraries(jpt_launcher PUBLIC jpt_launcher_core trg_ui)
+target_compile_definitions(jpt_launcher PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
+foreach(lib trg_core imgui_sdl trg_ui jpt_launcher_core jpt_launcher)
+  target_compile_definitions(${lib} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+  target_compile_options(${lib} PRIVATE /utf-8)
+endforeach()
+target_compile_options(jpt_launcher_core PRIVATE /W4)
+target_compile_options(jpt_launcher PRIVATE /W4)
+# Vendored nanosvg: C4702 is reported at code generation, past its include's warning pragma.
+set_source_files_properties(launcher/page_icons.cpp PROPERTIES COMPILE_OPTIONS "/wd4702")
+set_target_properties(jpt_launcher_core jpt_launcher PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
 add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES})
 target_include_directories(trespasser PRIVATE
   src/host
@@ -93,17 +160,35 @@ target_compile_definitions(trespasser PRIVATE
   RECOMP_FLAT_MEMORY
   RECOMP_LOCAL_REGS
   TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game"
+  TRESPASSER_DEFAULT_USER_DIR="${CMAKE_SOURCE_DIR}/user"
   TRESPASSER_DEFAULT_LOG_DIR="${CMAKE_SOURCE_DIR}/logs"
 )
 if(TRESPASSER_TRACE)
   target_compile_definitions(trespasser PRIVATE RECOMP_TRACE=1)
 endif()
 
+# The launcher reads its images next to the executable; each copy depends on its source file, so an image-only change syncs.
+set(JPT_LAUNCHER_ASSET_DIR "$<TARGET_FILE_DIR:trespasser>/assets/launcher")
+set(JPT_LAUNCHER_ASSET_COPIES)
+foreach(asset header-art.png sponsor-heart.png)
+  set(asset_source "${CMAKE_SOURCE_DIR}/assets/launcher/${asset}")
+  set(asset_stamp "${CMAKE_BINARY_DIR}/launcher-assets/${asset}.stamp")
+  add_custom_command(OUTPUT "${asset_stamp}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${JPT_LAUNCHER_ASSET_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${asset_source}" "${JPT_LAUNCHER_ASSET_DIR}/${asset}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${asset_stamp}"
+    DEPENDS "${asset_source}"
+    VERBATIM)
+  list(APPEND JPT_LAUNCHER_ASSET_COPIES "${asset_stamp}")
+endforeach()
+add_custom_target(jpt_launcher_assets DEPENDS ${JPT_LAUNCHER_ASSET_COPIES})
+add_dependencies(trespasser jpt_launcher_assets)
+
 # The guest image has no relocations and must sit at 0x00400000, so the host links high
 # and keeps its own first stack small; lifted code runs on a thread with a large stack.
 # Not /LARGEADDRESSAWARE: the original was a 2 GB process.
 target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPAT /STACK:0x40000)
-target_link_libraries(trespasser PRIVATE kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11 dxgi dxguid)
+target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11 dxgi dxguid)
 
 # TRESPASSER_GEN_OPT alone sets the lifted sources' optimisation: the configuration's /O
 # options would only be overridden there (D9025), so they move to the other sources.
@@ -129,6 +214,14 @@ set_source_files_properties(${HOST_SOURCES} PROPERTIES
 
 # Headless checks of the host's logic and COM objects (no window, device or game):
 #   ninja -C <build dir> host_tests com_tests && host_tests.exe && com_tests.exe
+# Launcher and display logic on synthetic disc images in temporary folders (headless):
+#   ninja -C <build dir> launcher_tests && launcher_tests.exe
+add_executable(launcher_tests EXCLUDE_FROM_ALL tests/launcher_tests.cpp)
+target_link_libraries(launcher_tests PRIVATE jpt_launcher_core)
+target_compile_definitions(launcher_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
+set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
 add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c)
 target_include_directories(host_tests PRIVATE src/host)

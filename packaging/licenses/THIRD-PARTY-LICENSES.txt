@@ -1,0 +1,108 @@
+Third-party material in Jurassic Park: Trespasser Recompiled. No game file is included: the game is installed from
+the player's own disc. The port's source code is at https://github.com/saulob/jurassic-park-trespasser-recomp.
+
+
+========================================================================
+Compiled into trespasser.exe
+========================================================================
+
+pcrecomp                    MIT. Copyright (c) 2026 sp00nz.             https://github.com/sp00nznet/pcrecomp
+Dear ImGui 1.92.9b          MIT. Copyright (c) 2014-2025 Omar Cornut.   https://github.com/ocornut/imgui
+SDL 3.4.10                  zlib. Copyright (C) 1997-2026 Sam Lantinga. https://github.com/libsdl-org/SDL
+nanosvg                     zlib. Copyright (c) 2013-14 Mikko Mononen.  launcher/third_party/nanosvg/LICENSE.txt
+
+TRG Launcher 1.1.0 (https://github.com/TekRantGaming/trg-launcher, b384a28c712c9320eea8f9d50639dec49981b6c1)
+  MIT License. Copyright (c) 2026 TekRantGaming.
+
+MIT License
+
+Copyright (c) 2026 TekRantGaming
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+========================================================================
+Launcher icon: Heart
+========================================================================
+
+Heart icon
+Source: SVG Repo (www.svgrepo.com), https://www.svgrepo.com/svg/532473/heart
+The file's own header reads "Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools". The source
+file was named heart-svgrepo-com.svg.
+Modified to be a white filled heart: the stroke color #000000 became #FFFFFF and a #FFFFFF fill was added (the path is
+unchanged). assets/launcher/sponsor-heart.svg is the only copy kept; assets/launcher/sponsor-heart.png is a 64 x 64
+rendering of it.
+
+License: CC0 (public domain dedication).
+
+
+========================================================================
+Launcher header art
+========================================================================
+
+assets/launcher/header-art.png is original placeholder art made for this port by tools/make-header-art.py (shapes
+drawn in code, no game asset).
+
+
+========================================================================
+Launcher page icons
+========================================================================
+
+The eight sidebar icons, compiled into trespasser.exe from assets/launcher/icons of the source. Each one is drawn in
+the sidebar's colours; assets/launcher/icons/SOURCES.md records the source and every change made.
+
+display.svg, attribution required:
+  "Display Television Tv Screen Gadget" by nickylimyeanfen, collection Inc Device Icons.
+  Source: SVG Repo (www.svgrepo.com),
+  https://www.svgrepo.com/svg/381247/display-television-tv-screen-gadget
+  License: CC Attribution License, https://creativecommons.org/licenses/by/ Not CC0.
+  Adapted: renamed from display-television-tv-screen-gadget-svgrepo-com.svg and drawn scaled, in the sidebar's colours.
+
+CC0 (public domain dedication), all from SVG Repo (www.svgrepo.com):
+  play.svg       Play          https://www.svgrepo.com/svg/522228/play
+  graphics.svg   Controls Alt  https://www.svgrepo.com/svg/348105/controls-alt
+  gameplay.svg   Gamepad       https://www.svgrepo.com/svg/523439/gamepad
+  cheats.svg     Star Alt 1    https://www.svgrepo.com/svg/532289/star-alt-1
+  controls.svg   Keyboard      https://www.svgrepo.com/svg/524665/keyboard
+  about.svg      About         https://www.svgrepo.com/svg/486929/about
+
+bug-report.svg, MIT License:
+  "Bug File" by Vectopus, collection Atlas Variety Line Icons.
+  Source: SVG Repo (www.svgrepo.com), https://www.svgrepo.com/svg/456346/bug-file
+  Adapted: renamed from bug-file-svgrepo-com.svg and drawn scaled, in the sidebar's colours.
+
+Copyright (c) Vectopus
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

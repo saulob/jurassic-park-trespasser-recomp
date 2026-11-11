@@ -1,0 +1,296 @@
+#define WIN32_LEAN_AND_MEAN
+#include "jpt_config.h"
+
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <windows.h>
+
+#include "jpt_display.h"
+
+#define MAX_LINE 1024
+#define APPEND_HEADER "# Set by Trespasser Recompiled"
+
+const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic4", "anisotropic8",
+                                                        "anisotropic16" };
+
+const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
+    { JPT_KEY_SHOW_LAUNCHER, "1" },
+    { JPT_KEY_DISPLAY_MODE, "windowed" },
+    { JPT_KEY_MONITOR, "1" },
+    { JPT_KEY_WINDOW_SIZE, "auto" },
+    { JPT_KEY_PRESENTATION, "letterbox" },
+    { JPT_KEY_RENDERER, "d3d11" },
+    { JPT_KEY_RENDER_RESOLUTION, "native" },
+    { JPT_KEY_ASPECT_RATIO, "16:9" },
+    { JPT_KEY_TEXTURE_FILTER, "anisotropic16" },
+    { JPT_KEY_MSAA, "4" },
+    { JPT_KEY_VSYNC, "1" },
+    { JPT_KEY_SHOW_FPS, "1" },
+};
+
+const char* jpt_default_value(const char* key) {
+    for (int i = 0; i < JPT_SETTING_COUNT; i++)
+        if (!strcmp(key, jpt_settings[i].key)) return jpt_settings[i].default_value;
+    return NULL;
+}
+
+int jpt_parse_bool(const char* text, int* out) {
+    static const char* const on[] = { "1", "on", "yes", "true" };
+    static const char* const off[] = { "0", "off", "no", "false" };
+    for (int i = 0; i < 4; i++) {
+        if (!_stricmp(text, on[i])) return *out = 1, 1;
+        if (!_stricmp(text, off[i])) return *out = 0, 1;
+    }
+    return 0;
+}
+
+static int parse_choice(const char* text, const char* const* names, int count) {
+    for (int i = 0; i < count; i++)
+        if (!_stricmp(text, names[i])) return i;
+    return -1;
+}
+
+static int apply(jpt_config_t* c, const char* key, const char* value) {
+    static const char* const modes[] = { "windowed", "borderless" };
+    static const char* const presentations[] = { "letterbox", "stretch" };
+    static const char* const renderers[] = { "software", "d3d11" };
+    int n, w, h;
+    char* end;
+    if (!strcmp(key, JPT_KEY_SHOW_LAUNCHER)) return jpt_parse_bool(value, &c->show_launcher);
+    if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);
+    if (!strcmp(key, JPT_KEY_SHOW_FPS)) return jpt_parse_bool(value, &c->show_fps);
+    if (!strcmp(key, JPT_KEY_DISPLAY_MODE)) return (n = parse_choice(value, modes, 2)) >= 0 ? (c->borderless = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_PRESENTATION))
+        return (n = parse_choice(value, presentations, 2)) >= 0 ? (c->stretch = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_RENDERER)) return (n = parse_choice(value, renderers, 2)) >= 0 ? (c->hardware = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_TEXTURE_FILTER))
+        return (n = parse_choice(value, jpt_filter_keys, JPT_FILTER_COUNT)) >= 0 ? (c->texture_filter = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_MONITOR)) {
+        long v = strtol(value, &end, 10);
+        if (*end || v < 1 || v > 16) return 0;
+        c->monitor = (int)v;
+        return 1;
+    }
+    if (!strcmp(key, JPT_KEY_MSAA)) {
+        long v = strtol(value, &end, 10);
+        if (*end || (v != 0 && v != 1 && v != 2 && v != 4 && v != 8)) return 0;
+        c->msaa = v ? (unsigned)v : 1;
+        return 1;
+    }
+    if (!strcmp(key, JPT_KEY_WINDOW_SIZE)) {
+        if (!_stricmp(value, "auto")) return c->window_w = c->window_h = 0, 1;
+        if (!jpt_parse_size(value, &w, &h)) return 0;
+        c->window_w = w;
+        c->window_h = h;
+        return 1;
+    }
+    if (!strcmp(key, JPT_KEY_RENDER_RESOLUTION)) {
+        if ((n = jpt_render_preset_index(value)) >= 0) {
+            c->render_preset = n;
+            c->render_w = c->render_h = 0;
+            return 1;
+        }
+        if (!jpt_parse_size(value, &w, &h)) return 0;
+        c->render_preset = -1;
+        c->render_w = w;
+        c->render_h = h;
+        return 1;
+    }
+    if (!strcmp(key, JPT_KEY_ASPECT_RATIO)) {
+        for (n = 0; n < JPT_ASPECT_COUNT; n++)
+            if (!strcmp(value, jpt_aspects[n].key)) return c->aspect = n, 1;
+        return 0;
+    }
+    return 0;
+}
+
+int jpt_config_apply(jpt_config_t* c, const char* key, const char* value) {
+    jpt_config_t next = *c;
+    if (!key || !value || !apply(&next, key, value)) return 0;
+    *c = next;
+    return 1;
+}
+
+int jpt_config_valid(const char* key, const char* value) {
+    jpt_config_t scratch;
+    jpt_config_defaults(&scratch);
+    return jpt_config_apply(&scratch, key, value);
+}
+
+void jpt_config_defaults(jpt_config_t* c) {
+    memset(c, 0, sizeof *c);
+    for (int i = 0; i < JPT_SETTING_COUNT; i++) apply(c, jpt_settings[i].key, jpt_settings[i].default_value);
+}
+
+static char* trim(char* s) {
+    char* end;
+    while (*s && isspace((unsigned char)*s)) s++;
+    end = s + strlen(s);
+    while (end > s && isspace((unsigned char)end[-1])) *--end = 0;
+    return s;
+}
+
+int jpt_ini_parse_line(const char* line, int allow_comment, char* key, size_t key_cap, char* value, size_t value_cap) {
+    char buf[MAX_LINE];
+    char *p, *eq, *k, *v, *hash;
+    if (!line || strlen(line) >= sizeof buf) return 0;
+    strcpy(buf, line);
+    p = trim(buf);
+    if (*p == '#' || *p == ';') {
+        if (!allow_comment) return 0;
+        p = trim(p + 1);
+    }
+    eq = strchr(p, '=');
+    if (!eq) return 0;
+    *eq = 0;
+    k = trim(p);
+    v = eq + 1;
+    hash = strstr(v, " #");
+    if (hash) *hash = 0;
+    v = trim(v);
+    if (!*k || strpbrk(k, " \t#;") || strlen(k) >= key_cap || strlen(v) >= value_cap) return 0;
+    strcpy(key, k);
+    strcpy(value, v);
+    return 1;
+}
+
+int jpt_config_load(const char* path, jpt_config_t* c) {
+    char line[MAX_LINE], key[128], value[MAX_LINE];
+    FILE* f;
+    jpt_config_defaults(c);
+    f = path ? fopen(path, "r") : NULL;
+    if (!f) return 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (jpt_ini_parse_line(line, 0, key, sizeof key, value, sizeof value)) jpt_config_apply(c, key, value);
+    }
+    fclose(f);
+    return 1;
+}
+
+int jpt_ini_get(const char* path, const char* key, char* value, size_t cap) {
+    char line[MAX_LINE], k[128], v[MAX_LINE];
+    int found = 0;
+    FILE* f = path ? fopen(path, "r") : NULL;
+    if (!f) return 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (jpt_ini_parse_line(line, 0, k, sizeof k, v, sizeof v) && !strcmp(k, key) && strlen(v) < cap) {
+            strcpy(value, v);
+            found = 1;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
+typedef struct {
+    char** lines;
+    int count, cap;
+} lines_t;
+
+static int push_line(lines_t* l, const char* text) {
+    char* copy;
+    if (l->count == l->cap) {
+        int cap = l->cap ? l->cap * 2 : 64;
+        char** grown = (char**)realloc(l->lines, (size_t)cap * sizeof *grown);
+        if (!grown) return 0;
+        l->lines = grown;
+        l->cap = cap;
+    }
+    copy = _strdup(text);
+    if (!copy) return 0;
+    l->lines[l->count++] = copy;
+    return 1;
+}
+
+static void free_lines(lines_t* l) {
+    for (int i = 0; i < l->count; i++) free(l->lines[i]);
+    free(l->lines);
+}
+
+static int find_line(const lines_t* l, const char* key, int commented) {
+    char k[128], v[MAX_LINE];
+    for (int i = l->count - 1; i >= 0; i--) {
+        int is_comment = l->lines[i][strspn(l->lines[i], " \t")] == '#';
+        if (is_comment != commented) continue;
+        if (jpt_ini_parse_line(l->lines[i], commented, k, sizeof k, v, sizeof v) && !strcmp(k, key)) return i;
+    }
+    return -1;
+}
+
+static int read_lines(const char* path, lines_t* l) {
+    char line[MAX_LINE];
+    FILE* f = fopen(path, "r");
+    int ok = 1;
+    if (!f) return 0;
+    while (ok && fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        ok = push_line(l, line);
+    }
+    fclose(f);
+    return ok ? 1 : -1;
+}
+
+static int set_line(lines_t* l, const char* key, const char* value, int* header) {
+    char line[MAX_LINE];
+    int at = find_line(l, key, 0);
+    if (!value) {
+        if (at < 0) return 1;
+        free(l->lines[at]);
+        memmove(&l->lines[at], &l->lines[at + 1], (size_t)(l->count - at - 1) * sizeof *l->lines);
+        l->count--;
+        return 1;
+    }
+    if (at < 0) at = find_line(l, key, 1);
+    _snprintf(line, sizeof line - 1, "%s = %s", key, value);
+    line[sizeof line - 1] = 0;
+    if (at >= 0) {
+        char* copy = _strdup(line);
+        if (!copy) return 0;
+        free(l->lines[at]);
+        l->lines[at] = copy;
+        return 1;
+    }
+    if (!*header && !((l->count == 0 || push_line(l, "")) && push_line(l, APPEND_HEADER))) return 0;
+    *header = 1;
+    return push_line(l, line);
+}
+
+int jpt_ini_set(const char* path, const char* const* keys, const char* const* values, int count) {
+    char tmp[MAX_PATH + 8];
+    lines_t l = { 0 };
+    FILE* f;
+    int ok = read_lines(path, &l) >= 0, header = 0;
+    for (int i = 0; ok && i < l.count; i++)
+        if (!strcmp(l.lines[i], APPEND_HEADER)) header = 1;
+    for (int i = 0; ok && i < count; i++) ok = set_line(&l, keys[i], values[i], &header);
+    ok = ok && set_line(&l, JPT_KEY_SETTINGS_VERSION, JPT_SETTINGS_VERSION, &header);
+    if (ok) {
+        _snprintf(tmp, sizeof tmp - 1, "%s.tmp", path);
+        tmp[sizeof tmp - 1] = 0;
+        f = fopen(tmp, "w");
+        ok = f != NULL;
+        for (int i = 0; ok && i < l.count; i++) ok = fprintf(f, "%s\n", l.lines[i]) >= 0;
+        if (f) ok = fclose(f) == 0 && ok;
+        ok = ok && MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        if (!ok) DeleteFileA(tmp);
+    }
+    free_lines(&l);
+    return ok;
+}
+
+int jpt_config_migrate(const char* path) {
+    static const char* const keys[] = {
+        JPT_KEY_DISPLAY_MODE, JPT_KEY_MONITOR,        JPT_KEY_WINDOW_SIZE, JPT_KEY_PRESENTATION,
+        JPT_KEY_RENDERER,     JPT_KEY_RENDER_RESOLUTION, JPT_KEY_ASPECT_RATIO, JPT_KEY_TEXTURE_FILTER,
+        JPT_KEY_MSAA,         JPT_KEY_VSYNC,          JPT_KEY_SHOW_FPS,
+    };
+    const char* removed[sizeof keys / sizeof keys[0]] = { 0 };
+    char version[16];
+    if (!path || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return 0;
+    if (jpt_ini_get(path, JPT_KEY_SETTINGS_VERSION, version, sizeof version)) return 0;
+    return jpt_ini_set(path, keys, removed, (int)(sizeof keys / sizeof keys[0]));
+}

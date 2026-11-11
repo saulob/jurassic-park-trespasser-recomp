@@ -33,3 +33,8 @@ game/
 *.wtd
 *.ddf
 *.tga
+
+# The port's user data and interrupted installs
+user/
+game.install-temp/
+game.install-backup/

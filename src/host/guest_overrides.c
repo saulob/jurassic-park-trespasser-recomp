@@ -4,7 +4,7 @@
 /* With incremental linking every lifted function is reached through a 5-byte "jmp rel32" thunk, from
  * direct calls and from the dispatch table alike, so repointing the thunk replaces the function
  * everywhere and leaves its body callable. Without a thunk the lifted function stays in use. */
-static int redirect_thunk(uint32_t va, recomp_func_t replacement, recomp_func_t* body) {
+int guest_override_redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body) {
     BYTE* p = (BYTE*)recomp_lookup(va);
     DWORD old;
     int32_t rel;
@@ -30,7 +30,7 @@ void guest_overrides_install(void) {
         { WATER_WAVE_STEP_VA, water_wave_step, &water_wave_step_lifted, "CSimWaveVar2D step" },
     };
     for (size_t i = 0; i < sizeof k / sizeof k[0]; i++) {
-        if (redirect_thunk(k[i].va, k[i].kernel, k[i].lifted))
+        if (guest_override_redirect(k[i].va, k[i].kernel, k[i].lifted))
             host_log("host", "sub_%08X (%s) runs as its host kernel", k[i].va, k[i].name);
         else
             host_log("host", "sub_%08X (%s) stays lifted: no incremental-link thunk to redirect", k[i].va, k[i].name);

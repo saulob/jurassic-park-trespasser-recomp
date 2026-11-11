@@ -169,6 +169,52 @@ function Test-LiftAdoptable {
     return $true
 }
 
+function Get-PatchFingerprint($Patches) {
+    if (-not $Patches -or $Patches.Count -eq 0) { return '' }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $text = New-Object System.Text.StringBuilder
+        foreach ($patch in $Patches) {
+            $hex = [System.BitConverter]::ToString($sha.ComputeHash([System.IO.File]::ReadAllBytes($patch.FullName))).Replace('-', '')
+            [void]$text.Append($patch.Name).Append(':').Append($hex).Append("`n")
+        }
+        return [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text.ToString()))).Replace('-', '')
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+# The launcher's sources (config\launcher_deps.txt): fetched when missing, at another commit or with another patch set
+# (launcher\patches\<name>), then patched. The stamp records the commit and the patch fingerprint.
+function Sync-LauncherDependencies {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Stop-Tool 'git is needed to fetch the launcher sources (config\launcher_deps.txt).' }
+    $fetched = 0
+    foreach ($line in Get-Content -LiteralPath (Join-Path $root 'config\launcher_deps.txt')) {
+        if ($line -match '^\s*(#|$)') { continue }
+        $path, $url, $commit = -split $line
+        $dir = Join-Path $root $path
+        $stamp = Join-Path $dir '.jpt_commit'
+        $patches = @(Get-ChildItem -LiteralPath (Join-Path $root ('launcher\patches\' + (Split-Path $path -Leaf))) -Filter '*.patch' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+        $fingerprint = Get-PatchFingerprint $patches
+        $expected = if ($fingerprint) { "$commit`n$fingerprint" } else { $commit }
+        if ((Test-Path -LiteralPath $stamp) -and (Get-Content -LiteralPath $stamp -Raw).Trim() -eq $expected) { continue }
+        Write-Step "Fetching $path ($($commit.Substring(0, 7)))"
+        if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        & git -C $dir init --quiet
+        & git -C $dir fetch --quiet --depth 1 $url $commit
+        if ($LASTEXITCODE -ne 0) { Stop-Tool "git fetch failed for $url" }
+        & git -C $dir -c advice.detachedHead=false checkout --quiet FETCH_HEAD
+        foreach ($patch in $patches) {
+            & git -C $dir apply $patch.FullName
+            if ($LASTEXITCODE -ne 0) { Stop-Tool "patch $($patch.Name) does not apply to $path" }
+        }
+        [System.IO.File]::WriteAllText($stamp, $expected, [System.Text.Encoding]::ASCII)
+        $fetched++
+    }
+    if ($fetched -eq 0) { Write-Step 'Launcher sources: current' }
+}
+
 function Get-CmakeProblem([string]$GenOptWanted, [string]$TraceWanted) {
     $cache = Join-Path $buildDir 'CMakeCache.txt'
     if (-not ((Test-Path -LiteralPath (Join-Path $buildDir 'build.ninja')) -and (Test-Path -LiteralPath $cache))) { return 'not configured' }
@@ -270,6 +316,8 @@ if ($problem) {
     Write-Step 'Lifted C: current'
 }
 
+if ($Arch -eq 'x86') { Sync-LauncherDependencies }
+
 $cache = Join-Path $buildDir 'CMakeCache.txt'
 $cached = Test-Path -LiteralPath $cache
 $genOptWanted = if ($GenOpt) { $GenOpt } elseif ($cached -and (Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT')) { Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT' } else { '/O2' }
@@ -279,7 +327,7 @@ $traceWanted = if ($traceOn) { 'ON' } else { 'OFF' }
 $problem = Get-CmakeProblem $genOptWanted $traceWanted
 if ($problem) {
     Write-Step "Configuring CMake: $problem"
-    $configureArgs = @('-S', $root, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_BUILD_TYPE=$Config", '-DCMAKE_C_COMPILER=cl',
+    $configureArgs = @('-S', $root, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_BUILD_TYPE=$Config", '-DCMAKE_C_COMPILER=cl', '-DCMAKE_CXX_COMPILER=cl',
         "-DTRESPASSER_GEN_OPT=$genOptWanted", "-DTRESPASSER_TRACE=$traceWanted")
     if ((Invoke-Logged 'cmake' $configureArgs { param($l) $l -match 'error|warning|CMake Error' }) -ne 0) {
         Show-LogTail

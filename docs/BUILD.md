@@ -19,14 +19,20 @@ switches to it for the session.
 ## Build
 
 ```powershell
-.\tools\build.ps1           # build what is out of date
-.\tools\build.ps1 -Run      # the same, then start the game
+.\tools\build.ps1           # build what is out of date (first build, and after changing code)
+.\tools\run.ps1             # normal start: the launcher, then the game, from the current build
 ```
+
+`run.ps1` runs `build\cmake\msvc-x86\trespasser.exe` from the repository root and builds nothing; without the
+executable it tells you to run `build.ps1` first. Its arguments go to `trespasser.exe` unchanged
+(`.\tools\run.ps1 --launcher`, `.\tools\run.ps1 --renderer software`). The executable numbers its own log,
+`build\logs\trespasser_NNN.log`, so no `--log-file` is needed.
 
 Point it at your disc image the first time, by `-Iso "E:\path\to\Trespasser_EN.iso"`, the
 `TRESPASSER_ISO` variable, or `config\local.json` (see `config\local.example.json`). The image
 is only read; `tools\extract_game.py` verifies the executable's SHA-256 and refuses a disc that
-carries a different build.
+carries a different build. (Players install from the launcher's Play page instead; the build script
+needs the files earlier, for the analysis.)
 
 ### What it does, in order
 
@@ -36,6 +42,7 @@ carries a different build.
 | Game files | `game\` | `trespass.exe` is missing or has another SHA-256, or a DLL or `data\menu\tpassintro.smk` is missing |
 | Analysis (about 15 min) | `analysis\` | the executable's SHA-256 or the pcrecomp commit changed, an output is missing, or `-Reanalyze` |
 | Lift (about 1 min) | `src\recomp\gen\` | the catalog, the RTTI seeds, `config\decoder_fixups.json`, `config\extra_entries.json` or `tools\run_lift.py` changed (by content), an output is missing, or `-Relift` |
+| Launcher sources | `external\imgui`, `external\trg-launcher`, `external\SDL` | missing, at another commit than `config\launcher_deps.txt`, or `launcher\patches\` changed |
 | CMake configure | `build\cmake\msvc-x86\` | the cache is missing, or the configuration, `-GenOpt`, `-Trace` or the source folder changed |
 | Build | `build\cmake\msvc-x86\trespasser.exe` | always asked of Ninja, which compiles only what changed |
 
@@ -81,8 +88,8 @@ The stages can also be run by hand: `py -3 tools\fetch_pcrecomp.py`,
 
 ## Running
 
-`.\tools\build.ps1 -Run` builds, then starts `trespasser.exe --run` and stays attached until the
-game exits. It does not start a second copy if `trespasser.exe` from that build folder is
+`.\tools\build.ps1 -Run` is the development loop: it builds, then starts `trespasser.exe` and stays attached until the
+game exits. Playing without rebuilding is `.\tools\run.ps1`. It does not start a second copy if `trespasser.exe` from that build folder is
 already running, and it cannot rebuild while one is.
 
 The script closes its log, starts the game with `--log-file` naming that same file, and reopens
@@ -96,16 +103,23 @@ Without the script, from the repository root:
 
 ```powershell
 # Dry run: fingerprint, map, bind imports, then stop. Executes no game code, opens no window.
-.\build\cmake\msvc-x86\trespasser.exe
+.\build\cmake\msvc-x86\trespasser.exe --dry-run
 
-# Boot attempt: enters the game's entry point and opens the game window. The desktop mode is never changed.
-.\build\cmake\msvc-x86\trespasser.exe --run
+# The launcher (docs/LAUNCHER.md), then the game. The desktop mode is never changed.
+.\build\cmake\msvc-x86\trespasser.exe
 ```
+
+Settings come from `user\trespasser.ini`, which the launcher writes; the options below override
+them for one run. `--run` is still accepted and changes nothing: starting without `--dry-run` runs
+the game.
 
 | Option | Effect |
 |---|---|
-| `--run` | execute the game; without it nothing runs |
+| `--run` | accepted for older scripts; the game runs unless `--dry-run` is given |
+| `--dry-run` | fingerprint, map and bind, then stop |
+| `--launcher` / `--skip-launcher` | show the launcher even when it is turned off / skip it once (it still opens when the game files are not ready); holding Shift while starting also shows it |
 | `--game DIR` | game directory (default `game\`, or `TRESPASSER_GAME_DIR`) |
+| `--user DIR` | user directory: `trespasser.ini`, the game's registry store, saves (default `user\`, or `TRESPASSER_USER_DIR`) |
 | `--log-file FILE` | append to FILE (what `build.ps1 -Run` passes) |
 | `--log-dir DIR` | without `--log-file`, create the next `trespasser_NNN.log` in DIR (default `build\logs\`) |
 | `--ddraw system` | call the system `ddraw.dll` instead of the compatibility layer, observing it (diagnostics only) |
@@ -113,10 +127,13 @@ Without the script, from the repository root:
 | `--generate-mips` | d3d11: give the game's single-level textures generated mip chains (off by default, as the original) |
 | `--debug-d3d-output texture\|vertex-color\|depth` | d3d11 diagnostics: draws show only their texture, vertex colour or depth |
 | `--legacy-safemode-dialog` | keep the game's "unstable last time, Safe Mode?" prompt and its registry `Safemode` flag (off by default) |
-| `--renderer software\|d3d11` | `software` (default): the game's SelfMod rasteriser; `d3d11`: its Direct3D 6 path on the GPU |
-| `--render-resolution auto\|WxH` | d3d11 internal resolution; `auto` (default) covers the presentation area with a 4:3 size |
-| `--texture-filter point\|bilinear\|trilinear\|anisotropic` | d3d11 filtering where the game asks for linear (default anisotropic) |
-| `--msaa 0\|2\|4\|8` | d3d11 multisampling (default 4; reduced to what the GPU supports) |
+| `--renderer software\|d3d11` | `d3d11` (default): the game's Direct3D 6 path on the GPU; `software`: its SelfMod rasteriser |
+| `--render-resolution original\|720p\|1080p\|1440p\|4k\|native\|WxH` | d3d11 render resolution (default `native`; `auto` means `original`, the compatibility size) |
+| `--aspect-ratio 4:3\|16:9\|16:10\|21:9\|32:9` | gameplay shape, Hor+ (default 4:3) |
+| `--texture-filter original\|bilinear\|anisotropic4\|anisotropic8\|anisotropic16` | d3d11 texture filtering (default anisotropic16; `point`, `trilinear` for diagnostics) |
+| `--msaa 0\|2\|4\|8` | d3d11 multisampling (default 4; reduced to what the GPU supports, and logged) |
+| `--vsync on\|off`, `--show-fps on\|off` | VSync (default on), FPS in the title (default on) |
+| `--display-mode windowed\|borderless`, `--monitor N`, `--window-size auto\|WxH`, `--presentation letterbox\|stretch` | window settings (defaults windowed, 1, auto, letterbox) |
 | `--watchdog N` | stop after N seconds and report where execution was |
 | `--native-trace` | one log line per native call (large) |
 | `--callbacks` | one log line per Windows-to-guest call |
@@ -130,11 +147,13 @@ game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `
 
 ## Headless tests
 
-Three small programs check the host without a window, a GPU device, the game or audio; they are not
+Four small programs check the host without a window, a GPU device, the game or audio; they are not
 part of the default build:
 
 ```powershell
-ninja -C build\cmake\msvc-x86 host_tests com_tests water_tests
+ninja -C build\cmake\msvc-x86 launcher_tests host_tests com_tests water_tests
+.\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
+$env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation
 .\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
 .\build\cmake\msvc-x86\water_tests.exe  # host water kernels against the lifted functions they replace, byte for byte
@@ -147,8 +166,9 @@ ninja -C build\cmake\msvc-x64 x64_tests
 .\build\cmake\msvc-x64\x64_tests.exe     # guest address space, pointer marshalling, leak detection, guest COM handles
 ```
 
-Settings the game would keep in the registry are in `game\recomp-registry.txt`. Deleting the
-file resets them.
+Settings the game would keep in the registry are in `user\recomp-registry.txt` (copied once from
+`game\` when an older layout had it there). Deleting the file resets them. The port's own settings
+are in `user\trespasser.ini`.
 
 ## When the run stops
 

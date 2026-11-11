@@ -1,6 +1,6 @@
 /*
  * The game keeps its install paths and settings under one HKLM key that only its installer
- * creates. That key is served from a text file in the game directory, so nothing is written
+ * creates. That key is served from a text file in the user directory, so nothing is written
  * to the real registry. Every other key is forwarded read-only.
  */
 #include "host.h"
@@ -31,6 +31,12 @@ static int s_show_ddraw_cert_dialog;
 static int s_software_water;
 static int s_legacy_safemode;
 static int s_safemode_logged;
+static int s_gameplay_w, s_gameplay_h;
+
+void registry_gameplay_size(int width, int height) {
+    s_gameplay_w = width;
+    s_gameplay_h = height;
+}
 
 #define GAME_HKEY ((uint32_t)(uintptr_t)&s_game_key_token)
 
@@ -139,12 +145,14 @@ static void load_store(void) {
     fclose(f);
 }
 
-void guest_registry_init(const char* game_dir) {
-    char root[MAX_PATH];
+void guest_registry_init(const char* game_dir, const char* user_dir) {
+    char data_root[MAX_PATH], user_root[MAX_PATH];
     DWORD installed = 1;
-    _snprintf(s_store_path, sizeof s_store_path - 1, "%s\\" STORE_FILE, game_dir);
-    _snprintf(root, sizeof root - 1, "%s\\", game_dir);
-    root[sizeof root - 1] = 0;
+    _snprintf(s_store_path, sizeof s_store_path - 1, "%s\\" STORE_FILE, user_dir);
+    _snprintf(data_root, sizeof data_root - 1, "%s\\", game_dir);
+    _snprintf(user_root, sizeof user_root - 1, "%s\\", user_dir);
+    data_root[sizeof data_root - 1] = 0;
+    user_root[sizeof user_root - 1] = 0;
     load_store();
     host_log("registry", "%d stored values loaded from %s", s_count, s_store_path);
     if (safemode_value_virtual(s_legacy_safemode) && find_value(SAFEMODE_VALUE) && find_value(SAFEMODE_VALUE)->data) {
@@ -153,10 +161,10 @@ void guest_registry_init(const char* game_dir) {
                  "Mode prompt");
     }
     if (!find_value("Installed")) set_value("Installed", REG_DWORD, &installed, 4);
-    set_string("Installed Directory", root);
-    set_string("Data Drive", root);
+    set_string("Installed Directory", user_root);
+    set_string("Data Drive", data_root);
     save_store();
-    host_log("registry", "Installed Directory = Data Drive = %s", root);
+    host_log("registry", "Installed Directory (saves, level swap files) = %s, Data Drive = %s", user_root, data_root);
 }
 
 static int is_game_key(uint32_t root, const char* subkey) {
@@ -211,6 +219,13 @@ static int policy_value(const char* name, int stored, policy_t* p) {
         return 1;
     }
     if (!name || !ddraw_compat_active()) return 0;
+    if (s_gameplay_w && (!_stricmp(name, "Width") || !_stricmp(name, "Height"))) {
+        int width = !_stricmp(name, "Width");
+        policy_dword(p, (DWORD)(width ? s_gameplay_w : s_gameplay_h),
+                     "host policy: the gameplay mode of the launcher's Aspect Ratio (the in-game video options "
+                     "cannot change it)");
+        return 1;
+    }
     if (!_stricmp(name, "DDrawCertIgnore")) {
         if (stored || s_show_ddraw_cert_dialog) return 0;
         policy_dword(p, 1, "host policy: 1 (legacy DirectDraw certification dialog skipped; --ddraw-cert-dialog shows it)");

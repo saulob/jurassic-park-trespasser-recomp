@@ -15,7 +15,8 @@ like any 32-bit program. It is not an emulator and it does not start the origina
 | `DDRAW` (DirectDraw) | a virtual 16 bpp display in the host, presented with D3D11 (`src/host/ddraw/`); the system `ddraw.dll` is loaded but its exports are routed away | **host implementation** |
 | `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` | the original DLLs from the disc, loaded by the Windows loader | **original binaries** |
 | `DSound.dll`, `A3d.dll` | whatever `LoadLibrary` finds on the machine (A3D normally absent) | Windows, optional |
-| Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `game\recomp-registry.txt` | **host implementation** |
+| Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `user\recomp-registry.txt`; `Installed Directory` (saves, level swap files) is `user\`, `Data Drive` is `game\` | **host implementation** |
+| The original installer | the launcher reads the player's disc image itself (docs/LAUNCHER.md) | **host implementation** |
 | Image loading, import binding, calls between lifted and native code, threads | pcrecomp `native32` | host runtime |
 
 This is a hybrid, and the table is the whole of it. Nothing interprets x86 instructions.
@@ -160,8 +161,10 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   `IDirect3DViewport3` and `IDirect3DTexture2` (a face of the texture surface). Unused methods and
   untranslated states are refused, logged once with their caller.
 - `d3d11_renderer.c`, on the presenter's D3D11 device: the device's back buffer gets a GPU colour
-  target at the internal resolution (`--render-resolution auto|WxH`; auto is the smallest 4:3 size
-  covering the presentation area, up to 2560x1920) with `--msaa` samples (default 4, reduced to
+  target at the render resolution (`render_resolution`, docs/LAUNCHER.md: a render box from the
+  preset and the Aspect Ratio, and each target is the largest size of its surface's own shape inside
+  it, so a 640x480 menu keeps 4:3 in a 16:9 box; `original` is the smallest 4:3 size covering the
+  presentation area, up to 2560x1920) with `--msaa` samples (default 4, reduced to
   what `CheckMultisampleQualityLevels` allows) and a D24S8 depth buffer. Pre-transformed vertices
   are drawn by a shader pair that reproduces the fixed-function subset in use (TEXTUREMAPBLEND,
   specular, vertex fog, alpha test, colour key, flat shading); fans become indexed lists,
@@ -274,26 +277,28 @@ function), so the `ddraw` log lines are the only place they show.
 `src/host/window_host.c`. The game creates one popup window at (0,0), 640x480, and from then on
 treats it as the whole screen. `CreateWindowExA` is shimmed, so that popup is created as an
 ordinary overlapped window (title bar, sizing frame, minimize/maximize/close), centered in the work
-area of the foreground window's monitor, at that monitor's scale (640x480 at 100%, 1440x1080 at
-225%) and reduced to fit. The HWND is never recreated: the host subclasses it, and the game's own
+area of the Monitor setting's monitor, at the Window size setting (pixels) or, with Auto, at that
+monitor's scale (640x480 at 100%, 1440x1080 at 225%), reduced to fit keeping its shape. With
+Display mode Borderless Fullscreen it starts covering that monitor. The HWND is never recreated: the host subclasses it, and the game's own
 window procedure still receives the messages it received before.
 
 - DPI: the process is per-monitor v2 aware (`SetProcessDpiAwarenessContext`, before any window
   exists), so window, cursor and monitor coordinates are physical pixels. `WM_DPICHANGED` applies
   the suggested rectangle; frame size, work area and minimum size use the window's own DPI.
-- Size: `WM_SIZING` keeps the client at the display's aspect ratio (4:3 for every mode the game
-  uses) inside the monitor's work area; `WM_GETMINMAXINFO` sets a minimum client width of 320
+- Size: with Window size Auto and Letterbox, `WM_SIZING` keeps the client at the display's aspect
+  ratio inside the monitor's work area (a fixed Window size is resized freely and letterboxed); `WM_GETMINMAXINFO` sets a minimum client width of 320
   pixels at 96 dpi. Maximizing fills the work area; the picture keeps its aspect ratio and the
   rest is black.
 - Presentation surface: the swap chain belongs to a child window that fills the largest area of
-  the client with the display's aspect ratio, centered. DXGI stretches the swap chain to it, so
+  the client with the display's aspect ratio, centered (Presentation Stretch: the whole client;
+  the cursor mapping follows the same rectangle). DXGI stretches the swap chain to it, so
   scaling needs no shader and no `ResizeBuffers`. The child answers `WM_NCHITTEST` with
   `HTTRANSPARENT`, so mouse messages reach the game's window. The rest of the client is painted black.
 - F11 toggles windowed and borderless full screen. Entering saves the placement
   (`GetWindowPlacement`, which includes the maximized state) and the style, drops the frame and
   covers the current monitor's rectangle. The desktop mode never changes and there is no exclusive
   full screen. Leaving restores the style and calls `SetWindowPlacement`. Alt+Enter is disabled
-  in DXGI.
+  in DXGI. Each switch saves `display_mode` to `user\trespasser.ini`.
 - What the game may no longer do to its window: `SetWindowLongA` of the style, `SetWindowPos`,
   `MoveWindow` and `SetWindowTextA` on that HWND are acknowledged and ignored (logged once each),
   so a mode change cannot undo the host's style, size or title. `ShowWindow(SW_RESTORE)` on a window

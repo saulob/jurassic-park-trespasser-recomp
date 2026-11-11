@@ -35,6 +35,9 @@ typedef struct {
 } presenter_t;
 
 static presenter_t s_p;
+static int s_vsync = 1;
+
+void present_set_vsync(int on) { s_vsync = on; }
 
 static void log_hr(const char* what, HRESULT hr) { host_log("d3d11", "%s failed, HRESULT 0x%08lX", what, (unsigned long)hr); }
 
@@ -345,7 +348,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
     }
     ID3D11DeviceContext_CopyResource(s_p.context, (ID3D11Resource*)back, (ID3D11Resource*)staging);
     ID3D11Texture2D_Release(back);
-    hr = IDXGISwapChain_Present(s_p.swapchain, vsync ? 1 : 0, 0);
+    hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);
     if (hr != S_OK) return;
     d3dr_frame_presented(ms_since(start));
@@ -377,7 +380,7 @@ int present_submit(int vsync) {
     LARGE_INTEGER start;
     if (!s_p.swapchain) return 0;
     QueryPerformanceCounter(&start);
-    hr = IDXGISwapChain_Present(s_p.swapchain, vsync ? 1 : 0, 0);
+    hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);
     if (hr != S_OK) return 0;
     d3dr_frame_presented(ms_since(start));

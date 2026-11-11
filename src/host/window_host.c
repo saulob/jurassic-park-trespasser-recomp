@@ -20,6 +20,9 @@
 #include <string.h>
 
 #include "ddraw/ddraw_compat.h"
+#include "jpt_config.h"
+#include "jpt_display.h"
+#include "jpt_monitors.h"
 #include "recomp_trace.h"
 
 #ifndef WM_DPICHANGED
@@ -106,6 +109,10 @@ static struct {
     char title[160];
     renderer_switch_t switch_state;
     unsigned switch_attempts;
+    struct {
+        int borderless, monitor, window_w, window_h, stretch, show_fps;
+        char settings_path[MAX_PATH];
+    } cfg;
 } s;
 
 enum {
@@ -131,11 +138,42 @@ void window_host_init(void) {
     fps_counter_init(&s.fps, s.qpc_frequency.QuadPart, qpc_now());
     shutdown_init(&s.shutdown);
     s.state = INPUT_MENU;
+    s.cfg.monitor = 1;
+    s.cfg.show_fps = 1;
     if (set_context && set_context(DPI_CONTEXT_PER_MONITOR_V2))
         host_log("window", "DPI awareness: per-monitor v2; window and cursor coordinates are physical pixels");
     else
         host_log("window", "per-monitor v2 DPI awareness is unavailable; Windows will scale the window");
 }
+
+void window_host_configure(int borderless, int monitor, int window_w, int window_h, int stretch, int show_fps,
+                           const char* settings_path) {
+    s.cfg.borderless = borderless;
+    s.cfg.monitor = monitor;
+    s.cfg.window_w = window_w;
+    s.cfg.window_h = window_h;
+    s.cfg.stretch = stretch;
+    s.cfg.show_fps = show_fps;
+    strncpy(s.cfg.settings_path, settings_path ? settings_path : "", sizeof s.cfg.settings_path - 1);
+    if (window_w > 0)
+        host_log("window", "display: %s, monitor %d, window %dx%d, presentation %s, FPS in title %s",
+                 borderless ? "borderless full screen" : "windowed", monitor, window_w, window_h,
+                 stretch ? "stretch" : "letterbox", show_fps ? "on" : "off");
+    else
+        host_log("window", "display: %s, monitor %d, window size auto, presentation %s, FPS in title %s",
+                 borderless ? "borderless full screen" : "windowed", monitor, stretch ? "stretch" : "letterbox",
+                 show_fps ? "on" : "off");
+}
+
+int window_host_monitor_size(int monitor, int* width, int* height) {
+    jpt_monitor_t m;
+    if (!jpt_find_monitor(monitor, &m)) return 0;
+    *width = m.bounds.right - m.bounds.left;
+    *height = m.bounds.bottom - m.bounds.top;
+    return 1;
+}
+
+static int fixed_window_size(void) { return s.cfg.window_w > 0 && s.cfg.window_h > 0; }
 
 static UINT window_dpi(HWND window) {
     UINT dpi = s_api.window_dpi && window ? s_api.window_dpi(window) : 0;
@@ -171,36 +209,41 @@ static HMONITOR active_monitor(void) {
     return MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
 }
 
-/* The content is shown at the monitor's scale (640x480 at 100%), reduced to fit the work area. */
+static HMONITOR configured_monitor(void) {
+    jpt_monitor_t m;
+    if (jpt_find_monitor(s.cfg.monitor, &m)) return m.handle;
+    return active_monitor();
+}
+
+/* Auto shows the content at the monitor's scale (640x480 at 100%); a chosen size is in pixels. Either is reduced,
+ * keeping its shape, to fit the work area. */
 static void initial_placement(int content_w, int content_h, DWORD style, DWORD exstyle, int* x, int* y, int* w, int* h) {
     MONITORINFO mi;
-    HMONITOR monitor = active_monitor();
+    HMONITOR monitor = configured_monitor();
     UINT dpi = monitor_dpi(monitor);
     int frame_w, frame_h;
-    long cw = MulDiv(content_w, (int)dpi, BASE_DPI), ch = MulDiv(content_h, (int)dpi, BASE_DPI);
+    jpt_size_t client;
     long work_w, work_h;
+    if (fixed_window_size()) {
+        client.width = s.cfg.window_w;
+        client.height = s.cfg.window_h;
+    } else {
+        client.width = MulDiv(content_w, (int)dpi, BASE_DPI);
+        client.height = MulDiv(content_h, (int)dpi, BASE_DPI);
+    }
     memset(&mi, 0, sizeof mi);
     mi.cbSize = sizeof mi;
     GetMonitorInfoA(monitor, &mi);
     frame_extents(style, exstyle, dpi, &frame_w, &frame_h);
     work_w = mi.rcWork.right - mi.rcWork.left;
     work_h = mi.rcWork.bottom - mi.rcWork.top;
-    if (cw + frame_w > work_w || ch + frame_h > work_h) {
-        long fit_w = work_w - frame_w, fit_h = work_h - frame_h;
-        if (fit_w * content_h < fit_h * content_w) {
-            cw = fit_w;
-            ch = round_div(fit_w * content_h, content_w);
-        } else {
-            ch = fit_h;
-            cw = round_div(fit_h * content_w, content_h);
-        }
-    }
-    *w = (int)cw + frame_w;
-    *h = (int)ch + frame_h;
+    client = jpt_fit_window(client, frame_w, frame_h, (int)work_w, (int)work_h);
+    *w = client.width + frame_w;
+    *h = client.height + frame_h;
     *x = mi.rcWork.left + (int)((work_w - *w) / 2);
     *y = mi.rcWork.top + (int)((work_h - *h) / 2);
-    host_log("window", "created at %d,%d, %dx%d client %ldx%ld, monitor %u dpi (%u%%)", *x, *y, *w, *h, cw, ch, dpi,
-             dpi * 100 / BASE_DPI);
+    host_log("window", "created at %d,%d, %dx%d client %dx%d, monitor %u dpi (%u%%)", *x, *y, *w, *h, client.width,
+             client.height, dpi, dpi * 100 / BASE_DPI);
 }
 
 static int display_known(void) { return s.fbw > 0 && s.fbh > 0; }
@@ -230,20 +273,12 @@ static POINT screen_to_client_point(POINT p) {
 static POINT screen_to_display(POINT p) { return client_to_display(screen_to_client_point(p)); }
 
 static void compute_view(const RECT* client, RECT* view) {
-    long cw = client->right - client->left, ch = client->bottom - client->top, vw = cw, vh = ch;
-    if (display_known() && cw > 0 && ch > 0) {
-        vh = round_div(cw * s.fbh, s.fbw);
-        if (vh > ch) {
-            vh = ch;
-            vw = round_div(ch * s.fbw, s.fbh);
-        }
-        if (vh >= ch - 1) vh = ch;
-        if (vw >= cw - 1) vw = cw;
-    }
-    view->left = client->left + (LONG)((cw - vw) / 2);
-    view->top = client->top + (LONG)((ch - vh) / 2);
-    view->right = view->left + (LONG)vw;
-    view->bottom = view->top + (LONG)vh;
+    int cw = client->right - client->left, ch = client->bottom - client->top;
+    jpt_rect_t r = jpt_present_rect(cw, ch, display_known() ? s.fbw : 0, display_known() ? s.fbh : 0, s.cfg.stretch);
+    view->left = client->left + r.left;
+    view->top = client->top + r.top;
+    view->right = client->left + r.right;
+    view->bottom = client->top + r.bottom;
 }
 
 static void paint_background(void) {
@@ -419,7 +454,9 @@ static void refresh_title(void) {
     if (s.fps_ready) _snprintf(fps, sizeof fps - 1, "%.1f", s.fps.fps);
     else strcpy(fps, "0");
     fps[sizeof fps - 1] = 0;
-    if (display_known())
+    if (!s.cfg.show_fps)
+        strcpy(text, PRODUCT_TITLE);
+    else if (display_known())
         _snprintf(text, sizeof text - 1, PRODUCT_TITLE " | " HOST_ARCH " | %s | FPS: %s | %dx%d", renderer_text(), fps,
                   s.fbw, s.fbh);
     else
@@ -475,6 +512,16 @@ static void leave_fullscreen(void) {
     host_log("window", "windowed (F11), previous placement restored");
 }
 
+static void save_display_mode(void) {
+    const char* key = JPT_KEY_DISPLAY_MODE;
+    const char* value = s.fullscreen ? "borderless" : "windowed";
+    if (!s.cfg.settings_path[0]) return;
+    if (jpt_ini_set(s.cfg.settings_path, &key, &value, 1))
+        host_log("window", "display_mode = %s saved to %s", value, s.cfg.settings_path);
+    else
+        host_log("window", "could not save display_mode to %s", s.cfg.settings_path);
+}
+
 static void toggle_fullscreen(void) {
     if (shutdown_active(&s.shutdown)) return;
     s.transition = 1;
@@ -485,6 +532,7 @@ static void toggle_fullscreen(void) {
     layout_surface();
     s.transition = 0;
     update_input("F11 done");
+    save_display_mode();
 }
 
 /* Keeps the client area at the display's aspect ratio while the user drags an edge. */
@@ -493,7 +541,7 @@ static void constrain_sizing(HWND window, WPARAM edge, RECT* r) {
     UINT dpi = window_dpi(window);
     int frame_w, frame_h;
     long cw, ch, max_w, max_h, min_w;
-    if (!display_known()) return;
+    if (!display_known() || fixed_window_size() || s.cfg.stretch) return;
     memset(&mi, 0, sizeof mi);
     mi.cbSize = sizeof mi;
     GetMonitorInfoA(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &mi);
@@ -1104,6 +1152,10 @@ static void attach(HWND window) {
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
     host_log("hotkeys", "F1 Hint | F5 Renderer | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | Alt+F4 Exit");
     register_raw_input(window);
+    if (s.cfg.borderless) {
+        enter_fullscreen();
+        layout_surface();
+    }
 }
 
 HWND window_host_surface(HWND window) { return s.surface && window == s.game ? s.surface : window; }
@@ -1111,7 +1163,8 @@ HWND window_host_surface(HWND window) { return s.surface && window == s.game ? s
 void window_host_set_display(HWND window, int width, int height) {
     int aspect_changed;
     if (window != s.game || !window || width <= 0 || height <= 0) return;
-    aspect_changed = display_known() && (long)s.fbw * height != (long)s.fbh * width;
+    aspect_changed = display_known() && (long)s.fbw * height != (long)s.fbh * width && !fixed_window_size() &&
+                     !s.cfg.stretch;
     s.fbw = width;
     s.fbh = height;
     s.virtual_on = 1;
@@ -1129,8 +1182,13 @@ void window_host_set_display(HWND window, int width, int height) {
     layout_surface();
     update_input("display mode");
     refresh_title();
-    host_log("window", "display %dx%d: shown at the largest 4:3-faithful size inside the client, black elsewhere",
-             width, height);
+    {
+        RECT client = { 0, 0, 0, 0 };
+        GetClientRect(window, &client);
+        host_log("window", "guest logical resolution %dx%d; presentation %ldx%ld in a %ldx%ld client (%s)", width, height,
+                 s.view.right - s.view.left, s.view.bottom - s.view.top, client.right, client.bottom,
+                 s.cfg.stretch ? "Stretch" : "Letterbox");
+    }
 }
 
 void window_host_clear_display(HWND window) {

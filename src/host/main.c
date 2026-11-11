@@ -9,11 +9,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ddraw/d3d_translate.h"
+#include "ddraw/d3d_legacy.h"
+#include "jpt_config.h"
+#include "jpt_display.h"
+#include "jpt_launcher.h"
+#include "jpt_user_data.h"
 #include "recomp_trace.h"
 
 #ifndef TRESPASSER_DEFAULT_GAME_DIR
 #define TRESPASSER_DEFAULT_GAME_DIR "game"
+#endif
+#ifndef TRESPASSER_DEFAULT_USER_DIR
+#define TRESPASSER_DEFAULT_USER_DIR "user"
 #endif
 #ifndef TRESPASSER_LOG_DIR
 #define TRESPASSER_LOG_DIR "build\\logs"
@@ -21,23 +28,29 @@
 
 /* Lifted frames are several times the original's, and they live on the host stack. */
 #define GUEST_THREAD_STACK (64u << 20)
+#define MAX_OVERRIDES 16
+#define RESTARTED_ENV "TRESPASSER_RESTARTED"
+
+typedef struct {
+    const char* key;
+    const char* value;
+} override_t;
 
 typedef struct {
     const char* game_dir;
+    const char* user_dir;
     const char* log_dir;
     const char* log_file;
     char guest_args[MAX_PATH];
     unsigned watchdog_seconds;
-    int run;
+    int dry_run;
+    int force_launcher, skip_launcher;
     int system_ddraw;
-    int hardware;
-    unsigned render_w, render_h;
-    int texture_filter;
-    unsigned msaa;
+    int dev_filter;
     int lifted_water;
+    override_t overrides[MAX_OVERRIDES];
+    int override_count;
 } options_t;
-
-static const char* const k_texture_filters[] = { "point", "bilinear", "trilinear", "anisotropic" };
 
 static native32_shim_t s_shims[] = {
     { "GetModuleHandleA", shim_GetModuleHandleA },
@@ -86,18 +99,26 @@ static native32_shim_t s_shims[] = {
     { "ExitProcess", shim_ExitProcess },
 };
 
+
 static void usage(void) {
-    printf("usage: trespasser [--run] [--game DIR] [--log-file FILE | --log-dir DIR] [--watchdog SECONDS]\n"
-           "                  [--ddraw compat|system] [--native-trace] [--callbacks] [--renderer software|d3d11]\n"
-           "                  [--render-resolution auto|WxH] [--texture-filter point|bilinear|trilinear|anisotropic]\n"
-           "                  [--msaa 0|2|4|8] [--generate-mips] [--debug-d3d-output MODE]\n"
-           "                  [--ddraw-cert-dialog] [--legacy-safemode-dialog] [--software-water] [--lifted-water]\n"
-           "                  [-- guest arguments]\n"
-           "  without --run the image is mapped, fingerprinted and bound, and nothing executes\n"
+    printf("usage: trespasser [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user DIR]\n"
+           "                  [--log-file FILE | --log-dir DIR] [--watchdog SECONDS] [--ddraw compat|system]\n"
+           "                  [--native-trace] [--callbacks] [--renderer software|d3d11]\n"
+           "                  [--render-resolution original|720p|1080p|1440p|4k|native|WxH]\n"
+           "                  [--aspect-ratio 4:3|16:9|16:10|21:9|32:9]\n"
+           "                  [--texture-filter original|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
+           "                  [--msaa 0|2|4|8] [--vsync on|off] [--display-mode windowed|borderless] [--monitor N]\n"
+           "                  [--window-size auto|WxH] [--presentation letterbox|stretch] [--show-fps on|off]\n"
+           "                  [--generate-mips] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
+           "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [-- guest arguments]\n"
+           "  settings come from <user>\\trespasser.ini (the launcher writes it); these options override them\n"
+           "    for this run only\n"
+           "  --launcher shows the launcher even when it is turned off; --skip-launcher skips it once (unless\n"
+           "    the game files are not ready); --run is still accepted and changes nothing\n"
+           "  --dry-run maps, fingerprints and binds the image, and nothing executes\n"
            "  --log-file appends to FILE; otherwise a new trespasser_NNN.log is created in the log directory\n"
            "  --ddraw system calls the system ddraw.dll instead of the compatibility layer (diagnostics only)\n"
-           "  --renderer software (default) rasterises with the game's own SelfMod code; d3d11 translates its\n"
-           "    Direct3D 6 path to D3D11; the other three options apply to d3d11 (defaults auto, anisotropic, 4)\n"
+           "  --texture-filter also takes point and trilinear (diagnostics); anisotropic means anisotropic16\n"
            "  --generate-mips gives the game's single-level textures generated mip chains (off: as the original)\n"
            "  --debug-d3d-output texture|vertex-color|depth: d3d11 draws show only that (diagnostics)\n"
            "  --software-water keeps the game's software water with d3d11 (Hardware Water unset)\n"
@@ -106,20 +127,63 @@ static void usage(void) {
     recomp_trace_help();
 }
 
+static int add_override(options_t* o, const char* key, const char* value) {
+    if (o->override_count == MAX_OVERRIDES || !jpt_config_valid(key, value)) return 0;
+    o->overrides[o->override_count].key = key;
+    o->overrides[o->override_count].value = value;
+    o->override_count++;
+    return 1;
+}
+
+static int texture_filter_option(options_t* o, const char* name) {
+    if (!strcmp(name, "point")) return o->dev_filter = D3DR_FILTER_POINT, 1;
+    if (!strcmp(name, "trilinear")) return o->dev_filter = D3DR_FILTER_TRILINEAR, 1;
+    if (!strcmp(name, "anisotropic")) name = "anisotropic16";
+    o->dev_filter = -1;
+    return add_override(o, JPT_KEY_TEXTURE_FILTER, name);
+}
+
 static int parse_options(int argc, char** argv, options_t* o) {
+    static const struct {
+        const char* option;
+        const char* key;
+    } settings[] = {
+        { "--renderer", JPT_KEY_RENDERER },         { "--aspect-ratio", JPT_KEY_ASPECT_RATIO },
+        { "--msaa", JPT_KEY_MSAA },                 { "--vsync", JPT_KEY_VSYNC },
+        { "--display-mode", JPT_KEY_DISPLAY_MODE }, { "--monitor", JPT_KEY_MONITOR },
+        { "--window-size", JPT_KEY_WINDOW_SIZE },   { "--presentation", JPT_KEY_PRESENTATION },
+        { "--show-fps", JPT_KEY_SHOW_FPS },
+    };
     o->game_dir = getenv("TRESPASSER_GAME_DIR");
     if (!o->game_dir) o->game_dir = TRESPASSER_DEFAULT_GAME_DIR;
+    o->user_dir = getenv("TRESPASSER_USER_DIR");
+    if (!o->user_dir) o->user_dir = TRESPASSER_DEFAULT_USER_DIR;
     o->log_dir = TRESPASSER_LOG_DIR;
-    o->texture_filter = 3;
-    o->msaa = 4;
+    o->dev_filter = -1;
     for (int i = 1; i < argc; i++) {
-        int taken = recomp_trace_arg(argc, argv, i);
+        int taken = recomp_trace_arg(argc, argv, i), matched = 0;
         if (taken) {
             i += taken - 1;
-        } else if (!strcmp(argv[i], "--run")) {
-            o->run = 1;
+            continue;
+        }
+        for (size_t k = 0; k < sizeof settings / sizeof settings[0] && !matched; k++) {
+            if (strcmp(argv[i], settings[k].option) || i + 1 >= argc) continue;
+            if (!add_override(o, settings[k].key, argv[++i])) return 0;
+            matched = 1;
+        }
+        if (matched) continue;
+        if (!strcmp(argv[i], "--run")) {
+            continue;
+        } else if (!strcmp(argv[i], "--dry-run")) {
+            o->dry_run = 1;
+        } else if (!strcmp(argv[i], "--launcher")) {
+            o->force_launcher = 1;
+        } else if (!strcmp(argv[i], "--skip-launcher")) {
+            o->skip_launcher = 1;
         } else if (!strcmp(argv[i], "--game") && i + 1 < argc) {
             o->game_dir = argv[++i];
+        } else if (!strcmp(argv[i], "--user") && i + 1 < argc) {
+            o->user_dir = argv[++i];
         } else if (!strcmp(argv[i], "--log-dir") && i + 1 < argc) {
             o->log_dir = argv[++i];
         } else if (!strcmp(argv[i], "--log-file") && i + 1 < argc) {
@@ -128,23 +192,11 @@ static int parse_options(int argc, char** argv, options_t* o) {
             const char* mode = argv[++i];
             if (!strcmp(mode, "system")) o->system_ddraw = 1;
             else if (strcmp(mode, "compat")) return 0;
-        } else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) {
-            const char* mode = argv[++i];
-            if (!strcmp(mode, "d3d11")) o->hardware = 1;
-            else if (!strcmp(mode, "software")) o->hardware = 0;
-            else return 0;
         } else if (!strcmp(argv[i], "--render-resolution") && i + 1 < argc) {
-            if (!d3dt_parse_resolution(argv[++i], &o->render_w, &o->render_h)) return 0;
+            const char* value = argv[++i];
+            if (!add_override(o, JPT_KEY_RENDER_RESOLUTION, strcmp(value, "auto") ? value : "original")) return 0;
         } else if (!strcmp(argv[i], "--texture-filter") && i + 1 < argc) {
-            const char* name = argv[++i];
-            int found = -1;
-            for (int k = 0; k < 4; k++)
-                if (!strcmp(name, k_texture_filters[k])) found = k;
-            if (found < 0) return 0;
-            o->texture_filter = found;
-        } else if (!strcmp(argv[i], "--msaa") && i + 1 < argc) {
-            o->msaa = strtoul(argv[++i], NULL, 10);
-            if (o->msaa != 0 && o->msaa != 2 && o->msaa != 4 && o->msaa != 8) return 0;
+            if (!texture_filter_option(o, argv[++i])) return 0;
         } else if (!strcmp(argv[i], "--ddraw-cert-dialog")) {
             registry_show_ddraw_cert_dialog();
         } else if (!strcmp(argv[i], "--software-water")) {
@@ -213,9 +265,68 @@ static int run_guest(void) {
     return (int)code;
 }
 
+static void log_line(const char* line) { host_log("launcher", "%s", line); }
+
+/* A process that could not reserve the guest's address range before anything loaded (no game installed yet) starts
+ * again, once, as a game-only process continuing this log, and ends with its exit code. */
+static int restart_for_game(void) {
+    static char command[4 * MAX_PATH + 64];
+    char me[MAX_PATH];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    DWORD code = HOST_EXIT_SETUP;
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+    GetModuleFileNameA(NULL, me, MAX_PATH);
+    _snprintf(command, sizeof command - 1, "%s --skip-launcher --log-file \"%s\"", GetCommandLineA(), host_log_path());
+    command[sizeof command - 1] = 0;
+    host_log("host", "the game files were installed by this process: starting the game as a new process");
+    SetEnvironmentVariableA(RESTARTED_ENV, "1");
+    if (!CreateProcessA(me, command, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        host_log("host", "cannot start the game process (error %lu)", GetLastError());
+        return HOST_EXIT_SETUP;
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    return (int)code;
+}
+
+static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, int monitor_h) {
+    const jpt_aspect_t* a = &jpt_aspects[c->aspect];
+    const jpt_size_t gameplay = jpt_render_target(box, a->guest_w, a->guest_h), menus = jpt_render_target(box, 640, 480);
+    const char* preset = c->render_preset >= 0 ? jpt_render_presets[c->render_preset].label : "custom";
+    host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s", c->hardware ? "d3d11" : "software",
+             jpt_filter_keys[c->texture_filter], c->msaa, c->vsync ? "on" : "off");
+    host_log("settings", "aspect ratio %s; guest logical resolution: gameplay %dx%d, menus 640x480 (the game's own "
+             "screen, not what is rasterised)", a->key, a->guest_w, a->guest_h);
+    if (c->render_preset == JPT_RENDER_ORIGINAL)
+        host_log("settings", "3D render resolution: Original (the compatibility size, chosen from the window)");
+    else
+        host_log("settings", "3D render resolution: %s -> gameplay %dx%d, menus %dx%d (real render targets)", preset,
+                 gameplay.width, gameplay.height, menus.width, menus.height);
+    host_log("settings", "display %s on monitor %d (%dx%d), window %s, presentation %s, FPS in title %s",
+             c->borderless ? "borderless" : "windowed", c->monitor, monitor_w, monitor_h,
+             c->window_w ? "fixed" : "auto", c->stretch ? "stretch" : "letterbox", c->show_fps ? "on" : "off");
+}
+
+static void renderer_filter(const jpt_config_t* c, int dev_filter, int* filter, unsigned* anisotropy) {
+    static const unsigned levels[JPT_FILTER_COUNT] = { 0, 0, 4, 8, 16 };
+    *anisotropy = levels[c->texture_filter];
+    if (dev_filter >= 0) *filter = dev_filter;
+    else if (c->texture_filter == JPT_FILTER_ORIGINAL) *filter = D3DR_FILTER_ORIGINAL;
+    else if (c->texture_filter == JPT_FILTER_BILINEAR) *filter = D3DR_FILTER_BILINEAR;
+    else *filter = D3DR_FILTER_ANISOTROPIC;
+}
+
 int main(int argc, char** argv) {
     options_t opt = { 0 };
-    char game_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH];
+    char game_dir[MAX_PATH], user_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH], settings_file[MAX_PATH];
+    jpt_config_t cfg;
+    jpt_size_t box = { 0, 0 };
+    int monitor_w = 0, monitor_h = 0, filter, held;
+    unsigned anisotropy;
     uint32_t span;
 
     if (!parse_options(argc, argv, &opt)) {
@@ -223,16 +334,19 @@ int main(int argc, char** argv) {
         return HOST_EXIT_SETUP;
     }
     if (!GetFullPathNameA(opt.game_dir, MAX_PATH, game_dir, NULL) ||
+        !GetFullPathNameA(opt.user_dir, MAX_PATH, user_dir, NULL) ||
         !GetFullPathNameA(opt.log_dir, MAX_PATH, log_dir, NULL) ||
         (opt.log_file && !GetFullPathNameA(opt.log_file, MAX_PATH, log_file, NULL))) {
-        fprintf(stderr, "invalid --game, --log-dir or --log-file path\n");
+        fprintf(stderr, "invalid --game, --user, --log-dir or --log-file path\n");
         return HOST_EXIT_SETUP;
     }
+    _snprintf(settings_file, sizeof settings_file - 1, "%s\\" JPT_SETTINGS_FILE, user_dir);
+    settings_file[sizeof settings_file - 1] = 0;
     guest_env_init(game_dir, opt.guest_args);
 
     /* Restarts this process with the guest's address range reserved before anything else
      * can land there; only the restarted copy continues past this call. */
-    int held = native32_hold_image(guest_env_exe_path(), trespasser_image_base);
+    held = native32_hold_image(guest_env_exe_path(), trespasser_image_base);
 
     if (!host_log_open(log_dir, opt.log_file ? log_file : NULL)) {
         fprintf(stderr, "cannot open the log %s (error %lu)\n", opt.log_file ? log_file : log_dir, GetLastError());
@@ -242,12 +356,58 @@ int main(int argc, char** argv) {
              recomp_dispatch_count);
     host_log("host", "log file %s", host_log_path());
     host_log("host", "game directory %s", game_dir);
+    host_log("host", "user directory %s (settings %s)", user_dir, settings_file);
     host_log("host", "guest address range %s", held ? "reserved at process start" : "NOT reserved in advance");
-    if (!verify_fingerprint(guest_env_exe_path())) return HOST_EXIT_SETUP;
 
     window_host_init();
+    if (!jpt_make_dirs(user_dir)) host_log("host", "cannot create the user directory %s", user_dir);
+    jpt_carry_user_files(game_dir, user_dir, log_line);
+    if (jpt_config_migrate(settings_file))
+        host_log("settings", "%s came from the experimental launcher: its display and graphics choices were reset "
+                 "once to the current defaults", settings_file);
+
+    if (!opt.dry_run) {
+        jpt_launcher_config_t launcher;
+        int had_game = GetFileAttributesA(guest_env_exe_path()) != INVALID_FILE_ATTRIBUTES;
+        char restarted[4];
+        int may_restart = !GetEnvironmentVariableA(RESTARTED_ENV, restarted, sizeof restarted);
+        SetEnvironmentVariableA(RESTARTED_ENV, NULL);
+        memset(&launcher, 0, sizeof launcher);
+        launcher.game_dir = game_dir;
+        launcher.user_dir = user_dir;
+        launcher.logs_dir = log_dir;
+        launcher.settings_file = settings_file;
+        launcher.force_show = opt.force_launcher && !opt.skip_launcher;
+        launcher.skip_once = opt.skip_launcher;
+        launcher.log = log_line;
+        if (jpt_launcher_run(&launcher) == JPT_LAUNCHER_QUIT) {
+            host_log("host", "the launcher was closed without starting the game");
+            return 0;
+        }
+        if (!held && !had_game && may_restart && GetFileAttributesA(guest_env_exe_path()) != INVALID_FILE_ATTRIBUTES)
+            return restart_for_game();
+    }
+
+    jpt_config_load(settings_file, &cfg);
+    for (int i = 0; i < opt.override_count; i++) {
+        jpt_config_apply(&cfg, opt.overrides[i].key, opt.overrides[i].value);
+        host_log("settings", "%s = %s (command line)", opt.overrides[i].key, opt.overrides[i].value);
+    }
+    window_host_monitor_size(cfg.monitor, &monitor_w, &monitor_h);
+    if (cfg.render_preset < 0) {
+        box.width = cfg.render_w;
+        box.height = cfg.render_h;
+    } else {
+        box = jpt_render_box(cfg.render_preset, cfg.aspect, monitor_w, monitor_h);
+    }
+    log_settings(&cfg, box, monitor_w, monitor_h);
+    if (!verify_fingerprint(guest_env_exe_path())) return HOST_EXIT_SETUP;
+
+    window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
+                          settings_file);
+    present_set_vsync(cfg.vsync);
     native32_init();
-    diagnostics_install(opt.run ? opt.watchdog_seconds : 0);
+    diagnostics_install(opt.dry_run ? 0 : opt.watchdog_seconds);
 
     if (!SetCurrentDirectoryA(game_dir) || !SetDllDirectoryA(game_dir)) {
         host_log("host", "cannot enter %s (error %lu)", game_dir, GetLastError());
@@ -264,7 +424,8 @@ int main(int argc, char** argv) {
              trespasser_text_start, trespasser_text_end);
     if (!selfmod_init()) return HOST_EXIT_SETUP;
 
-    guest_registry_init(game_dir);
+    guest_registry_init(game_dir, user_dir);
+    io_trace_user_dir(user_dir);
     if (native32_bind(trespasser_image_base, s_shims, (int)(sizeof s_shims / sizeof s_shims[0]))) {
         host_log("imports", "unresolved imports (listed above as [bind] lines); refusing to run");
         return HOST_EXIT_SETUP;
@@ -277,15 +438,21 @@ int main(int argc, char** argv) {
     milestones_init();
     ddraw_trace_init();
     if (!ddraw_compat_init(!opt.system_ddraw)) return HOST_EXIT_SETUP;
-    d3dr_configure(opt.hardware && !opt.system_ddraw, opt.render_w, opt.render_h, opt.texture_filter,
-                   opt.msaa ? opt.msaa : 1);
+    renderer_filter(&cfg, opt.dev_filter, &filter, &anisotropy);
+    d3dr_configure(cfg.hardware && !opt.system_ddraw, (unsigned)box.width, (unsigned)box.height, filter, anisotropy,
+                   cfg.msaa);
     if (!d3dr_startup()) return HOST_EXIT_SETUP;
 
-    if (!opt.run) {
-        host_log("host", "dry run complete: nothing was executed; --run enters 0x%08X", trespasser_entry_va);
+    if (opt.dry_run) {
+        host_log("host", "dry run complete: nothing was executed; without --dry-run the game enters 0x%08X",
+                 trespasser_entry_va);
         return 0;
     }
     if (!opt.lifted_water) guest_overrides_install();
+    if (widescreen_install(cfg.aspect))
+        registry_gameplay_size(jpt_aspects[cfg.aspect].guest_w, jpt_aspects[cfg.aspect].guest_h);
+    else
+        registry_gameplay_size(jpt_aspects[0].guest_w, jpt_aspects[0].guest_h);
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);
     return run_guest();
 }
