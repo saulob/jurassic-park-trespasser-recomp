@@ -487,6 +487,199 @@ static void test_pending_writes_survive_readback(void) {
     CHECK(s.gpu[3 * SIM_W + 3] == 0 && *sim_px(s.copy, 3, 3) == 0 && s.readbacks == 1);
 }
 
+/* A Lock as the renderer runs it on a target whose pages it can protect: what cannot wait now, the
+ * rest at the first touch; an Unlock without a touch restores the state of before. */
+static void sim_lock_deferred(sim_t* s, int reads, tsync_deferred_t* d) {
+    sim_apply(s, tsync_lock_deferred(&s->sync, reads ? TSYNC_ACCESS_READ : TSYNC_ACCESS_NO_READ, d), &k_sim_all);
+}
+
+static void sim_touch(sim_t* s, tsync_deferred_t* d) { sim_apply(s, tsync_lock_touched(d), &k_sim_all); }
+
+static void sim_unlock_deferred(sim_t* s, tsync_deferred_t* d) {
+    if (d->acts) tsync_lock_untouched(&s->sync, d);
+    else sim_unlock(s);
+}
+
+/* READ: the pixels are the GPU picture when first read. */
+static void test_deferred_read_keeps_content(void) {
+    sim_t s;
+    tsync_deferred_t d;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    sim_lock_deferred(&s, 1, &d);
+    CHECK(d.acts == TSYNC_READBACK && s.readbacks == 0);
+    sim_touch(&s, &d);
+    CHECK(s.readbacks == 1 && d.acts == 0);
+    CHECK(*sim_px(s.copy, 7, 11) == sim_pattern(7, 11) && *sim_px(s.copy, 0, 0) == sim_pattern(0, 0));
+    sim_unlock_deferred(&s, &d);
+    CHECK(sim_flip(&s) && sim_gpu_is(&s, 0, 0, 0, 0, 0) && s.written.changed == 0);
+}
+
+/* WRITE: a Lock that never reads captures instead and never reads back. */
+static void test_deferred_write_never_reads(void) {
+    sim_t s;
+    tsync_deferred_t d;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    sim_lock_deferred(&s, 0, &d);
+    CHECK((d.acts & (TSYNC_CAPTURE | TSYNC_CAPTURE_ALL)) && !(d.acts & TSYNC_READBACK));
+    sim_touch(&s, &d);
+    sim_write(&s, 2, 2, 6, 6, 0x0000);
+    sim_unlock_deferred(&s, &d);
+    CHECK(sim_flip(&s) && sim_gpu_is(&s, 2, 2, 6, 6, 0x0000) && s.readbacks == 0 && s.written.changed == 16);
+}
+
+/* READ_WRITE: read back at the touch, then the writes reach the GPU and nothing else changes. */
+static void test_deferred_read_write(void) {
+    sim_t s;
+    tsync_deferred_t d;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    sim_lock_deferred(&s, 1, &d);
+    sim_touch(&s, &d);
+    CHECK(*sim_px(s.copy, 4, 4) == sim_pattern(4, 4));
+    sim_write(&s, 4, 4, 9, 6, 0x001F);
+    sim_unlock_deferred(&s, &d);
+    sim_draw(&s, 30, 30, 31, 31, sim_pattern(30, 30));
+    CHECK(s.readbacks == 1 && sim_gpu_is(&s, 4, 4, 9, 6, 0x001F) && s.written.changed == 10);
+}
+
+/* SYNC_ONLY: a Lock/Unlock that touches nothing (the game waiting for the GPU) reads nothing back, writes
+ * nothing and leaves the state as it was, so later accesses decide as if it never happened. */
+static void test_deferred_sync_only(void) {
+    sim_t s;
+    tsync_t before;
+    tsync_deferred_t d;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    before = s.sync;
+    for (int i = 0; i < 3; i++) {
+        sim_lock_deferred(&s, i != 1, &d);
+        CHECK(d.acts != 0);
+        sim_unlock_deferred(&s, &d);
+        CHECK(!memcmp(&s.sync, &before, sizeof before));
+    }
+    CHECK(s.readbacks == 0);
+    sim_draw(&s, 0, 0, 1, 1, sim_pattern(0, 0));
+    CHECK(s.written.changed == 0 && sim_gpu_is(&s, 0, 0, 0, 0, 0));
+    sim_lock(&s, 1);
+    CHECK(s.readbacks == 1 && *sim_px(s.copy, 12, 3) == sim_pattern(12, 3));
+}
+
+/* Pending CPU writes reach the GPU at the Lock itself, so an untouched Lock cannot lose them. */
+static void test_deferred_keeps_pending_writes(void) {
+    sim_t s;
+    tsync_deferred_t d;
+    unsigned now;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    sim_lock(&s, 0);
+    sim_write(&s, 3, 3, 4, 4, 0x0000);
+    sim_unlock(&s);
+    now = tsync_lock_deferred(&s.sync, TSYNC_ACCESS_READ, &d);
+    CHECK(now == TSYNC_COMPOSITE && d.acts == TSYNC_READBACK);
+    sim_apply(&s, now, &k_sim_all);
+    CHECK(s.gpu[3 * SIM_W + 3] == 0);
+    sim_unlock_deferred(&s, &d);
+    CHECK(!s.sync.pending && s.readbacks == 0);
+    CHECK(sim_flip(&s) && sim_gpu_is(&s, 3, 3, 4, 4, 0x0000));
+}
+
+/* Nothing waits when the CPU copy is already the picture; after a full clear the colour waits. */
+static void test_deferred_current_copy_and_clear(void) {
+    sim_t s;
+    tsync_deferred_t d;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    sim_lock(&s, 1);
+    sim_unlock(&s);
+    sim_lock_deferred(&s, 1, &d);
+    CHECK(d.acts == 0 && s.readbacks == 1);
+    sim_unlock_deferred(&s, &d);
+    sim_clear(&s, 0x1234);
+    sim_lock_deferred(&s, 1, &d);
+    CHECK(d.acts == TSYNC_SYNTHESIZE);
+    sim_unlock_deferred(&s, &d);
+    CHECK(s.sync.uniform && s.sync.color == 0x1234 && !(s.sync.valid & TSYNC_CPU));
+    sim_lock_deferred(&s, 1, &d);
+    sim_touch(&s, &d);
+    CHECK(*sim_px(s.copy, 5, 5) == 0x1234 && s.readbacks == 1);
+}
+
+/* The hardware water frame: FlushBatch and the water upload wait for the GPU with Lock/Unlock and
+ * BeginFrame only hands out the address; none touches a pixel, so the frame reads nothing back. */
+static void test_deferred_water_frame(void) {
+    sim_t s;
+    tsync_deferred_t d;
+    sim_init(&s);
+    sim_draw_pattern(&s);
+    CHECK(sim_flip(&s));
+    for (int frame = 0; frame < 3; frame++) {
+        sim_clear(&s, 0);
+        sim_draw_pattern(&s);
+        sim_lock_deferred(&s, 0, &d);
+        sim_unlock_deferred(&s, &d);
+        sim_lock_deferred(&s, 1, &d);
+        sim_unlock_deferred(&s, &d);
+        sim_draw(&s, 0, 0, 2, 2, 0x07E0);
+        sim_lock_deferred(&s, 0, &d);
+        sim_unlock_deferred(&s, &d);
+        CHECK(sim_flip(&s) && sim_gpu_is(&s, 0, 0, 2, 2, 0x07E0));
+    }
+    CHECK(s.readbacks == 0 && s.written.changed == 0);
+}
+
+/* Each format's definition, independent of the converter. */
+static uint32_t oracle_texel(int format, uint32_t v) {
+    switch (format) {
+    case D3DT_FMT_RGB565: {
+        uint32_t r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
+        return 0xFF000000u | (r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2);
+    }
+    case D3DT_FMT_XRGB1555:
+    case D3DT_FMT_ARGB1555: {
+        uint32_t r = (v >> 10) & 31, g = (v >> 5) & 31, b = v & 31;
+        uint32_t a = format == D3DT_FMT_XRGB1555 || (v & 0x8000) ? 255 : 0;
+        return a << 24 | (r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2);
+    }
+    case D3DT_FMT_ARGB4444:
+    case D3DT_FMT_XRGB4444: {
+        uint32_t a = format == D3DT_FMT_XRGB4444 ? 15 : (v >> 12) & 15;
+        return (a * 17) << 24 | (((v >> 8) & 15) * 17) << 16 | (((v >> 4) & 15) * 17) << 8 | (v & 15) * 17;
+    }
+    default: return 0;
+    }
+}
+
+static void test_convert_rows(void) {
+    static const int formats[] = { D3DT_FMT_RGB565, D3DT_FMT_XRGB1555, D3DT_FMT_ARGB1555, D3DT_FMT_ARGB4444,
+                                   D3DT_FMT_XRGB4444 };
+    static uint16_t in[65536];
+    static uint32_t out[65536];
+    static const uint32_t pixels32[] = { 0x00000000u, 0x12345678u, 0xFFFFFFFFu, 0x80FF0001u };
+    uint32_t out32[4];
+    int bad = 0;
+    for (uint32_t v = 0; v < 65536; v++) in[v] = (uint16_t)v;
+    for (int f = 0; f < 5; f++)
+        for (int keyed = 0; keyed < 2; keyed++) {
+            uint32_t low = 0x1200, high = 0x9FFF;
+            d3dt_convert_row(formats[f], in, out, 65536, keyed, low, high);
+            for (uint32_t v = 0; v < 65536; v++) {
+                uint32_t want = oracle_texel(formats[f], v);
+                if (keyed && v >= low && v <= high) want &= 0x00FFFFFFu;
+                bad += out[v] != want;
+            }
+        }
+    CHECK(bad == 0);
+    d3dt_convert_row(D3DT_FMT_XRGB8888, pixels32, out32, 4, 1, 0x12345678u, 0x12345678u);
+    CHECK(out32[0] == 0xFF000000u && out32[1] == 0x00345678u && out32[2] == 0xFFFFFFFFu && out32[3] == 0xFFFF0001u);
+    d3dt_convert_row(D3DT_FMT_ARGB8888, pixels32, out32, 4, 0, 0, 0);
+    CHECK(!memcmp(out32, pixels32, sizeof out32));
+    out32[0] = 7;
+    d3dt_convert_row(D3DT_FMT_UNKNOWN, pixels32, out32, 1, 1, 0, 0xFFFFFFFFu);
+    CHECK(out32[0] == 0);
+}
+
 /* The game's hardware frame: Clear(0), FlushBatch, D3D sky, terrain, BeginFrame, a software polygon,
  * a D3D polygon over part of it, FlushBatch, Flip. One readback, for the polygon that may read. */
 static void test_hybrid_frame(void) {
@@ -1041,6 +1234,13 @@ int main(void) {
     test_no_read_lock_on_gpu_picture();
     test_reading_lock_reads_back();
     test_pending_writes_survive_readback();
+    test_deferred_read_keeps_content();
+    test_deferred_write_never_reads();
+    test_deferred_read_write();
+    test_deferred_sync_only();
+    test_deferred_keeps_pending_writes();
+    test_deferred_current_copy_and_clear();
+    test_deferred_water_frame();
     test_hybrid_frame();
     test_cpu_made_frames();
     test_gpu_lost_and_resized();
@@ -1060,6 +1260,7 @@ int main(void) {
     test_coverage_and_uv();
     test_terrain_state_leak();
     test_formats();
+    test_convert_rows();
     test_overlay_and_rects();
     test_resolution_and_msaa();
     test_shaders();

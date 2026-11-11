@@ -57,6 +57,8 @@ static void free_heap_pixels(dd_surface_t* s) {
     s->watched = 0;
 }
 
+static int map_dib_section(dd_surface_t* s, const BITMAPINFO* info);
+
 static int allocate_pixels(dd_surface_t* s) {
     struct {
         BITMAPINFOHEADER header;
@@ -78,15 +80,38 @@ static int allocate_pixels(dd_surface_t* s) {
         info.extra[1] = s->format.dwGBitMask;
         info.extra[2] = s->format.dwBBitMask;
     }
-    s->dib = CreateDIBSection(NULL, (BITMAPINFO*)&info, DIB_RGB_COLORS, &bits, NULL, 0);
-    if (!s->dib || !bits) return 0;
+    if (!map_dib_section(s, (BITMAPINFO*)&info)) {
+        s->dib = CreateDIBSection(NULL, (BITMAPINFO*)&info, DIB_RGB_COLORS, &bits, NULL, 0);
+        if (!s->dib || !bits) return 0;
+        s->view = (BYTE*)bits;
+    }
     if (s->heap_bits) {
-        memcpy(bits, s->heap_bits, (size_t)s->pitch * s->height);
+        memcpy(s->view, s->heap_bits, (size_t)s->pitch * s->height);
         free_heap_pixels(s);
     }
-    s->bits = (BYTE*)bits;
+    s->bits = s->view;
     s->pitch = (LONG)(((s->width * s->format.dwRGBBitCount + 31) / 32) * 4);
     return 1;
+}
+
+/* GDI pins the memory of a DIB it allocates, so its protection cannot change; a DIB over a section of
+ * ours leaves this process its own view, which the renderer can make inaccessible while a Lock waits
+ * for its first touch. GDI keeps writing through its view of the same pages. */
+static int map_dib_section(dd_surface_t* s, const BITMAPINFO* info) {
+    DWORD bytes = (DWORD)((((s->width * s->format.dwRGBBitCount + 31) / 32) * 4) * s->height);
+    void* gdi_bits = NULL;
+    s->section = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, bytes, NULL);
+    if (!s->section) return 0;
+    s->view = (BYTE*)MapViewOfFile(s->section, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (s->view) s->dib = CreateDIBSection(NULL, info, DIB_RGB_COLORS, &gdi_bits, s->section, 0);
+    if (s->dib && gdi_bits) return 1;
+    if (s->dib) DeleteObject(s->dib);
+    if (s->view) UnmapViewOfFile(s->view);
+    CloseHandle(s->section);
+    s->dib = NULL;
+    s->view = NULL;
+    s->section = NULL;
+    return 0;
 }
 
 static void free_surface(dd_surface_t* s) {
@@ -103,6 +128,10 @@ static void free_surface(dd_surface_t* s) {
         DeleteDC(s->dc);
     }
     if (s->dib) DeleteObject(s->dib);
+    if (s->section) {
+        UnmapViewOfFile(s->view);
+        CloseHandle(s->section);
+    }
     free(s);
     dd_surface_removed(d);
 }
@@ -656,11 +685,17 @@ static HRESULT STDMETHODCALLTYPE s_EnumOverlayZOrders(IDirectDrawSurface* This, 
 
 static void exchange_pixels(dd_surface_t* a, dd_surface_t* b) {
     BYTE* bits = a->bits;
+    BYTE* view = a->view;
     HBITMAP dib = a->dib;
+    HANDLE section = a->section;
     a->bits = b->bits;
+    a->view = b->view;
     a->dib = b->dib;
+    a->section = b->section;
     b->bits = bits;
+    b->view = view;
     b->dib = dib;
+    b->section = section;
 }
 
 static HRESULT STDMETHODCALLTYPE s_Flip(IDirectDrawSurface* This, LPDIRECTDRAWSURFACE target_iface, DWORD flags) {
@@ -829,8 +864,8 @@ static HRESULT STDMETHODCALLTYPE s_Lock(IDirectDrawSurface* This, LPRECT rect, L
     s->lock_write = !(flags & DDLOCK_READONLY);
     s->lock_flags = flags;
     s->lock_rect = *rect;
-    d3dr_surface_cpu_access(s, s->lock_write, CPU_ACCESS_LOCK);
     GdiFlush();
+    d3dr_surface_cpu_access(s, s->lock_write, CPU_ACCESS_LOCK);
     describe(s, out, size);
     out->dwFlags |= DDSD_LPSURFACE;
     out->lpSurface = pixel_address(s, rect->left, rect->top);
@@ -939,7 +974,7 @@ static HRESULT STDMETHODCALLTYPE s_Unlock(IDirectDrawSurface* This, LPVOID point
     if (!s->locked) DD_RETURN(DDERR_NOTLOCKED);
     s->locked = 0;
     InterlockedDecrement(&dd_census.locks);
-    if (s->lock_write) d3dr_surface_cpu_written(s, &s->lock_rect);
+    if (!d3dr_surface_unlocked(s) && s->lock_write) d3dr_surface_cpu_written(s, &s->lock_rect);
     if (is_front(s)) dd_present(s, 0);
     DD_RETURN(DD_OK);
 }

@@ -164,11 +164,8 @@ unsigned d3dr_textures_alive(void);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
-/* DEBUG_SAULO: --debug-terrain-wireframe|solid|texture|nocull (terrain_diag.c) and the guest terrain probes. */
-int tdiag_parse_option(const char* arg);
-void terrain_probe_install(void);
-void terrain_probe_report(double frames);
-void tdiag_note_water_node(uint32_t node);
+/* guest_overrides.c: host equivalents of hot lifted functions, byte-exact with them (tests/water_tests.c). */
+void guest_overrides_install(void);
 
 /* exit_policy.c */
 int host_exit_code_for_guest_return(int code);

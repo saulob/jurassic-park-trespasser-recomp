@@ -59,7 +59,8 @@ set(HOST_SOURCES
   src/host/exit_policy.c
   src/host/milestones.c
   src/host/selfmod.c
-  src/host/terrain_probe.c
+  src/host/guest_overrides.c
+  src/host/water_kernels.c
   src/host/diagnostics.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
@@ -73,7 +74,7 @@ set(HOST_SOURCES
   src/host/ddraw/d3d_objects.c
   src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c
-  src/host/ddraw/terrain_diag.c
+  src/host/ddraw/page_guard.c
 )
 set(PCRECOMP_SOURCES
   ${PCRECOMP}/runtime/native32/native32.c
@@ -134,9 +135,41 @@ target_include_directories(host_tests PRIVATE src/host)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
-  src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c)
+  src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
+  src/host/ddraw/page_guard.c)
 target_include_directories(com_tests PRIVATE src/host src/host/ddraw src/recomp/gen ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(com_tests PRIVATE /W3)
 target_compile_definitions(com_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
 target_link_libraries(com_tests PRIVATE user32 gdi32 dxguid)
+
+# Byte-exact comparison of the host water kernels with the lifted functions they replace, both compiled
+# as in the game (headless): ninja -C <build dir> water_tests && water_tests.exe
+# A second copy of the lifted code at the other optimisation level shows what the C compiler decides.
+set(WATER_LIFTED "${CMAKE_BINARY_DIR}/water_lifted.c")
+set(WATER_LIFTED_ALT "${CMAKE_BINARY_DIR}/water_lifted_alt.c")
+foreach(copy IN ITEMS "lifted_|${WATER_LIFTED}" "lifted_alt_|${WATER_LIFTED_ALT}")
+  string(REPLACE "|" ";" copy "${copy}")
+  list(GET copy 0 prefix)
+  list(GET copy 1 out)
+  add_custom_command(OUTPUT ${out}
+    COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_0060E3F0;sub_00638670"
+      "-DPREFIX=${prefix}" "-DOUT=${out}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
+    DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
+    COMMENT "Copying the lifted water functions for water_tests")
+endforeach()
+if(TRESPASSER_GEN_OPT STREQUAL "/Od")
+  set(WATER_ALT_OPT "/O2")
+else()
+  set(WATER_ALT_OPT "/Od")
+endif()
+add_executable(water_tests EXCLUDE_FROM_ALL tests/water_tests.c src/host/water_kernels.c ${WATER_LIFTED}
+  ${WATER_LIFTED_ALT})
+target_include_directories(water_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_compile_definitions(water_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+set_source_files_properties(tests/water_tests.c PROPERTIES COMPILE_OPTIONS "/W3")
+set_source_files_properties(${WATER_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
+set_source_files_properties(${WATER_LIFTED_ALT} PROPERTIES COMPILE_OPTIONS "/w;${WATER_ALT_OPT}")
+target_compile_definitions(water_tests PRIVATE "WATER_ALT_OPT=\"${WATER_ALT_OPT}\"" "WATER_GEN_OPT=\"${TRESPASSER_GEN_OPT}\"")
+# The lifted code addresses guest memory directly: a fixed image puts tests/water_tests.c's window there.
+target_link_options(water_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)

@@ -34,6 +34,7 @@ typedef struct {
     unsigned render_w, render_h;
     int texture_filter;
     unsigned msaa;
+    int lifted_water;
 } options_t;
 
 static const char* const k_texture_filters[] = { "point", "bilinear", "trilinear", "anisotropic" };
@@ -89,8 +90,8 @@ static void usage(void) {
     printf("usage: trespasser [--run] [--game DIR] [--log-file FILE | --log-dir DIR] [--watchdog SECONDS]\n"
            "                  [--ddraw compat|system] [--native-trace] [--callbacks] [--renderer software|d3d11]\n"
            "                  [--render-resolution auto|WxH] [--texture-filter point|bilinear|trilinear|anisotropic]\n"
-           "                  [--msaa 0|2|4|8] [--generate-mips] [--debug-d3d-output MODE] [--debug-terrain-*]\n"
-           "                  [--ddraw-cert-dialog] [--legacy-safemode-dialog] [--software-water]\n"
+           "                  [--msaa 0|2|4|8] [--generate-mips] [--debug-d3d-output MODE]\n"
+           "                  [--ddraw-cert-dialog] [--legacy-safemode-dialog] [--software-water] [--lifted-water]\n"
            "                  [-- guest arguments]\n"
            "  without --run the image is mapped, fingerprinted and bound, and nothing executes\n"
            "  --log-file appends to FILE; otherwise a new trespasser_NNN.log is created in the log directory\n"
@@ -99,9 +100,8 @@ static void usage(void) {
            "    Direct3D 6 path to D3D11; the other three options apply to d3d11 (defaults auto, anisotropic, 4)\n"
            "  --generate-mips gives the game's single-level textures generated mip chains (off: as the original)\n"
            "  --debug-d3d-output texture|vertex-color|depth: d3d11 draws show only that (diagnostics)\n"
-           "  --debug-terrain-wireframe|solid|texture|nocull: d3d11 terrain draws only (diagnostics)\n"
-           "  --debug-b560-solid|skip|texture|nodepth: d3d11 opaque object batch (sub_0055B560) only\n"
            "  --software-water keeps the game's software water with d3d11 (Hardware Water unset)\n"
+           "  --lifted-water runs the lifted water kernels instead of their host equivalents (comparison)\n"
            "  --legacy-safemode-dialog keeps the game's \"unstable last time, Safe Mode?\" prompt (off by default)\n");
     recomp_trace_help();
 }
@@ -155,7 +155,8 @@ static int parse_options(int argc, char** argv, options_t* o) {
             d3dr_set_generate_mips(1);
         } else if (!strcmp(argv[i], "--debug-d3d-output") && i + 1 < argc) {
             if (!d3dr_set_debug_output(argv[++i])) return 0;
-        } else if (tdiag_parse_option(argv[i])) {
+        } else if (!strcmp(argv[i], "--lifted-water")) {
+            o->lifted_water = 1;
         } else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) {
             o->watchdog_seconds = strtoul(argv[++i], NULL, 0);
         } else if (!strcmp(argv[i], "--native-trace")) {
@@ -284,7 +285,7 @@ int main(int argc, char** argv) {
         host_log("host", "dry run complete: nothing was executed; --run enters 0x%08X", trespasser_entry_va);
         return 0;
     }
-    terrain_probe_install();
+    if (!opt.lifted_water) guest_overrides_install();
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);
     return run_guest();
 }

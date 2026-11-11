@@ -12,8 +12,8 @@
 #include "d3d_legacy.h"
 #include "d3d11_shaders.h"
 #include "host.h"
+#include "page_guard.h"
 #include "target_sync.h"
-#include "terrain_diag.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -37,7 +37,6 @@
 #define UNTRACKED_LOG_LIMIT 8
 #define BLACK_WRITE_REPORT 256
 #define BLACK_WRITE_LOG_LIMIT 8
-#define LOCK_SAMPLE_LIMIT 6
 #define WATCH_PAGES 1024
 #define STATE_TEX_NONE 0u
 #define STATE_TEX_UNUSABLE 0xFu
@@ -58,6 +57,7 @@ typedef struct {
     double readback_ms[READBACK_REASON_COUNT];
     unsigned long long readback_bytes;
     unsigned long long frames, no_read_accesses, synthesized, front_copies;
+    unsigned long long deferred_locks, deferred_untouched, deferred_touched;
     unsigned long long draws, triangles, target_accesses, composites, composited_pixels, composited_black, uploads;
     readback_caller_t callers[MAX_READBACK_CALLERS];
 } perf_window_t;
@@ -72,8 +72,6 @@ typedef struct {
     uint32_t diffuse, specular;
     float u, v;
 } tl_vertex_t;
-
-C_ASSERT(sizeof(tl_vertex_t) == sizeof(tdiag_vertex_t) && offsetof(tl_vertex_t, u) == offsetof(tdiag_vertex_t, u));
 
 typedef struct {
     uint32_t flags, blend_mode, alpha_func;
@@ -119,6 +117,9 @@ struct d3dr_target {
     uint32_t* scratch;
     d3dt_rect_t dirty;
     tsync_t sync;
+    tsync_deferred_t deferred;
+    d3dt_rect_t deferred_region;
+    readback_reason_t deferred_reason;
     int frame_started;
 };
 
@@ -169,7 +170,6 @@ static struct {
     int frame_cb_valid;
     d3d_device_t* batch_dev;
     D3D11_PRIMITIVE_TOPOLOGY batch_topology;
-    int batch_kind;
     tl_vertex_t* verts;
     uint32_t* indices;
     UINT nverts, nindices, cap_verts, cap_indices;
@@ -205,13 +205,9 @@ static struct {
     pending_switch_t pending;
     int debug_output;
     unsigned char sampler_logged[2][2][5][5];
-    /* DEBUG_SAULO: first CPU accesses to a render target and periodic gameplay frame census */
-    struct {
-        int open, gameplay;
-        char text[320];
-    } sample;
-    unsigned samples_logged[2];
-    unsigned long long frame_cpu_pixels, frame_cpu_black;
+    uint32_t* upload_buffer;
+    size_t upload_capacity;
+    d3dr_target_t* deferred;
 } R;
 
 static const char* const k_filter_names[] = { "point", "bilinear", "trilinear", "anisotropic" };
@@ -546,13 +542,14 @@ int d3dr_startup(void) {
         if (!R.hardware) host_log("renderer", "the D3D11 hardware path could not start (see the lines above)");
     }
     log_renderer_line();
-    tdiag_log_debug_flags();
     return 1;
 }
 
 static void flush(void);
 static void apply_sync(d3dr_target_t* t, unsigned acts, const d3dt_rect_t* region, readback_reason_t reason, int exact);
 static void check_front(d3dr_target_t* t);
+static void settle_deferred(void);
+static void drop_deferred(const d3dr_target_t* t);
 
 /* Called by the window host between the game's own display release and rebuild (F5). */
 int d3dr_set_hardware(int hardware) {
@@ -574,7 +571,6 @@ static void release_texture(dd_surface_t* s) {
     if (!t) return;
     SAFE_RELEASE(t->srv);
     SAFE_RELEASE(t->tex);
-    tdiag_texture_freed();
     R.texture_memory -= t->bytes;
     R.textures_alive--;
     free(t);
@@ -739,6 +735,7 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
 /* The surface keeps the last picture when its device goes, as DirectDraw memory would. */
 void d3dr_detach(d3d_device_t* dev) {
     d3dr_target_t* t = dev->backend;
+    settle_deferred();
     if (R.batch_dev == dev) flush();
     if (R.batch_dev == dev) R.batch_dev = NULL;
     if (!t) return;
@@ -756,12 +753,15 @@ void d3dr_detach(d3d_device_t* dev) {
 }
 
 void d3dr_surface_freed(dd_surface_t* s) {
-    tdiag_surface_freed(s);
     if (s->gpu_texture) release_texture(s);
-    if (s->target) s->target->surface = NULL;
+    if (s->target) {
+        drop_deferred(s->target);
+        s->target->surface = NULL;
+    }
 }
 
 void d3dr_device_lost(void) {
+    drop_deferred(NULL);
     R.nverts = R.nindices = 0;
     R.batch_dev = NULL;
     release_static_objects();
@@ -962,57 +962,13 @@ static int gameplay_now(void) {
     return v.ui == GUEST_UI_GAMEPLAY;
 }
 
-/* DEBUG_SAULO: one line per sampled CPU access, completed with what it wrote by the next sync. */
-static void sample_end(const tsync_counts_t* c, const d3dt_rect_t* box, int exact) {
-    if (!R.sample.open) return;
-    R.sample.open = 0;
-    if (!c || !c->changed) {
-        host_log("d3d", "%s; wrote nothing", R.sample.text);
-        return;
-    }
-    host_log("d3d", "%s; wrote %lu pixels in (%ld,%ld)-(%ld,%ld), %lu of them black, over %s", R.sample.text, c->changed,
-             box->left, box->top, box->right, box->bottom, c->black,
-             exact ? "a CPU copy of the GPU picture" : "a capture (GPU pixels underneath unknown)");
-}
-
-static const char* sync_action_name(unsigned acts) {
-    if (acts & TSYNC_READBACK) return "GPU picture read back";
-    if (acts & TSYNC_SYNTHESIZE) return "clear colour recreated on the CPU";
-    if (acts & TSYNC_COPY_FRONT) return "front buffer copied (frame made by the CPU)";
-    if (acts & (TSYNC_CAPTURE | TSYNC_CAPTURE_ALL)) return "capture started, nothing read";
-    return "CPU copy already current";
-}
-
-static void sample_begin(const d3dr_target_t* t, uint32_t caller, cpu_access_t access, int reads, unsigned before,
-                         unsigned acts) {
-    const dd_surface_t* s = t->surface;
-    int gameplay = gameplay_now();
-    if (R.samples_logged[gameplay] >= LOCK_SAMPLE_LIMIT) return;
-    R.samples_logged[gameplay]++;
-    R.sample.open = 1;
-    _snprintf(R.sample.text, sizeof R.sample.text - 1,
-              "%s CPU access #%u: %s %lux%lu by sub_%08X, %s flags 0x%lX rect (%ld,%ld)-(%ld,%ld), %s; picture on %s "
-              "before, %s after: %s",
-              gameplay ? "gameplay" : "menu", R.samples_logged[gameplay],
-              (s->caps & DDSCAPS_BACKBUFFER) ? "back buffer" : "render target", s->width, s->height, caller,
-              access_name(access), access == CPU_ACCESS_LOCK ? s->lock_flags : 0,
-              access == CPU_ACCESS_LOCK ? s->lock_rect.left : 0, access == CPU_ACCESS_LOCK ? s->lock_rect.top : 0,
-              access == CPU_ACCESS_LOCK ? s->lock_rect.right : (long)s->width,
-              access == CPU_ACCESS_LOCK ? s->lock_rect.bottom : (long)s->height, reads ? "reads pixels" : "reads none",
-              tsync_location_name(before), tsync_location_name(t->sync.valid), sync_action_name(acts));
-    R.sample.text[sizeof R.sample.text - 1] = 0;
-}
-
 /* Pixels the CPU composited, by screen kind. Black ones are reported when the CPU copy held the GPU
  * picture before the writes: only then is "black over the GPU picture" a fact. */
 static void note_cpu_pixels(const d3dt_rect_t* box, const tsync_counts_t* c, int exact) {
     int gameplay = gameplay_now();
     R.cpu_pixels[gameplay] += c->changed;
-    R.frame_cpu_pixels += c->changed;
-    R.frame_cpu_black += c->black;
     if (exact) R.black_over_gpu[gameplay] += c->black;
     else R.black_over_unknown[gameplay] += c->black;
-    sample_end(c, box, exact);
     if (!exact || c->black < BLACK_WRITE_REPORT || R.black_writes_logged >= BLACK_WRITE_LOG_LIMIT) return;
     R.black_writes_logged++;
     host_log("d3d", "%s: the CPU wrote %lu black pixels over non-black GPU pixels in (%ld,%ld)-(%ld,%ld) (%lu pixels "
@@ -1039,8 +995,6 @@ static void composite(d3dr_target_t* t, int exact) {
         R.perf.composited_pixels += counts.changed;
         R.perf.composited_black += counts.black;
         note_cpu_pixels(&box, &counts, exact);
-    } else {
-        sample_end(&counts, NULL, exact);
     }
     perf_add(PERF_OVERLAY, start);
 }
@@ -1097,36 +1051,13 @@ static void check_front(d3dr_target_t* t) {
 
 /* Before the GPU target is drawn into (not a full clear). */
 static void gpu_write(d3dr_target_t* t) {
-    int exact = t->sync.exact;
-    unsigned acts = tsync_gpu_draw(&t->sync);
+    int exact;
+    unsigned acts;
+    settle_deferred();
+    exact = t->sync.exact;
+    acts = tsync_gpu_draw(&t->sync);
     if (acts && R.nindices && R.batch_dev == t->device) flush();
     apply_sync(t, acts, NULL, READBACK_OTHER, exact);
-}
-
-/* DEBUG_SAULO: share of black and near-black pixels in a presented gameplay frame, by thirds of the
- * height, beside what the CPU composited into it: black that the CPU did not write came from the GPU. */
-static void census(d3dr_target_t* t) {
-    D3D11_MAPPED_SUBRESOURCE m;
-    unsigned long black[3] = { 0, 0, 0 }, dark[3] = { 0, 0, 0 };
-    UINT third = t->legacy_h / 3;
-    double cells;
-    if (!tdiag_census_frame() || !third || !gameplay_now()) return;
-    if (!target_usable(t) || !map_target(t, 0, &m)) return;
-    for (UINT y = 0; y < third * 3; y++) {
-        const uint16_t* row = (const uint16_t*)((const BYTE*)m.pData + (size_t)y * m.RowPitch);
-        for (UINT x = 0; x < t->legacy_w; x++) {
-            uint16_t p = row[x];
-            black[y / third] += p == 0;
-            dark[y / third] += (p >> 11) <= 1 && ((p >> 5) & 0x3F) <= 2 && (p & 0x1F) <= 1;
-        }
-    }
-    tdiag_census(m.pData, m.RowPitch, t->legacy_w, t->legacy_h);
-    ID3D11DeviceContext_Unmap(R.ctx, (ID3D11Resource*)t->staging, 0);
-    cells = (double)third * t->legacy_w / 100.0;
-    host_log("renderer", "gameplay frame census: black (near-black) pixels top %.1f%% (%.1f%%), middle %.1f%% (%.1f%%), "
-             "bottom %.1f%% (%.1f%%); the CPU composited %llu pixels into this frame, %llu of them black",
-             black[0] / cells, dark[0] / cells, black[1] / cells, dark[1] / cells, black[2] / cells, dark[2] / cells,
-             R.frame_cpu_pixels, R.frame_cpu_black);
 }
 
 /* ---- state objects (cached; created on first use) ---- */
@@ -1159,9 +1090,9 @@ static ID3D11DepthStencilState* depth_for(const d3d_device_t* dev, int has_depth
     return *slot;
 }
 
-static ID3D11RasterizerState* raster_for(const d3d_device_t* dev, int multisample, int debug) {
-    int cull = (debug & TDIAG_NOCULL) ? D3D11_CULL_NONE : d3dt_cull(dev->render[D3DRENDERSTATE_CULLMODE]);
-    int fill = (debug & TDIAG_WIREFRAME) ? D3D11_FILL_WIREFRAME : d3dt_fill(dev->render[D3DRENDERSTATE_FILLMODE]);
+static ID3D11RasterizerState* raster_for(const d3d_device_t* dev, int multisample) {
+    int cull = d3dt_cull(dev->render[D3DRENDERSTATE_CULLMODE]);
+    int fill = d3dt_fill(dev->render[D3DRENDERSTATE_FILLMODE]);
     DWORD zbias = dev->render[D3DRENDERSTATE_ZBIAS] < MAX_BIAS_STEPS ? dev->render[D3DRENDERSTATE_ZBIAS] : MAX_BIAS_STEPS - 1;
     int towards_greater = dev->render[D3DRENDERSTATE_ZFUNC] == D3DCMP_GREATER || dev->render[D3DRENDERSTATE_ZFUNC] == D3DCMP_GREATEREQUAL;
     ID3D11RasterizerState** slot;
@@ -1271,6 +1202,16 @@ static uint32_t palette_bgra(const dd_surface_t* s, uint32_t* out) {
     return sum;
 }
 
+static uint32_t* upload_rows(size_t texels) {
+    if (texels > R.upload_capacity) {
+        uint32_t* grown = (uint32_t*)realloc(R.upload_buffer, texels * 4);
+        if (!grown) return NULL;
+        R.upload_buffer = grown;
+        R.upload_capacity = texels;
+    }
+    return R.upload_buffer;
+}
+
 static UINT mip_levels(UINT w, UINT h) {
     UINT levels = 1;
     while (w > 1 || h > 1) {
@@ -1304,7 +1245,6 @@ static void collect_written_rows(dd_surface_t* s, d3dr_texture_t* t) {
     }
     if (rows.bottom > (long)s->height) rows.bottom = (long)s->height;
     d3dt_rect_union(&s->texture_dirty, &rows);
-    s->content_gen++;
     if (announced || !t) return;
     t->untracked++;
     R.untracked_writes++;
@@ -1354,7 +1294,6 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
         t->palette_sum = palette_sum;
         R.texture_memory += t->bytes;
         R.textures_alive++;
-        tdiag_texture_created();
         s->gpu_texture = t;
         if (s->watched) collect_written_rows(s, NULL);
         s->texture_dirty = full;
@@ -1376,7 +1315,7 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
     box.front = 0;
     box.back = 1;
     upload_start = ticks();
-    rows = (uint32_t*)malloc((size_t)(box.right - box.left) * (box.bottom - box.top) * 4);
+    rows = upload_rows((size_t)(box.right - box.left) * (box.bottom - box.top));
     if (rows) {
         UINT w = box.right - box.left;
         int bytes = d3dt_format_bytes(format), black = 1;
@@ -1391,14 +1330,11 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
                                  s->src_key.dwColorSpaceHighValue);
             if (black) black = d3dt_row_black(out, w);
         }
-        s->uploaded_gen = s->content_gen;
-        tdiag_upload(s, rows, w, box.bottom - box.top, box.left, box.top);
         if (box.left == 0 && box.top == 0 && box.right == s->width && box.bottom == s->height) t->black = black;
         else if (!black) t->black = 0;
         t->uploads++;
         ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)t->tex, 0, &box, rows, w * 4, 0);
         if (t->levels > 1) ID3D11DeviceContext_GenerateMips(R.ctx, t->srv);
-        free(rows);
         R.texture_uploads++;
         perf_add(PERF_UPLOAD, upload_start);
     }
@@ -1560,7 +1496,7 @@ static void flush(void) {
     ID3D11SamplerState* sampler = NULL;
     ID3D11ShaderResourceView* srv = NULL;
     float factor[4] = { 0, 0, 0, 0 };
-    int has_depth, terrain_debug = tdiag_debug_for(R.batch_kind);
+    int has_depth;
     int64_t start;
     if (!R.nindices || !t || !t->surface || !target_ready(t)) {
         R.nverts = R.nindices = 0;
@@ -1586,11 +1522,6 @@ static void flush(void) {
     if (dev->render[D3DRENDERSTATE_SPECULARENABLE]) dc.flags |= D3D11_PS_SPECULAR;
     if (dev->render[D3DRENDERSTATE_SHADEMODE] == D3DSHADE_FLAT) dc.flags |= D3D11_PS_FLAT;
     if (R.debug_output) dc.flags |= D3D11_PS_DEBUG_TEXTURE << (R.debug_output - 1);
-    if (terrain_debug & TDIAG_TEXTURE)
-        dc.flags = (dc.flags & ~(D3D11_PS_FOG | D3D11_PS_SPECULAR | D3D11_PS_ALPHA_TEST | D3D11_PS_KEY_TEST)) |
-                   D3D11_PS_DEBUG_TEXTURE;
-    if (terrain_debug & TDIAG_SOLID) dc.flags |= D3D11_PS_DEBUG_SOLID;
-    if (terrain_debug & TDIAG_WIREFRAME) dc.flags |= D3D11_PS_DEBUG_WIRE;
     dc.blend_mode = dev->render[D3DRENDERSTATE_TEXTUREMAPBLEND];
     dc.alpha_func = dev->render[D3DRENDERSTATE_ALPHAFUNC];
     dc.alpha_ref = (float)d3dt_alpha_ref(dev->render[D3DRENDERSTATE_ALPHAREF]) / 255.0f;
@@ -1633,12 +1564,11 @@ static void flush(void) {
     ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 1, 1, &R.cb_draw);
     ID3D11DeviceContext_PSSetShaderResources(R.ctx, 0, 1, &srv);
     if (sampler) ID3D11DeviceContext_PSSetSamplers(R.ctx, 0, 1, &sampler);
-    ID3D11DeviceContext_RSSetState(R.ctx, raster_for(dev, t->samples > 1, terrain_debug));
+    ID3D11DeviceContext_RSSetState(R.ctx, raster_for(dev, t->samples > 1));
     ID3D11DeviceContext_RSSetViewports(R.ctx, 1, &vp);
     ID3D11DeviceContext_RSSetScissorRects(R.ctx, 1, &scissor);
-    ID3D11DeviceContext_OMSetBlendState(R.ctx, (terrain_debug & TDIAG_TEXTURE) ? R.blend_none : blend_for(dev), factor,
-                                        0xFFFFFFFF);
-    ID3D11DeviceContext_OMSetDepthStencilState(R.ctx, depth_for(dev, has_depth && !(terrain_debug & TDIAG_NODEPTH)), 0);
+    ID3D11DeviceContext_OMSetBlendState(R.ctx, blend_for(dev), factor, 0xFFFFFFFF);
+    ID3D11DeviceContext_OMSetDepthStencilState(R.ctx, depth_for(dev, has_depth), 0);
     ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, 0, 0);
     if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && !R.depth_active) {
         R.depth_active = 1;
@@ -1679,7 +1609,6 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     unsigned stride, diffuse, specular, uv;
     UINT base, n = 0;
     const BYTE* src = (const BYTE*)vertices;
-    int kind = tdiag_draw_kind(g_cur_func);
     int64_t start = ticks();
     if (!d3dt_fvf_layout(fvf, &stride, &diffuse, &specular, &uv)) {
         log_once(&R.fvf_logged, "DrawPrimitive vertex format 0x%lX (type %lu) from sub_%08X: only pre-transformed "
@@ -1707,12 +1636,10 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     if (indices)
         for (DWORD i = 0; i < index_count; i++)
             if (indices[i] >= count) return DDERR_INVALIDPARAMS;
-    if (tdiag_skip(kind)) return DD_OK;
-    if (R.batch_dev != dev || R.batch_topology != topology || R.batch_kind != kind) {
+    if (R.batch_dev != dev || R.batch_topology != topology) {
         flush();
         R.batch_dev = dev;
         R.batch_topology = topology;
-        R.batch_kind = kind;
     }
     gpu_write(t);
     if (!ensure_capacity(count, (indices ? index_count : count) * 3)) return DDERR_OUTOFMEMORY;
@@ -1731,8 +1658,6 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
         else if (type == D3DT_PT_TRIANGLEFAN) n = d3dt_fan_indices(base, count, R.indices + R.nindices);
         else if (type == D3DT_PT_TRIANGLESTRIP) n = d3dt_strip_indices(base, count, R.indices + R.nindices);
         else n = d3dt_list_indices(base, count, R.indices + R.nindices);
-        tdiag_draw(dev, kind, (const tdiag_vertex_t*)R.verts, base, count, R.indices + R.nindices, n, t->legacy_w,
-                   t->legacy_h);
     } else {
         DWORD total = indices ? index_count : count;
         DWORD limit = type == D3DT_PT_LINELIST ? total & ~1u : total;
@@ -1774,6 +1699,7 @@ static int covers_surface(const d3dr_target_t* t, long x, long y, long w, long h
 
 HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD flags, D3DCOLOR color, float z) {
     d3dr_target_t* t = dev->backend;
+    settle_deferred();
     if (!t || !target_ready(t)) return DDERR_GENERIC;
     if (R.batch_dev == dev) flush();
     for (DWORD i = 0; i < count; i++) {
@@ -1782,7 +1708,6 @@ HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD f
         if (d3dt_rect_empty(&r)) continue;
         if ((flags & D3DCLEAR_TARGET) && covers_surface(t, x, y, w, h)) tsync_gpu_clear(&t->sync, d3dt_bgra_to_rgb565(color));
         else if (flags & D3DCLEAR_TARGET) gpu_write(t);
-        if (covers_surface(t, x, y, w, h)) tdiag_clear((flags & D3DCLEAR_TARGET) != 0, (flags & D3DCLEAR_ZBUFFER) != 0, z);
         clear_rect(t, &r, flags, color, z);
         R.clears++;
     }
@@ -1808,6 +1733,7 @@ int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) {
 void d3dr_begin_scene(d3d_device_t* dev) {
     d3dr_target_t* t = dev->backend;
     UINT w, h;
+    settle_deferred();
     if (!t || !ensure_device()) return;
     if (!t->frame_started && !R.fixed_w && t->color) {
         choose_size(t->legacy_w, t->legacy_h, &w, &h);
@@ -1867,14 +1793,102 @@ static void readback_last_frame(dd_surface_t* s) {
     note_readback(READBACK_FRONT_BUFFER, elapsed_ms(start), (size_t)w * h * 4);
 }
 
+/* ---- Locks that wait for the first touch ----
+ * DDLOCK_WAIT alone does not say whether the game will read, write or only wait for the GPU, so the
+ * CPU copy of a locked render target is made inaccessible instead: its first touch faults, and only
+ * then does the Lock read back, capture or recreate the picture, exactly as it would have at Lock time.
+ * A Lock that ends untouched was synchronisation only and leaves the target as it was. */
+
+/* DEBUG_SAULO: the first deferral decisions and how their Locks ended. */
+#define DEFER_LOG_LIMIT 5
+static unsigned s_defer_logged;
+static int s_defer_log_open;
+
+static void log_defer(const dd_surface_t* s, const char* outcome, int open) {
+    MEMORY_BASIC_INFORMATION mbi;
+    if (s_defer_logged >= DEFER_LOG_LIMIT) return;
+    s_defer_logged++;
+    s_defer_log_open = open;
+    memset(&mbi, 0, sizeof mbi);
+    VirtualQuery(s->bits, &mbi, sizeof mbi);
+    host_log("d3d", "DEBUG_SAULO Lock #%u: surface 0x%08X caps 0x%08lX, own section %s, bits 0x%08X, allocation 0x%08X "
+             "size 0x%lX type 0x%lX protection 0x%lX, %ld bytes, flags 0x%lX, by sub_%08X: %s", s_defer_logged,
+             (uint32_t)(uintptr_t)s, s->caps, s->section ? "yes" : "no", (uint32_t)(uintptr_t)s->bits,
+             (uint32_t)(uintptr_t)mbi.AllocationBase, (unsigned long)mbi.RegionSize, mbi.Type, mbi.Protect,
+             s->pitch * (long)s->height, s->lock_flags, readback_caller(), outcome);
+}
+
+static void log_unlock(int touched) {
+    if (!s_defer_log_open) return;
+    s_defer_log_open = 0;
+    host_log("d3d", "DEBUG_SAULO Lock #%u ended %s", s_defer_logged, touched ? "touched" : "untouched");
+}
+
+static void deferred_touched(void* context) {
+    d3dr_target_t* t = (d3dr_target_t*)context;
+    R.deferred = NULL;
+    R.perf.deferred_touched++;
+    log_unlock(1);
+    apply_sync(t, tsync_lock_touched(&t->deferred), &t->deferred_region, t->deferred_reason, t->sync.exact);
+}
+
+/* Anything else that reads or changes the target first gives a waiting Lock the picture of its time. */
+static void settle_deferred(void) {
+    if (R.deferred) page_guard_touch();
+}
+
+/* 0 leaves the Lock to the immediate path. */
+static int defer_lock(d3dr_target_t* t, tsync_access_t kind, const d3dt_rect_t* region, readback_reason_t reason,
+                      int exact) {
+    dd_surface_t* s = t->surface;
+    page_guard_result_t armed;
+    apply_sync(t, tsync_lock_deferred(&t->sync, kind, &t->deferred), region, reason, exact);
+    if (!t->deferred.acts) {
+        log_defer(s, "nothing to wait for, the CPU copy is current", 0);
+        return 1;
+    }
+    t->deferred_region = *region;
+    t->deferred_reason = reason;
+    armed = page_guard_arm(s->bits, (size_t)s->pitch * s->height, deferred_touched, t);
+    log_defer(s, page_guard_result_name(armed), armed == PAGE_GUARD_ARMED);
+    if (armed != PAGE_GUARD_ARMED) {
+        apply_sync(t, tsync_lock_touched(&t->deferred), region, reason, t->sync.exact);
+        return 1;
+    }
+    R.deferred = t;
+    R.perf.deferred_locks++;
+    return 1;
+}
+
+/* 1 when the Lock ended with its pixels untouched: nothing was read or written. */
+int d3dr_surface_unlocked(dd_surface_t* s) {
+    d3dr_target_t* t = s->target;
+    if (!t || R.deferred != t || !page_guard_disarm()) return 0;
+    R.deferred = NULL;
+    tsync_lock_untouched(&t->sync, &t->deferred);
+    R.perf.deferred_untouched++;
+    log_unlock(0);
+    return 1;
+}
+
+/* A Lock's target going away: its pages become ordinary memory again, nothing is read. */
+static void drop_deferred(const d3dr_target_t* t) {
+    if (!R.deferred || (t && R.deferred != t)) return;
+    page_guard_disarm();
+    tsync_lock_untouched(&R.deferred->sync, &R.deferred->deferred);
+    R.deferred = NULL;
+}
+
 /* Before the game touches a render target's pixels: writes still pending reach the GPU first, then
  * the CPU copy becomes the GPU picture only if this access reads it. */
 static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t access) {
     dd_surface_t* s = t->surface;
     uint32_t caller = readback_caller();
-    int reads = target_access_reads(access, s->lock_flags, caller), exact = t->sync.exact;
-    unsigned before = t->sync.valid, acts;
+    int reads = target_access_reads(access, s->lock_flags, caller), exact;
+    tsync_access_t kind = reads ? TSYNC_ACCESS_READ : TSYNC_ACCESS_NO_READ;
+    readback_reason_t reason = readback_classify(access, !will_write, g_cur_func, CALIBRATION_CALLER);
     d3dt_rect_t region = { 0, 0, (long)s->width, (long)s->height };
+    settle_deferred();
     if (R.batch_dev == t->device) flush();
     if (!target_ready(t)) return;
     if (access == CPU_ACCESS_LOCK) {
@@ -1884,10 +1898,9 @@ static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t acc
         region.bottom = s->lock_rect.bottom;
     }
     check_front(t);
-    acts = tsync_cpu_access(&t->sync, reads ? TSYNC_ACCESS_READ : TSYNC_ACCESS_NO_READ);
-    apply_sync(t, acts, &region, readback_classify(access, !will_write, g_cur_func, CALIBRATION_CALLER), exact);
-    sample_end(NULL, NULL, 0);
-    sample_begin(t, caller, access, reads, before, acts);
+    exact = t->sync.exact;
+    if (access != CPU_ACCESS_LOCK || !defer_lock(t, kind, &region, reason, exact))
+        apply_sync(t, tsync_cpu_access(&t->sync, kind), &region, reason, exact);
     R.perf.target_accesses++;
     if (will_write) {
         R.target_writer = caller;
@@ -1936,8 +1949,6 @@ void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
             add.bottom = r->bottom;
         }
         d3dt_rect_union(&s->texture_dirty, &add);
-        s->content_gen++;
-        tdiag_texture_written(s, r);
     }
 }
 
@@ -2047,15 +2058,18 @@ static void log_readback_detail(const perf_window_t* p, const char* when) {
                            readback_reason_name((readback_reason_t)r) + 9, p->readback_n[r]);
     }
     line[sizeof line - 1] = 0;
-    if (!count && !p->synthesized && !p->no_read_accesses && !p->front_copies && !p->composites) return;
+    if (!count && !p->synthesized && !p->no_read_accesses && !p->front_copies && !p->composites && !p->deferred_locks)
+        return;
     if (top)
         host_log("perf", "%s: readbacks %llu | %.1f MB | %.1f ms | top sub_%08X (%s %llu, %.1f ms) | %s | not read: "
-                 "write-only %llu, clears recreated %llu, front copies %llu", when, count,
-                 p->readback_bytes / (1024.0 * 1024.0), ms, top->caller, readback_reason_name(top->reason) + 9,
-                 top->count, top->ms, n ? line : "none", p->no_read_accesses, p->synthesized, p->front_copies);
+                 "write-only %llu, clears recreated %llu, front copies %llu | Locks waiting for a touch %llu: "
+                 "untouched %llu, touched %llu", when, count, p->readback_bytes / (1024.0 * 1024.0), ms, top->caller,
+                 readback_reason_name(top->reason) + 9, top->count, top->ms, n ? line : "none", p->no_read_accesses,
+                 p->synthesized, p->front_copies, p->deferred_locks, p->deferred_untouched, p->deferred_touched);
     else
-        host_log("perf", "%s: readbacks 0 | not read: write-only %llu, clears recreated %llu, front copies %llu", when,
-                 p->no_read_accesses, p->synthesized, p->front_copies);
+        host_log("perf", "%s: readbacks 0 | not read: write-only %llu, clears recreated %llu, front copies %llu | Locks "
+                 "waiting for a touch %llu: untouched %llu, touched %llu", when, p->no_read_accesses, p->synthesized,
+                 p->front_copies, p->deferred_locks, p->deferred_untouched, p->deferred_touched);
 }
 
 /* What hardware frames are made of: Direct3D draws versus pixels the CPU wrote into the target. */
@@ -2089,6 +2103,9 @@ static void accumulate(perf_window_t* total, const perf_window_t* p) {
     total->composited_pixels += p->composited_pixels;
     total->composited_black += p->composited_black;
     total->uploads += p->uploads;
+    total->deferred_locks += p->deferred_locks;
+    total->deferred_untouched += p->deferred_untouched;
+    total->deferred_touched += p->deferred_touched;
     for (int i = 0; i < MAX_READBACK_CALLERS; i++) {
         const readback_caller_t* c = &p->callers[i];
         readback_caller_t* slot = c->count ? caller_slot(total->callers, c->caller, c->reason) : NULL;
@@ -2112,9 +2129,7 @@ static void log_perf_window(double seconds) {
     if (R.hardware) {
         log_readback_detail(p, "last 5 s");
         log_hybrid(p, "last 5 s");
-        tdiag_report(frames);
     }
-    terrain_probe_report(frames);
     accumulate(&R.total, p);
     memset(p, 0, sizeof *p);
 }
@@ -2169,6 +2184,7 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
     int exact;
     double now;
     if (!R.hardware) return 0;
+    settle_deferred();
     for (dd_surface_t* m = front->next; m && m != front; m = m->next)
         if (m->target) t = m->target;
     if (!t || !t->device || !d || !d->window || !target_ready(t)) return 0;
@@ -2181,9 +2197,6 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
         return 0;
     }
     apply_sync(t, acts, NULL, READBACK_OTHER, exact);
-    sample_end(NULL, NULL, 0);
-    census(t);
-    tdiag_frame_end(gameplay_now(), now_seconds());
     resolved_view(t);
     keep_last_frame(t);
     present_view(d->window, t->single_srv, t->width, t->height, R.point_clamp, &d->gamma, vsync);
@@ -2192,7 +2205,6 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
     tsync_flipped(&t->sync);
     t->frame_started = 0;
     memset(&t->dirty, 0, sizeof t->dirty);
-    R.frame_cpu_pixels = R.frame_cpu_black = 0;
     selfmod_now = selfmod_entries();
     R.selfmod_hw += selfmod_now - R.selfmod_mark;
     R.selfmod_mark = selfmod_now;

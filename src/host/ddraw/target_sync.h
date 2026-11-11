@@ -44,6 +44,21 @@ typedef struct {
 void tsync_attach(tsync_t* t);
 /* Before Lock, GetDC or Blt: what makes the CPU copy usable without losing pending writes. */
 unsigned tsync_cpu_access(tsync_t* t, tsync_access_t access);
+/* The part of tsync_cpu_access that cannot wait: pending CPU writes reach the GPU target. */
+unsigned tsync_cpu_flush(tsync_t* t);
+
+/* A Lock whose pixels are made usable only when the game first touches them. A Lock the game never
+ * touches (a wait for the GPU) then costs nothing and changes nothing. */
+typedef struct {
+    unsigned acts;     /* waiting for the first touch */
+    tsync_t untouched; /* the state if no touch comes */
+} tsync_deferred_t;
+
+/* Returns what to perform now; d->acts is what the first touch performs, 0 when nothing waits. */
+unsigned tsync_lock_deferred(tsync_t* t, tsync_access_t access, tsync_deferred_t* d);
+unsigned tsync_lock_touched(tsync_deferred_t* d);
+/* Unlock with no touch: the access did not happen, so there is no CPU write to record. */
+void tsync_lock_untouched(tsync_t* t, tsync_deferred_t* d);
 /* Unlock, ReleaseDC, a Blt into the surface. */
 void tsync_cpu_wrote(tsync_t* t);
 /* Before a draw or a partial clear of the GPU target. */

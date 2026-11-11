@@ -4,6 +4,7 @@
  * so no window, device or game is involved. Build: CMake target com_tests (docs/BUILD.md, "Headless tests").
  */
 #include "ddraw/d3d_legacy.h"
+#include "ddraw/page_guard.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -52,10 +53,30 @@ HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD f
     s_clears++;
     return DD_OK;
 }
+/* The renderer's deferred Lock on the guard, counting what it would read back. */
+static dd_surface_t* s_guarded;
+static int s_readbacks, s_touched, s_untouched, s_immediate;
+
+static void guard_touched(void* context) {
+    (void)context;
+    s_touched++;
+    s_readbacks++;
+}
+
 void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t access) {
-    (void)s; (void)will_write; (void)access;
+    (void)will_write;
+    if (s != s_guarded || access != CPU_ACCESS_LOCK) return;
+    if (page_guard_arm(s->bits, (size_t)s->pitch * s->height, guard_touched, s) != PAGE_GUARD_ARMED) {
+        s_immediate++;
+        s_readbacks++;
+    }
 }
 void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) { (void)s; (void)r; }
+int d3dr_surface_unlocked(dd_surface_t* s) {
+    if (s != s_guarded || !page_guard_disarm()) return 0;
+    s_untouched++;
+    return 1;
+}
 int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) { (void)s; (void)r; (void)color; return 0; }
 int d3dr_flip(dd_surface_t* front, int vsync) { (void)front; (void)vsync; return 0; }
 void d3dr_surface_freed(dd_surface_t* s) { (void)s; }
@@ -108,6 +129,68 @@ static IDirectDrawSurface4* make_surface(IDirectDraw4* dd4, DWORD caps, DWORD w,
     return s;
 }
 
+/* The game's 800x600 RGB565 flip chain, its back buffer locked as sub_0060E590 and the span rasterisers do. */
+static void test_back_buffer_lock_waits_for_touch(IDirectDraw4* dd4) {
+    DDSURFACEDESC2 desc, lock;
+    DDSCAPS2 caps;
+    IDirectDrawSurface4 *front = NULL, *back = NULL;
+    volatile WORD* pixels;
+    WORD seen;
+    HDC dc;
+    memset(&desc, 0, sizeof desc);
+    desc.dwSize = sizeof desc;
+    desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
+    desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP | DDSCAPS_COMPLEX | DDSCAPS_3DDEVICE;
+    desc.dwBackBufferCount = 1;
+    /* Any existing window satisfies exclusive mode; the window host is stubbed, nothing is shown. */
+    CHECK(SUCCEEDED(dd4->lpVtbl->SetCooperativeLevel(dd4, GetDesktopWindow(), DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN)));
+    CHECK(SUCCEEDED(dd4->lpVtbl->SetDisplayMode(dd4, 800, 600, 16, 0, 0)));
+    CHECK(SUCCEEDED(dd4->lpVtbl->CreateSurface(dd4, &desc, &front, NULL)));
+    memset(&caps, 0, sizeof caps);
+    caps.dwCaps = DDSCAPS_BACKBUFFER;
+    CHECK(front && SUCCEEDED(front->lpVtbl->GetAttachedSurface(front, &caps, &back)));
+    if (!back) return;
+    s_guarded = dd_surface_from((IUnknown*)back);
+    memset(&lock, 0, sizeof lock);
+    lock.dwSize = sizeof lock;
+
+    CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
+    CHECK(lock.dwWidth == 800 && lock.dwHeight == 600 && lock.lPitch == 1600);
+    CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
+    CHECK(s_immediate == 0 && s_readbacks == 0 && s_untouched == 1 && s_touched == 0);
+
+    CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
+    pixels = (volatile WORD*)lock.lpSurface;
+    seen = pixels[600 * 800 - 1];
+    CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
+    CHECK(seen == 0 && s_readbacks == 1 && s_touched == 1 && s_untouched == 1);
+
+    CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
+    pixels = (volatile WORD*)lock.lpSurface;
+    pixels[2 * 800 + 3] = 0xF800;
+    CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
+    CHECK(s_readbacks == 2 && s_touched == 2 && s_untouched == 1);
+
+    CHECK(SUCCEEDED(back->lpVtbl->GetDC(back, &dc)));
+    CHECK(GetPixel(dc, 3, 2) == RGB(255, 0, 0));
+    SetPixelV(dc, 7, 5, RGB(0, 0, 255));
+    CHECK(SUCCEEDED(back->lpVtbl->ReleaseDC(back, dc)));
+    CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
+    CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
+    CHECK(s_untouched == 2 && s_readbacks == 2);
+    CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
+    pixels = (volatile WORD*)lock.lpSurface;
+    CHECK(pixels[5 * 800 + 7] == 0x001F && pixels[2 * 800 + 3] == 0xF800);
+    CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
+    CHECK(s_touched == 3 && !page_guard_armed());
+
+    s_guarded = NULL;
+    back->lpVtbl->Release(back);
+    CHECK(front->lpVtbl->Release(front) == 0);
+    CHECK(SUCCEEDED(dd4->lpVtbl->RestoreDisplayMode(dd4)));
+    CHECK(SUCCEEDED(dd4->lpVtbl->SetCooperativeLevel(dd4, NULL, DDSCL_NORMAL)));
+}
+
 int main(void) {
     IDirectDraw* dd = NULL;
     IDirectDraw4* dd4 = NULL;
@@ -135,6 +218,7 @@ int main(void) {
     refs = d3d->lpVtbl->AddRef(d3d);
     CHECK(refs == 4);
     CHECK(d3d->lpVtbl->Release(d3d) == 3);
+    test_back_buffer_lock_waits_for_touch(dd4);
 
     CHECK(SUCCEEDED(d3d->lpVtbl->EnumDevices(d3d, on_device, NULL)) && s_devices == 1);
     memset(&zpf, 0, sizeof zpf);

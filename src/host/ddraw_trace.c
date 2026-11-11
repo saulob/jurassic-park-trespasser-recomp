@@ -117,7 +117,7 @@ typedef struct {
 
 typedef struct {
     uint32_t ptr;
-    unsigned char primary, desc_logged, lock_logged;
+    unsigned char primary, desc_logged;
 } surface_t;
 
 static entry_t s_entries[ENTRY_SLOTS];
@@ -133,8 +133,6 @@ static uint32_t s_last_hr, s_last_from;
 static int s_last_returned;
 
 static int s_failure_lines, s_detail_lines, s_surface_lines;
-static uint32_t s_mode_w, s_mode_h, s_mode_bpp;
-static int s_bpp_mismatch_reported;
 static unsigned long s_presents, s_locks, s_unlocks, s_blts, s_flips, s_failures;
 
 static const char* method_name(const iface_t* f, int slot) {
@@ -342,35 +340,6 @@ static int failed(uint32_t hr) { return (hr & 0x80000000u) != 0; }
 
 static int detail_allowed(void) { return s_detail_lines++ < DETAIL_LINE_LIMIT; }
 
-/* DEBUG_SAULO: bring-up evidence for the 16 bpp requirement; remove once the screen mode is settled. */
-static HRESULT WINAPI count_mode(LPDDSURFACEDESC d, LPVOID context) {
-    uint32_t* c = (uint32_t*)context;
-    if (d->ddpfPixelFormat.dwRGBBitCount == c[2]) {
-        c[3]++;
-        if (d->dwWidth == c[0] && d->dwHeight == c[1]) c[4] = 1;
-    }
-    return DDENUMRET_OK;
-}
-
-static void report_modes_after_failure(uint32_t ddraw) {
-    uint32_t c[5] = { s_mode_w, s_mode_h, s_mode_bpp, 0, 0 };
-    LPDIRECTDRAW dd = (LPDIRECTDRAW)(uintptr_t)ddraw;
-    char buf[32];
-    uint32_t hr = (uint32_t)dd->lpVtbl->EnumDisplayModes(dd, 0, NULL, c, count_mode);
-    host_log("ddraw", "DEBUG_SAULO: EnumDisplayModes -> %s: %u modes at %u bpp, %ux%u %s",
-             ddraw_hresult_text(hr, buf, sizeof buf), c[3], s_mode_bpp, s_mode_w, s_mode_h, c[4] ? "listed" : "not listed");
-}
-
-static void check_screen_depth(const DDSURFACEDESC* d) {
-    DWORD caps = (d->dwFlags & DDSD_CAPS) ? d->ddsCaps.dwCaps : 0;
-    if (s_bpp_mismatch_reported || !s_mode_bpp || !(d->dwFlags & DDSD_PIXELFORMAT)) return;
-    if (caps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER)) return;
-    if (d->ddpfPixelFormat.dwRGBBitCount == s_mode_bpp) return;
-    s_bpp_mismatch_reported = 1;
-    host_log("ddraw", "DEBUG_SAULO: screen surface is %lu bpp after SetDisplayMode asked for %u bpp; the renderer "
-             "factory at 0x0055EF00 accepts only a 16 bpp screen raster", d->ddpfPixelFormat.dwRGBBitCount, s_mode_bpp);
-}
-
 static void present(const entry_t* e, uint32_t target, uint32_t caller) {
     char used[1024];
     size_t len = 0;
@@ -463,16 +432,12 @@ static int report_display_mode(const uint32_t* a, uint32_t hr, const char* hrs) 
 }
 
 static int report_set_mode(const entry_t* e, const uint32_t* a, uint32_t hr, const char* hrs) {
-    s_mode_w = a[1];
-    s_mode_h = a[2];
-    s_mode_bpp = a[3];
-    s_bpp_mismatch_reported = 0;
+    (void)hr;
     if (e->role == R_SET_MODE5)
         host_log("ddraw", "%s::SetDisplayMode %ux%ux%u, refresh %u, flags 0x%X -> %s", e->iface->name, a[1], a[2],
                  a[3], a[4], a[5], hrs);
     else
         host_log("ddraw", "%s::SetDisplayMode %ux%ux%u -> %s", e->iface->name, a[1], a[2], a[3], hrs);
-    if (failed(hr)) report_modes_after_failure(a[0]);
     return 1;
 }
 
@@ -500,26 +465,12 @@ static int report_surface_desc(const uint32_t* a, uint32_t hr) {
     s->desc_logged = 1;
     desc_text(d, text, sizeof text);
     host_log("ddraw", "surface 0x%08X%s: %s", a[0], s->primary ? " (primary)" : "", text);
-    check_screen_depth(d);
     return 1;
 }
 
 static int report_lock(const uint32_t* a, uint32_t hr) {
-    const DDSURFACEDESC* d = surface_desc(a[2]);
-    surface_t* s;
-    char format[96] = "";
     s_locks++;
-    if (failed(hr) || !d) return 0;
-    s = surface(a[0], 1);
-    if (!s || s->lock_logged) return 1;
-    /* DEBUG_SAULO: one line per surface, for the first test runs only. */
-    s->lock_logged = 1;
-    if (d->dwFlags & DDSD_PIXELFORMAT) pixel_format_text(&d->ddpfPixelFormat, format, sizeof format);
-    host_log("ddraw", "DEBUG_SAULO: first Lock of surface 0x%08X%s: %lux%lu, pitch %ld, memory 0x%08X, flags 0x%X%s%s",
-             a[0], s->primary ? " (primary)" : "", d->dwWidth, d->dwHeight, d->lPitch,
-             (uint32_t)(uintptr_t)d->lpSurface, a[3], format[0] ? ", " : "", format);
-    check_screen_depth(d);
-    return 1;
+    return !failed(hr) && surface_desc(a[2]);
 }
 
 static int report_details(const entry_t* e, const uint32_t* a, uint32_t hr, uint32_t caller) {
@@ -544,7 +495,6 @@ static int report_details(const entry_t* e, const uint32_t* a, uint32_t hr, uint
     case R_RESTORE_MODE:
         if (!detail_allowed()) return 0;
         host_log("ddraw", "%s::RestoreDisplayMode -> %s", e->iface->name, hrs);
-        s_mode_bpp = 0;
         return 1;
     case R_CREATE_SURFACE: return report_create_surface(e, a, hr, hrs, caller);
     case R_CREATE_CLIPPER:

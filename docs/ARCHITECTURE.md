@@ -189,6 +189,15 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   CPU made (menus, videos) the front buffer holds the GPU picture and is copied instead. A target
   the GPU has never drawn (a new device on a surface the game drew) is uploaded whole at its first
   draw and presented by DirectDraw until then. A colour-fill `Blt` of the target is a GPU clear.
+- A Lock of a target whose CPU copy owns its pages (the DIB) defers all of that to the first touch:
+  the pages are made inaccessible, the fault of the first access performs the readback, capture or
+  recreation, and an Unlock with no touch restores the previous state. The game's Lock/Unlock pairs
+  that only wait for the GPU (`FlushBatch`, the hardware-water upload in `0x0060E590`) therefore read
+  nothing back. GetDC and Blt still sync at once: GDI and the host access the pixels directly.
+- `guest_overrides.c` replaces two hot lifted functions through their incremental-link thunks with
+  host kernels (`water_kernels.c`): the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step
+  (`0x00638670`). `tests/water_tests.c` runs them against the lifted C copied out of `src/recomp/gen`;
+  `--lifted-water` keeps the lifted functions.
 - Texture formats come from the whole `DDPIXELFORMAT`: RGB565, X/A RGB1555, X/A RGB4444, X/A RGB8888
   and palettised 8-bit (converted through the surface's palette, re-uploaded when it changes).
   Anything else is logged once per layout (`unknown texture format`) and drawn untextured; the draw

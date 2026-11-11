@@ -54,6 +54,8 @@ struct dd_surface {
     DDPIXELFORMAT format;
     BYTE* bits;
     HBITMAP dib;
+    HANDLE section;
+    BYTE* view;
     HDC dc;
     HGDIOBJ dc_previous;
     int dc_out;
@@ -73,9 +75,6 @@ struct dd_surface {
     int front_from_gpu;
     unsigned long cpu_writes;
     int watched;
-    /* DEBUG_SAULO: diagnostics of the terrain and opaque-object batches */
-    int terrain_texture, water_texture;
-    unsigned long content_gen, uploaded_gen;
 };
 
 struct dd_clipper {

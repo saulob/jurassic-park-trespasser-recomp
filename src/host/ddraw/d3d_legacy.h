@@ -68,6 +68,7 @@ int d3dr_texture_format_known(const DDPIXELFORMAT* pf);
 
 void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t access);
 void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r);
+int d3dr_surface_unlocked(dd_surface_t* s);
 int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color);
 int d3dr_flip(dd_surface_t* front, int vsync);
 void d3dr_frame_presented(double present_ms);

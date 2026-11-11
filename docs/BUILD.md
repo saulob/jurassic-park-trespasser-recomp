@@ -130,13 +130,14 @@ game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `
 
 ## Headless tests
 
-Two small programs check the host without a window, a GPU device, the game or audio; they are not
+Three small programs check the host without a window, a GPU device, the game or audio; they are not
 part of the default build:
 
 ```powershell
-ninja -C build\cmake\msvc-x86 host_tests com_tests
+ninja -C build\cmake\msvc-x86 host_tests com_tests water_tests
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation
 .\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
+.\build\cmake\msvc-x86\water_tests.exe  # host water kernels against the lifted functions they replace, byte for byte
 ```
 
 The x64 groundwork has its own, from an x64 developer prompt (or after `build.ps1 -Arch x64`):

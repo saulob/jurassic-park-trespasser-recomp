@@ -8,13 +8,18 @@ void tsync_attach(tsync_t* t) {
     t->stale_reference = 1;
 }
 
-unsigned tsync_cpu_access(tsync_t* t, tsync_access_t access) {
+unsigned tsync_cpu_flush(tsync_t* t) {
     unsigned acts = 0;
     if (t->pending && (t->valid & TSYNC_GPU)) {
         acts |= TSYNC_COMPOSITE;
         t->uniform = 0;
     }
     t->pending = 0;
+    return acts;
+}
+
+unsigned tsync_cpu_access(tsync_t* t, tsync_access_t access) {
+    unsigned acts = tsync_cpu_flush(t);
     if (t->valid & TSYNC_CPU) return acts;
     if (t->uniform) {
         acts |= TSYNC_SYNTHESIZE;
@@ -32,6 +37,24 @@ unsigned tsync_cpu_access(tsync_t* t, tsync_access_t access) {
     t->stale_reference = 0;
     t->exact = 1;
     return acts;
+}
+
+unsigned tsync_lock_deferred(tsync_t* t, tsync_access_t access, tsync_deferred_t* d) {
+    unsigned now = tsync_cpu_flush(t);
+    d->untouched = *t;
+    d->acts = tsync_cpu_access(t, access);
+    return now;
+}
+
+unsigned tsync_lock_touched(tsync_deferred_t* d) {
+    unsigned acts = d->acts;
+    d->acts = 0;
+    return acts;
+}
+
+void tsync_lock_untouched(tsync_t* t, tsync_deferred_t* d) {
+    *t = d->untouched;
+    d->acts = 0;
 }
 
 void tsync_cpu_wrote(tsync_t* t) { t->pending = 1; }

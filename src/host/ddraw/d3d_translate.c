@@ -331,39 +331,37 @@ uint16_t d3dt_bgra_to_rgb565(uint32_t v) {
     return (uint16_t)((((r * 31 + 127) / 255) << 11) | (((g * 63 + 127) / 255) << 5) | ((b * 31 + 127) / 255));
 }
 
-static uint32_t texel(int format, const uint8_t* p) {
-    uint32_t v = format == D3DT_FMT_XRGB8888 || format == D3DT_FMT_ARGB8888 ? *(const uint32_t*)p : *(const uint16_t*)p;
-    switch (format) {
-    case D3DT_FMT_RGB565: return d3dt_rgb565_to_bgra((uint16_t)v);
-    case D3DT_FMT_XRGB1555:
-    case D3DT_FMT_ARGB1555: {
-        uint32_t a = format == D3DT_FMT_XRGB1555 || (v & 0x8000) ? 0xFF000000u : 0;
-        return a | (expand5((v >> 10) & 0x1F) << 16) | (expand5((v >> 5) & 0x1F) << 8) | expand5(v & 0x1F);
-    }
-    case D3DT_FMT_ARGB4444:
-        return (expand4((v >> 12) & 0xF) << 24) | (expand4((v >> 8) & 0xF) << 16) | (expand4((v >> 4) & 0xF) << 8) |
-               expand4(v & 0xF);
-    case D3DT_FMT_XRGB4444:
-        return 0xFF000000u | (expand4((v >> 8) & 0xF) << 16) | (expand4((v >> 4) & 0xF) << 8) | expand4(v & 0xF);
-    case D3DT_FMT_XRGB8888: return v | 0xFF000000u;
-    case D3DT_FMT_ARGB8888: return v;
-    default: return 0;
-    }
+static uint32_t xrgb1555(uint32_t v) {
+    return 0xFF000000u | (expand5((v >> 10) & 0x1F) << 16) | (expand5((v >> 5) & 0x1F) << 8) | expand5(v & 0x1F);
 }
+
+static uint32_t argb1555(uint32_t v) { return (v & 0x8000) ? xrgb1555(v) : xrgb1555(v) & 0x00FFFFFFu; }
+
+static uint32_t argb4444(uint32_t v) {
+    return (expand4((v >> 12) & 0xF) << 24) | (expand4((v >> 8) & 0xF) << 16) | (expand4((v >> 4) & 0xF) << 8) |
+           expand4(v & 0xF);
+}
+
+static uint32_t xrgb4444(uint32_t v) { return argb4444(v) | 0xFF000000u; }
+static uint32_t rgb565(uint32_t v) { return d3dt_rgb565_to_bgra((uint16_t)v); }
+static uint32_t xrgb8888(uint32_t v) { return v | 0xFF000000u; }
+static uint32_t argb8888(uint32_t v) { return v; }
+
+/* One loop per format, so a whole texture row converts without a per-texel switch. */
+#define CONVERT_ROW(type, convert)                                                                                         for (unsigned x = 0; x < count; x++) {                                                                                     uint32_t raw = ((const type*)src)[x], c = convert(raw);                                                                dst[x] = keyed && raw >= key_low && raw <= key_high ? c & 0x00FFFFFFu : c;                                         }
 
 void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
                       uint32_t key_high) {
-    const uint8_t* p = (const uint8_t*)src;
-    int bytes = d3dt_format_bytes(format);
-    for (unsigned x = 0; x < count; x++, p += bytes) {
-        if (keyed) {
-            uint32_t raw = bytes == 4 ? *(const uint32_t*)p : *(const uint16_t*)p;
-            if (raw >= key_low && raw <= key_high) {
-                dst[x] = texel(format, p) & 0x00FFFFFFu;
-                continue;
-            }
-        }
-        dst[x] = texel(format, p);
+    switch (format) {
+    case D3DT_FMT_RGB565: CONVERT_ROW(uint16_t, rgb565) break;
+    case D3DT_FMT_XRGB1555: CONVERT_ROW(uint16_t, xrgb1555) break;
+    case D3DT_FMT_ARGB1555: CONVERT_ROW(uint16_t, argb1555) break;
+    case D3DT_FMT_ARGB4444: CONVERT_ROW(uint16_t, argb4444) break;
+    case D3DT_FMT_XRGB4444: CONVERT_ROW(uint16_t, xrgb4444) break;
+    case D3DT_FMT_XRGB8888: CONVERT_ROW(uint32_t, xrgb8888) break;
+    case D3DT_FMT_ARGB8888: CONVERT_ROW(uint32_t, argb8888) break;
+    default:
+        for (unsigned x = 0; x < count; x++) dst[x] = 0;
     }
 }
 
