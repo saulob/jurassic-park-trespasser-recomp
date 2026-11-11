@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
-  Builds trespasser.exe incrementally (MSVC x86, CMake + Ninja). -Run starts the game after a successful build.
+  Builds trespasser.exe incrementally (MSVC, CMake + Ninja). -Run starts the game after a successful build.
 .DESCRIPTION
   Reuses what is current and regenerates only what is stale, in this order: the pcrecomp checkout, the game
   files extracted from the disc image, the analysis (function catalog, RTTI), the lifted C (src\recomp\gen) and the
   CMake configuration. Each generated stage records a digest of its inputs; a stage runs only when that digest or
-  its outputs changed. The host is a 32-bit process on pcrecomp's native32 runtime, so the toolchain is always the
-  x64-hosted x86 MSVC, never CLANG64 or x64.
-  Development configuration: RelWithDebInfo in build\cmake\msvc-x86; -Config Release uses build\cmake\msvc-x86-release.
+  its outputs changed. The playable host is a 32-bit process on pcrecomp's native32 runtime (-Arch x86, the
+  default, with the x64-hosted x86 MSVC). -Arch x64 builds the 64-bit host groundwork only (docs\X64_MIGRATION.md):
+  it cannot run the game yet, so -Run is refused with it.
+  Development configuration: RelWithDebInfo in build\cmake\msvc-<arch>; -Config Release uses build\cmake\msvc-<arch>-release.
   Each run writes one log, build\logs\trespasser_NNN.log (the next free number): the build and, with -Run, the
   game's own output after it and its exit code. The terminal shows progress and problems only.
 .PARAMETER Run
@@ -18,6 +19,8 @@
   With -Run, shows the runtime output in the terminal as well (it is always in the log).
 .PARAMETER Clean
   Deletes the configuration's build folder first. The game, the disc image, analysis, lifted C and logs are kept.
+.PARAMETER Arch
+  x86 (default): the playable 32-bit host. x64: the 64-bit host groundwork and its headless tests, never run.
 .PARAMETER Config
   RelWithDebInfo (default) or Release.
 .PARAMETER GenOpt
@@ -35,17 +38,22 @@
   Forces the analysis stage (about 15 minutes), and the lift if its output changed.
 .PARAMETER Relift
   Forces the lift stage (about 1 minute).
-.PARAMETER LoaderArgs
-  Extra arguments for trespasser.exe (with -Run), for example --watchdog 60 or --native-trace.
+.PARAMETER GameArgs
+  Arguments for trespasser.exe (with -Run), in order, after --run and --log-file:
+  -GameArgs "--renderer","d3d11". Unnamed trailing tokens are collected after them.
 .EXAMPLE
   .\tools\build.ps1
   .\tools\build.ps1 -Run
   .\tools\build.ps1 -Run -VerboseRuntime
-  .\tools\build.ps1 -GenOpt /Od -Run --watchdog 120
+  .\tools\build.ps1 -GenOpt /Od -Run -GameArgs "--renderer","d3d11"
+  .\tools\build.ps1 -GenOpt /Od -Run -GameArgs "--watchdog","120"
+  .\tools\build.ps1 -Arch x86 -GenOpt /Od -Run
+  .\tools\build.ps1 -Arch x64 -GenOpt /Od
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [switch]$Run,
+    [ValidateSet('x86', 'x64')][string]$Arch = 'x86',
     [switch]$VerboseRuntime,
     [switch]$Clean,
     [ValidateSet('RelWithDebInfo', 'Release')][string]$Config = 'RelWithDebInfo',
@@ -56,6 +64,7 @@ param(
     [string]$Iso = '',
     [switch]$Reanalyze,
     [switch]$Relift,
+    [string[]]$GameArgs = @(),
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$LoaderArgs = @()
 )
 
@@ -72,12 +81,16 @@ $hostExitMeaning = @{
     3 = 'fault in lifted or SelfMod code'
     4 = 'watchdog expired'
     5 = 'indirect jump or call to an address with no lifted entry'
+    6 = 'the game reported that it did not finish starting up (WinMain returned 0)'
+    7 = 'the game exited with an error code of its own'
+    8 = 'the game did not leave its loops within 60 s of a close request'
 }
 
-if (-not $BuildDir) { $BuildDir = if ($Config -eq 'Release') { 'build\cmake\msvc-x86-release' } else { 'build\cmake\msvc-x86' } }
+if (-not $BuildDir) { $BuildDir = if ($Config -eq 'Release') { "build\cmake\msvc-$Arch-release" } else { "build\cmake\msvc-$Arch" } }
 $buildDir = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 $buildDir = [IO.Path]::GetFullPath($buildDir)
-$hostExe = Join-Path $buildDir 'trespasser.exe'
+[string[]]$hostTargets = if ($Arch -eq 'x64') { 'trespasser_x64_probe', 'x64_tests' } else { 'trespasser' }
+$hostExe = Join-Path $buildDir "$($hostTargets[0]).exe"
 
 trap { Stop-OnError $_ }
 
@@ -172,6 +185,12 @@ Write-Host "Log: $($script:RunLogPath)"
 Add-RunLog "command: tools\build.ps1 $(@($PSBoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value -join ' ')" }) -join ' ')"
 Add-RunLog "repository $root, build folder $buildDir, configuration $Config"
 
+if ($Run -and $Arch -eq 'x64') {
+    Write-Warn 'The x64 host cannot run the game yet (docs\X64_MIGRATION.md lists what is missing); -Run is for -Arch x86.'
+    Close-RunLog
+    exit 1
+}
+
 $running = @(Get-RunningHost)
 if ($running.Count -gt 0) {
     Write-Warn "trespasser.exe is already running (PID $($running.Id -join ', ')); it cannot be rebuilt or started again."
@@ -192,8 +211,8 @@ if ($Clean) {
     }
 }
 
-$msvc = Enter-MsvcX86
-Write-Step "Toolchain MSVC x86 ($msvc), $Config"
+$msvc = Enter-Msvc $Arch
+Write-Step "Toolchain MSVC $Arch ($msvc), $Config"
 
 $problem = Get-PcrecompProblem
 if ($problem) {
@@ -271,7 +290,7 @@ if ($problem) {
 Write-Step 'Building incrementally (the first build compiles about 1.5 million lines of C and takes a while)'
 $ninjaArgs = @('-C', $buildDir)
 if ($Jobs -gt 0) { $ninjaArgs += @('-j', $Jobs) }
-$ninjaArgs += 'trespasser'
+$ninjaArgs += $hostTargets
 $buildCode = Invoke-Logged 'ninja' $ninjaArgs { param($l) Show-Progress $l }
 if ($buildCode -ne 0) {
     Show-LogTail
@@ -289,6 +308,7 @@ if (-not $Run) {
 
 # One log per run: the game appends to this one, so options that would make it open another are dropped.
 $forwarded = @()
+$LoaderArgs = @($GameArgs) + @($LoaderArgs)
 for ($i = 0; $i -lt $LoaderArgs.Count; $i++) {
     if ($LoaderArgs[$i] -eq '--') {
         $forwarded += $LoaderArgs[$i..($LoaderArgs.Count - 1)]
@@ -308,7 +328,10 @@ $startError = $null
 
 Write-Step 'Starting trespasser.exe --run'
 if ($quiet) { Write-Host 'Run output goes to the log only; -VerboseRuntime shows it here.' }
-Add-RunLog "> $hostExe $($runArguments -join ' ')"
+$quotedArguments = @($runArguments | ForEach-Object {
+    if ($_ -eq '' -or $_ -match '[\s"]') { '"' + ($_ -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"' } else { $_ }
+})
+Add-RunLog "> $hostExe $($quotedArguments -join ' ')"
 Add-RunLog '--- trespasser.exe appends to this file from here until it exits ---'
 Suspend-RunLog
 Push-Location $root
@@ -316,7 +339,6 @@ try {
     if ($quiet) {
         # The host echoes its log to the stderr it inherits; NUL keeps that out of the terminal.
         # Start-Process rejects the same string for both redirections, so stderr uses the device path form of NUL.
-        $quotedArguments = @($runArguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } })
         $process = Start-Process -FilePath $hostExe -ArgumentList $quotedArguments -NoNewWindow -PassThru `
             -RedirectStandardOutput 'NUL' -RedirectStandardError '\\.\NUL'
         $null = $process.Handle # keeps the exit code readable after the process ends

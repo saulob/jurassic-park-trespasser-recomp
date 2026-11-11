@@ -3,7 +3,7 @@
  * memory, in the format the game asked for (RGB565 unless it named another). The primary is the
  * front of the flip chain; Flip exchanges buffers and every change to the front is presented.
  */
-#include "ddraw_compat.h"
+#include "d3d_legacy.h"
 #include "host.h"
 
 #include <stdlib.h>
@@ -25,7 +25,37 @@ int dd_is_surface_face(const void* iface) {
     return vtbl == &dd_surface1_vtbl || vtbl == &dd_surface2_vtbl || vtbl == &dd_surface3_vtbl || vtbl == &dd_surface4_vtbl;
 }
 
-static dd_surface_t* surface_from(void* iface) { return dd_is_surface_face(iface) ? DD_OWNER(dd_surface_t, iface) : NULL; }
+dd_surface_t* dd_surface_from(void* iface) { return dd_is_surface_face(iface) ? DD_OWNER(dd_surface_t, iface) : NULL; }
+
+#define surface_from dd_surface_from
+
+int dd_surface_is_zbuffer(const dd_surface_t* s) { return (s->caps & DDSCAPS_ZBUFFER) != 0; }
+
+static int pixel_bytes(const dd_surface_t* s) {
+    if (dd_surface_is_zbuffer(s)) return s->format.dwZBufferBitDepth > 16 ? 4 : 2;
+    return dd_format_bytes(&s->format);
+}
+
+/* Textures and z-buffers can be numerous and never need GDI until GetDC, so they start in plain memory.
+ * Texture memory is write-watched, so the renderer sees writes that no Unlock announced. */
+static int allocate_heap_pixels(dd_surface_t* s) {
+    size_t bytes;
+    s->pitch = (LONG)(((s->width * (DWORD)pixel_bytes(s)) + 3) & ~3u);
+    bytes = (size_t)s->pitch * s->height;
+    if (s->caps & DDSCAPS_TEXTURE)
+        s->heap_bits = (BYTE*)VirtualAlloc(NULL, bytes, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE);
+    s->watched = s->heap_bits != NULL;
+    if (!s->heap_bits) s->heap_bits = (BYTE*)calloc(bytes, 1);
+    s->bits = s->heap_bits;
+    return s->bits != NULL;
+}
+
+static void free_heap_pixels(dd_surface_t* s) {
+    if (s->watched) VirtualFree(s->heap_bits, 0, MEM_RELEASE);
+    else free(s->heap_bits);
+    s->heap_bits = NULL;
+    s->watched = 0;
+}
 
 static int allocate_pixels(dd_surface_t* s) {
     struct {
@@ -50,6 +80,10 @@ static int allocate_pixels(dd_surface_t* s) {
     }
     s->dib = CreateDIBSection(NULL, (BITMAPINFO*)&info, DIB_RGB_COLORS, &bits, NULL, 0);
     if (!s->dib || !bits) return 0;
+    if (s->heap_bits) {
+        memcpy(bits, s->heap_bits, (size_t)s->pitch * s->height);
+        free_heap_pixels(s);
+    }
     s->bits = (BYTE*)bits;
     s->pitch = (LONG)(((s->width * s->format.dwRGBBitCount + 31) / 32) * 4);
     return 1;
@@ -57,6 +91,11 @@ static int allocate_pixels(dd_surface_t* s) {
 
 static void free_surface(dd_surface_t* s) {
     dd_device_t* d = s->device;
+    if (s->locked) InterlockedDecrement(&dd_census.locks);
+    if (s->dc_out) InterlockedDecrement(&dd_census.dcs);
+    d3dr_surface_freed(s);
+    if (s->zbuffer) dd_surface_release(s->zbuffer);
+    free_heap_pixels(s);
     if (s->clipper) dd_clipper_release(s->clipper);
     if (s->palette) dd_palette_release(s->palette);
     if (s->dc) {
@@ -81,13 +120,14 @@ static dd_surface_t* new_surface(dd_device_t* d, DWORD width, DWORD height, cons
     s->s2.version = 2;
     s->s3.version = 3;
     s->s4.version = 4;
+    d3d_surface_init_texture_face(s);
     s->device = d;
     s->width = width;
     s->height = height;
     s->format = *format;
     s->caps = caps;
     dd_surface_added(d);
-    if (!allocate_pixels(s)) {
+    if (!((caps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER)) ? allocate_heap_pixels(s) : allocate_pixels(s))) {
         free_surface(s);
         return NULL;
     }
@@ -101,6 +141,7 @@ void dd_present(dd_surface_t* front, int vsync) {
     RECT source = { 0, 0, (LONG)front->width, (LONG)front->height };
     HWND window = d->window;
     if (!is_front(front) || front->lost) return;
+    d3dr_surface_cpu_access(front, 0, CPU_ACCESS_FRONT);
     if (!((d->coop & DDSCL_FULLSCREEN) && d->mode_set)) {
         RECT client;
         POINT origin = { 0, 0 };
@@ -164,6 +205,26 @@ static void destroy_root(dd_surface_t* root) {
     free_surface(root);
 }
 
+/* Once: what the game's textures look like, and whether it asks for mip levels (only the top level
+ * is emulated). */
+static void note_texture_request(const DDSURFACEDESC* desc, DWORD caps, const dd_surface_t* s) {
+    static int first_logged, mips_logged;
+    DWORD levels = (desc->dwFlags & DDSD_MIPMAPCOUNT) ? desc->dwMipMapCount : 1;
+    if (!first_logged) {
+        first_logged = 1;
+        dd_log("first texture surface: %lux%lu, caps 0x%08lX, %lu bpp %lX/%lX/%lX/%lX, %s memory%s, %lu mip level%s",
+               s->width, s->height, caps, s->format.dwRGBBitCount, s->format.dwRBitMask, s->format.dwGBitMask,
+               s->format.dwBBitMask, (s->format.dwFlags & DDPF_ALPHAPIXELS) ? s->format.dwRGBAlphaBitMask : 0,
+               (caps & DDSCAPS_SYSTEMMEMORY) ? "system" : "video", s->watched ? ", write-watched" : "", levels,
+               levels == 1 ? "" : "s");
+    }
+    if (!mips_logged && ((caps & DDSCAPS_MIPMAP) || levels > 1)) {
+        mips_logged = 1;
+        dd_log("texture %lux%lu asks for %lu mip levels (caps 0x%08lX): only the top level is emulated", s->width,
+               s->height, levels, caps);
+    }
+}
+
 HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version, void** out) {
     DWORD expected = version == 4 ? sizeof(DDSURFACEDESC2) : sizeof(DDSURFACEDESC);
     DWORD caps, width, height;
@@ -172,8 +233,9 @@ HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version
     if (!out || !desc || desc->dwSize != expected) return DDERR_INVALIDPARAMS;
     *out = NULL;
     caps = (desc->dwFlags & DDSD_CAPS) ? desc->ddsCaps.dwCaps : DDSCAPS_OFFSCREENPLAIN;
-    if (caps & (DDSCAPS_ZBUFFER | DDSCAPS_OVERLAY | DDSCAPS_MODEX)) {
-        dd_log("CreateSurface caps 0x%08lX: z-buffers, overlays and Mode X are not emulated", caps);
+    if ((caps & (DDSCAPS_OVERLAY | DDSCAPS_MODEX)) || ((caps & DDSCAPS_ZBUFFER) && !d3dr_hardware())) {
+        dd_log("CreateSurface caps 0x%08lX: overlays and Mode X are not emulated; z-buffers only with --renderer d3d11",
+               caps);
         return DDERR_INVALIDCAPS;
     }
     if (caps & DDSCAPS_PRIMARYSURFACE) {
@@ -188,7 +250,19 @@ HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version
             return DDERR_INVALIDPARAMS;
         width = desc->dwWidth;
         height = desc->dwHeight;
-        if (desc->dwFlags & DDSD_PIXELFORMAT) {
+        if (caps & DDSCAPS_ZBUFFER) {
+            memset(&format, 0, sizeof format);
+            format.dwSize = sizeof format;
+            format.dwFlags = DDPF_ZBUFFER;
+            format.dwZBufferBitDepth = 16;
+            format.dwZBitMask = 0xFFFF;
+            if ((desc->dwFlags & DDSD_PIXELFORMAT) && (desc->ddpfPixelFormat.dwFlags & DDPF_ZBUFFER)) {
+                format = desc->ddpfPixelFormat;
+                format.dwSize = sizeof format;
+            }
+            if (format.dwZBufferBitDepth != 16 && format.dwZBufferBitDepth != 24 && format.dwZBufferBitDepth != 32)
+                return DDERR_INVALIDPIXELFORMAT;
+        } else if (desc->dwFlags & DDSD_PIXELFORMAT) {
             format = desc->ddpfPixelFormat;
             format.dwSize = sizeof format;
             if (!dd_format_supported(&format)) {
@@ -206,8 +280,8 @@ HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version
             return DDERR_INVALIDCAPS;
         if ((caps & DDSCAPS_PRIMARYSURFACE) && !(d->coop & DDSCL_EXCLUSIVE)) return DDERR_NOEXCLUSIVEMODE;
     }
-    if (caps & (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE))
-        dd_log("CreateSurface caps 0x%08lX: Direct3D is not emulated, so this is a plain memory surface", caps);
+    if ((caps & (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE)) && !d3dr_hardware())
+        dd_log("CreateSurface caps 0x%08lX: Direct3D needs --renderer d3d11, so this is a plain memory surface", caps);
     s = new_surface(d, width, height, &format,
                     caps | memory_caps(caps) |
                         ((caps & DDSCAPS_PRIMARYSURFACE) ? DDSCAPS_VISIBLE | ((caps & DDSCAPS_FLIP) ? DDSCAPS_FRONTBUFFER : 0) : 0));
@@ -221,6 +295,11 @@ HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version
         }
     }
     if (caps & DDSCAPS_PRIMARYSURFACE) d->primary = s;
+    if (caps & DDSCAPS_TEXTURE) note_texture_request(desc, caps, s);
+    if (caps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER)) {
+        *out = dd_surface_face(s, version);
+        return DD_OK;
+    }
     dd_log("CreateSurface 0x%08X: caps 0x%08lX, %lux%lu, %lu bpp RGB %lX/%lX/%lX, pitch %ld, %lu back buffers",
            (uint32_t)(uintptr_t)s, s->caps, width, height, format.dwRGBBitCount, format.dwRBitMask, format.dwGBitMask,
            format.dwBBitMask, s->pitch, s->back_buffers);
@@ -259,7 +338,7 @@ static int rect_inside(const RECT* r, const dd_surface_t* s) {
 }
 
 static BYTE* pixel_address(const dd_surface_t* s, LONG x, LONG y) {
-    return s->bits + (size_t)y * (size_t)s->pitch + (size_t)x * (size_t)dd_format_bytes(&s->format);
+    return s->bits + (size_t)y * (size_t)s->pitch + (size_t)x * (size_t)pixel_bytes(s);
 }
 
 static DWORD read_pixel(const BYTE* p, int bytes) {
@@ -402,7 +481,11 @@ static HRESULT blt(dd_surface_t* dst, const RECT* dst_rect, dd_surface_t* src, c
     if (!dst->clipper && !rect_inside(&d, dst)) return DDERR_INVALIDRECT;
     if (flags & DDBLT_COLORFILL) {
         if (!clip_to_clipper(dst, &d, NULL)) return DD_OK;
-        fill_rect(dst, &d, fx->dwFillColor);
+        if (!d3dr_surface_fill(dst, &d, fx->dwFillColor)) {
+            d3dr_surface_cpu_access(dst, 1, CPU_ACCESS_BLT_DEST);
+            fill_rect(dst, &d, fx->dwFillColor);
+            d3dr_surface_cpu_written(dst, &d);
+        }
     } else {
         if (!src) return DDERR_INVALIDPARAMS;
         s.left = 0;
@@ -421,8 +504,11 @@ static HRESULT blt(dd_surface_t* dst, const RECT* dst_rect, dd_surface_t* src, c
             key.key_high = src->src_key.dwColorSpaceHighValue;
         }
         if (!clip_to_clipper(dst, &d, &s)) return DD_OK;
+        d3dr_surface_cpu_access(src, 0, CPU_ACCESS_BLT_SOURCE);
+        d3dr_surface_cpu_access(dst, 1, src == dst ? CPU_ACCESS_BLT_SOURCE : CPU_ACCESS_BLT_DEST);
         hr = copy_rect(dst, &d, src, &s, &key);
         if (FAILED(hr)) return hr;
+        d3dr_surface_cpu_written(dst, &d);
     }
     if (is_front(dst)) dd_present(dst, 0);
     return DD_OK;
@@ -438,6 +524,7 @@ static HRESULT STDMETHODCALLTYPE s_QueryInterface(IDirectDrawSurface* This, REFI
     else if (IsEqualGUID(riid, &IID_IDirectDrawSurface3)) *out = &s->s3;
     else if (IsEqualGUID(riid, &IID_IDirectDrawSurface4)) *out = &s->s4;
     else if (IsEqualGUID(riid, &IID_IDirectDrawGammaControl) && is_front(s)) *out = &s->gamma;
+    else if (d3dr_hardware() && (s->caps & DDSCAPS_TEXTURE) && IsEqualGUID(riid, &IID_IDirect3DTexture2)) *out = &s->tex2;
     if (*out) {
         InterlockedIncrement(&s->refs);
         DD_RETURN(DD_OK);
@@ -445,7 +532,8 @@ static HRESULT STDMETHODCALLTYPE s_QueryInterface(IDirectDrawSurface* This, REFI
     if (IsEqualGUID(riid, &IID_IDirect3DTexture) || IsEqualGUID(riid, &IID_IDirect3DTexture2) ||
         IsEqualGUID(riid, &IID_IDirect3DHALDevice) || IsEqualGUID(riid, &IID_IDirect3DRGBDevice) ||
         IsEqualGUID(riid, &IID_IDirect3DMMXDevice) || IsEqualGUID(riid, &IID_IDirect3DRampDevice))
-        dd_log("surface QueryInterface for a Direct3D interface: not implemented by the compatibility layer");
+        dd_log("surface QueryInterface for {%08lX-...} (Direct3D) from sub_%08X: only IDirect3DTexture2 on texture "
+               "surfaces with --renderer d3d11", riid->Data1, g_cur_func);
     else if (!IsEqualGUID(riid, &IID_IDirectDrawGammaControl))
         dd_log("surface QueryInterface for {%08lX-%04X-%04X-...}: not implemented", riid->Data1, riid->Data2, riid->Data3);
     DD_RETURN(E_NOINTERFACE);
@@ -454,6 +542,8 @@ static HRESULT STDMETHODCALLTYPE s_QueryInterface(IDirectDrawSurface* This, REFI
 static ULONG STDMETHODCALLTYPE s_AddRef(IDirectDrawSurface* This) {
     return (ULONG)InterlockedIncrement(&DD_OWNER(dd_surface_t, This)->refs);
 }
+
+void dd_surface_addref(dd_surface_t* s) { InterlockedIncrement(&s->refs); }
 
 /* Back buffers belong to the front of their chain and go with it, as in DirectDraw; one the game
  * still holds then lives on, detached, until its own last Release. */
@@ -471,10 +561,24 @@ static ULONG STDMETHODCALLTYPE s_Release(IDirectDrawSurface* This) {
     return (ULONG)refs;
 }
 
+void dd_surface_release(dd_surface_t* s) { s_Release((IDirectDrawSurface*)&s->s1); }
+
 static HRESULT STDMETHODCALLTYPE s_AddAttachedSurface(IDirectDrawSurface* This, LPDIRECTDRAWSURFACE surface) {
-    (void)This; (void)surface;
-    DD_UNSUPPORTED("IDirectDrawSurface::AddAttachedSurface", "attaching z-buffers is Direct3D, which is not emulated",
-                   DDERR_CANNOTATTACHSURFACE);
+    dd_surface_t* s = DD_OWNER(dd_surface_t, This);
+    dd_surface_t* z = surface_from(surface);
+    DD_METHOD("IDirectDrawSurface::AddAttachedSurface");
+    if (!z) DD_RETURN(DDERR_INVALIDPARAMS);
+    if (!d3dr_hardware() || !dd_surface_is_zbuffer(z)) {
+        dd_log("AddAttachedSurface caps 0x%08lX from sub_%08X: only z-buffers, with --renderer d3d11", z->caps, g_cur_func);
+        DD_RETURN(DDERR_CANNOTATTACHSURFACE);
+    }
+    if (s->zbuffer) DD_RETURN(DDERR_SURFACEALREADYATTACHED);
+    if (z->width != s->width || z->height != s->height) DD_RETURN(DDERR_CANNOTATTACHSURFACE);
+    dd_surface_addref(z);
+    s->zbuffer = z;
+    dd_log("z-buffer %lux%lu, %lu bits attached to surface 0x%08X", z->width, z->height, z->format.dwZBufferBitDepth,
+           (uint32_t)(uintptr_t)s);
+    DD_RETURN(DD_OK);
 }
 
 static HRESULT STDMETHODCALLTYPE s_AddOverlayDirtyRect(IDirectDrawSurface* This, LPRECT rect) {
@@ -525,8 +629,17 @@ static HRESULT STDMETHODCALLTYPE s_BltFast(IDirectDrawSurface* This, DWORD x, DW
 }
 
 static HRESULT STDMETHODCALLTYPE s_DeleteAttachedSurface(IDirectDrawSurface* This, DWORD flags, LPDIRECTDRAWSURFACE surface) {
-    (void)This; (void)flags; (void)surface;
-    DD_UNSUPPORTED("IDirectDrawSurface::DeleteAttachedSurface", "flip chains are fixed at creation", DDERR_CANNOTDETACHSURFACE);
+    dd_surface_t* s = DD_OWNER(dd_surface_t, This);
+    dd_surface_t* z = surface ? surface_from(surface) : s->zbuffer;
+    (void)flags;
+    DD_METHOD("IDirectDrawSurface::DeleteAttachedSurface");
+    if (!z || z != s->zbuffer) {
+        dd_log("DeleteAttachedSurface from sub_%08X: flip chains are fixed at creation; only z-buffers detach", g_cur_func);
+        DD_RETURN(DDERR_CANNOTDETACHSURFACE);
+    }
+    s->zbuffer = NULL;
+    dd_surface_release(z);
+    DD_RETURN(DD_OK);
 }
 
 static HRESULT STDMETHODCALLTYPE s_EnumAttachedSurfaces(IDirectDrawSurface* This, LPVOID context,
@@ -563,6 +676,12 @@ static HRESULT STDMETHODCALLTYPE s_Flip(IDirectDrawSurface* This, LPDIRECTDRAWSU
         m = m->next;
         if (m == front) break;
     }
+    if (is_front(front) && d3dr_flip(front, !(flags & DDFLIP_NOVSYNC))) {
+        if (target) exchange_pixels(front, target);
+        else
+            for (m = front; m->next != front; m = m->next) exchange_pixels(m, m->next);
+        DD_RETURN(DD_OK);
+    }
     if (target) {
         exchange_pixels(front, target);
     } else {
@@ -577,6 +696,11 @@ static HRESULT STDMETHODCALLTYPE s_GetAttachedSurface(IDirectDrawSurface* This, 
     DD_METHOD("IDirectDrawSurface::GetAttachedSurface");
     if (!caps || !out) DD_RETURN(DDERR_INVALIDPARAMS);
     *out = NULL;
+    if (s->zbuffer && (caps->dwCaps & DDSCAPS_ZBUFFER)) {
+        dd_surface_addref(s->zbuffer);
+        *out = (LPDIRECTDRAWSURFACE)dd_surface_face(s->zbuffer, DD_VERSION(This));
+        DD_RETURN(DD_OK);
+    }
     for (dd_surface_t* m = s->next; m && m != s; m = m->next) {
         if ((m->caps & caps->dwCaps) == caps->dwCaps) {
             InterlockedIncrement(&m->refs);
@@ -631,10 +755,13 @@ static HRESULT STDMETHODCALLTYPE s_GetDC(IDirectDrawSurface* This, HDC* out) {
     if (s->lost) DD_RETURN(DDERR_SURFACELOST);
     if (s->dc_out) DD_RETURN(DDERR_DCALREADYCREATED);
     if (s->locked) DD_RETURN(DDERR_SURFACEBUSY);
+    if (!s->dib && (dd_surface_is_zbuffer(s) || !allocate_pixels(s))) DD_RETURN(DDERR_CANTCREATEDC);
+    d3dr_surface_cpu_access(s, 1, CPU_ACCESS_GETDC);
     if (!s->dc) s->dc = CreateCompatibleDC(NULL);
     if (!s->dc) DD_RETURN(DDERR_CANTCREATEDC);
     s->dc_previous = SelectObject(s->dc, s->dib);
     s->dc_out = 1;
+    InterlockedIncrement(&dd_census.dcs);
     *out = s->dc;
     DD_RETURN(DD_OK);
 }
@@ -692,18 +819,23 @@ static HRESULT STDMETHODCALLTYPE s_Lock(IDirectDrawSurface* This, LPRECT rect, L
     DWORD size = desc_size(This);
     RECT whole = { 0, 0, (LONG)s->width, (LONG)s->height };
     DDSURFACEDESC2* out = (DDSURFACEDESC2*)desc;
-    (void)flags; (void)event;
+    (void)event;
     DD_METHOD("IDirectDrawSurface::Lock");
     if (!desc || desc->dwSize != size) DD_RETURN(DDERR_INVALIDPARAMS);
     if (s->lost) DD_RETURN(DDERR_SURFACELOST);
     if (s->locked || s->dc_out) DD_RETURN(DDERR_SURFACEBUSY);
     if (rect && !rect_inside(rect, s)) DD_RETURN(DDERR_INVALIDRECT);
     if (!rect) rect = &whole;
+    s->lock_write = !(flags & DDLOCK_READONLY);
+    s->lock_flags = flags;
+    s->lock_rect = *rect;
+    d3dr_surface_cpu_access(s, s->lock_write, CPU_ACCESS_LOCK);
     GdiFlush();
     describe(s, out, size);
     out->dwFlags |= DDSD_LPSURFACE;
     out->lpSurface = pixel_address(s, rect->left, rect->top);
     s->locked = 1;
+    InterlockedIncrement(&dd_census.locks);
     DD_RETURN(DD_OK);
 }
 
@@ -714,6 +846,8 @@ static HRESULT STDMETHODCALLTYPE s_ReleaseDC(IDirectDrawSurface* This, HDC dc) {
     GdiFlush();
     SelectObject(s->dc, s->dc_previous);
     s->dc_out = 0;
+    InterlockedDecrement(&dd_census.dcs);
+    d3dr_surface_cpu_written(s, NULL);
     if (is_front(s)) dd_present(s, 0);
     DD_RETURN(DD_OK);
 }
@@ -754,8 +888,10 @@ static HRESULT STDMETHODCALLTYPE s_SetColorKey(IDirectDrawSurface* This, DWORD f
         if (!(flags & DDCKEY_COLORSPACE)) value.dwColorSpaceHighValue = value.dwColorSpaceLowValue;
     }
     if (which == DDCKEY_SRCBLT) {
+        d3dr_surface_cpu_access(s, 1, CPU_ACCESS_BLT_DEST);
         s->has_src_key = key != NULL;
         if (key) s->src_key = value;
+        d3dr_surface_cpu_written(s, NULL);
     } else {
         s->has_dst_key = key != NULL;
         if (key) s->dst_key = value;
@@ -802,6 +938,8 @@ static HRESULT STDMETHODCALLTYPE s_Unlock(IDirectDrawSurface* This, LPVOID point
     DD_METHOD("IDirectDrawSurface::Unlock");
     if (!s->locked) DD_RETURN(DDERR_NOTLOCKED);
     s->locked = 0;
+    InterlockedDecrement(&dd_census.locks);
+    if (s->lock_write) d3dr_surface_cpu_written(s, &s->lock_rect);
     if (is_front(s)) dd_present(s, 0);
     DD_RETURN(DD_OK);
 }

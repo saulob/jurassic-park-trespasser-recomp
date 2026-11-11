@@ -4,8 +4,28 @@ project(trespasser_recomp C)
 if(NOT MSVC)
   message(FATAL_ERROR "pcrecomp's native32 runtime is MSVC x86 inline assembly: build with cl (see tools/build.ps1)")
 endif()
+
+# x64 (tools/build.ps1 -Arch x64): only the 64-bit host groundwork, which cannot run the game yet
+# (docs/X64_MIGRATION.md). The playable host below stays 32-bit.
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(PCRECOMP "${CMAKE_SOURCE_DIR}/external/pcrecomp" CACHE PATH "pcrecomp checkout (tools/fetch_pcrecomp.py)")
+  add_library(host64 STATIC src/host64/guest_memory.c src/host64/guest_ptr.c src/host64/guest_thunks.c)
+  target_include_directories(host64 PUBLIC src/host64 ${PCRECOMP}/runtime/win32hle)
+  target_compile_options(host64 PRIVATE /W3)
+  target_compile_definitions(host64 PRIVATE _CRT_SECURE_NO_WARNINGS)
+  add_executable(trespasser_x64_probe src/host64/probe_main.c)
+  target_link_libraries(trespasser_x64_probe PRIVATE host64)
+  target_compile_options(trespasser_x64_probe PRIVATE /W3)
+  target_compile_definitions(trespasser_x64_probe PRIVATE _CRT_SECURE_NO_WARNINGS
+    TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game")
+  add_executable(x64_tests EXCLUDE_FROM_ALL tests/x64_tests.c)
+  target_link_libraries(x64_tests PRIVATE host64)
+  target_compile_options(x64_tests PRIVATE /W3)
+  target_compile_definitions(x64_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+  return()
+endif()
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
-  message(FATAL_ERROR "the host must be a 32-bit process: use the amd64_x86 toolchain or -A Win32 (see docs/BUILD.md)")
+  message(FATAL_ERROR "the playable host must be a 32-bit process: use the amd64_x86 toolchain or -A Win32 (see docs/BUILD.md)")
 endif()
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
@@ -33,8 +53,13 @@ set(HOST_SOURCES
   src/host/guest_env.c
   src/host/registry.c
   src/host/io_trace.c
+  src/host/window_host.c
+  src/host/guest_ui.c
+  src/host/host_policy.c
+  src/host/exit_policy.c
   src/host/milestones.c
   src/host/selfmod.c
+  src/host/terrain_probe.c
   src/host/diagnostics.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
@@ -43,6 +68,12 @@ set(HOST_SOURCES
   src/host/ddraw/dd_objects.c
   src/host/ddraw/dd_dispatch.c
   src/host/ddraw/d3d11_present.c
+  src/host/ddraw/d3d11_renderer.c
+  src/host/ddraw/d3d11_shaders.c
+  src/host/ddraw/d3d_objects.c
+  src/host/ddraw/d3d_translate.c
+  src/host/ddraw/target_sync.c
+  src/host/ddraw/terrain_diag.c
 )
 set(PCRECOMP_SOURCES
   ${PCRECOMP}/runtime/native32/native32.c
@@ -94,3 +125,18 @@ set_source_files_properties(${PCRECOMP}/runtime/native32/native32.c PROPERTIES
 set_source_files_properties(${HOST_SOURCES} PROPERTIES
   COMPILE_OPTIONS "/W3;${CONFIG_OPT}"
   COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS;TRESPASSER_LOG_DIR=\"${CMAKE_SOURCE_DIR}/build/logs\"")
+
+# Headless checks of the host's logic and COM objects (no window, device or game):
+#   ninja -C <build dir> host_tests com_tests && host_tests.exe && com_tests.exe
+add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/ddraw/d3d_translate.c
+  src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c)
+target_include_directories(host_tests PRIVATE src/host)
+target_compile_options(host_tests PRIVATE /W3)
+target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
+  src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c)
+target_include_directories(com_tests PRIVATE src/host src/host/ddraw src/recomp/gen ${PCRECOMP}/runtime/native32
+  ${PCRECOMP}/runtime/recomp32)
+target_compile_options(com_tests PRIVATE /W3)
+target_compile_definitions(com_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+target_link_libraries(com_tests PRIVATE user32 gdi32 dxguid)

@@ -141,9 +141,11 @@ function Invoke-Python([string]$Script, [string[]]$Arguments = @(), [scriptblock
 }
 
 # Switches this session to the x64-hosted x86 MSVC toolchain. The 32-bit-hosted compiler runs out of memory on the lifted C.
-function Enter-MsvcX86 {
+# x86 uses the x64-hosted cross tools (amd64_x86), x64 the native ones (amd64).
+function Enter-Msvc([ValidateSet('x86', 'x64')][string]$Arch = 'x86') {
+    $vcvarsArch = if ($Arch -eq 'x64') { 'amd64' } else { 'amd64_x86' }
     $existing = Get-Command cl.exe -ErrorAction SilentlyContinue
-    if ($existing -and $env:VSCMD_ARG_TGT_ARCH -eq 'x86') { return $existing.Source }
+    if ($existing -and $env:VSCMD_ARG_TGT_ARCH -eq $Arch) { return $existing.Source }
 
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path -LiteralPath $vswhere)) { Stop-Tool 'vswhere.exe not found: install Visual Studio with "Desktop development with C++".' }
@@ -154,13 +156,13 @@ function Enter-MsvcX86 {
 
     $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvarsall.bat'
     if (-not (Test-Path -LiteralPath $vcvars)) { Stop-Tool "Missing $vcvars" }
-    $environment = & cmd.exe /c "`"$vcvars`" amd64_x86 >nul 2>&1 && set"
-    if ($LASTEXITCODE -ne 0) { Stop-Tool 'vcvarsall.bat amd64_x86 failed: the MSVC x86 tools or the Windows SDK are not installed.' }
+    $environment = & cmd.exe /c "`"$vcvars`" $vcvarsArch >nul 2>&1 && set"
+    if ($LASTEXITCODE -ne 0) { Stop-Tool "vcvarsall.bat $vcvarsArch failed: the MSVC $Arch tools or the Windows SDK are not installed." }
     foreach ($entry in $environment) {
         if ($entry -match '^([^=]+)=(.*)$') { Set-Item -LiteralPath "Env:$($Matches[1])" -Value $Matches[2] }
     }
     $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
-    if (-not $cl -or $env:VSCMD_ARG_TGT_ARCH -ne 'x86') { Stop-Tool 'vcvarsall.bat amd64_x86 did not provide an x86 cl.exe.' }
+    if (-not $cl -or $env:VSCMD_ARG_TGT_ARCH -ne $Arch) { Stop-Tool "vcvarsall.bat $vcvarsArch did not provide an $Arch cl.exe." }
 
     # VS ships CMake and Ninja; they win over any copy from MSYS2 earlier on PATH.
     $cmakeDir = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake'
@@ -170,6 +172,8 @@ function Enter-MsvcX86 {
     }
     return $cl.Source
 }
+
+function Enter-MsvcX86 { Enter-Msvc 'x86' }
 
 function Get-Sha256([string]$Path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() }
 

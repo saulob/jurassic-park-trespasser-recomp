@@ -1,0 +1,139 @@
+#ifndef TRESPASSER_D3D_TRANSLATE_H
+#define TRESPASSER_D3D_TRANSLATE_H
+
+/* Direct3D 6 -> Direct3D 11 translation that needs neither Windows nor a device, so tests run it headless. */
+
+#include <stdint.h>
+
+enum {
+    D3DT_PT_POINTLIST = 1,
+    D3DT_PT_LINELIST = 2,
+    D3DT_PT_LINESTRIP = 3,
+    D3DT_PT_TRIANGLELIST = 4,
+    D3DT_PT_TRIANGLESTRIP = 5,
+    D3DT_PT_TRIANGLEFAN = 6
+};
+
+unsigned d3dt_primitive_count(int type, unsigned vertices);
+/* Triangle lists for D3D11; first is the batch index of the primitive's vertex 0. The provoking
+ * (first) vertex of each triangle matches Direct3D's flat-shading vertex for that primitive type. */
+unsigned d3dt_fan_indices(uint32_t first, unsigned count, uint32_t* out);
+unsigned d3dt_strip_indices(uint32_t first, unsigned count, uint32_t* out);
+unsigned d3dt_list_indices(uint32_t first, unsigned count, uint32_t* out);
+unsigned d3dt_indexed_triangles(int type, const uint16_t* in, unsigned count, uint32_t base, uint32_t* out);
+
+/* Render and texture stage state values; 0 means the value is not valid for Direct3D 6. */
+int d3dt_blend(uint32_t value, int alpha_channel);
+int d3dt_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11);
+int d3dt_compare(uint32_t value);
+int d3dt_address(uint32_t value);
+int d3dt_cull(uint32_t value);
+int d3dt_fill(uint32_t value);
+int d3dt_mag_linear(uint32_t value);
+int d3dt_min_linear(uint32_t value);
+int d3dt_mip_mode(uint32_t value);
+uint32_t d3dt_alpha_ref(uint32_t value);
+
+const char* d3dt_render_state_name(uint32_t state);
+const char* d3dt_stage_state_name(uint32_t type);
+/* D3DRENDERSTATE_ZBIAS (0..16) as a D3D11 DepthBias for a 24-bit buffer, towards the viewer of zfunc:
+ * 84 units of 2^-24 per step, the 5e-6 per step Direct3D 7-era drivers (and wined3d) apply. */
+int d3dt_depth_bias(uint32_t zbias, uint32_t zfunc);
+
+/* The Direct3D 6 legacy texture blend (D3DRENDERSTATE_TEXTUREMAPBLEND) on 0xAARRGGBB colours, the
+ * reference the pixel shader follows; texture_alpha says whether the texture format has alpha. */
+uint32_t d3dt_texture_blend(uint32_t mode, uint32_t texel, uint32_t diffuse, int texture_alpha);
+int d3dt_texture_blend_known(uint32_t mode);
+/* Vertex fog: fog_alpha (specular alpha) 255 keeps the colour, 0 gives the fog colour; alpha kept. */
+uint32_t d3dt_apply_fog(uint32_t color, uint32_t fog_color, uint32_t fog_alpha);
+
+enum {
+    D3DT_FVF_POSITION_MASK = 0x00E,
+    D3DT_FVF_XYZRHW = 0x004,
+    D3DT_FVF_DIFFUSE = 0x040,
+    D3DT_FVF_SPECULAR = 0x080,
+    D3DT_FVF_TEXCOUNT_MASK = 0xF00,
+    D3DT_FVF_TEXCOUNT_SHIFT = 8
+};
+/* Byte offsets of a pre-transformed vertex; 0 when the format is not XYZRHW-only. */
+int d3dt_fvf_layout(uint32_t fvf, unsigned* stride, unsigned* diffuse, unsigned* specular, unsigned* uv);
+
+/* D3DCMPFUNC on depth values. */
+int d3dt_depth_test(uint32_t func, float incoming, float stored);
+float d3dt_signed_area(const float* x, const float* y);
+/* D3DCULL_NONE/CW/CCW (1/2/3) on a screen-space triangle: 1 when it is removed. */
+int d3dt_triangle_culled(uint32_t cull, const float* x, const float* y);
+/* Barycentric weights of (px, py); 1 when the point is inside the triangle. */
+int d3dt_barycentric(const float* x, const float* y, float px, float py, float w[3]);
+void d3dt_perspective_uv(const float* u, const float* v, const float* rhw, const float w[3], float* out_u, float* out_v);
+/* NaN or infinite. */
+int d3dt_float_bad(float f);
+
+/* The render and stage-0 states that decide how a draw comes out. */
+typedef struct {
+    uint32_t textured, tmb, blend_enable, src_blend, dst_blend, alpha_test, alpha_func, alpha_ref, fog, fog_color,
+        specular, shade, zenable, zwrite, zfunc, cull, fill, colorkey, address_u, address_v, mag, min;
+} d3dt_draw_state_t;
+uint32_t d3dt_state_fingerprint(const d3dt_draw_state_t* s);
+void d3dt_describe_state(const d3dt_draw_state_t* s, char* out, unsigned cap);
+
+enum {
+    D3DT_FMT_UNKNOWN = 0,
+    D3DT_FMT_RGB565,
+    D3DT_FMT_XRGB1555,
+    D3DT_FMT_ARGB1555,
+    D3DT_FMT_ARGB4444,
+    D3DT_FMT_XRGB8888,
+    D3DT_FMT_ARGB8888,
+    D3DT_FMT_XRGB4444,
+    D3DT_FMT_PAL8,
+    D3DT_FMT_COUNT
+};
+
+/* DDPIXELFORMAT.dwFlags bits the translation reads. */
+enum { D3DT_PF_ALPHAPIXELS = 0x1, D3DT_PF_PALETTEINDEXED8 = 0x20, D3DT_PF_RGB = 0x40 };
+
+int d3dt_format_from_masks(uint32_t bits, uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+/* The whole DDPIXELFORMAT: palettised 8-bit as well as the RGB layouts; the alpha mask counts only
+ * with DDPF_ALPHAPIXELS. */
+int d3dt_format_from_pixelformat(uint32_t flags, uint32_t bits, uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+int d3dt_format_has_alpha(int format);
+int d3dt_format_bytes(int format);
+const char* d3dt_format_name(int format);
+/* To B8G8R8A8 as 0xAARRGGBB; texels inside the key range keep their colour with alpha 0. PAL8
+ * texels index palette (0xAARRGGBB entries); other formats ignore it. */
+void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
+                      uint32_t key_high);
+void d3dt_convert_row_pal8(const uint8_t* src, uint32_t* dst, unsigned count, const uint32_t* palette, int keyed,
+                           uint32_t key_low, uint32_t key_high);
+/* 1 when no texel of the row has any colour (black or fully transparent black). */
+int d3dt_row_black(const uint32_t* bgra, unsigned count);
+uint32_t d3dt_rgb565_to_bgra(uint16_t v);
+uint16_t d3dt_bgra_to_rgb565(uint32_t v);
+
+/* Changed pixels become opaque overlay texels, the rest transparent; returns how many changed. */
+unsigned d3dt_overlay_row(const uint16_t* current, const uint16_t* pristine, unsigned count, uint32_t* out);
+/* Pixels the CPU turned black where the previous picture was not: what could paint the scene black. */
+unsigned d3dt_black_over_content(const uint16_t* current, const uint16_t* previous, unsigned count);
+/* First and one-past-last differing pixel of a row; 0 when the rows are equal. */
+int d3dt_row_span(const uint16_t* current, const uint16_t* pristine, unsigned count, unsigned* first, unsigned* end);
+
+typedef struct {
+    long left, top, right, bottom;
+} d3dt_rect_t;
+
+d3dt_rect_t d3dt_scale_rect(long x, long y, long w, long h, unsigned legacy_w, unsigned legacy_h, unsigned target_w,
+                            unsigned target_h);
+int d3dt_rect_empty(const d3dt_rect_t* r);
+void d3dt_rect_union(d3dt_rect_t* acc, const d3dt_rect_t* add);
+
+int d3dt_parse_resolution(const char* text, unsigned* w, unsigned* h);
+void d3dt_auto_resolution(unsigned view_w, unsigned view_h, unsigned legacy_w, unsigned legacy_h, unsigned* w,
+                          unsigned* h);
+/* supported: bit n set when n samples work; returns the largest supported count <= requested (1 = off). */
+unsigned d3dt_pick_msaa(unsigned requested, uint32_t supported);
+
+/* D3DMATRIX order: row vectors, out = a * b. */
+void d3dt_matrix_multiply(const float* a, const float* b, float* out);
+
+#endif

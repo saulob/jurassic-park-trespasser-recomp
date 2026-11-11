@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "d3d_translate.h"
+
 /* Every interface pointer handed to the game is a face: lpVtbl first, as COM requires. */
 typedef struct {
     const void* vtbl;
@@ -24,7 +26,7 @@ typedef struct dd_clipper dd_clipper_t;
 typedef struct dd_palette dd_palette_t;
 
 struct dd_device {
-    dd_face_t dd1, dd2, dd4;
+    dd_face_t dd1, dd2, dd4, d3d3;
     LONG refs;
     int released;
     int surfaces;
@@ -33,15 +35,12 @@ struct dd_device {
     DWORD mode_width, mode_height;
     int mode_set;
     dd_surface_t* primary;
-    int window_saved;
-    LONG saved_style, saved_exstyle;
-    RECT saved_rect;
     DDGAMMARAMP gamma;
     int gamma_changed;
 };
 
 struct dd_surface {
-    dd_face_t s1, s2, s3, s4, gamma;
+    dd_face_t s1, s2, s3, s4, gamma, tex2;
     LONG refs;
     dd_device_t* device;
     dd_surface_t* root;
@@ -63,6 +62,20 @@ struct dd_surface {
     DDCOLORKEY src_key, dst_key;
     dd_clipper_t* clipper;
     dd_palette_t* palette;
+    int lock_write;
+    DWORD lock_flags;
+    RECT lock_rect;
+    BYTE* heap_bits;
+    dd_surface_t* zbuffer;
+    void* gpu_texture;
+    d3dt_rect_t texture_dirty;
+    struct d3dr_target* target;
+    int front_from_gpu;
+    unsigned long cpu_writes;
+    int watched;
+    /* DEBUG_SAULO: diagnostics of the terrain and opaque-object batches */
+    int terrain_texture, water_texture;
+    unsigned long content_gen, uploaded_gen;
 };
 
 struct dd_clipper {
@@ -97,6 +110,14 @@ void dd_log(const char* fmt, ...);
 #define DD_UNSUPPORTED(label, reason, hr) do { static dd_method_t dd_method_ = { label, 0 }; dd_begin(&dd_method_); \
     return dd_unsupported(&dd_method_, reason, hr); } while (0)
 
+/* What is in use and alive right now, for the renderer switch's barrier and its lifetime check. */
+typedef struct {
+    LONG locks, dcs, scenes;
+    LONG directdraws, surfaces, devices, viewports;
+} dd_census_t;
+
+extern dd_census_t dd_census;
+
 void dd_format_rgb565(DDPIXELFORMAT* pf);
 int dd_format_supported(const DDPIXELFORMAT* pf);
 int dd_format_bytes(const DDPIXELFORMAT* pf);
@@ -109,6 +130,10 @@ void dd_surface_added(dd_device_t* d);
 void dd_surface_removed(dd_device_t* d);
 void dd_device_mode_changed(dd_device_t* d);
 void dd_present(dd_surface_t* front, int vsync);
+dd_surface_t* dd_surface_from(void* iface);
+void dd_surface_addref(dd_surface_t* s);
+void dd_surface_release(dd_surface_t* s);
+int dd_surface_is_zbuffer(const dd_surface_t* s);
 
 HRESULT dd_create_clipper(DWORD flags, IDirectDrawClipper** out);
 HRESULT dd_create_palette(DWORD flags, const PALETTEENTRY* entries, IDirectDrawPalette** out);

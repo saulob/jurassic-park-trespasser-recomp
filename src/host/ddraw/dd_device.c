@@ -2,7 +2,7 @@
  * IDirectDraw, IDirectDraw2 and IDirectDraw4 over a virtual 16 bpp display. The desktop keeps its
  * own mode; the display the game sees exists only here and reaches the screen through D3D11.
  */
-#include "ddraw_compat.h"
+#include "d3d_legacy.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -19,13 +19,20 @@ static const IDirectDraw2Vtbl s_dd2_vtbl;
 static const IDirectDraw4Vtbl s_dd4_vtbl;
 
 static void destroy_device_if_unused(dd_device_t* d) {
-    if (d->released && d->surfaces == 0) free(d);
+    if (d->released && d->surfaces == 0) {
+        InterlockedDecrement(&dd_census.directdraws);
+        free(d);
+    }
 }
 
-void dd_surface_added(dd_device_t* d) { d->surfaces++; }
+void dd_surface_added(dd_device_t* d) {
+    d->surfaces++;
+    InterlockedIncrement(&dd_census.surfaces);
+}
 
 void dd_surface_removed(dd_device_t* d) {
     d->surfaces--;
+    InterlockedDecrement(&dd_census.surfaces);
     destroy_device_if_unused(d);
 }
 
@@ -70,35 +77,14 @@ static void fill_mode_desc(DDSURFACEDESC2* desc, DWORD size, DWORD width, DWORD 
     }
 }
 
-/* Exclusive full screen becomes a borderless window at the primary monitor's origin, sized to
- * the virtual mode: the game reads the cursor in screen coordinates and clips it to (0,0)-(w,h),
- * exactly as it would after a real mode change. */
-static void enter_virtual_fullscreen(dd_device_t* d) {
-    if (!d->window || !(d->coop & DDSCL_FULLSCREEN) || !d->mode_set) return;
-    if (!d->window_saved) {
-        d->saved_style = GetWindowLongA(d->window, GWL_STYLE);
-        d->saved_exstyle = GetWindowLongA(d->window, GWL_EXSTYLE);
-        GetWindowRect(d->window, &d->saved_rect);
-        d->window_saved = 1;
-    }
-    SetWindowLongA(d->window, GWL_STYLE, (d->saved_style & ~(LONG)WS_OVERLAPPEDWINDOW) | WS_POPUP | WS_VISIBLE);
-    SetWindowLongA(d->window, GWL_EXSTYLE,
-                   d->saved_exstyle & ~(LONG)(WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE));
-    SetWindowPos(d->window, HWND_TOP, 0, 0, (int)d->mode_width, (int)d->mode_height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-    dd_log("virtual full screen: window 0x%08X at (0,0), %lux%lu, desktop mode unchanged", (uint32_t)(uintptr_t)d->window,
-           d->mode_width, d->mode_height);
-}
-
-static void leave_virtual_fullscreen(dd_device_t* d) {
-    if (!d->window_saved || !IsWindow(d->window)) {
-        d->window_saved = 0;
-        return;
-    }
-    SetWindowLongA(d->window, GWL_STYLE, d->saved_style);
-    SetWindowLongA(d->window, GWL_EXSTYLE, d->saved_exstyle);
-    SetWindowPos(d->window, HWND_NOTOPMOST, d->saved_rect.left, d->saved_rect.top, d->saved_rect.right - d->saved_rect.left,
-                 d->saved_rect.bottom - d->saved_rect.top, SWP_FRAMECHANGED | SWP_NOACTIVATE);
-    d->window_saved = 0;
+/* The game believes it owns a full screen of the virtual mode's size; the window host decides what the
+ * window really is and maps the game's screen onto it. */
+static void sync_window_display(dd_device_t* d) {
+    if (!d->window) return;
+    if ((d->coop & DDSCL_FULLSCREEN) && d->mode_set)
+        window_host_set_display(d->window, (int)d->mode_width, (int)d->mode_height);
+    else
+        window_host_clear_display(d->window);
 }
 
 static HRESULT device_query(dd_device_t* d, REFIID riid, void** out) {
@@ -111,10 +97,11 @@ static HRESULT device_query(dd_device_t* d, REFIID riid, void** out) {
         InterlockedIncrement(&d->refs);
         return DD_OK;
     }
-    if (IsEqualGUID(riid, &IID_IDirect3D) || IsEqualGUID(riid, &IID_IDirect3D2) || IsEqualGUID(riid, &IID_IDirect3D3))
-        dd_log("Direct3D was requested: not implemented by the compatibility layer, so the game keeps its software "
-               "renderer (registry \"Use D3D\" = 0)");
-    else
+    if (IsEqualGUID(riid, &IID_IDirect3D) || IsEqualGUID(riid, &IID_IDirect3D2) || IsEqualGUID(riid, &IID_IDirect3D3)) {
+        if (d3dr_hardware()) return d3d_query_direct3d(d, riid, out);
+        dd_log("Direct3D was requested from sub_%08X with --renderer software: refused, the game keeps its software "
+               "renderer", g_cur_func);
+    } else
         dd_log("QueryInterface for {%08lX-%04X-%04X-...} on the DirectDraw object: not implemented", riid->Data1,
                riid->Data2, riid->Data3);
     return E_NOINTERFACE;
@@ -134,8 +121,8 @@ static ULONG STDMETHODCALLTYPE dd_Release(IDirectDraw* This) {
     LONG refs = InterlockedDecrement(&d->refs);
     if (refs > 0) return (ULONG)refs;
     dd_lock();
-    leave_virtual_fullscreen(d);
     d->mode_set = 0;
+    sync_window_display(d);
     d->released = 1;
     dd_log("DirectDraw object 0x%08X released (%d surfaces still alive)", (uint32_t)(uintptr_t)d, d->surfaces);
     destroy_device_if_unused(d);
@@ -245,6 +232,11 @@ static void fill_caps(DDCAPS* caps, const dd_adapter_t* adapter) {
     caps->dwCKeyCaps = DDCKEYCAPS_SRCBLT | DDCKEYCAPS_SRCBLTCLRSPACE;
     caps->dwFXCaps = DDFXCAPS_BLTSTRETCHX | DDFXCAPS_BLTSTRETCHY | DDFXCAPS_BLTSHRINKX | DDFXCAPS_BLTSHRINKY;
     caps->dwPalCaps = DDPCAPS_8BIT | DDPCAPS_ALLOW256;
+    if (d3dr_hardware()) {
+        caps->dwCaps |= DDCAPS_3D;
+        caps->dwZBufferBitDepths = DDBD_16 | DDBD_24;
+        surface_caps |= DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER;
+    }
     caps->dwVidMemTotal = memory;
     caps->dwVidMemFree = memory;
     caps->ddsCaps.dwCaps = surface_caps;
@@ -349,10 +341,10 @@ static HRESULT STDMETHODCALLTYPE dd_RestoreDisplayMode(IDirectDraw* This) {
     dd_device_t* d = DD_OWNER(dd_device_t, This);
     DD_METHOD("IDirectDraw::RestoreDisplayMode");
     if (d->mode_set) {
-        leave_virtual_fullscreen(d);
         d->mode_set = 0;
         dd_device_mode_changed(d);
-        dd_log("RestoreDisplayMode: virtual mode cleared, window restored");
+        sync_window_display(d);
+        dd_log("RestoreDisplayMode: virtual mode cleared");
     }
     DD_RETURN(DD_OK);
 }
@@ -371,12 +363,11 @@ static HRESULT STDMETHODCALLTYPE dd_SetCooperativeLevel(IDirectDraw* This, HWND 
     if (!(flags & (DDSCL_NORMAL | DDSCL_EXCLUSIVE | DDSCL_SETFOCUSWINDOW | DDSCL_SETDEVICEWINDOW)))
         DD_RETURN(DDERR_INVALIDPARAMS);
     if (window && !IsWindow(window)) DD_RETURN(DDERR_INVALIDPARAMS);
-    if (!(flags & DDSCL_FULLSCREEN)) leave_virtual_fullscreen(d);
     if (window) d->window = window;
     d->coop = flags;
     dd_log("SetCooperativeLevel(hwnd 0x%08X, %s, flags 0x%lX): exclusive mode is emulated, never taken",
            (uint32_t)(uintptr_t)window, coop_text(flags), flags);
-    enter_virtual_fullscreen(d);
+    sync_window_display(d);
     DD_RETURN(DD_OK);
 }
 
@@ -394,7 +385,7 @@ static HRESULT set_display_mode(void* This, DWORD width, DWORD height, DWORD bpp
         dd_device_mode_changed(d);
     }
     dd_log("SetDisplayMode %lux%lux%lu (refresh %lu): virtual mode set, RGB565", width, height, bpp, refresh);
-    enter_virtual_fullscreen(d);
+    sync_window_display(d);
     DD_RETURN(DD_OK);
 }
 
@@ -547,8 +538,10 @@ HRESULT WINAPI compat_DirectDrawCreate(GUID* guid, LPDIRECTDRAW* out, IUnknown* 
     if (!out) DD_RETURN(DDERR_INVALIDPARAMS);
     *out = NULL;
     if (outer) DD_RETURN(CLASS_E_NOAGGREGATION);
+    d3dr_directdraw_created();
     d = (dd_device_t*)calloc(1, sizeof *d);
     if (!d) DD_RETURN(DDERR_OUTOFMEMORY);
+    InterlockedIncrement(&dd_census.directdraws);
     d->dd1.vtbl = &s_dd1_vtbl;
     d->dd2.vtbl = &s_dd2_vtbl;
     d->dd4.vtbl = &s_dd4_vtbl;
@@ -556,6 +549,7 @@ HRESULT WINAPI compat_DirectDrawCreate(GUID* guid, LPDIRECTDRAW* out, IUnknown* 
     d->dd1.version = 1;
     d->dd2.version = 2;
     d->dd4.version = 4;
+    d3d_init_direct3d_face(d);
     d->refs = 1;
     for (int i = 0; i < 256; i++)
         d->gamma.red[i] = d->gamma.green[i] = d->gamma.blue[i] = (WORD)(i * 0x101);

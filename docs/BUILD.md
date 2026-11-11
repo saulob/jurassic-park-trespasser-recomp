@@ -59,6 +59,7 @@ from before this layout stay in `logs\`.
 |---|---|
 | `-Run` | after a successful build, start `trespasser.exe --run` and wait for it |
 | `-VerboseRuntime` | with `-Run`, show the runtime output in the terminal too |
+| `-Arch x86` / `-Arch x64` | `x86` (default) is the playable 32-bit host in `build\cmake\msvc-x86`. `x64` builds only the 64-bit host groundwork (`trespasser_x64_probe`, `x64_tests`) in `build\cmake\msvc-x64` with the native x64 tools; it cannot run the game, so `-Run` is refused (`docs\X64_MIGRATION.md`) |
 | `-Clean` | delete this configuration's build folder first; `game\`, the image, `analysis\`, `src\recomp\gen\` and `logs\` are kept |
 | `-Config Release` | build `build\cmake\msvc-x86-release` instead of RelWithDebInfo |
 | `-GenOpt /Od` | optimisation of the lifted C; `/Od` compiles several times faster and runs slower. Default: what the build folder already uses, else `/O2` |
@@ -66,7 +67,7 @@ from before this layout stay in `logs\`.
 | `-BuildDir`, `-Jobs N` | another build folder (`-Clean` only removes folders under `build\`); parallel compile jobs |
 | `-Iso PATH` | disc image, when the game files must be extracted |
 | `-Reanalyze`, `-Relift` | force those stages |
-| trailing arguments | passed to `trespasser.exe`, for example `-Run --watchdog 120` |
+| `-GameArgs a,b,...` | with `-Run`, passed to `trespasser.exe` in order after `--run --log-file`, for example `-GameArgs "--renderer","d3d11"` |
 
 Equivalent manual build, from an "x64_x86 Cross Tools" developer prompt:
 
@@ -108,13 +109,42 @@ Without the script, from the repository root:
 | `--log-file FILE` | append to FILE (what `build.ps1 -Run` passes) |
 | `--log-dir DIR` | without `--log-file`, create the next `trespasser_NNN.log` in DIR (default `build\logs\`) |
 | `--ddraw system` | call the system `ddraw.dll` instead of the compatibility layer, observing it (diagnostics only) |
+| `--ddraw-cert-dialog` | show the game's legacy "DirectDraw NOT certified" dialog, which the host skips by default |
+| `--generate-mips` | d3d11: give the game's single-level textures generated mip chains (off by default, as the original) |
+| `--debug-d3d-output texture\|vertex-color\|depth` | d3d11 diagnostics: draws show only their texture, vertex colour or depth |
+| `--legacy-safemode-dialog` | keep the game's "unstable last time, Safe Mode?" prompt and its registry `Safemode` flag (off by default) |
+| `--renderer software\|d3d11` | `software` (default): the game's SelfMod rasteriser; `d3d11`: its Direct3D 6 path on the GPU |
+| `--render-resolution auto\|WxH` | d3d11 internal resolution; `auto` (default) covers the presentation area with a 4:3 size |
+| `--texture-filter point\|bilinear\|trilinear\|anisotropic` | d3d11 filtering where the game asks for linear (default anisotropic) |
+| `--msaa 0\|2\|4\|8` | d3d11 multisampling (default 4; reduced to what the GPU supports) |
 | `--watchdog N` | stop after N seconds and report where execution was |
 | `--native-trace` | one log line per native call (large) |
 | `--callbacks` | one log line per Windows-to-guest call |
 | `-- ARGS` | arguments passed to the game itself |
 
-Exit codes of the host: 1 setup failed, 2 reached a function that is not lifted, 3 fault,
-4 watchdog, 5 jump to an address with no lifted entry. Otherwise the game's own code.
+Exit codes of the host: 0 normal, 1 setup failed before the game started, 2 reached a function
+that is not lifted, 3 fault, 4 watchdog, 5 jump to an address with no lifted entry, 6 the game
+reported that it did not finish starting up, 7 the game exited with an error code of its own, 8 the
+game did not leave its loops within 60 s of a close request. The
+game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `ARCHITECTURE.md`.
+
+## Headless tests
+
+Two small programs check the host without a window, a GPU device, the game or audio; they are not
+part of the default build:
+
+```powershell
+ninja -C build\cmake\msvc-x86 host_tests com_tests
+.\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation
+.\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
+```
+
+The x64 groundwork has its own, from an x64 developer prompt (or after `build.ps1 -Arch x64`):
+
+```powershell
+ninja -C build\cmake\msvc-x64 x64_tests
+.\build\cmake\msvc-x64\x64_tests.exe     # guest address space, pointer marshalling, leak detection, guest COM handles
+```
 
 Settings the game would keep in the registry are in `game\recomp-registry.txt`. Deleting the
 file resets them.

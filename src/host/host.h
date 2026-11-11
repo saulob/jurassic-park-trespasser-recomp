@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "native32.h"
+#include "host_policy.h"
 
 /* Emitted by tools/run_lift.py into recomp_dispatch.c. */
 extern const uint32_t trespasser_entry_va;
@@ -36,6 +37,8 @@ void shim_DialogBoxParamA(void);
 void shim_OutputDebugStringA(void);
 
 void guest_registry_init(const char* game_dir);
+void registry_show_ddraw_cert_dialog(void);
+void registry_software_water(void);
 void shim_RegOpenKeyExA(void);
 void shim_RegCreateKeyA(void);
 void shim_RegQueryValueExA(void);
@@ -44,7 +47,10 @@ void shim_RegDeleteValueA(void);
 void shim_RegCloseKey(void);
 
 int io_trace_init(void);
+void io_trace_summary(void);
+void io_trace_release_swap_files(void);
 void shim_CreateFileA(void);
+void shim_CloseHandle(void);
 void shim_GetFileAttributesA(void);
 void shim_FindFirstFileA(void);
 void shim_LZOpenFileA(void);
@@ -62,6 +68,7 @@ int ddraw_trace_last_call(char* out, int cap);
 const char* ddraw_hresult_text(uint32_t hr, char* buf, size_t cap);
 
 int ddraw_compat_init(int enabled);
+int ddraw_compat_active(void);
 recomp_func_t ddraw_compat_lookup(uint32_t va);
 int ddraw_compat_last_call(char* out, int cap);
 
@@ -70,13 +77,123 @@ recomp_func_t selfmod_lookup(uint32_t va);
 unsigned long selfmod_entries(void);
 
 void diagnostics_install(unsigned watchdog_seconds);
+/* Reports the machine state and ends the run with HOST_EXIT_SHUTDOWN_TIMEOUT. */
+void diagnostics_shutdown_timeout(const char* detail);
+/* After the exit code is logged: other DLLs' first-chance exceptions while unloading are theirs. */
+void diagnostics_process_ending(void);
+
+/* window_host.c: the game window, its presentation surface, the cursor and closing. */
+void window_host_init(void);
+void window_host_set_display(HWND window, int width, int height);
+void window_host_clear_display(HWND window);
+HWND window_host_surface(HWND window);
+void window_host_frame_presented(void);
+void window_host_release_cursor(void);
+void window_host_view_size(int* width, int* height);
+void window_host_input_summary(void);
+const char* window_host_close_origin(void);
+/* Presentation stops once the host is closing the game; the game's frames still run. */
+int window_host_frames_allowed(void);
+/* exit_policy.c drives the last phases: the CRT's exit, its atexit handlers done, the host's cleanup. */
+void window_host_crt_exiting(void);
+void window_host_guest_stopped(void);
+void window_host_begin_cleanup(void);
+void window_host_exited(void);
+void present_release(void);
+void shim_CreateWindowExA(void);
+void shim_DestroyWindow(void);
+void shim_PostQuitMessage(void);
+void shim_SetWindowLongA(void);
+void shim_SetWindowPos(void);
+void shim_MoveWindow(void);
+void shim_SetWindowTextA(void);
+void shim_ShowWindow(void);
+void shim_GetWindowRect(void);
+void shim_GetClientRect(void);
+void shim_ClientToScreen(void);
+void shim_GetCursorPos(void);
+void shim_SetCursorPos(void);
+void shim_ClipCursor(void);
+void shim_ShowCursor(void);
+void shim_SetCapture(void);
+void shim_ReleaseCapture(void);
+void shim_EnableMenuItem(void);
+void shim_PeekMessageA(void);
+void shim_IsIconic(void);
+void shim_GetForegroundWindow(void);
+
+/* guest_ui.c: the game's own window stack. */
+typedef struct {
+    guest_ui_t ui;
+    guest_wnd_t kind;
+    uint32_t top, top_vtable, manager;
+    int stopped;
+    unsigned depth;
+} guest_ui_view_t;
+
+int guest_ui_probe(guest_ui_view_t* out);
+const char* guest_ui_class_name(uint32_t vtable);
+int guest_display_built(void);
+int guest_read32(uint32_t va, uint32_t* out);
+/* The game's own "app active" flag: its message pump returns to its loops only while it is set. */
+int guest_ui_active(const guest_ui_view_t* v);
+/* The game's EndModal(code) on the window in front; quit_to_windows adds the flags its in-game Quit
+ * sets. 1 done, -1 the window is already ending, 0 not possible. */
+int guest_ui_end_window(const guest_ui_view_t* v, int32_t code, int quit_to_windows);
+/* What the game's DirectDraw start-up sets up for Direct3D (its IDirectDraw4 and driver object),
+ * redone before an F5 rebuild into D3D11. */
+int guest_restore_direct3d(void);
+/* Makes the game's next level load restart DirectDraw (its own renderer change point). */
+int guest_request_display_restart(void);
+
+/* d3d11_renderer.c: --renderer, --render-resolution, --texture-filter, --msaa */
+void d3dr_configure(int hardware, unsigned width, unsigned height, int filter, unsigned msaa);
+int d3dr_startup(void);
+int d3dr_hardware(void);
+int d3dr_set_hardware(int hardware);
+const char* d3dr_name(void);
+/* Direct3D devices the game has created so far. */
+unsigned d3dr_device_count(void);
+/* --generate-mips: mip chains the game's textures do not have, for trilinear/anisotropic filtering. */
+void d3dr_set_generate_mips(int on);
+/* Applied when the game next creates DirectDraw; -1 when nothing waits. */
+void d3dr_defer_switch(int hardware);
+void d3dr_defer_switch_cancel(void);
+int d3dr_pending_switch(void);
+unsigned d3dr_textures_alive(void);
+/* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
+int d3dr_set_debug_output(const char* mode);
+void d3dr_summary(void);
+/* DEBUG_SAULO: --debug-terrain-wireframe|solid|texture|nocull (terrain_diag.c) and the guest terrain probes. */
+int tdiag_parse_option(const char* arg);
+void terrain_probe_install(void);
+void terrain_probe_report(double frames);
+void tdiag_note_water_node(uint32_t node);
+
+/* exit_policy.c */
+int host_exit_code_for_guest_return(int code);
+void shim_exit(void);
+void shim__exit(void);
+void shim_ExitProcess(void);
+void shim_CreateThread(void);
+/* Guest threads (CreateThread from lifted code) still running, the main guest thread included. */
+unsigned guest_threads_alive(void);
+/* "[shutdown] guest threads <when>: N" and one line per worker still running. */
+void guest_threads_log(const char* when);
+
+/* registry.c / guest_env.c: the legacy "unstable last time, Safe Mode?" prompt. */
+void registry_legacy_safemode_dialog(void);
+int registry_legacy_safemode_enabled(void);
 
 enum {
     HOST_EXIT_SETUP = 1,
     HOST_EXIT_NOT_LIFTED = 2,
     HOST_EXIT_FAULT = 3,
     HOST_EXIT_WATCHDOG = 4,
-    HOST_EXIT_UNRESOLVED = 5
+    HOST_EXIT_UNRESOLVED = 5,
+    HOST_EXIT_GAME_FAILED = 6,
+    HOST_EXIT_GUEST_ERROR = 7,
+    HOST_EXIT_SHUTDOWN_TIMEOUT = 8
 };
 
 #endif

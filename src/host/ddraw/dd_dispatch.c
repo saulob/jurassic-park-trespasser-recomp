@@ -3,7 +3,7 @@
  * table; both hold ddraw.dll's own addresses. Every call through either reaches the indirect-call
  * dispatch, which sends it here instead, so no DirectDraw object of the system's is ever created.
  */
-#include "ddraw_compat.h"
+#include "d3d_legacy.h"
 #include "host.h"
 
 typedef struct {
@@ -29,7 +29,8 @@ int ddraw_compat_init(int enabled) {
         host_log("ddraw", "video: system ddraw.dll (--ddraw system); DirectDraw calls are observed, not replaced");
         return 1;
     }
-    if (!dd_device_vtables_complete() || !dd_surface_vtables_complete() || !dd_object_vtables_complete()) {
+    if (!dd_device_vtables_complete() || !dd_surface_vtables_complete() || !dd_object_vtables_complete() ||
+        !d3d_vtables_complete()) {
         host_log("ddraw", "compatibility layer has an empty vtable slot; refusing to run");
         return 0;
     }
@@ -43,6 +44,8 @@ int ddraw_compat_init(int enabled) {
              "ddraw.dll's exports are routed to it");
     return 1;
 }
+
+int ddraw_compat_active(void) { return s_enabled; }
 
 recomp_func_t ddraw_compat_lookup(uint32_t va) {
     if (!s_enabled) return NULL;

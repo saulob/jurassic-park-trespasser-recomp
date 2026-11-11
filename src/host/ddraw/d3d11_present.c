@@ -2,10 +2,13 @@
  * Shows the virtual display's front buffer in its window through D3D11. Swap chain buffers cannot
  * be 16 bpp, so each frame is expanded once, through a table built from the surface's real masks
  * and the gamma ramp, into a staging texture that is copied to the back buffer. The swap chain is
- * windowed (flip model where available) and DXGI stretches it to the client area.
+ * windowed (flip model where available) and DXGI stretches it to the window it was made for,
+ * the game window's presentation surface, which the window host sizes to the display's aspect.
+ * With --renderer d3d11 the device is shared with d3d11_renderer.c, which draws into the swap
+ * chain itself; a frame counts only when Present succeeds.
  */
 #define COBJMACROS
-#include "ddraw_compat.h"
+#include "d3d_legacy.h"
 #include "host.h"
 
 #include <d3d11.h>
@@ -19,7 +22,9 @@ typedef struct {
     ID3D11DeviceContext* context;
     IDXGISwapChain* swapchain;
     ID3D11Texture2D* staging[STAGING_COUNT];
+    ID3D11RenderTargetView* back_rtv;
     int next_staging;
+    unsigned generation;
     HWND window;
     UINT width, height;
     HWND failed_window;
@@ -70,7 +75,14 @@ static void release_staging(void) {
         }
 }
 
+static void release_back_view(void) {
+    if (s_p.back_rtv) ID3D11RenderTargetView_Release(s_p.back_rtv);
+    s_p.back_rtv = NULL;
+}
+
 void present_release(void) {
+    if (s_p.device) d3dr_device_lost();
+    release_back_view();
     release_staging();
     if (s_p.swapchain) IDXGISwapChain_Release(s_p.swapchain);
     if (s_p.context) ID3D11DeviceContext_Release(s_p.context);
@@ -102,10 +114,20 @@ static int create_device(void) {
         return 0;
     }
     present_adapter(&adapter);
+    s_p.generation++;
     host_log("d3d11", "device created: %s, feature level %u.%u, adapter \"%s\"", kind, ((unsigned)level >> 12) & 0xF,
              ((unsigned)level >> 8) & 0xF, adapter.description);
     return 1;
 }
+
+int present_device(ID3D11Device** device, ID3D11DeviceContext** context) {
+    if (!s_p.device && !create_device()) return 0;
+    *device = s_p.device;
+    *context = s_p.context;
+    return 1;
+}
+
+unsigned present_device_generation(void) { return s_p.generation; }
 
 static int create_swapchain(HWND window, UINT width, UINT height) {
     IDXGIDevice* dxgi_device = NULL;
@@ -157,8 +179,12 @@ static int create_swapchain(HWND window, UINT width, UINT height) {
             hr = IDXGIFactory_CreateSwapChain(factory, (IUnknown*)s_p.device, &desc, &s_p.swapchain);
             if (SUCCEEDED(hr)) effect = "discard (bitblt model)";
         }
-        if (s_p.swapchain) IDXGIFactory_MakeWindowAssociation(factory, window, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
-        else log_hr("swap chain creation", hr);
+        if (s_p.swapchain) {
+            HWND top = GetAncestor(window, GA_ROOT);
+            IDXGIFactory_MakeWindowAssociation(factory, top ? top : window, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
+        } else {
+            log_hr("swap chain creation", hr);
+        }
     }
     if (factory2) IDXGIFactory2_Release(factory2);
     if (factory) IDXGIFactory_Release(factory);
@@ -170,6 +196,14 @@ static int create_swapchain(HWND window, UINT width, UINT height) {
     return 1;
 }
 
+static double ms_since(LARGE_INTEGER start) {
+    LARGE_INTEGER now, f;
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&f);
+    return (double)(now.QuadPart - start.QuadPart) * 1000.0 / (double)f.QuadPart;
+}
+
+/* Only the software path needs staging textures; they are made on its first frame at this size. */
 static int create_staging(UINT width, UINT height) {
     D3D11_TEXTURE2D_DESC desc;
     memset(&desc, 0, sizeof desc);
@@ -198,20 +232,26 @@ static int ensure_resources(HWND window, UINT width, UINT height) {
     if (s_p.swapchain && s_p.window == window && s_p.width == width && s_p.height == height) return 1;
     if (s_p.swapchain && s_p.window == window) {
         HRESULT hr;
+        release_back_view();
         release_staging();
         hr = IDXGISwapChain_ResizeBuffers(s_p.swapchain, 0, width, height, DXGI_FORMAT_UNKNOWN, 0);
         if (FAILED(hr)) {
             log_hr("ResizeBuffers", hr);
             present_release();
-        } else if (create_staging(width, height)) {
+        } else {
             s_p.width = width;
             s_p.height = height;
             host_log("d3d11", "swap chain resized to %ux%u", width, height);
             return 1;
         }
     }
-    present_release();
-    if (!create_device() || !create_swapchain(window, width, height) || !create_staging(width, height)) {
+    if (s_p.device) {
+        release_back_view();
+        release_staging();
+        if (s_p.swapchain) IDXGISwapChain_Release(s_p.swapchain);
+        s_p.swapchain = NULL;
+    }
+    if ((!s_p.device && !create_device()) || !create_swapchain(window, width, height)) {
         present_release();
         s_p.failed_window = window;
         host_log("d3d11", "presentation is off for window 0x%08X: the game keeps running, but nothing reaches the screen",
@@ -262,12 +302,27 @@ static void handle_present_result(HRESULT hr) {
 void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
                    const DDGAMMARAMP* gamma, int gamma_changed, int vsync) {
     UINT width = (UINT)(source->right - source->left), height = (UINT)(source->bottom - source->top);
+    HWND target = window_host_surface(window);
     ID3D11Texture2D* staging;
     ID3D11Texture2D* back = NULL;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
-    if (format->dwRGBBitCount != 16 || !width || !height) return;
-    if (!ensure_resources(window, width, height)) return;
+    LARGE_INTEGER start;
+    QueryPerformanceCounter(&start);
+    if (format->dwRGBBitCount != 16 || !width || !height || !window_host_frames_allowed()) return;
+    if (IsIconic(window)) {
+        Sleep(10);
+        return;
+    }
+    if (d3dr_hardware()) {
+        d3dr_present_dib(window, bits, pitch, source, format, gamma, vsync);
+        return;
+    }
+    if (!ensure_resources(target, width, height)) return;
+    if (!s_p.staging[0] && !create_staging(width, height)) {
+        release_staging();
+        return;
+    }
     if (gamma_changed || !s_p.table_ready || !dd_format_equal(&s_p.table_format, format))
         if (!build_table(format, gamma)) return;
     staging = s_p.staging[s_p.next_staging];
@@ -292,7 +347,41 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
     ID3D11Texture2D_Release(back);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync ? 1 : 0, 0);
     handle_present_result(hr);
-    if (SUCCEEDED(hr) && ++s_p.frames == 1)
+    if (hr != S_OK) return;
+    d3dr_frame_presented(ms_since(start));
+    window_host_frame_presented();
+    if (++s_p.frames == 1)
         host_log("d3d11", "first frame presented: %ux%u RGB %lX/%lX/%lX expanded to B8G8R8A8", width, height,
                  format->dwRBitMask, format->dwGBitMask, format->dwBBitMask);
+}
+
+/* The hardware path draws into the back buffer itself; the window is the game window. */
+ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height) {
+    HWND target = window_host_surface(window);
+    ID3D11Texture2D* back = NULL;
+    HRESULT hr;
+    if (IsIconic(window) || !width || !height || !ensure_resources(target, width, height)) return NULL;
+    if (s_p.back_rtv) return s_p.back_rtv;
+    hr = IDXGISwapChain_GetBuffer(s_p.swapchain, 0, &IID_ID3D11Texture2D, (void**)&back);
+    if (SUCCEEDED(hr)) hr = ID3D11Device_CreateRenderTargetView(s_p.device, (ID3D11Resource*)back, NULL, &s_p.back_rtv);
+    if (back) ID3D11Texture2D_Release(back);
+    if (FAILED(hr)) {
+        log_hr("swap chain render target view", hr);
+        return NULL;
+    }
+    return s_p.back_rtv;
+}
+
+int present_submit(int vsync) {
+    HRESULT hr;
+    LARGE_INTEGER start;
+    if (!s_p.swapchain) return 0;
+    QueryPerformanceCounter(&start);
+    hr = IDXGISwapChain_Present(s_p.swapchain, vsync ? 1 : 0, 0);
+    handle_present_result(hr);
+    if (hr != S_OK) return 0;
+    d3dr_frame_presented(ms_since(start));
+    window_host_frame_presented();
+    if (++s_p.frames == 1) host_log("d3d11", "first frame presented by the hardware path: %ux%u", s_p.width, s_p.height);
+    return 1;
 }

@@ -53,12 +53,31 @@ void shim_GetModuleFileNameA(void) {
     GUEST_RETURN_STDCALL(3);
 }
 
+/* sub_0040E4D0's own arguments (type, title id, text id) sit above its 0x2100 bytes of locals, esi,
+ * the four MessageBoxA arguments and its return slot. */
+#define HELPER_ARGS 0x2120u
+
+static int safemode_prompt_site(void) {
+    uint32_t type = 0, title_id = 0, text_id = 0;
+    if (g_cur_func != SAFEMODE_MSGBOX_HELPER) return 0;
+    guest_read32(g_esp + HELPER_ARGS, &type);
+    guest_read32(g_esp + HELPER_ARGS + 4, &title_id);
+    guest_read32(g_esp + HELPER_ARGS + 8, &text_id);
+    return safemode_prompt_args(g_cur_func, type, title_id, text_id);
+}
+
 void shim_MessageBoxA(void) {
     HWND owner = (HWND)GUEST_PTR(0);
     const char* text = (const char*)GUEST_PTR(1);
     const char* caption = (const char*)GUEST_PTR(2);
     UINT type = GUEST_ARG(3);
     int answer;
+    if (!registry_legacy_safemode_enabled() && safemode_prompt_site()) {
+        host_log("host", "legacy Safe Mode dialog suppressed at sub_0040D780: answered No (start normally)");
+        g_eax = IDNO;
+        GUEST_RETURN_STDCALL(4);
+        return;
+    }
     host_log("msgbox", "\"%s\": %s (type 0x%X, from sub_%08X)", text_or_placeholder(caption),
              text_or_placeholder(text), type, g_cur_func);
     mach_leave();

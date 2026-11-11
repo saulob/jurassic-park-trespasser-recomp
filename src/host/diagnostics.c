@@ -14,6 +14,7 @@ static uint32_t s_host_lo, s_host_hi;
 static uint32_t s_guest_lo, s_guest_hi;
 static DWORD s_watchdog_seconds;
 static LONG s_foreign_faults;
+static volatile LONG s_process_ending;
 
 static void report_begin(void) { s_report_len = 0; }
 
@@ -47,6 +48,7 @@ static void report_machine_state(void) {
 static void report_emit(void) { host_log_raw(s_report, (unsigned)s_report_len); }
 
 static void stop(int code) {
+    window_host_release_cursor();
     recomp_trace_flush();
     TerminateProcess(GetCurrentProcess(), (UINT)code);
 }
@@ -99,7 +101,7 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS* ep) {
     uint32_t pc = (uint32_t)(uintptr_t)r->ExceptionAddress;
     if ((r->ExceptionCode & 0xF0000000u) != 0xC0000000u) return EXCEPTION_CONTINUE_SEARCH;
     if (!in_range(pc, s_host_lo, s_host_hi) && !in_range(pc, s_guest_lo, s_guest_hi)) {
-        if (InterlockedIncrement(&s_foreign_faults) <= FOREIGN_FAULT_LOG_LIMIT) {
+        if (!s_process_ending && InterlockedIncrement(&s_foreign_faults) <= FOREIGN_FAULT_LOG_LIMIT) {
             char line[256];
             int n = _snprintf(line, sizeof line, "[fault] first-chance 0x%08lX at 0x%08X outside lifted "
                               "code (last native call %s); left to its own handler\n",
@@ -147,6 +149,17 @@ static DWORD WINAPI watchdog(LPVOID unused) {
     stop(HOST_EXIT_WATCHDOG);
     return 0;
 }
+
+void diagnostics_shutdown_timeout(const char* detail) {
+    report_begin();
+    report_add("\n=== shutdown watchdog: %s ===\n", detail);
+    report_machine_state();
+    report_emit();
+    host_log("exit", "exit code %d (shutdown timeout, not a normal exit)", HOST_EXIT_SHUTDOWN_TIMEOUT);
+    stop(HOST_EXIT_SHUTDOWN_TIMEOUT);
+}
+
+void diagnostics_process_ending(void) { InterlockedExchange(&s_process_ending, 1); }
 
 void diagnostics_install(unsigned watchdog_seconds) {
     HMODULE self = GetModuleHandleA(NULL);
