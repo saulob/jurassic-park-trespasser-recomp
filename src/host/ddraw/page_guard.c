@@ -95,15 +95,6 @@ int page_guard_disarm(void) {
 
 int page_guard_armed(void) { return G.armed; }
 
-const char* page_guard_result_name(page_guard_result_t result) {
-    switch (result) {
-    case PAGE_GUARD_ARMED: return "deferred to the first touch";
-    case PAGE_GUARD_SHARED_PAGES: return "immediate, the pages are shared";
-    case PAGE_GUARD_PROTECT_FAILED: return "immediate, the pages cannot be protected";
-    default: return "immediate, no fault handler";
-    }
-}
-
 int page_alias_create(void* section, size_t bytes) {
     DWORD old;
     void* view;

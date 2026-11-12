@@ -40,7 +40,7 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
 void d3dr_detach(d3d_device_t* dev) { (void)dev; s_attached--; }
 void d3dr_begin_scene(d3d_device_t* dev) { (void)dev; }
 void d3dr_end_scene(d3d_device_t* dev) { (void)dev; }
-void d3dr_state_will_change(d3d_device_t* dev, int kind, unsigned which) { (void)dev; (void)kind; (void)which; }
+void d3dr_state_will_change(d3d_device_t* dev) { (void)dev; }
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count) {
     (void)dev; (void)vertices; (void)indices; (void)index_count;

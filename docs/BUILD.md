@@ -134,6 +134,8 @@ the game.
 | `--vsync on\|off`, `--show-fps on\|off` | VSync (default on), FPS in the title (default on) |
 | `--display-mode windowed\|borderless`, `--monitor N`, `--window-size auto\|WxH`, `--presentation letterbox\|stretch` | window settings (defaults windowed, 1, auto, letterbox) |
 | `--watchdog N` | stop after N seconds and report where execution was |
+| `--perf-log` | performance lines every 5 s, renderer summaries every 60 s and a sampled guest CPU profile (diagnostics; off by default) |
+| `--lifted-water` | run the lifted water, occlusion and polygon-submission functions instead of their host kernels (comparison) |
 | `--native-trace` | one log line per native call (large) |
 | `--callbacks` | one log line per Windows-to-guest call |
 | `-- ARGS` | arguments passed to the game itself |
@@ -146,11 +148,15 @@ game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `
 
 ## Headless tests
 
-Five small programs check the host without a window, a GPU device, the game or audio; they are not
+Small programs check the host without a window, a GPU device, the game or audio; they are not
 part of the default build:
 
 ```powershell
-ninja -C build\cmake\msvc-x86 launcher_tests host_tests com_tests water_tests x87_tests
+ninja -C build\cmake\msvc-x86 launcher_tests host_tests com_tests water_tests x87_tests override_tests_incremental override_tests_non_incremental
+.\build\cmake\msvc-x86\override_tests_incremental.exe      # host overrides through stable entries: direct, alias and dispatched calls, refusals, counts
+.\build\cmake\msvc-x86\override_tests_non_incremental.exe  # the same fixture linked /INCREMENTAL:NO, as Release links
+py -3 -m unittest discover -s tests -p "test_stable_entries.py"  # the lift's stable-entry renaming and check
+py -3 -m unittest discover -s tests -p "test_lift_staging.py"    # staging, publishing changed files only, cleanup retries when a scanner holds a file (TRESPASSER_TEST_LIFT=1 also lifts a small closure twice)
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
 $env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation

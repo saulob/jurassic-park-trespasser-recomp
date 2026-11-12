@@ -11,13 +11,8 @@
 #define EPSILON_USED 0x00741110u
 #define OCCLUDED_COUNT 0x007410F8u
 #define VISIBLE_COUNT 0x007410FCu
-#define FRAME_NUMBER 0x006648F4u /* SPartitionSettings::u4FrameNumber */
-#define CENSUS_SLOTS 2048u
 
 recomp_func_t occlusion_test_lifted;
-static unsigned long long s_calls, s_census_calls, s_repeats;
-static uint64_t s_seen[CENSUS_SLOTS];
-static uint32_t s_census_frame = 0xFFFFFFFFu, s_census_used;
 
 static __forceinline uint32_t rd32(uint32_t va) { return *(const uint32_t*)ADDR(va); }
 static __forceinline double rdf(uint32_t va) { return *(const float*)ADDR(va); }
@@ -69,35 +64,6 @@ static __forceinline uint32_t plane_side_bits(uint32_t plane, uint32_t point) {
     return bits;
 }
 
-static __forceinline uint64_t mix(uint64_t h, uint32_t v) { return (h ^ v) * 0x100000001B3ull; }
-
-static void census(uint32_t caller, uint32_t occluders, uint32_t points) {
-    uint32_t frame = rd32(FRAME_NUMBER), n = rd32(points), data = rd32(points + 4), slot;
-    uint64_t h = 0xCBF29CE484222325ull;
-    if (frame & 7u) return;
-    if (frame != s_census_frame) {
-        memset(s_seen, 0, sizeof s_seen);
-        s_census_frame = frame;
-        s_census_used = 0;
-    }
-    s_census_calls++;
-    h = mix(mix(mix(h, caller), occluders), n);
-    h = mix(mix(h, *(const uint8_t*)ADDR(EPSILON_ON)), rd32(EPSILON_VALUE));
-    for (uint32_t i = 0; i < n * 3u && i < 96u; i++) h = mix(h, rd32(data + i * 4u));
-    h |= 1u;
-    for (slot = (uint32_t)(h >> 32) & (CENSUS_SLOTS - 1u); s_seen[slot]; slot = (slot + 1u) & (CENSUS_SLOTS - 1u))
-        if (s_seen[slot] == h) {
-            s_repeats++;
-            return;
-        }
-    if (s_census_used < CENSUS_SLOTS * 3u / 4u) s_seen[slot] = h, s_census_used++;
-}
-
-void occlusion_take_counts(unsigned long long* calls, unsigned long long* census_calls, unsigned long long* repeats) {
-    *calls = s_calls, *census_calls = s_census_calls, *repeats = s_repeats;
-    s_calls = s_census_calls = s_repeats = 0;
-}
-
 /* cdecl bool (const CSet<COccluder*>* occluders, const CArray<CVector3>* points): true when one occluder has every
  * point behind each of its planes (the float's sign bit set). */
 void occlusion_test(void) {
@@ -107,8 +73,6 @@ void occlusion_test(void) {
         occlusion_test_lifted();
         return;
     }
-    s_calls++;
-    census(g_cur_func, rd32(g_esp + 4), rd32(g_esp + 8));
     g_cur_func = OCCLUSION_TEST_VA;
     esp0 = g_esp;
     sp = esp0 - 0x1C;

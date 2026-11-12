@@ -6,6 +6,10 @@ Adapted from sp00nznet/themovies run_lift.py (MIT); drives pcrecomp's generate.p
 SelfMod is deliberately not lifted: it patches its own immediates at run time, so the host
 runs its original bytes (src/host/selfmod.c). Calls into it lift as RECOMP_ICALL.
 
+The functions of src/host/guest_override_list.h lift as lifted_sub_<va> (tools/stable_entries.py). The lift is
+written and validated in build/lift-staging, then published into src/recomp/gen (tools/lift_staging.py): only files
+whose content changed are rewritten, and analysis/lift_stats.json, written last, marks the lift complete.
+
     py -3 tools/run_lift.py                 # every catalogued .text function
     py -3 tools/run_lift.py --closure 3000  # entry-point closure only, the rest stubbed
 """
@@ -15,8 +19,11 @@ import json
 import re
 import sys
 import time
+from pathlib import Path
 
 from common import ANALYSIS_DIR, CONFIG_DIR, GEN_DIR, TARGET, require_target_exe, use_pcrecomp
+from lift_staging import LiftPublishError, create_staging, finish_staging, publish, sweep_staging
+from stable_entries import check_folder, listed_overrides, rename_definition
 
 use_pcrecomp("lift", "pe")
 
@@ -29,6 +36,7 @@ from pe_analyze import analyze_pe, build_iat_map           # noqa: E402
 CATALOG = ANALYSIS_DIR / "functions.json"
 SEEDS = ANALYSIS_DIR / "rtti_seeds.json"
 STATS = ANALYSIS_DIR / "lift_stats.json"
+FAILURE = ANALYSIS_DIR / "lift_failure.json"
 EXTRA_ENTRIES = CONFIG_DIR / "extra_entries.json"
 DECODER_FIXUPS = CONFIG_DIR / "decoder_fixups.json"
 CONSTANT_TARGET = re.compile(r"RECOMP_(?:ICALL|ITAIL)\(0x([0-9A-F]{8})u\)")
@@ -76,16 +84,22 @@ def decodable_code(raw, code_start):
     return bytes(code), len(fixups)
 
 
-def unresolved_constant_targets(entries, selfmod):
-    """Constant jump/call targets that are neither a lifted entry nor SelfMod: each would fail at run time."""
+def scan_generated(folder, entries, selfmod):
+    """What a generated folder holds: constant jump/call targets that are neither a lifted entry nor SelfMod (each
+    would fail at run time), the lines of C and the instructions the lifter could not translate."""
     known = {addr for addr, _ in entries}
-    bad = set()
-    for path in GEN_DIR.glob("recomp_0*.c"):
-        for m in CONSTANT_TARGET.finditer(path.read_text(encoding="utf-8", errors="replace")):
-            target = int(m.group(1), 16)
-            if target not in known and not selfmod[0] <= target < selfmod[1]:
-                bad.add(target)
-    return sorted(bad)
+    bad, lines, unimplemented = set(), 0, 0
+    for path in sorted(Path(folder).glob("recomp_*.c")):
+        with open(path, encoding="utf-8", errors="replace") as source:
+            text = source.read()
+        lines += text.count("\n")
+        unimplemented += text.count("UNIMPLEMENTED")
+        if path.name.startswith("recomp_0"):
+            for m in CONSTANT_TARGET.finditer(text):
+                target = int(m.group(1), 16)
+                if target not in known and not selfmod[0] <= target < selfmod[1]:
+                    bad.add(target)
+    return sorted(bad), lines, unimplemented
 
 
 def write_header(out, entries):
@@ -122,8 +136,12 @@ def main():
     ap.add_argument("--split", type=int, default=250, help="functions per .c file")
     ap.add_argument("--no-alias-sharing", action="store_true",
                     help="lift every alias entry as its own copy of the code (larger output; for bisecting)")
+    ap.add_argument("--gen-dir", type=Path, default=GEN_DIR, help="publish here instead of src/recomp/gen (tests)")
+    ap.add_argument("--stats-file", type=Path, default=STATS, help="stats file, written last (tests)")
+    ap.add_argument("--staging-root", type=Path, default=None, help="staging parent (default build/lift-staging)")
     args = ap.parse_args()
 
+    t_start = time.time()
     exe = require_target_exe()
     info = analyze_pe(str(exe))
     iat = build_iat_map(info)
@@ -154,22 +172,29 @@ def main():
     print(f"[*] decoder fixups applied: {fixups}")
 
     lifter = Lifter(iat_map=iat, lifted=set(byaddr), precise_carry=True, precise_sbb=True)
-    GEN_DIR.mkdir(parents=True, exist_ok=True)
-    for stale in GEN_DIR.glob("recomp_*"):
-        stale.unlink()
+    out = create_staging(args.staging_root)
+    sweep_staging(args.staging_root, keep=out, legacy_dir=args.gen_dir)
+    try:
+        run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t_start)
+    finally:
+        finish_staging(out)
+
+
+def run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t0):
+    stable, renamed = set(listed_overrides()), set()
 
     entries, chunk, errors, dirty, file_idx = [], [], [], [], 0
     ordered = sorted(byaddr)
     starts = {a for a in ordered if byaddr[a].get("entry_kind") != "alias"}
-    t0 = time.time()
+    t_splits = time.time()
     splits = find_splits(md, code, cs, ce, starts)
     starts -= splits
-    print(f"[*] split entries: {len(splits)}, {time.time() - t0:.0f}s")
+    print(f"[*] split entries: {len(splits)}, {time.time() - t_splits:.0f}s")
 
     def flush(force=False):
         nonlocal chunk, file_idx
         if chunk and (force or len(chunk) >= args.split):
-            write_chunk(str(GEN_DIR), file_idx, chunk)
+            write_chunk(str(out), file_idx, chunk)
             file_idx += 1
             chunk = []
 
@@ -190,6 +215,9 @@ def main():
 
     def emit(addr, body):
         name = f"sub_{addr:08X}"
+        if addr in stable:
+            body = rename_definition(body, addr)
+            renamed.add(addr)
         chunk.append((body, addr, name))
         entries.append((addr, name))
         if len(chunk) >= args.split:
@@ -241,36 +269,49 @@ def main():
     stubs = [a for a in ordered if a not in chosen]
     for a in stubs:
         name = f"sub_{a:08X}"
-        chunk.append((f"void {name}(void) {{ RECOMP_NOT_LIFTED(0x{a:08X}u); }}\n", a, name))
+        body = f"void {name}(void) {{ RECOMP_NOT_LIFTED(0x{a:08X}u); }}\n"
+        if a in stable:
+            body = rename_definition(body, a)
+            renamed.add(a)
+        chunk.append((body, a, name))
         entries.append((a, name))
         flush()
     flush(force=True)
+    if stable - renamed:
+        sys.exit("listed in src/host/guest_override_list.h but not lifted: " +
+                 ", ".join(f"0x{a:08X}" for a in sorted(stable - renamed)))
 
-    write_header(GEN_DIR, entries)
-    write_dispatch(GEN_DIR, entries, (cs, ce), selfmod)
+    write_header(out, entries)
+    write_dispatch(out, entries, (cs, ce), selfmod)
 
-    unresolved = unresolved_constant_targets(entries, selfmod)
-    lines = unimplemented = 0
-    for path in GEN_DIR.glob("recomp_*.c"):
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                lines += 1
-                unimplemented += "UNIMPLEMENTED" in line
+    unresolved, lines, unimplemented = scan_generated(out, entries, selfmod)
+    _, stable_problems = check_folder(out)
     stats = {"target_sha256": TARGET["sha256"], "lifted": len(chosen) - len(errors),
              "closure_stubs": len(stubs), "shared_aliases": len(alias_parent),
              "lift_errors": errors, "no_terminator": dirty,
              "unresolved_constant_targets": [f"0x{t:08X}" for t in unresolved],
              "unimplemented_instructions": unimplemented, "files": file_idx, "lines": lines}
-    STATS.write_text(json.dumps(stats, indent=1))
     print("=" * 60)
     print(f"  lifted {stats['lifted']}   closure stubs {len(stubs)}   lift errors {len(errors)}")
     print(f"  no terminator {len(dirty)}   unimplemented instructions {unimplemented}")
-    print(f"  unresolved constant targets {len(unresolved)}")
+    print(f"  unresolved constant targets {len(unresolved)}   stable entries {len(stable)}")
     print(f"  {lines:,} lines of C in {file_idx} files, {time.time() - t0:.1f}s")
-    print(f"  stats: {STATS}")
     print("=" * 60)
-    if errors or unresolved or unimplemented:
-        sys.exit("the lift is incomplete: see the counts above and analysis/lift_stats.json")
+    if errors or unresolved or unimplemented or stable_problems:
+        for line in stable_problems:
+            print(line)
+        if args.stats_file == STATS:
+            FAILURE.write_text(json.dumps(dict(stats, stable_entry_problems=stable_problems), indent=1))
+        sys.exit("the lift is incomplete, nothing was published: see the counts above and analysis/lift_failure.json")
+
+    try:
+        written = publish(out, args.gen_dir, args.stats_file, json.dumps(stats, indent=1))
+    except LiftPublishError as error:
+        sys.exit(f"the lift was complete but could not be published: {error}")
+    if args.stats_file == STATS:
+        FAILURE.unlink(missing_ok=True)
+    print(f"[*] published: {written} of {file_idx + 2} files rewritten, {len(stable)} stable entries")
+    print(f"  stats: {args.stats_file}")
 
 
 if __name__ == "__main__":

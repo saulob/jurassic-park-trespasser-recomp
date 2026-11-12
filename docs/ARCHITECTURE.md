@@ -234,8 +234,8 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   15.6 ms steps that window was anywhere from one upload to 15 ms; inside the call the host's GetTickCount stands
   still for 10 ms of performance-counter time and then ends the loop (`engine_upload_clock`).
 - Lifted code optimisation: every lifted file compiles at `/O2 /Ob1`, a /Od build included; `/Ob1` expands only the
-  runtime's `inline` helpers (`_pop32`, the x87 ring, flags, `recomp_resolve`): a lifted function is never `inline`, so
-  its calls keep the incremental-link thunks the overrides use. pcrecomp's runtime comes with `patches\pcrecomp`: the
+  runtime's `inline` helpers (`_pop32`, the x87 ring, flags, `recomp_resolve`). Overrides do not depend on it or on the
+  linker: each replaceable function has a stable entry (below). pcrecomp's runtime comes with `patches\pcrecomp`: the
   x87 stack as a ring (`RECOMP_X87_RING`, with `g_fp_top` still counted), its helpers force-inlined, a two-entry cache
   per indirect call site for lifted and shim targets (`RECOMP_ICALL_SITE_RANGE`) and an O(1) `native32_name`. The
   host's own Direct3D methods called per polygon run in place, without native32's bridge (`d3d_method_in_place`).
@@ -259,8 +259,14 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   recreation, and an Unlock with no touch restores the previous state. The game's Lock/Unlock pairs
   that only wait for the GPU (`FlushBatch`, the hardware-water upload in `0x0060E590`) therefore read
   nothing back. GetDC and Blt still sync at once: GDI and the host access the pixels directly.
-- `guest_overrides.c` replaces hot lifted functions through their incremental-link thunks with host
-  kernels: the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step (`0x00638670`, `water_kernels.c`),
+- Host overrides: every lifted function the host may replace is listed in `src/host/guest_override_list.h`
+  (required or optional). `tools/run_lift.py` names its lifted body `lifted_sub_<va>`, and `guest_overrides.c` defines
+  `sub_<va>`, a stable entry that jumps through a pointer holding the lifted body until an override is installed.
+  Direct calls, alias entries and the dispatch table all name `sub_<va>`, so an override reaches them with or without
+  incremental linking; a list and a lift that disagree fail the link. Installs are refused until the executable's
+  fingerprint is verified; one startup line counts them, and a required override that is missing stops the run
+  (`tests/override_tests.c` links a fixture both ways).
+- `guest_overrides.c` also installs the host kernels: the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step (`0x00638670`, `water_kernels.c`),
   the occlusion test (`0x00630D90`, `occlusion_kernel.c`) and the per-polygon Direct3D submission (`0x00559240`,
   `polygon_submit.c`: address modes, the lit and fogged D3DTLVERTEX fan, render states and DrawPrimitive, each call
   made through the device's vtable as the lifted code makes it). `tests/water_tests.c` runs them against the lifted

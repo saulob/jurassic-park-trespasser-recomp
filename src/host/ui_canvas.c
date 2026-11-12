@@ -150,40 +150,18 @@ static int covers_raster(uint32_t rect, uint32_t raster) {
            MEM32(rect + 8) >= MEM32(raster + RASTER_WIDTH) && MEM32(rect + 12) >= MEM32(raster + RASTER_HEIGHT);
 }
 
-/* DEBUG_SAULO: the first time each condition keeps the frozen picture off the GPU (logs 025-027 never drew it). */
-static void frozen_picture_refused(unsigned reason, uint32_t screen, uint32_t still, uint32_t rect) {
-    static unsigned logged;
-    static const char* const why[] = { "not inside the UI frame", "raster argument is not the UI canvas",
-                                       "game not paused", "no screen or frozen picture raster",
-                                       "frozen picture size differs from the screen", "rectangle does not cover the screen",
-                                       "the renderer declined" };
-    if (logged & (1u << reason)) return;
-    logged |= 1u << reason;
-    host_log("ui", "frozen gameplay picture drawn by the game, not the GPU: %s (screen %ux%u, picture %ux%u, rectangle "
-             "%d,%d-%d,%d)", why[reason], screen ? MEM32(screen + RASTER_WIDTH) : 0, screen ? MEM32(screen + RASTER_HEIGHT) : 0,
-             still ? MEM32(still + RASTER_WIDTH) : 0, still ? MEM32(still + RASTER_HEIGHT) : 0,
-             rect ? (int32_t)MEM32(rect) : 0, rect ? (int32_t)MEM32(rect + 4) : 0, rect ? (int32_t)MEM32(rect + 8) : 0,
-             rect ? (int32_t)MEM32(rect + 12) : 0);
-}
-
 /* The paused branch of DrawBackground(raster, rect) is one plain RasterBlt of the frozen picture over the screen; the
  * renderer draws it from a cached texture instead. */
 static int frozen_picture_on_gpu(void) {
     uint32_t screen = MEM32(SCREEN_RASTER), still = MEM32(FROZEN_PICTURE), rect = MEM32(g_esp + 8);
-    unsigned reason = !s_in_frame ? 0u : MEM32(g_esp + 4) != s_canvas ? 1u : !MEM32(g_ecx + GAME_PAUSED) ? 2u
-                    : !screen || !still ? 3u : 7u;
-    if (reason == 7u && (MEM32(still + RASTER_WIDTH) != MEM32(screen + RASTER_WIDTH) ||
-                         MEM32(still + RASTER_HEIGHT) != MEM32(screen + RASTER_HEIGHT) || !MEM32(still + RASTER_BITS)))
-        reason = 4u;
-    if (reason == 7u && !covers_raster(rect, screen)) reason = 5u;
-    if (reason == 7u && !d3dr_draw_still_picture((void*)(uintptr_t)MEM32(screen + RASTER_SURFACE),
-                                                 (const uint16_t*)ADDR(MEM32(still + RASTER_BITS)),
-                                                 (long)MEM32(still + RASTER_PITCH), (int)MEM32(still + RASTER_WIDTH),
-                                                 (int)MEM32(still + RASTER_HEIGHT)))
-        reason = 6u;
-    if (reason == 7u) return 1;
-    if (reason) frozen_picture_refused(reason, screen, still, rect);
-    return 0;
+    if (!s_in_frame || MEM32(g_esp + 4) != s_canvas || !MEM32(g_ecx + GAME_PAUSED) || !screen || !still) return 0;
+    if (MEM32(still + RASTER_WIDTH) != MEM32(screen + RASTER_WIDTH) ||
+        MEM32(still + RASTER_HEIGHT) != MEM32(screen + RASTER_HEIGHT) || !MEM32(still + RASTER_BITS))
+        return 0;
+    return covers_raster(rect, screen) &&
+           d3dr_draw_still_picture((void*)(uintptr_t)MEM32(screen + RASTER_SURFACE),
+                                   (const uint16_t*)ADDR(MEM32(still + RASTER_BITS)), (long)MEM32(still + RASTER_PITCH),
+                                   (int)MEM32(still + RASTER_WIDTH), (int)MEM32(still + RASTER_HEIGHT));
 }
 
 static void game_background(void) {
@@ -229,21 +207,15 @@ void ui_canvas_install(void) {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;
-        const char* name;
     } k[] = {
-        { UI_FRAME_VA, ui_frame, &s_frame_lifted, "UI frame" },
-        { UI_DRAW_WINDOWS_VA, ui_draw_windows, &s_windows_lifted, "UI windows" },
-        { UI_DRAW_CURSOR_VA, ui_draw_cursor, &s_cursor_lifted, "UI cursor" },
-        { GAME_BACKGROUND_VA, game_background, &s_background_lifted, "gameplay picture" },
-        { CENTRE_WINDOW_VA, centre_window, &s_centre_lifted, "window centring" },
+        { UI_FRAME_VA, ui_frame, &s_frame_lifted },
+        { UI_DRAW_WINDOWS_VA, ui_draw_windows, &s_windows_lifted },
+        { UI_DRAW_CURSOR_VA, ui_draw_cursor, &s_cursor_lifted },
+        { GAME_BACKGROUND_VA, game_background, &s_background_lifted },
+        { CENTRE_WINDOW_VA, centre_window, &s_centre_lifted },
     };
-    if (!guest_override_redirect(RASTER_BLT_VA, raster_blt, &s_blt_lifted))
-        host_log("ui", "sub_%08X (RasterBlt) has no incremental-link thunk: blits onto the screen read it back first",
-                 RASTER_BLT_VA);
+    guest_override_install(RASTER_BLT_VA, raster_blt, &s_blt_lifted);
     s_enabled = 1;
-    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++) {
-        if (guest_override_redirect(k[i].va, k[i].replacement, k[i].lifted)) continue;
-        host_log("ui", "sub_%08X (%s) has no incremental-link thunk: the UI canvas is off", k[i].va, k[i].name);
-        s_enabled = 0;
-    }
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        if (!guest_override_install(k[i].va, k[i].replacement, k[i].lifted)) s_enabled = 0;
 }

@@ -379,12 +379,6 @@ void d3dt_convert_row_pal8(const uint8_t* src, uint32_t* dst, unsigned count, co
     }
 }
 
-int d3dt_row_black(const uint32_t* bgra, unsigned count) {
-    uint32_t any = 0;
-    for (unsigned x = 0; x < count; x++) any |= bgra[x];
-    return (any & 0x00FFFFFFu) == 0;
-}
-
 unsigned d3dt_overlay_row(const uint16_t* current, const uint16_t* pristine, unsigned count, uint32_t* out) {
     unsigned changed = 0;
     for (unsigned x = 0; x < count; x++) {

@@ -125,17 +125,13 @@ void game_text_install(void) {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;
-        const char* name;
     } k[] = {
-        { FONT_CTOR_VA, font_ctor, &s_ctor_lifted, "text font" },
-        { TEXT_DRAW_VA, text_draw, &s_draw_lifted, "text draw" },
-        { TEXT_DRAW_LINE_VA, text_draw_line, &s_draw_line_lifted, "text line draw" },
+        { FONT_CTOR_VA, font_ctor, &s_ctor_lifted },
+        { TEXT_DRAW_VA, text_draw, &s_draw_lifted },
+        { TEXT_DRAW_LINE_VA, text_draw_line, &s_draw_line_lifted },
     };
     for (size_t i = 0; i < sizeof k / sizeof k[0]; i++) {
-        int hooked = guest_override_redirect(k[i].va, k[i].replacement, k[i].lifted);
+        int hooked = guest_override_install(k[i].va, k[i].replacement, k[i].lifted);
         if (i == 0) s_font_hooked = hooked;
-        if (!hooked)
-            host_log("text", "sub_%08X (%s) has no incremental-link thunk: the game's own version stays", k[i].va,
-                     k[i].name);
     }
 }

@@ -944,10 +944,6 @@ static void test_formats(void) {
         CHECK(out[0] == 0xFFFF0000u);
         d3dt_convert_row_pal8(idx, out, 3, pal, 1, 2, 2);
         CHECK(out[0] == 0xFF000000u && out[1] == 0xFF102030u && out[2] == 0x00FFFFFFu);
-        CHECK(!d3dt_row_black(out, 3) && d3dt_row_black(out, 1));
-        out[0] = 0x00000000u;
-        out[1] = 0xFF000000u;
-        CHECK(d3dt_row_black(out, 2));
     }
 }
 

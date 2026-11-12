@@ -35,7 +35,6 @@ void sub_00626BA0(void); /* _alloca_probe */
 void sub_0050C9C0(void); /* allocates the material's lighting table */
 
 recomp_func_t polygon_submit_lifted;
-static unsigned long long s_host, s_lifted;
 
 typedef struct {
     uint32_t eax, ecx, edx, ebx, esp, ebp, esi, edi;
@@ -227,18 +226,16 @@ void polygon_submit(void) {
     uint32_t esp0, self, poly, mode, mat, n, buf, i, dev, vtx = 0;
     uint8_t fog_on;
     if (g_alias_entry || !polygon_submit_lifted) {
-        if (polygon_submit_lifted) s_lifted++, polygon_submit_lifted();
+        if (polygon_submit_lifted) polygon_submit_lifted();
         return;
     }
     esp0 = g_esp;
     poly = rd32(esp0 + 4);
     n = rd32(poly);
     if (n > MAX_VERTICES || !rd32(DEVICE)) {
-        s_lifted++;
         polygon_submit_lifted();
         return;
     }
-    s_host++;
     g_cur_func = POLYGON_SUBMIT_VA;
     cpu_in(&c);
     self = c.ecx;
@@ -382,10 +379,4 @@ void polygon_submit(void) {
     g_ebp = rd32(c.ebp);
     g_esp = esp0 + 8;
     g_flag_k = c.k, g_flag_a = c.a, g_flag_b = c.b, g_flag_cf = c.cf;
-}
-
-void polygon_submit_take_counts(unsigned long long* host, unsigned long long* lifted) {
-    *host = s_host;
-    *lifted = s_lifted;
-    s_host = s_lifted = 0;
 }

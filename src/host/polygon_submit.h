@@ -13,7 +13,4 @@ void polygon_submit(void);
 /* The lifted body: alias entries and input the host path does not take. */
 extern recomp_func_t polygon_submit_lifted;
 
-/* Calls since the last read: run by the host path, run lifted. */
-void polygon_submit_take_counts(unsigned long long* host, unsigned long long* lifted);
-
 #endif

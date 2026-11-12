@@ -112,7 +112,8 @@ static void usage(void) {
            "                  [--msaa 0|2|4|8] [--vsync on|off] [--display-mode windowed|borderless] [--monitor N]\n"
            "                  [--window-size auto|WxH] [--presentation letterbox|stretch] [--show-fps on|off]\n"
            "                  [--original-engine-limits] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
-           "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [-- guest arguments]\n"
+           "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [--perf-log]\n"
+           "                  [-- guest arguments]\n"
            "  settings come from <user>\\trespasser.ini (the launcher writes it); these options override them\n"
            "    for this run only\n"
            "  --launcher shows the launcher even when it is turned off; --skip-launcher skips it once (unless\n"
@@ -127,7 +128,9 @@ static void usage(void) {
            "  --software-water keeps the game's software water with d3d11 (Hardware Water unset)\n"
            "  --lifted-water runs the lifted water and occlusion functions instead of their host kernels\n"
            "    (comparison)\n"
-           "  --legacy-safemode-dialog keeps the game's \"unstable last time, Safe Mode?\" prompt (off by default)\n");
+           "  --legacy-safemode-dialog keeps the game's \"unstable last time, Safe Mode?\" prompt (off by default)\n"
+           "  --perf-log adds performance lines every 5 s, renderer summaries every 60 s and a sampled guest CPU\n"
+           "    profile to the log (diagnostics)\n");
     recomp_trace_help();
 }
 
@@ -213,6 +216,8 @@ static int parse_options(int argc, char** argv, options_t* o) {
             if (!d3dr_set_debug_output(argv[++i])) return 0;
         } else if (!strcmp(argv[i], "--lifted-water")) {
             o->lifted_water = 1;
+        } else if (!strcmp(argv[i], "--perf-log")) {
+            host_perf_logging_enable();
         } else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) {
             o->watchdog_seconds = strtoul(argv[++i], NULL, 0);
         } else if (!strcmp(argv[i], "--native-trace")) {
@@ -433,13 +438,14 @@ int main(int argc, char** argv) {
         box = jpt_render_box(cfg.render_preset, cfg.aspect, monitor_w, monitor_h);
     }
     log_settings(&cfg, box, monitor_w, monitor_h);
-    if (!verify_fingerprint(guest_env_exe_path())) return HOST_EXIT_SETUP;
+    if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
                           settings_file);
     present_set_vsync(cfg.vsync);
     native32_init();
-    /* Lifted .text always resolves to the same function (overrides repoint its thunks), so call sites keep it. */
+    /* Lifted .text always resolves to the same function (an override switches inside its stable entry), so call sites
+     * keep it. */
     g_recomp_site_lo = trespasser_text_start;
     g_recomp_site_hi = trespasser_text_end;
     diagnostics_install(opt.dry_run ? 0 : opt.watchdog_seconds);
@@ -483,7 +489,7 @@ int main(int argc, char** argv) {
                  trespasser_entry_va);
         return 0;
     }
-    if (!opt.lifted_water) guest_overrides_install();
+    if (!opt.lifted_water) guest_kernels_install();
     {
         jpt_size_t hardware = jpt_gameplay_mode(box, cfg.aspect, 1), software = jpt_gameplay_mode(box, cfg.aspect, 0);
         jpt_size_t hardware_title = jpt_title_size(box, hardware, 1);
@@ -501,6 +507,7 @@ int main(int argc, char** argv) {
     engine_heaps_install();
     terrain_quality_install();
     cpu_polygons_install();
+    if (!guest_overrides_check()) return HOST_EXIT_SETUP;
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);
     return run_guest();

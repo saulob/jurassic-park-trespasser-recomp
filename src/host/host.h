@@ -24,6 +24,9 @@ int host_log_open(const char* dir, const char* file);
 const char* host_log_path(void);
 void host_log(const char* tag, const char* fmt, ...);
 void host_log_raw(const char* text, unsigned len);
+/* --perf-log: the 5-second performance lines, periodic renderer summaries and the guest CPU profile. */
+void host_perf_logging_enable(void);
+int host_perf_logging(void);
 
 int host_sha256_file(const char* path, char hex[65]);
 
@@ -186,20 +189,22 @@ void d3dr_cpu_polygon(void* surface_iface, const long box[4], uint32_t origin_by
 void d3dr_cpu_polygon_done(void);
 /* cpu_polygons.c: the software polygons drawn into the Direct3D frame (meshes Direct3D cannot take). */
 void cpu_polygons_install(void);
-/* diagnostics.c: the most called Windows functions (DEBUG_SAULO). */
-void native_calls_window(unsigned long long frames);
-void guest_kernels_window(unsigned long long frames);
 /* widescreen.c: screen pixels per metre at unit distance for the main camera's view; 0 when there is none. */
 float widescreen_pixels_per_metre(void);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
-/* guest_overrides.c: host equivalents of hot lifted functions, byte-exact with them (tests/water_tests.c). */
-void guest_overrides_install(void);
-/* Points the lifted function's incremental-link thunk at replacement; *body keeps the lifted code. */
-int guest_override_redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body);
-/* The lifted body of a redirected function, NULL when va is not redirected. */
-recomp_func_t guest_override_body(uint32_t va);
+/* guest_overrides.c: the lifted functions of guest_override_list.h, replaceable through their stable entries.
+ * Installs are refused until the target executable is verified; 0 when the list is not sorted and unique. */
+int guest_overrides_enable(void);
+/* Points va's stable entry at replacement; *lifted receives the lifted body. 0: va is not listed or already replaced. */
+int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t* lifted);
+/* The lifted body behind va's stable entry; NULL when va has none. */
+recomp_func_t guest_override_lifted(uint32_t va);
+/* Host kernels byte-exact with the lifted functions they replace (tests/water_tests.c). */
+void guest_kernels_install(void);
+/* One line on what was installed; 0 when a required override is missing. */
+int guest_overrides_check(void);
 /* widescreen.c: lifts the mode table's width cap and makes the main camera Hor+; 0 when a site is missing. */
 int widescreen_install(int aspect);
 int widescreen_active(void);
@@ -222,23 +227,19 @@ void engine_limits_apply(int hardware);
 int engine_limits_modern(void);
 void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsync);
 void engine_limits_summary(unsigned long long hardware_draw_calls);
-void engine_limits_window(unsigned long long frames);
 /* texture_streaming.c: the game's per-frame Direct3D texture upload window. */
 void texture_streaming_install(void);
 void texture_streaming_log(void);
-void texture_streaming_summary(unsigned long long frames);
 void shim_GetTickCount(void);
 /* terrain_quality.c: terrain texture distance and mesh tolerance with Direct3D 11. */
 /* engine_heaps.c: the engine's fixed heaps (scene polygons and vertices, terrain) and their commits. */
 void engine_heaps_install(void);
 int engine_heaps_enlarged(void);
 void engine_heaps_log(void);
-void engine_heaps_window(void);
 void terrain_quality_install(void);
 /* Mesh tolerances are in render pixels: they are compared at 480 lines. */
 void terrain_quality_set_render_height(int height);
 void terrain_quality_log(void);
-void terrain_quality_summary(void);
 /* Inside a RasterBlt from another raster onto the game's screen. */
 int ui_screen_blt_writes_only(void);
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
@@ -259,7 +260,7 @@ void shim_CreateThread(void);
 unsigned guest_threads_alive(void);
 /* diagnostics.c: lifted indirect calls answered from the dispatch cache, and the ones that searched the table. */
 void dispatch_cache_counts(unsigned long long* hits, unsigned long long* misses);
-/* guest_profile.c (DEBUG_SAULO): sampled guest CPU time, logged with the 5-second performance lines. */
+/* guest_profile.c (--perf-log): sampled guest CPU time, logged with the 5-second performance lines. */
 void guest_profile_start(HANDLE guest_thread);
 void guest_profile_add_worker(HANDLE thread, uint32_t entry);
 void guest_profile_window(void);

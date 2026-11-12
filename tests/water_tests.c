@@ -856,13 +856,19 @@ static void occlusion_benchmark(void) {
            lifted * 1e6, kernel * 1e6, lifted / kernel);
 }
 
+static unsigned long g_polygon_fallbacks;
+
+static void counted_polygon_fallback(void) {
+    g_polygon_fallbacks++;
+    lifted_sub_00559240();
+}
+
 /* A ten-vertex fan, lit below the threshold, with fog: the common case in the game. */
 static void polygon_benchmark(void) {
     double t0, lifted, kernel;
     start_t s;
     int calls = 20000;
     uint32_t self, poly;
-    unsigned long long host, fallback;
     g_polygon_vertices = 10;
     polygon_setup(ORDINARY, 10);
     g_polygon_vertices = 0;
@@ -882,15 +888,17 @@ static void polygon_benchmark(void) {
     }
     lifted = (seconds() - t0) / calls;
     enter(&s);
+    g_polygon_fallbacks = 0;
+    polygon_submit_lifted = counted_polygon_fallback;
     t0 = seconds();
     for (int i = 0; i < calls; i++) {
         g_esp = STACK_TOP, g_ecx = self, g_log_at = g_log_base;
         polygon_submit();
     }
     kernel = (seconds() - t0) / calls;
-    polygon_submit_take_counts(&host, &fallback);
-    printf("benchmark: polygon submission (10 vertices) lifted %.3f us, host %.3f us (x%.1f); host path %llu of %llu\n",
-           lifted * 1e6, kernel * 1e6, lifted / kernel, host, host + fallback);
+    polygon_submit_lifted = lifted_sub_00559240;
+    printf("benchmark: polygon submission (10 vertices) lifted %.3f us, host %.3f us (x%.1f); host path %d of %d\n",
+           lifted * 1e6, kernel * 1e6, lifted / kernel, calls - (int)g_polygon_fallbacks, calls);
     g_log_base = g_log_end = 0;
 }
 

@@ -69,6 +69,7 @@ set(HOST_SOURCES
   src/host/milestones.c
   src/host/selfmod.c
   src/host/guest_overrides.c
+  src/host/override_registry.c
   src/host/water_kernels.c
   src/host/occlusion_kernel.c
   src/host/polygon_submit.c
@@ -214,15 +215,22 @@ add_dependencies(trespasser jpt_launcher_assets)
 # and keeps its own first stack small; lifted code runs on a thread with a large stack.
 # Not /LARGEADDRESSAWARE: the original was a 2 GB process.
 target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPAT /STACK:0x40000)
+# Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
+# No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
+target_link_options(trespasser PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
 target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11 dxgi dxguid)
 
 # TRESPASSER_GEN_OPT alone sets the lifted sources' optimisation: the configuration's /O
 # options would only be overridden there (D9025), so they move to the other sources.
+# Release compiles them as RelWithDebInfo does (/O2 /Ob1), without its debug information.
 set(CONFIG_OPT "")
 foreach(config Release RelWithDebInfo MinSizeRel)
   string(TOUPPER ${config} upper)
   string(REGEX MATCHALL "/O[^ ]+" flags "${CMAKE_C_FLAGS_${upper}}")
   string(REGEX REPLACE "/O[^ ]+" "" CMAKE_C_FLAGS_${upper} "${CMAKE_C_FLAGS_${upper}}")
+  if(config STREQUAL "Release")
+    list(TRANSFORM flags REPLACE "^/Ob2$" "/Ob1")
+  endif()
   foreach(flag IN LISTS flags)
     list(APPEND CONFIG_OPT "$<$<CONFIG:${config}>:${flag}>")
   endforeach()
@@ -230,8 +238,8 @@ endforeach()
 
 # Every lifted source runs during gameplay (the game loop and its windows, scene, terrain, physics, AI, the renderer and
 # the alias entries into them), so a /Od build compiles them optimised too. /Ob1 expands only the runtime's inline
-# helpers (pops, x87 stack, flags, call resolution): a lifted function is never inline, so every call to one stays on
-# the incremental-link thunk the host's overrides repoint.
+# helpers (pops, x87 stack, flags, call resolution); overrides do not depend on it: a replaceable function is reached
+# through its stable entry, which reads its target at run time wherever a call to it is expanded.
 if(TRESPASSER_GEN_OPT STREQUAL "/Od")
   set(JPT_GEN_COMPILE "/w;/O2;/Ob1")
 else()
@@ -256,6 +264,22 @@ target_link_libraries(launcher_tests PRIVATE jpt_launcher_core)
 target_compile_definitions(launcher_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# The override registry and stable entries against a lifted fixture, linked both ways (headless):
+#   ninja -C <build dir> override_tests_incremental override_tests_non_incremental, then run both
+foreach(model incremental non_incremental)
+  add_executable(override_tests_${model} EXCLUDE_FROM_ALL tests/override_tests.c tests/override_fixture.c
+    src/host/override_registry.c)
+  target_include_directories(override_tests_${model} PRIVATE src/host tests)
+  target_compile_definitions(override_tests_${model} PRIVATE _CRT_SECURE_NO_WARNINGS)
+endforeach()
+target_compile_definitions(override_tests_incremental PRIVATE OVERRIDE_TESTS_INCREMENTAL=1)
+target_compile_definitions(override_tests_non_incremental PRIVATE OVERRIDE_TESTS_INCREMENTAL=0)
+target_link_options(override_tests_incremental PRIVATE /DEBUG /INCREMENTAL)
+target_link_options(override_tests_non_incremental PRIVATE /INCREMENTAL:NO /OPT:REF /OPT:NOICF)
+# The fixture as the lifted code is compiled; the test side lets the compiler expand the stable entries inline.
+set_source_files_properties(tests/override_fixture.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob1")
+set_source_files_properties(tests/override_tests.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob2")
 
 add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/bump_spans.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/host/ddraw/page_arena.c src/common/jpt_display.c)

@@ -1,0 +1,44 @@
+/*
+ * Every lifted function the host may replace, sorted by guest address. tools/run_lift.py names each one's lifted body
+ * lifted_sub_<va>; guest_overrides.c defines sub_<va>, the stable entry every direct call, alias entry and dispatch
+ * reaches, so an override never depends on how the linker lays out or reaches the lifted code.
+ * REQUIRED: the port's behaviour depends on it. OPTIONAL: a host kernel the lifted body replaces exactly.
+ */
+GUEST_OVERRIDE(0040C780, REQUIRED) /* CGameWnd::DrawBackground (ui_canvas.c) */
+GUEST_OVERRIDE(00411EA0, REQUIRED) /* window centring (ui_canvas.c) */
+GUEST_OVERRIDE(004128A0, REQUIRED) /* RasterBlt (ui_canvas.c) */
+GUEST_OVERRIDE(00417300, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
+GUEST_OVERRIDE(00417380, REQUIRED) /* UI windows (ui_canvas.c) */
+GUEST_OVERRIDE(00417410, REQUIRED) /* UI cursor (ui_canvas.c) */
+GUEST_OVERRIDE(00477A40, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
+GUEST_OVERRIDE(00477E00, REQUIRED) /* combined culling (engine_limits.c) */
+GUEST_OVERRIDE(00478A30, REQUIRED) /* CPartition::bFlagCacheable (engine_limits.c) */
+GUEST_OVERRIDE(00492200, REQUIRED) /* CTextureNode::SetTextureMemSize (engine_limits.c) */
+GUEST_OVERRIDE(0049E530, REQUIRED) /* CQuadRootTIN::Update (terrain_quality.c) */
+GUEST_OVERRIDE(00502970, REQUIRED) /* mode table (widescreen.c) */
+GUEST_OVERRIDE(00503400, REQUIRED) /* CRasterVid::Lock (cpu_polygons.c) */
+GUEST_OVERRIDE(00506270, OPTIONAL) /* CDirect3D::AllocateTextureMemory, logged (engine_limits.c) */
+GUEST_OVERRIDE(00506C00, REQUIRED) /* managed texture split (engine_limits.c) */
+GUEST_OVERRIDE(00506EB0, REQUIRED) /* CDirect3D::bAllocateNonLocalMemory (engine_limits.c) */
+GUEST_OVERRIDE(005072D0, REQUIRED) /* CDirect3D::iLargeMemAllocMB (engine_limits.c) */
+GUEST_OVERRIDE(0050E750, REQUIRED) /* text font (game_text.c) */
+GUEST_OVERRIDE(0050E830, REQUIRED) /* text line draw (game_text.c) */
+GUEST_OVERRIDE(0050EAF0, REQUIRED) /* text draw (game_text.c) */
+GUEST_OVERRIDE(00514FE0, REQUIRED) /* CAGPTextureMemManager::AllocateMemory (engine_limits.c) */
+GUEST_OVERRIDE(0051FD90, REQUIRED) /* CCamera::SetProperties (widescreen.c) */
+GUEST_OVERRIDE(00543830, REQUIRED) /* bShouldCache (engine_limits.c) */
+GUEST_OVERRIDE(00547710, REQUIRED) /* CRenderCache::SetTextureMemSize (engine_limits.c) */
+GUEST_OVERRIDE(005477E0, REQUIRED) /* CRenderCache::SetParameters (engine_limits.c) */
+GUEST_OVERRIDE(00559240, OPTIONAL) /* Direct3D polygon submission (polygon_submit.c) */
+GUEST_OVERRIDE(0055A4E0, REQUIRED) /* UploadPolygonArray (texture_streaming.c) */
+GUEST_OVERRIDE(0055F540, REQUIRED) /* CScreenRenderDWI::DrawPolygon (cpu_polygons.c) */
+GUEST_OVERRIDE(00563890, REQUIRED) /* flat primitive (cpu_polygons.c) */
+GUEST_OVERRIDE(005668C0, REQUIRED) /* texture primitive, linear (cpu_polygons.c) */
+GUEST_OVERRIDE(00568EF0, REQUIRED) /* texture primitive, perspective (cpu_polygons.c) */
+GUEST_OVERRIDE(0057B7B0, REQUIRED) /* bump primitive, linear (cpu_polygons.c) */
+GUEST_OVERRIDE(0057DB50, REQUIRED) /* bump primitive, perspective (cpu_polygons.c) */
+GUEST_OVERRIDE(005F8A20, REQUIRED) /* pHeapAlloc (engine_heaps.c) */
+GUEST_OVERRIDE(005F8B10, REQUIRED) /* pvCommitMem (engine_heaps.c) */
+GUEST_OVERRIDE(0060E3F0, OPTIONAL) /* water texture rows (water_kernels.c) */
+GUEST_OVERRIDE(00630D90, OPTIONAL) /* object occlusion test (occlusion_kernel.c) */
+GUEST_OVERRIDE(00638670, OPTIONAL) /* CSimWaveVar2D step (water_kernels.c) */

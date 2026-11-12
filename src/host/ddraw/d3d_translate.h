@@ -107,8 +107,6 @@ void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count
                       uint32_t key_high);
 void d3dt_convert_row_pal8(const uint8_t* src, uint32_t* dst, unsigned count, const uint32_t* palette, int keyed,
                            uint32_t key_low, uint32_t key_high);
-/* 1 when no texel of the row has any colour (black or fully transparent black). */
-int d3dt_row_black(const uint32_t* bgra, unsigned count);
 uint32_t d3dt_rgb565_to_bgra(uint16_t v);
 uint16_t d3dt_bgra_to_rgb565(uint32_t v);
 

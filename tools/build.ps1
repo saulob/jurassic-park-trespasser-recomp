@@ -171,7 +171,8 @@ function Get-LiftOutputsMissing {
 
 function Get-LiftInputs {
     @('analysis\functions.json', 'analysis\rtti_seeds.json', 'config\decoder_fixups.json', 'config\extra_entries.json',
-        'tools\run_lift.py') | ForEach-Object { Join-Path $root $_ }
+        'tools\run_lift.py', 'tools\stable_entries.py', 'tools\lift_staging.py', 'src\host\guest_override_list.h') |
+        ForEach-Object { Join-Path $root $_ }
 }
 
 # A lift made before stamps existed is adopted when it is newer than every input and was made from this binary.
@@ -327,7 +328,7 @@ if ($problem) {
     Write-Step "Lifting .text to C: $problem"
     Assert-PythonModules @('capstone', 'pefile')
     Remove-Stamp 'lift'
-    if ((Invoke-Python 'tools\run_lift.py' @() { param($l) Show-PipelineLine $l }) -ne 0) { Stop-Tool 'Lift failed or is incomplete (see analysis\lift_stats.json)' }
+    if ((Invoke-Python 'tools\run_lift.py' @() { param($l) Show-PipelineLine $l }) -ne 0) { Stop-Tool 'Lift failed or is incomplete (see the messages above and analysis\lift_failure.json)' }
     Set-Stamp 'lift' $liftDigest
 } else {
     Write-Step 'Lifted C: current'

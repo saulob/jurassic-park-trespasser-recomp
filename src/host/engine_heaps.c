@@ -9,10 +9,8 @@
 
 #define HEAP_RESERVE_VA 0x005F8A20u /* pHeapAlloc(bytes), cdecl: VirtualAlloc reserve */
 #define HEAP_COMMIT_VA 0x005F8B10u  /* pvCommitMem(pv, bytes), cdecl: returns pv plus the page-rounded size */
-#define POLYGON_COUNT 0x00732F2Cu   /* darpolyPolygons.uLen */
-#define POLYGON_CAPACITY 0x00732F34u
-#define VERTEX_COUNT 0x00732EF4u    /* darvVertices.uLen */
-#define VERTEX_CAPACITY 0x00732EFCu
+#define POLYGON_HEAP_BYTES 0x0025D780u /* darpolyPolygons */
+#define VERTEX_HEAP_BYTES 0x30D400u    /* darvVertices */
 #define PAGE 0x1000u
 #define MAX_RESERVATIONS 64
 
@@ -22,8 +20,7 @@ static struct {
     uint32_t base, end;
 } s_reservations[MAX_RESERVATIONS];
 static unsigned s_reservation_count, s_reservation_next;
-static unsigned long long s_clamped;                /* DEBUG_SAULO */
-static uint32_t s_polygon_peak, s_vertex_peak;      /* DEBUG_SAULO */
+static int s_clamp_logged;
 
 static void remember(uint32_t base, uint32_t bytes) {
     uint32_t end = base + ((bytes + PAGE - 1u) & ~(PAGE - 1u));
@@ -84,11 +81,12 @@ static void heap_commit(void) {
         allowed = engine_heap_commit_bytes(pv, bytes, end, PAGE);
         if (allowed != bytes) {
             GUEST_ARG(1) = allowed;
-            s_clamped++;
+            if (!s_clamp_logged)
+                host_log("graphics", "an engine heap is full: a commit at 0x%08X was kept inside its reservation (later "
+                         "ones are not logged)", pv);
+            s_clamp_logged = 1;
         }
     }
-    if (MEM32(POLYGON_COUNT) > s_polygon_peak) s_polygon_peak = MEM32(POLYGON_COUNT);
-    if (MEM32(VERTEX_COUNT) > s_vertex_peak) s_vertex_peak = MEM32(VERTEX_COUNT);
     if (end && !GUEST_ARG(1)) {
         g_eax = pv;
         GUEST_RETURN_STDCALL(0);
@@ -98,26 +96,16 @@ static void heap_commit(void) {
 }
 
 void engine_heaps_install(void) {
-    s_enlarged = guest_override_redirect(HEAP_RESERVE_VA, heap_reserve, &s_reserve_lifted);
-    s_guarded = s_enlarged && guest_override_redirect(HEAP_COMMIT_VA, heap_commit, &s_commit_lifted);
-    if (!s_guarded)
-        host_log("graphics", "pHeapAlloc/pvCommitMem have no incremental-link thunk: the engine's fixed heaps keep their "
-                 "1998 size and a request past one can corrupt it");
+    s_enlarged = guest_override_install(HEAP_RESERVE_VA, heap_reserve, &s_reserve_lifted);
+    s_guarded = s_enlarged && guest_override_install(HEAP_COMMIT_VA, heap_commit, &s_commit_lifted);
 }
 
 int engine_heaps_enlarged(void) { return s_enlarged && !engine_limits_original(); }
 
 void engine_heaps_log(void) {
+    engine_heap_t polygons = engine_heap_for(POLYGON_HEAP_BYTES), vertices = engine_heap_for(VERTEX_HEAP_BYTES);
     if (!s_guarded) return;
-    host_log("graphics", "  scene heaps: up to %u polygons and %u vertices per scene (1998: 20000 and 80000), commits "
-             "kept inside each heap's reservation", MEM32(POLYGON_CAPACITY), MEM32(VERTEX_CAPACITY));
-}
-
-/* DEBUG_SAULO: called with the renderer's 5-second performance lines. */
-void engine_heaps_window(void) {
-    if (!s_guarded || (!s_polygon_peak && !s_clamped)) return;
-    host_log("objects", "last 5 s: scene heap peak %u polygons of %u, %u vertices of %u; commits cut at a reservation's "
-             "end %llu", s_polygon_peak, MEM32(POLYGON_CAPACITY), s_vertex_peak, MEM32(VERTEX_CAPACITY), s_clamped);
-    s_polygon_peak = s_vertex_peak = 0;
-    s_clamped = 0;
+    host_log("graphics", "  scene heaps: capacity %u polygons and %u vertices per scene (1998: %u and %u), commits "
+             "kept inside each heap's reservation", polygons.capacity * polygons.scale,
+             vertices.capacity * vertices.scale, polygons.capacity, vertices.capacity);
 }

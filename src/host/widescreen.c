@@ -84,17 +84,10 @@ static void camera_set_properties(void) {
                  "view kept", w, h, rdf(self + PROPS_IN_CAMERA + PROP_FAR), scale, tan_half, tan_half * scale);
 }
 
-static int redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body, const char* name) {
-    if (guest_override_redirect(va, replacement, body)) return 1;
-    host_log("widescreen", "sub_%08X (%s) has no incremental-link thunk: widescreen is off", va, name);
-    return 0;
-}
-
 int widescreen_install(int aspect) {
-    if (!redirect(ENUM_MODES_VA, enum_modes_uncapped, &s_enum_modes_lifted, "mode table")) return 0;
+    if (!guest_override_install(ENUM_MODES_VA, enum_modes_uncapped, &s_enum_modes_lifted)) return 0;
     if (aspect <= 0 || aspect >= JPT_ASPECT_COUNT) return 1;
-    if (!redirect(CAMERA_SET_PROPERTIES_VA, camera_set_properties, &s_set_properties_lifted, "CCamera::SetProperties"))
-        return 0;
+    if (!guest_override_install(CAMERA_SET_PROPERTIES_VA, camera_set_properties, &s_set_properties_lifted)) return 0;
     s_wide = 1;
     host_log("widescreen", "%s: Hor+ (vertical view of the 4:3 original, horizontal x%.4f)", jpt_aspects[aspect].key,
              (double)jpt_aspects[aspect].num / jpt_aspects[aspect].den / (4.0 / 3.0));

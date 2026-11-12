@@ -95,17 +95,11 @@ void cpu_polygons_install(void) {
     static const recomp_func_t entries[STORE_ONLY_COUNT] = { store_only_0, store_only_1, store_only_2, store_only_3,
                                                              store_only_4 };
     unsigned known = 0;
-    s_installed = guest_override_redirect(DRAW_POLYGON_VA, draw_polygon, &s_draw_lifted) &&
-                  guest_override_redirect(RASTER_LOCK_VA, raster_lock, &s_lock_lifted);
-    if (!s_installed) {
-        host_log("renderer", "CScreenRenderDWI::DrawPolygon or CRasterVid::Lock has no incremental-link thunk: software "
-                 "polygons in Direct3D frames read and composite the whole screen");
-        return;
-    }
+    s_installed = guest_override_install(DRAW_POLYGON_VA, draw_polygon, &s_draw_lifted) &&
+                  guest_override_install(RASTER_LOCK_VA, raster_lock, &s_lock_lifted);
+    if (!s_installed) return;
     for (unsigned i = 0; i < STORE_ONLY_COUNT; i++)
-        if (guest_override_redirect(k_store_only[i], entries[i], &s_store_only_lifted[i])) known++;
-        else host_log("renderer", "primitive sub_%08X has no incremental-link thunk: its polygons read their box",
-                      k_store_only[i]);
+        if (guest_override_install(k_store_only[i], entries[i], &s_store_only_lifted[i])) known++;
     host_log("renderer", "software polygons in Direct3D frames: Locks limited to each polygon's box, %u of %u "
              "store-only primitives known", known, (unsigned)STORE_ONLY_COUNT);
 }

@@ -29,15 +29,12 @@
 #define MAX_STATE_CLASSES 48
 #define MAX_READBACK_CALLERS 24
 #define MAX_UNKNOWN_FORMATS 16
-#define MAX_DARK_SAMPLES 16
 /* CRasterVid::Lock and CRasterWin::Lock (RTTI vtables 0x0064DAE4 / 0x0064DB54): every CPU access to
  * the game's rasters goes through them, so a readback is charged to the function that called them. */
 #define RASTER_LOCK 0x00503400u
 #define RASTER_WIN_LOCK 0x00504D20u
 #define RASTER_WIN_LOCK_THUNK 0x00504D40u
 #define UNTRACKED_LOG_LIMIT 8
-#define BLACK_WRITE_REPORT 256
-#define BLACK_WRITE_LOG_LIMIT 8
 #define WATCH_PAGES 1024
 #define STATE_TEX_NONE 0u
 #define STATE_TEX_UNUSABLE 0xFu
@@ -66,7 +63,6 @@ typedef struct {
     unsigned long long cpu_polygons, cpu_polygon_locks, cpu_polygon_readbacks, cpu_polygon_readback_pixels;
     unsigned long long cpu_polygon_adopted, inert_locks, filled_pixels, scanned_pixels, text_boxes, watch_reads;
     unsigned long long texture_joins;
-    unsigned long long flush_kind[D3DR_FLUSH_KINDS], flush_render_state[D3D_RENDER_STATES], flush_stage_state[32];
     readback_caller_t callers[MAX_READBACK_CALLERS];
 } perf_window_t;
 
@@ -111,7 +107,6 @@ typedef struct d3dr_texture {
     uint32_t palette_sum;
     unsigned long untracked;
     unsigned long uploads;
-    int black;
 } d3dr_texture_t;
 
 struct d3dr_target {
@@ -238,7 +233,7 @@ static struct {
     unsigned pool_pages, pool_pages_peak;
     unsigned translate_calls;
     unsigned long long texture_joins;
-    /* DEBUG_SAULO: uploads in the window by kind (UPLOAD_*): count, texels, ms. */
+    /* Uploads in the window by kind (UPLOAD_*): count, texels, ms. */
     struct {
         unsigned long long n, texels;
         double ms;
@@ -263,13 +258,9 @@ static struct {
         uint32_t flags, bits, r, g, b, a, caps, width, height, caller;
     } unknown[MAX_UNKNOWN_FORMATS];
     unsigned unknown_count;
-    unsigned long long dark_draws[4];
-    uint32_t dark_keys[MAX_DARK_SAMPLES];
-    unsigned dark_samples;
-    unsigned long long draw_sequence;
     unsigned devices, textures_alive;
-    unsigned textures_peak, textures_created_window, textures_released_window; /* DEBUG_SAULO */
-    unsigned textures_reused_window, textures_parked_window;                   /* DEBUG_SAULO */
+    unsigned textures_peak, textures_created_window, textures_released_window;
+    unsigned textures_reused_window, textures_parked_window;
     unsigned long long textures_reused;
     uint32_t* mip_chain;
     size_t mip_capacity;
@@ -279,11 +270,9 @@ static struct {
     unsigned long long va_total, va_used, va_peak;
     uint32_t charge_caller;
     unsigned long long untracked_writes;
-    unsigned untracked_logged, black_writes_logged;
+    unsigned untracked_logged;
     /* [0] menus, in-game dialogs, videos and loading, [1] gameplay */
     unsigned long long cpu_pixels[2], black_over_gpu[2], black_over_unknown[2];
-    uint32_t target_writer;
-    cpu_access_t target_access;
     pending_switch_t pending;
     int debug_output;
     unsigned char sampler_logged[2][2][5][5];
@@ -1370,34 +1359,19 @@ static d3dt_rect_t dirty_region(const d3dr_target_t* t) {
     return r;
 }
 
-static const char* access_name(cpu_access_t access) {
-    switch (access) {
-    case CPU_ACCESS_LOCK: return "Lock";
-    case CPU_ACCESS_GETDC: return "GetDC";
-    case CPU_ACCESS_BLT_SOURCE: return "Blt source";
-    case CPU_ACCESS_BLT_DEST: return "Blt";
-    default: return "other";
-    }
-}
-
 static int gameplay_now(void) {
     guest_ui_view_t v;
     guest_ui_probe(&v);
     return v.ui == GUEST_UI_GAMEPLAY;
 }
 
-/* Pixels the CPU composited, by screen kind. Black ones are reported when the CPU copy held the GPU
- * picture before the writes: only then is "black over the GPU picture" a fact. */
-static void note_cpu_pixels(const d3dt_rect_t* box, const tsync_counts_t* c, int exact) {
+/* Pixels the CPU composited, by screen kind. Black ones count as over the GPU picture only when the CPU copy held it
+ * before the writes. */
+static void note_cpu_pixels(const tsync_counts_t* c, int exact) {
     int gameplay = gameplay_now();
     R.cpu_pixels[gameplay] += c->changed;
     if (exact) R.black_over_gpu[gameplay] += c->black;
     else R.black_over_unknown[gameplay] += c->black;
-    if (!exact || c->black < BLACK_WRITE_REPORT || R.black_writes_logged >= BLACK_WRITE_LOG_LIMIT) return;
-    R.black_writes_logged++;
-    host_log("d3d", "%s: the CPU wrote %lu black pixels over non-black GPU pixels in (%ld,%ld)-(%ld,%ld) (%lu pixels "
-             "changed), writer sub_%08X by %s", gameplay ? "gameplay" : "menu", c->black, box->left, box->top,
-             box->right, box->bottom, c->changed, R.target_writer, access_name(R.target_access));
 }
 
 /* CPU -> GPU: only pixels that differ from the reference, uploaded as the box that holds them. */
@@ -1427,7 +1401,7 @@ static void composite(d3dr_target_t* t, int exact) {
         R.perf.composites++;
         R.perf.composited_pixels += counts.changed;
         R.perf.composited_black += counts.black;
-        note_cpu_pixels(&box, &counts, exact);
+        note_cpu_pixels(&counts, exact);
     }
     perf_add(PERF_OVERLAY, start);
 }
@@ -1676,11 +1650,9 @@ static uint32_t* mip_chain(size_t texels) {
     return R.mip_chain;
 }
 
-static void convert_rows(const dd_surface_t* s, int format, const uint32_t* palette, const D3D11_BOX* box, uint32_t* out,
-                         int* black) {
+static void convert_rows(const dd_surface_t* s, int format, const uint32_t* palette, const D3D11_BOX* box, uint32_t* out) {
     UINT w = box->right - box->left;
     int bytes = d3dt_format_bytes(format);
-    *black = 1;
     for (UINT y = box->top; y < box->bottom; y++) {
         const BYTE* in = s->bits + (size_t)y * s->pitch + (size_t)box->left * bytes;
         uint32_t* row = out + (size_t)(y - box->top) * w;
@@ -1690,7 +1662,6 @@ static void convert_rows(const dd_surface_t* s, int format, const uint32_t* pale
         else
             d3dt_convert_row(format, in, row, w, s->has_src_key, s->src_key.dwColorSpaceLowValue,
                              s->src_key.dwColorSpaceHighValue);
-        if (*black) *black = d3dt_row_black(row, w);
     }
 }
 
@@ -1744,7 +1715,7 @@ static void upload_with_mips(dd_surface_t* s, d3dr_texture_t* t, int format, con
     uint32_t* level;
     int64_t start = ticks();
     if (!chain) return;
-    convert_rows(s, format, palette, &all, chain, &t->black);
+    convert_rows(s, format, palette, &all, chain);
     t->alpha_kind = d3dt_alpha_kind(chain, (size_t)t->width * t->height);
     d3dt_build_mips(chain, t->width, t->height, t->levels, t->alpha_kind);
     level = chain;
@@ -1888,10 +1859,7 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
         R.texture_uploads++;
         perf_add(PERF_UPLOAD, upload_start);
     } else if ((rows = upload_rows((size_t)(box.right - box.left) * (box.bottom - box.top))) != NULL) {
-        int black;
-        convert_rows(s, format, palette, &box, rows, &black);
-        if (box.left == 0 && box.top == 0 && box.right == s->width && box.bottom == s->height) t->black = black;
-        else if (!black) t->black = 0;
+        convert_rows(s, format, palette, &box, rows);
         t->uploads++;
         ID3D11DeviceContext_UpdateSubresource(R.ctx, texture_resource(t), texture_subresource(t, 0), &box, rows,
                                               (box.right - box.left) * 4, 0);
@@ -1984,50 +1952,6 @@ static uint32_t state_key(const d3d_device_t* dev, uint32_t format) {
            ((r[D3DRENDERSTATE_TEXTUREMAPBLEND] & 0xF) << 12) | (((uint32_t)format & 0xF) << 16) |
            (r[D3DRENDERSTATE_ZENABLE] ? 1u << 20 : 0) | (r[D3DRENDERSTATE_ZWRITEENABLE] ? 1u << 21 : 0) |
            ((r[D3DRENDERSTATE_ZFUNC] & 0xF) << 22);
-}
-
-enum { DARK_TEXTURE_BLACK, DARK_TEXTURE_UNUSABLE, DARK_DIFFUSE_BLACK, DARK_FOG_BLACK };
-
-static const char* const k_dark_reasons[] = { "texture content is black", "texture format unusable (drawn untextured)",
-                                              "vertex colour black", "fully fogged to a black fog colour" };
-
-static int batch_rgb_zero(int specular_alpha) {
-    for (UINT i = 0; i < R.nverts; i++) {
-        uint32_t c = specular_alpha ? (R.verts[i].specular >> 24) : (R.verts[i].diffuse & 0xFFFFFFu);
-        if (c) return 0;
-    }
-    return R.nverts != 0;
-}
-
-/* Draws whose pixels can only come out black: a limited sample with what decided it. */
-static void sample_dark_draw(const d3d_device_t* dev, const d3dr_texture_t* tex, int has_texture, uint32_t key) {
-    const DWORD* r = dev->render;
-    DWORD blend = r[D3DRENDERSTATE_TEXTUREMAPBLEND];
-    int reason = -1;
-    int uses_diffuse = !tex || !(blend == 1 || blend == 5 || blend == 7);
-    if (tex && tex->black) reason = DARK_TEXTURE_BLACK;
-    else if (!tex && has_texture) reason = DARK_TEXTURE_UNUSABLE;
-    else if (uses_diffuse && !r[D3DRENDERSTATE_SPECULARENABLE] && batch_rgb_zero(0)) reason = DARK_DIFFUSE_BLACK;
-    else if (r[D3DRENDERSTATE_FOGENABLE] && !(r[D3DRENDERSTATE_FOGCOLOR] & 0xFFFFFFu) && batch_rgb_zero(1))
-        reason = DARK_FOG_BLACK;
-    if (reason < 0) return;
-    R.dark_draws[reason]++;
-    for (unsigned i = 0; i < R.dark_samples; i++)
-        if (R.dark_keys[i] == (key ^ ((uint32_t)reason << 28))) return;
-    if (R.dark_samples == MAX_DARK_SAMPLES) return;
-    R.dark_keys[R.dark_samples++] = key ^ ((uint32_t)reason << 28);
-    host_log("d3d", "dark draw #%llu: %s; texture %s (%s %ux%u, %lu uploads), blend %s %lu/%lu, z %s%s "
-             "func %lu, zbias %lu, tmb %lu, fog %s 0x%06lX, specular %s, colour key %s, diffuse0 0x%08X, specular0 0x%08X, "
-             "%u vertices, sz %.5f, from sub_%08X",
-             R.draw_sequence, k_dark_reasons[reason], has_texture ? "set" : "none",
-             tex ? d3dt_format_name(tex->format) : "-", tex ? tex->width : 0, tex ? tex->height : 0,
-             tex ? tex->uploads : 0,
-             r[D3DRENDERSTATE_ALPHABLENDENABLE] ? "on" : "off", r[D3DRENDERSTATE_SRCBLEND], r[D3DRENDERSTATE_DESTBLEND],
-             r[D3DRENDERSTATE_ZENABLE] ? "on" : "off", r[D3DRENDERSTATE_ZWRITEENABLE] ? "+write" : "", r[D3DRENDERSTATE_ZFUNC],
-             r[D3DRENDERSTATE_ZBIAS], blend, r[D3DRENDERSTATE_FOGENABLE] ? "on" : "off",
-             r[D3DRENDERSTATE_FOGCOLOR] & 0xFFFFFFu, r[D3DRENDERSTATE_SPECULARENABLE] ? "on" : "off",
-             r[D3DRENDERSTATE_COLORKEYENABLE] ? "on" : "off", R.nverts ? R.verts[0].diffuse : 0,
-             R.nverts ? R.verts[0].specular : 0, R.nverts, R.nverts ? R.verts[0].z : 0.0f, g_cur_func);
 }
 
 static void count_state_class(uint32_t key, unsigned long long triangles) {
@@ -2187,7 +2111,6 @@ static void flush(void) {
     }
     R.draw_calls++;
     R.perf.draws++;
-    R.draw_sequence++;
     R.vertices += R.nverts;
     R.index_count += R.nindices;
     if (R.batch_topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST) {
@@ -2195,11 +2118,10 @@ static void flush(void) {
         R.perf.triangles += R.nindices / 3;
         if (dc.blend_mode == 1) R.perf.terrain_triangles += R.nindices / 3; /* DECAL: only the terrain batches */
     }
-    {
-        uint32_t key = state_key(dev, tex ? (uint32_t)tex->format : R.batch_has_texture ? STATE_TEX_UNUSABLE : STATE_TEX_NONE);
-        count_state_class(key, R.batch_topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST ? R.nindices / 3 : 0);
-        sample_dark_draw(dev, tex, R.batch_has_texture, key);
-    }
+    if (host_perf_logging())
+        count_state_class(state_key(dev, tex ? (uint32_t)tex->format : R.batch_has_texture ? STATE_TEX_UNUSABLE
+                                                                                           : STATE_TEX_NONE),
+                          R.batch_topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST ? R.nindices / 3 : 0);
     end_batch();
     perf_add(PERF_DRAW, start);
 }
@@ -2218,17 +2140,8 @@ static uint32_t texture_flags(const d3d_device_t* dev, const d3dr_texture_t* tex
     return flags;
 }
 
-/* DEBUG_SAULO: why batches end. */
-static void count_flush(int kind, unsigned which) {
-    if (!R.nindices) return;
-    R.perf.flush_kind[kind]++;
-    if (kind == D3DR_FLUSH_RENDER_STATE && which < D3D_RENDER_STATES) R.perf.flush_render_state[which]++;
-    if (kind == D3DR_FLUSH_STAGE_STATE && which < 32) R.perf.flush_stage_state[which]++;
-}
-
-void d3dr_state_will_change(d3d_device_t* dev, int kind, unsigned which) {
+void d3dr_state_will_change(d3d_device_t* dev) {
     if (R.batch_dev != dev || !R.nindices) return;
-    count_flush(kind, which);
     flush();
 }
 
@@ -2280,13 +2193,11 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     srv = tex ? texture_view(tex) : NULL;
     tex_flags = texture_flags(dev, tex);
     if (R.batch_dev != dev || R.batch_topology != topology) {
-        count_flush(D3DR_FLUSH_TOPOLOGY, 0);
         flush();
         R.batch_dev = dev;
         R.batch_topology = topology;
     }
     if (srv && (slot = array_slot(srv)) < 0) {
-        count_flush(D3DR_FLUSH_TEXTURE, 0);
         flush();
         slot = array_slot(srv);
     }
@@ -2426,7 +2337,6 @@ void d3dr_begin_scene(d3d_device_t* dev) {
 
 void d3dr_end_scene(d3d_device_t* dev) {
     if (R.batch_dev != dev) return;
-    count_flush(D3DR_FLUSH_END_SCENE, 0);
     flush();
 }
 
@@ -2693,18 +2603,11 @@ static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t acc
         return;
     }
     settle_deferred();
-    if (R.batch_dev == t->device) {
-        count_flush(D3DR_FLUSH_CPU_ACCESS, 0);
-        flush();
-    }
+    if (R.batch_dev == t->device) flush();
     if (!target_ready(t)) return;
     if (access == CPU_ACCESS_LOCK && s_polys.pending) {
         polygon_lock(t, caller);
         R.perf.target_accesses++;
-        if (will_write) {
-            R.target_writer = caller;
-            R.target_access = access;
-        }
         return;
     }
     if (access == CPU_ACCESS_LOCK) {
@@ -2723,10 +2626,6 @@ static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t acc
         R.charge_caller = 0;
     }
     R.perf.target_accesses++;
-    if (will_write) {
-        R.target_writer = caller;
-        R.target_access = access;
-    }
 }
 
 void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t access) {
@@ -3042,46 +2941,6 @@ static void log_hybrid(const perf_window_t* p, const char* when) {
              p->scanned_pixels / frames, p->text_boxes / frames, p->watch_reads / frames, p->texture_joins / frames);
 }
 
-static int top_index(const unsigned long long* counts, unsigned n, unsigned long long* best, const int* skip) {
-    int at = -1;
-    *best = 0;
-    for (unsigned i = 0; i < n; i++)
-        if (counts[i] > *best && (!skip || !skip[i])) {
-            *best = counts[i];
-            at = (int)i;
-        }
-    return at;
-}
-
-/* DEBUG_SAULO: what ends Direct3D batches, with the render and texture-stage states that do it most. */
-static void log_flushes(const perf_window_t* p, const char* when) {
-    static const char* const kinds[D3DR_FLUSH_KINDS] = { "other", "render state", "a ninth texture array",
-                                                         "stage state", "viewport", "primitive type", "CPU access",
-                                                         "EndScene" };
-    char line[700];
-    int n = 0;
-    double frames = p->frames ? (double)p->frames : 1.0;
-    for (int k = 0; k < D3DR_FLUSH_KINDS; k++)
-        if (p->flush_kind[k])
-            n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %.1f", n ? ", " : "", kinds[k],
-                           p->flush_kind[k] / frames);
-    for (int which = 0; which < 2; which++) {
-        int skip[D3D_RENDER_STATES] = { 0 };
-        const unsigned long long* counts = which ? p->flush_stage_state : p->flush_render_state;
-        unsigned size = which ? 32u : D3D_RENDER_STATES;
-        for (int k = 0; k < 4; k++) {
-            unsigned long long best;
-            int at = top_index(counts, size, &best, skip);
-            if (at < 0) break;
-            skip[at] = 1;
-            n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %d %.1f", k ? ", " : "; by ",
-                           which ? "stage state" : "render state", at, best / frames);
-        }
-    }
-    line[sizeof line - 1] = 0;
-    if (n) host_log("perf", "%s per frame, batches ended by: %s", when, line);
-}
-
 static void accumulate(perf_window_t* total, const perf_window_t* p) {
     for (int i = 0; i < PERF_COUNT; i++) {
         total->ms[i] += p->ms[i];
@@ -3108,9 +2967,6 @@ static void accumulate(perf_window_t* total, const perf_window_t* p) {
     total->cpu_polygon_locks += p->cpu_polygon_locks;
     total->cpu_polygon_readbacks += p->cpu_polygon_readbacks;
     total->cpu_polygon_readback_pixels += p->cpu_polygon_readback_pixels;
-    for (int k = 0; k < D3DR_FLUSH_KINDS; k++) total->flush_kind[k] += p->flush_kind[k];
-    for (int k = 0; k < D3D_RENDER_STATES; k++) total->flush_render_state[k] += p->flush_render_state[k];
-    for (int k = 0; k < 32; k++) total->flush_stage_state[k] += p->flush_stage_state[k];
     total->cpu_polygon_adopted += p->cpu_polygon_adopted;
     total->inert_locks += p->inert_locks;
     total->filled_pixels += p->filled_pixels;
@@ -3131,7 +2987,6 @@ static void accumulate(perf_window_t* total, const perf_window_t* p) {
     }
 }
 
-/* DEBUG_SAULO */
 static void log_uploads(unsigned long long frames) {
     static const char* const kinds[3] = { "first", "whole with mipmaps", "level-0 regions" };
     unsigned long long loads, unchanged, texels, changed;
@@ -3148,8 +3003,7 @@ static void log_uploads(unsigned long long frames) {
     memset(R.uploads_by, 0, sizeof R.uploads_by);
 }
 
-static void log_perf_window(double seconds) {
-    perf_window_t* p = &R.perf;
+static void log_perf_window(const perf_window_t* p, double seconds) {
     double frames = p->frames ? (double)p->frames : 1.0, host = 0.0;
     double frame_ms = seconds * 1000.0 / frames;
     for (int i = 0; i < PERF_COUNT; i++) host += p->ms[i];
@@ -3158,27 +3012,29 @@ static void log_perf_window(double seconds) {
              frame_ms - host / frames > 0.0 ? frame_ms - host / frames : 0.0, p->ms[PERF_TRANSLATE] / frames,
              p->ms[PERF_DRAW] / frames, p->ms[PERF_UPLOAD] / frames, p->ms[PERF_READBACK] / frames,
              p->ms[PERF_OVERLAY] / frames, p->ms[PERF_PRESENT] / frames);
-    if (R.hardware) {
-        log_readback_detail(p, "last 5 s");
-        log_hybrid(p, "last 5 s");
-        log_flushes(p, "last 5 s");
-    }
-    engine_limits_window(p->frames);
-    engine_heaps_window();
-    native_calls_window(p->frames);
-    guest_kernels_window(p->frames);
-    if (R.hardware) age_parked(now_seconds());
-    if (R.hardware && (R.textures_created_window || R.textures_released_window || R.textures_parked_window ||
-                       R.textures_reused_window))
+    if (!R.hardware) return;
+    log_readback_detail(p, "last 5 s");
+    log_hybrid(p, "last 5 s");
+    if (R.textures_created_window || R.textures_released_window || R.textures_parked_window ||
+        R.textures_reused_window)
         host_log("textures", "last 5 s: D3D11 textures created %u, released %u, parked %u, reused %u (no upload, no "
                  "mipmaps); alive %u (peak %u), %.1f MB with their mipmaps, of them parked %u (%.1f MB), on game "
                  "device #%u", R.textures_created_window, R.textures_released_window, R.textures_parked_window,
                  R.textures_reused_window, R.textures_alive, R.textures_peak, R.texture_memory / 1048576.0,
                  s_parked_count, s_parked_bytes / 1048576.0, R.devices);
-    if (R.hardware) log_uploads(p->frames);
+    log_uploads(p->frames);
+}
+
+static void end_perf_window(double seconds) {
+    perf_window_t* p = &R.perf;
+    if (R.hardware) age_parked(now_seconds());
+    if (host_perf_logging()) {
+        log_perf_window(p, seconds);
+        guest_profile_window();
+    }
     R.textures_created_window = R.textures_released_window = 0;
     R.textures_parked_window = R.textures_reused_window = 0;
-    guest_profile_window();
+    memset(R.uploads_by, 0, sizeof R.uploads_by);
     sample_address_space();
     accumulate(&R.total, p);
     memset(p, 0, sizeof *p);
@@ -3192,7 +3048,7 @@ void d3dr_frame_presented(double present_ms) {
     R.perf.count[PERF_PRESENT]++;
     if (R.perf_start == 0.0) R.perf_start = now;
     if (now - R.perf_start >= PERF_INTERVAL) {
-        log_perf_window(now - R.perf_start);
+        end_perf_window(now - R.perf_start);
         R.perf_start = now;
     }
 }
@@ -3205,15 +3061,15 @@ void d3dr_summary(void) {
     if (R.draw_calls || R.hardware) {
         log_metric_lines("summary at exit:");
         log_readback_detail(&R.total, "session");
-        log_hybrid(&R.total, "session");
-        for (int i = 0; i < MAX_READBACK_CALLERS; i++)
-            if (R.total.callers[i].count)
-                host_log("perf", "readback caller sub_%08X %s: %llu, %.1f MB, %.1f ms", R.total.callers[i].caller,
-                         readback_reason_name(R.total.callers[i].reason), R.total.callers[i].count,
-                         R.total.callers[i].bytes / (1024.0 * 1024.0), R.total.callers[i].ms);
-        log_state_classes();
-        for (int i = 0; i < 4; i++)
-            if (R.dark_draws[i]) host_log("d3d", "dark draws (%s): %llu", k_dark_reasons[i], R.dark_draws[i]);
+        if (host_perf_logging()) {
+            log_hybrid(&R.total, "session");
+            for (int i = 0; i < MAX_READBACK_CALLERS; i++)
+                if (R.total.callers[i].count)
+                    host_log("perf", "readback caller sub_%08X %s: %llu, %.1f MB, %.1f ms", R.total.callers[i].caller,
+                             readback_reason_name(R.total.callers[i].reason), R.total.callers[i].count,
+                             R.total.callers[i].bytes / (1024.0 * 1024.0), R.total.callers[i].ms);
+            log_state_classes();
+        }
         if (R.unknown_count) host_log("d3d", "unknown texture formats: %u (listed above when first drawn)", R.unknown_count);
         host_log("d3d", "textures changed without Lock/Unlock: %llu", R.untracked_writes);
         host_log("d3d", "CPU pixels composited over the GPU target: gameplay %llu, menus/dialogs/videos %llu; black ones "
@@ -3221,8 +3077,6 @@ void d3dr_summary(void) {
                  "unknown): gameplay %llu, menus %llu", R.cpu_pixels[1], R.cpu_pixels[0], R.black_over_gpu[1],
                  R.black_over_gpu[0], R.black_over_unknown[1], R.black_over_unknown[0]);
     }
-    texture_streaming_summary(R.total.frames);
-    terrain_quality_summary();
     engine_limits_summary(R.draw_calls);
     host_log("d3d", "unsupported_render_states %lu", refused_render);
     host_log("d3d", "unsupported_texture_stage_states %lu", refused_stage);
@@ -3267,7 +3121,7 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
         R.first_frame_logged = 1;
         host_log("renderer", "first hardware frame presented: %llu draw calls, %llu triangles, %llu textures bound so far",
                  R.draw_calls, R.triangles, R.textures_bound);
-    } else if (now - R.last_summary >= SUMMARY_INTERVAL) {
+    } else if (host_perf_logging() && now - R.last_summary >= SUMMARY_INTERVAL) {
         R.last_summary = now;
         log_metric_lines("summary:");
         log_state_classes();

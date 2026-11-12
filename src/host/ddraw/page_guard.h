@@ -16,7 +16,6 @@ int page_guard_disarm(void);
 /* As a first access would: the pages open and touched runs now. */
 void page_guard_touch(void);
 int page_guard_armed(void);
-const char* page_guard_result_name(page_guard_result_t result);
 
 /* A second view of a section's pages that stays inaccessible while no Lock uses it: arming hands it out and a Lock
  * that ends untouched closes nothing, so neither costs a protection change. Its first access opens it (touched runs

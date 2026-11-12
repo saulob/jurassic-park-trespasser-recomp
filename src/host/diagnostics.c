@@ -81,50 +81,6 @@ static struct {
     recomp_func_t fn;
 } s_dispatch_cache[1u << DISPATCH_CACHE_BITS];
 static unsigned long long s_dispatch_hits, s_dispatch_misses;
-/* DEBUG_SAULO: native (Windows) call targets per 5 s window. */
-#define NATIVE_SLOTS 512u
-static struct {
-    uint32_t va;
-    unsigned calls;
-} s_native[NATIVE_SLOTS];
-static unsigned long long s_native_calls;
-
-static void count_native(uint32_t va) {
-    unsigned i = (va * 2654435761u) & (NATIVE_SLOTS - 1u);
-    s_native_calls++;
-    for (unsigned probe = 0; probe < 16; probe++, i = (i + 1u) & (NATIVE_SLOTS - 1u))
-        if (s_native[i].va == va || !s_native[i].calls) {
-            s_native[i].va = va;
-            s_native[i].calls++;
-            return;
-        }
-}
-
-/* DEBUG_SAULO: called with the renderer's 5-second performance lines. */
-void native_calls_window(unsigned long long frames) {
-    char line[900];
-    int n = 0;
-    double f = frames ? (double)frames : 1.0;
-    for (int k = 0; k < 10; k++) {
-        unsigned best = 0, at = 0;
-        const char* name;
-        for (unsigned i = 0; i < NATIVE_SLOTS; i++)
-            if (s_native[i].calls > best) {
-                best = s_native[i].calls;
-                at = i;
-            }
-        if (!best) break;
-        name = native32_name(s_native[at].va);
-        n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %.0f", k ? ", " : "", name ? name : "?", best / f);
-        s_native[at].calls = 0;
-    }
-    line[sizeof line - 1] = 0;
-    if (frames && s_native_calls)
-        host_log("profile", "last 5 s per frame: native calls %.0f, most called: %s", s_native_calls / f, n ? line : "-");
-    memset(s_native, 0, sizeof s_native);
-    s_native_calls = 0;
-}
-
 static int outside_dispatch(uint32_t va) {
     return !recomp_dispatch_count || va < recomp_dispatch_table[0].address ||
            va > recomp_dispatch_table[recomp_dispatch_count - 1].address;
@@ -148,7 +104,8 @@ static call_slot_t s_calls[1u << CALL_CACHE_BITS];
 static uint32_t s_in_place_target;
 
 /* A compatibility-layer method on the guest's arguments, without leaving the machine: the stdcall callee pops its
- * own arguments, and esp before and after says how many (as native32's bridge measures it). */
+ * own arguments, and esp before and after says how many (as native32's bridge measures it). The callee is host C,
+ * which keeps ebp, so the frame the locals are addressed through stays valid. */
 static void in_place_call(void) {
     uint32_t fn = s_in_place_target;
     uint32_t* src = (uint32_t*)(uintptr_t)(g_esp + 4);
@@ -158,7 +115,6 @@ static void in_place_call(void) {
     __asm {
         mov  edx, src
         mov  eax, fn
-        push ebp
         push esi
         push ebx
         mov  esi, esp              ; the callee keeps esi (C ABI)
@@ -174,7 +130,6 @@ static void in_place_call(void) {
         mov  esp, esi
         pop  ebx
         pop  esi
-        pop  ebp
         mov  r_eax, eax
         mov  purge, edx
     }
@@ -202,14 +157,13 @@ static recomp_func_t outside_text(uint32_t va) {
     if (c->va != va || c->observed != observed) classify_call(c, va, observed);
     switch (c->kind) {
     case CALL_IN_PLACE:
-        count_native(va);
         s_in_place_target = va;
         return in_place_call;
-    case CALL_FIXED: count_native(va); return c->fn;
+    case CALL_FIXED: return c->fn;
     case CALL_COMPAT: return ddraw_compat_lookup(va);
     case CALL_OBSERVED: return ddraw_trace_lookup(va);
     case CALL_DISPATCH: return NULL;
-    default: count_native(va); return recomp_lookup_import(va);
+    default: return recomp_lookup_import(va);
     }
 }
 
@@ -220,7 +174,7 @@ void dispatch_cache_counts(unsigned long long* hits, unsigned long long* misses)
 
 /* pcrecomp answers an unknown target by logging and continuing with eax = 0, which moves the
  * failure far from its cause. A target inside .text with no lifted entry stops the run here.
- * A lifted entry's function never changes (the dispatch table and its thunks are fixed), so its answer is kept;
+ * A lifted entry's function never changes (overrides switch inside its stable entry), so its answer is kept;
  * only the thread that holds the machine lock runs lifted code and resolves its calls. */
 recomp_func_t recomp_lookup_manual(uint32_t va) {
     recomp_func_t fn = selfmod_lookup(va);

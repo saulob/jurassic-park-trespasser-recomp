@@ -1,7 +1,7 @@
 /*
  * The 1998 engine limits that Direct3D 11 lifts: how far objects stay drawn and stay 3D, the texture size Direct3D may
  * use (world textures and impostors) and the texture memory the game divides among them. Only guest data and
- * incremental-link thunks change; the software renderer keeps the original values, and each value is written back
+ * overridden functions change; the software renderer keeps the original values, and each value is written back
  * when F5 changes the renderer.
  */
 #include "host.h"
@@ -26,14 +26,11 @@
 #define IN_RANGE_VA 0x00477A40u             /* CPartition::bInRange(distance squared) */
 #define SHOULD_CACHE_VA 0x00543830u         /* bShouldCache(partition, camera, distance squared, ...), cdecl */
 #define FLAG_CACHEABLE_VA 0x00478A30u       /* CPartition::bFlagCacheable, thiscall */
-#define CACHE_UPDATE_VA 0x00545820u         /* CRenderCache::UpdateRenderContext: rebuilds an impostor's camera */
-#define CACHE_DRAW_VA 0x00547A30u           /* CScheduleCache::PostScheduleExecute: renders it into its page */
 #define MAX_OBJECTS_PER_CACHE 0x007371A0u   /* rcsRenderCacheSettings.iMaxObjectsPerCache */
 #define D3D_DRIVER 0x006D0E98u
 #define D3D_IN_USE (D3D_DRIVER + 0x1u)          /* CDirect3D::bUse */
 #define D3D_TEXTURE_TOTAL (D3D_DRIVER + 0x604u) /* bytes split among the texture pools */
 #define AGP_TEXTURE_MANAGER 0x006D2040u         /* +8 allocated, +0xC 85% mark, +0x10 95% mark */
-#define TRANSITION_SLOTS 4096u
 #define SOFTWARE_SLOTS 8192u
 /* CPartition: CShortFloats (a float's high 16 bits), SPartitionData, cache state. */
 #define PARTITION_CACHE_MUL 0x4u
@@ -42,7 +39,6 @@
 #define PARTITION_AREA_EFFICIENCY_SQR 0xEu
 #define PARTITION_FLAGS 0x10u
 #define PARTITION_NO_CACHE_UNTIL 0x14u
-#define PARTITION_RENDER_CACHE 0x18u
 #define PARTITION_PARENT 0x24u
 #define PARTITION_FRAME 0x006648F4u     /* SPartitionSettings::u4FrameNumber */
 #define MAX_ACCEPT_CYLINDER 0x00737190u /* rcsRenderCacheSettings.fMaxAcceptCylinder */
@@ -51,9 +47,7 @@
 static recomp_func_t s_large_mem_lifted, s_cache_parameters_lifted, s_terrain_mem_lifted, s_allocate_lifted;
 static recomp_func_t s_non_local_lifted, s_managed_lifted, s_cache_memory_lifted, s_agp_allocate_lifted;
 static recomp_func_t s_combined_lifted, s_in_range_lifted, s_should_cache_lifted, s_flag_cacheable_lifted;
-static recomp_func_t s_cache_update_lifted, s_cache_draw_lifted;
 static int s_group_objects_game;
-static unsigned long s_cache_never_seen, s_cache_never_lifted;
 static int s_keep_original, s_modern, s_installed, s_fixed_split, s_cache_distance_writable;
 static unsigned s_accepted, s_rejected;
 static struct {
@@ -61,24 +55,10 @@ static struct {
     int32_t engine_cache, host_cache;
 } s_split;
 
-/* DEBUG_SAULO: object distance decisions per 5 s window and for the session. */
-typedef struct {
-    unsigned long long meshes_in_range, groups_in_range, beyond;
-    unsigned long long meshes_3d, meshes_impostor, groups_3d, groups_impostor, software_3d, new_caches;
-    unsigned long long to_impostor, to_3d;
-    unsigned long long mesh_refused[CACHE_REFUSED_COUNT], group_refused[CACHE_REFUSED_COUNT];
-    unsigned long long projected_culls, with_their_object;
-    unsigned long long cache_updates, cache_update_ticks, cache_draws, cache_draw_ticks;
-} object_stats_t;
 /* Objects (instances, not spatial groups) that stayed 3D this frame: their parts stay 3D with them. */
 #define OBJECT_SLOTS 4096u
 static engine_frame_slot_t s_kept_3d[OBJECT_SLOTS];
 #define OBJECT_DEPTH 16
-static object_stats_t s_objects, s_objects_total;
-static struct {
-    uint32_t partition;
-    uint8_t impostor;
-} s_last_decision[TRANSITION_SLOTS];
 /* Partitions holding a mesh the CPU draws into the Direct3D frame (a bump map makes it so). */
 static uint32_t s_software[SOFTWARE_SLOTS];
 static unsigned s_software_count;
@@ -183,7 +163,7 @@ static void agp_allocate(void) {
     MEM32(self + 0x10) = (uint32_t)high;
 }
 
-/* DEBUG_SAULO: whether the game kept Direct3D after dividing its texture memory. */
+/* Whether the game kept Direct3D after dividing its texture memory. */
 static void allocate_texture_memory(void) {
     int was_in_use = MEM8(D3D_IN_USE) != 0;
     s_allocate_lifted();
@@ -208,13 +188,6 @@ void engine_limits_summary(unsigned long long hardware_draw_calls) {
     else if (s_accepted)
         host_log("graphics", "guest hardware renderer accepted %u times, never rejected: hardware path remained active "
                  "through gameplay (%llu hardware draw calls)", s_accepted, hardware_draw_calls);
-    engine_limits_window(0);
-    if (s_objects_total.meshes_in_range + s_objects_total.groups_in_range)
-        host_log("objects", "session: considered meshes %llu, groups %llu, culled %llu; meshes 3D %llu, impostor %llu; "
-                 "groups 3D %llu, impostor %llu; switched 3D to impostor %llu, impostor to 3D %llu",
-                 s_objects_total.meshes_in_range, s_objects_total.groups_in_range, s_objects_total.beyond,
-                 s_objects_total.meshes_3d, s_objects_total.meshes_impostor, s_objects_total.groups_3d,
-                 s_objects_total.groups_impostor, s_objects_total.to_impostor, s_objects_total.to_3d);
 }
 
 /* The engine reads the recommended dimension in a few places that must keep the 128 its budgets were tuned for. */
@@ -248,30 +221,10 @@ static void flag_cacheable(void) {
     }
     flags = MEM32(partition + PARTITION_FLAGS);
     lifted = engine_cache_never_lifted(s_modern, MEM32(partition), flags);
-    if (flags & PARTITION_CACHE_NEVER) s_cache_never_seen++;
     if (lifted) MEM32(partition + PARTITION_FLAGS) = flags & ~PARTITION_CACHE_NEVER;
     s_flag_cacheable_lifted();
-    if (!lifted) return;
-    MEM32(partition + PARTITION_FLAGS) |= PARTITION_CACHE_NEVER;
-    if (g_eax & 0xFFu) s_cache_never_lifted++;
+    if (lifted) MEM32(partition + PARTITION_FLAGS) |= PARTITION_CACHE_NEVER;
 }
-
-/* DEBUG_SAULO: how many impostor images the scheduler rebuilds and what they cost the guest thread. */
-static void timed(recomp_func_t lifted, unsigned long long* calls, unsigned long long* ticks) {
-    LARGE_INTEGER t0, t1;
-    if (g_alias_entry) {
-        lifted();
-        return;
-    }
-    QueryPerformanceCounter(&t0);
-    lifted();
-    QueryPerformanceCounter(&t1);
-    (*calls)++;
-    *ticks += (unsigned long long)(t1.QuadPart - t0.QuadPart);
-}
-
-static void cache_update(void) { timed(s_cache_update_lifted, &s_objects.cache_updates, &s_objects.cache_update_ticks); }
-static void cache_draw(void) { timed(s_cache_draw_lifted, &s_objects.cache_draws, &s_objects.cache_draw_ticks); }
 
 /* With 128 px pages a node texture is at most 128 px and a larger base texture keeps only its top-left corner, drawn
  * over the whole map; 256 px is the most its packed pages can address. The pool grows to hold them. */
@@ -352,13 +305,8 @@ static void in_range(void) {
     if (s_modern && (g_eax & 0xFFu) &&
         engine_projected_cull(engine_partition_kind(MEM32(partition)), (flags & PARTITION_USES_MESH) != 0,
                               sqrtf(short_float(partition + PARTITION_SPHERE_SQR)), distance_squared,
-                              widescreen_pixels_per_metre())) {
+                              widescreen_pixels_per_metre()))
         g_eax &= ~0xFFu;
-        s_objects.projected_culls++;
-    }
-    if (!(g_eax & 0xFFu)) s_objects.beyond++;
-    else if (MEM32(partition + PARTITION_FLAGS) & PARTITION_USES_MESH) s_objects.meshes_in_range++;
-    else s_objects.groups_in_range++;
     if (s_modern && software_mesh(partition)) mark_software(partition);
 }
 
@@ -369,34 +317,6 @@ static cache_refusal_t refusal(const engine_partition_t* p, float distance_squar
     c.area_threshold_sqr = read_float(AREA_THRESHOLD_SQR);
     c.min_distance = read_float(CACHE_MIN_DISTANCE);
     return engine_cache_refusal(p, &c, distance_squared);
-}
-
-/* DEBUG_SAULO */
-static void count_decision(uint32_t partition, const engine_partition_t* p, float distance_squared, int impostor,
-                           int software, int had_cache) {
-    int mesh = (p->flags & PARTITION_USES_MESH) != 0;
-    uint32_t slot = (partition * 2654435761u) >> 20;
-    if (impostor) {
-        if (mesh) s_objects.meshes_impostor++;
-        else s_objects.groups_impostor++;
-        if (!had_cache) s_objects.new_caches++;
-    } else {
-        cache_refusal_t why = refusal(p, distance_squared);
-        if (mesh) {
-            s_objects.meshes_3d++;
-            s_objects.mesh_refused[why]++;
-            if (software) s_objects.software_3d++;
-        } else {
-            s_objects.groups_3d++;
-            s_objects.group_refused[why]++;
-        }
-    }
-    if (s_last_decision[slot].partition == partition && s_last_decision[slot].impostor != impostor) {
-        if (impostor) s_objects.to_impostor++;
-        else s_objects.to_3d++;
-    }
-    s_last_decision[slot].partition = partition;
-    s_last_decision[slot].impostor = (uint8_t)impostor;
 }
 
 /* The partitions are visited from the root down, so an object is decided before its parts. */
@@ -414,7 +334,6 @@ static void should_cache(void) {
     engine_partition_t p;
     engine_part_kind_t kind;
     float distance_squared;
-    int software = 0, had_cache, impostor, with_object = 0;
     if (g_alias_entry) {
         s_should_cache_lifted();
         return;
@@ -426,65 +345,16 @@ static void should_cache(void) {
     kind = engine_partition_kind(MEM32(partition));
     frame = frame_key();
     if (s_modern && s_cache_distance_writable) {
-        float distance;
-        software = holds_software(partition) || software_mesh(partition);
-        with_object = object_kept_3d(partition, frame);
-        distance = with_object ? ENGINE_CACHE_DISTANCE_NEVER
-                               : engine_cache_min_distance(1, software, kind, sqrtf(p.sphere_sqr),
-                                                           widescreen_pixels_per_metre(), p.cache_mul);
+        int software = holds_software(partition) || software_mesh(partition);
+        float distance = object_kept_3d(partition, frame)
+                             ? ENGINE_CACHE_DISTANCE_NEVER
+                             : engine_cache_min_distance(1, software, kind, sqrtf(p.sphere_sqr),
+                                                         widescreen_pixels_per_metre(), p.cache_mul);
         *(float*)ADDR(CACHE_MIN_DISTANCE) = distance;
     }
-    had_cache = MEM32(partition + PARTITION_RENDER_CACHE) != 0;
     s_should_cache_lifted();
-    impostor = (g_eax & 0xFFu) != 0;
-    if (!impostor && kind != ENGINE_PART_SPATIAL && engine_refusal_holds_parts(refusal(&p, distance_squared)))
+    if (!(g_eax & 0xFFu) && kind != ENGINE_PART_SPATIAL && engine_refusal_holds_parts(refusal(&p, distance_squared)))
         engine_frame_set_add(s_kept_3d, OBJECT_SLOTS, partition, frame);
-    if (with_object && !impostor) s_objects.with_their_object++;
-    count_decision(partition, &p, distance_squared, impostor, software, had_cache);
-}
-
-static void log_refusals(const char* what, const unsigned long long* refused, double f) {
-    char line[640];
-    int n = 0;
-    for (int r = 0; r < CACHE_REFUSED_COUNT; r++)
-        if (refused[r] && n < (int)sizeof line - 80)
-            n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %.1f", n ? ", " : "",
-                           engine_cache_refusal_name((cache_refusal_t)r), refused[r] / f);
-    line[sizeof line - 1] = 0;
-    if (n) host_log("objects", "last 5 s per frame: %s kept 3D because: %s", what, line);
-}
-
-/* DEBUG_SAULO: called with the renderer's 5-second performance lines (frames 0: fold the window in only). */
-void engine_limits_window(unsigned long long frames) {
-    const unsigned long long* from = (const unsigned long long*)&s_objects;
-    unsigned long long* to = (unsigned long long*)&s_objects_total;
-    const object_stats_t* o = &s_objects;
-    double f = frames ? (double)frames : 1.0;
-    if (frames && o->meshes_in_range + o->groups_in_range + o->beyond) {
-        host_log("objects", "last 5 s per frame: considered meshes %.0f, groups %.0f, culled beyond their distance %.0f; "
-                 "meshes 3D %.1f (drawn by the CPU %.1f), impostor %.1f; groups 3D %.1f, impostor %.1f; new impostor "
-                 "caches %.2f; switched 3D to impostor %.2f, impostor to 3D %.2f; partitions holding CPU-drawn meshes "
-                 "%u; %.0f px per metre at 1 m", o->meshes_in_range / f, o->groups_in_range / f, o->beyond / f,
-                 o->meshes_3d / f, o->software_3d / f, o->meshes_impostor / f, o->groups_3d / f,
-                 o->groups_impostor / f, o->new_caches / f, o->to_impostor / f, o->to_3d / f, s_software_count,
-                 widescreen_pixels_per_metre());
-        host_log("objects", "last 5 s per frame: static meshes culled below %.1f px %.1f; partitions kept 3D with "
-                 "the object they belong to %.1f; loaded so far: CacheNever partitions %lu, of them static instances "
-                 "made cacheable %lu; groups of up to %u objects per impostor", ENGINE_CULL_PIXELS,
-                 o->projected_culls / f, o->with_their_object / f, s_cache_never_seen, s_cache_never_lifted,
-                 MEM32(MAX_OBJECTS_PER_CACHE));
-        log_refusals("meshes", o->mesh_refused, f);
-        log_refusals("groups", o->group_refused, f);
-    }
-    if (frames && (o->cache_updates || o->cache_draws)) {
-        LARGE_INTEGER hz;
-        QueryPerformanceFrequency(&hz);
-        host_log("objects", "last 5 s per frame: impostor images rebuilt %.2f (%.2f ms), drawn into their pages %.2f "
-                 "(%.2f ms, software renderer)", o->cache_updates / f, o->cache_update_ticks * 1000.0 / hz.QuadPart / f,
-                 o->cache_draws / f, o->cache_draw_ticks * 1000.0 / hz.QuadPart / f);
-    }
-    for (size_t i = 0; i < sizeof s_objects / sizeof *from; i++) to[i] += from[i];
-    memset(&s_objects, 0, sizeof s_objects);
 }
 
 void engine_limits_apply(int hardware) {
@@ -497,51 +367,36 @@ void engine_limits_install(int hardware) {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;
-        const char* name;
     } k[] = {
-        { LARGE_MEM_ALLOC_VA, large_mem_alloc, &s_large_mem_lifted, "texture memory" },
-        { CACHE_PARAMETERS_VA, cache_parameters, &s_cache_parameters_lifted, "impostor scale" },
-        { TERRAIN_TEXTURE_MEM_VA, terrain_texture_mem, &s_terrain_mem_lifted, "terrain texture pages" },
-        { SET_COMBINED_CULLING_VA, set_combined_culling, &s_combined_lifted, "object cull factor" },
-    }, optional[] = {
-        { FLAG_CACHEABLE_VA, flag_cacheable, &s_flag_cacheable_lifted, "image cache eligibility" },
+        { LARGE_MEM_ALLOC_VA, large_mem_alloc, &s_large_mem_lifted },
+        { CACHE_PARAMETERS_VA, cache_parameters, &s_cache_parameters_lifted },
+        { TERRAIN_TEXTURE_MEM_VA, terrain_texture_mem, &s_terrain_mem_lifted },
+        { SET_COMBINED_CULLING_VA, set_combined_culling, &s_combined_lifted },
+    }, cache_never[] = {
+        { FLAG_CACHEABLE_VA, flag_cacheable, &s_flag_cacheable_lifted },
     }, split[] = {
-        { ALLOCATE_NON_LOCAL_VA, allocate_non_local, &s_non_local_lifted, "texture split" },
-        { ALLOCATE_MANAGED_VA, allocate_managed, &s_managed_lifted, "managed texture split" },
-        { CACHE_MEMORY_VA, cache_memory, &s_cache_memory_lifted, "image cache memory" },
-        { AGP_ALLOCATE_VA, agp_allocate, &s_agp_allocate_lifted, "texture manager marks" },
-    }, counters[] = {
-        { ALLOCATE_TEXTURE_MEM_VA, allocate_texture_memory, &s_allocate_lifted, "texture memory allocation" },
-        { IN_RANGE_VA, in_range, &s_in_range_lifted, "cull distance test" },
-        { SHOULD_CACHE_VA, should_cache, &s_should_cache_lifted, "image cache test" },
-        { CACHE_UPDATE_VA, cache_update, &s_cache_update_lifted, "impostor rebuild" },
-        { CACHE_DRAW_VA, cache_draw, &s_cache_draw_lifted, "impostor drawing" },
+        { ALLOCATE_NON_LOCAL_VA, allocate_non_local, &s_non_local_lifted },
+        { ALLOCATE_MANAGED_VA, allocate_managed, &s_managed_lifted },
+        { CACHE_MEMORY_VA, cache_memory, &s_cache_memory_lifted },
+        { AGP_ALLOCATE_VA, agp_allocate, &s_agp_allocate_lifted },
+    }, policy[] = {
+        { ALLOCATE_TEXTURE_MEM_VA, allocate_texture_memory, &s_allocate_lifted },
+        { IN_RANGE_VA, in_range, &s_in_range_lifted },
+        { SHOULD_CACHE_VA, should_cache, &s_should_cache_lifted },
     };
     DWORD old;
-    for (size_t i = 0; i < sizeof counters / sizeof counters[0]; i++)
-        if (!guest_override_redirect(counters[i].va, counters[i].replacement, counters[i].lifted))
-            host_log("graphics", "sub_%08X (%s) has no incremental-link thunk: it is not counted", counters[i].va,
-                     counters[i].name);
-        else if (counters[i].va == SHOULD_CACHE_VA)
+    for (size_t i = 0; i < sizeof policy / sizeof policy[0]; i++)
+        if (guest_override_install(policy[i].va, policy[i].replacement, policy[i].lifted) &&
+            policy[i].va == SHOULD_CACHE_VA)
             s_cache_distance_writable = VirtualProtect((void*)ADDR(CACHE_MIN_DISTANCE), 4, PAGE_READWRITE, &old) != 0;
     s_installed = !s_keep_original;
-    for (size_t i = 0; s_installed && i < sizeof k / sizeof k[0]; i++) {
-        if (guest_override_redirect(k[i].va, k[i].replacement, k[i].lifted)) continue;
-        host_log("graphics", "sub_%08X (%s) has no incremental-link thunk: the original engine limits stay", k[i].va,
-                 k[i].name);
-        s_installed = 0;
-    }
-    for (size_t i = 0; s_installed && i < sizeof optional / sizeof optional[0]; i++)
-        if (!guest_override_redirect(optional[i].va, optional[i].replacement, optional[i].lifted))
-            host_log("graphics", "sub_%08X (%s) has no incremental-link thunk: it keeps the 1998 rule", optional[i].va,
-                     optional[i].name);
+    for (size_t i = 0; s_installed && i < sizeof k / sizeof k[0]; i++)
+        s_installed = guest_override_install(k[i].va, k[i].replacement, k[i].lifted);
+    for (size_t i = 0; s_installed && i < sizeof cache_never / sizeof cache_never[0]; i++)
+        guest_override_install(cache_never[i].va, cache_never[i].replacement, cache_never[i].lifted);
     s_fixed_split = s_installed;
-    for (size_t i = 0; s_fixed_split && i < sizeof split / sizeof split[0]; i++) {
-        if (guest_override_redirect(split[i].va, split[i].replacement, split[i].lifted)) continue;
-        host_log("graphics", "sub_%08X (%s) has no incremental-link thunk: texture memory stays at %u MB", split[i].va,
-                 split[i].name, ENGINE_TEXTURE_MB_SAFE);
-        s_fixed_split = 0;
-    }
+    for (size_t i = 0; s_fixed_split && i < sizeof split / sizeof split[0]; i++)
+        s_fixed_split = guest_override_install(split[i].va, split[i].replacement, split[i].lifted);
     engine_limits_apply(hardware);
 }
 

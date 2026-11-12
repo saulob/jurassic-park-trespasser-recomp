@@ -68,10 +68,8 @@ HRESULT d3dr_attach(d3d_device_t* dev);
 void d3dr_detach(d3d_device_t* dev);
 void d3dr_begin_scene(d3d_device_t* dev);
 void d3dr_end_scene(d3d_device_t* dev);
-/* What ends a batch: kind is a D3DR_FLUSH_* value, which the render or stage state (or 0). */
-enum { D3DR_FLUSH_OTHER, D3DR_FLUSH_RENDER_STATE, D3DR_FLUSH_TEXTURE, D3DR_FLUSH_STAGE_STATE, D3DR_FLUSH_VIEWPORT,
-       D3DR_FLUSH_TOPOLOGY, D3DR_FLUSH_CPU_ACCESS, D3DR_FLUSH_END_SCENE, D3DR_FLUSH_KINDS };
-void d3dr_state_will_change(d3d_device_t* dev, int kind, unsigned which);
+/* A state the open batch was drawn with is about to change. */
+void d3dr_state_will_change(d3d_device_t* dev);
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count);
 HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD flags, D3DCOLOR color, float z);

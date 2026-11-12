@@ -12,6 +12,11 @@ static HANDLE s_file = INVALID_HANDLE_VALUE;
 static HANDLE s_console = INVALID_HANDLE_VALUE;
 static char s_path[MAX_PATH];
 static DWORD s_start_tick;
+static int s_perf_logging;
+
+void host_perf_logging_enable(void) { s_perf_logging = 1; }
+
+int host_perf_logging(void) { return s_perf_logging; }
 
 static HANDLE open_append(const char* path, DWORD disposition) {
     return CreateFileA(path, FILE_APPEND_DATA | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, disposition,

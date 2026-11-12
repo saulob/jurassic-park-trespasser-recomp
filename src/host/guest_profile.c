@@ -1,5 +1,5 @@
 /*
- * DEBUG_SAULO: sampling profile of the guest thread. Every 2 ms a host thread suspends the guest thread, reads its
+ * --perf-log: sampling profile of the guest thread. Every 2 ms a host thread suspends the guest thread, reads its
  * instruction pointer and resumes it; nothing between the suspend and the resume may take a lock (the guest thread can
  * hold the heap or CRT lock). A sample inside a lifted function is charged to its guest address; one in the host's own
  * code to a 32-byte block, logged as an offset in the executable to be named with its PDB.
@@ -352,6 +352,7 @@ void guest_profile_start(HANDLE guest_thread) {
     HMODULE self = GetModuleHandleA(NULL);
     const IMAGE_NT_HEADERS* nt = (const IMAGE_NT_HEADERS*)((const BYTE*)self + ((const IMAGE_DOS_HEADER*)self)->e_lfanew);
     HANDLE thread;
+    if (!host_perf_logging()) return;
     s_fn_count = recomp_dispatch_count;
     s_fns = (lifted_fn_t*)malloc(s_fn_count * sizeof *s_fns);
     s_window.fn_hits = (unsigned*)calloc(s_fn_count, sizeof(unsigned));
@@ -360,7 +361,7 @@ void guest_profile_start(HANDLE guest_thread) {
         !DuplicateHandle(GetCurrentProcess(), guest_thread, GetCurrentProcess(), &s_main, 0, FALSE, DUPLICATE_SAME_ACCESS))
         return;
     for (unsigned i = 0; i < s_fn_count; i++) {
-        recomp_func_t lifted = guest_override_body(recomp_dispatch_table[i].address);
+        recomp_func_t lifted = guest_override_lifted(recomp_dispatch_table[i].address);
         s_fns[i].start = lifted ? (uintptr_t)lifted : function_body(recomp_dispatch_table[i].func);
         s_fns[i].va = recomp_dispatch_table[i].address;
     }
