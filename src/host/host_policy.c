@@ -233,6 +233,7 @@ const char* readback_reason_name(readback_reason_t reason) {
 int target_access_reads(cpu_access_t access, uint32_t lock_flags, uint32_t caller) {
     switch (access) {
     case CPU_ACCESS_BLT_DEST: return 0;
+    case CPU_ACCESS_GETDC: return caller != GETDC_CALLER_TEXT_OVERLAY;
     case CPU_ACCESS_LOCK:
         if (lock_flags & (LOCK_FLAG_WRITEONLY | LOCK_FLAG_DISCARDCONTENTS)) return 0;
         return caller != LOCK_CALLER_BEGIN_FRAME && caller != LOCK_CALLER_FLUSH_BATCH;

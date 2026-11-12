@@ -159,25 +159,34 @@ which the game's options menu also changes. The run log's `[settings]` lines sho
 
 ## Resolutions
 
-Four sizes are kept apart:
+Five sizes are kept apart:
 
-| | What | Example (16:9, 4K on a 1080p desktop) |
+| | What | Example (16:9, 1440p on a 1080p desktop) |
 |---|---|---|
-| guest logical | the game's own screen: menus 640x480, gameplay the Aspect Ratio's mode | 1024x576 |
-| render | the Direct3D 11 colour, MSAA and depth targets | 3840x2160 |
-| presentation | the swap chain shown in the window, letterboxed or stretched | the render size, scaled by DXGI |
+| gameplay | the game's own screen in gameplay: its DirectDraw mode, back buffer, z-buffer, viewport, camera and text | 2560x1440 |
+| 3D render target | the Direct3D 11 colour, MSAA and depth targets | 2560x1440 |
+| UI virtual canvas | menus and the in-game videos, as the game draws them | 640x480 |
+| presentation | the swap chain shown in the window, letterboxed or stretched; the title bar names it | 2560x1440 |
 | window | the client area | Window size |
 
-The game's back buffer stays RGB565 at the logical size (no 4K CPU frame buffer). Its D3DTLVERTEX coordinates are in
-logical pixels and become normalised device coordinates against the logical size in the vertex shader, so a larger
-render target rasterises the same geometry at more pixels: nothing is drawn at 800x600 and scaled up.
+With Direct3D 11 the game plays at the render size itself: its DirectDraw mode is the render box, so its viewport,
+`D3DTLVERTEX` coordinates, clip extents, camera and text are all in those pixels and the target is drawn 1:1. Larger
+boxes than 3840x2160 pixels in all (21:9 and 32:9 at 4K, 4:3 at 4K) play at the largest mode of their shape within that
+budget, a multiple of 8 each way, and D3D11 still rasterises at the box. The retail engine has no limit below that
+(32-bit addressing, 16.16 span coordinates good to 32767 pixels, viewport from the surface); the budget keeps the
+host's per-mode buffers (front and back RGB565, 32-bit z, the renderer's reference and overlay copies: 14 bytes a
+pixel, 111 MB at 3840x2160) small in this 2 GB process. The game's mode table (`0x006D0B48`, 60 sizes) and its video
+options list (`0x0066DCA0`, 20 sizes up to 800 wide) are unchecked arrays: the host lists 12 modes at most.
+
+The software renderer has its own limit: it keeps the Aspect Ratio's compatibility mode (4:3 800x600, 16:9 1024x576,
+16:10 960x600, 21:9 1280x540, 32:9 2048x576), because the CPU rasterises every pixel. The registry's `Width`/`Height`
+answer the current renderer's mode, so F5 rebuilds the display at the other renderer's size. Original keeps the
+compatibility mode too, with the earlier automatic target (the smallest 4:3 size covering the presentation area).
 
 **Render resolution.** A preset names a 16:9 size; with the Aspect Ratio (Display page) it gives the render box: wider
 shapes keep the preset's height, narrower ones its width, and 21:9 takes the ultrawide monitor sizes. Native fits the
-Monitor setting's monitor. The Graphics page shows the result as **Render size**. Gameplay renders into the box itself
-(its mode is within 2% of the box's shape: 1280x540 is 2.370:1, 3440x1440 is 2.389:1, and the picture is shown in the
-mode's shape, so that difference never reaches the screen); 640x480 menus get the largest 4:3 size inside it. The
-Aspect Ratio never changes by itself.
+Monitor setting's monitor. The Graphics page shows the result as **Render size**. 640x480 menus and videos get the
+largest 4:3 size inside it. The Aspect Ratio never changes by itself.
 
 | Preset | 4:3 | 16:9 | 16:10 | 21:9 | 32:9 |
 |---|---|---|---|---|---|
@@ -187,23 +196,56 @@ Aspect Ratio never changes by itself.
 | 4K | 3840x2880 | 3840x2160 | 3840x2400 | 5120x2160 | 7680x2160 |
 | Native, 1920x1080 monitor | 1440x1080 | 1920x1080 | 1728x1080 | 1920x810 | 1920x540 |
 
-The run log separates the sizes: `guest logical resolution: gameplay 1024x576, menus 640x480`, `3D render resolution:
-1440p -> gameplay 2560x1440, menus 1920x1440 (real render targets)`, `3D render target 2560x1440 ... (rasterised at
-this size)` and `presentation WxH in a WxH client`.
+The run log names each size: `[settings] render resolution 1440p, aspect ratio 16:9: gameplay resolution 2560x1440
+..., 3D render target 2560x1440`, `software renderer gameplay resolution 1024x576`, `UI virtual canvas 640x480 for menus
+and videos (source 640x480), shown 4:3 at 1920x1440; presentation 2560x1440`, then per display
+`[window] game screen WxH; presentation WxH in a WxH client` and `[d3d11] 3D render target WxH ... for the game's WxH
+screen`. A window smaller than the render size shows it reduced; the game still renders at the render size.
 
-Original keeps the compatibility size of earlier builds (the smallest 4:3 size covering the presentation area).
-CPU pixels (text, software polygons) are composited over the GPU target and GPU readbacks for the game's Locks are
-reduced to the logical size, as before.
+**Menus and videos** keep the game's 640x480 canvas: their 4:3 picture is shown centred in the frame with its shape
+kept (pillarboxed in 16:9 and wider), with the cursor mapped to that rectangle. Smacker videos are 640x480 assets and
+are shown the same way; nothing is added to their pixels. Neither changes the resolution in the title.
+
+**In-game menus and dialogs** (Esc menu, Options, Audio, Video, Controls, Save, Load, Restart, Quit, confirmations)
+are drawn by the game for 640x480 and are 320x200 panels centred in the screen (`0x00411EA0`). Over a larger game
+screen with D3D11 they are drawn into an offscreen 640x480 raster of the game's own DIB raster class (`0x0040FD80`)
+and the renderer scales that canvas, in the same pass that presents the frame: the frozen gameplay picture stays on
+the game's screen at its own resolution, the canvas is centred as the largest 4:3 rectangle (scale not rounded: 3x at
+2560x1440, 2.25x at 1920x1080, 4.5x at 3840x2160, 3x at 3440x1440 and 5120x1440 with wider side bars) and its
+unwritten texels are transparent. The hooks are the UI frame (`0x00417300`, which draws the windows and the cursor and
+presents), the window and cursor draws (`0x00417380`, `0x00417410`, given the canvas as their raster), the frozen
+picture's background (`0x0040C780`, given the screen back) and the centring (`0x00411EA0`, which sees a 640x480
+screen). The canvas is sampled with the frontend's linear filter. The game reads the cursor raw (`GetCursorPos`), so
+in menus and dialogs the host answers canvas coordinates (and the same in mouse messages): the frame pixel under the
+cursor, taken at its centre, over the canvas rectangle, so every click lands on the control it is drawn over. The
+menu text is GDI drawn into private DIBs by the controls (font sizes fixed in pixels), so it scales once, with the
+canvas; the gameplay text policy above does not touch it. Windows are composed in the render frame and the whole frame
+is shown reduced in a smaller window, so the window size never changes the canvas. The loading windows draw
+themselves straight to the screen and stay as they were, and the software renderer keeps the original sizes.
+
+**Gameplay text** (hints, tutorial, subtitles) is the game's own GDI text over the 3D picture. The game sizes its Arial
+font from the screen width, `clamp(width / 20, 12, 32)` (`0x00468A80`, font class `0x0050E750`), so at 2560 wide it
+would stay 32 pixels. The host keeps the share of the height it has at 800x600: on screens taller than 600 lines the
+font is `height * lines / 600` (77 pixels at 1440), and the game's own layout (wrap width, line spacing, centring) uses
+the font's measured widths, so it follows. The font is drawn aliased, as on the systems of the time, so drawing it reads
+nothing under it: the text's `GetDC` starts a capture instead of a GPU readback, which at 2560x1440 would move 7 MB each
+time a hint is drawn. Text stays at the game's anchors (top-left, centre or right of the whole screen); a centred
+16:9 safe area for ultrawide is not part of this work.
+
+Composited CPU pixels (text, software polygons) are drawn over the GPU target point-sampled. Each upload covers the
+changed box and one transparent texel around it: at a non-integer scale (Original, or a mode inside a larger box) the
+box's first target row can fall exactly on a texel edge, and the texel above the box used to keep an older picture,
+which showed as a horizontal line through the tops of the text.
 
 ## True widescreen (Hor+)
 
-Gameplay runs at the Aspect Ratio's own mode: 4:3 800x600, 16:9 1024x576, 16:10 960x600, 21:9 1280x540,
-32:9 2048x576. Found in the retail binary:
+Gameplay runs at a mode of the Aspect Ratio's shape (see Resolutions). Found in the retail binary:
 
 - `0x00412A00` reads the registry `Width`/`Height` and snaps them to the mode table (`0x006D0B48`) filled by
-  `0x00502970`, whose byte argument lifts an 800-pixel width cap in its callback `0x00502A60`. The host passes 1
-  (thunk wrapper), lists the gameplay mode in its DirectDraw (11 modes in all, under the table's limits) and answers
-  `Width`/`Height` with that mode, so the in-game video options cannot change it.
+  `0x00502970`, whose byte argument lifts an 800-pixel width cap in its callback `0x00502A60`; a size missing from the
+  table falls back to 640x480 (`0x00502B40`). The host passes 1 (thunk wrapper, every aspect ratio, 4:3 included),
+  lists both renderers' gameplay modes in its DirectDraw (12 modes at most) and answers `Width`/`Height` with the
+  current renderer's mode, so the in-game video options (which list only modes up to 800 wide) cannot change it.
 - `CCamera::SetProperties` (`0x0051FD90`) builds the projection from `tan(half horizontal angle)` (props `+0x48`,
   75 degrees by default) and an aspect (`+0x4C`) that CRasterWin derives assuming a 4:3 monitor: a widescreen viewport
   alone gives a stretched 4:3 frustum. The same call builds the camera-to-screen transform, the clip volume used for
@@ -217,10 +259,10 @@ This happens before anything is projected, so the D3D TLVERTEX path, the softwar
 same wider view; nothing is stretched afterwards. Presentation Stretch only decides how the final picture fits the
 window.
 
-**Menus and HUD.** Menus are 640x480 and stay 4:3, letterboxed in the window, with the cursor mapped to that
-rectangle. In gameplay, the game lays out its text (hints, subtitles) relative to the 3D viewport with left, centre
-and right anchors (`0x0050E8C0`) and sizes its font from the raster width (`0x00468A80`), so text stays undistorted
-and on screen. A dedicated ultrawide HUD layout is not part of this work.
+**Menus and HUD.** Menus are 640x480 and stay 4:3 (see Resolutions). In gameplay, the game lays out its text (hints,
+subtitles) relative to the 3D viewport with left, centre and right anchors (`0x0050E8C0`); its font follows the
+screen height (Resolutions, Gameplay text), so text stays undistorted and on screen. A dedicated ultrawide HUD layout
+is not part of this work.
 
 ## Graphics
 
@@ -232,7 +274,8 @@ and on screen. A dedicated ultrawide HUD layout is not part of this work.
   out, and the game logs any reduction (`requested level unsupported: reduced`).
 - **VSync**: On keeps the game's own Flip request (waits for the refresh); Off never waits.
 - **Frame rate in title** (Gameplay, as in the other ports; key `show_fps`): the title shows the renderer, FPS and
-  logical resolution; Off shows only the name.
+  the selected resolution (the render size with D3D11, the gameplay mode with Software or Original), which menus and
+  videos do not change; Off shows only the name.
 - **Graphics card**: DXGI adapter 0, the one the game's device uses. No adapter choice yet.
 - **Advanced graphics**: Draw distance, Object LOD, Texture memory, Texture cache, Mipmaps and Texture detail are shown
   disabled, "Coming later".

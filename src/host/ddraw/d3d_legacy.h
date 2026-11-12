@@ -75,6 +75,8 @@ void d3dr_frame_presented(double present_ms);
 void d3dr_surface_freed(dd_surface_t* s);
 /* The game creates a DirectDraw object: a renderer change waiting for its restart applies now. */
 void d3dr_directdraw_created(void);
+/* The game's UI canvas (RGB565, TSYNC_UNWRITTEN texels transparent) drawn over every presented frame; NULL ends it. */
+void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
 void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
                       const DDGAMMARAMP* gamma, int vsync);
 

@@ -101,6 +101,11 @@ static int read32(uint32_t va, uint32_t* out) {
 
 int guest_read32(uint32_t va, uint32_t* out) { return read32(va, out); }
 
+guest_wnd_t guest_ui_window_kind(uint32_t window) {
+    uint32_t vtable;
+    return window && read32(window, &vtable) ? class_kind(vtable) : GUEST_WND_NONE;
+}
+
 /* The game swaps its display object for an empty one while its window is inactive. */
 int guest_display_built(void) {
     uint32_t display;

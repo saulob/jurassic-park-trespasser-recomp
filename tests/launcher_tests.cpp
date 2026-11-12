@@ -241,11 +241,11 @@ static void TestRenderTargets() {
     CheckSize(jpt_render_target({3840, 1080}, 2048, 576), 3840, 1080);
     CheckSize(jpt_render_target({1920, 1440}, 800, 600), 1920, 1440);
     CheckSize(jpt_render_target({0, 0}, 800, 600), 0, 0);
-    // The real 3D targets of the launcher's choices (gameplay at the aspect's own mode).
+    // The real 3D targets of the launcher's choices (D3D11 gameplay at the render box itself).
     const auto gameplay = [](const char* preset, const char* aspect) {
-        const jpt_aspect_t& a = jpt_aspects[jpt_aspect_index(aspect)];
-        return jpt_render_target(jpt_render_box(jpt_render_preset_index(preset), jpt_aspect_index(aspect), 0, 0),
-                                 a.guest_w, a.guest_h);
+        const jpt_size_t box = jpt_render_box(jpt_render_preset_index(preset), jpt_aspect_index(aspect), 0, 0);
+        const jpt_size_t screen = jpt_gameplay_mode(box, jpt_aspect_index(aspect), 1);
+        return jpt_render_target(box, screen.width, screen.height);
     };
     CheckSize(gameplay("1440p", "16:9"), 2560, 1440);
     CheckSize(gameplay("1440p", "4:3"), 2560, 1920);
@@ -258,8 +258,8 @@ static void TestRenderTargets() {
     CheckSize(jpt_render_target({2560, 1440}, 640, 480), 1920, 1440);  // menus in a 16:9 box
     CheckSize(jpt_render_target({3440, 1440}, 640, 480), 1920, 1440);
     for (const jpt_aspect_t& a : jpt_aspects) {
-        CHECK(std::abs(double(a.guest_w) / a.guest_h - double(a.num) / a.den) < 0.005);
-        CHECK(a.guest_w % 4 == 0);
+        CHECK(std::abs(double(a.compat_w) / a.compat_h - double(a.num) / a.den) < 0.005);
+        CHECK(a.compat_w % 4 == 0);
     }
 }
 
@@ -272,7 +272,7 @@ static void TestHorPlus() {
     // The game's default 75-degree horizontal view at 4:3: the widened camera keeps its vertical extent.
     const double pi = 3.14159265358979323846, tan_h = std::tan(75.0 * pi / 360.0), tan_v = tan_h / (4.0 / 3.0);
     for (const jpt_aspect_t& a : jpt_aspects) {
-        const double aspect = double(a.guest_w) / a.guest_h, k = jpt_hor_plus_scale(a.guest_w, a.guest_h);
+        const double aspect = double(a.compat_w) / a.compat_h, k = jpt_hor_plus_scale(a.compat_w, a.compat_h);
         CHECK(std::abs(tan_h * k / aspect - tan_v) < 1e-9);
         CHECK(tan_h * k >= tan_h - 1e-12);
     }
@@ -280,9 +280,9 @@ static void TestHorPlus() {
     double previous = 0.0;
     for (const char* key : {"4:3", "16:9", "21:9", "32:9"}) {
         const jpt_aspect_t& a = jpt_aspects[jpt_aspect_index(key)];
-        const double k = jpt_hor_plus_scale(a.guest_w, a.guest_h);
+        const double k = jpt_hor_plus_scale(a.compat_w, a.compat_h);
         const double horizontal = 2.0 * std::atan(tan_h * k) * 180.0 / pi;
-        const double vertical = 2.0 * std::atan(tan_h * k / (double(a.guest_w) / a.guest_h)) * 180.0 / pi;
+        const double vertical = 2.0 * std::atan(tan_h * k / (double(a.compat_w) / a.compat_h)) * 180.0 / pi;
         CHECK(horizontal > previous);
         CHECK(std::abs(vertical - 2.0 * std::atan(tan_v) * 180.0 / pi) < 1e-9);
         previous = horizontal;
@@ -433,8 +433,10 @@ static void TestPages() {
     CHECK(std::string(kSponsorUrl) == "https://github.com/sponsors/saulob");
     CHECK(std::string(kGameTitle) == "Jurassic Park: Trespasser Recompiled");
     CHECK(ResolutionLabel(jpt_render_preset_index("1440p"), {2560, 1440}) == "1440p \xE2\x80\x94 2560 \xC3\x97 1440");
-    CHECK(RenderSizeText(jpt_render_box(jpt_render_preset_index("1440p"), JPT_ASPECT_16_9, 0, 0), JPT_ASPECT_16_9)
-              .find("2560 \xC3\x97 1440") != std::string::npos);
+    const std::string size_text =
+        RenderSizeText(jpt_render_box(jpt_render_preset_index("1440p"), JPT_ASPECT_16_9, 0, 0), JPT_ASPECT_16_9);
+    CHECK(size_text.find("2560 \xC3\x97 1440") != std::string::npos);
+    CHECK(size_text.find("1024") == std::string::npos);
 }
 
 static uint32_t Be32(const std::string& bytes, size_t at) {

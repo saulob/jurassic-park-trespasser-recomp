@@ -31,11 +31,13 @@ static int s_show_ddraw_cert_dialog;
 static int s_software_water;
 static int s_legacy_safemode;
 static int s_safemode_logged;
-static int s_gameplay_w, s_gameplay_h;
+static int s_gameplay_w[2], s_gameplay_h[2];
 
-void registry_gameplay_size(int width, int height) {
-    s_gameplay_w = width;
-    s_gameplay_h = height;
+void registry_gameplay_sizes(int hardware_w, int hardware_h, int software_w, int software_h) {
+    s_gameplay_w[1] = hardware_w;
+    s_gameplay_h[1] = hardware_h;
+    s_gameplay_w[0] = software_w;
+    s_gameplay_h[0] = software_h;
 }
 
 #define GAME_HKEY ((uint32_t)(uintptr_t)&s_game_key_token)
@@ -219,11 +221,12 @@ static int policy_value(const char* name, int stored, policy_t* p) {
         return 1;
     }
     if (!name || !ddraw_compat_active()) return 0;
-    if (s_gameplay_w && (!_stricmp(name, "Width") || !_stricmp(name, "Height"))) {
-        int width = !_stricmp(name, "Width");
-        policy_dword(p, (DWORD)(width ? s_gameplay_w : s_gameplay_h),
-                     "host policy: the gameplay mode of the launcher's Aspect Ratio (the in-game video options "
-                     "cannot change it)");
+    if (s_gameplay_w[0] && (!_stricmp(name, "Width") || !_stricmp(name, "Height"))) {
+        int width = !_stricmp(name, "Width"), hw = d3dr_hardware() ? 1 : 0;
+        policy_dword(p, (DWORD)(width ? s_gameplay_w[hw] : s_gameplay_h[hw]),
+                     hw ? "host policy: the D3D11 gameplay resolution (the launcher's Render Resolution and Aspect "
+                          "Ratio; the in-game video options cannot change it)"
+                        : "host policy: the software renderer's gameplay mode of the launcher's Aspect Ratio");
         return 1;
     }
     if (!_stricmp(name, "DDrawCertIgnore")) {

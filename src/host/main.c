@@ -294,18 +294,31 @@ static int restart_for_game(void) {
 }
 
 static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, int monitor_h) {
-    const jpt_aspect_t* a = &jpt_aspects[c->aspect];
-    const jpt_size_t gameplay = jpt_render_target(box, a->guest_w, a->guest_h), menus = jpt_render_target(box, 640, 480);
+    const jpt_size_t hardware = jpt_gameplay_mode(box, c->aspect, 1), software = jpt_gameplay_mode(box, c->aspect, 0);
+    const jpt_size_t target = jpt_render_target(box, hardware.width, hardware.height);
+    const jpt_size_t menus = jpt_render_target(box, 640, 480);
     const char* preset = c->render_preset >= 0 ? jpt_render_presets[c->render_preset].label : "custom";
     host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s", c->hardware ? "d3d11" : "software",
              jpt_filter_keys[c->texture_filter], c->msaa, c->vsync ? "on" : "off");
-    host_log("settings", "aspect ratio %s; guest logical resolution: gameplay %dx%d, menus 640x480 (the game's own "
-             "screen, not what is rasterised)", a->key, a->guest_w, a->guest_h);
-    if (c->render_preset == JPT_RENDER_ORIGINAL)
-        host_log("settings", "3D render resolution: Original (the compatibility size, chosen from the window)");
-    else
-        host_log("settings", "3D render resolution: %s -> gameplay %dx%d, menus %dx%d (real render targets)", preset,
-                 gameplay.width, gameplay.height, menus.width, menus.height);
+    if (box.width > 0) {
+        host_log("settings", "render resolution %s, aspect ratio %s: gameplay resolution %dx%d (the game's own screen "
+                 "with D3D11, %.0f MB of host buffers), 3D render target %dx%d", preset, jpt_aspects[c->aspect].key,
+                 hardware.width, hardware.height, jpt_gameplay_host_bytes(hardware) / 1048576.0, target.width,
+                 target.height);
+        if (hardware.width != box.width || hardware.height != box.height)
+            host_log("settings", "the %dx%d box is above the gameplay budget of %d pixels: the game plays at %dx%d and "
+                     "D3D11 rasterises at %dx%d", box.width, box.height, JPT_GAMEPLAY_MAX_PIXELS, hardware.width,
+                     hardware.height, target.width, target.height);
+    } else {
+        host_log("settings", "render resolution Original, aspect ratio %s: gameplay resolution %dx%d, 3D render target "
+                 "chosen from the window", jpt_aspects[c->aspect].key, hardware.width, hardware.height);
+    }
+    host_log("settings", "software renderer gameplay resolution %dx%d (its own limit: the CPU rasterises every pixel)",
+             software.width, software.height);
+    if (box.width > 0)
+        host_log("settings", "UI virtual canvas 640x480 for menus and videos (source 640x480), shown 4:3 at %dx%d; "
+                 "presentation %dx%d", menus.width, menus.height, jpt_title_size(box, hardware, 1).width,
+                 jpt_title_size(box, hardware, 1).height);
     host_log("settings", "display %s on monitor %d (%dx%d), window %s, presentation %s, FPS in title %s",
              c->borderless ? "borderless" : "windowed", c->monitor, monitor_w, monitor_h,
              c->window_w ? "fixed" : "auto", c->stretch ? "stretch" : "letterbox", c->show_fps ? "on" : "off");
@@ -449,10 +462,17 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (!opt.lifted_water) guest_overrides_install();
-    if (widescreen_install(cfg.aspect))
-        registry_gameplay_size(jpt_aspects[cfg.aspect].guest_w, jpt_aspects[cfg.aspect].guest_h);
-    else
-        registry_gameplay_size(jpt_aspects[0].guest_w, jpt_aspects[0].guest_h);
+    {
+        jpt_size_t hardware = jpt_gameplay_mode(box, cfg.aspect, 1), software = jpt_gameplay_mode(box, cfg.aspect, 0);
+        jpt_size_t hardware_title = jpt_title_size(box, hardware, 1);
+        if (!widescreen_install(cfg.aspect)) hardware = software = jpt_gameplay_mode(box, 0, 0);
+        registry_gameplay_sizes(hardware.width, hardware.height, software.width, software.height);
+        dd_set_gameplay_modes((DWORD)hardware.width, (DWORD)hardware.height, (DWORD)software.width,
+                              (DWORD)software.height);
+        window_host_set_title_sizes(hardware_title.width, hardware_title.height, software.width, software.height);
+    }
+    game_text_install();
+    ui_canvas_install();
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);
     return run_guest();
 }

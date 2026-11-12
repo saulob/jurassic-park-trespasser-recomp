@@ -10,7 +10,7 @@ typedef struct {
     const char* key;   /* aspect_ratio in trespasser.ini */
     const char* label; /* launcher text */
     int num, den;
-    int guest_w, guest_h; /* gameplay logical resolution the guest runs at */
+    int compat_w, compat_h; /* gameplay mode of the software renderer and of the Original preset */
 } jpt_aspect_t;
 
 #define JPT_ASPECT_COUNT 5
@@ -49,6 +49,45 @@ jpt_size_t jpt_render_box(int preset, int aspect, int monitor_w, int monitor_h);
  * shown in the guest's shape, so that difference never reaches the screen), else the largest size of the guest's
  * shape inside the box. Even sizes. */
 jpt_size_t jpt_render_target(jpt_size_t box, int guest_w, int guest_h);
+
+/* The game's own gameplay screen. Direct3D with a render box plays at the box itself, up to JPT_GAMEPLAY_MAX_PIXELS
+ * (larger boxes get the largest mode of their shape within it, a multiple of 8 wide and high); the software renderer
+ * and Original keep the aspect ratio's compatibility mode. */
+#define JPT_GAMEPLAY_MAX_PIXELS (3840 * 2160)
+jpt_size_t jpt_gameplay_mode(jpt_size_t box, int aspect, int hardware);
+
+/* What the title bar names: the selected render size with Direct3D, else the gameplay mode. Menus and videos never
+ * change it. */
+jpt_size_t jpt_title_size(jpt_size_t box, jpt_size_t gameplay, int hardware);
+
+/* Host memory one gameplay mode needs: front and back RGB565 buffers, a 32-bit z-buffer, and the D3D11 renderer's
+ * RGB565 reference and 32-bit overlay copies. */
+unsigned long long jpt_gameplay_host_bytes(jpt_size_t mode);
+
+/* The game sizes its gameplay text for screens up to 600 lines (32 px at 800x600); taller screens keep that share of
+ * the height. */
+int jpt_ui_text_height(int game_height, int screen_h);
+
+#define JPT_UI_CANVAS_W 640
+#define JPT_UI_CANVAS_H 480
+
+/* The game's 640x480 UI canvas inside a frame: the largest 4:3 rectangle, centred, scale not rounded. */
+typedef struct {
+    jpt_rect_t rect;
+    double scale;
+} jpt_ui_canvas_t;
+
+jpt_ui_canvas_t jpt_ui_canvas(int frame_w, int frame_h);
+/* The canvas pixel under the centre of a frame pixel, clamped to the canvas; 0 when the frame pixel is outside the
+ * canvas rectangle. */
+int jpt_ui_to_canvas(const jpt_ui_canvas_t* canvas, int x, int y, int* canvas_x, int* canvas_y);
+/* The frame pixel under the centre of a canvas pixel. */
+void jpt_ui_to_frame(const jpt_ui_canvas_t* canvas, int canvas_x, int canvas_y, int* x, int* y);
+/* The frame rectangle covering a canvas rectangle: left/top rounded down, right/bottom up, so clips never cut a pixel. */
+jpt_rect_t jpt_ui_rect_to_frame(const jpt_ui_canvas_t* canvas, jpt_rect_t r);
+
+/* The canvas rectangle of a frame as normalised device coordinates {left, top, right, bottom}. */
+void jpt_ui_canvas_ndc(const jpt_ui_canvas_t* canvas, int frame_w, int frame_h, float out[4]);
 
 /* Horizontal view scale of a Hor+ view over the original 4:3 one (vertical field of view kept). */
 double jpt_hor_plus_scale(int guest_w, int guest_h);

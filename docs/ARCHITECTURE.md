@@ -136,8 +136,8 @@ returns `DDERR_UNSUPPORTED`, and the primary stays 32 bpp), and the renderer nee
 `IDirectDrawSurface` 1 to 4, `IDirectDrawGammaControl`, `IDirectDrawClipper` and
 `IDirectDrawPalette` over a virtual display that is always RGB565:
 
-- `SetDisplayMode` sets the virtual mode (16 bpp, 320x240 up to the desktop's size); the
-  desktop's mode is never touched, and the window is not resized by it (see "Window").
+- `SetDisplayMode` sets the virtual mode (16 bpp, 320x240 up to the desktop's size, and the two renderers' gameplay
+  modes at any size); the desktop's mode is never touched, and the window is not resized by it (see "Window").
 - Surfaces are DIB sections in the requested format, so `Lock` and `GetDC` share the pixels. A
   primary with back buffers is a flip chain; `Flip` exchanges buffers.
 - Every change to the front buffer (`Flip`, `Blt`/`BltFast` to it, `Unlock`, `ReleaseDC`) is
@@ -409,8 +409,10 @@ on it answer that way. The game's cursor is virtual and the real cursor is never
 
 ### Title bar
 
-`Jurassic Park: Trespasser Recompiled | x86 | D3D11 | FPS: 59.9 | 800x600`: host architecture,
-current renderer, presentation rate and the virtual display's resolution (not the window's). FPS comes from one place: each `IDXGISwapChain::Present` that returns
+`Jurassic Park: Trespasser Recompiled | x86 | D3D11 | FPS: 59.9 | 2560x1440`: host architecture,
+current renderer, presentation rate and the selected resolution (docs/LAUNCHER.md, Resolutions): the render size with
+D3D11, the gameplay mode with Software or Original. Menus and videos, which the game draws at 640x480, do not change it,
+and neither does the window's size. FPS comes from one place: each `IDXGISwapChain::Present` that returns
 `S_OK` (not a failure, not occluded) is timestamped with `QueryPerformanceCounter`; once a second
 of them has passed the rate is computed over exactly that span and the title is updated, so with
 both renderers it is the presentation rate, not the simulation tick and not the monitor's refresh.

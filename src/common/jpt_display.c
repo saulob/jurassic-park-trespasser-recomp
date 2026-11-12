@@ -1,5 +1,6 @@
 #include "jpt_display.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -100,6 +101,87 @@ jpt_size_t jpt_render_target(jpt_size_t box, int guest_w, int guest_h) {
     shape = ((double)box.width / box.height) / ((double)guest_w / guest_h);
     if (shape > 0.98 && shape < 1.02) return box;
     return contain(box.width, box.height, guest_w, guest_h);
+}
+
+jpt_size_t jpt_gameplay_mode(jpt_size_t box, int aspect, int hardware) {
+    const jpt_aspect_t* a = &jpt_aspects[aspect >= 0 && aspect < JPT_ASPECT_COUNT ? aspect : 0];
+    jpt_size_t s = { a->compat_w, a->compat_h };
+    long long pixels = (long long)box.width * box.height;
+    double f;
+    if (!hardware || box.width < 320 || box.height < 240) return s;
+    if (pixels <= JPT_GAMEPLAY_MAX_PIXELS) return box;
+    f = sqrt((double)JPT_GAMEPLAY_MAX_PIXELS / (double)pixels);
+    s.width = (int)(box.width * f) & ~7;
+    s.height = (int)(box.height * f) & ~7;
+    return s;
+}
+
+jpt_size_t jpt_title_size(jpt_size_t box, jpt_size_t gameplay, int hardware) {
+    return hardware && box.width > 0 && box.height > 0 ? box : gameplay;
+}
+
+unsigned long long jpt_gameplay_host_bytes(jpt_size_t mode) {
+    return (unsigned long long)mode.width * (unsigned long long)mode.height * (2 + 2 + 4 + 2 + 4);
+}
+
+int jpt_ui_text_height(int game_height, int screen_h) {
+    if (screen_h <= 600 || game_height <= 0) return game_height;
+    return (int)(((long long)game_height * screen_h + 300) / 600);
+}
+
+jpt_ui_canvas_t jpt_ui_canvas(int frame_w, int frame_h) {
+    jpt_ui_canvas_t c = { { 0, 0, 0, 0 }, 1.0 };
+    double sx, sy;
+    int w, h;
+    if (frame_w <= 0 || frame_h <= 0) return c;
+    sx = (double)frame_w / JPT_UI_CANVAS_W;
+    sy = (double)frame_h / JPT_UI_CANVAS_H;
+    c.scale = sx < sy ? sx : sy;
+    w = (int)(JPT_UI_CANVAS_W * c.scale + 0.5);
+    h = (int)(JPT_UI_CANVAS_H * c.scale + 0.5);
+    if (w > frame_w) w = frame_w;
+    if (h > frame_h) h = frame_h;
+    c.rect.left = (frame_w - w) / 2;
+    c.rect.top = (frame_h - h) / 2;
+    c.rect.right = c.rect.left + w;
+    c.rect.bottom = c.rect.top + h;
+    return c;
+}
+
+int jpt_ui_to_canvas(const jpt_ui_canvas_t* canvas, int x, int y, int* canvas_x, int* canvas_y) {
+    long long w = canvas->rect.right - canvas->rect.left, h = canvas->rect.bottom - canvas->rect.top;
+    long long cx, cy;
+    int inside;
+    if (w <= 0 || h <= 0) return 0;
+    inside = x >= canvas->rect.left && x < canvas->rect.right && y >= canvas->rect.top && y < canvas->rect.bottom;
+    cx = (((long long)(x - canvas->rect.left) * 2 + 1) * JPT_UI_CANVAS_W) / (2 * w);
+    cy = (((long long)(y - canvas->rect.top) * 2 + 1) * JPT_UI_CANVAS_H) / (2 * h);
+    *canvas_x = (int)(cx < 0 ? 0 : cx >= JPT_UI_CANVAS_W ? JPT_UI_CANVAS_W - 1 : cx);
+    *canvas_y = (int)(cy < 0 ? 0 : cy >= JPT_UI_CANVAS_H ? JPT_UI_CANVAS_H - 1 : cy);
+    return inside;
+}
+
+void jpt_ui_to_frame(const jpt_ui_canvas_t* canvas, int canvas_x, int canvas_y, int* x, int* y) {
+    long long w = canvas->rect.right - canvas->rect.left, h = canvas->rect.bottom - canvas->rect.top;
+    *x = canvas->rect.left + (int)((((long long)canvas_x * 2 + 1) * w) / (2 * JPT_UI_CANVAS_W));
+    *y = canvas->rect.top + (int)((((long long)canvas_y * 2 + 1) * h) / (2 * JPT_UI_CANVAS_H));
+}
+
+jpt_rect_t jpt_ui_rect_to_frame(const jpt_ui_canvas_t* canvas, jpt_rect_t r) {
+    long long w = canvas->rect.right - canvas->rect.left, h = canvas->rect.bottom - canvas->rect.top;
+    jpt_rect_t out;
+    out.left = canvas->rect.left + (int)(((long long)r.left * w) / JPT_UI_CANVAS_W);
+    out.top = canvas->rect.top + (int)(((long long)r.top * h) / JPT_UI_CANVAS_H);
+    out.right = canvas->rect.left + (int)(((long long)r.right * w + JPT_UI_CANVAS_W - 1) / JPT_UI_CANVAS_W);
+    out.bottom = canvas->rect.top + (int)(((long long)r.bottom * h + JPT_UI_CANVAS_H - 1) / JPT_UI_CANVAS_H);
+    return out;
+}
+
+void jpt_ui_canvas_ndc(const jpt_ui_canvas_t* canvas, int frame_w, int frame_h, float out[4]) {
+    out[0] = (float)canvas->rect.left / (float)frame_w * 2.0f - 1.0f;
+    out[1] = 1.0f - (float)canvas->rect.top / (float)frame_h * 2.0f;
+    out[2] = (float)canvas->rect.right / (float)frame_w * 2.0f - 1.0f;
+    out[3] = 1.0f - (float)canvas->rect.bottom / (float)frame_h * 2.0f;
 }
 
 double jpt_hor_plus_scale(int guest_w, int guest_h) {

@@ -125,6 +125,12 @@ typedef struct {
 d3dt_rect_t d3dt_scale_rect(long x, long y, long w, long h, unsigned legacy_w, unsigned legacy_h, unsigned target_w,
                             unsigned target_h);
 int d3dt_rect_empty(const d3dt_rect_t* r);
+/* 1 when target row k's pixel centre falls exactly on a texel edge of a legacy-high texture stretched to target
+ * rows; point sampling may then take either neighbour. Never at integer scales. */
+int d3dt_row_on_texel_edge(unsigned k, unsigned legacy, unsigned target);
+/* The texels uploaded for an overlay box: the box and one texel around it, within the surface, so that sampling at
+ * the box's edge reads only texels of this upload. */
+d3dt_rect_t d3dt_overlay_upload_rect(const d3dt_rect_t* box, unsigned width, unsigned height);
 void d3dt_rect_union(d3dt_rect_t* acc, const d3dt_rect_t* add);
 
 int d3dt_parse_resolution(const char* text, unsigned* w, unsigned* h);

@@ -1,5 +1,5 @@
 /*
- * True widescreen: the game runs gameplay at a widescreen mode of its own (jpt_aspects) and its main camera, with the
+ * True widescreen: gameplay runs at a mode of the chosen shape (jpt_gameplay_mode) and the main camera, with the
  * render cameras copied from it, keeps the vertical field of view of the original 4:3 view (Hor+). The camera
  * projects, clips and culls before anything becomes a D3DTLVERTEX or a software span, so both renderers follow.
  */
@@ -91,15 +91,13 @@ static int redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body,
 }
 
 int widescreen_install(int aspect) {
-    const jpt_aspect_t* a = &jpt_aspects[aspect];
-    if (aspect <= 0 || aspect >= JPT_ASPECT_COUNT) return 0;
-    if (!redirect(ENUM_MODES_VA, enum_modes_uncapped, &s_enum_modes_lifted, "mode table") ||
-        !redirect(CAMERA_SET_PROPERTIES_VA, camera_set_properties, &s_set_properties_lifted, "CCamera::SetProperties"))
+    if (!redirect(ENUM_MODES_VA, enum_modes_uncapped, &s_enum_modes_lifted, "mode table")) return 0;
+    if (aspect <= 0 || aspect >= JPT_ASPECT_COUNT) return 1;
+    if (!redirect(CAMERA_SET_PROPERTIES_VA, camera_set_properties, &s_set_properties_lifted, "CCamera::SetProperties"))
         return 0;
     s_wide = 1;
-    dd_set_extra_mode((DWORD)a->guest_w, (DWORD)a->guest_h);
-    host_log("widescreen", "%s: gameplay at %dx%d, Hor+ (vertical view of the 4:3 original, horizontal x%.4f); "
-             "menus stay 640x480", a->key, a->guest_w, a->guest_h, jpt_hor_plus_scale(a->guest_w, a->guest_h));
+    host_log("widescreen", "%s: Hor+ (vertical view of the 4:3 original, horizontal x%.4f)", jpt_aspects[aspect].key,
+             (double)jpt_aspects[aspect].num / jpt_aspects[aspect].den / (4.0 / 3.0));
     return 1;
 }
 

@@ -431,6 +431,19 @@ d3dt_rect_t d3dt_scale_rect(long x, long y, long w, long h, unsigned legacy_w, u
 
 int d3dt_rect_empty(const d3dt_rect_t* r) { return r->right <= r->left || r->bottom <= r->top; }
 
+int d3dt_row_on_texel_edge(unsigned k, unsigned legacy, unsigned target) {
+    return target && ((2ull * k + 1) * legacy) % (2ull * target) == 0;
+}
+
+d3dt_rect_t d3dt_overlay_upload_rect(const d3dt_rect_t* box, unsigned width, unsigned height) {
+    d3dt_rect_t r = *box;
+    if (r.left > 0) r.left--;
+    if (r.top > 0) r.top--;
+    if (r.right < (long)width) r.right++;
+    if (r.bottom < (long)height) r.bottom++;
+    return r;
+}
+
 void d3dt_rect_union(d3dt_rect_t* acc, const d3dt_rect_t* add) {
     if (d3dt_rect_empty(add)) return;
     if (d3dt_rect_empty(acc)) {

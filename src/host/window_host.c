@@ -77,6 +77,8 @@ static struct {
     HWND game, surface;
     WNDPROC previous;
     int fbw, fbh;
+    int ui_canvas;
+    int title_w[2], title_h[2];
     int virtual_on;
     RECT view;
     int fullscreen, active, focused, size_move, transition;
@@ -259,6 +261,13 @@ static POINT client_to_display(POINT c) {
     long view_w = s.view.right - s.view.left, view_h = s.view.bottom - s.view.top;
     v.x = (LONG)floor_div((long)(c.x - s.view.left) * s.fbw, view_w);
     v.y = (LONG)floor_div((long)(c.y - s.view.top) * s.fbh, view_h);
+    if (s.ui_canvas && (s.state == INPUT_MENU || s.state == INPUT_DIALOG)) {
+        jpt_ui_canvas_t canvas = jpt_ui_canvas(s.fbw, s.fbh);
+        int x, y;
+        jpt_ui_to_canvas(&canvas, (int)v.x, (int)v.y, &x, &y);
+        v.x = x;
+        v.y = y;
+    }
     return v;
 }
 
@@ -448,17 +457,26 @@ static void update_input(const char* why) {
 
 static const char* renderer_text(void) { return d3dr_name(); }
 
+/* The selected resolution of the current renderer; the game's screen only when none was given. */
+static int title_size(int* width, int* height) {
+    int hw = d3dr_hardware() ? 1 : 0;
+    *width = s.title_w[hw] > 0 ? s.title_w[hw] : s.fbw;
+    *height = s.title_w[hw] > 0 ? s.title_h[hw] : s.fbh;
+    return *width > 0 && *height > 0;
+}
+
 static void refresh_title(void) {
     char text[sizeof s.title];
     char fps[24];
+    int width, height;
     if (s.fps_ready) _snprintf(fps, sizeof fps - 1, "%.1f", s.fps.fps);
     else strcpy(fps, "0");
     fps[sizeof fps - 1] = 0;
     if (!s.cfg.show_fps)
         strcpy(text, PRODUCT_TITLE);
-    else if (display_known())
+    else if (title_size(&width, &height))
         _snprintf(text, sizeof text - 1, PRODUCT_TITLE " | " HOST_ARCH " | %s | FPS: %s | %dx%d", renderer_text(), fps,
-                  s.fbw, s.fbh);
+                  width, height);
     else
         _snprintf(text, sizeof text - 1, PRODUCT_TITLE " | " HOST_ARCH " | %s | FPS: %s", renderer_text(), fps);
     text[sizeof text - 1] = 0;
@@ -474,6 +492,21 @@ void window_host_frame_presented(void) {
         refresh_title();
     }
     update_input("frame");
+}
+
+void window_host_set_ui_canvas(int on) { s.ui_canvas = on != 0; }
+
+void window_host_display_size(int* width, int* height) {
+    *width = s.virtual_on ? s.fbw : 0;
+    *height = s.virtual_on ? s.fbh : 0;
+}
+
+void window_host_set_title_sizes(int hardware_w, int hardware_h, int software_w, int software_h) {
+    s.title_w[1] = hardware_w;
+    s.title_h[1] = hardware_h;
+    s.title_w[0] = software_w;
+    s.title_h[0] = software_h;
+    refresh_title();
 }
 
 void window_host_view_size(int* width, int* height) {
@@ -1185,7 +1218,7 @@ void window_host_set_display(HWND window, int width, int height) {
     {
         RECT client = { 0, 0, 0, 0 };
         GetClientRect(window, &client);
-        host_log("window", "guest logical resolution %dx%d; presentation %ldx%ld in a %ldx%ld client (%s)", width, height,
+        host_log("window", "game screen %dx%d; presentation %ldx%ld in a %ldx%ld client (%s)", width, height,
                  s.view.right - s.view.left, s.view.bottom - s.view.top, client.right, client.bottom,
                  s.cfg.stretch ? "Stretch" : "Letterbox");
     }

@@ -194,6 +194,10 @@ const char* readback_reason_name(readback_reason_t reason);
 #define LOCK_CALLER_BEGIN_FRAME 0x0055F1D0u
 #define LOCK_CALLER_FLUSH_BATCH 0x00555AB0u
 
+/* The gameplay text overlay's draws (0x0050EAF0, one line 0x0050E830): GetDC, then aliased TextOutA only (the host
+ * makes their font non-antialiased), so nothing under the text is read. */
+#define GETDC_CALLER_TEXT_OVERLAY 0x0050EAF0u
+
 /* Whether a CPU access to a Direct3D render target needs the GPU's pixels in the CPU copy. The game
  * locks with DDLOCK_WAIT only, so write-only flags never come from it; callers decide instead. */
 int target_access_reads(cpu_access_t access, uint32_t lock_flags, uint32_t caller);

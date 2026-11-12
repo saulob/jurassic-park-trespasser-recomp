@@ -67,6 +67,8 @@ set(HOST_SOURCES
   src/host/guest_overrides.c
   src/host/water_kernels.c
   src/host/widescreen.c
+  src/host/game_text.c
+  src/host/ui_canvas.c
   src/host/diagnostics.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
@@ -228,8 +230,8 @@ target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/ddraw/d3d_translate.c
-  src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c)
-target_include_directories(host_tests PRIVATE src/host)
+  src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/common/jpt_display.c)
+target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c

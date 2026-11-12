@@ -96,6 +96,12 @@ HWND window_host_surface(HWND window);
 void window_host_frame_presented(void);
 void window_host_release_cursor(void);
 void window_host_view_size(int* width, int* height);
+/* While on, the game's cursor and mouse messages are in its 640x480 UI canvas, centred in its screen (ui_canvas.c). */
+void window_host_set_ui_canvas(int on);
+/* The game's current screen (its virtual display mode); 0x0 when none is set. */
+void window_host_display_size(int* width, int* height);
+/* The resolution the title names for each renderer, whatever the game's screen (menus and videos are 640x480). */
+void window_host_set_title_sizes(int hardware_w, int hardware_h, int software_w, int software_h);
 void window_host_input_summary(void);
 const char* window_host_close_origin(void);
 /* Presentation stops once the host is closing the game; the game's frames still run. */
@@ -138,6 +144,7 @@ typedef struct {
 } guest_ui_view_t;
 
 int guest_ui_probe(guest_ui_view_t* out);
+guest_wnd_t guest_ui_window_kind(uint32_t window);
 const char* guest_ui_class_name(uint32_t vtable);
 int guest_display_built(void);
 int guest_read32(uint32_t va, uint32_t* out);
@@ -177,13 +184,20 @@ void d3dr_summary(void);
 void guest_overrides_install(void);
 /* Points the lifted function's incremental-link thunk at replacement; *body keeps the lifted code. */
 int guest_override_redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body);
-/* widescreen.c: gameplay at the aspect's own mode with a Hor+ main camera; 0 for 4:3 or when a site is missing. */
+/* widescreen.c: lifts the mode table's width cap and makes the main camera Hor+; 0 when a site is missing. */
 int widescreen_install(int aspect);
 int widescreen_active(void);
-/* dd_device.c: one more 16 bpp mode, listed whatever the desktop size. */
-void dd_set_extra_mode(DWORD width, DWORD height);
-/* registry.c: "Width"/"Height" answer this gameplay mode whatever is stored (the launcher's Aspect Ratio decides). */
-void registry_gameplay_size(int width, int height);
+/* game_text.c: the gameplay text overlay keeps its share of the screen height and is drawn aliased. */
+void game_text_install(void);
+int game_text_drawing(void);
+/* ui_canvas.c: the game's 640x480 menus and dialogs on a larger game screen draw into an offscreen canvas the
+ * renderer scales over the frame. */
+void ui_canvas_install(void);
+void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
+/* dd_device.c: the gameplay modes of both renderers, listed whatever the desktop size. */
+void dd_set_gameplay_modes(DWORD hardware_w, DWORD hardware_h, DWORD software_w, DWORD software_h);
+/* registry.c: "Width"/"Height" answer the current renderer's gameplay mode whatever is stored. */
+void registry_gameplay_sizes(int hardware_w, int hardware_h, int software_w, int software_h);
 
 /* exit_policy.c */
 int host_exit_code_for_guest_return(int code);

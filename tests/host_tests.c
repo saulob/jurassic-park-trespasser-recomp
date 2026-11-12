@@ -8,6 +8,7 @@
 #include <d3dcompiler.h>
 #include <ddraw.h>
 #include <d3d.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -15,6 +16,7 @@
 #include "ddraw/d3d_translate.h"
 #include "ddraw/target_sync.h"
 #include "host_policy.h"
+#include "jpt_display.h"
 
 static int s_failures, s_checks;
 
@@ -401,6 +403,8 @@ static void test_target_access_policy(void) {
     CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x21, 0x00435590));
     CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x2001, 0x00435590));
     CHECK(target_access_reads(CPU_ACCESS_GETDC, 0x20, LOCK_CALLER_BEGIN_FRAME));
+    CHECK(target_access_reads(CPU_ACCESS_GETDC, 0, 0x005038E0));
+    CHECK(!target_access_reads(CPU_ACCESS_GETDC, 0, GETDC_CALLER_TEXT_OVERLAY));
     CHECK(target_access_reads(CPU_ACCESS_BLT_SOURCE, 0, 0));
     CHECK(!target_access_reads(CPU_ACCESS_BLT_DEST, 0, 0));
     CHECK(!strcmp(tsync_location_name(TSYNC_CPU | TSYNC_GPU), "CPU+GPU"));
@@ -1219,6 +1223,232 @@ static void test_shaders(void) {
     }
 }
 
+static jpt_size_t box_of(const char* preset, int aspect) {
+    return jpt_render_box(jpt_render_preset_index(preset), aspect, 0, 0);
+}
+
+static int size_is(jpt_size_t s, int w, int h) { return s.width == w && s.height == h; }
+
+#define ASPECT_32_9 4
+
+static void test_native_gameplay_resolution(void) {
+    static const struct {
+        const char* preset;
+        int aspect, w, h;
+    } k[] = {
+        { "1080p", JPT_ASPECT_16_9, 1920, 1080 }, { "1440p", JPT_ASPECT_16_9, 2560, 1440 },
+        { "4k", JPT_ASPECT_16_9, 3840, 2160 },    { "1440p", JPT_ASPECT_21_9, 3440, 1440 },
+        { "1440p", ASPECT_32_9, 5120, 1440 },     { "1440p", JPT_ASPECT_4_3, 2560, 1920 },
+        { "1080p", JPT_ASPECT_4_3, 1920, 1440 },  { "720p", JPT_ASPECT_16_9, 1280, 720 },
+    };
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++) {
+        jpt_size_t box = box_of(k[i].preset, k[i].aspect);
+        jpt_size_t game = jpt_gameplay_mode(box, k[i].aspect, 1);
+        jpt_size_t target = jpt_render_target(box, game.width, game.height);
+        d3dt_rect_t vp = d3dt_scale_rect(0, 0, game.width, game.height, (unsigned)game.width, (unsigned)game.height,
+                                         (unsigned)target.width, (unsigned)target.height);
+        d3dt_rect_t mid = d3dt_scale_rect(game.width / 2, game.height / 2, 1, 1, (unsigned)game.width,
+                                          (unsigned)game.height, (unsigned)target.width, (unsigned)target.height);
+        CHECK(size_is(box, k[i].w, k[i].h));
+        CHECK(size_is(game, k[i].w, k[i].h));   /* the game's own screen is the chosen resolution */
+        CHECK(size_is(target, k[i].w, k[i].h)); /* and D3D11 rasterises it 1:1 */
+        CHECK(vp.left == 0 && vp.top == 0 && vp.right == game.width && vp.bottom == game.height);
+        CHECK(mid.left == game.width / 2 && mid.right == mid.left + 1 && mid.top == game.height / 2);
+        CHECK(size_is(jpt_title_size(box, game, 1), k[i].w, k[i].h));
+        CHECK(game.width < 32768 && game.height < 32768); /* 16.16 span x in the software rasteriser */
+        CHECK(game.width % 2 == 0 && (long long)game.width * game.height * 4 < 0x7FFFFFFFll);
+        CHECK(jpt_gameplay_host_bytes(game) <= 120ull * 1048576);
+        CHECK(fabs(jpt_hor_plus_scale(game.width, game.height) - (double)game.width / game.height / (4.0 / 3.0)) < 1e-9);
+    }
+    CHECK(fabs(jpt_hor_plus_scale(2560, 1920) - 1.0) < 1e-9); /* 4:3 keeps the original view */
+    {
+        /* Above the budget: the largest mode of the shape within it, rasterised and shown at the box. */
+        jpt_size_t box = box_of("4k", JPT_ASPECT_21_9), game = jpt_gameplay_mode(box, JPT_ASPECT_21_9, 1);
+        jpt_size_t big = box_of("4k", ASPECT_32_9), wide = jpt_gameplay_mode(big, ASPECT_32_9, 1);
+        CHECK(size_is(box, 5120, 2160));
+        CHECK((long long)game.width * game.height <= JPT_GAMEPLAY_MAX_PIXELS);
+        CHECK(game.width % 8 == 0 && game.height % 8 == 0);
+        CHECK(game.width > 4000 && fabs((double)game.width / game.height - 5120.0 / 2160.0) < 0.02);
+        CHECK(size_is(jpt_render_target(box, game.width, game.height), 5120, 2160));
+        CHECK(size_is(jpt_title_size(box, game, 1), 5120, 2160));
+        CHECK(size_is(big, 7680, 2160) && (long long)wide.width * wide.height <= JPT_GAMEPLAY_MAX_PIXELS);
+        CHECK(jpt_gameplay_host_bytes(wide) <= 120ull * 1048576);
+    }
+    {
+        /* Software and Original keep the compatibility modes, and the title names them. */
+        jpt_size_t box = box_of("1440p", JPT_ASPECT_16_9), none = { 0, 0 };
+        CHECK(size_is(jpt_gameplay_mode(box, JPT_ASPECT_16_9, 0), 1024, 576));
+        CHECK(size_is(jpt_gameplay_mode(box, JPT_ASPECT_4_3, 0), 800, 600));
+        CHECK(size_is(jpt_gameplay_mode(none, JPT_ASPECT_16_9, 1), 1024, 576));
+        CHECK(size_is(jpt_title_size(box, jpt_gameplay_mode(box, JPT_ASPECT_16_9, 0), 0), 1024, 576));
+        CHECK(size_is(jpt_title_size(none, jpt_gameplay_mode(none, JPT_ASPECT_16_9, 1), 1), 1024, 576));
+    }
+}
+
+static void test_menus_videos_and_text(void) {
+    jpt_size_t box = box_of("1440p", JPT_ASPECT_16_9);
+    jpt_size_t menus = jpt_render_target(box, 640, 480);
+    jpt_rect_t frame = jpt_present_rect(2560, 1440, 640, 480, 0);
+    jpt_rect_t ultra = jpt_present_rect(3440, 1440, 640, 480, 0);
+    jpt_rect_t shrunk = jpt_present_rect(960, 540, 2560, 1440, 0);
+    CHECK(size_is(menus, 1920, 1440)); /* menus and 640x480 videos: 4:3 at an integer 3x */
+    CHECK(frame.left == 320 && frame.right == 2240 && frame.top == 0 && frame.bottom == 1440);
+    CHECK(ultra.left == 760 && ultra.right == 2680 && ultra.top == 0 && ultra.bottom == 1440);
+    CHECK(shrunk.left == 0 && shrunk.right == 960 && shrunk.top == 0 && shrunk.bottom == 540);
+    for (unsigned k = 0; k < 1440; k++) CHECK(!d3dt_row_on_texel_edge(k, 480, 1440));
+    CHECK(jpt_ui_text_height(32, 576) == 32); /* compatibility modes keep the game's own size */
+    CHECK(jpt_ui_text_height(32, 600) == 32);
+    CHECK(jpt_ui_text_height(32, 1080) == 58);
+    CHECK(jpt_ui_text_height(32, 1440) == 77);
+    CHECK(jpt_ui_text_height(32, 2160) == 115);
+    CHECK(jpt_ui_text_height(24, 1440) == 58);
+    for (int h = 600; h <= 2160; h += 120) CHECK(fabs(jpt_ui_text_height(32, h) / (double)h - 32.0 / 600.0) < 0.001);
+}
+
+/* The texel a point sample of target row k reads, taking the lower neighbour when the pixel centre is exactly on a
+ * texel edge (rounding the GPU may apply). */
+static long sampled_row(unsigned k, unsigned legacy, unsigned target) {
+    long texel = (long)(((2ull * k + 1) * legacy) / (2ull * target));
+    return d3dt_row_on_texel_edge(k, legacy, target) ? texel - 1 : texel;
+}
+
+/* Target rows whose centres lie in [top, bottom) scaled: the rows a box's quad covers (top-left rule). */
+static void covered_rows(long top, long bottom, unsigned legacy, unsigned target, unsigned* first, unsigned* end) {
+    unsigned k = 0;
+    while ((2ull * k + 1) * legacy < 2ull * (unsigned long long)top * target) k++;
+    *first = k;
+    while ((2ull * k + 1) * legacy < 2ull * (unsigned long long)bottom * target) k++;
+    *end = k;
+}
+
+static void test_overlay_texel_edge(void) {
+    /* The tutorial text's line: 1024x576 composited onto 2560x1440 (2.5x). A box starting on an odd row has its first
+     * target row exactly on a texel edge, so the quad's top row may read the row above the box. */
+    const unsigned legacy = 576, target = 1440;
+    d3dt_rect_t box = { 100, 11, 400, 43 }, up;
+    unsigned first, end, above = 0, outside_upload = 0;
+    covered_rows(box.top, box.bottom, legacy, target, &first, &end);
+    CHECK(first == 27 && d3dt_row_on_texel_edge(first, legacy, target));
+    for (unsigned k = first; k < end; k++) above += sampled_row(k, legacy, target) < box.top;
+    CHECK(above == 1); /* one target row from texel top-1, which a box-only upload leaves stale */
+    up = d3dt_overlay_upload_rect(&box, 1024, 576);
+    CHECK(up.left == 99 && up.top == 10 && up.right == 401 && up.bottom == 44);
+    for (unsigned k = first; k < end; k++) {
+        long t = sampled_row(k, legacy, target);
+        outside_upload += t < up.top || t >= up.bottom;
+    }
+    CHECK(outside_upload == 0);
+    {
+        static uint8_t copy[SIM_PITCH * SIM_H];
+        static uint16_t reference[SIM_W * SIM_H];
+        static uint32_t texels[SIM_W * SIM_H];
+        d3dt_rect_t changed, apron;
+        tsync_counts_t counts = { 0, 0 };
+        tsync_fill(copy, SIM_PITCH, reference, SIM_W, &k_sim_all, 0x4208);
+        *sim_px(copy, 6, 5) = 0xFFFF;
+        *sim_px(copy, 9, 7) = 0;
+        CHECK(tsync_changed_box(copy, SIM_PITCH, reference, SIM_W, &k_sim_all, &changed));
+        apron = d3dt_overlay_upload_rect(&changed, SIM_W, SIM_H);
+        CHECK(apron.top == changed.top - 1 && apron.left == changed.left - 1);
+        tsync_overlay_box(copy, SIM_PITCH, reference, SIM_W, &apron, texels, &counts);
+        CHECK(counts.changed == 2);
+        for (long x = 0; x < apron.right - apron.left; x++) CHECK(texels[x] == 0); /* the apron row is transparent */
+    }
+    {
+        d3dt_rect_t whole = { 0, 0, 1024, 576 }, all = d3dt_overlay_upload_rect(&whole, 1024, 576);
+        CHECK(all.left == 0 && all.top == 0 && all.right == 1024 && all.bottom == 576);
+    }
+    for (unsigned k = 0; k < 1440; k++) CHECK(!d3dt_row_on_texel_edge(k, 1440, 1440)); /* native: 1:1 */
+}
+
+static int rect_is(jpt_rect_t r, int l, int t, int rt, int b) { return r.left == l && r.top == t && r.right == rt && r.bottom == b; }
+
+static void test_ui_canvas(void) {
+    static const struct {
+        int frame_w, frame_h, left, top, right, bottom;
+        double scale;
+    } k[] = {
+        { 2560, 1440, 320, 0, 2240, 1440, 3.0 },   { 1920, 1080, 240, 0, 1680, 1080, 2.25 },
+        { 3840, 2160, 480, 0, 3360, 2160, 4.5 },   { 3440, 1440, 760, 0, 2680, 1440, 3.0 },
+        { 5120, 1440, 1600, 0, 3520, 1440, 3.0 },  { 2560, 1920, 0, 0, 2560, 1920, 4.0 },
+        { 1280, 720, 160, 0, 1120, 720, 1.5 },     { 640, 480, 0, 0, 640, 480, 1.0 },
+    };
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++) {
+        jpt_ui_canvas_t c = jpt_ui_canvas(k[i].frame_w, k[i].frame_h);
+        int x, y, fx, fy, inside;
+        CHECK(rect_is(c.rect, k[i].left, k[i].top, k[i].right, k[i].bottom));
+        CHECK(fabs(c.scale - k[i].scale) < 1e-9);
+        CHECK((c.rect.right - c.rect.left) * 3 == (c.rect.bottom - c.rect.top) * 4); /* 4:3, never stretched */
+        CHECK(c.rect.left - 0 == k[i].frame_w - c.rect.right && c.rect.top == k[i].frame_h - c.rect.bottom);
+        /* Mouse: corners and centre of the canvas rectangle. */
+        inside = jpt_ui_to_canvas(&c, c.rect.left, c.rect.top, &x, &y);
+        CHECK(inside && x == 0 && y == 0);
+        inside = jpt_ui_to_canvas(&c, (c.rect.left + c.rect.right) / 2, (c.rect.top + c.rect.bottom) / 2, &x, &y);
+        CHECK(inside && x == 320 && y == 240);
+        inside = jpt_ui_to_canvas(&c, c.rect.right - 1, c.rect.bottom - 1, &x, &y);
+        CHECK(inside && x == 639 && y == 479);
+        inside = jpt_ui_to_canvas(&c, c.rect.right, c.rect.bottom, &x, &y);
+        CHECK(!inside && x == 639 && y == 479);
+        inside = jpt_ui_to_canvas(&c, c.rect.left - 1, c.rect.top - 1, &x, &y);
+        CHECK(!inside && x == 0 && y == 0);
+        /* Every canvas pixel maps to the frame and back to itself. */
+        for (int u = 0; u < JPT_UI_CANVAS_W; u += 7) {
+            for (int v = 0; v < JPT_UI_CANVAS_H; v += 5) {
+                jpt_ui_to_frame(&c, u, v, &fx, &fy);
+                CHECK(jpt_ui_to_canvas(&c, fx, fy, &x, &y) && x == u && y == v);
+            }
+        }
+    }
+    {
+        /* 2560x1440 at 3x: pixel art keeps whole pixels, point sampling reads texel floor((x - left) / 3). */
+        jpt_ui_canvas_t c = jpt_ui_canvas(2560, 1440);
+        int x, y;
+        for (int px = 0; px < 12; px++) {
+            jpt_ui_to_canvas(&c, c.rect.left + px, 0, &x, &y);
+            CHECK(x == px / 3);
+        }
+        jpt_ui_to_canvas(&c, c.rect.left + 959, 719, &x, &y);
+        CHECK(x == 319 && y == 239);
+    }
+    {
+        /* A 320x200 dialog centred in the canvas (160,140 - 480,340), and its clip. */
+        jpt_ui_canvas_t c = jpt_ui_canvas(2560, 1440), s = jpt_ui_canvas(1920, 1080);
+        jpt_rect_t dialog = { 160, 140, 480, 340 }, clip = { 100, 50, 201, 101 };
+        CHECK(rect_is(jpt_ui_rect_to_frame(&c, dialog), 800, 420, 1760, 1020));
+        CHECK(rect_is(jpt_ui_rect_to_frame(&c, clip), 620, 150, 923, 303));
+        /* 2.25x: a clip never loses a pixel (floor left/top, ceil right/bottom). */
+        clip.left = 3; clip.top = 3; clip.right = 6; clip.bottom = 6;
+        CHECK(rect_is(jpt_ui_rect_to_frame(&s, clip), 240 + 6, 6, 240 + 14, 14));
+        CHECK(rect_is(jpt_ui_rect_to_frame(&c, (jpt_rect_t){ 0, 0, 640, 480 }), 320, 0, 2240, 1440));
+    }
+    {
+        float ndc[4];
+        jpt_ui_canvas_t c = jpt_ui_canvas(2560, 1440), w = jpt_ui_canvas(3440, 1440);
+        jpt_ui_canvas_ndc(&c, 2560, 1440, ndc);
+        CHECK(fabs(ndc[0] + 0.75f) < 1e-6 && fabs(ndc[1] - 1.0f) < 1e-6 && fabs(ndc[2] - 0.75f) < 1e-6 &&
+              fabs(ndc[3] + 1.0f) < 1e-6);
+        jpt_ui_canvas_ndc(&w, 3440, 1440, ndc);
+        CHECK(fabs(ndc[0] + 1920.0f / 3440.0f) < 1e-5 && fabs(ndc[2] - 1920.0f / 3440.0f) < 1e-5);
+    }
+    {
+        /* Windowed: the canvas is composed in the render frame (2560x1440) and the whole frame is shown reduced; a
+         * click in a 1753x986 client lands where the same point of the frame is. */
+        jpt_ui_canvas_t c = jpt_ui_canvas(2560, 1440);
+        jpt_rect_t view = jpt_present_rect(1920, 986, 2560, 1440, 0);
+        int fx = (int)(((long long)(960 - view.left) * 2560) / (view.right - view.left));
+        int fy = (int)(((long long)(493 - view.top) * 1440) / (view.bottom - view.top)), x, y;
+        CHECK(view.right - view.left == 1753 && view.bottom - view.top == 986);
+        CHECK(jpt_ui_to_canvas(&c, fx, fy, &x, &y) && abs(x - 320) <= 1 && abs(y - 240) <= 1);
+        CHECK(rect_is(jpt_ui_canvas(2560, 1440).rect, 320, 0, 2240, 1440)); /* independent of the window */
+    }
+    {
+        jpt_ui_canvas_t none = jpt_ui_canvas(0, 0), tiny = jpt_ui_canvas(320, 240);
+        int x = 7, y = 7;
+        CHECK(rect_is(none.rect, 0, 0, 0, 0) && !jpt_ui_to_canvas(&none, 5, 5, &x, &y));
+        CHECK(rect_is(tiny.rect, 0, 0, 320, 240) && fabs(tiny.scale - 0.5) < 1e-9);
+    }
+}
+
 int main(void) {
     test_fps_counter();
     test_input_state();
@@ -1263,6 +1493,10 @@ int main(void) {
     test_convert_rows();
     test_overlay_and_rects();
     test_resolution_and_msaa();
+    test_native_gameplay_resolution();
+    test_menus_videos_and_text();
+    test_overlay_texel_edge();
+    test_ui_canvas();
     test_shaders();
     printf("%d checks, %d failures\n", s_checks, s_failures);
     return s_failures != 0;

@@ -57,29 +57,43 @@ static int mode_fits(DWORD width, DWORD height) {
     return width <= (DWORD)GetSystemMetrics(SM_CXSCREEN) && height <= (DWORD)GetSystemMetrics(SM_CYSCREEN);
 }
 
-static DWORD s_extra_w, s_extra_h;
+#define GAMEPLAY_MODES 2
+static struct { DWORD width, height; } s_gameplay[GAMEPLAY_MODES];
 
-void dd_set_extra_mode(DWORD width, DWORD height) {
-    s_extra_w = width;
-    s_extra_h = height;
+void dd_set_gameplay_modes(DWORD hardware_w, DWORD hardware_h, DWORD software_w, DWORD software_h) {
+    s_gameplay[0].width = hardware_w;
+    s_gameplay[0].height = hardware_h;
+    s_gameplay[1].width = software_w;
+    s_gameplay[1].height = software_h;
+    if (software_w == hardware_w && software_h == hardware_h) s_gameplay[1].width = s_gameplay[1].height = 0;
+}
+
+static int gameplay_mode(DWORD width, DWORD height) {
+    for (int i = 0; i < GAMEPLAY_MODES; i++)
+        if (s_gameplay[i].width && s_gameplay[i].width == width && s_gameplay[i].height == height) return 1;
+    return 0;
 }
 
 static int mode_listed(DWORD width, DWORD height) {
-    if (s_extra_w && width == s_extra_w && height == s_extra_h) return 1;
+    if (gameplay_mode(width, height)) return 1;
     for (int i = 0; i < MODE_COUNT; i++)
         if (k_modes[i].width == width && k_modes[i].height == height) return mode_fits(width, height);
     return 0;
 }
 
+/* The game's mode table (0x006D0B48) holds 60 sizes and its options list (0x0066DCA0) 20 up to 800 wide, both
+ * unchecked: these 12 at most stay within both. */
 static int mode_enumerated(int i, DWORD* width, DWORD* height) {
     if (i < MODE_COUNT) {
         *width = k_modes[i].width;
         *height = k_modes[i].height;
-        return mode_fits(*width, *height) && !(*width == s_extra_w && *height == s_extra_h);
+        return mode_fits(*width, *height) && !gameplay_mode(*width, *height);
     }
-    *width = s_extra_w;
-    *height = s_extra_h;
-    return s_extra_w != 0;
+    i -= MODE_COUNT;
+    if (i >= GAMEPLAY_MODES) return 0;
+    *width = s_gameplay[i].width;
+    *height = s_gameplay[i].height;
+    return *width != 0;
 }
 
 static void fill_mode_desc(DDSURFACEDESC2* desc, DWORD size, DWORD width, DWORD height, int refresh) {
@@ -205,7 +219,7 @@ static HRESULT enum_modes(void* This, DWORD flags, const DDSURFACEDESC2* filter,
     DD_BEGIN(version == 4 ? &s_enum_modes4 : &s_enum_modes1);
     if (!callback) DD_RETURN(DDERR_INVALIDPARAMS);
     if (filter && filter->dwSize != size) DD_RETURN(DDERR_INVALIDPARAMS);
-    for (int i = 0; i <= MODE_COUNT; i++) {
+    for (int i = 0; i < MODE_COUNT + GAMEPLAY_MODES; i++) {
         DWORD w, h;
         if (!mode_enumerated(i, &w, &h)) continue;
         if (filter && (filter->dwFlags & DDSD_WIDTH) && filter->dwWidth != w) continue;

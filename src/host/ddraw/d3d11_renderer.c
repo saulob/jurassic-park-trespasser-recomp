@@ -143,7 +143,7 @@ static struct {
     ID3D11Buffer *vb, *ib, *cb_frame, *cb_draw, *cb_pass;
     UINT vb_size, ib_size, vb_pos, ib_pos;
     ID3D11BlendState* blend[2][14][14];
-    ID3D11BlendState *blend_overlay, *blend_none, *blend_nowrite;
+    ID3D11BlendState *blend_overlay, *blend_none, *blend_nowrite, *blend_premultiplied;
     ID3D11DepthStencilState* depth[2][2][9];
     ID3D11DepthStencilState* depth_write_always;
     ID3D11RasterizerState* raster[4][4][2][MAX_BIAS_STEPS];
@@ -158,6 +158,14 @@ static struct {
     ID3D11ShaderResourceView* screen_srv;
     UINT screen_w, screen_h;
     uint32_t* screen_scratch;
+    ID3D11Texture2D* ui_tex;
+    ID3D11ShaderResourceView* ui_srv;
+    uint32_t ui_pixels[JPT_UI_CANVAS_W * JPT_UI_CANVAS_H];
+    struct {
+        const uint16_t* bits;
+        long pitch;
+        int guest_w, guest_h;
+    } ui;
     ID3D11Texture2D* last_frame;
     ID3D11ShaderResourceView* last_frame_srv;
     UINT last_w, last_h, last_legacy_w, last_legacy_h;
@@ -398,6 +406,9 @@ static int create_static_objects(void) {
                                  D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN |
                                      D3D11_COLOR_WRITE_ENABLE_BLUE);
     R.blend_nowrite = make_blend(0, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, 0);
+    R.blend_premultiplied = make_blend(1, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_ZERO,
+                                       D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN |
+                                           D3D11_COLOR_WRITE_ENABLE_BLUE);
     memset(&dd, 0, sizeof dd);
     dd.DepthEnable = TRUE;
     dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -448,6 +459,9 @@ static void release_static_objects(void) {
     SAFE_RELEASE(R.blend_overlay);
     SAFE_RELEASE(R.blend_none);
     SAFE_RELEASE(R.blend_nowrite);
+    SAFE_RELEASE(R.blend_premultiplied);
+    SAFE_RELEASE(R.ui_srv);
+    SAFE_RELEASE(R.ui_tex);
     for (int a = 0; a < 2; a++)
         for (int b = 0; b < 2; b++)
             for (int c = 0; c < 9; c++) SAFE_RELEASE(R.depth[a][b][c]);
@@ -690,7 +704,7 @@ static int create_target_resources(d3dr_target_t* t) {
     t->height = h;
     t->generation = R.generation;
     memset(&t->dirty, 0, sizeof t->dirty);
-    host_log("d3d11", "3D render target %ux%u B8G8R8A8 (rasterised at this size) for the game's %ux%u logical screen, %ux MSAA%s", w, h, t->legacy_w,
+    host_log("d3d11", "3D render target %ux%u B8G8R8A8 (rasterised at this size) for the game's %ux%u screen, %ux MSAA%s", w, h, t->legacy_w,
              t->legacy_h, samples, samples < R.msaa_request ? " (requested level unsupported: reduced)" : "");
     host_log("d3d11", "depth buffer %ux%u D24_UNORM_S8_UINT", w, h);
     return 1;
@@ -996,9 +1010,12 @@ static void composite(d3dr_target_t* t, int exact) {
     memset(&t->dirty, 0, sizeof t->dirty);
     if (!target_usable(t)) return;
     if (tsync_changed_box(s->bits, s->pitch, t->reference, t->legacy_w, &region, &box)) {
-        UINT bw = (UINT)(box.right - box.left);
-        D3D11_BOX upload = { (UINT)box.left, (UINT)box.top, 0, (UINT)box.right, (UINT)box.bottom, 1 };
-        tsync_overlay_box(s->bits, s->pitch, t->reference, t->legacy_w, &box, t->scratch, &counts);
+        /* The unchanged texels around the box upload transparent: an edge sample that rounds outside the box at a
+         * non-integer scale would otherwise show an old picture as a line. */
+        d3dt_rect_t apron = d3dt_overlay_upload_rect(&box, t->legacy_w, t->legacy_h);
+        UINT bw = (UINT)(apron.right - apron.left);
+        D3D11_BOX upload = { (UINT)apron.left, (UINT)apron.top, 0, (UINT)apron.right, (UINT)apron.bottom, 1 };
+        tsync_overlay_box(s->bits, s->pitch, t->reference, t->legacy_w, &apron, t->scratch, &counts);
         ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)t->picture, 0, &upload, t->scratch, bw * 4, 0);
         draw_picture_box(t, &box, 0);
         R.overlays++;
@@ -1895,7 +1912,7 @@ static void drop_deferred(const d3dr_target_t* t) {
  * the CPU copy becomes the GPU picture only if this access reads it. */
 static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t access) {
     dd_surface_t* s = t->surface;
-    uint32_t caller = readback_caller();
+    uint32_t caller = access == CPU_ACCESS_GETDC && game_text_drawing() ? GETDC_CALLER_TEXT_OVERLAY : readback_caller();
     int reads = target_access_reads(access, s->lock_flags, caller), exact;
     tsync_access_t kind = reads ? TSYNC_ACCESS_READ : TSYNC_ACCESS_NO_READ;
     readback_reason_t reason = readback_classify(access, !will_write, g_cur_func, CALIBRATION_CALLER);
@@ -1975,6 +1992,40 @@ static void update_gamma(const DDGAMMARAMP* gamma) {
     R.gamma_valid = 1;
 }
 
+void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h) {
+    R.ui.bits = bits;
+    R.ui.pitch = pitch;
+    R.ui.guest_w = guest_w;
+    R.ui.guest_h = guest_h;
+}
+
+/* The game's 640x480 UI canvas over the frame: unwritten texels are transparent, the rest is scaled to the canvas
+ * rectangle of the game's screen with the sampler the frontend uses. */
+static void draw_ui_layer(UINT width, UINT height) {
+    jpt_ui_canvas_t canvas;
+    float rect[4];
+    if (!R.ui.bits || R.ui.guest_w <= 0 || R.ui.guest_h <= 0 || !R.blend_premultiplied) return;
+    if (!R.ui_tex) {
+        R.ui_tex = make_texture(JPT_UI_CANVAS_W, JPT_UI_CANVAS_H, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
+                                D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
+        if (!R.ui_tex || FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)R.ui_tex, NULL, &R.ui_srv))) {
+            SAFE_RELEASE(R.ui_tex);
+            return;
+        }
+    }
+    for (int y = 0; y < JPT_UI_CANVAS_H; y++) {
+        const uint16_t* in = R.ui.bits + (size_t)y * (size_t)R.ui.pitch;
+        uint32_t* out = R.ui_pixels + (size_t)y * JPT_UI_CANVAS_W;
+        for (int x = 0; x < JPT_UI_CANVAS_W; x++) out[x] = in[x] == TSYNC_UNWRITTEN ? 0u : R.rgb565_table[in[x]];
+    }
+    ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)R.ui_tex, 0, NULL, R.ui_pixels,
+                                          JPT_UI_CANVAS_W * 4, 0);
+    canvas = jpt_ui_canvas(R.ui.guest_w, R.ui.guest_h);
+    jpt_ui_canvas_ndc(&canvas, R.ui.guest_w, R.ui.guest_h, rect);
+    set_pass(rect, k_full_uv, NULL, 0.0f);
+    draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], R.ui_srv, R.linear_clamp, R.blend_premultiplied, NULL, width, height, NULL);
+}
+
 static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height, ID3D11SamplerState* sampler,
                         const DDGAMMARAMP* gamma, int vsync) {
     ID3D11RenderTargetView* rtv;
@@ -1985,6 +2036,7 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &rtv, NULL);
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], srv, sampler, R.blend_none, NULL, width, height, NULL);
+    draw_ui_layer(width, height);
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
     return present_submit(vsync);

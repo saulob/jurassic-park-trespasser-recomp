@@ -37,12 +37,12 @@ std::string ResolutionLabel(int preset, jpt_size_t box) {
 }
 
 std::string RenderSizeText(jpt_size_t box, int aspect) {
-    const jpt_aspect_t& a = jpt_aspects[aspect];
-    const jpt_size_t gameplay = jpt_render_target(box, a.guest_w, a.guest_h);
+    const jpt_size_t screen = jpt_gameplay_mode(box, aspect, 1);
+    const jpt_size_t gameplay = jpt_render_target(box, screen.width, screen.height);
     const jpt_size_t menus = jpt_render_target(box, 640, 480);
     if (box.width <= 0) return Tr("The original compatibility size, chosen from the window.");
-    return Tr("3D render size ") + Dimensions(gameplay.width, gameplay.height) + kDot + Tr("menus ") +
-           Dimensions(menus.width, menus.height) + kDot + Tr("the game's own screen ") + Dimensions(a.guest_w, a.guest_h);
+    return Tr("Gameplay ") + Dimensions(gameplay.width, gameplay.height) + kDot + Tr("menus and videos 4:3 at ") +
+           Dimensions(menus.width, menus.height);
 }
 
 std::string WindowSizeLabel(const jpt_window_size_t& size) {
