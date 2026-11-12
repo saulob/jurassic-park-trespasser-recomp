@@ -65,6 +65,8 @@ void milestones_observe(uint32_t target);
 
 void ddraw_trace_init(void);
 recomp_func_t ddraw_trace_lookup(uint32_t va);
+/* Grows when the observer starts watching more methods. */
+unsigned ddraw_trace_entry_count(void);
 int ddraw_trace_name(uint32_t va, char* out, int cap);
 int ddraw_trace_last_call(char* out, int cap);
 const char* ddraw_hresult_text(uint32_t hr, char* buf, size_t cap);
@@ -72,6 +74,8 @@ const char* ddraw_hresult_text(uint32_t hr, char* buf, size_t cap);
 int ddraw_compat_init(int enabled);
 int ddraw_compat_active(void);
 recomp_func_t ddraw_compat_lookup(uint32_t va);
+/* A compatibility-layer method the dispatch may run in place, keeping the machine lock (d3d_objects.c). */
+int d3d_method_in_place(uint32_t va);
 int ddraw_compat_last_call(char* out, int cap);
 
 int selfmod_init(void);
@@ -170,13 +174,23 @@ int d3dr_set_hardware(int hardware);
 const char* d3dr_name(void);
 /* Direct3D devices the game has created so far. */
 unsigned d3dr_device_count(void);
-/* --generate-mips: mip chains the game's textures do not have, for trilinear/anisotropic filtering. */
-void d3dr_set_generate_mips(int on);
 /* Applied when the game next creates DirectDraw; -1 when nothing waits. */
 void d3dr_defer_switch(int hardware);
 void d3dr_defer_switch_cancel(void);
 int d3dr_pending_switch(void);
 unsigned d3dr_textures_alive(void);
+/* One polygon the game rasterises itself into the surface, inside this box of its raster, whose first pixel is
+ * origin_bytes into the surface; about to Lock it or already holding the Lock; reads: its primitive is not known to
+ * only store pixels. */
+void d3dr_cpu_polygon(void* surface_iface, const long box[4], uint32_t origin_bytes, int reads);
+void d3dr_cpu_polygon_done(void);
+/* cpu_polygons.c: the software polygons drawn into the Direct3D frame (meshes Direct3D cannot take). */
+void cpu_polygons_install(void);
+/* diagnostics.c: the most called Windows functions (DEBUG_SAULO). */
+void native_calls_window(unsigned long long frames);
+void guest_kernels_window(unsigned long long frames);
+/* widescreen.c: screen pixels per metre at unit distance for the main camera's view; 0 when there is none. */
+float widescreen_pixels_per_metre(void);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
@@ -184,16 +198,52 @@ void d3dr_summary(void);
 void guest_overrides_install(void);
 /* Points the lifted function's incremental-link thunk at replacement; *body keeps the lifted code. */
 int guest_override_redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body);
+/* The lifted body of a redirected function, NULL when va is not redirected. */
+recomp_func_t guest_override_body(uint32_t va);
 /* widescreen.c: lifts the mode table's width cap and makes the main camera Hor+; 0 when a site is missing. */
 int widescreen_install(int aspect);
 int widescreen_active(void);
 /* game_text.c: the gameplay text overlay keeps its share of the screen height and is drawn aliased. */
 void game_text_install(void);
 int game_text_drawing(void);
+/* The overlay's TextOutA calls reach shim_TextOutA, so each string's box is known before it is drawn. */
+int game_text_boxes_known(void);
+void shim_TextOutA(void);
+/* The device box a TextOutA under the text overlay's DC is about to draw into (NULL: anywhere on the surface). */
+void d3dr_text_box(HDC dc, const RECT* box);
 /* ui_canvas.c: the game's 640x480 menus and dialogs on a larger game screen draw into an offscreen canvas the
  * renderer scales over the frame. */
 void ui_canvas_install(void);
+/* engine_limits.c */
+void engine_limits_keep_original(void);
+int engine_limits_original(void);
+void engine_limits_install(int hardware);
+void engine_limits_apply(int hardware);
+int engine_limits_modern(void);
+void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsync);
+void engine_limits_summary(unsigned long long hardware_draw_calls);
+void engine_limits_window(unsigned long long frames);
+/* texture_streaming.c: the game's per-frame Direct3D texture upload window. */
+void texture_streaming_install(void);
+void texture_streaming_log(void);
+void texture_streaming_summary(unsigned long long frames);
+void shim_GetTickCount(void);
+/* terrain_quality.c: terrain texture distance and mesh tolerance with Direct3D 11. */
+/* engine_heaps.c: the engine's fixed heaps (scene polygons and vertices, terrain) and their commits. */
+void engine_heaps_install(void);
+int engine_heaps_enlarged(void);
+void engine_heaps_log(void);
+void engine_heaps_window(void);
+void terrain_quality_install(void);
+/* Mesh tolerances are in render pixels: they are compared at 480 lines. */
+void terrain_quality_set_render_height(int height);
+void terrain_quality_log(void);
+void terrain_quality_summary(void);
+/* Inside a RasterBlt from another raster onto the game's screen. */
+int ui_screen_blt_writes_only(void);
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
+/* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */
+int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h);
 /* dd_device.c: the gameplay modes of both renderers, listed whatever the desktop size. */
 void dd_set_gameplay_modes(DWORD hardware_w, DWORD hardware_h, DWORD software_w, DWORD software_h);
 /* registry.c: "Width"/"Height" answer the current renderer's gameplay mode whatever is stored. */
@@ -207,6 +257,13 @@ void shim_ExitProcess(void);
 void shim_CreateThread(void);
 /* Guest threads (CreateThread from lifted code) still running, the main guest thread included. */
 unsigned guest_threads_alive(void);
+/* diagnostics.c: lifted indirect calls answered from the dispatch cache, and the ones that searched the table. */
+void dispatch_cache_counts(unsigned long long* hits, unsigned long long* misses);
+/* guest_profile.c (DEBUG_SAULO): sampled guest CPU time, logged with the 5-second performance lines. */
+void guest_profile_start(HANDLE guest_thread);
+void guest_profile_add_worker(HANDLE thread, uint32_t entry);
+void guest_profile_window(void);
+void guest_profile_summary(void);
 /* "[shutdown] guest threads <when>: N" and one line per worker still running. */
 void guest_threads_log(const char* when);
 

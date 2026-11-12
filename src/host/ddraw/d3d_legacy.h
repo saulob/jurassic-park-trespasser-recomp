@@ -47,9 +47,17 @@ dd_surface_t* d3d_surface_from_texture(void* iface);
 int d3d_vtables_complete(void);
 void d3d_fill_device_desc(D3DDEVICEDESC* desc);
 void d3d_objects_counts(unsigned long* render_states, unsigned long* stage_states, unsigned long* failed_calls);
+void d3d_objects_load_counts(unsigned long long* loads, unsigned long long* unchanged, unsigned long long* texels,
+                             unsigned long long* changed_texels);
 
 /* d3d11_renderer.c */
-enum { D3DR_FILTER_ORIGINAL, D3DR_FILTER_POINT, D3DR_FILTER_BILINEAR, D3DR_FILTER_TRILINEAR, D3DR_FILTER_ANISOTROPIC };
+enum {
+    D3DR_FILTER_ORIGINAL = D3DT_FILTER_ORIGINAL,
+    D3DR_FILTER_POINT = D3DT_FILTER_POINT,
+    D3DR_FILTER_BILINEAR = D3DT_FILTER_BILINEAR,
+    D3DR_FILTER_TRILINEAR = D3DT_FILTER_TRILINEAR,
+    D3DR_FILTER_ANISOTROPIC = D3DT_FILTER_ANISOTROPIC
+};
 
 int d3dr_hardware(void);
 int d3dr_startup(void);
@@ -60,7 +68,10 @@ HRESULT d3dr_attach(d3d_device_t* dev);
 void d3dr_detach(d3d_device_t* dev);
 void d3dr_begin_scene(d3d_device_t* dev);
 void d3dr_end_scene(d3d_device_t* dev);
-void d3dr_state_will_change(d3d_device_t* dev);
+/* What ends a batch: kind is a D3DR_FLUSH_* value, which the render or stage state (or 0). */
+enum { D3DR_FLUSH_OTHER, D3DR_FLUSH_RENDER_STATE, D3DR_FLUSH_TEXTURE, D3DR_FLUSH_STAGE_STATE, D3DR_FLUSH_VIEWPORT,
+       D3DR_FLUSH_TOPOLOGY, D3DR_FLUSH_CPU_ACCESS, D3DR_FLUSH_END_SCENE, D3DR_FLUSH_KINDS };
+void d3dr_state_will_change(d3d_device_t* dev, int kind, unsigned which);
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count);
 HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD flags, D3DCOLOR color, float z);

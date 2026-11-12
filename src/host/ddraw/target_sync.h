@@ -8,6 +8,7 @@
  * Pure logic, no device, so tests run it headless; the renderer performs the returned actions.
  */
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "d3d_translate.h"
@@ -91,5 +92,39 @@ int tsync_changed_box(const uint8_t* copy, long pitch, const uint16_t* reference
 /* Overlay texels for box (changed pixels opaque, the rest transparent), counted; then reference := copy. */
 void tsync_overlay_box(const uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* box,
                        uint32_t* out, tsync_counts_t* counts);
+
+/* Pixels nobody wrote since the capture (CPU copy equal to the reference) take the GPU picture; written ones stay. */
+void tsync_fill_unwritten(uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* r,
+                          const uint16_t* gpu, size_t gpu_pitch_pixels);
+
+/* The parts of a Lock already captured for CPU polygons, in tiles, so a later polygon of the same Lock captures only
+ * what no earlier one may have written. */
+#define TSYNC_TILE 32
+#define TSYNC_MAX_TILES_X 256
+#define TSYNC_MAX_TILES_Y 256
+typedef struct {
+    unsigned width, height, tiles_x, tiles_y;
+    d3dt_rect_t bounds; /* covers every claimed tile */
+    uint8_t claimed[TSYNC_MAX_TILES_X * TSYNC_MAX_TILES_Y / 8];
+} tsync_tiles_t;
+
+typedef void (*tsync_rect_fn)(void* context, const d3dt_rect_t* r);
+
+/* 0 when the surface has more tiles than the map holds. */
+int tsync_tiles_reset(tsync_tiles_t* m, unsigned width, unsigned height);
+int tsync_tile_claimed(const tsync_tiles_t* m, unsigned tx, unsigned ty);
+void tsync_tiles_claim_all(tsync_tiles_t* m);
+/* Calls fn for each run of unclaimed tiles box touches (clipped to the surface), then claims them. */
+void tsync_tiles_claim(tsync_tiles_t* m, const d3dt_rect_t* box, tsync_rect_fn fn, void* context);
+
+/* region narrowed to the claimed tiles' bounds: nothing outside them is compared in a lazy capture. */
+d3dt_rect_t tsync_tiles_clip(const tsync_tiles_t* m, const d3dt_rect_t* region);
+
+/* The same over the tiles claimed in fresh only: elsewhere the reference is not kept (a capture after a Flip claims
+ * tiles as CPU writes reach them), so those pixels are neither compared nor uploaded (transparent texels). */
+int tsync_changed_box_in(const uint8_t* copy, long pitch, const uint16_t* reference, unsigned width,
+                         const d3dt_rect_t* region, const tsync_tiles_t* fresh, d3dt_rect_t* box);
+void tsync_overlay_box_in(const uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* box,
+                          const tsync_tiles_t* fresh, uint32_t* out, tsync_counts_t* counts);
 
 #endif

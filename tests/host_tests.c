@@ -12,8 +12,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bump_spans.h"
 #include "ddraw/d3d11_shaders.h"
 #include "ddraw/d3d_translate.h"
+#include "ddraw/page_arena.h"
 #include "ddraw/target_sync.h"
 #include "host_policy.h"
 #include "jpt_display.h"
@@ -396,17 +398,33 @@ static int sim_gpu_is(const sim_t* s, long left, long top, long right, long bott
 }
 
 static void test_target_access_policy(void) {
-    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_BEGIN_FRAME));
-    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_FLUSH_BATCH));
-    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, 0x00513660));
-    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, 0x00504D40));
-    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x21, 0x00435590));
-    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x2001, 0x00435590));
-    CHECK(target_access_reads(CPU_ACCESS_GETDC, 0x20, LOCK_CALLER_BEGIN_FRAME));
-    CHECK(target_access_reads(CPU_ACCESS_GETDC, 0, 0x005038E0));
-    CHECK(!target_access_reads(CPU_ACCESS_GETDC, 0, GETDC_CALLER_TEXT_OVERLAY));
-    CHECK(target_access_reads(CPU_ACCESS_BLT_SOURCE, 0, 0));
-    CHECK(!target_access_reads(CPU_ACCESS_BLT_DEST, 0, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_BEGIN_FRAME, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_FLUSH_BATCH, 0));
+    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, 0x00513660, 0));
+    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, 0x00504D40, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_CLEAR, 0));
+    /* Polygon walkers are no longer named one by one: their Locks go through the CPU polygon path. */
+    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, 0x005D66F0, 0));
+    {
+        static const float x[] = { 100.4f, 140.0f, 120.2f }, y[] = { 50.0f, 52.6f, 90.1f };
+        static const float off[] = { -40.0f, 3500.0f, 10.0f }, nan_y[] = { 0.0f, 1e30f, 1.0f };
+        long box[4];
+        CHECK(cpu_polygon_box(x, y, 3, 3440, 1440, 2, box) && box[0] == 98 && box[1] == 48 && box[2] == 142 &&
+              box[3] == 93);
+        CHECK(cpu_polygon_box(off, y, 3, 3440, 1440, 2, box) && box[0] == 0 && box[2] == 3440);
+        CHECK(!cpu_polygon_box(x, nan_y, 3, 3440, 1440, 2, box));
+        CHECK(!cpu_polygon_box(x, y, 0, 3440, 1440, 2, box));
+        CHECK(!cpu_polygon_box(off, y, 1, 3440, 1440, 2, box));
+        /* A polygon box is a few hundred pixels of a 4.95 M-pixel screen. */
+        CHECK(cpu_polygon_box(x, y, 3, 3440, 1440, 2, box) && (box[2] - box[0]) * (box[3] - box[1]) < 3440 * 1440 / 1000);
+    }
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x21, 0x00435590, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x2001, 0x00435590, 0));
+    CHECK(target_access_reads(CPU_ACCESS_GETDC, 0x20, LOCK_CALLER_BEGIN_FRAME, 0));
+    CHECK(target_access_reads(CPU_ACCESS_GETDC, 0, 0x005038E0, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_GETDC, 0, GETDC_CALLER_TEXT_OVERLAY, 0));
+    CHECK(target_access_reads(CPU_ACCESS_BLT_SOURCE, 0, 0, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_BLT_DEST, 0, 0, 0));
     CHECK(!strcmp(tsync_location_name(TSYNC_CPU | TSYNC_GPU), "CPU+GPU"));
     CHECK(!strcmp(tsync_location_name(0), "none"));
 }
@@ -793,16 +811,27 @@ static void test_icall_ring(void) {
     CHECK(icall_ring_caller(targets, from, next, 8, wrappers, 2) == 0x005FB070);
     for (int i = 0; i < 9; i++) targets[next & 7] = 0x00600000, from[next & 7] = 0x00400000, next++;
     CHECK(icall_ring_caller(targets, from, next, 8, wrappers, 2) == 0);
+    /* RasterBlt -> CRasterWin::LockAll (0x00504D40) -> tail jump to CRasterVid::Lock -> DirectDraw (log 027). */
+    {
+        static const uint32_t lock_wrappers[] = { 0x00503400, 0x00504D20, 0x00504D40 };
+        targets[next & 7] = 0x00504D40, from[next & 7] = LOCK_CALLER_RASTER_BLT, next++;
+        targets[next & 7] = 0x00503400, from[next & 7] = 0x00504D40, next++;
+        targets[next & 7] = 0x0D2E0000, from[next & 7] = 0x00503400, next++;
+        CHECK(icall_ring_caller(targets, from, next, 8, lock_wrappers, 3) == LOCK_CALLER_RASTER_BLT);
+        targets[next & 7] = 0x00504D40, from[next & 7] = LOCK_CALLER_CLEAR, next++;
+        targets[next & 7] = 0x00503400, from[next & 7] = 0x00504D40, next++;
+        CHECK(icall_ring_caller(targets, from, next, 8, lock_wrappers, 3) == LOCK_CALLER_CLEAR);
+    }
 }
 
 static void test_readback_classes(void) {
-    CHECK(readback_classify(CPU_ACCESS_LOCK, 1, 0x500000, 0x513660) == READBACK_LOCK_READ);
-    CHECK(readback_classify(CPU_ACCESS_LOCK, 0, 0x500000, 0x513660) == READBACK_LOCK_WRITE);
-    CHECK(readback_classify(CPU_ACCESS_LOCK, 0, 0x513660, 0x513660) == READBACK_PIXEL_CALIBRATION);
-    CHECK(readback_classify(CPU_ACCESS_GETDC, 0, 1, 0x513660) == READBACK_GETDC);
-    CHECK(readback_classify(CPU_ACCESS_BLT_SOURCE, 1, 1, 0x513660) == READBACK_BLT_SOURCE);
-    CHECK(readback_classify(CPU_ACCESS_FRONT, 1, 1, 0x513660) == READBACK_FRONT_BUFFER);
-    CHECK(readback_classify(CPU_ACCESS_OTHER, 1, 1, 0) == READBACK_OTHER);
+    CHECK(readback_classify(CPU_ACCESS_LOCK, 1, 0x500000) == READBACK_LOCK_READ);
+    CHECK(readback_classify(CPU_ACCESS_LOCK, 0, 0x500000) == READBACK_LOCK_WRITE);
+    CHECK(readback_classify(CPU_ACCESS_LOCK, 0, 0x513660) == READBACK_PIXEL_CALIBRATION);
+    CHECK(readback_classify(CPU_ACCESS_GETDC, 0, 1) == READBACK_GETDC);
+    CHECK(readback_classify(CPU_ACCESS_BLT_SOURCE, 1, 1) == READBACK_BLT_SOURCE);
+    CHECK(readback_classify(CPU_ACCESS_FRONT, 1, 1) == READBACK_FRONT_BUFFER);
+    CHECK(readback_classify(CPU_ACCESS_OTHER, 1, 1) == READBACK_OTHER);
     CHECK(!strcmp(readback_reason_name(READBACK_GETDC), "READBACK_GETDC"));
 }
 
@@ -1223,6 +1252,154 @@ static void test_shaders(void) {
     }
 }
 
+/* The bump walk's closed form (what ps_bump_span computes) against the guest's pixel-by-pixel loop, the shader's
+ * pixel against the reference, and the shader's 565 expansion against the composite's. The native routine itself
+ * is compared in water_tests. */
+static uint32_t s_bump_rng = 0x2545F491u;
+static uint32_t bump_rnd(void) {
+    s_bump_rng ^= s_bump_rng << 13;
+    s_bump_rng ^= s_bump_rng >> 17;
+    s_bump_rng ^= s_bump_rng << 5;
+    return s_bump_rng;
+}
+
+static void test_bump_math(void) {
+    static uint16_t clut[0x6000], texels[512 * 256];
+    static uint8_t table[1024];
+    unsigned long walk_differ = 0, pixel_differ = 0, expand_differ = 0, steps = 0;
+    bump_pixel_t c;
+    for (unsigned i = 0; i < sizeof clut / sizeof clut[0]; i++) clut[i] = (uint16_t)bump_rnd();
+    for (unsigned i = 0; i < sizeof texels / sizeof texels[0]; i++) texels[i] = (uint16_t)bump_rnd();
+    for (unsigned i = 0; i < sizeof table; i++) table[i] = (uint8_t)(bump_rnd() % 64u);
+    c.clut = clut;
+    c.bump = table;
+    for (int n = 0; n < 4000; n++) {
+        bump_walk_t d;
+        bump_walk_state_t w, start;
+        bump_span_t span;
+        uint32_t wbits = 3 + bump_rnd() % 6, hbits = 3 + bump_rnd() % 6, tiled = bump_rnd() % 3 != 0;
+        int32_t du = (int32_t)(bump_rnd() % 7) - 3, dv = (int32_t)(bump_rnd() % 5) - 2;
+        uint32_t k_max = 1 + bump_rnd() % 2048;
+        d.du_frac = bump_rnd() & 0xFFFF0000u;
+        d.dv_frac = bump_rnd() & 0xFFFF0000u;
+        d.line_pixels = tiled ? 512u : 512u;
+        d.tile_mask = tiled ? ((1u << hbits) - 1) << 9 | ((1u << wbits) - 1) : 0xFFFFFFFFu;
+        d.step = (tiled ? (du & (int32_t)((1u << wbits) - 1)) : du) + dv * 512;
+        d.step_carry = d.step + 512;
+        start.index = tiled ? bump_rnd() & d.tile_mask : bump_rnd();
+        start.ufrac = bump_rnd();
+        start.vfrac = bump_rnd();
+        w = start;
+        for (uint32_t k = 0; k < k_max; k++, steps++) {
+            if (bump_walk_index(&start, &d, k) != w.index) walk_differ++;
+            bump_walk_step(&w, &d);
+        }
+        if (!tiled) continue;
+        c.clut_base = (bump_rnd() % 8u) << 11;
+        c.light_theta = bump_rnd() & 0x3F0u;
+        span.start = start;
+        span.x0 = (int32_t)(bump_rnd() % 600);
+        span.n = 64;
+        w = start;
+        for (int32_t x = span.x0; x < span.x0 + span.n; x++) {
+            uint16_t ref;
+            int transparent = (int)(bump_rnd() & 1u);
+            int written = bump_texel_rgb565(&c, texels[w.index], transparent, &ref);
+            uint32_t shader = bump_shader_pixel(&span, x, &d, texels, &c, transparent);
+            if (written ? shader != ref : shader != 0x10000u) pixel_differ++;
+            bump_walk_step(&w, &d);
+        }
+    }
+    for (uint32_t v = 0; v < 0x10000u; v++) {
+        uint32_t r = v >> 11, g = (v >> 5) & 63u, b = v & 31u;
+        uint32_t shader = 0xFF000000u | ((r << 3) | (r >> 2)) << 16 | ((g << 2) | (g >> 4)) << 8 | ((b << 3) | (b >> 2));
+        if (shader != d3dt_rgb565_to_bgra((uint16_t)v)) expand_differ++;
+    }
+    printf("bump: %lu walk steps, closed form differs %lu; shader pixels differ %lu; 565 expansions differ %lu\n", steps,
+           walk_differ, pixel_differ, expand_differ);
+    CHECK(walk_differ == 0 && pixel_differ == 0 && expand_differ == 0 && steps > 1000000);
+}
+
+/* The batch's texture arrays: one slot per distinct array, the ninth refused; the layer as the HLSL decodes it. */
+static void test_batch_slots(void) {
+    const void* bound[D3D11_WORLD_ARRAYS];
+    int items[D3D11_WORLD_ARRAYS + 1];
+    unsigned count = 0;
+    for (int i = 0; i < D3D11_WORLD_ARRAYS; i++) CHECK(d3dt_batch_slot(bound, &count, D3D11_WORLD_ARRAYS, &items[i]) == i);
+    for (int i = D3D11_WORLD_ARRAYS - 1; i >= 0; i--)
+        CHECK(d3dt_batch_slot(bound, &count, D3D11_WORLD_ARRAYS, &items[i]) == i);
+    CHECK(d3dt_batch_slot(bound, &count, D3D11_WORLD_ARRAYS, &items[D3D11_WORLD_ARRAYS]) == -1);
+    CHECK(count == D3D11_WORLD_ARRAYS);
+    count = 0;
+    CHECK(d3dt_batch_slot(bound, &count, D3D11_WORLD_ARRAYS, &items[D3D11_WORLD_ARRAYS]) == 0);
+    for (uint32_t slice = 0; slice < 64; slice += 7)
+        for (uint32_t slot = 0; slot < D3D11_WORLD_ARRAYS; slot++)
+            for (uint32_t flags = 0; flags < 8; flags++)
+                for (uint32_t sampler = 0; sampler <= D3D11_DEVICE_SAMPLER; sampler++) {
+                    uint32_t layer = d3dt_world_layer(slice, slot, flags, sampler);
+                    CHECK((layer & 0xFFFFu) == slice && ((layer >> 16) & 15u) == slot && ((layer >> 20) & 7u) == flags &&
+                          ((layer >> 24) & 7u) == sampler);
+                }
+    CHECK(D3D11_PS_TEXTURED < 8 && D3D11_PS_TEX_ALPHA < 8 && D3D11_PS_KEY_TEST < 8);
+    /* Wrap (1, or 0 unset) and clamp (3) per axis pick s0-s3 as samplers_for builds them; mirror (2) the device's. */
+    CHECK(d3dt_vertex_sampler(0, 0) == 0 && d3dt_vertex_sampler(1, 1) == 0 && d3dt_vertex_sampler(3, 1) == 1 &&
+          d3dt_vertex_sampler(1, 3) == 2 && d3dt_vertex_sampler(3, 3) == 3);
+    CHECK(d3dt_vertex_sampler(2, 1) == D3D11_DEVICE_SAMPLER && d3dt_vertex_sampler(3, 2) == D3D11_DEVICE_SAMPLER);
+    CHECK(d3dt_address_joins(1, 3) && d3dt_address_joins(3, 1) && d3dt_address_joins(0, 3));
+    CHECK(!d3dt_address_joins(1, 2) && !d3dt_address_joins(2, 3));
+}
+
+/* A Load copies only the rows that differ and reports their box; the result equals a full copy. */
+static void test_copy_changed(void) {
+    static uint8_t dst[256 * 1040], src[256 * 1040], full[256 * 1040];
+    unsigned long differ = 0, boxes_wrong = 0;
+    for (int n = 0; n < 400; n++) {
+        unsigned bytes = n % 3 == 0 ? 1 : n % 3 == 1 ? 2 : 4, w = 8u << (bump_rnd() % 6), h = 8u << (bump_rnd() % 6);
+        long pitch = (long)(w * bytes + (bump_rnd() % 4) * 4);
+        d3dt_rect_t box, want = { (long)w, -1, 0, 0 };
+        int changed;
+        for (size_t i = 0; i < sizeof dst; i++) dst[i] = src[i] = (uint8_t)bump_rnd();
+        for (unsigned y = 0; y < h; y++) memcpy(src + (size_t)y * pitch, dst + (size_t)y * pitch, (size_t)w * bytes);
+        for (int k = (int)(bump_rnd() % 6); k > 0; k--) {
+            unsigned x = bump_rnd() % w, y = bump_rnd() % h, run = 1 + bump_rnd() % 4;
+            for (unsigned i = 0; i < run && x + i < w; i++) {
+                src[(size_t)y * pitch + (x + i) * bytes] = (uint8_t)(dst[(size_t)y * pitch + (x + i) * bytes] + 1);
+                if ((long)(x + i) < want.left) want.left = (long)(x + i);
+                if ((long)(x + i) + 1 > want.right) want.right = (long)(x + i) + 1;
+            }
+            if (want.top < 0 || (long)y < want.top) want.top = (long)y;
+            if ((long)y + 1 > want.bottom) want.bottom = (long)y + 1;
+        }
+        memcpy(full, dst, sizeof full);
+        for (unsigned y = 0; y < h; y++) memcpy(full + (size_t)y * pitch, src + (size_t)y * pitch, (size_t)w * bytes);
+        changed = d3dt_copy_changed(dst, pitch, src, pitch, w, h, bytes, &box);
+        if (memcmp(dst, full, sizeof full)) differ++;
+        if (changed != (want.top >= 0) ||
+            (changed && (box.left != want.left || box.top != want.top || box.right != want.right || box.bottom != want.bottom)))
+            boxes_wrong++;
+    }
+    CHECK(differ == 0 && boxes_wrong == 0);
+}
+
+static void test_bump_shaders(void) {
+    HMODULE dll = LoadLibraryA("d3dcompiler_47.dll");
+    compile_fn compile = dll ? (compile_fn)GetProcAddress(dll, "D3DCompile") : NULL;
+    CHECK(compile != NULL);
+    if (!compile) return;
+    for (int i = 0; i < 3; i++) {
+        ID3DBlob *code = NULL, *errors = NULL;
+        HRESULT hr = compile(d3d11_bump_shader_source, strlen(d3d11_bump_shader_source), "trespasser_bump", NULL, NULL,
+                             d3d11_bump_shader_entries[i].entry, d3d11_bump_shader_entries[i].profile, 0, 0, &code,
+                             &errors);
+        if (FAILED(hr))
+            printf("shader %s: %s\n", d3d11_bump_shader_entries[i].entry,
+                   errors ? (const char*)errors->lpVtbl->GetBufferPointer(errors) : "?");
+        CHECK(SUCCEEDED(hr));
+        if (code) code->lpVtbl->Release(code);
+        if (errors) errors->lpVtbl->Release(errors);
+    }
+}
+
 static jpt_size_t box_of(const char* preset, int aspect) {
     return jpt_render_box(jpt_render_preset_index(preset), aspect, 0, 0);
 }
@@ -1449,6 +1626,830 @@ static void test_ui_canvas(void) {
     }
 }
 
+static uint32_t texel(uint32_t a, uint32_t r, uint32_t g, uint32_t b) { return a << 24 | r << 16 | g << 8 | b; }
+
+static double coverage(const uint32_t* t, size_t n) {
+    size_t on = 0;
+    for (size_t i = 0; i < n; i++) on += (t[i] >> 24) >= 128;
+    return (double)on / (double)n;
+}
+
+static void test_mip_chain(void) {
+    unsigned w, h;
+    CHECK(d3dt_mip_count(256, 256) == 9);
+    CHECK(d3dt_mip_count(256, 64) == 9);
+    CHECK(d3dt_mip_count(1, 1) == 1);
+    CHECK(d3dt_mip_count(0, 4) == 0);
+    d3dt_mip_size(256, 64, 7, &w, &h);
+    CHECK(w == 2 && h == 1);
+    d3dt_mip_size(256, 64, 8, &w, &h);
+    CHECK(w == 1 && h == 1);
+    CHECK(d3dt_mip_chain_texels(4, 4, 3) == 16 + 4 + 1);
+    CHECK(d3dt_mip_chain_texels(8, 2, 4) == 16 + 4 + 2 + 1);
+}
+
+static void test_mip_alpha(void) {
+    uint32_t opaque[4] = { texel(255, 0, 0, 0), texel(255, 100, 0, 0), texel(255, 0, 200, 0), texel(255, 0, 0, 255) };
+    uint32_t out[16], edge[16], half[16], foliage[64 + 16 + 4 + 1], blended[4];
+    CHECK(d3dt_alpha_kind(opaque, 4) == D3DT_ALPHA_OPAQUE);
+    d3dt_mip_downsample(opaque, 2, 2, D3DT_ALPHA_OPAQUE, out);
+    CHECK(out[0] == texel(255, 25, 50, 64));
+
+    /* A colour-keyed or 1555 edge: transparent black texels never darken the opaque colour. */
+    edge[0] = texel(0, 0, 0, 0);
+    edge[1] = texel(255, 200, 40, 20);
+    edge[2] = texel(0, 0, 0, 0);
+    edge[3] = texel(255, 200, 40, 20);
+    CHECK(d3dt_alpha_kind(edge, 4) == D3DT_ALPHA_BINARY);
+    d3dt_mip_downsample(edge, 2, 2, D3DT_ALPHA_BINARY, out);
+    CHECK((out[0] & 0xFFFFFF) == 0xC82814 && ((out[0] >> 24) == 0 || (out[0] >> 24) == 255));
+
+    /* Binary alpha stays binary and keeps its coverage. */
+    for (int y = 0; y < 4; y++)
+        for (int x = 0; x < 4; x++) half[y * 4 + x] = x < 2 ? texel(255, 10, 120, 10) : texel(0, 0, 0, 0);
+    d3dt_mip_downsample(half, 4, 4, D3DT_ALPHA_BINARY, out);
+    CHECK(out[0] >> 24 == 255 && out[2] >> 24 == 255 && out[1] >> 24 == 0 && out[3] >> 24 == 0);
+
+    /* Sparse foliage (a quarter covered, scattered) keeps its density down the chain instead of vanishing. */
+    for (int i = 0; i < 64; i++) foliage[i] = (i * 37 + (i / 8) * 11) % 4 == 0 ? texel(255, 30, 90, 20) : texel(0, 0, 0, 0);
+    CHECK(d3dt_alpha_kind(foliage, 64) == D3DT_ALPHA_BINARY);
+    d3dt_build_mips(foliage, 8, 8, 4, D3DT_ALPHA_BINARY);
+    CHECK(fabs(coverage(foliage + 64, 16) - coverage(foliage, 64)) <= 0.125);
+    CHECK(coverage(foliage + 80, 4) > 0.0);
+    for (int i = 64; i < 85; i++) CHECK((foliage[i] >> 24) == 0 || (foliage[i] >> 24) == 255);
+    /* One opaque texel in every footprint: a threshold would keep all or none; a quarter stays. */
+    for (int i = 0; i < 64; i++) foliage[i] = (i % 2 == 0 && (i / 8) % 2 == 0) ? texel(255, 30, 90, 20) : texel(0, 0, 0, 0);
+    d3dt_build_mips(foliage, 8, 8, 4, D3DT_ALPHA_BINARY);
+    CHECK(coverage(foliage, 64) == 0.25 && coverage(foliage + 64, 16) == 0.25);
+
+    /* 4444 translucency: alpha averaged, colour weighted by it. */
+    blended[0] = texel(0x88, 0xFF, 0, 0);
+    blended[1] = texel(0x88, 0xFF, 0, 0);
+    blended[2] = texel(0, 0, 0, 0xFF);
+    blended[3] = texel(0, 0, 0, 0xFF);
+    CHECK(d3dt_alpha_kind(blended, 4) == D3DT_ALPHA_BLENDED);
+    d3dt_mip_downsample(blended, 2, 2, D3DT_ALPHA_BLENDED, out);
+    CHECK(out[0] == texel(0x44, 0xFF, 0, 0));
+
+    /* A one-texel-wide level halves along the other side only. */
+    d3dt_mip_downsample(opaque, 1, 4, D3DT_ALPHA_OPAQUE, out);
+    CHECK(out[0] == texel(255, 50, 0, 0) && out[1] == texel(255, 0, 100, 128));
+}
+
+/* The coverage-keeping selection as it was first written (one scan per dither rank): the faster one must pick the same
+ * texels on every binary-alpha level. */
+static void reference_keep_coverage(uint32_t* dst, unsigned dw, unsigned dh, unsigned n, const unsigned long* hist,
+                                    unsigned long target) {
+    static const uint8_t bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+    unsigned long remaining = target;
+    for (unsigned k = n; k >= 1; k--) {
+        unsigned long take = hist[k] < remaining ? hist[k] : remaining;
+        int all = take == hist[k];
+        remaining -= take;
+        for (unsigned rank = 0; rank < (all ? 1u : 16u) && take; rank++)
+            for (unsigned y = 0; y < dh && take; y++)
+                for (unsigned x = 0; x < dw && take; x++) {
+                    uint32_t* t = &dst[(size_t)y * dw + x];
+                    if ((*t >> 24) != k || (!all && bayer[(y & 3) * 4 + (x & 3)] != rank)) continue;
+                    *t |= 0xFF000000u;
+                    take--;
+                }
+        if (!remaining) break;
+    }
+    for (size_t i = 0; i < (size_t)dw * dh; i++)
+        if ((dst[i] >> 24) != 0xFF) dst[i] &= 0x00FFFFFFu;
+}
+
+static void reference_binary_downsample(const uint32_t* src, unsigned w, unsigned h, uint32_t* dst) {
+    unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1, fx = w > 1 ? 2 : 1, fy = h > 1 ? 2 : 1, n = fx * fy;
+    unsigned long hist[5] = { 0, 0, 0, 0, 0 }, covered = 0;
+    for (unsigned y = 0; y < dh; y++)
+        for (unsigned x = 0; x < dw; x++) {
+            uint32_t sa = 0, sr = 0, sg = 0, sb = 0, ur = 0, ug = 0, ub = 0, opaque = 0, r, g, b;
+            for (unsigned j = 0; j < fy; j++)
+                for (unsigned i = 0; i < fx; i++) {
+                    uint32_t t = src[(size_t)(y * fy + j) * w + x * fx + i], a = t >> 24;
+                    sa += a, sr += ((t >> 16) & 0xFF) * a, sg += ((t >> 8) & 0xFF) * a, sb += (t & 0xFF) * a;
+                    ur += (t >> 16) & 0xFF, ug += (t >> 8) & 0xFF, ub += t & 0xFF;
+                    opaque += a >= 128;
+                }
+            if (sa) r = (sr + sa / 2) / sa, g = (sg + sa / 2) / sa, b = (sb + sa / 2) / sa;
+            else r = (ur + n / 2) / n, g = (ug + n / 2) / n, b = (ub + n / 2) / n;
+            dst[(size_t)y * dw + x] = opaque << 24 | r << 16 | g << 8 | b;
+            hist[opaque]++;
+        }
+    for (unsigned y = 0; y < dh * fy; y++)
+        for (unsigned x = 0; x < dw * fx; x++) covered += (src[(size_t)y * w + x] >> 24) >= 128;
+    reference_keep_coverage(dst, dw, dh, n, hist, (unsigned long)(((double)covered / n) + 0.5));
+}
+
+static void test_coverage_selection(void) {
+    static uint32_t src[256 * 256], fast[128 * 128], slow[128 * 128];
+    static const unsigned sizes[][2] = { { 256, 256 }, { 128, 64 }, { 64, 128 }, { 8, 8 }, { 1, 32 }, { 32, 1 }, { 2, 2 } };
+    uint32_t seed = 0x1234567u;
+    unsigned long mismatches = 0, levels = 0;
+    for (int round = 0; round < 40; round++)
+        for (unsigned s = 0; s < sizeof sizes / sizeof sizes[0]; s++) {
+            unsigned w = sizes[s][0], h = sizes[s][1], density = 1 + round % 7;
+            unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1;
+            for (unsigned i = 0; i < w * h; i++) {
+                seed = seed * 1664525u + 1013904223u;
+                src[i] = ((seed >> 28) < density ? 0xFF000000u : 0u) | ((seed >> 4) & 0xFFFFFFu);
+            }
+            d3dt_mip_downsample(src, w, h, D3DT_ALPHA_BINARY, fast);
+            reference_binary_downsample(src, w, h, slow);
+            mismatches += memcmp(fast, slow, (size_t)dw * dh * 4) != 0;
+            levels++;
+        }
+    CHECK(levels == 280 && mismatches == 0);
+}
+
+static void test_dynamic_textures(void) {
+    d3dt_upload_history_t water, terrain, burst;
+    memset(&water, 0, sizeof water);
+    memset(&terrain, 0, sizeof terrain);
+    memset(&burst, 0, sizeof burst);
+    CHECK(!d3dt_note_upload(&water, 10));
+    CHECK(!d3dt_note_upload(&water, 11) && !d3dt_note_upload(&water, 12));
+    CHECK(d3dt_note_upload(&water, 13) && water.dynamic);
+    CHECK(!d3dt_note_upload(&water, 14));
+    for (unsigned long long f = 0; f < 1000; f += 90) CHECK(!d3dt_note_upload(&terrain, f));
+    CHECK(!terrain.dynamic);
+    for (int i = 0; i < 20; i++) CHECK(!d3dt_note_upload(&burst, 5));
+    CHECK(!burst.dynamic);
+}
+
+static void test_sampler_choice(void) {
+    d3dt_sampler_choice_t c = d3dt_choose_sampler(D3DT_FILTER_ORIGINAL, 1, 1, 16);
+    CHECK(c.filter == D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT && !c.mips && c.anisotropy == 1);
+    c = d3dt_choose_sampler(D3DT_FILTER_ORIGINAL, 0, 0, 16);
+    CHECK(c.filter == D3D11_FILTER_MIN_MAG_MIP_POINT && !c.mips);
+    c = d3dt_choose_sampler(D3DT_FILTER_ANISOTROPIC, 1, 1, 16);
+    CHECK(c.filter == D3D11_FILTER_ANISOTROPIC && c.anisotropy == 16 && c.mips);
+    c = d3dt_choose_sampler(D3DT_FILTER_ANISOTROPIC, 0, 0, 16);
+    CHECK(c.filter == D3D11_FILTER_MIN_MAG_MIP_POINT && !c.mips);
+    c = d3dt_choose_sampler(D3DT_FILTER_ANISOTROPIC, 1, 0, 16);
+    CHECK(c.filter == D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT && !c.mips);
+    c = d3dt_choose_sampler(D3DT_FILTER_BILINEAR, 0, 0, 1);
+    CHECK(c.filter == D3D11_FILTER_MIN_MAG_MIP_LINEAR && c.mips);
+    c = d3dt_choose_sampler(D3DT_FILTER_POINT, 1, 1, 16);
+    CHECK(c.filter == D3D11_FILTER_MIN_MAG_MIP_POINT && !c.mips);
+    CHECK(!d3dt_filter_uses_mips(D3DT_FILTER_ORIGINAL) && !d3dt_filter_uses_mips(D3DT_FILTER_POINT));
+    CHECK(d3dt_filter_uses_mips(D3DT_FILTER_BILINEAR) && d3dt_filter_uses_mips(D3DT_FILTER_ANISOTROPIC));
+    CHECK(d3dt_pick_anisotropy(16, 16) == 16 && d3dt_pick_anisotropy(16, 8) == 8 && d3dt_pick_anisotropy(16, 5) == 4);
+    CHECK(d3dt_pick_anisotropy(16, 2) == 2 && d3dt_pick_anisotropy(16, 1) == 1 && d3dt_pick_anisotropy(3, 16) == 2);
+    CHECK(d3dt_pick_msaa(4, (1u << 2) | (1u << 8)) == 2);
+    CHECK(d3dt_pick_msaa(4, 1u << 3) == 1);
+    CHECK(d3dt_pick_msaa(4, (1u << 2) | (1u << 4)) == 4);
+}
+
+static void test_readback_regions(void) {
+    float quad[4][8] = { { 16.0f, 16.0f }, { 144.0f, 16.0f }, { 144.0f, 144.0f }, { 16.0f, 144.0f } };
+    float bad[2][8] = { { 10.0f, 10.0f }, { NAN, 4.0f } };
+    d3dt_rect_t drawn = d3dt_vertex_box(&quad[0][0], sizeof quad[0], 4, 640, 480), r;
+    d3dt_rect_t none = { 0, 0, 0, 0 };
+    CHECK(drawn.left == 15 && drawn.top == 15 && drawn.right == 145 && drawn.bottom == 145);
+    r = d3dt_vertex_box(&bad[0][0], sizeof bad[0], 2, 640, 480);
+    CHECK(r.left == 0 && r.top == 0 && r.right == 640 && r.bottom == 480);
+    r = d3dt_readback_box(1, &drawn, 640, 480);
+    CHECK(r.left == 13 && r.top == 13 && r.right == 147 && r.bottom == 147);
+    r = d3dt_readback_box(0, &drawn, 640, 480);
+    CHECK(r.left == 0 && r.right == 640 && r.bottom == 480);
+    r = d3dt_readback_box(1, &none, 640, 480);
+    CHECK(d3dt_rect_empty(&r));
+    /* The calibration quad at a 2560x1440 game screen: 135x135 pixels instead of 3.7 million. */
+    r = d3dt_readback_box(1, &drawn, 2560, 1440);
+    CHECK((r.right - r.left) * (r.bottom - r.top) < 20000);
+}
+
+static void test_write_only_locks(void) {
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_FILL_RECT, 0));
+    CHECK(!target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_RASTER_BLT, 1));
+    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_RASTER_BLT, 0));
+    CHECK(target_access_reads(CPU_ACCESS_LOCK, 0x1, 0x00412680, 1));
+    CHECK(is_pixel_calibration_caller(0x00513660) && is_pixel_calibration_caller(0x00514150) &&
+          is_pixel_calibration_caller(0x00514070) && !is_pixel_calibration_caller(0x00412680));
+    CHECK(readback_classify(CPU_ACCESS_LOCK, 0, 0x00514150) == READBACK_PIXEL_CALIBRATION);
+}
+
+/* RasterBlt of the frozen picture onto the screen in a paused frame: the screen is written, never read, so the
+ * GPU picture is not read back and only the blitted pixels reach it. */
+static void test_ui_frame_without_readback(void) {
+    tsync_t t;
+    tsync_deferred_t d;
+    unsigned acts;
+    tsync_attach(&t);
+    tsync_gpu_draw(&t);
+    tsync_present(&t);
+    tsync_flipped(&t);
+    acts = tsync_lock_deferred(&t, target_access_reads(CPU_ACCESS_LOCK, 0x1, LOCK_CALLER_RASTER_BLT, 1)
+                                       ? TSYNC_ACCESS_READ : TSYNC_ACCESS_NO_READ, &d);
+    CHECK(!(acts & TSYNC_READBACK));
+    acts = tsync_lock_touched(&d);
+    CHECK(!(acts & TSYNC_READBACK));
+    tsync_cpu_wrote(&t);
+    CHECK(tsync_present(&t) & TSYNC_COMPOSITE);
+}
+
+static void test_projected_size_policy(void) {
+    float ppm1440 = engine_view_pixels_per_metre(1440.0f, 0.7673f * 0.75f);
+    float ppm1080 = engine_view_pixels_per_metre(1080.0f, 0.7673f * 0.75f);
+    float ppm2160 = engine_view_pixels_per_metre(2160.0f, 0.7673f * 0.75f);
+    CHECK(fabs(ppm1440 - ENGINE_PIXELS_PER_METRE_DEFAULT) < 1.0f);
+    CHECK(engine_view_pixels_per_metre(0.0f, 0.5f) == ENGINE_PIXELS_PER_METRE_DEFAULT);
+    /* The same object spans more pixels at a higher resolution, so it stays 3D farther; 21:9 Hor+ keeps the vertical
+     * view, so only the line count matters. */
+    CHECK(engine_full_3d_distance(4.0f, ppm1080, 1.0f) < engine_full_3d_distance(4.0f, ppm1440, 1.0f));
+    CHECK(engine_full_3d_distance(4.0f, ppm1440, 1.0f) < engine_full_3d_distance(4.0f, ppm2160, 1.0f));
+    /* The impostor (256 px) at 1:1 when it takes over. Log 030's meshes are 4 m and up in radius: at 3440x1440,
+     * 2 m 25 (the minimum), 4 m ~39, 6 m ~59, 10 m ~98, 16 m 150 (the maximum). */
+    CHECK(ENGINE_IMPOSTOR_SWITCH_PX == 256.0f && ENGINE_FULL_3D_MIN == 25.0f && ENGINE_FULL_3D_MAX == 150.0f);
+    CHECK(engine_full_3d_distance(0.5f, ppm1440, 1.0f) == ENGINE_FULL_3D_MIN);
+    CHECK(engine_full_3d_distance(2.0f, ppm1440, 1.0f) == ENGINE_FULL_3D_MIN);
+    CHECK(fabs(engine_full_3d_distance(4.0f, ppm1440, 1.0f) - 39.1f) < 0.5f);
+    CHECK(fabs(engine_full_3d_distance(6.0f, ppm1440, 1.0f) - 58.6f) < 0.5f);
+    CHECK(fabs(engine_full_3d_distance(10.0f, ppm1440, 1.0f) - 97.7f) < 0.5f);
+    CHECK(engine_full_3d_distance(16.0f, ppm1440, 1.0f) == ENGINE_FULL_3D_MAX);
+    CHECK(engine_full_3d_distance(500.0f, ppm2160, 9.0f) == ENGINE_FULL_3D_MAX);
+    CHECK(engine_size_class(0.5f) == ENGINE_SIZE_SMALL && engine_size_class(3.0f) == ENGINE_SIZE_MEDIUM &&
+          engine_size_class(5.0f) == ENGINE_SIZE_LARGE && engine_size_class(10.0f) == ENGINE_SIZE_LANDMARK);
+    /* Never nearer than 1998's 15 m x CacheMul, even past the max. */
+    CHECK(engine_full_3d_distance(0.2f, ppm1440, 4.0f) == 60.0f);
+    CHECK(engine_full_3d_distance(0.2f, ppm1440, 12.0f) == 180.0f);
+    /* The guest multiplies the stored distance by CacheMul again. */
+    CHECK(fabs(engine_cache_min_distance(1, 0, ENGINE_PART_STATIC, 6.0f, ppm1440, 1.25f) * 1.25f -
+               engine_full_3d_distance(6.0f, ppm1440, 1.25f)) < 0.01f);
+    CHECK(engine_cache_min_distance(1, 0, ENGINE_PART_SPATIAL, 6.0f, ppm1440, 0.0f) ==
+          engine_full_3d_distance(6.0f, ppm1440, 1.0f));
+    /* Meshes the CPU rasterises into the Direct3D frame, entities (animals, the player, triggers, water...) and the
+     * software renderer keep 1998's distance. */
+    CHECK(engine_cache_min_distance(1, 1, ENGINE_PART_STATIC, 6.0f, ppm1440, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    CHECK(engine_cache_min_distance(1, 0, ENGINE_PART_ENTITY, 6.0f, ppm1440, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    CHECK(engine_cache_min_distance(0, 0, ENGINE_PART_STATIC, 6.0f, ppm1440, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    /* The distance an object becomes an impostor is never beyond where it stays visible with its level's 50 m
+     * Culling at 1.4x only when it is small: large objects keep 3D until their own, longer, cull distance. */
+    CHECK(engine_full_3d_distance(0.5f, ppm1440, 1.0f) < 50.0f * ENGINE_OBJECT_DISTANCE_SCALE);
+}
+
+static void test_partition_kinds(void) {
+    CHECK(engine_partition_kind(VTABLE_PARTITION) == ENGINE_PART_SPATIAL);
+    CHECK(engine_partition_kind(VTABLE_PARTITION_SPACE) == ENGINE_PART_SPATIAL);
+    CHECK(engine_partition_kind(VTABLE_PARTITION_SPACE_QUERY) == ENGINE_PART_SPATIAL);
+    CHECK(engine_partition_kind(VTABLE_INSTANCE) == ENGINE_PART_STATIC);
+    CHECK(engine_partition_kind(VTABLE_TERRAIN_OBJECT) == ENGINE_PART_STATIC);
+    /* CAnimal, CAnimate, CPlayer, CGun, CEntity, CEntityAttached, CEntityWater, CBackdrop, CTrigger. */
+    CHECK(engine_partition_kind(0x0064F9A8u) == ENGINE_PART_ENTITY && engine_partition_kind(0x0064ED18u) == ENGINE_PART_ENTITY);
+    CHECK(engine_partition_kind(0x0064AB48u) == ENGINE_PART_ENTITY && engine_partition_kind(0x0064A274u) == ENGINE_PART_ENTITY);
+    CHECK(engine_partition_kind(0x0064A46Cu) == ENGINE_PART_ENTITY && engine_partition_kind(0x0064F7B0u) == ENGINE_PART_ENTITY);
+    CHECK(engine_partition_kind(0x0064F3F4u) == ENGINE_PART_ENTITY && engine_partition_kind(0x0064F614u) == ENGINE_PART_ENTITY);
+    CHECK(engine_partition_kind(0x0064B534u) == ENGINE_PART_ENTITY);
+}
+
+static void test_projected_cull(void) {
+    float ppm = ENGINE_PIXELS_PER_METRE_DEFAULT;
+    /* A 4 m rock at the 1000 m far clip still spans ~10 px: nothing the level shows today is culled. */
+    CHECK(engine_projected_pixels(4.0f, 1000.0f * 1000.0f, ppm) > 9.0f);
+    CHECK(!engine_projected_cull(ENGINE_PART_STATIC, 1, 4.0f, 1000.0f * 1000.0f, ppm));
+    /* A 5 cm detail beyond 85 m is under 1.5 px. */
+    CHECK(engine_projected_cull(ENGINE_PART_STATIC, 1, 0.05f, 90.0f * 90.0f, ppm));
+    CHECK(!engine_projected_cull(ENGINE_PART_STATIC, 1, 0.05f, 80.0f * 80.0f, ppm));
+    /* Never groups, entities or partitions without a mesh. */
+    CHECK(!engine_projected_cull(ENGINE_PART_SPATIAL, 0, 0.05f, 90.0f * 90.0f, ppm));
+    CHECK(!engine_projected_cull(ENGINE_PART_ENTITY, 1, 0.05f, 90.0f * 90.0f, ppm));
+    CHECK(!engine_projected_cull(ENGINE_PART_STATIC, 0, 0.05f, 90.0f * 90.0f, ppm));
+    CHECK(!engine_projected_cull(ENGINE_PART_STATIC, 1, 0.05f, 0.0f, ppm));
+}
+
+/* An object visited first and kept 3D holds its parts 3D in the same frame; the next frame starts empty. */
+static void test_object_atomicity(void) {
+    static engine_frame_slot_t set[64];
+    const uint32_t object = 0x01234560u, other = 0x0BADF00Du;
+    CHECK(!engine_frame_set_has(set, 64, object, 7));
+    engine_frame_set_add(set, 64, object, 7);
+    CHECK(engine_frame_set_has(set, 64, object, 7));
+    CHECK(!engine_frame_set_has(set, 64, other, 7));
+    CHECK(!engine_frame_set_has(set, 64, object, 8));
+    for (uint32_t k = 1; k <= 64; k++) engine_frame_set_add(set, 64, k * 0x40u, 8);
+    CHECK(engine_frame_set_has(set, 64, 0x40u * 64, 8));
+    CHECK(!engine_frame_set_has(set, 64, object, 8));
+    engine_frame_set_add(set, 64, object, 9);
+    CHECK(engine_frame_set_has(set, 64, object, 9) && !engine_frame_set_has(set, 64, 0x40u, 9));
+    /* Only an object that will become one impostor later holds its parts (log 031: holding them for every refusal
+     * kept 885 partitions a frame 3D and no impostor at all). */
+    CHECK(engine_refusal_holds_parts(CACHE_REFUSED_3D_DISTANCE) && engine_refusal_holds_parts(CACHE_REFUSED_PARALLAX));
+    CHECK(engine_refusal_holds_parts(CACHE_REFUSED_TOO_CLOSE) && engine_refusal_holds_parts(CACHE_REFUSED_TOO_BIG));
+    CHECK(!engine_refusal_holds_parts(CACHE_REFUSED_NOT_CACHEABLE) && !engine_refusal_holds_parts(CACHE_REFUSED_VOLUME));
+    CHECK(!engine_refusal_holds_parts(CACHE_REFUSED_MOVING) && !engine_refusal_holds_parts(CACHE_REFUSED_GROUP));
+    CHECK(!engine_refusal_holds_parts(CACHE_REFUSED_SIMPLE_OBJECT) &&
+          !engine_refusal_holds_parts(CACHE_REFUSED_FACES_CAMERA));
+    /* The stored distance for a part of an object kept 3D refuses at any distance and CacheMul. */
+    CHECK(sqrtf(1e12f) + 10.0f < ENGINE_CACHE_DISTANCE_NEVER * 0.01f);
+}
+
+/* The game's view sits inside the surface (3212x1345 centred in 3440x1440): iOffsetPointer moves a polygon's box. */
+static void test_cpu_polygon_origin(void) {
+    long box[4] = { 100, 50, 140, 90 };
+    const long pitch = 3440 * 2;
+    cpu_polygon_to_surface(box, 47u * (uint32_t)pitch + 114u * 2u, pitch);
+    CHECK(box[0] == 214 && box[1] == 97 && box[2] == 254 && box[3] == 137);
+    cpu_polygon_to_surface(box, 0, pitch);
+    CHECK(box[0] == 214 && box[1] == 97);
+    cpu_polygon_to_surface(box, 1000, 0);
+    CHECK(box[0] == 214);
+}
+
+/* The retail scene heap: CDArray<CRenderPolygon> (0x7C bytes, 20000) reserved by pHeapAlloc and committed by
+ * CommitToOffset (0x0051D820) through pvCommitMem; bCommit checks the capacity only after committing, and
+ * ptFastAlloc never commits. Pages are tracked to see whether an allocated polygon lies in committed memory. */
+#define HEAP_TEST_BASE 0x10000000u
+#define HEAP_TEST_ELEMENT 0x7Cu
+#define HEAP_TEST_PAGE 0x1000u
+typedef struct {
+    uint32_t len, max, commit, end;
+    unsigned char committed[4096];
+    int clamp;
+} heap_test_t;
+
+static uint32_t heap_test_commit(heap_test_t* h, uint32_t pv, uint32_t bytes) {
+    uint32_t size;
+    if (h->clamp) bytes = engine_heap_commit_bytes(pv, bytes, h->end, HEAP_TEST_PAGE);
+    size = (bytes + HEAP_TEST_PAGE - 1u) & ~(HEAP_TEST_PAGE - 1u);
+    /* VirtualAlloc(MEM_COMMIT) fails as a whole when the range leaves the reservation; pvCommitMem ignores that. */
+    if (size && pv + size <= h->end)
+        for (uint32_t a = pv & ~(HEAP_TEST_PAGE - 1u); a < pv + size; a += HEAP_TEST_PAGE)
+            h->committed[(a - HEAP_TEST_BASE) / HEAP_TEST_PAGE] = 1;
+    return pv + size;
+}
+
+static int heap_test_bcommit(heap_test_t* h, uint32_t n) {
+    uint32_t offset = h->len + n;
+    if (offset > h->commit) {
+        uint32_t pv = HEAP_TEST_BASE + h->commit * HEAP_TEST_ELEMENT;
+        uint32_t end = heap_test_commit(h, pv, (offset - h->commit) * HEAP_TEST_ELEMENT);
+        h->commit = (end - HEAP_TEST_BASE) / HEAP_TEST_ELEMENT;
+    }
+    return offset <= h->max;
+}
+
+/* Shapes of these polygon counts; returns how many allocated polygons lay outside committed pages. */
+static unsigned heap_test_scene(heap_test_t* h, const unsigned* shapes, unsigned count) {
+    unsigned bad = 0;
+    for (unsigned i = 0; i < count; i++) {
+        if (!heap_test_bcommit(h, shapes[i] * 2u + 32u)) continue;
+        for (unsigned k = 0; k < shapes[i]; k++) {
+            uint32_t at = HEAP_TEST_BASE + h->len++ * HEAP_TEST_ELEMENT;
+            if (!h->committed[(at - HEAP_TEST_BASE) / HEAP_TEST_PAGE] ||
+                !h->committed[(at + HEAP_TEST_ELEMENT - 1u - HEAP_TEST_BASE) / HEAP_TEST_PAGE])
+                bad++;
+        }
+    }
+    return bad;
+}
+
+static void heap_test_init(heap_test_t* h, uint32_t max, int clamp) {
+    memset(h, 0, sizeof *h);
+    h->max = max;
+    h->end = HEAP_TEST_BASE + ((max * HEAP_TEST_ELEMENT + HEAP_TEST_PAGE - 1u) & ~(HEAP_TEST_PAGE - 1u));
+    h->clamp = clamp;
+}
+
+/* Scenes up to the scaled heap's 80,000 polygons, random shapes over many frames (the heap is emptied each frame and
+ * keeps its commits), and requests that end exactly at the reservation or just past it: with the clamp no polygon ever
+ * lands outside committed pages; without it the same frames do. */
+static void test_scene_heap_stress(void) {
+    static heap_test_t h;
+    static unsigned shapes[2048];
+    uint32_t seed = 0x2468ACE1u, max = 20000u * ENGINE_PIPELINE_HEAP_SCALE;
+    unsigned long bad = 0, unguarded_bad = 0, frames = 0;
+    unsigned n = 0, accepted;
+    heap_test_init(&h, max, 1);
+    while (n < 900) shapes[n++] = 100;
+    CHECK(heap_test_scene(&h, shapes, n) == 0);
+    CHECK(h.len <= max && h.len >= max - (2u * 100u + 32u));
+    accepted = h.len;
+    shapes[0] = 1;
+    CHECK(heap_test_scene(&h, shapes, 1) == 0 && h.len == accepted + (accepted + 34u <= max));
+    for (int clamp = 1; clamp >= 0; clamp--) {
+        for (int capacity = 0; capacity < 2; capacity++) {
+            heap_test_init(&h, capacity ? max : 20000u, clamp);
+            for (int frame = 0; frame < 150; frame++) {
+                unsigned count = 0;
+                while (count < sizeof shapes / sizeof shapes[0] - 1) {
+                    seed = seed * 1664525u + 1013904223u;
+                    shapes[count++] = 1u + (seed >> 8) % ((seed & 3u) ? 300u : 4000u);
+                    if (count > 40 + (seed >> 24)) break;
+                }
+                h.len = 0;
+                if (clamp) bad += heap_test_scene(&h, shapes, count);
+                else unguarded_bad += heap_test_scene(&h, shapes, count);
+                frames++;
+            }
+        }
+    }
+    CHECK(bad == 0);
+    CHECK(unguarded_bad > 0);
+    CHECK(frames == 600);
+    /* A request ending exactly at the reservation commits it all; one element more commits nothing past it. */
+    heap_test_init(&h, 20000u, 1);
+    {
+        uint32_t whole = h.end - HEAP_TEST_BASE;
+        CHECK(engine_heap_commit_bytes(HEAP_TEST_BASE, whole, h.end, HEAP_TEST_PAGE) == whole);
+        CHECK(engine_heap_commit_bytes(HEAP_TEST_BASE, whole + HEAP_TEST_ELEMENT, h.end, HEAP_TEST_PAGE) == whole);
+        CHECK(engine_heap_commit_bytes(h.end - HEAP_TEST_ELEMENT, 2u * HEAP_TEST_ELEMENT, h.end, HEAP_TEST_PAGE) == 0u);
+    }
+}
+
+/* Log 031: a dense frame filled the 20000-polygon heap; a large shape asked past the reservation, the failed commit
+ * still advanced uCommit, the shape was skipped, and the next small shape wrote into uncommitted pages (0x0051B90D,
+ * [esi+0x74]). */
+static void test_scene_heap_overflow(void) {
+    static heap_test_t h;
+    static unsigned shapes[64];
+    unsigned n = 0;
+    for (; n < 47; n++) shapes[n] = 400; /* 18800 polygons */
+    shapes[n++] = 1000;                  /* asks for 2032 more: past the 20000 */
+    for (unsigned k = 0; k < 12; k++) shapes[n++] = 100; /* each asks for 232: fits the capacity */
+    memset(&h, 0, sizeof h);
+    h.max = 20000;
+    h.end = HEAP_TEST_BASE + ((h.max * HEAP_TEST_ELEMENT + HEAP_TEST_PAGE - 1u) & ~(HEAP_TEST_PAGE - 1u));
+    CHECK(heap_test_scene(&h, shapes, n) > 0);
+    memset(&h, 0, sizeof h);
+    h.max = 20000;
+    h.end = HEAP_TEST_BASE + ((h.max * HEAP_TEST_ELEMENT + HEAP_TEST_PAGE - 1u) & ~(HEAP_TEST_PAGE - 1u));
+    h.clamp = 1;
+    CHECK(heap_test_scene(&h, shapes, n) == 0);
+    CHECK(h.len == 19800);
+    /* With the scaled heap the same scene keeps every shape. */
+    memset(&h, 0, sizeof h);
+    h.max = 20000 * ENGINE_PIPELINE_HEAP_SCALE;
+    h.end = HEAP_TEST_BASE + ((h.max * HEAP_TEST_ELEMENT + HEAP_TEST_PAGE - 1u) & ~(HEAP_TEST_PAGE - 1u));
+    h.clamp = 1;
+    CHECK(heap_test_scene(&h, shapes, n) == 0);
+    CHECK(h.len == 18800 + 1000 + 1200);
+    /* The clamp keeps whole pages inside the reservation and leaves fitting requests untouched. */
+    CHECK(engine_heap_commit_bytes(0x10000F00u, 0x2000u, 0x10004000u, 0x1000u) == 0x2000u);
+    CHECK(engine_heap_commit_bytes(0x10002F00u, 0x3000u, 0x10004000u, 0x1000u) == 0x1000u);
+    CHECK(engine_heap_commit_bytes(0x10003F00u, 0x3000u, 0x10004000u, 0x1000u) == 0u);
+    CHECK(engine_heap_commit_bytes(0x10004000u, 0x10u, 0x10004000u, 0x1000u) == 0u);
+    /* The four scene heaps scale capacity and reservation together; the terrain's only their reservation. */
+    {
+        engine_heap_t polys = engine_heap_for(0x0025D780u), verts = engine_heap_for(0x30D400u);
+        engine_heap_t tin = engine_heap_for(1758600u), other = engine_heap_for(12345u);
+        CHECK(polys.capacity_va == 0x00732F34u && polys.capacity == 20000u && polys.bytes == 20000u * 0x7Cu);
+        CHECK(verts.capacity_va == 0x00732EFCu && verts.capacity == 80000u && verts.bytes == 80000u * 0x28u);
+        CHECK(engine_heap_for(0x00013880u).capacity == 20000u && engine_heap_for(0x0004E200u).capacity == 80000u);
+        CHECK(tin.scale == TERRAIN_HEAP_SCALE && !tin.capacity_va);
+        CHECK(other.scale == 1u);
+        /* Depth sort's alloca arrays (8 bytes per polygon) stay far below the 4 MB guest stack. */
+        CHECK(polys.capacity * polys.scale * 8u < (4u << 20) / 4u);
+    }
+}
+
+static void test_cache_refusals(void) {
+    engine_cache_settings_t c = { 1, 8.55f, 0.085f * 0.085f, 40.0f };
+    engine_partition_t mesh = { PARTITION_USES_MESH | PARTITION_CACHEABLE | PARTITION_CACHEABLE_VOLUME |
+                                    PARTITION_HARDWARE_ABLE, 10, 100, 4.0f, 4.0f, 0.0f, 1.0f };
+    engine_partition_t p = mesh;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_PARALLAX);
+    CHECK(engine_cache_refusal(&p, &c, 30.0f * 30.0f) == CACHE_REFUSED_3D_DISTANCE);
+    CHECK(engine_cache_refusal(&p, &c, 3.0f * 3.0f) == CACHE_REFUSED_TOO_CLOSE);
+    CHECK(engine_cache_refusal(&p, &c, 5.0f * 5.0f) == CACHE_REFUSED_TOO_BIG);
+    p.flags &= ~PARTITION_CACHEABLE;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_NOT_CACHEABLE);
+    p = mesh;
+    p.flags |= PARTITION_SIMPLE_OBJECT;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_SIMPLE_OBJECT);
+    p = mesh;
+    p.flags |= PARTITION_ALWAYS_FACE;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_FACES_CAMERA);
+    p = mesh;
+    p.no_cache_until = 100;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_MOVING);
+    p = mesh;
+    p.flags &= ~PARTITION_CACHEABLE_VOLUME;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_VOLUME);
+    /* A group: below 25 m, or less efficient than 0.085 x distance, never one impostor. */
+    p = mesh;
+    p.flags &= ~PARTITION_USES_MESH;
+    p.area_efficiency_sqr = 400.0f;
+    CHECK(engine_cache_refusal(&p, &c, 20.0f * 20.0f) == CACHE_REFUSED_GROUP);
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_GROUP);
+    CHECK(engine_cache_refusal(&p, &c, 300.0f * 300.0f) == CACHE_REFUSED_PARALLAX);
+    for (int r = 0; r < CACHE_REFUSED_COUNT; r++) CHECK(strcmp(engine_cache_refusal_name((cache_refusal_t)r), "?") != 0);
+    /* The level's CacheNever is told apart from what the image cache cannot draw. */
+    p = mesh;
+    p.flags = (p.flags & ~PARTITION_CACHEABLE) | PARTITION_CACHE_NEVER;
+    CHECK(engine_cache_refusal(&p, &c, 200.0f * 200.0f) == CACHE_REFUSED_CACHE_NEVER);
+    CHECK(!engine_refusal_holds_parts(CACHE_REFUSED_CACHE_NEVER));
+}
+
+/* Only a plain static instance marked CacheNever is judged by the rest of bFlagCacheable, and only with Direct3D 11's
+ * limits; groups may hold up to 40 objects, never fewer than the game asked. */
+static void test_cache_never_and_groups(void) {
+    uint32_t never = PARTITION_USES_MESH | PARTITION_CACHE_NEVER;
+    CHECK(engine_cache_never_lifted(1, VTABLE_INSTANCE, never));
+    CHECK(!engine_cache_never_lifted(0, VTABLE_INSTANCE, never));
+    CHECK(!engine_cache_never_lifted(1, VTABLE_INSTANCE, PARTITION_USES_MESH));
+    CHECK(!engine_cache_never_lifted(1, VTABLE_TERRAIN_OBJECT, never));
+    CHECK(!engine_cache_never_lifted(1, VTABLE_PARTITION, never));
+    CHECK(!engine_cache_never_lifted(1, 0x0064D000u, never)); /* an entity */
+    CHECK(engine_cache_group_objects(1, 20) == ENGINE_CACHE_GROUP_OBJECTS_MODERN);
+    CHECK(engine_cache_group_objects(1, 10) == ENGINE_CACHE_GROUP_OBJECTS_MODERN);
+    CHECK(engine_cache_group_objects(0, 20) == 20 && engine_cache_group_objects(0, 10) == 10);
+    CHECK(engine_cache_group_objects(1, 64) == 64);
+}
+
+typedef struct {
+    int calls;
+    long area;
+} tile_calls_t;
+
+static void count_tile_rect(void* context, const d3dt_rect_t* r) {
+    tile_calls_t* c = context;
+    c->calls++;
+    c->area += (r->right - r->left) * (r->bottom - r->top);
+}
+
+/* One Lock spanning several CPU polygons: each captures only tiles no earlier polygon of the Lock may have written. */
+static void test_cpu_polygon_tiles(void) {
+    static tsync_tiles_t m;
+    tile_calls_t c = { 0, 0 };
+    d3dt_rect_t a = { 10, 10, 50, 40 }, b = { 40, 20, 100, 60 }, off = { 3430, 1430, 3600, 1600 };
+    CHECK(tsync_tiles_reset(&m, 3440, 1440));
+    CHECK(m.tiles_x == 108 && m.tiles_y == 45);
+    tsync_tiles_claim(&m, &a, count_tile_rect, &c);
+    CHECK(c.calls == 2 && c.area == 64 * 64);
+    c.calls = 0;
+    c.area = 0;
+    tsync_tiles_claim(&m, &a, count_tile_rect, &c);
+    CHECK(c.calls == 0);
+    tsync_tiles_claim(&m, &b, count_tile_rect, &c);
+    CHECK(c.area == 128 * 64 - 64 * 64);
+    c.calls = 0;
+    c.area = 0;
+    tsync_tiles_claim(&m, &off, count_tile_rect, &c);
+    CHECK(c.calls == 1 && c.area == 16 * 32);
+    /* A whole-surface capture leaves nothing to claim. */
+    tsync_tiles_claim_all(&m);
+    c.calls = 0;
+    tsync_tiles_claim(&m, &b, count_tile_rect, &c);
+    CHECK(c.calls == 0);
+    CHECK(!tsync_tiles_reset(&m, 9000, 100));
+}
+
+/* After a Flip the reference matches the other CPU buffer: in a lazy capture only tiles captured since are compared;
+ * a stale tile's old pixels are never uploaded and its reference is left alone. */
+static void test_lazy_capture(void) {
+    static uint16_t copy[64 * 64], reference[64 * 64];
+    static uint32_t out[64 * 64];
+    static tsync_tiles_t fresh;
+    d3dt_rect_t all = { 0, 0, 64, 64 }, tile0 = { 0, 0, 32, 32 }, box;
+    tsync_counts_t counts = { 0, 0 };
+    for (int i = 0; i < 64 * 64; i++) {
+        copy[i] = (uint16_t)(i * 7);
+        reference[i] = (uint16_t)(i * 13);
+    }
+    CHECK(tsync_tiles_reset(&fresh, 64, 64));
+    tsync_fill((uint8_t*)copy, 128, reference, 64, &tile0, TSYNC_UNWRITTEN);
+    tsync_tiles_claim(&fresh, &tile0, count_tile_rect, &(tile_calls_t){ 0, 0 });
+    copy[5 * 64 + 6] = 0x1234;
+    CHECK(tsync_changed_box_in((const uint8_t*)copy, 128, reference, 64, &all, &fresh, &box));
+    CHECK(box.left == 6 && box.right == 7 && box.top == 5 && box.bottom == 6);
+    /* Unmasked, the stale tiles would all count as changed. */
+    CHECK(tsync_changed_box((const uint8_t*)copy, 128, reference, 64, &all, &box) && box.right == 64 && box.bottom == 64);
+    tsync_overlay_box_in((const uint8_t*)copy, 128, reference, 64, &all, &fresh, out, &counts);
+    CHECK(counts.changed == 1 && out[5 * 64 + 6] != 0);
+    CHECK(out[40 * 64 + 40] == 0 && out[0] == 0);
+    CHECK(reference[5 * 64 + 6] == 0x1234 && reference[40 * 64 + 40] == (uint16_t)((40 * 64 + 40) * 13));
+    CHECK(tsync_tile_claimed(&fresh, 0, 0) && !tsync_tile_claimed(&fresh, 1, 0) && !tsync_tile_claimed(&fresh, 1, 1));
+    /* Without a tile map both behave as before. */
+    CHECK(!tsync_changed_box_in((const uint8_t*)copy, 128, reference, 64, &tile0, NULL, &box) ||
+          tsync_changed_box((const uint8_t*)copy, 128, reference, 64, &tile0, &box));
+}
+
+/* The text overlay's capture: only the strings' boxes are claimed, and a composite compares nothing outside the bounds
+ * of the claimed tiles, which find every changed pixel the full compare would inside them. */
+static void test_text_box_capture(void) {
+    static uint16_t copy[3440 * 64], reference[3440 * 64];
+    static tsync_tiles_t fresh;
+    d3dt_rect_t all = { 0, 0, 3440, 64 }, line = { 100, 10, 260, 40 }, line2 = { 3000, 33, 3100, 50 }, region, box;
+    tile_calls_t c = { 0, 0 };
+    CHECK(tsync_tiles_reset(&fresh, 3440, 64));
+    region = tsync_tiles_clip(&fresh, &all);
+    CHECK(d3dt_rect_empty(&region));
+    tsync_tiles_claim(&fresh, &line, count_tile_rect, &c);
+    CHECK(fresh.bounds.left == 96 && fresh.bounds.top == 0 && fresh.bounds.right == 288 && fresh.bounds.bottom == 64);
+    tsync_tiles_claim(&fresh, &line2, count_tile_rect, &c);
+    CHECK(fresh.bounds.left == 96 && fresh.bounds.right == 3104 && fresh.bounds.bottom == 64);
+    region = tsync_tiles_clip(&fresh, &all);
+    CHECK(region.left == 96 && region.right == 3104 && region.top == 0 && region.bottom == 64);
+    for (int i = 0; i < 3440 * 64; i++) copy[i] = reference[i] = TSYNC_UNWRITTEN;
+    copy[20 * 3440 + 150] = 0x07E0;
+    copy[40 * 3440 + 3050] = 0xF800;
+    copy[5 * 3440 + 2000] = 0x001F; /* outside every claimed tile: not this capture's */
+    CHECK(tsync_changed_box_in((const uint8_t*)copy, 3440 * 2, reference, 3440, &region, &fresh, &box));
+    CHECK(box.left == 150 && box.right == 3051 && box.top == 20 && box.bottom == 41);
+    /* An off-surface box is clipped; a whole claim covers everything. */
+    tsync_tiles_claim_all(&fresh);
+    region = tsync_tiles_clip(&fresh, &all);
+    CHECK(region.left == 0 && region.right == 3440 && region.bottom == 64);
+    CHECK(tsync_tiles_reset(&fresh, 3440, 64) && d3dt_rect_empty(&fresh.bounds));
+}
+
+/* A box readback for a polygon whose primitive may read: only pixels the CPU did not write take the GPU picture, and
+ * nothing outside the box is read. */
+static void test_cpu_polygon_box_readback(void) {
+    uint16_t copy[8 * 4], reference[8 * 4], gpu[3 * 2];
+    d3dt_rect_t all = { 0, 0, 8, 4 }, box = { 2, 1, 5, 3 };
+    for (int i = 0; i < 6; i++) gpu[i] = (uint16_t)(0x1000 + i);
+    tsync_fill((uint8_t*)copy, 16, reference, 8, &all, TSYNC_UNWRITTEN);
+    copy[1 * 8 + 3] = 0x0777;
+    tsync_fill_unwritten((uint8_t*)copy, 16, reference, 8, &box, gpu, 3);
+    CHECK(copy[1 * 8 + 2] == 0x1000 && reference[1 * 8 + 2] == 0x1000);
+    CHECK(copy[1 * 8 + 3] == 0x0777 && reference[1 * 8 + 3] == TSYNC_UNWRITTEN);
+    CHECK(copy[2 * 8 + 4] == 0x1005 && reference[2 * 8 + 4] == 0x1005);
+    CHECK(copy[0] == TSYNC_UNWRITTEN && copy[3 * 8 + 7] == TSYNC_UNWRITTEN && copy[1 * 8 + 5] == TSYNC_UNWRITTEN);
+    /* The written pixel still differs from the reference, so the composite uploads it; the rest stay transparent. */
+    {
+        d3dt_rect_t changed;
+        CHECK(tsync_changed_box((const uint8_t*)copy, 16, reference, 8, &all, &changed));
+        CHECK(changed.left == 3 && changed.right == 4 && changed.top == 1 && changed.bottom == 2);
+    }
+}
+
+static void test_engine_limits(void) {
+    float cull = engine_cull_distance(1.0f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL);
+    float combined = ENGINE_OBJECT_DISTANCE_SCALE * ENGINE_OBJECT_DISTANCE_SCALE, level_culling = 50.0f;
+    CHECK(fabs(cull - 126.0f) < 0.01);
+    CHECK(fabs(engine_cull_distance(4.0f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL) - 504.0f) < 0.01);
+    CHECK(fabs(engine_cull_distance(7.2f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL) - 907.2f) < 0.01);
+    CHECK(fabs(engine_cull_distance(0.05f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL) - 20.05f) < 0.01);
+    /* bInRange: d * d < cull * cull * combined, so the combined factor is the square of the distance scale. */
+    CHECK(cull * (ENGINE_OBJECT_DISTANCE_SCALE - 0.01f) * cull * (ENGINE_OBJECT_DISTANCE_SCALE - 0.01f) <
+              cull * cull * combined &&
+          cull * (ENGINE_OBJECT_DISTANCE_SCALE + 0.01f) * cull * (ENGINE_OBJECT_DISTANCE_SCALE + 0.01f) >
+              cull * cull * combined);
+    /* Log 029: 1.6x considered 1100-1569 partitions in dense areas; 1.4x keeps (1.4/1.6)^2 = 77% of the area. */
+    CHECK(ENGINE_OBJECT_DISTANCE_SCALE >= 1.35f && ENGINE_OBJECT_DISTANCE_SCALE <= 1.5f);
+    CHECK(69.9f * 69.9f < level_culling * level_culling * combined && 70.1f * 70.1f > level_culling * level_culling * combined);
+    test_projected_size_policy();
+    test_cache_refusals();
+    test_partition_kinds();
+    test_projected_cull();
+    test_object_atomicity();
+    CHECK(engine_texture_budget_mb(24, 1, 1) == ENGINE_TEXTURE_MB_MODERN && engine_texture_budget_mb(24, 0, 1) == 24);
+    CHECK(engine_texture_budget_mb(24, 1, 0) == ENGINE_TEXTURE_MB_SAFE);
+    CHECK(engine_texture_budget_mb(16, 1, 1) == 16 && engine_texture_budget_mb(18, 1, 1) == 18);
+    CHECK(engine_impostor_pages(9113, 128) == 284);
+    CHECK(engine_impostor_pages(15667, 256) == 122);
+    CHECK(engine_texture_dim_policy(1) == 256 && engine_texture_dim_policy(0) == 0);
+    CHECK(engine_render_quality_policy(1, 0) == 4 && !engine_render_quality_policy(1, 1) &&
+          !engine_render_quality_policy(0, 0));
+    /* x86: the texture memory the game may hold, twice over for its pages and ours, stays far below 2 GB. */
+    CHECK((unsigned long long)ENGINE_TEXTURE_MB_MODERN * 2 * 1048576 < 256ull * 1048576);
+    /* Terrain pages: 256 px, 16-bit, and the regular textures keep more than the old 40 MB budget gave them. */
+    CHECK(ENGINE_TERRAIN_TEXTURE_KB_MODERN >= 1920u && ENGINE_TERRAIN_TEXTURE_KB_MODERN % 128u == 0);
+    CHECK(engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 0x7FFFFFFFu, 1).regular -
+              (int32_t)(ENGINE_TERRAIN_TEXTURE_KB_MODERN * 1024u - 0x1E0000u) >
+          engine_texture_layout(ENGINE_TEXTURE_MB_SAFE, 0x7FFFFFFFu, 0).regular);
+}
+
+/* CQuadRootTIN::Update's inputs: levels set 230 m, TrrPixelTol 10 (7 near the beach) and TrrPixelTolFar 50; quality 4
+ * scales distances by 1.5 and tolerances by 0.5. */
+static void test_terrain_settings(void) {
+    terrain_settings_t level = { 230.0f, 10.0f, 50.0f, 1.5f, 0.5f }, used;
+    used = terrain_modern_settings(level, 1000.0f, 3.0f);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - 1000.0f) < 0.01);
+    /* 1440 lines: the level's 10 is already finer than the community's 4 at 480 lines (12); far 50 becomes 36. */
+    CHECK(used.pixel_tolerance == 10.0f && fabs(used.pixel_tolerance_far - 36.0f) < 0.001);
+    CHECK(used.distance_scale == level.distance_scale && used.pixel_tolerance_scale == level.pixel_tolerance_scale);
+    used = terrain_modern_settings(level, 1000.0f, 1.0f);
+    CHECK(used.pixel_tolerance == TERRAIN_PIXEL_TOL_480 && used.pixel_tolerance_far == TERRAIN_PIXEL_TOL_FAR_480);
+    used = terrain_modern_settings(level, 1000.0f, 0.0f);
+    CHECK(used.pixel_tolerance == 10.0f && used.pixel_tolerance_far == 50.0f);
+    used = terrain_modern_settings(level, 600.0f, 3.0f);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - 600.0f) < 0.01);
+    used = terrain_modern_settings(level, 0.0f, 3.0f);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - TERRAIN_TEXTURE_DISTANCE_MAX) < 0.01);
+    used = terrain_modern_settings(level, 50000.0f, 3.0f);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - TERRAIN_TEXTURE_DISTANCE_MAX) < 0.01);
+    /* The rvar's own range is 10-1000: Update reads the data directly, so a value past 1000 / 1.5 still works. */
+    CHECK(used.dynamic_texture_distance > 230.0f && used.dynamic_texture_distance <= 1000.0f);
+    level.dynamic_texture_distance = 900.0f;
+    level.pixel_tolerance = 7.0f;
+    level.pixel_tolerance_far = 5.0f;
+    used = terrain_modern_settings(level, 1000.0f, 3.0f);
+    CHECK(used.dynamic_texture_distance == 900.0f && used.pixel_tolerance == 7.0f && used.pixel_tolerance_far == 7.0f);
+    /* The finer far tolerance only with the node heaps enlarged: 1998's 15000 nodes have no overflow check. */
+    CHECK(TERRAIN_HEAP_SCALE >= 2u && 1758600u * TERRAIN_HEAP_SCALE < 64u << 20);
+}
+
+/* The 1998 split of the texture budget, in the engine's 32-bit arithmetic (test 024: 64 MB made the game drop
+ * Direct3D right after creating its gameplay device). */
+/* The game ends its upload loop when GetTickCount() - start > 7: inside the budget the clock stands still, after it
+ * the game's own test stops the loop. */
+static void test_engine_upload_clock(void) {
+    const uint32_t start = 0xFFFFFFF0u;
+    CHECK(engine_upload_clock(start, 0.0, ENGINE_UPLOAD_BUDGET_MS) == start);
+    CHECK(engine_upload_clock(start, ENGINE_UPLOAD_BUDGET_MS, ENGINE_UPLOAD_BUDGET_MS) == start);
+    CHECK(engine_upload_clock(start, ENGINE_UPLOAD_BUDGET_MS + 0.01, ENGINE_UPLOAD_BUDGET_MS) - start >
+          ENGINE_UPLOAD_MS_ORIGINAL);
+    CHECK(engine_upload_clock(100u, 7.5, 7.0) - 100u > ENGINE_UPLOAD_MS_ORIGINAL);
+    CHECK(engine_upload_clock(100u, 6.9, 7.0) - 100u <= ENGINE_UPLOAD_MS_ORIGINAL);
+    CHECK(ENGINE_UPLOAD_BUDGET_MS > ENGINE_UPLOAD_MS_ORIGINAL && ENGINE_UPLOAD_BUDGET_MS < 16.7);
+}
+
+static void test_engine_texture_layout(void) {
+    static const unsigned budgets[] = { 64, 96, 128 };
+    engine_texture_layout_t l = engine_texture_layout(24, 0x7FFFFFFFu, 0);
+    CHECK(l.total == 23330816 && l.image_cache == 9332326 && l.regular == 9483674 && l.accepted && !l.overflow);
+    CHECK(l.water == 569 * 1024 && l.terrain == 0x1E0000);
+    /* The engine's own arithmetic: 64 MB wraps and turns Direct3D off (test 024), 46 MB wraps the 95% mark. */
+    l = engine_texture_layout(64, 0x7FFFFFFFu, 0);
+    CHECK(!l.accepted && l.overflow && l.image_cache < 0 && l.low_water_85 < 0);
+    l = engine_texture_layout(48, 0x7FFFFFFFu, 0);
+    CHECK(l.accepted && l.overflow && l.high_water_95 < 0);
+    CHECK(engine_texture_layout(45, 0x7FFFFFFFu, 0).accepted && !engine_texture_layout(45, 0x7FFFFFFFu, 0).overflow);
+    CHECK(engine_texture_layout(46, 0x7FFFFFFFu, 0).overflow);
+    for (unsigned mb = 8; mb <= ENGINE_TEXTURE_MB_SAFE; mb++) {
+        l = engine_texture_layout(mb, 0x7FFFFFFFu, 0);
+        CHECK(l.accepted && !l.overflow && l.image_cache > 0 && l.high_water_95 > l.low_water_85);
+    }
+    /* Below the overflow the host's split is the engine's, value for value. */
+    for (unsigned mb = 8; mb <= 45; mb++) {
+        engine_texture_layout_t engine = engine_texture_layout(mb, 0x7FFFFFFFu, 0);
+        l = engine_texture_layout(mb, 0x7FFFFFFFu, 1);
+        CHECK(l.image_cache == engine.image_cache && l.regular == engine.regular &&
+              l.low_water_85 == engine.low_water_85 && l.high_water_95 == engine.high_water_95);
+    }
+    for (unsigned i = 0; i < sizeof budgets / sizeof budgets[0]; i++) {
+        engine_texture_layout_t engine = engine_texture_layout(budgets[i], 0x7FFFFFFFu, 0);
+        int32_t allocated, low, high, rest, engine_run, corrected;
+        l = engine_texture_layout(budgets[i], 0x7FFFFFFFu, 1);
+        CHECK(l.accepted && !l.overflow && l.image_cache == (int32_t)(ENGINE_IMAGE_CACHE_KB_MAX * 1024u));
+        CHECK(l.low_water_85 == (int32_t)((int64_t)l.regular * 85 / 100) &&
+              l.high_water_95 == (int32_t)((int64_t)l.regular * 95 / 100) && l.high_water_95 > l.low_water_85);
+        CHECK(l.regular > engine_texture_layout(ENGINE_TEXTURE_MB_SAFE, 0x7FFFFFFFu, 0).regular);
+        /* The split subtracts its own (wrapped) cache share; the host moves the difference to the regular pool. */
+        rest = l.total - 0x20000 - 0x1C0000 - l.water - l.terrain;
+        engine_run = (int32_t)(uint32_t)((uint32_t)rest - (uint32_t)engine.image_cache);
+        CHECK(engine_run > 0x280000);
+        corrected = (int32_t)((int64_t)engine_run + engine_image_cache_bytes(l.total, 0) - engine_image_cache_bytes(l.total, 1));
+        CHECK(corrected == l.regular);
+        engine_agp_marks(corrected, &allocated, &low, &high);
+        CHECK(allocated == l.regular && low == l.low_water_85 && high == l.high_water_95);
+    }
+    engine_agp_marks(0x40000, &l.regular, &l.low_water_85, &l.high_water_95);
+    CHECK(l.regular == 0 && l.low_water_85 == 0 && l.high_water_95 == 0);
+    l = engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 0x7FFFFFFFu, 1);
+    CHECK(l.regular > 3 * engine_texture_layout(ENGINE_TEXTURE_MB_ORIGINAL, 0x7FFFFFFFu, 0).regular);
+    /* Less video memory than the budget: the engine takes the smaller. */
+    CHECK(engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 16u << 20, 1).total == (16 << 20) - 0x120000);
+    CHECK(engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 0xFFFFFFFFu, 1).total ==
+          engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 0x7FFFFFFFu, 1).total);
+}
+
+static void test_page_arena(void) {
+    uint32_t bitmap[8] = { 0 };
+    ULONG_PTR count = 16;
+    ULONG granularity = 0;
+    PVOID pages[16];
+    uint8_t *a, *b;
+    size_t reserved = 0, used = 0;
+    CHECK(page_run_find(bitmap, 256, 4) == 0);
+    page_run_mark(bitmap, 0, 3, 1);
+    page_run_mark(bitmap, 5, 1, 1);
+    CHECK(page_run_find(bitmap, 256, 2) == 3);
+    CHECK(page_run_find(bitmap, 256, 3) == 6);
+    page_run_mark(bitmap, 0, 256, 1);
+    CHECK(page_run_find(bitmap, 256, 1) == -1);
+    CHECK(page_run_find(bitmap, 256, 0) == -1);
+    a = (uint8_t*)page_arena_alloc(32 * 32 * 2);
+    b = (uint8_t*)page_arena_alloc(64 * 64 * 2);
+    CHECK(a && b && a != b);
+    CHECK(!page_arena_alloc(PAGE_ARENA_MAX_BYTES + 1));
+    if (!a || !b) return;
+    CHECK(((uintptr_t)a % PAGE_ARENA_PAGE) == 0 && ((uintptr_t)b % PAGE_ARENA_PAGE) == 0);
+    CHECK(a[0] == 0 && b[8191] == 0);
+    ResetWriteWatch(a, PAGE_ARENA_PAGE);
+    ResetWriteWatch(b, 2 * PAGE_ARENA_PAGE);
+    b[100] = 7;
+    CHECK(!GetWriteWatch(0, a, PAGE_ARENA_PAGE, pages, &count, &granularity) && count == 0);
+    count = 16;
+    CHECK(!GetWriteWatch(0, b, 2 * PAGE_ARENA_PAGE, pages, &count, &granularity) && count == 1);
+    page_arena_usage(&reserved, &used);
+    CHECK(reserved >= 1048576 && used == 3 * PAGE_ARENA_PAGE);
+    page_arena_free(b, 64 * 64 * 2);
+    b = (uint8_t*)page_arena_alloc(64 * 64 * 2);
+    CHECK(b && b[100] == 0);
+    count = 16;
+    CHECK(b && !GetWriteWatch(0, b, 2 * PAGE_ARENA_PAGE, pages, &count, &granularity) && count == 0);
+    page_arena_free(a, 32 * 32 * 2);
+    if (b) page_arena_free(b, 64 * 64 * 2);
+    page_arena_usage(&reserved, &used);
+    CHECK(used == 0);
+}
+
 int main(void) {
     test_fps_counter();
     test_input_state();
@@ -1459,6 +2460,14 @@ int main(void) {
     test_safemode();
     test_open_press();
     test_target_access_policy();
+    test_scene_heap_overflow();
+    test_cpu_polygon_tiles();
+    test_cpu_polygon_origin();
+    test_lazy_capture();
+    test_cache_never_and_groups();
+    test_scene_heap_stress();
+    test_text_box_capture();
+    test_cpu_polygon_box_readback();
     test_target_sync_buffers();
     test_stale_black_cannot_replace_gpu();
     test_no_read_lock_on_gpu_picture();
@@ -1498,6 +2507,23 @@ int main(void) {
     test_overlay_texel_edge();
     test_ui_canvas();
     test_shaders();
+    test_bump_shaders();
+    test_bump_math();
+    test_batch_slots();
+    test_copy_changed();
+    test_mip_chain();
+    test_mip_alpha();
+    test_coverage_selection();
+    test_dynamic_textures();
+    test_sampler_choice();
+    test_readback_regions();
+    test_write_only_locks();
+    test_ui_frame_without_readback();
+    test_engine_limits();
+    test_engine_texture_layout();
+    test_terrain_settings();
+    test_engine_upload_clock();
+    test_page_arena();
     printf("%d checks, %d failures\n", s_checks, s_failures);
     return s_failures != 0;
 }

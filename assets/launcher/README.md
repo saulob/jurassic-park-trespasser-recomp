@@ -1,9 +1,11 @@
 # Launcher header art
 
-`header-art.png` is placeholder art for this port, drawn in code by `tools/make-header-art.py` (no game asset): a
-jungle ridge at dusk, 3840x432 (8.89:1) RGBA like the other ports' header art. A horizontal alpha mask lets the
-launcher's own header gradient show through on the left: alpha is 0 up to 22% of the width, rises along a smoothstep
-curve and reaches full at 55%, so the art has no visible edge. Regenerate it with (Pillow installed):
+`header-art.png` is this port's own header art, drawn in code by `tools/make-header-art.py` (no game or film asset):
+an island at dusk seen from the jungle, with a volcanic peak, the sun setting over the sea, mist, sauropods wading
+and palm and tree-fern silhouettes. It is 3840x432 (8.89:1) RGBA, like the other ports' header art. A horizontal
+alpha mask lets the launcher's own header gradient show through on the left: alpha is 0 up to 22% of the width, rises
+along a smoothstep curve and reaches full at 55%, so the art has no visible edge. Left of 58% there is only sky and
+low ridges, so nothing shows half-faded behind the title. Regenerate it with (Pillow and NumPy installed):
 
 ```powershell
 py -3 tools\make-header-art.py

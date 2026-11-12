@@ -3,6 +3,7 @@
 
 /* Direct3D 6 -> Direct3D 11 translation that needs neither Windows nor a device, so tests run it headless. */
 
+#include <stddef.h>
 #include <stdint.h>
 
 enum {
@@ -132,14 +133,68 @@ int d3dt_row_on_texel_edge(unsigned k, unsigned legacy, unsigned target);
  * the box's edge reads only texels of this upload. */
 d3dt_rect_t d3dt_overlay_upload_rect(const d3dt_rect_t* box, unsigned width, unsigned height);
 void d3dt_rect_union(d3dt_rect_t* acc, const d3dt_rect_t* add);
+/* The legacy pixels a batch of pre-transformed vertices (x, y first, `stride` bytes apart) can reach, with a pixel
+ * of margin for rasterisation at the render scale; the whole surface when a coordinate is not finite. */
+d3dt_rect_t d3dt_vertex_box(const float* first, unsigned stride, unsigned count, unsigned width, unsigned height);
+/* What a readback must read: the whole surface unless the GPU is known to have drawn only inside `drawn` since a full
+ * clear; then that box and two pixels around it (filtered calibration reads), or nothing when it is empty. */
+d3dt_rect_t d3dt_readback_box(int drawn_known, const d3dt_rect_t* drawn, unsigned width, unsigned height);
 
 int d3dt_parse_resolution(const char* text, unsigned* w, unsigned* h);
 void d3dt_auto_resolution(unsigned view_w, unsigned view_h, unsigned legacy_w, unsigned legacy_h, unsigned* w,
                           unsigned* h);
-/* supported: bit n set when n samples work; returns the largest supported count <= requested (1 = off). */
+/* supported: bit n set when n samples work; the largest of 16, 8, 4, 2 supported and <= requested, else 1 (off). */
 unsigned d3dt_pick_msaa(unsigned requested, uint32_t supported);
+/* The largest of 16, 8, 4, 2 within both, else 1. */
+unsigned d3dt_pick_anisotropy(unsigned requested, unsigned device_max);
+
+/* Texture filter settings; d3d_legacy.h's D3DR_FILTER_* are these. */
+enum { D3DT_FILTER_ORIGINAL, D3DT_FILTER_POINT, D3DT_FILTER_BILINEAR, D3DT_FILTER_TRILINEAR, D3DT_FILTER_ANISOTROPIC };
+int d3dt_filter_uses_mips(int filter);
+
+typedef struct {
+    unsigned filter;     /* D3D11_FILTER */
+    unsigned anisotropy; /* MaxAnisotropy */
+    int mips;            /* generated levels are sampled (MaxLOD unbounded); else level 0 only */
+} d3dt_sampler_choice_t;
+d3dt_sampler_choice_t d3dt_choose_sampler(int filter, int mag_linear, int min_linear, unsigned anisotropy);
+
+/* Generated mipmaps: Direct3D 6 textures come with one level. Levels are packed one after another, level 0 first. */
+unsigned d3dt_mip_count(unsigned w, unsigned h);
+void d3dt_mip_size(unsigned w, unsigned h, unsigned level, unsigned* mw, unsigned* mh);
+size_t d3dt_mip_chain_texels(unsigned w, unsigned h, unsigned levels);
+enum { D3DT_ALPHA_OPAQUE, D3DT_ALPHA_BINARY, D3DT_ALPHA_BLENDED };
+int d3dt_alpha_kind(const uint32_t* bgra, size_t count);
+void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst);
+void d3dt_build_mips(uint32_t* chain, unsigned w, unsigned h, unsigned levels, int alpha_kind);
+
+/* A texture re-uploaded in D3DT_DYNAMIC_STREAK more presented frames, each within D3DT_DYNAMIC_GAP frames of the
+ * one before (water, render-cache sprites, animations), is dynamic: it keeps level 0 only. */
+#define D3DT_DYNAMIC_GAP 2u
+#define D3DT_DYNAMIC_STREAK 3u
+typedef struct {
+    unsigned long long last_frame;
+    unsigned long uploads;
+    unsigned streak;
+    int dynamic;
+} d3dt_upload_history_t;
+/* 1 when this upload made the texture dynamic. */
+int d3dt_note_upload(d3dt_upload_history_t* h, unsigned long long frame);
 
 /* D3DMATRIX order: row vectors, out = a * b. */
 void d3dt_matrix_multiply(const float* a, const float* b, float* out);
+
+/* A world vertex's layer field (D3D11_LAYER_* in d3d11_shaders.h): slice, the batch's array slot, texture flags and
+ * sampler. */
+uint32_t d3dt_world_layer(uint32_t slice, uint32_t slot, uint32_t flags, uint32_t sampler);
+/* The sampler for stage 0's address modes: wrap or clamp per axis travel in the vertex, anything else is the device's. */
+uint32_t d3dt_vertex_sampler(uint32_t address_u, uint32_t address_v);
+/* Copies the bytes of src's rows that differ from dst's: 0 when none does, else the changed box in pixels. */
+int d3dt_copy_changed(uint8_t* dst, long dst_pitch, const uint8_t* src, long src_pitch, unsigned width, unsigned height,
+                      unsigned pixel_bytes, d3dt_rect_t* changed);
+/* Whether an address mode change keeps the open batch: both values are wrap or clamp. */
+int d3dt_address_joins(uint32_t old_value, uint32_t value);
+/* The slot of item among the max a batch binds, taking a free one; -1 when every slot holds another item. */
+int d3dt_batch_slot(const void** bound, unsigned* count, unsigned max, const void* item);
 
 #endif

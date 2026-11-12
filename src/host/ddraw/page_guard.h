@@ -18,4 +18,13 @@ void page_guard_touch(void);
 int page_guard_armed(void);
 const char* page_guard_result_name(page_guard_result_t result);
 
+/* A second view of a section's pages that stays inaccessible while no Lock uses it: arming hands it out and a Lock
+ * that ends untouched closes nothing, so neither costs a protection change. Its first access opens it (touched runs
+ * first, as above); an access while no Lock waits only opens it, so a pointer kept past Unlock keeps working.
+ * Returns an id (0: none). */
+int page_alias_create(void* section, size_t bytes);
+void page_alias_destroy(int alias);
+unsigned char* page_alias_view(int alias);
+page_guard_result_t page_guard_arm_alias(int alias, page_guard_touched_t touched, void* context);
+
 #endif

@@ -94,6 +94,8 @@ static native32_shim_t s_shims[] = {
     { "IsIconic", shim_IsIconic },
     { "GetForegroundWindow", shim_GetForegroundWindow },
     { "CreateThread", shim_CreateThread },
+    { "GetTickCount", shim_GetTickCount },
+    { "TextOutA", shim_TextOutA },
     { "exit", shim_exit },
     { "_exit", shim__exit },
     { "ExitProcess", shim_ExitProcess },
@@ -109,7 +111,7 @@ static void usage(void) {
            "                  [--texture-filter original|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
            "                  [--msaa 0|2|4|8] [--vsync on|off] [--display-mode windowed|borderless] [--monitor N]\n"
            "                  [--window-size auto|WxH] [--presentation letterbox|stretch] [--show-fps on|off]\n"
-           "                  [--generate-mips] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
+           "                  [--original-engine-limits] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
            "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [-- guest arguments]\n"
            "  settings come from <user>\\trespasser.ini (the launcher writes it); these options override them\n"
            "    for this run only\n"
@@ -119,10 +121,12 @@ static void usage(void) {
            "  --log-file appends to FILE; otherwise a new trespasser_NNN.log is created in the log directory\n"
            "  --ddraw system calls the system ddraw.dll instead of the compatibility layer (diagnostics only)\n"
            "  --texture-filter also takes point and trilinear (diagnostics); anisotropic means anisotropic16\n"
-           "  --generate-mips gives the game's single-level textures generated mip chains (off: as the original)\n"
+           "  --original-engine-limits keeps the 1998 draw distance, texture sizes and texture memory with d3d11\n"
+           "    (comparison)\n"
            "  --debug-d3d-output texture|vertex-color|depth: d3d11 draws show only that (diagnostics)\n"
            "  --software-water keeps the game's software water with d3d11 (Hardware Water unset)\n"
-           "  --lifted-water runs the lifted water kernels instead of their host equivalents (comparison)\n"
+           "  --lifted-water runs the lifted water and occlusion functions instead of their host kernels\n"
+           "    (comparison)\n"
            "  --legacy-safemode-dialog keeps the game's \"unstable last time, Safe Mode?\" prompt (off by default)\n");
     recomp_trace_help();
 }
@@ -203,8 +207,8 @@ static int parse_options(int argc, char** argv, options_t* o) {
             registry_software_water();
         } else if (!strcmp(argv[i], "--legacy-safemode-dialog")) {
             registry_legacy_safemode_dialog();
-        } else if (!strcmp(argv[i], "--generate-mips")) {
-            d3dr_set_generate_mips(1);
+        } else if (!strcmp(argv[i], "--original-engine-limits")) {
+            engine_limits_keep_original();
         } else if (!strcmp(argv[i], "--debug-d3d-output") && i + 1 < argc) {
             if (!d3dr_set_debug_output(argv[++i])) return 0;
         } else if (!strcmp(argv[i], "--lifted-water")) {
@@ -259,6 +263,7 @@ static int run_guest(void) {
         host_log("guest", "cannot create the guest thread (error %lu)", GetLastError());
         return HOST_EXIT_SETUP;
     }
+    guest_profile_start(thread);
     WaitForSingleObject(thread, INFINITE);
     GetExitCodeThread(thread, &code);
     CloseHandle(thread);
@@ -324,6 +329,12 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
              c->window_w ? "fixed" : "auto", c->stretch ? "stretch" : "letterbox", c->show_fps ? "on" : "off");
 }
 
+static const char* filter_label(const jpt_config_t* c) {
+    static const char* const labels[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic 4x", "anisotropic 8x",
+                                                         "anisotropic 16x" };
+    return labels[c->texture_filter];
+}
+
 static void renderer_filter(const jpt_config_t* c, int dev_filter, int* filter, unsigned* anisotropy) {
     static const unsigned levels[JPT_FILTER_COUNT] = { 0, 0, 4, 8, 16 };
     *anisotropy = levels[c->texture_filter];
@@ -375,9 +386,17 @@ int main(int argc, char** argv) {
     window_host_init();
     if (!jpt_make_dirs(user_dir)) host_log("host", "cannot create the user directory %s", user_dir);
     jpt_carry_user_files(game_dir, user_dir, log_line);
-    if (jpt_config_migrate(settings_file))
+    switch (jpt_config_migrate(settings_file)) {
+    case JPT_MIGRATED_EXPERIMENTAL:
         host_log("settings", "%s came from the experimental launcher: its display and graphics choices were reset "
                  "once to the current defaults", settings_file);
+        break;
+    case JPT_MIGRATED_GRAPHICS_DEFAULTS:
+        host_log("settings", "%s held the earlier launcher's graphics defaults (texture filter original, MSAA off, "
+                 "VSync off): those were reset once to the current defaults, other choices kept", settings_file);
+        break;
+    default: break;
+    }
 
     if (!opt.dry_run) {
         jpt_launcher_config_t launcher;
@@ -420,6 +439,9 @@ int main(int argc, char** argv) {
                           settings_file);
     present_set_vsync(cfg.vsync);
     native32_init();
+    /* Lifted .text always resolves to the same function (overrides repoint its thunks), so call sites keep it. */
+    g_recomp_site_lo = trespasser_text_start;
+    g_recomp_site_hi = trespasser_text_end;
     diagnostics_install(opt.dry_run ? 0 : opt.watchdog_seconds);
 
     if (!SetCurrentDirectoryA(game_dir) || !SetDllDirectoryA(game_dir)) {
@@ -470,9 +492,16 @@ int main(int argc, char** argv) {
         dd_set_gameplay_modes((DWORD)hardware.width, (DWORD)hardware.height, (DWORD)software.width,
                               (DWORD)software.height);
         window_host_set_title_sizes(hardware_title.width, hardware_title.height, software.width, software.height);
+        terrain_quality_set_render_height(hardware.height);
     }
     game_text_install();
     ui_canvas_install();
+    engine_limits_install(d3dr_hardware());
+    texture_streaming_install();
+    engine_heaps_install();
+    terrain_quality_install();
+    cpu_polygons_install();
+    engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);
     return run_guest();
 }

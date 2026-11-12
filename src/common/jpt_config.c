@@ -282,15 +282,46 @@ int jpt_ini_set(const char* path, const char* const* keys, const char* const* va
     return ok;
 }
 
-int jpt_config_migrate(const char* path) {
+static int reset_experimental(const char* path) {
     static const char* const keys[] = {
         JPT_KEY_DISPLAY_MODE, JPT_KEY_MONITOR,        JPT_KEY_WINDOW_SIZE, JPT_KEY_PRESENTATION,
         JPT_KEY_RENDERER,     JPT_KEY_RENDER_RESOLUTION, JPT_KEY_ASPECT_RATIO, JPT_KEY_TEXTURE_FILTER,
         JPT_KEY_MSAA,         JPT_KEY_VSYNC,          JPT_KEY_SHOW_FPS,
     };
     const char* removed[sizeof keys / sizeof keys[0]] = { 0 };
-    char version[16];
-    if (!path || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return 0;
-    if (jpt_ini_get(path, JPT_KEY_SETTINGS_VERSION, version, sizeof version)) return 0;
     return jpt_ini_set(path, keys, removed, (int)(sizeof keys / sizeof keys[0]));
+}
+
+static int is_old_graphics_default(const char* key, const char* value) {
+    int on;
+    if (!strcmp(key, JPT_KEY_TEXTURE_FILTER)) return !_stricmp(value, "original");
+    if (!strcmp(key, JPT_KEY_MSAA)) return !strcmp(value, "0") || !strcmp(value, "1");
+    if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &on) && !on;
+    return 0;
+}
+
+static int reset_old_graphics_defaults(const char* path, int* reset) {
+    static const char* const keys[] = { JPT_KEY_TEXTURE_FILTER, JPT_KEY_MSAA, JPT_KEY_VSYNC };
+    const char* picked[3];
+    const char* values[3];
+    char value[64];
+    int count = 0;
+    for (int i = 0; i < 3; i++)
+        if (jpt_ini_get(path, keys[i], value, sizeof value) && is_old_graphics_default(keys[i], value)) {
+            picked[count] = keys[i];
+            values[count++] = NULL;
+        }
+    *reset = count;
+    return jpt_ini_set(path, picked, values, count);
+}
+
+int jpt_config_migrate(const char* path) {
+    char version[16];
+    int reset = 0;
+    if (!path || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return JPT_MIGRATED_NOTHING;
+    if (!jpt_ini_get(path, JPT_KEY_SETTINGS_VERSION, version, sizeof version))
+        return reset_experimental(path) ? JPT_MIGRATED_EXPERIMENTAL : JPT_MIGRATED_NOTHING;
+    if (atoi(version) >= atoi(JPT_SETTINGS_VERSION)) return JPT_MIGRATED_NOTHING;
+    if (!reset_old_graphics_defaults(path, &reset)) return JPT_MIGRATED_NOTHING;
+    return reset ? JPT_MIGRATED_GRAPHICS_DEFAULTS : JPT_MIGRATED_VERSION_ONLY;
 }

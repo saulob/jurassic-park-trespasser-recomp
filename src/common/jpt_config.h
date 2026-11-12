@@ -25,7 +25,7 @@ extern "C" {
 #define JPT_KEY_SHOW_FPS "show_fps"
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
-#define JPT_SETTINGS_VERSION "2"
+#define JPT_SETTINGS_VERSION "3"
 
 enum { JPT_FILTER_ORIGINAL, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4, JPT_FILTER_ANISO8, JPT_FILTER_ANISO16, JPT_FILTER_COUNT };
 extern const char* const jpt_filter_keys[JPT_FILTER_COUNT];
@@ -70,8 +70,15 @@ int jpt_ini_get(const char* path, const char* key, char* value, size_t cap);
  * key) and keeps every other line; settings_version is written too. The file is replaced in one step. 1 on success. */
 int jpt_ini_set(const char* path, const char* const* keys, const char* const* values, int count);
 
-/* A file without settings_version comes from the experimental launcher, whose display and graphics choices cannot be
- * told apart from its defaults: those keys are removed once, so the current defaults apply. 1 when it migrated. */
+enum {
+    JPT_MIGRATED_NOTHING,
+    JPT_MIGRATED_EXPERIMENTAL,
+    JPT_MIGRATED_GRAPHICS_DEFAULTS,
+    JPT_MIGRATED_VERSION_ONLY,
+};
+/* Runs once per file. No settings_version: the experimental launcher's display and graphics keys are removed, as its
+ * choices cannot be told apart from its defaults. Version 2: texture_filter original, msaa 0/1 and vsync off were
+ * that launcher's defaults, so those values are removed and the current defaults apply; other values are kept. */
 int jpt_config_migrate(const char* path);
 
 int jpt_parse_bool(const char* text, int* out);

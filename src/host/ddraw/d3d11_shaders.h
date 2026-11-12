@@ -26,6 +26,17 @@ enum {
     D3D11_PS_DEBUG_DEPTH = 512
 };
 
+/* A world vertex's layer: the slice, which of the batch's texture arrays (t2 onwards), the texture's
+ * D3D11_PS_TEXTURED/TEX_ALPHA/KEY_TEST flags and its sampler (s0-s3 wrap/clamp per axis, s4 the device's). The HLSL
+ * decodes the same fields. */
+enum {
+    D3D11_WORLD_ARRAYS = 16,
+    D3D11_LAYER_ARRAY_SHIFT = 16,
+    D3D11_LAYER_FLAGS_SHIFT = 20,
+    D3D11_LAYER_ADDRESS_SHIFT = 24,
+    D3D11_DEVICE_SAMPLER = 4
+};
+
 typedef struct {
     const char* entry;
     const char* profile;
@@ -33,5 +44,7 @@ typedef struct {
 
 extern const char d3d11_shader_source[];
 extern const d3d11_shader_entry_t d3d11_shader_entries[D3D11_SHADER_COUNT];
+extern const char d3d11_bump_shader_source[];
+extern const d3d11_shader_entry_t d3d11_bump_shader_entries[3];
 
 #endif

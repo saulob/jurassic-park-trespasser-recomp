@@ -55,6 +55,7 @@ void shim_CreateThread(void) {
         s_threads[n].entry = a[2];
         s_threads[n].creator = g_cur_func;
         s_thread_count = n + 1;
+        guest_profile_add_worker(h, a[2]);
         if (n < THREAD_LOG_LIMIT)
             host_log("thread", "guest thread %lu created by sub_%08X, entry sub_%08X", GetThreadId(h), g_cur_func, a[2]);
     }
@@ -85,6 +86,7 @@ static void finish_logging(void) {
     window_host_release_cursor();
     window_host_input_summary();
     d3dr_summary();
+    guest_profile_summary();
     io_trace_summary();
 }
 

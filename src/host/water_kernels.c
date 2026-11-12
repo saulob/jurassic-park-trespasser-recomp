@@ -2,8 +2,8 @@
 
 #include <string.h>
 
-#if defined(RECOMP_X87_RING) || defined(RECOMP_X87_LOCAL)
-#error "the kernels reproduce the shifting x87 model (fp_push_impl) the MSVC build lifts with"
+#ifdef RECOMP_X87_LOCAL
+#error "the kernels reproduce the x87 model the MSVC build lifts with: shifting (fp_push_impl) or the ring"
 #endif
 
 #define INV_SQRT_TABLE 0x006715A4u
@@ -39,13 +39,17 @@ static uint32_t to_int32(double v) {
     return v > -2147483649.0 && v < 2147483648.0 ? (uint32_t)(int32_t)v : 0x80000000u;
 }
 
-/* The lifted x87 stack shifts on every push and fills its bottom with zero on every pop, so a balanced
- * sequence that reached depth d leaves the d bottom registers zero. */
+/* A balanced sequence that reached depth d: the shifting x87 model fills its d bottom registers with zero on the
+ * pops; the ring leaves the stack as it found it. */
 static void x87_balanced(int depth) {
+#ifdef RECOMP_X87_RING
+    (void)depth;
+#else
     for (int i = 8 - depth; i < 8; i++) {
         g_st[i] = 0.0;
         g_st_i64[i] = 0;
     }
+#endif
 }
 
 static void flags_cmp(uint32_t a, uint32_t b) {

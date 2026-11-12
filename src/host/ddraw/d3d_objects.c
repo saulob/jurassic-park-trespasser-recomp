@@ -40,6 +40,7 @@ static void d3d_log(const char* fmt, ...) {
 
 static HRESULT d3d_done(dd_method_t* m, HRESULT hr) {
     char buf[40];
+    dd_returned(m, hr);
     if (FAILED(hr)) s_failed_calls++;
     if (m->calls++ == 0)
         d3d_log("first call to %s from sub_%08X -> %s", m->name, g_cur_func, ddraw_hresult_text((uint32_t)hr, buf, sizeof buf));
@@ -370,7 +371,7 @@ static HRESULT STDMETHODCALLTYPE vp_GetViewport(IDirect3DViewport3* This, LPD3DV
 }
 
 static void viewport_changed(d3d_viewport_t* v) {
-    if (v->device && v->device->current == v) d3dr_state_will_change(v->device);
+    if (v->device && v->device->current == v) d3dr_state_will_change(v->device, D3DR_FLUSH_VIEWPORT, 0);
 }
 
 static HRESULT STDMETHODCALLTYPE vp_SetViewport(IDirect3DViewport3* This, LPD3DVIEWPORT data) {
@@ -570,7 +571,7 @@ static HRESULT STDMETHODCALLTYPE dv_DeleteViewport(IDirect3DDevice3* This, LPDIR
     d3d_viewport_t* v = viewport_from(viewport);
     D3D_METHOD("IDirect3DDevice3::DeleteViewport");
     if (!v || v->device != dev) D3D_RETURN(DDERR_INVALIDPARAMS);
-    d3dr_state_will_change(dev);
+    d3dr_state_will_change(dev, D3DR_FLUSH_VIEWPORT, 0);
     drop_viewport(dev, v);
     D3D_RETURN(DD_OK);
 }
@@ -649,7 +650,7 @@ static HRESULT STDMETHODCALLTYPE dv_SetCurrentViewport(IDirect3DDevice3* This, L
     d3d_viewport_t* v = viewport_from(viewport);
     D3D_METHOD("IDirect3DDevice3::SetCurrentViewport");
     if (!v || v->device != dev) D3D_RETURN(DDERR_INVALIDPARAMS);
-    d3dr_state_will_change(dev);
+    d3dr_state_will_change(dev, D3DR_FLUSH_VIEWPORT, 0);
     dev->current = v;
     D3D_RETURN(DD_OK);
 }
@@ -778,7 +779,7 @@ static HRESULT STDMETHODCALLTYPE dv_SetRenderState(IDirect3DDevice3* This, D3DRE
         D3D_RETURN(DDERR_INVALIDPARAMS);
     }
     if (dev->render[state] != value) {
-        d3dr_state_will_change(dev);
+        d3dr_state_will_change(dev, D3DR_FLUSH_RENDER_STATE, (unsigned)state);
         dev->render[state] = value;
         switch (state) {
         case D3DRENDERSTATE_TEXTUREADDRESS:
@@ -926,7 +927,6 @@ static HRESULT STDMETHODCALLTYPE dv_SetTexture(IDirect3DDevice3* This, DWORD sta
     if ((texture && !s) || stage >= D3D_TEXTURE_STAGES) D3D_RETURN(DDERR_INVALIDPARAMS);
     slot = texture_slot(dev, stage);
     if (s == *slot) D3D_RETURN(DD_OK);
-    if (!stage) d3dr_state_will_change(dev);
     if (s) dd_surface_addref(s);
     if (*slot) dd_surface_release(*slot);
     *slot = s;
@@ -958,6 +958,18 @@ static int stage_value_valid(DWORD stage, DWORD type, DWORD value) {
     }
 }
 
+/* Wrap and clamp travel in each world vertex (d3dt_vertex_sampler), so changing between them keeps the batch. */
+static int address_joins(const d3d_device_t* dev, DWORD type, DWORD value) {
+    switch (type) {
+    case D3DTSS_ADDRESS:
+        return d3dt_address_joins(dev->stage[0][D3DTSS_ADDRESSU], value) &&
+               d3dt_address_joins(dev->stage[0][D3DTSS_ADDRESSV], value);
+    case D3DTSS_ADDRESSU:
+    case D3DTSS_ADDRESSV: return d3dt_address_joins(dev->stage[0][type], value);
+    default: return 0;
+    }
+}
+
 static HRESULT STDMETHODCALLTYPE dv_SetTextureStageState(IDirect3DDevice3* This, DWORD stage, D3DTEXTURESTAGESTATETYPE type,
                                                          DWORD value) {
     d3d_device_t* dev = DEV(This);
@@ -967,7 +979,7 @@ static HRESULT STDMETHODCALLTYPE dv_SetTextureStageState(IDirect3DDevice3* This,
         D3D_RETURN(DDERR_INVALIDPARAMS);
     }
     if (dev->stage[stage][type] != value) {
-        if (!stage) d3dr_state_will_change(dev);
+        if (!stage && !address_joins(dev, type, value)) d3dr_state_will_change(dev, D3DR_FLUSH_STAGE_STATE, (unsigned)type);
         dev->stage[stage][type] = value;
         if (type == D3DTSS_ADDRESS) dev->stage[stage][D3DTSS_ADDRESSU] = dev->stage[stage][D3DTSS_ADDRESSV] = value;
     }
@@ -1046,9 +1058,20 @@ static void note_texture_load(const dd_surface_t* src, const dd_surface_t* dst) 
 }
 
 /* Load copies the pixels (and the source colour key) at once, as the game's own test expects. */
+/* DEBUG_SAULO: texture Loads and how much of them changed. */
+static unsigned long long s_loads, s_loads_unchanged, s_load_texels, s_load_changed_texels;
+
+void d3d_objects_load_counts(unsigned long long* loads, unsigned long long* unchanged, unsigned long long* texels,
+                             unsigned long long* changed_texels) {
+    *loads = s_loads, *unchanged = s_loads_unchanged, *texels = s_load_texels, *changed_texels = s_load_changed_texels;
+    s_loads = s_loads_unchanged = s_load_texels = s_load_changed_texels = 0;
+}
+
 static HRESULT STDMETHODCALLTYPE tx_Load(IDirect3DTexture2* This, LPDIRECT3DTEXTURE2 source) {
     dd_surface_t* dst = DD_OWNER(dd_surface_t, This);
     dd_surface_t* src = d3d_surface_from_texture(source);
+    d3dt_rect_t changed;
+    int key_changed;
     D3D_METHOD("IDirect3DTexture2::Load");
     if (!src) D3D_RETURN(DDERR_INVALIDPARAMS);
     if (src == dst) D3D_RETURN(DD_OK);
@@ -1060,14 +1083,24 @@ static HRESULT STDMETHODCALLTYPE tx_Load(IDirect3DTexture2* This, LPDIRECT3DTEXT
     note_texture_load(src, dst);
     d3dr_surface_cpu_access(src, 0, CPU_ACCESS_BLT_SOURCE);
     d3dr_surface_cpu_access(dst, 1, CPU_ACCESS_BLT_DEST);
-    for (DWORD y = 0; y < dst->height; y++)
-        memcpy(dst->bits + (size_t)y * dst->pitch, src->bits + (size_t)y * src->pitch,
-               (size_t)dst->width * (size_t)dd_format_bytes(&dst->format));
+    key_changed = src->has_src_key && (!dst->has_src_key || memcmp(&dst->src_key, &src->src_key, sizeof src->src_key));
     if (src->has_src_key) {
         dst->has_src_key = 1;
         dst->src_key = src->src_key;
     }
-    d3dr_surface_cpu_written(dst, NULL);
+    s_loads++;
+    s_load_texels += (unsigned long long)dst->width * dst->height;
+    /* Only what differs from the texture's own copy is copied and uploaded: the image cache Loads whole pages. */
+    if (d3dt_copy_changed(dst->bits, dst->pitch, src->bits, src->pitch, dst->width, dst->height,
+                          (unsigned)dd_format_bytes(&dst->format), &changed)) {
+        RECT r = { changed.left, changed.top, changed.right, changed.bottom };
+        s_load_changed_texels += (unsigned long long)(r.right - r.left) * (r.bottom - r.top);
+        d3dr_surface_cpu_written(dst, key_changed ? NULL : &r);
+    } else if (key_changed) {
+        d3dr_surface_cpu_written(dst, NULL);
+    } else {
+        s_loads_unchanged++;
+    }
     D3D_RETURN(DD_OK);
 }
 
@@ -1130,6 +1163,22 @@ C_ASSERT(offsetof(IDirect3DTexture2Vtbl, Load) == 0x14);
 C_ASSERT(sizeof(D3DDEVICEDESC) == 0xFC && offsetof(D3DDEVICEDESC, dpcTriCaps) == 0x64);
 C_ASSERT(offsetof(D3DDEVICEDESC, dwDeviceRenderBitDepth) == 0x9C && offsetof(D3DDEVICEDESC, dwTextureOpCaps) == 0xF4);
 C_ASSERT(sizeof(D3DTLVERTEX) == 32 && sizeof(D3DVIEWPORT2) == 44 && sizeof(D3DRECT) == 16);
+
+/* Called per polygon or per batch, and only host logic: no window, no wait on another thread, no call back into the
+ * game. */
+int d3d_method_in_place(uint32_t va) {
+    static const void* const k_methods[] = {
+        (const void*)dv_SetTexture, (const void*)dv_GetTexture, (const void*)dv_DrawPrimitive,
+        (const void*)dv_DrawIndexedPrimitive, (const void*)dv_SetRenderState, (const void*)dv_GetRenderState,
+        (const void*)dv_SetTextureStageState, (const void*)dv_GetTextureStageState, (const void*)dv_BeginScene,
+        (const void*)dv_EndScene, (const void*)dv_SetCurrentViewport, (const void*)dv_GetCurrentViewport,
+        (const void*)dv_SetTransform, (const void*)dv_GetTransform, (const void*)vp_Clear, (const void*)vp_Clear2,
+        (const void*)tx_GetHandle, (const void*)tx_Load,
+    };
+    for (size_t i = 0; i < sizeof k_methods / sizeof k_methods[0]; i++)
+        if ((uint32_t)(uintptr_t)k_methods[i] == va) return 1;
+    return 0;
+}
 
 int d3d_vtables_complete(void) {
     static const struct { const void* table; size_t size; } k_tables[] = {

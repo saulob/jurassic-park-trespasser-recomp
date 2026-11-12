@@ -13,6 +13,7 @@
 #include "d3d11_shaders.h"
 #include "host.h"
 #include "jpt_display.h"
+#include "page_arena.h"
 #include "page_guard.h"
 #include "target_sync.h"
 
@@ -24,7 +25,6 @@
 #define IB_INITIAL (2u << 20)
 #define SUMMARY_INTERVAL 60.0
 #define PERF_INTERVAL 5.0
-#define CALIBRATION_CALLER 0x00513660u
 #define MAX_BIAS_STEPS 17
 #define MAX_STATE_CLASSES 48
 #define MAX_READBACK_CALLERS 24
@@ -43,6 +43,8 @@
 #define STATE_TEX_UNUSABLE 0xFu
 
 enum { PERF_TRANSLATE, PERF_DRAW, PERF_UPLOAD, PERF_READBACK, PERF_OVERLAY, PERF_PRESENT, PERF_COUNT };
+/* DrawPrimitive runs thousands of times a frame: one call in TRANSLATE_SAMPLE is timed and counted for all of them. */
+#define TRANSLATE_SAMPLE 8u
 
 typedef struct {
     uint32_t caller;
@@ -59,7 +61,12 @@ typedef struct {
     unsigned long long readback_bytes;
     unsigned long long frames, no_read_accesses, synthesized, front_copies;
     unsigned long long deferred_locks, deferred_untouched, deferred_touched;
-    unsigned long long draws, triangles, target_accesses, composites, composited_pixels, composited_black, uploads;
+    unsigned long long draws, triangles, terrain_triangles, target_accesses, composites, composited_pixels;
+    unsigned long long composited_black, uploads;
+    unsigned long long cpu_polygons, cpu_polygon_locks, cpu_polygon_readbacks, cpu_polygon_readback_pixels;
+    unsigned long long cpu_polygon_adopted, inert_locks, filled_pixels, scanned_pixels, text_boxes, watch_reads;
+    unsigned long long texture_joins;
+    unsigned long long flush_kind[D3DR_FLUSH_KINDS], flush_render_state[D3D_RENDER_STATES], flush_stage_state[32];
     readback_caller_t callers[MAX_READBACK_CALLERS];
 } perf_window_t;
 
@@ -72,6 +79,7 @@ typedef struct {
     float x, y, z, rhw;
     uint32_t diffuse, specular;
     float u, v;
+    uint32_t layer; /* the texture's slice in its array */
 } tl_vertex_t;
 
 typedef struct {
@@ -85,11 +93,19 @@ typedef struct {
     float depth, pad[3];
 } pass_constants_t;
 
+typedef struct texture_pool texture_pool_t;
+
+/* A texture is a slice of a pool's array, or its own one-slice array (dynamic ones, and when no pool can take it). */
 typedef struct d3dr_texture {
     ID3D11Texture2D* tex;
     ID3D11ShaderResourceView* srv;
+    texture_pool_t* pool;
+    UINT slice;
+    unsigned long long batch; /* the batch that last drew it */
     UINT width, height, levels;
     int format;
+    int alpha_kind;
+    d3dt_upload_history_t history;
     unsigned generation;
     size_t bytes;
     uint32_t palette_sum;
@@ -121,7 +137,18 @@ struct d3dr_target {
     tsync_deferred_t deferred;
     d3dt_rect_t deferred_region;
     readback_reason_t deferred_reason;
+    uint32_t deferred_caller;
+    int inert_lock;
+    /* After a Flip the reference no longer matches the CPU buffer: in a lazy capture only the tiles in fresh were
+     * captured since, and nothing else is compared or uploaded. */
+    int lazy;
+    tsync_tiles_t fresh;
     int frame_started;
+    /* Since the last full clear (gpu_box_known), the GPU has drawn only inside gpu_box (legacy pixels); the rest of
+     * the target holds gpu_clear. A readback then needs only the box. */
+    int gpu_box_known;
+    d3dt_rect_t gpu_box;
+    uint16_t gpu_clear;
 };
 
 typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT,
@@ -160,6 +187,12 @@ static struct {
     uint32_t* screen_scratch;
     ID3D11Texture2D* ui_tex;
     ID3D11ShaderResourceView* ui_srv;
+    ID3D11Texture2D* still_tex;
+    ID3D11ShaderResourceView* still_srv;
+    UINT still_w, still_h;
+    const void* still_bits;
+    uint32_t still_key;
+    unsigned long long still_uploads, still_draws;
     uint32_t ui_pixels[JPT_UI_CANVAS_W * JPT_UI_CANVAS_H];
     struct {
         const uint16_t* bits;
@@ -179,6 +212,37 @@ static struct {
     int frame_cb_valid;
     d3d_device_t* batch_dev;
     D3D11_PRIMITIVE_TOPOLOGY batch_topology;
+    /* Draws join the open batch while their texture's array is one of the D3D11_WORLD_ARRAYS it binds; the slice,
+     * the array and the texture's flags travel in each vertex. */
+    unsigned long long batch_serial;
+    ID3D11ShaderResourceView* batch_srv[D3D11_WORLD_ARRAYS];
+    unsigned batch_arrays;
+    d3dr_texture_t* batch_tex;
+    int batch_has_texture;
+    /* What flush() last bound; any other binding clears valid. */
+    struct {
+        int valid;
+        ID3D11RenderTargetView* rtv;
+        ID3D11DepthStencilView* dsv;
+        ID3D11Buffer *vb, *ib;
+        ID3D11ShaderResourceView* srv[D3D11_WORLD_ARRAYS];
+        unsigned srvs;
+        ID3D11SamplerState* sampler[D3D11_DEVICE_SAMPLER + 1];
+        ID3D11RasterizerState* raster;
+        ID3D11BlendState* blend;
+        ID3D11DepthStencilState* depth;
+        D3D11_PRIMITIVE_TOPOLOGY topology;
+        D3D11_VIEWPORT vp;
+        D3D11_RECT scissor;
+    } bound;
+    unsigned pool_pages, pool_pages_peak;
+    unsigned translate_calls;
+    unsigned long long texture_joins;
+    /* DEBUG_SAULO: uploads in the window by kind (UPLOAD_*): count, texels, ms. */
+    struct {
+        unsigned long long n, texels;
+        double ms;
+    } uploads_by[3];
     tl_vertex_t* verts;
     uint32_t* indices;
     UINT nverts, nindices, cap_verts, cap_indices;
@@ -203,8 +267,17 @@ static struct {
     uint32_t dark_keys[MAX_DARK_SAMPLES];
     unsigned dark_samples;
     unsigned long long draw_sequence;
-    int generate_mips;
     unsigned devices, textures_alive;
+    unsigned textures_peak, textures_created_window, textures_released_window; /* DEBUG_SAULO */
+    unsigned textures_reused_window, textures_parked_window;                   /* DEBUG_SAULO */
+    unsigned long long textures_reused;
+    uint32_t* mip_chain;
+    size_t mip_capacity;
+    unsigned long long textures_mipped, textures_dynamic, mip_texels;
+    double mip_ms;
+    unsigned anisotropy_logged, msaa_logged;
+    unsigned long long va_total, va_used, va_peak;
+    uint32_t charge_caller;
     unsigned long long untracked_writes;
     unsigned untracked_logged, black_writes_logged;
     /* [0] menus, in-game dialogs, videos and loading, [1] gameplay */
@@ -217,6 +290,8 @@ static struct {
     uint32_t* upload_buffer;
     size_t upload_capacity;
     d3dr_target_t* deferred;
+    int capture_text;
+    d3dr_target_t* text_target;
 } R;
 
 static const char* const k_filter_names[] = { "original", "point", "bilinear", "trilinear", "anisotropic" };
@@ -260,15 +335,13 @@ void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, un
     R.fixed_w = box_w;
     R.fixed_h = box_h;
     R.filter = filter;
-    R.anisotropy = anisotropy < 2 ? 2 : anisotropy > 16 ? 16 : anisotropy;
+    R.anisotropy = d3dt_pick_anisotropy(anisotropy < 2 ? 2 : anisotropy, D3D11_REQ_MAXANISOTROPY);
     R.msaa_request = msaa;
 }
 
 int d3dr_hardware(void) { return R.hardware; }
 
 unsigned d3dr_device_count(void) { return R.devices; }
-
-void d3dr_set_generate_mips(int on) { R.generate_mips = on; }
 
 void d3dr_defer_switch(int hardware) { pending_switch_set(&R.pending, hardware); }
 
@@ -371,6 +444,7 @@ static int create_static_objects(void) {
         { "COLOR", 0, DXGI_FORMAT_B8G8R8A8_UNORM, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR", 1, DXGI_FORMAT_B8G8R8A8_UNORM, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 1, DXGI_FORMAT_R32_UINT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
     D3D11_RASTERIZER_DESC rd;
     D3D11_DEPTH_STENCIL_DESC dd;
@@ -386,7 +460,7 @@ static int create_static_objects(void) {
             hr = ID3D11Device_CreatePixelShader(R.dev, ID3D10Blob_GetBufferPointer(R.code[i]),
                                                 ID3D10Blob_GetBufferSize(R.code[i]), NULL, &R.ps[i]);
     if (SUCCEEDED(hr))
-        hr = ID3D11Device_CreateInputLayout(R.dev, elements, 4, ID3D10Blob_GetBufferPointer(R.code[D3D11_SHADER_VS_TL]),
+        hr = ID3D11Device_CreateInputLayout(R.dev, elements, 5, ID3D10Blob_GetBufferPointer(R.code[D3D11_SHADER_VS_TL]),
                                             ID3D10Blob_GetBufferSize(R.code[D3D11_SHADER_VS_TL]), &R.layout);
     if (FAILED(hr)) {
         log_hr("shader object creation", hr);
@@ -462,6 +536,10 @@ static void release_static_objects(void) {
     SAFE_RELEASE(R.blend_premultiplied);
     SAFE_RELEASE(R.ui_srv);
     SAFE_RELEASE(R.ui_tex);
+    SAFE_RELEASE(R.still_srv);
+    SAFE_RELEASE(R.still_tex);
+    R.still_w = R.still_h = 0;
+    R.still_bits = NULL;
     for (int a = 0; a < 2; a++)
         for (int b = 0; b < 2; b++)
             for (int c = 0; c < 9; c++) SAFE_RELEASE(R.depth[a][b][c]);
@@ -558,6 +636,7 @@ static void log_renderer_line(void) {
 }
 
 int d3dr_startup(void) {
+    R.batch_serial = 1;
     R.selfmod_mark = selfmod_entries();
     R.last_summary = R.perf_start = now_seconds();
     if (R.requested) {
@@ -569,35 +648,279 @@ int d3dr_startup(void) {
 }
 
 static void flush(void);
+static void flush_parked(void);
 static void apply_sync(d3dr_target_t* t, unsigned acts, const d3dt_rect_t* region, readback_reason_t reason, int exact);
 static void check_front(d3dr_target_t* t);
 static void settle_deferred(void);
 static void drop_deferred(const d3dr_target_t* t);
+static void end_polygon_run(const d3dr_target_t* t);
 
 /* Called by the window host between the game's own display release and rebuild (F5). */
 int d3dr_set_hardware(int hardware) {
     if (hardware == R.hardware) return 1;
     if (hardware && !prepare_hardware()) return 0;
     if (R.nindices) flush();
+    if (!hardware) flush_parked();
     R.nverts = R.nindices = 0;
+    R.batch_arrays = 0;
     R.batch_dev = NULL;
     R.hardware = hardware;
     R.draw_cb_valid = R.frame_cb_valid = 0;
+    R.bound.valid = 0;
+    engine_limits_apply(hardware);
     log_renderer_line();
     return 1;
 }
 
 /* ---- per-surface GPU objects ---- */
 
-static void release_texture(dd_surface_t* s) {
-    d3dr_texture_t* t = (d3dr_texture_t*)s->gpu_texture;
-    if (!t) return;
+/* Texture arrays by size and mip count, POOL_SLICES slices each; a page goes when its last slice does. */
+#define POOL_SLICES 64u
+#define MAX_POOLS 128u
+
+struct texture_pool {
+    ID3D11Texture2D* tex;
+    ID3D11ShaderResourceView* srv;
+    UINT width, height, levels;
+    unsigned generation, used;
+    uint32_t free_slices[POOL_SLICES / 32];
+};
+
+static texture_pool_t s_pools[MAX_POOLS];
+
+static ID3D11ShaderResourceView* array_view(ID3D11Texture2D* tex, UINT levels, UINT slices) {
+    D3D11_SHADER_RESOURCE_VIEW_DESC desc;
+    ID3D11ShaderResourceView* srv = NULL;
+    memset(&desc, 0, sizeof desc);
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    desc.Texture2DArray.MipLevels = levels;
+    desc.Texture2DArray.ArraySize = slices;
+    if (FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)tex, &desc, &srv))) return NULL;
+    return srv;
+}
+
+static ID3D11Texture2D* make_array(UINT w, UINT h, UINT levels, UINT slices) {
+    D3D11_TEXTURE2D_DESC desc;
+    ID3D11Texture2D* tex = NULL;
+    memset(&desc, 0, sizeof desc);
+    desc.Width = w;
+    desc.Height = h;
+    desc.MipLevels = levels;
+    desc.ArraySize = slices;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(ID3D11Device_CreateTexture2D(R.dev, &desc, NULL, &tex))) return NULL;
+    return tex;
+}
+
+static int free_slice(const texture_pool_t* p) {
+    for (unsigned w = 0; w < POOL_SLICES / 32; w++) {
+        unsigned long bit;
+        if (_BitScanForward(&bit, p->free_slices[w])) return (int)(w * 32 + bit);
+    }
+    return -1;
+}
+
+static int pool_take(d3dr_texture_t* t, UINT w, UINT h, UINT levels) {
+    texture_pool_t* p = NULL;
+    int slice = -1;
+    for (unsigned i = 0; i < MAX_POOLS && slice < 0; i++) {
+        texture_pool_t* c = &s_pools[i];
+        if (c->tex && c->generation == R.generation && c->width == w && c->height == h && c->levels == levels &&
+            (slice = free_slice(c)) >= 0)
+            p = c;
+    }
+    if (!p) {
+        for (unsigned i = 0; i < MAX_POOLS && !p; i++)
+            if (!s_pools[i].tex) p = &s_pools[i];
+        if (!p || !(p->tex = make_array(w, h, levels, POOL_SLICES))) return 0;
+        if (!(p->srv = array_view(p->tex, levels, POOL_SLICES))) {
+            SAFE_RELEASE(p->tex);
+            return 0;
+        }
+        p->width = w;
+        p->height = h;
+        p->levels = levels;
+        p->generation = R.generation;
+        p->used = 0;
+        memset(p->free_slices, 0xFF, sizeof p->free_slices);
+        slice = 0;
+        if (++R.pool_pages > R.pool_pages_peak) R.pool_pages_peak = R.pool_pages;
+    }
+    p->free_slices[slice / 32] &= ~(1u << (slice % 32));
+    p->used++;
+    t->pool = p;
+    t->slice = (UINT)slice;
+    return 1;
+}
+
+static void pool_give_back(d3dr_texture_t* t) {
+    texture_pool_t* p = t->pool;
+    if (!p) return;
+    p->free_slices[t->slice / 32] |= 1u << (t->slice % 32);
+    t->pool = NULL;
+    if (--p->used) return;
+    SAFE_RELEASE(p->srv);
+    SAFE_RELEASE(p->tex);
+    R.pool_pages--;
+}
+
+static ID3D11Resource* texture_resource(const d3dr_texture_t* t) {
+    return (ID3D11Resource*)(t->pool ? t->pool->tex : t->tex);
+}
+
+static UINT texture_subresource(const d3dr_texture_t* t, UINT level) {
+    return t->pool ? level + t->slice * t->pool->levels : level;
+}
+
+static ID3D11ShaderResourceView* texture_view(const d3dr_texture_t* t) { return t->pool ? t->pool->srv : t->srv; }
+
+/* The open batch still has to draw what this texture holds now. */
+static void settle_batch_texture(const d3dr_texture_t* t) {
+    if (t && R.nindices && t->batch == R.batch_serial) flush();
+}
+
+static void destroy_texture(d3dr_texture_t* t) {
+    settle_batch_texture(t);
+    pool_give_back(t);
     SAFE_RELEASE(t->srv);
     SAFE_RELEASE(t->tex);
     R.texture_memory -= t->bytes;
     R.textures_alive--;
+    R.textures_released_window++;
     free(t);
+}
+
+static void release_texture(dd_surface_t* s) {
+    d3dr_texture_t* t = (d3dr_texture_t*)s->gpu_texture;
+    if (!t) return;
+    destroy_texture(t);
     s->gpu_texture = NULL;
+}
+
+/* The game drops every texture surface when it releases its Direct3D device (focus loss, menus) and loads the same
+ * pixels into new surfaces right after. A texture whose GPU copy matches its surface is parked under the surface's
+ * content and adopted by a new surface with the same content, size and conversion; the real device is the same. */
+#define PARK_SLOTS 2048u
+#define PARK_MAX_BYTES ((size_t)256 << 20)
+#define PARK_MAX_SECONDS 30.0
+
+typedef struct {
+    d3dr_texture_t* texture;
+    uint64_t hash;
+    DWORD width, height, key_low, key_high;
+    int format, has_key;
+    uint32_t palette_sum;
+    double parked_at;
+} parked_texture_t;
+
+static parked_texture_t s_parked[PARK_SLOTS];
+static unsigned s_parked_count;
+static size_t s_parked_bytes;
+
+static uint64_t content_hash(const dd_surface_t* s) {
+    uint32_t a = 2166136261u, b = 0x9E3779B9u;
+    size_t row_bytes = (size_t)s->width * ((s->format.dwRGBBitCount + 7) / 8);
+    for (DWORD y = 0; y < s->height; y++) {
+        const BYTE* row = s->bits + (size_t)y * (size_t)s->pitch;
+        size_t i = 0;
+        uint32_t w0, w1;
+        for (; i + 8 <= row_bytes; i += 8) {
+            memcpy(&w0, row + i, 4);
+            memcpy(&w1, row + i + 4, 4);
+            a = (a ^ w0) * 16777619u;
+            b = (b ^ w1) * 2246822519u;
+        }
+        for (; i < row_bytes; i++) a = (a ^ row[i]) * 16777619u;
+        b = (b ^ y) * 2246822519u;
+    }
+    return (uint64_t)a << 32 | b;
+}
+
+static parked_texture_t parked_key(const dd_surface_t* s, int format, uint32_t palette_sum) {
+    parked_texture_t k;
+    memset(&k, 0, sizeof k);
+    k.hash = content_hash(s);
+    k.width = s->width;
+    k.height = s->height;
+    k.format = format;
+    k.palette_sum = palette_sum;
+    k.has_key = s->has_src_key;
+    if (s->has_src_key) {
+        k.key_low = s->src_key.dwColorSpaceLowValue;
+        k.key_high = s->src_key.dwColorSpaceHighValue;
+    }
+    return k;
+}
+
+static void unpark(unsigned i, int destroy) {
+    s_parked_bytes -= s_parked[i].texture->bytes;
+    if (destroy) destroy_texture(s_parked[i].texture);
+    s_parked[i] = s_parked[--s_parked_count];
+}
+
+static void unpark_oldest(void) {
+    unsigned oldest = 0;
+    for (unsigned i = 1; i < s_parked_count; i++)
+        if (s_parked[i].parked_at < s_parked[oldest].parked_at) oldest = i;
+    unpark(oldest, 1);
+}
+
+static void flush_parked(void) {
+    while (s_parked_count) unpark(s_parked_count - 1, 1);
+}
+
+static void age_parked(double now) {
+    for (unsigned i = 0; i < s_parked_count;)
+        if (now - s_parked[i].parked_at > PARK_MAX_SECONDS) unpark(i, 1);
+        else i++;
+}
+
+/* The surface was written after its last upload (pages the write watch has not handed over yet). */
+static int written_since_upload(dd_surface_t* s) {
+    static PVOID pages[1];
+    ULONG_PTR count = 1;
+    ULONG granularity = 0;
+    if (!s->watched || !s->exposed) return 0;
+    return GetWriteWatch(0, s->bits, (size_t)s->pitch * s->height, pages, &count, &granularity) || count != 0;
+}
+
+static int park_texture(dd_surface_t* s) {
+    d3dr_texture_t* t = (d3dr_texture_t*)s->gpu_texture;
+    parked_texture_t k;
+    if (!R.dev || !R.hardware || t->generation != R.generation || t->history.dynamic || !s->bits) return 0;
+    if (!d3dt_rect_empty(&s->texture_dirty) || written_since_upload(s) || t->bytes > PARK_MAX_BYTES) return 0;
+    k = parked_key(s, t->format, t->palette_sum);
+    while (s_parked_count == PARK_SLOTS || s_parked_bytes + t->bytes > PARK_MAX_BYTES) unpark_oldest();
+    k.texture = t;
+    k.parked_at = now_seconds();
+    s_parked[s_parked_count++] = k;
+    s_parked_bytes += t->bytes;
+    R.textures_parked_window++;
+    s->gpu_texture = NULL;
+    return 1;
+}
+
+static d3dr_texture_t* adopt_parked(const dd_surface_t* s, int format, UINT levels, uint32_t palette_sum) {
+    parked_texture_t k;
+    if (!s_parked_count || !s->bits) return NULL;
+    k = parked_key(s, format, palette_sum);
+    for (unsigned i = 0; i < s_parked_count; i++) {
+        const parked_texture_t* p = &s_parked[i];
+        d3dr_texture_t* t = p->texture;
+        if (p->hash != k.hash || p->width != k.width || p->height != k.height || p->format != k.format ||
+            p->palette_sum != k.palette_sum || p->has_key != k.has_key || p->key_low != k.key_low ||
+            p->key_high != k.key_high || t->levels != levels || t->generation != R.generation)
+            continue;
+        unpark(i, 0);
+        R.textures_reused++;
+        R.textures_reused_window++;
+        return t;
+    }
+    return NULL;
 }
 
 static void release_target_resources(d3dr_target_t* t) {
@@ -664,9 +987,24 @@ static void choose_size(UINT legacy_w, UINT legacy_h, UINT* w, UINT* h) {
     d3dt_auto_resolution((unsigned)view_w, (unsigned)view_h, legacy_w, legacy_h, w, h);
 }
 
+static int create_target_resources_with(d3dr_target_t* t, UINT samples);
+
 static int create_target_resources(d3dr_target_t* t) {
-    float clear_color[4] = { 0, 0, 0, 1 };
     UINT samples = supported_samples();
+    if (samples < R.msaa_request && !R.msaa_logged) {
+        R.msaa_logged = 1;
+        host_log("d3d11", "MSAA %ux is not supported by this graphics card for the game's formats: %s instead",
+                 R.msaa_request, samples > 1 ? (samples == 4 ? "4x" : "2x") : "off");
+    }
+    if (create_target_resources_with(t, samples)) return 1;
+    if (samples == 1) return 0;
+    host_log("d3d11", "the %ux multisampled render target could not be created: the target is created without MSAA",
+             samples);
+    return create_target_resources_with(t, 1);
+}
+
+static int create_target_resources_with(d3dr_target_t* t, UINT samples) {
+    float clear_color[4] = { 0, 0, 0, 1 };
     UINT w, h;
     HRESULT hr = S_OK;
     choose_size(t->legacy_w, t->legacy_h, &w, &h);
@@ -703,6 +1041,7 @@ static int create_target_resources(d3dr_target_t* t) {
     t->width = w;
     t->height = h;
     t->generation = R.generation;
+    t->gpu_box_known = 0;
     memset(&t->dirty, 0, sizeof t->dirty);
     host_log("d3d11", "3D render target %ux%u B8G8R8A8 (rasterised at this size) for the game's %ux%u screen, %ux MSAA%s", w, h, t->legacy_w,
              t->legacy_h, samples, samples < R.msaa_request ? " (requested level unsupported: reduced)" : "");
@@ -753,7 +1092,8 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
     R.devices++;
     host_log("d3d", "Direct3D device #%u: %lux%lu target at %ux%u, %ux MSAA, %u textures alive, texture filter %s%s, "
              "mipmaps %s", R.devices, s->width, s->height, t->width, t->height, t->samples, R.textures_alive,
-             k_filter_names[R.filter], anisotropy_text(), R.generate_mips ? "generated" : "none (as the game's textures)");
+             k_filter_names[R.filter], anisotropy_text(),
+             d3dt_filter_uses_mips(R.filter) ? "generated for the 3D world's textures" : "none (as the game's textures)");
     return DD_OK;
 }
 
@@ -769,6 +1109,7 @@ void d3dr_detach(d3d_device_t* dev) {
         check_front(t);
         apply_sync(t, tsync_gpu_release(&t->sync), NULL, READBACK_OTHER, exact);
     }
+    end_polygon_run(t);
     release_target_resources(t);
     if (t->surface) t->surface->target = NULL;
     free(t->reference);
@@ -778,16 +1119,21 @@ void d3dr_detach(d3d_device_t* dev) {
 }
 
 void d3dr_surface_freed(dd_surface_t* s) {
-    if (s->gpu_texture) release_texture(s);
+    if (s->gpu_texture && !park_texture(s)) release_texture(s);
     if (s->target) {
         drop_deferred(s->target);
+        end_polygon_run(s->target);
         s->target->surface = NULL;
     }
 }
 
 void d3dr_device_lost(void) {
-    drop_deferred(NULL);
     R.nverts = R.nindices = 0;
+    R.batch_arrays = 0;
+    R.bound.valid = 0;
+    flush_parked();
+    drop_deferred(NULL);
+    end_polygon_run(NULL);
     R.batch_dev = NULL;
     release_static_objects();
     SAFE_RELEASE(R.ctx);
@@ -817,6 +1163,7 @@ static void draw_pass(ID3D11PixelShader* ps, ID3D11ShaderResourceView* srv, ID3D
     D3D11_RECT full = { 0, 0, (LONG)width, (LONG)height };
     ID3D11ShaderResourceView* views[2] = { srv, R.gamma_srv };
     float factor[4] = { 0, 0, 0, 0 };
+    R.bound.valid = 0;
     ID3D11DeviceContext_IASetInputLayout(R.ctx, NULL);
     ID3D11DeviceContext_IASetPrimitiveTopology(R.ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
     ID3D11DeviceContext_VSSetShader(R.ctx, R.vs_quad, NULL, 0);
@@ -892,20 +1239,23 @@ static void note_readback(readback_reason_t reason, double ms, size_t bytes) {
     R.perf.readback_bytes += bytes;
     R.perf.ms[PERF_READBACK] += ms;
     R.perf.count[PERF_READBACK]++;
-    charge_caller(R.perf.callers, readback_caller(), reason, ms, bytes);
+    charge_caller(R.perf.callers, R.charge_caller ? R.charge_caller : readback_caller(), reason, ms, bytes);
 }
 
 /* The GPU picture at the legacy size, packed to RGB565 on the GPU. Point sampling returns exactly the
  * pixels the CPU composited; the pixel calibration keeps the filtered edges it measures. Mapping waits
  * for the GPU, which is what makes reading the target expensive. */
-static int map_target(d3dr_target_t* t, int filtered, D3D11_MAPPED_SUBRESOURCE* m) {
+static int map_target(d3dr_target_t* t, int filtered, const d3dt_rect_t* box, D3D11_MAPPED_SUBRESOURCE* m) {
     ID3D11ShaderResourceView* srv = resolved_view(t);
+    D3D11_BOX region = { (UINT)box->left, (UINT)box->top, 0, (UINT)box->right, (UINT)box->bottom, 1 };
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->packed_rtv, NULL);
+    R.bound.valid = 0;
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_PACK565], srv, filtered ? R.linear_clamp : R.point_clamp, R.blend_none, NULL,
               t->legacy_w, t->legacy_h, NULL);
     unbind_views();
-    ID3D11DeviceContext_CopyResource(R.ctx, (ID3D11Resource*)t->staging, (ID3D11Resource*)t->packed);
+    ID3D11DeviceContext_CopySubresourceRegion(R.ctx, (ID3D11Resource*)t->staging, 0, region.left, region.top, 0,
+                                              (ID3D11Resource*)t->packed, 0, &region);
     return SUCCEEDED(ID3D11DeviceContext_Map(R.ctx, (ID3D11Resource*)t->staging, 0, D3D11_MAP_READ, 0, m));
 }
 
@@ -914,19 +1264,56 @@ static d3dt_rect_t whole_target(const d3dr_target_t* t) {
     return r;
 }
 
+/* The CPU copy and its reference over r := value. */
+static void fill_copy(d3dr_target_t* t, const d3dt_rect_t* r, uint16_t value) {
+    tsync_fill(t->surface->bits, t->surface->pitch, t->reference, t->legacy_w, r, value);
+    R.perf.filled_pixels += (unsigned long long)(r->right - r->left) * (unsigned long long)(r->bottom - r->top);
+}
+
+static void capture_tile(void* context, const d3dt_rect_t* r) { fill_copy((d3dr_target_t*)context, r, TSYNC_UNWRITTEN); }
+
+static void mark_fresh(void* context, const d3dt_rect_t* r) {
+    (void)context;
+    (void)r;
+}
+
+/* Tiles of r not captured since the last Flip become captured. */
+static void claim_fresh(d3dr_target_t* t, const d3dt_rect_t* r) {
+    if (t->lazy) tsync_tiles_claim(&t->fresh, r, capture_tile, t);
+}
+
+static void start_lazy_capture(d3dr_target_t* t) {
+    d3dt_rect_t all = { 0, 0, (long)t->legacy_w, (long)t->legacy_h };
+    t->lazy = tsync_tiles_reset(&t->fresh, t->legacy_w, t->legacy_h);
+    if (!t->lazy) fill_copy(t, &all, TSYNC_UNWRITTEN);
+}
+
 static void readback(d3dr_target_t* t, readback_reason_t reason) {
     D3D11_MAPPED_SUBRESOURCE m;
     dd_surface_t* s = t->surface;
     int64_t start = ticks();
     int filtered = reason == READBACK_PIXEL_CALIBRATION && (t->width != t->legacy_w || t->height != t->legacy_h);
-    if (!target_usable(t) || !map_target(t, filtered, &m)) return;
-    for (UINT y = 0; y < t->legacy_h; y++) {
-        const uint16_t* in = (const uint16_t*)((const BYTE*)m.pData + (size_t)y * m.RowPitch);
-        memcpy(s->bits + (size_t)y * s->pitch, in, (size_t)t->legacy_w * 2);
-        memcpy(t->reference + (size_t)y * t->legacy_w, in, (size_t)t->legacy_w * 2);
+    d3dt_rect_t all = whole_target(t);
+    d3dt_rect_t box = d3dt_readback_box(t->gpu_box_known, &t->gpu_box, t->legacy_w, t->legacy_h);
+    size_t row_bytes = (size_t)(box.right - box.left) * 2;
+    if (!target_usable(t)) return;
+    if (d3dt_rect_empty(&box)) {
+        fill_copy(t, &all, t->gpu_clear);
+        t->lazy = 0;
+        R.perf.synthesized++;
+        return;
+    }
+    if (!map_target(t, filtered, &box, &m)) return;
+    t->lazy = 0;
+    if (box.left || box.top || box.right != all.right || box.bottom != all.bottom)
+        fill_copy(t, &all, t->gpu_clear);
+    for (long y = box.top; y < box.bottom; y++) {
+        const uint16_t* in = (const uint16_t*)((const BYTE*)m.pData + (size_t)y * m.RowPitch) + box.left;
+        memcpy(s->bits + (size_t)y * s->pitch + (size_t)box.left * 2, in, row_bytes);
+        memcpy(t->reference + (size_t)y * t->legacy_w + box.left, in, row_bytes);
     }
     ID3D11DeviceContext_Unmap(R.ctx, (ID3D11Resource*)t->staging, 0);
-    note_readback(reason, elapsed_ms(start), (size_t)t->legacy_w * t->legacy_h * 2);
+    note_readback(reason, elapsed_ms(start), row_bytes * (size_t)(box.bottom - box.top));
 }
 
 static int front_mirrors_target(const d3dr_target_t* t) {
@@ -940,6 +1327,7 @@ static int front_mirrors_target(const d3dr_target_t* t) {
 static void copy_front(d3dr_target_t* t) {
     dd_surface_t* s = t->surface;
     const dd_surface_t* front = s->root;
+    t->lazy = 0;
     for (UINT y = 0; y < t->legacy_h; y++) {
         const BYTE* in = front->bits + (size_t)y * front->pitch;
         memcpy(s->bits + (size_t)y * s->pitch, in, (size_t)t->legacy_w * 2);
@@ -954,10 +1342,21 @@ static void draw_picture_box(d3dr_target_t* t, const d3dt_rect_t* box, int opaqu
                       1.0f - box->bottom / h * 2.0f };
     float uv[4] = { box->left / w, box->top / h, box->right / w, box->bottom / h };
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, NULL);
+    R.bound.valid = 0;
     set_pass(rect, uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_COPY], t->picture_srv, opaque ? R.linear_clamp : R.point_clamp,
               opaque ? R.blend_none : R.blend_overlay, NULL, t->width, t->height, NULL);
     unbind_views();
+}
+
+static void gpu_box_add(d3dr_target_t* t, const d3dt_rect_t* r) {
+    if (t->gpu_box_known) d3dt_rect_union(&t->gpu_box, r);
+}
+
+static void gpu_box_cleared(d3dr_target_t* t, uint16_t color) {
+    t->gpu_box_known = 1;
+    t->gpu_clear = color;
+    memset(&t->gpu_box, 0, sizeof t->gpu_box);
 }
 
 /* Where the CPU may have written since the last sync, inside the surface. */
@@ -1009,15 +1408,21 @@ static void composite(d3dr_target_t* t, int exact) {
     int64_t start = ticks();
     memset(&t->dirty, 0, sizeof t->dirty);
     if (!target_usable(t)) return;
-    if (tsync_changed_box(s->bits, s->pitch, t->reference, t->legacy_w, &region, &box)) {
+    if (t->lazy) region = tsync_tiles_clip(&t->fresh, &region);
+    R.perf.scanned_pixels +=
+        (unsigned long long)(region.right - region.left) * (unsigned long long)(region.bottom - region.top);
+    if (tsync_changed_box_in(s->bits, s->pitch, t->reference, t->legacy_w, &region, t->lazy ? &t->fresh : NULL,
+                             &box)) {
         /* The unchanged texels around the box upload transparent: an edge sample that rounds outside the box at a
          * non-integer scale would otherwise show an old picture as a line. */
         d3dt_rect_t apron = d3dt_overlay_upload_rect(&box, t->legacy_w, t->legacy_h);
         UINT bw = (UINT)(apron.right - apron.left);
         D3D11_BOX upload = { (UINT)apron.left, (UINT)apron.top, 0, (UINT)apron.right, (UINT)apron.bottom, 1 };
-        tsync_overlay_box(s->bits, s->pitch, t->reference, t->legacy_w, &apron, t->scratch, &counts);
+        tsync_overlay_box_in(s->bits, s->pitch, t->reference, t->legacy_w, &apron, t->lazy ? &t->fresh : NULL,
+                             t->scratch, &counts);
         ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)t->picture, 0, &upload, t->scratch, bw * 4, 0);
         draw_picture_box(t, &box, 0);
+        gpu_box_add(t, &apron);
         R.overlays++;
         R.perf.composites++;
         R.perf.composited_pixels += counts.changed;
@@ -1039,8 +1444,10 @@ static void upload_all(d3dr_target_t* t) {
         for (UINT x = 0; x < t->legacy_w; x++) out[x] = R.rgb565_table[row[x]];
         memcpy(t->reference + (size_t)y * t->legacy_w, row, (size_t)t->legacy_w * 2);
     }
+    t->lazy = 0;
     ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)t->picture, 0, NULL, t->scratch, t->legacy_w * 4, 0);
     draw_picture_box(t, &all, 1);
+    gpu_box_add(t, &all);
     R.overlays++;
     R.perf.uploads++;
     perf_add(PERF_OVERLAY, start);
@@ -1056,18 +1463,27 @@ static void apply_sync(d3dr_target_t* t, unsigned acts, const d3dt_rect_t* regio
     if (acts & TSYNC_READBACK) readback(t, reason);
     if (acts & TSYNC_COPY_FRONT) copy_front(t);
     if (acts & TSYNC_SYNTHESIZE) {
-        tsync_fill(s->bits, s->pitch, t->reference, t->legacy_w, &all, t->sync.color);
+        fill_copy(t, &all, t->sync.color);
+        t->lazy = 0;
         R.perf.synthesized++;
     }
     if (acts & (TSYNC_CAPTURE | TSYNC_CAPTURE_ALL)) {
-        if (!(acts & TSYNC_CAPTURE_ALL) && region) {
-            r = *region;
-            if (r.left < 0) r.left = 0;
-            if (r.top < 0) r.top = 0;
-            if (r.right > all.right) r.right = all.right;
-            if (r.bottom > all.bottom) r.bottom = all.bottom;
+        if (R.capture_text && tsync_tiles_reset(&t->fresh, t->legacy_w, t->legacy_h)) {
+            /* Only TextOutA writes under the text overlay's DC: each string's box is captured before it is drawn. */
+            t->lazy = 1;
+            R.text_target = t;
+        } else {
+            if (!(acts & TSYNC_CAPTURE_ALL) && region) {
+                r = *region;
+                if (r.left < 0) r.left = 0;
+                if (r.top < 0) r.top = 0;
+                if (r.right > all.right) r.right = all.right;
+                if (r.bottom > all.bottom) r.bottom = all.bottom;
+            }
+            if (acts & TSYNC_CAPTURE_ALL) t->lazy = 0;
+            claim_fresh(t, &r);
+            fill_copy(t, &r, TSYNC_UNWRITTEN);
         }
-        tsync_fill(s->bits, s->pitch, t->reference, t->legacy_w, &r, TSYNC_UNWRITTEN);
         R.perf.no_read_accesses++;
     }
 }
@@ -1146,44 +1562,53 @@ static ID3D11RasterizerState* raster_for(const d3d_device_t* dev, int multisampl
     return *slot;
 }
 
-/* Original, trilinear and anisotropic keep the game's point filtering; bilinear and point override it. */
-static ID3D11SamplerState* sampler_for(const d3d_device_t* dev) {
-    int forced = R.filter == D3DR_FILTER_POINT || R.filter == D3DR_FILTER_BILINEAR;
-    int mag = forced ? R.filter == D3DR_FILTER_BILINEAR : d3dt_mag_linear(dev->stage[0][D3DTSS_MAGFILTER]) == 1;
-    int min = forced ? R.filter == D3DR_FILTER_BILINEAR : d3dt_min_linear(dev->stage[0][D3DTSS_MINFILTER]) == 1;
-    int u = d3dt_address(dev->stage[0][D3DTSS_ADDRESSU]), v = d3dt_address(dev->stage[0][D3DTSS_ADDRESSV]);
+static ID3D11SamplerState* make_texture_sampler(const d3dt_sampler_choice_t* c, int u, int v) {
+    UINT anisotropy = c->anisotropy;
+    ID3D11SamplerState* state = make_sampler((D3D11_FILTER)c->filter, u, v, c->mips ? D3D11_FLOAT32_MAX : 0.0f, anisotropy);
+    while (!state && anisotropy > 1) {
+        anisotropy /= 2;
+        state = make_sampler(anisotropy > 1 ? D3D11_FILTER_ANISOTROPIC : D3D11_FILTER_MIN_MAG_MIP_LINEAR, u, v,
+                             D3D11_FLOAT32_MAX, anisotropy > 1 ? anisotropy : 1);
+    }
+    if (anisotropy != c->anisotropy && !R.anisotropy_logged) {
+        R.anisotropy_logged = 1;
+        host_log("d3d11", "anisotropic filtering %ux is not available: %ux instead", c->anisotropy, anisotropy);
+    }
+    return state;
+}
+
+static ID3D11SamplerState* sampler_with(const d3d_device_t* dev, DWORD address_u, DWORD address_v) {
+    int game_mag = d3dt_mag_linear(dev->stage[0][D3DTSS_MAGFILTER]) == 1;
+    int game_min = d3dt_min_linear(dev->stage[0][D3DTSS_MINFILTER]) == 1;
+    int u = d3dt_address(address_u), v = d3dt_address(address_v);
     ID3D11SamplerState** slot;
     if (!u) u = D3D11_TEXTURE_ADDRESS_WRAP;
     if (!v) v = D3D11_TEXTURE_ADDRESS_WRAP;
-    slot = &R.sampler[mag][min][u][v];
+    slot = &R.sampler[game_mag][game_min][u][v];
     if (!*slot) {
-        int mips = R.generate_mips && R.filter >= D3DR_FILTER_TRILINEAR;
-        D3D11_FILTER f;
-        UINT anisotropy = 1;
-        if (mag && min && R.filter == D3DR_FILTER_ANISOTROPIC) {
-            f = D3D11_FILTER_ANISOTROPIC;
-            anisotropy = R.anisotropy;
-        } else if (mag && min) {
-            f = mips ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
-        } else if (mag) {
-            f = mips ? D3D11_FILTER_MIN_POINT_MAG_MIP_LINEAR : D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT;
-        } else if (min) {
-            f = mips ? D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR : D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT;
-        } else {
-            f = D3D11_FILTER_MIN_MAG_MIP_POINT;
-        }
-        *slot = make_sampler(f, u, v, (mag || min) ? D3D11_FLOAT32_MAX : 0.0f, anisotropy);
+        d3dt_sampler_choice_t c = d3dt_choose_sampler(R.filter, game_mag, game_min, R.anisotropy);
+        *slot = make_texture_sampler(&c, u, v);
     }
-    if (*slot && !R.sampler_logged[mag][min][u][v]) {
+    if (*slot && !R.sampler_logged[game_mag][game_min][u][v]) {
         D3D11_SAMPLER_DESC d;
-        R.sampler_logged[mag][min][u][v] = 1;
+        R.sampler_logged[game_mag][game_min][u][v] = 1;
         ID3D11SamplerState_GetDesc(*slot, &d);
         host_log("d3d11", "sampler bound for the game's MAG %lu MIN %lu MIP %lu, address %lu/%lu: D3D11 filter 0x%X, "
-                 "MaxAnisotropy %u, address %d/%d", dev->stage[0][D3DTSS_MAGFILTER], dev->stage[0][D3DTSS_MINFILTER],
+                 "MaxAnisotropy %u, %s, address %d/%d", dev->stage[0][D3DTSS_MAGFILTER], dev->stage[0][D3DTSS_MINFILTER],
                  dev->stage[0][D3DTSS_MIPFILTER], dev->stage[0][D3DTSS_ADDRESSU], dev->stage[0][D3DTSS_ADDRESSV],
-                 (unsigned)d.Filter, d.MaxAnisotropy, (int)d.AddressU, (int)d.AddressV);
+                 (unsigned)d.Filter, d.MaxAnisotropy, d.MaxLOD > 0.0f ? "generated mipmaps" : "level 0 only",
+                 (int)d.AddressU, (int)d.AddressV);
     }
     return *slot;
+}
+
+/* s0-s3: wrap or clamp per axis (d3dt_vertex_sampler), s4: the device's own address modes. */
+static int samplers_for(const d3d_device_t* dev, ID3D11SamplerState** out) {
+    static const DWORD k_u[4] = { 1, 3, 1, 3 }, k_v[4] = { 1, 1, 3, 3 };
+    for (int i = 0; i < D3D11_DEVICE_SAMPLER; i++)
+        if (!(out[i] = sampler_with(dev, k_u[i], k_v[i]))) return 0;
+    out[D3D11_DEVICE_SAMPLER] = sampler_with(dev, dev->stage[0][D3DTSS_ADDRESSU], dev->stage[0][D3DTSS_ADDRESSV]);
+    return out[D3D11_DEVICE_SAMPLER] != NULL;
 }
 
 /* ---- textures ---- */
@@ -1241,14 +1666,96 @@ static uint32_t* upload_rows(size_t texels) {
     return R.upload_buffer;
 }
 
-static UINT mip_levels(UINT w, UINT h) {
-    UINT levels = 1;
-    while (w > 1 || h > 1) {
-        w = w > 1 ? w / 2 : 1;
-        h = h > 1 ? h / 2 : 1;
-        levels++;
+static uint32_t* mip_chain(size_t texels) {
+    if (texels > R.mip_capacity) {
+        uint32_t* grown = (uint32_t*)realloc(R.mip_chain, texels * 4);
+        if (!grown) return NULL;
+        R.mip_chain = grown;
+        R.mip_capacity = texels;
     }
-    return levels;
+    return R.mip_chain;
+}
+
+static void convert_rows(const dd_surface_t* s, int format, const uint32_t* palette, const D3D11_BOX* box, uint32_t* out,
+                         int* black) {
+    UINT w = box->right - box->left;
+    int bytes = d3dt_format_bytes(format);
+    *black = 1;
+    for (UINT y = box->top; y < box->bottom; y++) {
+        const BYTE* in = s->bits + (size_t)y * s->pitch + (size_t)box->left * bytes;
+        uint32_t* row = out + (size_t)(y - box->top) * w;
+        if (format == D3DT_FMT_PAL8)
+            d3dt_convert_row_pal8(in, row, w, palette, s->has_src_key, s->src_key.dwColorSpaceLowValue,
+                                  s->src_key.dwColorSpaceHighValue);
+        else
+            d3dt_convert_row(format, in, row, w, s->has_src_key, s->src_key.dwColorSpaceLowValue,
+                             s->src_key.dwColorSpaceHighValue);
+        if (*black) *black = d3dt_row_black(row, w);
+    }
+}
+
+/* Level 0 only from now on: the texture changes too often for its generated levels to be worth building. It moves to a
+ * one-level array of its size, which other textures of that size share in a batch. */
+static void make_dynamic(d3dr_texture_t* t) {
+    ID3D11ShaderResourceView* top;
+    d3dr_texture_t moved;
+    memset(&moved, 0, sizeof moved);
+    if (pool_take(&moved, t->width, t->height, 1)) {
+        settle_batch_texture(t);
+        ID3D11DeviceContext_CopySubresourceRegion(R.ctx, texture_resource(&moved), texture_subresource(&moved, 0), 0, 0,
+                                                  0, texture_resource(t), texture_subresource(t, 0), NULL);
+        if (t->pool) {
+            pool_give_back(t);
+        } else {
+            SAFE_RELEASE(t->srv);
+            SAFE_RELEASE(t->tex);
+        }
+        t->pool = moved.pool;
+        t->slice = moved.slice;
+        t->levels = 1;
+        R.textures_dynamic++;
+        return;
+    }
+    if (t->pool) {
+        ID3D11Texture2D* own = make_texture(t->width, t->height, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
+                                            D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
+        if (!own || !(top = array_view(own, 1, 1))) {
+            SAFE_RELEASE(own);
+            return;
+        }
+        settle_batch_texture(t);
+        ID3D11DeviceContext_CopySubresourceRegion(R.ctx, (ID3D11Resource*)own, 0, 0, 0, 0, texture_resource(t),
+                                                  texture_subresource(t, 0), NULL);
+        pool_give_back(t);
+        t->tex = own;
+        t->levels = 1;
+    } else if (!(top = array_view(t->tex, 1, 1))) {
+        return;
+    }
+    SAFE_RELEASE(t->srv);
+    t->srv = top;
+    R.textures_dynamic++;
+}
+
+/* The whole texture with every generated level: a changed row changes each level above it. */
+static void upload_with_mips(dd_surface_t* s, d3dr_texture_t* t, int format, const uint32_t* palette) {
+    D3D11_BOX all = { 0, 0, 0, t->width, t->height, 1 };
+    uint32_t* chain = mip_chain(d3dt_mip_chain_texels(t->width, t->height, t->levels));
+    uint32_t* level;
+    int64_t start = ticks();
+    if (!chain) return;
+    convert_rows(s, format, palette, &all, chain, &t->black);
+    t->alpha_kind = d3dt_alpha_kind(chain, (size_t)t->width * t->height);
+    d3dt_build_mips(chain, t->width, t->height, t->levels, t->alpha_kind);
+    level = chain;
+    for (UINT i = 0; i < t->levels; i++) {
+        unsigned lw, lh;
+        d3dt_mip_size(t->width, t->height, i, &lw, &lh);
+        ID3D11DeviceContext_UpdateSubresource(R.ctx, texture_resource(t), texture_subresource(t, i), NULL, level, lw * 4, 0);
+        level += (size_t)lw * lh;
+    }
+    R.mip_texels += d3dt_mip_chain_texels(t->width, t->height, t->levels) - (size_t)t->width * t->height;
+    R.mip_ms += elapsed_ms(start);
 }
 
 /* Texture memory is write-watched: pages the game changed without a Lock/Unlock, Blt or Load that
@@ -1260,6 +1767,7 @@ static void collect_written_rows(dd_surface_t* s, d3dr_texture_t* t) {
     size_t bytes = (size_t)s->pitch * s->height;
     d3dt_rect_t rows = { 0, 0, (long)s->width, 0 };
     int announced = !d3dt_rect_empty(&s->texture_dirty);
+    R.perf.watch_reads++;
     if (GetWriteWatch(WRITE_WATCH_FLAG_RESET, s->bits, bytes, pages, &count, &granularity) || !count) return;
     rows.top = (long)s->height;
     if (count == WATCH_PAGES) {
@@ -1284,6 +1792,23 @@ static void collect_written_rows(dd_surface_t* s, d3dr_texture_t* t) {
              s->cpu_writes, g_cur_func);
 }
 
+/* Unannounced writes need a pointer the guest got from a Lock: such a surface's watch is read once a frame, and with
+ * each upload so the rows it announced are not uploaded again. */
+static int watch_due(dd_surface_t* s) {
+    if (!s->watched || !s->exposed) return 0;
+    if (s->watch_frame == R.frames_hw + 1 && d3dt_rect_empty(&s->texture_dirty)) return 0;
+    s->watch_frame = R.frames_hw + 1;
+    return 1;
+}
+
+enum { UPLOAD_FIRST, UPLOAD_WITH_MIPS, UPLOAD_REGION };
+
+static void count_upload(int kind, size_t texels, int64_t start) {
+    R.uploads_by[kind].n++;
+    R.uploads_by[kind].texels += texels;
+    R.uploads_by[kind].ms += elapsed_ms(start);
+}
+
 static d3dr_texture_t* texture_for(dd_surface_t* s) {
     d3dr_texture_t* t = (d3dr_texture_t*)s->gpu_texture;
     int format = pixelformat_texture_format(&s->format);
@@ -1302,37 +1827,47 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
         t = NULL;
     }
     if (!t) {
-        int mips = R.generate_mips && R.filter >= D3DR_FILTER_TRILINEAR && s->width > 1 && s->height > 1;
-        UINT levels = mips ? mip_levels(s->width, s->height) : 1;
+        UINT levels = d3dt_filter_uses_mips(R.filter) ? d3dt_mip_count(s->width, s->height) : 1;
+        if ((t = adopt_parked(s, format, levels, palette_sum)) != NULL) {
+            s->gpu_texture = t;
+            if (s->watched && s->exposed) collect_written_rows(s, NULL);
+            memset(&s->texture_dirty, 0, sizeof s->texture_dirty);
+            return t;
+        }
         t = (d3dr_texture_t*)calloc(1, sizeof *t);
         if (!t) return NULL;
-        t->tex = make_texture(s->width, s->height, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
-                              D3D11_BIND_SHADER_RESOURCE | (mips ? D3D11_BIND_RENDER_TARGET : 0), 0, levels,
-                              mips ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0);
-        if (!t->tex || FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)t->tex, NULL, &t->srv))) {
-            SAFE_RELEASE(t->tex);
-            free(t);
-            return NULL;
+        if (!pool_take(t, s->width, s->height, levels)) {
+            t->tex = make_texture(s->width, s->height, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
+                                  D3D11_BIND_SHADER_RESOURCE, 0, levels, 0);
+            if (!t->tex || !(t->srv = array_view(t->tex, levels, 1))) {
+                SAFE_RELEASE(t->tex);
+                free(t);
+                return NULL;
+            }
         }
         t->width = s->width;
         t->height = s->height;
         t->levels = levels;
         t->format = format;
         t->generation = R.generation;
-        t->bytes = (size_t)s->width * s->height * 4 * (levels > 1 ? 4 : 3) / 3;
+        t->bytes = d3dt_mip_chain_texels(s->width, s->height, levels) * 4;
         t->palette_sum = palette_sum;
         R.texture_memory += t->bytes;
         R.textures_alive++;
+        R.textures_created_window++;
+        if (R.textures_alive > R.textures_peak) R.textures_peak = R.textures_alive;
+        if (levels > 1) R.textures_mipped++;
         s->gpu_texture = t;
-        if (s->watched) collect_written_rows(s, NULL);
+        if (s->watched && s->exposed) collect_written_rows(s, NULL);
         s->texture_dirty = full;
     }
-    if (s->watched) collect_written_rows(s, t);
+    if (watch_due(s)) collect_written_rows(s, t);
     if (format == D3DT_FMT_PAL8 && t->palette_sum != palette_sum) {
         t->palette_sum = palette_sum;
         s->texture_dirty = full;
     }
     if (d3dt_rect_empty(&s->texture_dirty)) return t;
+    settle_batch_texture(t);
     if (s->texture_dirty.left < 0) s->texture_dirty.left = 0;
     if (s->texture_dirty.top < 0) s->texture_dirty.top = 0;
     if (s->texture_dirty.right > (long)s->width) s->texture_dirty.right = (long)s->width;
@@ -1344,26 +1879,24 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
     box.front = 0;
     box.back = 1;
     upload_start = ticks();
-    rows = upload_rows((size_t)(box.right - box.left) * (box.bottom - box.top));
-    if (rows) {
-        UINT w = box.right - box.left;
-        int bytes = d3dt_format_bytes(format), black = 1;
-        for (UINT y = box.top; y < box.bottom; y++) {
-            const BYTE* in = s->bits + (size_t)y * s->pitch + (size_t)box.left * bytes;
-            uint32_t* out = rows + (size_t)(y - box.top) * w;
-            if (format == D3DT_FMT_PAL8)
-                d3dt_convert_row_pal8(in, out, w, palette, s->has_src_key, s->src_key.dwColorSpaceLowValue,
-                                      s->src_key.dwColorSpaceHighValue);
-            else
-                d3dt_convert_row(format, in, out, w, s->has_src_key, s->src_key.dwColorSpaceLowValue,
-                                 s->src_key.dwColorSpaceHighValue);
-            if (black) black = d3dt_row_black(out, w);
-        }
+    if (t->levels > 1 && d3dt_note_upload(&t->history, R.frames_hw)) make_dynamic(t);
+    if (t->levels > 1 && !t->history.dynamic) {
+        upload_with_mips(s, t, format, palette);
+        count_upload(t->uploads ? UPLOAD_WITH_MIPS : UPLOAD_FIRST, d3dt_mip_chain_texels(t->width, t->height, t->levels),
+                     upload_start);
+        t->uploads++;
+        R.texture_uploads++;
+        perf_add(PERF_UPLOAD, upload_start);
+    } else if ((rows = upload_rows((size_t)(box.right - box.left) * (box.bottom - box.top))) != NULL) {
+        int black;
+        convert_rows(s, format, palette, &box, rows, &black);
         if (box.left == 0 && box.top == 0 && box.right == s->width && box.bottom == s->height) t->black = black;
         else if (!black) t->black = 0;
         t->uploads++;
-        ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)t->tex, 0, &box, rows, w * 4, 0);
-        if (t->levels > 1) ID3D11DeviceContext_GenerateMips(R.ctx, t->srv);
+        ID3D11DeviceContext_UpdateSubresource(R.ctx, texture_resource(t), texture_subresource(t, 0), &box, rows,
+                                              (box.right - box.left) * 4, 0);
+        count_upload(t->uploads > 1 ? UPLOAD_REGION : UPLOAD_FIRST,
+                     (size_t)(box.right - box.left) * (box.bottom - box.top), upload_start);
         R.texture_uploads++;
         perf_add(PERF_UPLOAD, upload_start);
     }
@@ -1467,13 +2000,13 @@ static int batch_rgb_zero(int specular_alpha) {
 }
 
 /* Draws whose pixels can only come out black: a limited sample with what decided it. */
-static void sample_dark_draw(const d3d_device_t* dev, const d3dr_texture_t* tex, uint32_t key) {
+static void sample_dark_draw(const d3d_device_t* dev, const d3dr_texture_t* tex, int has_texture, uint32_t key) {
     const DWORD* r = dev->render;
     DWORD blend = r[D3DRENDERSTATE_TEXTUREMAPBLEND];
     int reason = -1;
     int uses_diffuse = !tex || !(blend == 1 || blend == 5 || blend == 7);
     if (tex && tex->black) reason = DARK_TEXTURE_BLACK;
-    else if (!tex && dev->texture) reason = DARK_TEXTURE_UNUSABLE;
+    else if (!tex && has_texture) reason = DARK_TEXTURE_UNUSABLE;
     else if (uses_diffuse && !r[D3DRENDERSTATE_SPECULARENABLE] && batch_rgb_zero(0)) reason = DARK_DIFFUSE_BLACK;
     else if (r[D3DRENDERSTATE_FOGENABLE] && !(r[D3DRENDERSTATE_FOGCOLOR] & 0xFFFFFFu) && batch_rgb_zero(1))
         reason = DARK_FOG_BLACK;
@@ -1483,13 +2016,12 @@ static void sample_dark_draw(const d3d_device_t* dev, const d3dr_texture_t* tex,
         if (R.dark_keys[i] == (key ^ ((uint32_t)reason << 28))) return;
     if (R.dark_samples == MAX_DARK_SAMPLES) return;
     R.dark_keys[R.dark_samples++] = key ^ ((uint32_t)reason << 28);
-    host_log("d3d", "dark draw #%llu: %s; texture %s (%s %lux%lu, %lu CPU writes, %lu uploads), blend %s %lu/%lu, z %s%s "
+    host_log("d3d", "dark draw #%llu: %s; texture %s (%s %ux%u, %lu uploads), blend %s %lu/%lu, z %s%s "
              "func %lu, zbias %lu, tmb %lu, fog %s 0x%06lX, specular %s, colour key %s, diffuse0 0x%08X, specular0 0x%08X, "
              "%u vertices, sz %.5f, from sub_%08X",
-             R.draw_sequence, k_dark_reasons[reason], dev->texture ? "set" : "none",
-             dev->texture ? d3dt_format_name(pixelformat_texture_format(&dev->texture->format)) : "-",
-             dev->texture ? dev->texture->width : 0, dev->texture ? dev->texture->height : 0,
-             dev->texture ? dev->texture->cpu_writes : 0, tex ? tex->uploads : 0,
+             R.draw_sequence, k_dark_reasons[reason], has_texture ? "set" : "none",
+             tex ? d3dt_format_name(tex->format) : "-", tex ? tex->width : 0, tex ? tex->height : 0,
+             tex ? tex->uploads : 0,
              r[D3DRENDERSTATE_ALPHABLENDENABLE] ? "on" : "off", r[D3DRENDERSTATE_SRCBLEND], r[D3DRENDERSTATE_DESTBLEND],
              r[D3DRENDERSTATE_ZENABLE] ? "on" : "off", r[D3DRENDERSTATE_ZWRITEENABLE] ? "+write" : "", r[D3DRENDERSTATE_ZFUNC],
              r[D3DRENDERSTATE_ZBIAS], blend, r[D3DRENDERSTATE_FOGENABLE] ? "on" : "off",
@@ -1514,38 +2046,103 @@ static void count_state_class(uint32_t key, unsigned long long triangles) {
     }
 }
 
+/* The draw states flush() binds, each set only when it differs from what flush() last bound. */
+static void bind_draw_states(d3d_device_t* dev, d3dr_target_t* t, int has_depth, ID3D11SamplerState* const* samplers,
+                             const D3D11_VIEWPORT* vp, const D3D11_RECT* scissor) {
+    ID3D11DepthStencilView* dsv = has_depth ? t->dsv : NULL;
+    ID3D11RasterizerState* raster = raster_for(dev, t->samples > 1);
+    ID3D11BlendState* blend = blend_for(dev);
+    ID3D11DepthStencilState* depth = depth_for(dev, has_depth);
+    float factor[4] = { 0, 0, 0, 0 };
+    if (!R.bound.valid) {
+        memset(&R.bound, 0, sizeof R.bound);
+        ID3D11DeviceContext_IASetInputLayout(R.ctx, R.layout);
+        ID3D11DeviceContext_VSSetShader(R.ctx, R.vs_tl, NULL, 0);
+        ID3D11DeviceContext_VSSetConstantBuffers(R.ctx, 0, 1, &R.cb_frame);
+        ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[D3D11_SHADER_PS_FIXED], NULL, 0);
+        ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 1, 1, &R.cb_draw);
+        R.bound.valid = 1;
+        R.bound.topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+        R.bound.vp.Width = -1.0f;
+        R.bound.scissor.left = -1;
+    }
+    if (R.bound.rtv != t->rtv || R.bound.dsv != dsv) {
+        ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, dsv);
+        R.bound.rtv = t->rtv, R.bound.dsv = dsv;
+    }
+    if (R.bound.topology != R.batch_topology) {
+        ID3D11DeviceContext_IASetPrimitiveTopology(R.ctx, R.batch_topology);
+        R.bound.topology = R.batch_topology;
+    }
+    if (R.bound.vb != R.vb) {
+        UINT stride = sizeof(tl_vertex_t), zero = 0;
+        ID3D11DeviceContext_IASetVertexBuffers(R.ctx, 0, 1, &R.vb, &stride, &zero);
+        R.bound.vb = R.vb;
+    }
+    if (R.bound.ib != R.ib) {
+        ID3D11DeviceContext_IASetIndexBuffer(R.ctx, R.ib, DXGI_FORMAT_R32_UINT, 0);
+        R.bound.ib = R.ib;
+    }
+    if (R.batch_arrays &&
+        (R.bound.srvs < R.batch_arrays || memcmp(R.bound.srv, R.batch_srv, R.batch_arrays * sizeof R.batch_srv[0]))) {
+        ID3D11DeviceContext_PSSetShaderResources(R.ctx, 2, R.batch_arrays, R.batch_srv);
+        memcpy(R.bound.srv, R.batch_srv, R.batch_arrays * sizeof R.batch_srv[0]);
+        if (R.bound.srvs < R.batch_arrays) R.bound.srvs = R.batch_arrays;
+    }
+    if (samplers && memcmp(R.bound.sampler, samplers, sizeof R.bound.sampler)) {
+        ID3D11DeviceContext_PSSetSamplers(R.ctx, 0, D3D11_DEVICE_SAMPLER + 1, samplers);
+        memcpy(R.bound.sampler, samplers, sizeof R.bound.sampler);
+    }
+    if (R.bound.raster != raster) {
+        ID3D11DeviceContext_RSSetState(R.ctx, raster);
+        R.bound.raster = raster;
+    }
+    if (memcmp(&R.bound.vp, vp, sizeof *vp)) {
+        ID3D11DeviceContext_RSSetViewports(R.ctx, 1, vp);
+        R.bound.vp = *vp;
+    }
+    if (memcmp(&R.bound.scissor, scissor, sizeof *scissor)) {
+        ID3D11DeviceContext_RSSetScissorRects(R.ctx, 1, scissor);
+        R.bound.scissor = *scissor;
+    }
+    if (R.bound.blend != blend) {
+        ID3D11DeviceContext_OMSetBlendState(R.ctx, blend, factor, 0xFFFFFFFF);
+        R.bound.blend = blend;
+    }
+    if (R.bound.depth != depth) {
+        ID3D11DeviceContext_OMSetDepthStencilState(R.ctx, depth, 0);
+        R.bound.depth = depth;
+    }
+}
+
+static void end_batch(void) {
+    R.nverts = R.nindices = 0;
+    R.batch_arrays = 0;
+    R.batch_has_texture = 0;
+    R.batch_serial++;
+}
+
 static void flush(void) {
     d3d_device_t* dev = R.batch_dev;
     d3dr_target_t* t = dev ? dev->backend : NULL;
     draw_constants_t dc;
-    d3dr_texture_t* tex = NULL;
+    d3dr_texture_t* tex = R.batch_tex;
     UINT vb_offset = 0, ib_offset = 0, stride = sizeof(tl_vertex_t);
     D3D11_VIEWPORT vp;
     D3D11_RECT scissor;
-    ID3D11SamplerState* sampler = NULL;
-    ID3D11ShaderResourceView* srv = NULL;
-    float factor[4] = { 0, 0, 0, 0 };
-    int has_depth;
+    ID3D11SamplerState* samplers[D3D11_DEVICE_SAMPLER + 1];
+    int has_depth, sampled = 0;
     int64_t start;
     if (!R.nindices || !t || !t->surface || !target_ready(t)) {
-        R.nverts = R.nindices = 0;
+        end_batch();
         return;
     }
     start = ticks();
-    if (dev->texture) {
-        tex = texture_for(dev->texture);
-        if (tex) {
-            srv = tex->srv;
-            sampler = sampler_for(dev);
-            R.textures_bound++;
-        }
+    if (R.batch_arrays) {
+        sampled = samplers_for(dev, samplers);
+        R.textures_bound++;
     }
     memset(&dc, 0, sizeof dc);
-    if (tex) {
-        dc.flags |= D3D11_PS_TEXTURED;
-        if (d3dt_format_has_alpha(tex->format)) dc.flags |= D3D11_PS_TEX_ALPHA;
-        if (dev->render[D3DRENDERSTATE_COLORKEYENABLE] && dev->texture->has_src_key) dc.flags |= D3D11_PS_KEY_TEST;
-    }
     if (dev->render[D3DRENDERSTATE_ALPHATESTENABLE]) dc.flags |= D3D11_PS_ALPHA_TEST;
     if (dev->render[D3DRENDERSTATE_FOGENABLE]) dc.flags |= D3D11_PS_FOG;
     if (dev->render[D3DRENDERSTATE_SPECULARENABLE]) dc.flags |= D3D11_PS_SPECULAR;
@@ -1572,7 +2169,7 @@ static void flush(void) {
     if (!stream(&R.vb, &R.vb_size, &R.vb_pos, D3D11_BIND_VERTEX_BUFFER, R.verts, R.nverts * stride, &vb_offset) ||
         !stream(&R.ib, &R.ib_size, &R.ib_pos, D3D11_BIND_INDEX_BUFFER, R.indices, R.nindices * 4, &ib_offset)) {
         host_log("d3d11", "vertex or index buffer upload failed; %u vertices dropped", R.nverts);
-        R.nverts = R.nindices = 0;
+        end_batch();
         return;
     }
     has_depth = dev->target->zbuffer != NULL;
@@ -1582,23 +2179,8 @@ static void flush(void) {
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     scissor = viewport_scissor(dev, t);
-    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, has_depth ? t->dsv : NULL);
-    ID3D11DeviceContext_IASetInputLayout(R.ctx, R.layout);
-    ID3D11DeviceContext_IASetPrimitiveTopology(R.ctx, R.batch_topology);
-    ID3D11DeviceContext_IASetVertexBuffers(R.ctx, 0, 1, &R.vb, &stride, &vb_offset);
-    ID3D11DeviceContext_IASetIndexBuffer(R.ctx, R.ib, DXGI_FORMAT_R32_UINT, ib_offset);
-    ID3D11DeviceContext_VSSetShader(R.ctx, R.vs_tl, NULL, 0);
-    ID3D11DeviceContext_VSSetConstantBuffers(R.ctx, 0, 1, &R.cb_frame);
-    ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[D3D11_SHADER_PS_FIXED], NULL, 0);
-    ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 1, 1, &R.cb_draw);
-    ID3D11DeviceContext_PSSetShaderResources(R.ctx, 0, 1, &srv);
-    if (sampler) ID3D11DeviceContext_PSSetSamplers(R.ctx, 0, 1, &sampler);
-    ID3D11DeviceContext_RSSetState(R.ctx, raster_for(dev, t->samples > 1));
-    ID3D11DeviceContext_RSSetViewports(R.ctx, 1, &vp);
-    ID3D11DeviceContext_RSSetScissorRects(R.ctx, 1, &scissor);
-    ID3D11DeviceContext_OMSetBlendState(R.ctx, blend_for(dev), factor, 0xFFFFFFFF);
-    ID3D11DeviceContext_OMSetDepthStencilState(R.ctx, depth_for(dev, has_depth), 0);
-    ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, 0, 0);
+    bind_draw_states(dev, t, has_depth, sampled ? samplers : NULL, &vp, &scissor);
+    ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, (INT)(vb_offset / stride));
     if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && !R.depth_active) {
         R.depth_active = 1;
         host_log("renderer", "depth_buffer_active = true (z-tested draws into the %ux%u depth buffer)", t->width, t->height);
@@ -1611,18 +2193,43 @@ static void flush(void) {
     if (R.batch_topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST) {
         R.triangles += R.nindices / 3;
         R.perf.triangles += R.nindices / 3;
+        if (dc.blend_mode == 1) R.perf.terrain_triangles += R.nindices / 3; /* DECAL: only the terrain batches */
     }
     {
-        uint32_t key = state_key(dev, tex ? (uint32_t)tex->format : dev->texture ? STATE_TEX_UNUSABLE : STATE_TEX_NONE);
+        uint32_t key = state_key(dev, tex ? (uint32_t)tex->format : R.batch_has_texture ? STATE_TEX_UNUSABLE : STATE_TEX_NONE);
         count_state_class(key, R.batch_topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST ? R.nindices / 3 : 0);
-        sample_dark_draw(dev, tex, key);
+        sample_dark_draw(dev, tex, R.batch_has_texture, key);
     }
-    R.nverts = R.nindices = 0;
+    end_batch();
     perf_add(PERF_DRAW, start);
 }
 
-void d3dr_state_will_change(d3d_device_t* dev) {
-    if (R.batch_dev == dev && R.nindices) flush();
+static int array_slot(ID3D11ShaderResourceView* srv) {
+    return d3dt_batch_slot((const void**)R.batch_srv, &R.batch_arrays, D3D11_WORLD_ARRAYS, srv);
+}
+
+/* What the pixel shader takes from the texture: whether it has alpha, and the colour key. */
+static uint32_t texture_flags(const d3d_device_t* dev, const d3dr_texture_t* tex) {
+    uint32_t flags;
+    if (!tex) return 0;
+    flags = D3D11_PS_TEXTURED;
+    if (d3dt_format_has_alpha(tex->format)) flags |= D3D11_PS_TEX_ALPHA;
+    if (dev->render[D3DRENDERSTATE_COLORKEYENABLE] && dev->texture->has_src_key) flags |= D3D11_PS_KEY_TEST;
+    return flags;
+}
+
+/* DEBUG_SAULO: why batches end. */
+static void count_flush(int kind, unsigned which) {
+    if (!R.nindices) return;
+    R.perf.flush_kind[kind]++;
+    if (kind == D3DR_FLUSH_RENDER_STATE && which < D3D_RENDER_STATES) R.perf.flush_render_state[which]++;
+    if (kind == D3DR_FLUSH_STAGE_STATE && which < 32) R.perf.flush_stage_state[which]++;
+}
+
+void d3dr_state_will_change(d3d_device_t* dev, int kind, unsigned which) {
+    if (R.batch_dev != dev || !R.nindices) return;
+    count_flush(kind, which);
+    flush();
 }
 
 static void log_once(unsigned char* flag, const char* fmt, DWORD a, DWORD b) {
@@ -1636,9 +2243,13 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     d3dr_target_t* t = dev->backend;
     D3D11_PRIMITIVE_TOPOLOGY topology;
     unsigned stride, diffuse, specular, uv;
-    UINT base, n = 0;
+    UINT base, n = 0, layer;
+    d3dr_texture_t* tex;
+    ID3D11ShaderResourceView* srv;
+    uint32_t tex_flags;
+    int slot = 0;
     const BYTE* src = (const BYTE*)vertices;
-    int64_t start = ticks();
+    int64_t start = (++R.translate_calls & (TRANSLATE_SAMPLE - 1u)) ? 0 : ticks();
     if (!d3dt_fvf_layout(fvf, &stride, &diffuse, &specular, &uv)) {
         log_once(&R.fvf_logged, "DrawPrimitive vertex format 0x%lX (type %lu) from sub_%08X: only pre-transformed "
                  "(D3DFVF_XYZRHW) vertices are translated; refused", fvf, (DWORD)type);
@@ -1665,12 +2276,30 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     if (indices)
         for (DWORD i = 0; i < index_count; i++)
             if (indices[i] >= count) return DDERR_INVALIDPARAMS;
+    tex = dev->texture ? texture_for(dev->texture) : NULL;
+    srv = tex ? texture_view(tex) : NULL;
+    tex_flags = texture_flags(dev, tex);
     if (R.batch_dev != dev || R.batch_topology != topology) {
+        count_flush(D3DR_FLUSH_TOPOLOGY, 0);
         flush();
         R.batch_dev = dev;
         R.batch_topology = topology;
     }
+    if (srv && (slot = array_slot(srv)) < 0) {
+        count_flush(D3DR_FLUSH_TEXTURE, 0);
+        flush();
+        slot = array_slot(srv);
+    }
+    if (R.nindices && tex != R.batch_tex) {
+        R.perf.texture_joins++;
+        R.texture_joins++;
+    }
     gpu_write(t);
+    R.batch_tex = tex;
+    if (dev->texture) R.batch_has_texture = 1;
+    if (tex) tex->batch = R.batch_serial;
+    layer = d3dt_world_layer(tex && tex->pool ? tex->slice : 0, (uint32_t)slot, srv ? tex_flags : 0,
+                             d3dt_vertex_sampler(dev->stage[0][D3DTSS_ADDRESSU], dev->stage[0][D3DTSS_ADDRESSV]));
     if (!ensure_capacity(count, (indices ? index_count : count) * 3)) return DDERR_OUTOFMEMORY;
     base = R.nverts;
     for (DWORD i = 0; i < count; i++, src += stride) {
@@ -1680,6 +2309,11 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
         v->specular = specular ? *(const uint32_t*)(src + specular) : 0xFF000000u;
         if (uv) memcpy(&v->u, src + uv, 8);
         else v->u = v->v = 0.0f;
+        v->layer = layer;
+    }
+    if (t->gpu_box_known) {
+        d3dt_rect_t drawn = d3dt_vertex_box(&R.verts[base].x, sizeof(tl_vertex_t), count, t->legacy_w, t->legacy_h);
+        gpu_box_add(t, &drawn);
     }
     R.nverts += count;
     if (topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST) {
@@ -1702,7 +2336,10 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
         }
     }
     R.nindices += n;
-    perf_add(PERF_TRANSLATE, start);
+    if (start) {
+        R.perf.ms[PERF_TRANSLATE] += elapsed_ms(start) * TRANSLATE_SAMPLE;
+        R.perf.count[PERF_TRANSLATE] += TRANSLATE_SAMPLE;
+    }
     return DD_OK;
 }
 
@@ -1717,6 +2354,7 @@ static void clear_rect(d3dr_target_t* t, const d3dt_rect_t* r, DWORD flags, D3DC
         return;
     }
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, depth ? t->dsv : NULL);
+    R.bound.valid = 0;
     set_pass(k_full_rect, NULL, rgba, z);
     draw_pass(R.ps[D3D11_SHADER_PS_FILL], NULL, NULL, target ? R.blend_none : R.blend_nowrite,
               depth ? R.depth_write_always : NULL, t->width, t->height, &scissor);
@@ -1735,8 +2373,14 @@ HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD f
         long x = rects[i].x1, y = rects[i].y1, w = rects[i].x2 - rects[i].x1, h = rects[i].y2 - rects[i].y1;
         d3dt_rect_t r = d3dt_scale_rect(x, y, w, h, t->legacy_w, t->legacy_h, t->width, t->height);
         if (d3dt_rect_empty(&r)) continue;
-        if ((flags & D3DCLEAR_TARGET) && covers_surface(t, x, y, w, h)) tsync_gpu_clear(&t->sync, d3dt_bgra_to_rgb565(color));
-        else if (flags & D3DCLEAR_TARGET) gpu_write(t);
+        if ((flags & D3DCLEAR_TARGET) && covers_surface(t, x, y, w, h)) {
+            tsync_gpu_clear(&t->sync, d3dt_bgra_to_rgb565(color));
+            gpu_box_cleared(t, d3dt_bgra_to_rgb565(color));
+        } else if (flags & D3DCLEAR_TARGET) {
+            d3dt_rect_t legacy = { x, y, x + w, y + h };
+            gpu_write(t);
+            gpu_box_add(t, &legacy);
+        }
         clear_rect(t, &r, flags, color, z);
         R.clears++;
     }
@@ -1781,7 +2425,9 @@ void d3dr_begin_scene(d3d_device_t* dev) {
 }
 
 void d3dr_end_scene(d3d_device_t* dev) {
-    if (R.batch_dev == dev) flush();
+    if (R.batch_dev != dev) return;
+    count_flush(D3DR_FLUSH_END_SCENE, 0);
+    flush();
 }
 
 /* The front buffer of a hardware frame is the last presented picture, read back only if the game asks. */
@@ -1796,8 +2442,8 @@ static void readback_last_frame(dd_surface_t* s) {
         SAFE_RELEASE(R.front_rtv);
         SAFE_RELEASE(R.front_down);
         SAFE_RELEASE(R.front_staging);
-        R.front_down = make_texture(w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET, 0, 1, 0);
-        R.front_staging = make_texture(w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 1, 0);
+        R.front_down = make_texture(w, h, DXGI_FORMAT_R16_UINT, 1, D3D11_USAGE_DEFAULT, D3D11_BIND_RENDER_TARGET, 0, 1, 0);
+        R.front_staging = make_texture(w, h, DXGI_FORMAT_R16_UINT, 1, D3D11_USAGE_STAGING, 0, D3D11_CPU_ACCESS_READ, 1, 0);
         if (!R.front_down || !R.front_staging ||
             FAILED(ID3D11Device_CreateRenderTargetView(R.dev, (ID3D11Resource*)R.front_down, NULL, &R.front_rtv))) {
             SAFE_RELEASE(R.front_down);
@@ -1808,18 +2454,16 @@ static void readback_last_frame(dd_surface_t* s) {
         R.front_h = h;
     }
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &R.front_rtv, NULL);
+    R.bound.valid = 0;
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
-    draw_pass(R.ps[D3D11_SHADER_PS_COPY], R.last_frame_srv, R.linear_clamp, R.blend_none, NULL, w, h, NULL);
+    draw_pass(R.ps[D3D11_SHADER_PS_PACK565], R.last_frame_srv, R.linear_clamp, R.blend_none, NULL, w, h, NULL);
     unbind_views();
     ID3D11DeviceContext_CopyResource(R.ctx, (ID3D11Resource*)R.front_staging, (ID3D11Resource*)R.front_down);
     if (FAILED(ID3D11DeviceContext_Map(R.ctx, (ID3D11Resource*)R.front_staging, 0, D3D11_MAP_READ, 0, &m))) return;
-    for (UINT y = 0; y < h; y++) {
-        const uint32_t* in = (const uint32_t*)((const BYTE*)m.pData + (size_t)y * m.RowPitch);
-        uint16_t* out = (uint16_t*)(s->bits + (size_t)y * s->pitch);
-        for (UINT x = 0; x < w; x++) out[x] = d3dt_bgra_to_rgb565(in[x]);
-    }
+    for (UINT y = 0; y < h; y++)
+        memcpy(s->bits + (size_t)y * s->pitch, (const BYTE*)m.pData + (size_t)y * m.RowPitch, (size_t)w * 2);
     ID3D11DeviceContext_Unmap(R.ctx, (ID3D11Resource*)R.front_staging, 0);
-    note_readback(READBACK_FRONT_BUFFER, elapsed_ms(start), (size_t)w * h * 4);
+    note_readback(READBACK_FRONT_BUFFER, elapsed_ms(start), (size_t)w * h * 2);
 }
 
 /* ---- Locks that wait for the first touch ----
@@ -1828,37 +2472,13 @@ static void readback_last_frame(dd_surface_t* s) {
  * then does the Lock read back, capture or recreate the picture, exactly as it would have at Lock time.
  * A Lock that ends untouched was synchronisation only and leaves the target as it was. */
 
-/* DEBUG_SAULO: the first deferral decisions and how their Locks ended. */
-#define DEFER_LOG_LIMIT 5
-static unsigned s_defer_logged;
-static int s_defer_log_open;
-
-static void log_defer(const dd_surface_t* s, const char* outcome, int open) {
-    MEMORY_BASIC_INFORMATION mbi;
-    if (s_defer_logged >= DEFER_LOG_LIMIT) return;
-    s_defer_logged++;
-    s_defer_log_open = open;
-    memset(&mbi, 0, sizeof mbi);
-    VirtualQuery(s->bits, &mbi, sizeof mbi);
-    host_log("d3d", "DEBUG_SAULO Lock #%u: surface 0x%08X caps 0x%08lX, own section %s, bits 0x%08X, allocation 0x%08X "
-             "size 0x%lX type 0x%lX protection 0x%lX, %ld bytes, flags 0x%lX, by sub_%08X: %s", s_defer_logged,
-             (uint32_t)(uintptr_t)s, s->caps, s->section ? "yes" : "no", (uint32_t)(uintptr_t)s->bits,
-             (uint32_t)(uintptr_t)mbi.AllocationBase, (unsigned long)mbi.RegionSize, mbi.Type, mbi.Protect,
-             s->pitch * (long)s->height, s->lock_flags, readback_caller(), outcome);
-}
-
-static void log_unlock(int touched) {
-    if (!s_defer_log_open) return;
-    s_defer_log_open = 0;
-    host_log("d3d", "DEBUG_SAULO Lock #%u ended %s", s_defer_logged, touched ? "touched" : "untouched");
-}
-
 static void deferred_touched(void* context) {
     d3dr_target_t* t = (d3dr_target_t*)context;
     R.deferred = NULL;
     R.perf.deferred_touched++;
-    log_unlock(1);
+    R.charge_caller = t->deferred_caller;
     apply_sync(t, tsync_lock_touched(&t->deferred), &t->deferred_region, t->deferred_reason, t->sync.exact);
+    R.charge_caller = 0;
 }
 
 /* Anything else that reads or changes the target first gives a waiting Lock the picture of its time. */
@@ -1866,20 +2486,29 @@ static void settle_deferred(void) {
     if (R.deferred) page_guard_touch();
 }
 
+/* The Lock hands out the surface's alias view, which stays closed between Locks: no protection change unless it is
+ * touched. A surface without a section of its own is guarded in place. */
+static page_guard_result_t arm_lock_guard(d3dr_target_t* t) {
+    dd_surface_t* s = t->surface;
+    size_t bytes = (size_t)s->pitch * s->height;
+    if (!s->guard_alias && s->section) s->guard_alias = page_alias_create(s->section, bytes);
+    if (s->guard_alias && page_guard_arm_alias(s->guard_alias, deferred_touched, t) == PAGE_GUARD_ARMED) {
+        s->lock_alias = 1;
+        return PAGE_GUARD_ARMED;
+    }
+    return page_guard_arm(s->bits, bytes, deferred_touched, t);
+}
+
 /* 0 leaves the Lock to the immediate path. */
 static int defer_lock(d3dr_target_t* t, tsync_access_t kind, const d3dt_rect_t* region, readback_reason_t reason,
-                      int exact) {
-    dd_surface_t* s = t->surface;
+                      int exact, uint32_t caller) {
     page_guard_result_t armed;
     apply_sync(t, tsync_lock_deferred(&t->sync, kind, &t->deferred), region, reason, exact);
-    if (!t->deferred.acts) {
-        log_defer(s, "nothing to wait for, the CPU copy is current", 0);
-        return 1;
-    }
+    if (!t->deferred.acts) return 1;
     t->deferred_region = *region;
     t->deferred_reason = reason;
-    armed = page_guard_arm(s->bits, (size_t)s->pitch * s->height, deferred_touched, t);
-    log_defer(s, page_guard_result_name(armed), armed == PAGE_GUARD_ARMED);
+    t->deferred_caller = caller;
+    armed = arm_lock_guard(t);
     if (armed != PAGE_GUARD_ARMED) {
         apply_sync(t, tsync_lock_touched(&t->deferred), region, reason, t->sync.exact);
         return 1;
@@ -1892,11 +2521,14 @@ static int defer_lock(d3dr_target_t* t, tsync_access_t kind, const d3dt_rect_t* 
 /* 1 when the Lock ended with its pixels untouched: nothing was read or written. */
 int d3dr_surface_unlocked(dd_surface_t* s) {
     d3dr_target_t* t = s->target;
+    if (t && t->inert_lock) {
+        t->inert_lock = 0;
+        return 1;
+    }
     if (!t || R.deferred != t || !page_guard_disarm()) return 0;
     R.deferred = NULL;
     tsync_lock_untouched(&t->sync, &t->deferred);
     R.perf.deferred_untouched++;
-    log_unlock(0);
     return 1;
 }
 
@@ -1908,18 +2540,173 @@ static void drop_deferred(const d3dr_target_t* t) {
     R.deferred = NULL;
 }
 
+/* Polygons the game rasterises itself into a Direct3D frame (cpu_polygons.c). One Lock spans a run of them; each
+ * polygon claims the tiles of its box, so only those are captured, and a primitive not known to only store pixels
+ * reads its box from the GPU, never the frame. */
+static struct {
+    int pending, pending_reads;
+    d3dt_rect_t pending_box;
+    d3dr_target_t* target;
+    int captured;
+    d3dt_rect_t dirty;
+    tsync_tiles_t tiles;
+} s_polys;
+
+static void readback_region(d3dr_target_t* t, const d3dt_rect_t* r) {
+    D3D11_MAPPED_SUBRESOURCE m;
+    dd_surface_t* s = t->surface;
+    int64_t start = ticks();
+    size_t pixels = (size_t)(r->right - r->left) * (size_t)(r->bottom - r->top);
+    if (!target_usable(t) || d3dt_rect_empty(r) || !map_target(t, 0, r, &m)) return;
+    tsync_fill_unwritten(s->bits, s->pitch, t->reference, t->legacy_w, r,
+                         (const uint16_t*)((const BYTE*)m.pData + (size_t)r->top * m.RowPitch) + r->left,
+                         m.RowPitch / 2);
+    ID3D11DeviceContext_Unmap(R.ctx, (ID3D11Resource*)t->staging, 0);
+    note_readback(READBACK_LOCK_READ, elapsed_ms(start), pixels * 2);
+    R.perf.cpu_polygon_readbacks++;
+    R.perf.cpu_polygon_readback_pixels += pixels;
+}
+
+static void capture_polygon_tiles(void* context, const d3dt_rect_t* r) {
+    d3dr_target_t* t = context;
+    fill_copy(t, r, TSYNC_UNWRITTEN);
+    if (t->lazy) tsync_tiles_claim(&t->fresh, r, mark_fresh, NULL);
+}
+
+static d3dt_rect_t clip_to_lock(const dd_surface_t* s, d3dt_rect_t box) {
+    if (box.left < s->lock_rect.left) box.left = s->lock_rect.left;
+    if (box.top < s->lock_rect.top) box.top = s->lock_rect.top;
+    if (box.right > s->lock_rect.right) box.right = s->lock_rect.right;
+    if (box.bottom > s->lock_rect.bottom) box.bottom = s->lock_rect.bottom;
+    if (box.right < box.left) box.right = box.left;
+    if (box.bottom < box.top) box.bottom = box.top;
+    return box;
+}
+
+static void add_polygon(d3dr_target_t* t, const d3dt_rect_t* box, int reads) {
+    d3dt_rect_union(&s_polys.dirty, box);
+    R.perf.cpu_polygons++;
+    if (!s_polys.captured || d3dt_rect_empty(box)) return;
+    tsync_tiles_claim(&s_polys.tiles, box, capture_polygon_tiles, t);
+    if (reads) readback_region(t, box);
+}
+
+static void polygon_lock(d3dr_target_t* t, uint32_t caller) {
+    dd_surface_t* s = t->surface;
+    d3dt_rect_t box = clip_to_lock(s, s_polys.pending_box), all = { 0, 0, (long)s->width, (long)s->height };
+    int exact = t->sync.exact, reads = s_polys.pending_reads;
+    unsigned acts;
+    s_polys.pending = 0;
+    check_front(t);
+    acts = tsync_cpu_access(&t->sync, TSYNC_ACCESS_NO_READ);
+    R.charge_caller = caller;
+    apply_sync(t, acts & ~(unsigned)(TSYNC_CAPTURE | TSYNC_CAPTURE_ALL), &box, READBACK_LOCK_WRITE, exact);
+    s_polys.target = t;
+    s_polys.captured = !(t->sync.valid & TSYNC_CPU);
+    memset(&s_polys.dirty, 0, sizeof s_polys.dirty);
+    if (s_polys.captured) {
+        if (!tsync_tiles_reset(&s_polys.tiles, s->width, s->height)) {
+            fill_copy(t, &all, TSYNC_UNWRITTEN);
+            t->lazy = 0;
+            tsync_tiles_claim_all(&s_polys.tiles);
+        } else if (acts & TSYNC_CAPTURE_ALL) {
+            start_lazy_capture(t);
+        }
+        R.perf.no_read_accesses++;
+    }
+    add_polygon(t, &box, reads);
+    R.charge_caller = 0;
+    R.perf.cpu_polygon_locks++;
+}
+
+void d3dr_cpu_polygon(void* surface_iface, const long raster_box[4], uint32_t origin_bytes, int reads) {
+    dd_surface_t* s = R.hardware && surface_iface ? dd_surface_from(surface_iface) : NULL;
+    long at[4] = { raster_box[0], raster_box[1], raster_box[2], raster_box[3] };
+    d3dt_rect_t box;
+    if (!s || !s->target || !s->target->device) return;
+    cpu_polygon_to_surface(at, origin_bytes, s->pitch);
+    box.left = at[0];
+    box.top = at[1];
+    box.right = at[2];
+    box.bottom = at[3];
+    /* Lockers that never draw a polygon (BeginFrame, FlushBatch's wait, fills) keep their own path. */
+    if (!target_access_reads(CPU_ACCESS_LOCK, 0, readback_caller(), 1)) return;
+    if (!s->locked) {
+        s_polys.pending = 1;
+        s_polys.pending_reads = reads;
+        s_polys.pending_box = box;
+        return;
+    }
+    if (s_polys.target == s->target) {
+        box = clip_to_lock(s, box);
+        add_polygon(s->target, &box, reads);
+    } else if (R.deferred == s->target && page_guard_disarm()) {
+        /* A Lock taken to hand the surface on (BeginFrame) and not touched yet: the polygons own it from here. */
+        d3dr_target_t* t = s->target;
+        R.deferred = NULL;
+        tsync_lock_untouched(&t->sync, &t->deferred);
+        if (R.batch_dev == t->device) flush();
+        s_polys.pending_reads = reads;
+        s_polys.pending_box = box;
+        polygon_lock(t, readback_caller());
+        R.perf.cpu_polygon_adopted++;
+    }
+}
+
+void d3dr_cpu_polygon_done(void) { s_polys.pending = 0; }
+
+static void end_polygon_run(const d3dr_target_t* t) {
+    if (!t || s_polys.target == t) s_polys.target = NULL;
+    if (!t || R.text_target == t) R.text_target = NULL;
+}
+
+void d3dr_text_box(HDC dc, const RECT* box) {
+    d3dr_target_t* t = R.text_target;
+    d3dt_rect_t r;
+    if (!t || !t->surface || !t->surface->dc_out || t->surface->dc != dc || !t->lazy) return;
+    if (box) {
+        r.left = box->left;
+        r.top = box->top;
+        r.right = box->right;
+        r.bottom = box->bottom;
+    } else {
+        r = whole_target(t);
+    }
+    claim_fresh(t, &r);
+    R.perf.text_boxes++;
+}
+
 /* Before the game touches a render target's pixels: writes still pending reach the GPU first, then
  * the CPU copy becomes the GPU picture only if this access reads it. */
 static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t access) {
     dd_surface_t* s = t->surface;
     uint32_t caller = access == CPU_ACCESS_GETDC && game_text_drawing() ? GETDC_CALLER_TEXT_OVERLAY : readback_caller();
-    int reads = target_access_reads(access, s->lock_flags, caller), exact;
+    int reads = target_access_reads(access, s->lock_flags, caller, ui_screen_blt_writes_only()), exact;
+    int text_boxes = caller == GETDC_CALLER_TEXT_OVERLAY && game_text_boxes_known();
     tsync_access_t kind = reads ? TSYNC_ACCESS_READ : TSYNC_ACCESS_NO_READ;
-    readback_reason_t reason = readback_classify(access, !will_write, g_cur_func, CALIBRATION_CALLER);
+    readback_reason_t reason = readback_classify(access, !will_write, g_cur_func);
     d3dt_rect_t region = { 0, 0, (long)s->width, (long)s->height };
+    /* FlushBatch locks only to wait for the hardware and unlocks at once: nothing to synchronise or flush. */
+    if (access == CPU_ACCESS_LOCK && caller == LOCK_CALLER_FLUSH_BATCH) {
+        t->inert_lock = 1;
+        R.perf.inert_locks++;
+        return;
+    }
     settle_deferred();
-    if (R.batch_dev == t->device) flush();
+    if (R.batch_dev == t->device) {
+        count_flush(D3DR_FLUSH_CPU_ACCESS, 0);
+        flush();
+    }
     if (!target_ready(t)) return;
+    if (access == CPU_ACCESS_LOCK && s_polys.pending) {
+        polygon_lock(t, caller);
+        R.perf.target_accesses++;
+        if (will_write) {
+            R.target_writer = caller;
+            R.target_access = access;
+        }
+        return;
+    }
     if (access == CPU_ACCESS_LOCK) {
         region.left = s->lock_rect.left;
         region.top = s->lock_rect.top;
@@ -1928,8 +2715,13 @@ static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t acc
     }
     check_front(t);
     exact = t->sync.exact;
-    if (access != CPU_ACCESS_LOCK || !defer_lock(t, kind, &region, reason, exact))
+    if (access != CPU_ACCESS_LOCK || !defer_lock(t, kind, &region, reason, exact, caller)) {
+        R.charge_caller = caller;
+        R.capture_text = text_boxes;
         apply_sync(t, tsync_cpu_access(&t->sync, kind), &region, reason, exact);
+        R.capture_text = 0;
+        R.charge_caller = 0;
+    }
     R.perf.target_accesses++;
     if (will_write) {
         R.target_writer = caller;
@@ -1944,7 +2736,7 @@ void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t acces
         s->front_from_gpu = 0;
         readback_last_frame(s);
     }
-    if (will_write && R.nindices && R.batch_dev && R.batch_dev->texture == s) flush();
+    if (will_write) settle_batch_texture((const d3dr_texture_t*)s->gpu_texture);
 }
 
 /* A change to a flip chain's front buffer ends its use as a copy of the GPU picture. */
@@ -1957,6 +2749,7 @@ static void front_written(dd_surface_t* s) {
 void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
     s->cpu_writes++;
     if (!R.hardware) return;
+    if (R.text_target && R.text_target->surface == s) R.text_target = NULL;
     front_written(s);
     if (s->target) {
         d3dt_rect_t add = { 0, 0, (long)s->width, (long)s->height };
@@ -1965,6 +2758,11 @@ void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
             add.top = r->top;
             add.right = r->right;
             add.bottom = r->bottom;
+        }
+        if (s_polys.target == s->target) {
+            add = s_polys.dirty;
+            end_polygon_run(s->target);
+            if (d3dt_rect_empty(&add)) return;
         }
         tsync_cpu_wrote(&s->target->sync);
         d3dt_rect_union(&s->target->dirty, &add);
@@ -1990,6 +2788,67 @@ static void update_gamma(const DDGAMMARAMP* gamma) {
     ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)R.gamma_tex, 0, NULL, lut, sizeof lut, 0);
     memcpy(R.gamma_last, gamma, sizeof R.gamma_last);
     R.gamma_valid = 1;
+}
+
+/* Every 8th row and 4th pixel: the frozen picture is replaced whole when the game captures a new one. */
+static uint32_t still_key(const uint16_t* bits, long pitch, int w, int h) {
+    uint32_t key = 2166136261u;
+    for (int y = 0; y < h; y += 8)
+        for (int x = (y / 8) & 3; x < w; x += 4) key = (key ^ bits[(size_t)y * pitch + x]) * 16777619u;
+    return key;
+}
+
+static int upload_still(const uint16_t* bits, long pitch, int w, int h) {
+    uint32_t key = still_key(bits, pitch, w, h);
+    uint32_t* rows;
+    if (R.still_tex && R.still_w == (UINT)w && R.still_h == (UINT)h && R.still_bits == bits && R.still_key == key)
+        return 1;
+    if (!R.still_tex || R.still_w != (UINT)w || R.still_h != (UINT)h) {
+        SAFE_RELEASE(R.still_srv);
+        SAFE_RELEASE(R.still_tex);
+        R.still_tex = make_texture((UINT)w, (UINT)h, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
+                                   D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
+        if (!R.still_tex ||
+            FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)R.still_tex, NULL, &R.still_srv))) {
+            SAFE_RELEASE(R.still_tex);
+            return 0;
+        }
+        R.still_w = (UINT)w;
+        R.still_h = (UINT)h;
+    }
+    rows = upload_rows((size_t)w * h);
+    if (!rows) return 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) rows[(size_t)y * w + x] = R.rgb565_table[bits[(size_t)y * pitch + x]];
+    ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)R.still_tex, 0, NULL, rows, (UINT)w * 4, 0);
+    R.still_bits = bits;
+    R.still_key = key;
+    R.still_uploads++;
+    return 1;
+}
+
+/* The game's frozen gameplay picture behind its pause menus, drawn on the GPU target instead of being copied into the
+ * screen's CPU copy every frame: no Lock, no full-screen compare and no full-screen upload while a menu is open. */
+int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h) {
+    dd_surface_t* s = dd_surface_from(surface);
+    d3dr_target_t* t = s ? s->target : NULL;
+    d3dt_rect_t all;
+    float rect[4] = { -1.0f, 1.0f, 1.0f, -1.0f };
+    if (!R.hardware || !t || !t->device || !bits || t->legacy_w != (UINT)w || t->legacy_h != (UINT)h) return 0;
+    settle_deferred();
+    if (R.batch_dev == t->device) flush();
+    if (!target_ready(t)) return 0;
+    gpu_write(t);
+    if (!upload_still(bits, pitch, w, h)) return 0;
+    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, NULL);
+    R.bound.valid = 0;
+    set_pass(rect, k_full_uv, NULL, 0.0f);
+    draw_pass(R.ps[D3D11_SHADER_PS_COPY], R.still_srv, R.linear_clamp, R.blend_none, NULL, t->width, t->height, NULL);
+    unbind_views();
+    all = whole_target(t);
+    gpu_box_add(t, &all);
+    R.still_draws++;
+    return 1;
 }
 
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h) {
@@ -2034,11 +2893,13 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     if (!rtv) return 0;
     update_gamma(gamma);
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &rtv, NULL);
+    R.bound.valid = 0;
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], srv, sampler, R.blend_none, NULL, width, height, NULL);
     draw_ui_layer(width, height);
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
+    R.bound.valid = 0;
     return present_submit(vsync);
 }
 
@@ -2062,6 +2923,26 @@ static void keep_last_frame(d3dr_target_t* t) {
     R.last_valid = 1;
 }
 
+/* The process is 32-bit and not large-address-aware: 2 GB of address space for the guest image, its heaps, the
+ * surfaces and the drivers. */
+static void sample_address_space(void) {
+    MEMORYSTATUSEX m;
+    m.dwLength = sizeof m;
+    if (!GlobalMemoryStatusEx(&m)) return;
+    R.va_total = m.ullTotalVirtual;
+    R.va_used = m.ullTotalVirtual - m.ullAvailVirtual;
+    if (R.va_used > R.va_peak) R.va_peak = R.va_used;
+}
+
+static void log_address_space(void) {
+    size_t reserved = 0, used = 0;
+    sample_address_space();
+    page_arena_usage(&reserved, &used);
+    host_log("renderer", "address space %.0f MB of %.0f MB in use (peak %.0f MB); small textures share %.1f MB of "
+             "arenas, %.1f MB of it in use", R.va_used / 1048576.0, R.va_total / 1048576.0, R.va_peak / 1048576.0,
+             reserved / 1048576.0, used / 1048576.0);
+}
+
 static void log_metric_lines(const char* when) {
     host_log("renderer", "%s", when);
     host_log("renderer", "frames %llu (hardware %llu, DirectDraw pictures %llu)", R.frames_hw + R.frames_dib, R.frames_hw,
@@ -2071,10 +2952,18 @@ static void log_metric_lines(const char* when) {
     host_log("renderer", "vertices %llu", R.vertices);
     host_log("renderer", "indices %llu", R.index_count);
     host_log("renderer", "textures_bound %llu", R.textures_bound);
-    host_log("renderer", "texture_uploads %llu", R.texture_uploads);
-    host_log("renderer", "texture_memory %.1f MB", R.texture_memory / (1024.0 * 1024.0));
+    host_log("renderer", "texture_uploads %llu (textures reused from the game's earlier surfaces: %llu)",
+             R.texture_uploads, R.textures_reused);
+    host_log("renderer", "texture_memory %.1f MB (%llu textures with generated mipmaps, %llu of them dynamic: level 0 "
+             "only; %.1f M mip texels built in %.0f ms)", R.texture_memory / (1024.0 * 1024.0), R.textures_mipped,
+             R.textures_dynamic, R.mip_texels / 1e6, R.mip_ms);
+    host_log("renderer", "texture arrays: %u pages of %u slices (peak %u); draws that joined a batch with another "
+             "texture %llu", R.pool_pages, POOL_SLICES, R.pool_pages_peak, R.texture_joins);
+    log_address_space();
     host_log("renderer", "depth_buffer_active = %s", R.depth_active ? "true" : "false");
     host_log("renderer", "render-target readbacks %llu, CPU overlays %llu, clears %llu", R.readbacks, R.overlays, R.clears);
+    host_log("renderer", "frozen gameplay picture behind the menus: drawn on the GPU %llu times, uploaded %llu times",
+             R.still_draws, R.still_uploads);
     host_log("renderer", "SelfMod entries during hardware frames: %.1f per frame",
              R.frames_hw ? (double)R.selfmod_hw / (double)R.frames_hw : 0.0);
 }
@@ -2140,10 +3029,57 @@ static void log_readback_detail(const perf_window_t* p, const char* when) {
 static void log_hybrid(const perf_window_t* p, const char* when) {
     double frames = p->frames ? (double)p->frames : 1.0;
     if (!p->draws && !p->target_accesses) return;
-    host_log("perf", "%s per frame: D3D draws %.1f, triangles %.0f | CPU accesses to the target %.2f, CPU pixels "
-             "composited %.0f (black %.0f) in %.2f composites, full CPU pictures uploaded %llu", when,
-             p->draws / frames, p->triangles / frames, p->target_accesses / frames, p->composited_pixels / frames,
-             p->composited_black / frames, p->composites / frames, p->uploads);
+    host_log("perf", "%s per frame: D3D draws %.1f, triangles %.0f (terrain %.0f) | CPU accesses to the target %.2f, "
+             "CPU pixels composited %.0f (black %.0f) in %.2f composites, full CPU pictures uploaded %llu | CPU polygons "
+             "%.1f in %.2f Locks (%.2f taken over from a waiting Lock), box readbacks %.2f (%.0f px) | FlushBatch Locks "
+             "skipped %.2f | CPU copy pixels filled %.0f, compared %.0f | text boxes %.1f | texture write-watch reads "
+             "%.1f | draws joined across textures %.1f", when,
+             p->draws / frames, p->triangles / frames, p->terrain_triangles / frames, p->target_accesses / frames,
+             p->composited_pixels / frames,
+             p->composited_black / frames, p->composites / frames, p->uploads, p->cpu_polygons / frames,
+             p->cpu_polygon_locks / frames, p->cpu_polygon_adopted / frames, p->cpu_polygon_readbacks / frames,
+             p->cpu_polygon_readback_pixels / frames, p->inert_locks / frames, p->filled_pixels / frames,
+             p->scanned_pixels / frames, p->text_boxes / frames, p->watch_reads / frames, p->texture_joins / frames);
+}
+
+static int top_index(const unsigned long long* counts, unsigned n, unsigned long long* best, const int* skip) {
+    int at = -1;
+    *best = 0;
+    for (unsigned i = 0; i < n; i++)
+        if (counts[i] > *best && (!skip || !skip[i])) {
+            *best = counts[i];
+            at = (int)i;
+        }
+    return at;
+}
+
+/* DEBUG_SAULO: what ends Direct3D batches, with the render and texture-stage states that do it most. */
+static void log_flushes(const perf_window_t* p, const char* when) {
+    static const char* const kinds[D3DR_FLUSH_KINDS] = { "other", "render state", "a ninth texture array",
+                                                         "stage state", "viewport", "primitive type", "CPU access",
+                                                         "EndScene" };
+    char line[700];
+    int n = 0;
+    double frames = p->frames ? (double)p->frames : 1.0;
+    for (int k = 0; k < D3DR_FLUSH_KINDS; k++)
+        if (p->flush_kind[k])
+            n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %.1f", n ? ", " : "", kinds[k],
+                           p->flush_kind[k] / frames);
+    for (int which = 0; which < 2; which++) {
+        int skip[D3D_RENDER_STATES] = { 0 };
+        const unsigned long long* counts = which ? p->flush_stage_state : p->flush_render_state;
+        unsigned size = which ? 32u : D3D_RENDER_STATES;
+        for (int k = 0; k < 4; k++) {
+            unsigned long long best;
+            int at = top_index(counts, size, &best, skip);
+            if (at < 0) break;
+            skip[at] = 1;
+            n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %d %.1f", k ? ", " : "; by ",
+                           which ? "stage state" : "render state", at, best / frames);
+        }
+    }
+    line[sizeof line - 1] = 0;
+    if (n) host_log("perf", "%s per frame, batches ended by: %s", when, line);
 }
 
 static void accumulate(perf_window_t* total, const perf_window_t* p) {
@@ -2162,11 +3098,26 @@ static void accumulate(perf_window_t* total, const perf_window_t* p) {
     total->front_copies += p->front_copies;
     total->draws += p->draws;
     total->triangles += p->triangles;
+    total->terrain_triangles += p->terrain_triangles;
     total->target_accesses += p->target_accesses;
     total->composites += p->composites;
     total->composited_pixels += p->composited_pixels;
     total->composited_black += p->composited_black;
     total->uploads += p->uploads;
+    total->cpu_polygons += p->cpu_polygons;
+    total->cpu_polygon_locks += p->cpu_polygon_locks;
+    total->cpu_polygon_readbacks += p->cpu_polygon_readbacks;
+    total->cpu_polygon_readback_pixels += p->cpu_polygon_readback_pixels;
+    for (int k = 0; k < D3DR_FLUSH_KINDS; k++) total->flush_kind[k] += p->flush_kind[k];
+    for (int k = 0; k < D3D_RENDER_STATES; k++) total->flush_render_state[k] += p->flush_render_state[k];
+    for (int k = 0; k < 32; k++) total->flush_stage_state[k] += p->flush_stage_state[k];
+    total->cpu_polygon_adopted += p->cpu_polygon_adopted;
+    total->inert_locks += p->inert_locks;
+    total->filled_pixels += p->filled_pixels;
+    total->scanned_pixels += p->scanned_pixels;
+    total->text_boxes += p->text_boxes;
+    total->watch_reads += p->watch_reads;
+    total->texture_joins += p->texture_joins;
     total->deferred_locks += p->deferred_locks;
     total->deferred_untouched += p->deferred_untouched;
     total->deferred_touched += p->deferred_touched;
@@ -2178,6 +3129,23 @@ static void accumulate(perf_window_t* total, const perf_window_t* p) {
         slot->bytes += c->bytes;
         slot->ms += c->ms;
     }
+}
+
+/* DEBUG_SAULO */
+static void log_uploads(unsigned long long frames) {
+    static const char* const kinds[3] = { "first", "whole with mipmaps", "level-0 regions" };
+    unsigned long long loads, unchanged, texels, changed;
+    double f = frames ? (double)frames : 1.0;
+    char line[400];
+    int n = 0;
+    for (int k = 0; k < 3; k++)
+        n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %.1f (%.0f texels, %.2f ms)", k ? ", " : "", kinds[k],
+                       R.uploads_by[k].n / f, R.uploads_by[k].texels / f, R.uploads_by[k].ms / f);
+    line[sizeof line - 1] = 0;
+    d3d_objects_load_counts(&loads, &unchanged, &texels, &changed);
+    host_log("textures", "last 5 s per frame: uploads %s; Loads %.1f (unchanged %.1f), texels changed %.0f of %.0f, "
+             "dynamic textures so far %llu", line, loads / f, unchanged / f, changed / f, texels / f, R.textures_dynamic);
+    memset(R.uploads_by, 0, sizeof R.uploads_by);
 }
 
 static void log_perf_window(double seconds) {
@@ -2193,7 +3161,25 @@ static void log_perf_window(double seconds) {
     if (R.hardware) {
         log_readback_detail(p, "last 5 s");
         log_hybrid(p, "last 5 s");
+        log_flushes(p, "last 5 s");
     }
+    engine_limits_window(p->frames);
+    engine_heaps_window();
+    native_calls_window(p->frames);
+    guest_kernels_window(p->frames);
+    if (R.hardware) age_parked(now_seconds());
+    if (R.hardware && (R.textures_created_window || R.textures_released_window || R.textures_parked_window ||
+                       R.textures_reused_window))
+        host_log("textures", "last 5 s: D3D11 textures created %u, released %u, parked %u, reused %u (no upload, no "
+                 "mipmaps); alive %u (peak %u), %.1f MB with their mipmaps, of them parked %u (%.1f MB), on game "
+                 "device #%u", R.textures_created_window, R.textures_released_window, R.textures_parked_window,
+                 R.textures_reused_window, R.textures_alive, R.textures_peak, R.texture_memory / 1048576.0,
+                 s_parked_count, s_parked_bytes / 1048576.0, R.devices);
+    if (R.hardware) log_uploads(p->frames);
+    R.textures_created_window = R.textures_released_window = 0;
+    R.textures_parked_window = R.textures_reused_window = 0;
+    guest_profile_window();
+    sample_address_space();
     accumulate(&R.total, p);
     memset(p, 0, sizeof *p);
 }
@@ -2235,6 +3221,9 @@ void d3dr_summary(void) {
                  "unknown): gameplay %llu, menus %llu", R.cpu_pixels[1], R.cpu_pixels[0], R.black_over_gpu[1],
                  R.black_over_gpu[0], R.black_over_unknown[1], R.black_over_unknown[0]);
     }
+    texture_streaming_summary(R.total.frames);
+    terrain_quality_summary();
+    engine_limits_summary(R.draw_calls);
     host_log("d3d", "unsupported_render_states %lu", refused_render);
     host_log("d3d", "unsupported_texture_stage_states %lu", refused_stage);
     host_log("d3d", "failed_d3d_calls %lu", failed);

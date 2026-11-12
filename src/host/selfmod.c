@@ -148,7 +148,7 @@ static void selfmod_bridge(void) {
     c.in[0] = g_eax; c.in[1] = g_ecx; c.in[2] = g_edx; c.in[3] = g_ebx;
     c.in[4] = guest_esp; c.in[5] = g_ebp; c.in[6] = g_esi; c.in[7] = g_edi;
     c.st_count = (uint32_t)depth;
-    for (i = 0; i < depth; i++) c.st[i] = g_st[i];
+    for (i = 0; i < depth; i++) c.st[i] = RECOMP_X87_ST(i);
     c.cw_guest = g_fpu_cw;
     g_cur_import = "(SelfMod native code)";
     g_esp = guest_esp - CALLBACK_STACK_GAP;
@@ -157,11 +157,16 @@ static void selfmod_bridge(void) {
 
     g_eax = c.out[0]; g_ecx = c.out[1]; g_edx = c.out[2]; g_ebx = c.out[3];
     g_esp = c.out[4]; g_ebp = c.out[5]; g_esi = c.out[6]; g_edi = c.out[7];
+#ifdef RECOMP_X87_RING
+    for (i = 0; i < depth; i++) (void)RECOMP_X87_POP();
+    for (i = (int)c.st_count - 1; i >= 0; i--) RECOMP_X87_PUSH(c.st[i]);
+#else
     for (i = 0; i < 8; i++) {
         g_st[i] = i < (int)c.st_count ? c.st[i] : 0.0;
         g_st_i64[i] = 0;
     }
     g_fp_top += (int)c.st_count - depth;
+#endif
     g_fpu_cw = c.cw_guest;
     g_cur_import = saved_import;
 }

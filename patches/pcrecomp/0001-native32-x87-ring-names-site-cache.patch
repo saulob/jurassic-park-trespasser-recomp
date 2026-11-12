@@ -1,0 +1,426 @@
+native32: the x87 ring, inline runtime helpers, O(1) import names and per-site call caching on MSVC
+
+- recomp_types.h: RECOMP_X87_RING builds with MSVC (RECOMP_X87_UNLIKELY instead of
+  __builtin_expect); RECOMP_X87_RING_DEPTH keeps g_fp_top counting pushes minus pops;
+  RECOMP_X87_ST/PUSH/POP reach the lifted x87 stack from runtime and host code under either
+  model; RECOMP_HELPER force-inlines the per-instruction flag and x87 helpers (recomp_cond,
+  recomp_cond_cf, recomp_carry, recomp_flags_pack, recomp_parity8, the ring, fp_round_cw,
+  fp_st0_to_i64); fp_round_cw gives the C library's results without its calls;
+  RECOMP_ICALL_SITE_RANGE gives each indirect call site a two-entry cache of the targets inside
+  [g_recomp_site_lo, g_recomp_site_hi) and the shim page, without GCC statement expressions.
+- native32.c: the ring's storage and recomp_x87_recentre, thread state saved from and loaded
+  to the ring, float returns of native calls and callbacks through the accessors, an
+  open-addressing table for native32_name, the cacheable ranges and native32_is_shim.
+- x87crt.c, native32_selftest.c: the accessors instead of g_st.
+
+Applied by tools/fetch_pcrecomp.py on top of the commit in config/target.json (series order).
+
+diff --git a/runtime/native32/native32.c b/runtime/native32/native32.c
+index 9ef2c0b..5c570c2 100644
+--- a/runtime/native32/native32.c
++++ b/runtime/native32/native32.c
+@@ -21,6 +21,23 @@
+ uint32_t  g_eax, g_ecx, g_edx, g_esp, g_ebx, g_esi, g_edi, g_ebp;
+ double    g_st[8];
+ int       g_fp_top;
++#ifdef RECOMP_X87_RING
++/* the x87 stack, a pointer into a long buffer (recomp_types.h fp_push_ring) */
++double    g_stbuf[X87_RING], *g_stp = g_stbuf + X87_RING / 2;
++int64_t   g_sti64buf[X87_RING], *g_sti64p = g_sti64buf + X87_RING / 2;
++void recomp_x87_recentre(void) {
++    double v[8];
++    int64_t w[8];
++    memcpy(v, g_stp, sizeof v), memcpy(w, g_sti64p, sizeof w);
++    g_stp = g_stbuf + X87_RING / 2, g_sti64p = g_sti64buf + X87_RING / 2;
++    memcpy(g_stp, v, sizeof v), memcpy(g_sti64p, w, sizeof w);
++}
++#define X87_TOP     g_stp       /* st(0..7), saved and loaded with a thread */
++#define X87_TOP_I64 g_sti64p
++#else
++#define X87_TOP     g_st
++#define X87_TOP_I64 g_st_i64
++#endif
+ uint16_t  g_fpu_cw = 0x027F;
+ uint16_t  g_seg_cs, g_seg_ds, g_seg_es, g_seg_fs, g_seg_gs, g_seg_ss;
+ uint64_t  g_mm[8];
+@@ -29,6 +46,8 @@ uint32_t  g_mxcsr = 0x1F80;
+ uint32_t  g_fs_base, g_gs_base;
+ ptrdiff_t g_mem_base = 0;
+ uint32_t  g_cur_func;
++uint32_t  g_recomp_site_lo, g_recomp_site_hi;   /* RECOMP_ICALL_SITE_RANGE, set by the host */
++uint32_t  g_recomp_fixed_lo, g_recomp_fixed_span; /* the shim page */
+ uint32_t  g_icall_trace[ICALL_TRACE_SIZE], g_icall_from[ICALL_TRACE_SIZE];
+ uint32_t  g_icall_trace_idx, g_icall_count;
+ 
+@@ -37,6 +56,7 @@ int native32_trace_native, native32_trace_callbacks;
+ typedef struct {
+     uint32_t eax, ecx, edx, esp, ebx, esi, edi, ebp, fs, cur;
+     double   st[8];
++    int64_t  st_i64[8];
+     int      fp_top;
+     uint16_t fpu_cw;
+     uint64_t mm[8];
+@@ -48,7 +68,8 @@ static void regs_save(regs_t* r) {
+     r->eax = g_eax; r->ecx = g_ecx; r->edx = g_edx; r->esp = g_esp;
+     r->ebx = g_ebx; r->esi = g_esi; r->edi = g_edi; r->ebp = g_ebp;
+     r->fs = g_fs_base; r->cur = g_cur_func;
+-    memcpy(r->st, g_st, sizeof g_st); r->fp_top = g_fp_top; r->fpu_cw = g_fpu_cw;
++    memcpy(r->st, X87_TOP, sizeof r->st); memcpy(r->st_i64, X87_TOP_I64, sizeof r->st_i64);
++    r->fp_top = g_fp_top; r->fpu_cw = g_fpu_cw;
+     memcpy(r->mm, g_mm, sizeof g_mm);
+     memcpy(r->xmm, g_xmm, sizeof g_xmm); r->mxcsr = g_mxcsr;
+ }
+@@ -57,7 +78,11 @@ static void regs_load(const regs_t* r) {
+     g_eax = r->eax; g_ecx = r->ecx; g_edx = r->edx; g_esp = r->esp;
+     g_ebx = r->ebx; g_esi = r->esi; g_edi = r->edi; g_ebp = r->ebp;
+     g_fs_base = r->fs; g_cur_func = r->cur;
+-    memcpy(g_st, r->st, sizeof g_st); g_fp_top = r->fp_top; g_fpu_cw = r->fpu_cw;
++#ifdef RECOMP_X87_RING
++    g_stp = g_stbuf + X87_RING / 2, g_sti64p = g_sti64buf + X87_RING / 2;
++#endif
++    memcpy(X87_TOP, r->st, sizeof r->st); memcpy(X87_TOP_I64, r->st_i64, sizeof r->st_i64);
++    g_fp_top = r->fp_top; g_fpu_cw = r->fpu_cw;
+     memcpy(g_mm, r->mm, sizeof g_mm);
+     memcpy(g_xmm, r->xmm, sizeof g_xmm); g_mxcsr = r->mxcsr;
+ }
+@@ -417,20 +442,30 @@ uint32_t native32_export(uint32_t base, const char* name) {
+ /* ---------------------------------------------------------------- names */
+ 
+ #define MAX_NAMES 4096
++#define NAME_HASH_BITS 13          /* twice MAX_NAMES slots: probes stay short */
+ static struct { uint32_t va; char name[60]; } g_names[MAX_NAMES];
+ static int g_name_n;
++/* Every native call names its target (g_cur_import): open addressing on the
++ * VA, an index + 1 into g_names per slot. */
++static uint16_t g_name_slot[1u << NAME_HASH_BITS];
++
++static unsigned name_slot(uint32_t va) { return (va * 2654435761u) >> (32 - NAME_HASH_BITS); }
+ 
+ const char* native32_name(uint32_t va) {
+-    for (int i = 0; i < g_name_n; i++)
+-        if (g_names[i].va == va) return g_names[i].name;
+-    return NULL;
++    for (unsigned i = name_slot(va);; i = (i + 1) & ((1u << NAME_HASH_BITS) - 1)) {
++        unsigned k = g_name_slot[i];
++        if (!k) return NULL;
++        if (g_names[k - 1].va == va) return g_names[k - 1].name;
++    }
+ }
+ 
+ static void add_name(uint32_t va, const char* dll, const char* fn) {
+-    if (g_name_n < MAX_NAMES && !native32_name(va)) {
+-        _snprintf(g_names[g_name_n].name, sizeof g_names[0].name - 1, "%s!%s", dll, fn);
+-        g_names[g_name_n++].va = va;
+-    }
++    unsigned i;
++    if (g_name_n >= MAX_NAMES || native32_name(va)) return;
++    _snprintf(g_names[g_name_n].name, sizeof g_names[0].name - 1, "%s!%s", dll, fn);
++    g_names[g_name_n].va = va;
++    for (i = name_slot(va); g_name_slot[i]; i = (i + 1) & ((1u << NAME_HASH_BITS) - 1)) {}
++    g_name_slot[i] = (uint16_t)++g_name_n;
+ }
+ 
+ /* ------------------------------------------------------- guest -> Windows */
+@@ -444,6 +479,8 @@ static native32_shim_t* g_shims;
+ static int g_nshims;
+ #define IS_SHIM_VA(va) (g_shim_page && (va) >= g_shim_page && (va) < g_shim_page + 0x10000u)
+ 
++int native32_is_shim(uint32_t va) { return IS_SHIM_VA(va); }
++
+ static void native_bridge(void) {
+     /* The guest's last error, as the previous native call left it: the trace
+      * below and mach_leave's TlsGetValue would reset it before this call. */
+@@ -538,7 +575,7 @@ static void native_bridge(void) {
+      * itself and back out of FindNextFileA. */
+     DWORD last_error = GetLastError();
+     mach_enter();
+-    if (st_ret) fp_push_impl(g_st, &g_fp_top, r_st);
++    if (st_ret) RECOMP_X87_PUSH(r_st);
+     g_cur_import = saved_import;
+     g_eax = r_eax;
+     g_edx = r_edx;
+@@ -964,7 +1001,7 @@ static uint64_t __cdecl cb_run(uint32_t va, uint32_t* sp, uint32_t ecx) {
+      * float leaves it on the LIFTED x87 stack, and the native caller is about
+      * to fstp its own. */
+     int st_ret = g_fp_top == saved.fp_top + 1;
+-    double cb_st = g_st[0];
++    double cb_st = RECOMP_X87_ST(0);
+     regs_load(&saved);
+     mach_leave();
+     if (st_ret) __asm fld cb_st
+@@ -1080,6 +1117,8 @@ void native32_init(void) {
+     g_mach_tls = TlsAlloc();
+     g_tslot_fls = FlsAlloc(tslot_free);
+     g_shim_page = (uint32_t)(uintptr_t)VirtualAlloc(NULL, 0x10000, MEM_RESERVE, PAGE_NOACCESS);
++    g_recomp_fixed_lo = g_shim_page;
++    g_recomp_fixed_span = g_shim_page ? 0x10000u : 0;
+     AddVectoredExceptionHandler(1, native32_veh);
+ }
+ 
+diff --git a/runtime/native32/native32.h b/runtime/native32/native32.h
+index 4549017..8314fa9 100644
+--- a/runtime/native32/native32.h
++++ b/runtime/native32/native32.h
+@@ -85,6 +85,10 @@ void mach_leave(void);
+ /* Name for a native address ("kernel32.dll!CreateFileA"), or NULL. */
+ const char* native32_name(uint32_t va);
+ 
++/* A shim's synthetic VA: recomp_lookup_import answers it with the same
++ * function every time, so a host may keep that answer. */
++int native32_is_shim(uint32_t va);
++
+ /* Run a mapped module's ORIGINAL machine code instead of its lift: its code
+  * is made executable again and every call into it from lifted code goes
+  * through the native bridge, while its own calls out (imports, vtables) still
+diff --git a/runtime/native32/native32_selftest.c b/runtime/native32/native32_selftest.c
+index ff6a6c3..50d6c07 100644
+--- a/runtime/native32/native32_selftest.c
++++ b/runtime/native32/native32_selftest.c
+@@ -63,7 +63,7 @@ int main(void) {
+     uint32_t h[] = {7};
+     call(half, 1, h, &after);
+     CHECK(g_fp_top == top + 1);          /* one value pushed on the lifted x87 */
+-    CHECK(g_st[0] == 3.5);
++    CHECK(RECOMP_X87_ST(0) == 3.5);
+ 
+     mach_leave();
+ 
+diff --git a/runtime/native32/x87crt.c b/runtime/native32/x87crt.c
+index eb3e754..aeed15c 100644
+--- a/runtime/native32/x87crt.c
++++ b/runtime/native32/x87crt.c
+@@ -22,14 +22,14 @@
+ 
+ /* Included at the end of native32.c, so every host that builds native32.c
+  * gets these without a change to its build. */
+-#define X87_POP()   fp_pop_impl(g_st, &g_fp_top)
+-#define X87_PUSH(v) fp_push_impl(g_st, &g_fp_top, (v))
++#define X87_POP()   RECOMP_X87_POP()
++#define X87_PUSH(v) RECOMP_X87_PUSH(v)
+ 
+ /* _ftol: st(0) to a 64-bit integer, truncating whatever the control word
+  * says (that is the C cast), popped, in edx:eax. A value fild loaded exactly
+  * keeps its exact integer (g_st_i64 shadow). */
+ void native32_shim_ftol(void) {
+-    int64_t q = fp_st0_to_i64(g_st[0], g_st_i64[0], 0x0C7F);   /* RC = chop */
++    int64_t q = fp_st0_to_i64(RECOMP_X87_ST(0), g_st_i64[0], 0x0C7F);   /* RC = chop */
+     (void)X87_POP();
+     g_eax = (uint32_t)q;
+     g_edx = (uint32_t)((uint64_t)q >> 32);
+diff --git a/runtime/recomp32/recomp_types.h b/runtime/recomp32/recomp_types.h
+index 0aabf38..23bde03 100644
+--- a/runtime/recomp32/recomp_types.h
++++ b/runtime/recomp32/recomp_types.h
+@@ -444,9 +444,18 @@ enum {
+     CC_A, CC_AE, CC_B, CC_BE, CC_O, CC_NO, CC_P, CC_NP
+ };
+ 
+-static inline uint32_t recomp_parity8(uint8_t v);
++/* The flag and x87 helpers the lifter emits per instruction fold to a few
++ * instructions once inlined with their constant arguments; MSVC's /Ob1 left
++ * the larger ones out of line. For runtime helpers only, never lifted code. */
++#if defined(_MSC_VER) && !defined(__clang__)
++#define RECOMP_HELPER static __forceinline
++#else
++#define RECOMP_HELPER static inline
++#endif
++
++RECOMP_HELPER uint32_t recomp_parity8(uint8_t v);
+ 
+-static inline int recomp_cond(uint32_t kind, uint32_t a, uint32_t b, int cc) {
++RECOMP_HELPER int recomp_cond(uint32_t kind, uint32_t a, uint32_t b, int cc) {
+     uint32_t r, sh = FK_SHIFT(kind);
+     int zf, sf, cf, of, pf;
+ 
+@@ -537,8 +546,8 @@ decide:
+ /* x87 compare outcome: -1 less, 0 equal, 1 greater, 2 unordered (a NaN). */
+ #define FPU_CMP(x, y) ((x) < (y) ? -1 : (x) > (y) ? 1 : (x) == (y) ? 0 : 2)
+ 
+-static inline int recomp_cond_cf(uint32_t kind, uint32_t a, uint32_t b, int cc,
+-                                 uint32_t cf) {
++RECOMP_HELPER int recomp_cond_cf(uint32_t kind, uint32_t a, uint32_t b, int cc,
++                                  uint32_t cf) {
+     if ((FK_KIND(kind) == FK_INC || FK_KIND(kind) == FK_DEC) &&
+         (cc == CC_B || cc == CC_AE || cc == CC_A || cc == CC_BE)) {
+         int zf = recomp_cond(kind, a, b, CC_E);
+@@ -555,7 +564,7 @@ static inline int recomp_cond_cf(uint32_t kind, uint32_t a, uint32_t b, int cc,
+ /* CF as adc/sbb read it: derived from an add/sub/cmp's operands (which do
+  * not write `_cf`), otherwise the `_cf` the instruction kept (adc, sbb, shifts,
+  * logic ops, inc/dec, popfd/sahf). The lifter's precise_carry option. */
+-static inline uint32_t recomp_carry(uint32_t kind, uint32_t a, uint32_t b, uint32_t cf) {
++RECOMP_HELPER uint32_t recomp_carry(uint32_t kind, uint32_t a, uint32_t b, uint32_t cf) {
+     switch (FK_KIND(kind)) {
+     case FK_ADD: return a + b < a;
+     case FK_CMP: return a < b;
+@@ -568,7 +577,7 @@ static inline uint32_t recomp_carry(uint32_t kind, uint32_t a, uint32_t b, uint3
+  * guest CPU-detection code notices. */
+ #define RECOMP_EFLAGS_FIXED 0x00000202u
+ 
+-static inline uint32_t recomp_parity8(uint8_t v) {
++RECOMP_HELPER uint32_t recomp_parity8(uint8_t v) {
+     v ^= (uint8_t)(v >> 4);
+     v ^= (uint8_t)(v >> 2);
+     v ^= (uint8_t)(v >> 1);
+@@ -581,8 +590,8 @@ static inline uint32_t recomp_parity8(uint8_t v) {
+ 
+ /* The six arithmetic flags as a word, given a result and the three that do
+  * not come from it. */
+-static inline uint32_t recomp_flags_pack(uint32_t r, uint32_t cf, uint32_t af,
+-                                         uint32_t of) {
++RECOMP_HELPER uint32_t recomp_flags_pack(uint32_t r, uint32_t cf, uint32_t af,
++                                          uint32_t of) {
+     uint32_t e = RECOMP_EFLAGS_FIXED | (cf & 1u) | ((af & 1u) << 4) | ((of & 1u) << 11);
+     if (r == 0) e |= 0x40u;               /* ZF */
+     e |= (r >> 31) << 7;                  /* SF */
+@@ -1026,15 +1035,30 @@ extern double  g_stbuf[X87_RING], *g_stp;
+ extern int64_t g_sti64buf[X87_RING], *g_sti64p;
+ void recomp_x87_recentre(void);
+ #define g_st_i64 g_sti64p
+-static inline void fp_push_ring(double val, int64_t shadow) {
+-    if (__builtin_expect(g_stp == g_stbuf, 0)) recomp_x87_recentre();
++#if defined(_MSC_VER) && !defined(__clang__)
++#define RECOMP_X87_UNLIKELY(c) (c)
++#else
++#define RECOMP_X87_UNLIKELY(c) __builtin_expect(!!(c), 0)
++#endif
++/* RECOMP_X87_RING_DEPTH: g_fp_top still counts pushes minus pops, as the
++ * shifting model does, for a runtime that hands the stack over by depth
++ * (native32: float returns of callbacks, thread switches, native code). */
++#ifdef RECOMP_X87_RING_DEPTH
++#define RECOMP_X87_DEPTH(d) (g_fp_top += (d))
++#else
++#define RECOMP_X87_DEPTH(d) ((void)0)
++#endif
++RECOMP_HELPER void fp_push_ring(double val, int64_t shadow) {
++    if (RECOMP_X87_UNLIKELY(g_stp == g_stbuf)) recomp_x87_recentre();
+     --g_stp, --g_sti64p;
+     g_stp[0] = val, g_sti64p[0] = shadow;
++    RECOMP_X87_DEPTH(1);
+ }
+-static inline double fp_pop_ring(void) {
++RECOMP_HELPER double fp_pop_ring(void) {
+     double v = g_stp[0];
+     ++g_stp, ++g_sti64p;
+-    if (__builtin_expect(g_stp >= g_stbuf + X87_RING - 8, 0)) recomp_x87_recentre();
++    if (RECOMP_X87_UNLIKELY(g_stp >= g_stbuf + X87_RING - 8)) recomp_x87_recentre();
++    RECOMP_X87_DEPTH(-1);
+     return v;
+ }
+ #else
+@@ -1078,6 +1102,18 @@ static inline double fp_pop_impl(double* st, int* top) {
+ #define fp_pop()     fp_pop_impl(_st, &_fp_top)
+ #endif
+ 
++/* The lifted x87 stack from runtime and host code, whichever model the
++ * generated code was compiled with. */
++#ifdef RECOMP_X87_RING
++#define RECOMP_X87_ST(i)   (g_stp[i])
++#define RECOMP_X87_PUSH(v) fp_push_ring((v), 0)
++#define RECOMP_X87_POP()   fp_pop_ring()
++#else
++#define RECOMP_X87_ST(i)   (g_st[i])
++#define RECOMP_X87_PUSH(v) fp_push_impl(g_st, &g_fp_top, (v))
++#define RECOMP_X87_POP()   fp_pop_impl(g_st, &g_fp_top)
++#endif
++
+ /* fild qword: push with the exact value shadowed. */
+ #define fp_push_i64(v) do { int64_t _pv = (int64_t)(v); \
+     fp_push((double)_pv); _STI(0) = _pv; } while (0)
+@@ -1090,18 +1126,36 @@ static inline double fp_pop_impl(double* st, int* top) {
+  * looked right for years; Quake-lineage rasterisers deliberately run fistp in
+  * nearest (the default), floor or ceil mode, and a cast shifts every span and
+  * texture coordinate by up to one. */
+-static inline double fp_round_cw(double v, uint16_t cw) {
+-    switch ((cw >> 10) & 3) {
+-    case 0:  return nearbyint(v);   /* nearest-even: the host default mode */
+-    case 1:  return floor(v);
+-    case 2:  return ceil(v);
+-    default: return trunc(v);
++/* The C library's results without its calls: nearest (nearbyint, the
++ * current SSE rounding mode) by adding and removing 2^52, the directed modes
++ * from the truncating conversion below 2^31; larger magnitudes, infinities
++ * and NaN still take the library. A zero result keeps the operand's sign. */
++static inline double recomp_sign_of(double r, double v) {
++    uint64_t a, b;
++    memcpy(&a, &r, 8), memcpy(&b, &v, 8);
++    a = (a & 0x7FFFFFFFFFFFFFFFull) | (b & 0x8000000000000000ull);
++    memcpy(&r, &a, 8);
++    return r;
++}
++RECOMP_HELPER double fp_round_cw(double v, uint16_t cw) {
++    int rc = (cw >> 10) & 3;
++    if (rc == 0) {
++        if (!(fabs(v) < 4503599627370496.0)) return nearbyint(v);
++        return recomp_sign_of(v < 0 ? (v - 4503599627370496.0) + 4503599627370496.0
++                                    : (v + 4503599627370496.0) - 4503599627370496.0, v);
+     }
++    if (fabs(v) < 2147483648.0) {
++        double t = (double)(int32_t)v;
++        if (rc == 1 && t > v) t -= 1.0;
++        else if (rc == 2 && t < v) t += 1.0;
++        return recomp_sign_of(t, v);
++    }
++    return rc == 1 ? floor(v) : rc == 2 ? ceil(v) : trunc(v);
+ }
+ #define fp_to_int(v) fp_round_cw((v), _fpu_cw)
+ 
+ /* fistp qword: the exact shadow while st0 is still the value fild loaded. */
+-static inline int64_t fp_st0_to_i64(double v0, int64_t shadow, uint16_t cw) {
++RECOMP_HELPER int64_t fp_st0_to_i64(double v0, int64_t shadow, uint16_t cw) {
+     return (v0 == (double)shadow) ? shadow : (int64_t)fp_round_cw(v0, cw);
+ }
+ 
+@@ -1296,6 +1350,31 @@ static inline recomp_func_t recomp_resolve(uint32_t va) {
+ #define RECOMP_RESOLVE_SITE(va) recomp_resolve(va)
+ #endif
+ 
++/* RECOMP_ICALL_SITE_RANGE (any compiler; one thread at a time runs lifted
++ * code): each indirect call site keeps the last two targets it resolved
++ * inside [g_recomp_site_lo, g_recomp_site_hi), the range the host says always
++ * resolves to the same lifted function, or among native32's shims, whose
++ * answers are fixed too. Imports and bridges that read their target per call
++ * fall outside both and are resolved every time. */
++#ifdef RECOMP_ICALL_SITE_RANGE
++extern uint32_t g_recomp_site_lo, g_recomp_site_hi, g_recomp_fixed_lo, g_recomp_fixed_span;
++#define RECOMP_SITE_KEEPS(va) ((uint32_t)((va) - g_recomp_site_lo) < g_recomp_site_hi - g_recomp_site_lo || \
++                               (uint32_t)((va) - g_recomp_fixed_lo) < g_recomp_fixed_span)
++#define RECOMP_RESOLVE_SITE_INTO(va, out) do { \
++    static uint32_t _sv[2]; \
++    static recomp_func_t _sf[2]; \
++    if (_sv[0] == (va) && _sf[0]) (out) = _sf[0]; \
++    else if (_sv[1] == (va) && _sf[1]) (out) = _sf[1]; \
++    else { \
++        (out) = recomp_resolve(va); \
++        if ((out) && RECOMP_SITE_KEEPS(va)) \
++            _sv[1] = _sv[0], _sf[1] = _sf[0], _sv[0] = (va), _sf[0] = (out); \
++    } \
++} while (0)
++#else
++#define RECOMP_RESOLVE_SITE_INTO(va, out) ((out) = RECOMP_RESOLVE_SITE(va))
++#endif
++
+ /* Direct call to a known recompiled function */
+ #define RECOMP_CALL(func) do { \
+     uint32_t _caller = g_cur_func; \
+@@ -1310,8 +1389,9 @@ static inline recomp_func_t recomp_resolve(uint32_t va) {
+ /* Indirect call through dispatch */
+ #define RECOMP_ICALL(target_va) do { \
+     uint32_t _va = (uint32_t)(target_va); \
++    recomp_func_t _fn; \
+     RECOMP_ICALL_TRACE(_va); \
+-    recomp_func_t _fn = RECOMP_RESOLVE_SITE(_va); \
++    RECOMP_RESOLVE_SITE_INTO(_va, _fn); \
+     if (_fn) { \
+         uint32_t _caller = g_cur_func; \
+         PUSH32(esp, RECOMP_RETADDR); \
+@@ -1333,8 +1413,9 @@ static inline recomp_func_t recomp_resolve(uint32_t va) {
+ /* Indirect tail call (jmp through dispatch) */
+ #define RECOMP_ITAIL(target_va) do { \
+     uint32_t _va = (uint32_t)(target_va); \
++    recomp_func_t _fn; \
+     RECOMP_ICALL_TRACE(_va); \
+-    recomp_func_t _fn = RECOMP_RESOLVE_SITE(_va); \
++    RECOMP_RESOLVE_SITE_INTO(_va, _fn); \
+     if (_fn) { RECOMP_FLAGS_OUT(); RECOMP_REGS_OUT(); _fn(); RECOMP_REGS_IN(); } \
+     else if (_va == RECOMP_RETADDR) { /* setjmp and friends return by jumping \
+         to the saved return address; that is a return, not a missing target. */ } \

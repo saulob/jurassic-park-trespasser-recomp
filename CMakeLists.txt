@@ -40,11 +40,15 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 else()
   set(JPT_GEN_OPT_DEFAULT "/Od")
 endif()
-set(TRESPASSER_GEN_OPT "${JPT_GEN_OPT_DEFAULT}" CACHE STRING "optimisation for the lifted C (/Od compiles much faster)")
+set(TRESPASSER_GEN_OPT "${JPT_GEN_OPT_DEFAULT}" CACHE STRING "optimisation for the lifted C (/Od: /O2 /Ob1, as the game needs)")
 option(TRESPASSER_TRACE "build the lifted code with RECOMP_TRACE (--calltrace, --firsthit, ...)" OFF)
 
 if(NOT EXISTS "${PCRECOMP}/runtime/native32/native32.c")
   message(FATAL_ERROR "pcrecomp not found at ${PCRECOMP}: run `py -3 tools/fetch_pcrecomp.py`")
+endif()
+file(STRINGS "${PCRECOMP}/runtime/recomp32/recomp_types.h" JPT_PCRECOMP_PATCHED REGEX "RECOMP_X87_RING_DEPTH" LIMIT_COUNT 1)
+if(NOT JPT_PCRECOMP_PATCHED)
+  message(FATAL_ERROR "pcrecomp at ${PCRECOMP} lacks patches/pcrecomp: run `py -3 tools/fetch_pcrecomp.py`")
 endif()
 file(GLOB GEN_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_*.c")
 if(NOT GEN_SOURCES)
@@ -66,9 +70,17 @@ set(HOST_SOURCES
   src/host/selfmod.c
   src/host/guest_overrides.c
   src/host/water_kernels.c
+  src/host/occlusion_kernel.c
+  src/host/polygon_submit.c
   src/host/widescreen.c
   src/host/game_text.c
   src/host/ui_canvas.c
+  src/host/engine_limits.c
+  src/host/engine_heaps.c
+  src/host/guest_profile.c
+  src/host/texture_streaming.c
+  src/host/terrain_quality.c
+  src/host/cpu_polygons.c
   src/host/diagnostics.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
@@ -83,6 +95,7 @@ set(HOST_SOURCES
   src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c
   src/host/ddraw/page_guard.c
+  src/host/ddraw/page_arena.c
 )
 set(PCRECOMP_SOURCES
   ${PCRECOMP}/runtime/native32/native32.c
@@ -156,6 +169,10 @@ target_compile_options(jpt_launcher PRIVATE /W4)
 set_source_files_properties(launcher/page_icons.cpp PROPERTIES COMPILE_OPTIONS "/wd4702")
 set_target_properties(jpt_launcher_core jpt_launcher PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
+# The lifted x87 stack is a pointer into a long buffer (pcrecomp's RECOMP_X87_RING; native32's support comes from
+# patches/pcrecomp), and g_fp_top keeps the depth native32 hands the stack over by.
+set(TRESPASSER_X87_MODEL RECOMP_X87_RING RECOMP_X87_RING_DEPTH)
+
 add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES})
 target_include_directories(trespasser PRIVATE
   src/host
@@ -166,6 +183,8 @@ target_include_directories(trespasser PRIVATE
 target_compile_definitions(trespasser PRIVATE
   RECOMP_FLAT_MEMORY
   RECOMP_LOCAL_REGS
+  RECOMP_ICALL_SITE_RANGE
+  ${TRESPASSER_X87_MODEL}
   TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game"
   TRESPASSER_DEFAULT_USER_DIR="${CMAKE_SOURCE_DIR}/user"
   TRESPASSER_DEFAULT_LOG_DIR="${CMAKE_SOURCE_DIR}/logs"
@@ -209,7 +228,16 @@ foreach(config Release RelWithDebInfo MinSizeRel)
   endforeach()
 endforeach()
 
-set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
+# Every lifted source runs during gameplay (the game loop and its windows, scene, terrain, physics, AI, the renderer and
+# the alias entries into them), so a /Od build compiles them optimised too. /Ob1 expands only the runtime's inline
+# helpers (pops, x87 stack, flags, call resolution): a lifted function is never inline, so every call to one stays on
+# the incremental-link thunk the host's overrides repoint.
+if(TRESPASSER_GEN_OPT STREQUAL "/Od")
+  set(JPT_GEN_COMPILE "/w;/O2;/Ob1")
+else()
+  set(JPT_GEN_COMPILE "/w;${TRESPASSER_GEN_OPT};/Ob1")
+endif()
+set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "${JPT_GEN_COMPILE}")
 set_source_files_properties(${PCRECOMP_SOURCES} PROPERTIES COMPILE_OPTIONS "/W1;${CONFIG_OPT}")
 # native_bridge and gen_bridge save ebp, let the callee change it and restore it before any
 # local is read again, so C4731 does not apply. native32.c defines _CRT_SECURE_NO_WARNINGS itself.
@@ -229,19 +257,28 @@ target_compile_definitions(launcher_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINM
 target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
-add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/ddraw/d3d_translate.c
-  src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/common/jpt_display.c)
+add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/bump_spans.c src/host/ddraw/d3d_translate.c
+  src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/host/ddraw/page_arena.c src/common/jpt_display.c)
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
-  src/host/ddraw/page_guard.c)
+  src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c)
 target_include_directories(com_tests PRIVATE src/host src/host/ddraw src/recomp/gen ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(com_tests PRIVATE /W3)
-target_compile_definitions(com_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+target_compile_definitions(com_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
+  ${TRESPASSER_X87_MODEL})
 target_link_libraries(com_tests PRIVATE user32 gdi32 dxguid)
+
+# The patched pcrecomp runtime as the hot lifted code is compiled (x87 ring, inline rounding against the C library,
+# per-site indirect-call cache), headless: ninja -C <build dir> x87_tests && x87_tests.exe
+add_executable(x87_tests EXCLUDE_FROM_ALL tests/x87_tests.c)
+target_include_directories(x87_tests PRIVATE ${PCRECOMP}/runtime/recomp32)
+target_compile_definitions(x87_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_ICALL_SITE_RANGE
+  ${TRESPASSER_X87_MODEL})
+set_source_files_properties(tests/x87_tests.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob1")
 
 # Byte-exact comparison of the host water kernels with the lifted functions they replace, both compiled
 # as in the game (headless): ninja -C <build dir> water_tests && water_tests.exe
@@ -253,23 +290,36 @@ foreach(copy IN ITEMS "lifted_|${WATER_LIFTED}" "lifted_alt_|${WATER_LIFTED_ALT}
   list(GET copy 0 prefix)
   list(GET copy 1 out)
   add_custom_command(OUTPUT ${out}
-    COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_0060E3F0;sub_00638670"
+    COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_0060E3F0;sub_00638670;sub_00630D90;sub_00559240"
       "-DPREFIX=${prefix}" "-DOUT=${out}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
     DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
     COMMENT "Copying the lifted water functions for water_tests")
 endforeach()
+# The lifted callees both copies call by name: _alloca_probe and the _ftol thunk.
+set(WATER_CALLEES "${CMAKE_BINARY_DIR}/water_callees.c")
+add_custom_command(OUTPUT ${WATER_CALLEES}
+  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_00626BA0;sub_00626B92"
+    "-DPREFIX=" "-DOUT=${WATER_CALLEES}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
+  DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
+  COMMENT "Copying the lifted callees for water_tests")
 if(TRESPASSER_GEN_OPT STREQUAL "/Od")
   set(WATER_ALT_OPT "/O2")
 else()
   set(WATER_ALT_OPT "/Od")
 endif()
-add_executable(water_tests EXCLUDE_FROM_ALL tests/water_tests.c src/host/water_kernels.c ${WATER_LIFTED}
-  ${WATER_LIFTED_ALT})
+add_executable(water_tests EXCLUDE_FROM_ALL tests/water_tests.c src/host/water_kernels.c src/host/occlusion_kernel.c
+  src/host/polygon_submit.c src/host/bump_spans.c
+  ${WATER_LIFTED}
+  ${WATER_LIFTED_ALT}
+  ${WATER_CALLEES})
 target_include_directories(water_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
-target_compile_definitions(water_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+target_compile_definitions(water_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
+  ${TRESPASSER_X87_MODEL})
 set_source_files_properties(tests/water_tests.c PROPERTIES COMPILE_OPTIONS "/W3")
 set_source_files_properties(${WATER_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
 set_source_files_properties(${WATER_LIFTED_ALT} PROPERTIES COMPILE_OPTIONS "/w;${WATER_ALT_OPT}")
-target_compile_definitions(water_tests PRIVATE "WATER_ALT_OPT=\"${WATER_ALT_OPT}\"" "WATER_GEN_OPT=\"${TRESPASSER_GEN_OPT}\"")
+set_source_files_properties(${WATER_CALLEES} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
+target_compile_definitions(water_tests PRIVATE "WATER_ALT_OPT=\"${WATER_ALT_OPT}\"" "WATER_GEN_OPT=\"${TRESPASSER_GEN_OPT}\""
+  "WATER_GAME_EXE=\"${CMAKE_SOURCE_DIR}/game/trespass.exe\"")
 # The lifted code addresses guest memory directly: a fixed image puts tests/water_tests.c's window there.
 target_link_options(water_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)

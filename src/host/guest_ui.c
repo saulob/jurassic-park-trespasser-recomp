@@ -76,11 +76,34 @@ static int committed(uint32_t va, uint32_t bytes, DWORD wanted) {
     return hi <= (uintptr_t)mi.BaseAddress + mi.RegionSize;
 }
 
+#define READABLE_PAGES (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)
+
+/* The guest image stays mapped and readable for the whole run: once that is checked, reads in it need no query. */
+static int image_readable(uintptr_t lo, uintptr_t hi) {
+    static uintptr_t s_lo, s_hi;
+    static int s_checked;
+    if (!s_checked) {
+        const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)(uintptr_t)trespasser_image_base;
+        const IMAGE_NT_HEADERS32* nt = (const IMAGE_NT_HEADERS32*)((const BYTE*)dos + dos->e_lfanew);
+        uintptr_t at = (uintptr_t)trespasser_image_base, end = at + nt->OptionalHeader.SizeOfImage;
+        MEMORY_BASIC_INFORMATION mi;
+        s_checked = 1;
+        while (at < end && VirtualQuery((const void*)at, &mi, sizeof mi) && mi.State == MEM_COMMIT &&
+               !(mi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) && (mi.Protect & READABLE_PAGES))
+            at = (uintptr_t)mi.BaseAddress + mi.RegionSize;
+        if (at >= end) {
+            s_lo = (uintptr_t)trespasser_image_base;
+            s_hi = end;
+        }
+    }
+    return s_hi && lo >= s_lo && hi <= s_hi;
+}
+
 static int readable(uint32_t va, uint32_t bytes) {
     static uintptr_t s_lo, s_hi;
     uintptr_t lo = (uintptr_t)va, hi = lo + bytes;
     MEMORY_BASIC_INFORMATION mi;
-    if (va >= 0x10000u && hi >= lo && lo >= s_lo && hi <= s_hi) return 1;
+    if (va >= 0x10000u && hi >= lo && ((lo >= s_lo && hi <= s_hi) || image_readable(lo, hi))) return 1;
     if (!committed(va, bytes, PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE))
         return 0;
     VirtualQuery((const void*)lo, &mi, sizeof mi);
@@ -89,8 +112,19 @@ static int readable(uint32_t va, uint32_t bytes) {
     return 1;
 }
 
+#define WRITABLE_PAGES (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE)
+
+/* The last writable region found is kept, as readable() does: the guest's own data and heap stay committed. */
 static int writable(uint32_t va, uint32_t bytes) {
-    return committed(va, bytes, PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE);
+    static uintptr_t s_lo, s_hi;
+    uintptr_t lo = (uintptr_t)va, hi = lo + bytes;
+    MEMORY_BASIC_INFORMATION mi;
+    if (va >= 0x10000u && hi >= lo && lo >= s_lo && hi <= s_hi) return 1;
+    if (!committed(va, bytes, WRITABLE_PAGES)) return 0;
+    VirtualQuery((const void*)lo, &mi, sizeof mi);
+    s_lo = (uintptr_t)mi.BaseAddress;
+    s_hi = s_lo + mi.RegionSize;
+    return 1;
 }
 
 static int read32(uint32_t va, uint32_t* out) {

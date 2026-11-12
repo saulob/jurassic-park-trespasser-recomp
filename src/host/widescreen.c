@@ -4,6 +4,7 @@
  * projects, clips and culls before anything becomes a D3DTLVERTEX or a software span, so both renderers follow.
  */
 #include "host.h"
+#include "host_policy.h"
 
 #include <string.h>
 
@@ -21,7 +22,7 @@
 
 static recomp_func_t s_enum_modes_lifted, s_set_properties_lifted;
 static int s_wide;
-static unsigned long s_corrections, s_view_copies;
+static unsigned long s_corrections;
 
 static float rdf(uint32_t va) { return *(float*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
@@ -78,10 +79,9 @@ static void camera_set_properties(void) {
     MEM32(slot) = props;
     wrf(self + PROPS_IN_CAMERA + PROP_TAN_HALF_WIDTH, tan_half);
     wrf(self + PROPS_IN_CAMERA + PROP_ASPECT, aspect);
-    if (is_main ? s_corrections++ < 4 : s_view_copies++ < 2)
-        host_log("widescreen", "%s %.0fx%.0f (far %.0f): horizontal view x%.4f (tan %.4f -> %.4f), vertical view kept",
-                 is_main ? "main camera" : "DEBUG_SAULO render copy of the main camera", w, h,
-                 rdf(self + PROPS_IN_CAMERA + PROP_FAR), scale, tan_half, tan_half * scale);
+    if (is_main && s_corrections++ < 4)
+        host_log("widescreen", "main camera %.0fx%.0f (far %.0f): horizontal view x%.4f (tan %.4f -> %.4f), vertical "
+                 "view kept", w, h, rdf(self + PROPS_IN_CAMERA + PROP_FAR), scale, tan_half, tan_half * scale);
 }
 
 static int redirect(uint32_t va, recomp_func_t replacement, recomp_func_t* body, const char* name) {
@@ -102,3 +102,13 @@ int widescreen_install(int aspect) {
 }
 
 int widescreen_active(void) { return s_wide; }
+
+/* The stored tan(half width) is the caller's 4:3 one; the projection keeps its vertical extent either way. */
+float widescreen_pixels_per_metre(void) {
+    uint32_t cam = main_camera(), props = cam + PROPS_IN_CAMERA;
+    float aspect;
+    if (!cam || !MEM8(props + PROP_PERSPECTIVE)) return 0.0f;
+    aspect = s_wide ? 4.0f / 3.0f : rdf(props + PROP_ASPECT);
+    if (!(aspect > 0.0f)) return 0.0f;
+    return engine_view_pixels_per_metre(rdf(props + 4), rdf(props + PROP_TAN_HALF_WIDTH) / aspect);
+}

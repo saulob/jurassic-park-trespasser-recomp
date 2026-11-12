@@ -109,6 +109,17 @@ function Show-Progress([string]$Line) {
 
 function Show-PipelineLine([string]$Line) { $Line -notmatch '^\[\*\]\s{3}\d+/\d+' }
 
+# The record tools\fetch_pcrecomp.py writes: the pinned commit, then each patch of patches\pcrecomp\series with its SHA-256.
+function Get-PcrecompPatchRecord {
+    $dir = Join-Path $root 'patches\pcrecomp'
+    $lines = @($target.pcrecomp.commit)
+    foreach ($name in (Get-Content -LiteralPath (Join-Path $dir 'series') | ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') })) {
+        $lines += "$(Get-Sha256 (Join-Path $dir $name)) $name"
+    }
+    return ($lines -join "`n") + "`n"
+}
+
 function Get-PcrecompProblem {
     if (-not (Test-Path -LiteralPath (Join-Path $pcrecomp 'runtime\native32\native32.c'))) { return 'not fetched' }
     $previous = $ErrorActionPreference
@@ -117,6 +128,11 @@ function Get-PcrecompProblem {
     $code = $LASTEXITCODE
     $ErrorActionPreference = $previous
     if ($code -ne 0 -or "$($head[0])".Trim() -ne $target.pcrecomp.commit) { return "not at the pinned commit $($target.pcrecomp.commit.Substring(0, 7))" }
+    $applied = Join-Path $root 'external\pcrecomp.patches'
+    if (-not (Test-Path -LiteralPath $applied) -or
+        ((Get-Content -LiteralPath $applied -Raw) -replace "`r", '') -ne (Get-PcrecompPatchRecord)) {
+        return 'patches\pcrecomp are not applied as listed'
+    }
     return $null
 }
 

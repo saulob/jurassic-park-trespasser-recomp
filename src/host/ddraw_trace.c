@@ -573,6 +573,8 @@ static void observed_call(void) {
     after_call(e, a, g_eax, caller);
 }
 
+unsigned ddraw_trace_entry_count(void) { return s_entry_count; }
+
 recomp_func_t ddraw_trace_lookup(uint32_t va) {
     entry_t* e;
     if (!s_entry_count || va < 0x10000u) return NULL;

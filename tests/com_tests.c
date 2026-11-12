@@ -40,7 +40,7 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
 void d3dr_detach(d3d_device_t* dev) { (void)dev; s_attached--; }
 void d3dr_begin_scene(d3d_device_t* dev) { (void)dev; }
 void d3dr_end_scene(d3d_device_t* dev) { (void)dev; }
-void d3dr_state_will_change(d3d_device_t* dev) { (void)dev; }
+void d3dr_state_will_change(d3d_device_t* dev, int kind, unsigned which) { (void)dev; (void)kind; (void)which; }
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count) {
     (void)dev; (void)vertices; (void)indices; (void)index_count;
@@ -63,10 +63,17 @@ static void guard_touched(void* context) {
     s_readbacks++;
 }
 
+/* As the renderer arms it: the Lock hands out the section's alias view when there is one. */
 void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t access) {
+    size_t bytes = (size_t)s->pitch * s->height;
     (void)will_write;
     if (s != s_guarded || access != CPU_ACCESS_LOCK) return;
-    if (page_guard_arm(s->bits, (size_t)s->pitch * s->height, guard_touched, s) != PAGE_GUARD_ARMED) {
+    if (!s->guard_alias && s->section) s->guard_alias = page_alias_create(s->section, bytes);
+    if (s->guard_alias && page_guard_arm_alias(s->guard_alias, guard_touched, s) == PAGE_GUARD_ARMED) {
+        s->lock_alias = 1;
+        return;
+    }
+    if (page_guard_arm(s->bits, bytes, guard_touched, s) != PAGE_GUARD_ARMED) {
         s_immediate++;
         s_readbacks++;
     }
@@ -156,8 +163,14 @@ static void test_back_buffer_lock_waits_for_touch(IDirectDraw4* dd4) {
 
     CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
     CHECK(lock.dwWidth == 800 && lock.dwHeight == 600 && lock.lPitch == 1600);
+    /* The Lock's pointer is the alias; the host's own view stays usable and touches nothing. */
+    CHECK(s_guarded->guard_alias && (BYTE*)lock.lpSurface == page_alias_view(s_guarded->guard_alias));
+    CHECK(((volatile WORD*)s_guarded->bits)[17] == 0 && s_touched == 0);
     CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
     CHECK(s_immediate == 0 && s_readbacks == 0 && s_untouched == 1 && s_touched == 0);
+    /* A pointer kept past Unlock still reads the pixels (the closed alias opens without a waiting Lock). */
+    pixels = (volatile WORD*)lock.lpSurface;
+    CHECK(pixels[17] == 0 && s_touched == 0 && !page_guard_armed());
 
     CHECK(SUCCEEDED(back->lpVtbl->Lock(back, NULL, &lock, DDLOCK_WAIT, NULL)));
     pixels = (volatile WORD*)lock.lpSurface;
@@ -170,6 +183,7 @@ static void test_back_buffer_lock_waits_for_touch(IDirectDraw4* dd4) {
     pixels[2 * 800 + 3] = 0xF800;
     CHECK(SUCCEEDED(back->lpVtbl->Unlock(back, NULL)));
     CHECK(s_readbacks == 2 && s_touched == 2 && s_untouched == 1);
+    CHECK(((const WORD*)s_guarded->bits)[2 * 800 + 3] == 0xF800);
 
     CHECK(SUCCEEDED(back->lpVtbl->GetDC(back, &dc)));
     CHECK(GetPixel(dc, 3, 2) == RGB(255, 0, 0));

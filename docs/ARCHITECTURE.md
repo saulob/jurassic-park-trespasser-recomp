@@ -127,7 +127,8 @@ No check is patched out.
 
 The game loads `ddraw.dll` with `LoadLibraryA` and takes `DirectDrawCreate` from
 `GetProcAddress`; every DirectDraw call is an indirect call from lifted code, so it passes the
-host's `recomp_lookup_manual`. There `src/host/ddraw/dd_dispatch.c` routes the addresses of
+host's `recomp_lookup_manual` (a call outside `.text` and outside the dispatch table's range goes straight to
+the import bridge, skipping the search that cannot find it). There `src/host/ddraw/dd_dispatch.c` routes the addresses of
 `ddraw.dll`'s exports to the host's own DirectDraw, so the system's DirectDraw objects are never
 created. Windows 11's `ddraw.dll` has no 16 bpp display modes (`SetDisplayMode(640, 480, 16)`
 returns `DDERR_UNSUPPORTED`, and the primary stays 32 bpp), and the renderer needs one.
@@ -169,14 +170,75 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   are drawn by a shader pair that reproduces the fixed-function subset in use (TEXTUREMAPBLEND,
   specular, vertex fog, alpha test, colour key, flat shading); fans become indexed lists,
   consecutive draws with unchanged state are batched into one `DrawIndexed`, and buffers are
-  reused rings. Blend, depth, rasterizer and sampler states are cached; shaders are compiled once.
+  reused rings. World textures are slices of arrays per size; a batch binds up to sixteen arrays and each vertex
+  carries its slice, its array, its texture's alpha and colour-key flags and its sampler (wrap or clamp per axis
+  among four bound samplers; another address mode uses the device's), so only a seventeenth array, a render state or
+  a filter change ends a batch. Blend, depth, rasterizer and sampler states are cached, and a flush binds only
+  what differs from the previous flush; shaders are compiled once.
 - Textures are converted to B8G8R8A8 on upload, only the changed rectangle and only when the
-  game wrote to them (Lock, Blt, `Load`). Texture memory is allocated write-watched
+  game wrote to them (Lock, Blt, `Load`); a `Load` (the image cache reloads whole pages) copies and uploads only the
+  rows that differ from the texture's own copy. A texture uploaded on many consecutive frames keeps level 0 only and
+  moves to a one-level array of its size, shared with the other textures of that size. Texture memory is allocated write-watched
   (`MEM_WRITE_WATCH`), so rows changed without any of those are found before each use, uploaded and
   logged (`changed without Lock/Unlock`). `--texture-filter` (default anisotropic, 16x) applies where
-  the game asks for linear filtering; the game's textures have one level and stay so unless
-  `--generate-mips` is given. Each distinct sampler is logged once with the D3D11 filter and
-  `MaxAnisotropy` actually bound.
+  the game asks for linear filtering. With bilinear or anisotropic filtering each texture gets a full mip chain
+  built on the CPU from its single level (`d3dt_build_mips`): colour weighted by alpha so transparent texels never
+  darken edges, binary alpha kept binary at the coverage of the level above (ordered dither), so alpha-tested
+  foliage keeps its density. A texture re-uploaded in consecutive frames (water, impostors) becomes dynamic and keeps
+  level 0 only. Each distinct sampler is logged once with the D3D11 filter and `MaxAnisotropy` actually bound.
+- Engine limits (`engine_limits.c`, D3D11 only, `--original-engine-limits` to compare):
+  - Objects: `fCullDistanceCombined` (`0x006634EC`, set to 1 by `SetGlobalPartitionData`) multiplies every squared
+    cull distance, a level's own `Culling` included; the host makes it 1.4^2. `bShouldCache`'s minimum impostor
+    distance (`0x0064E458`, ATX's ObjectClarityDrawDistance) is set per call from the partition's bounding sphere:
+    a static instance or spatial group stays 3D while the sphere spans more than 256 px (the impostor's own size)
+    with the main camera's projection (25-150 m, times CacheMul, never nearer than 1998's 15 m times CacheMul).
+    Entities (`CEntity` and descendants, by vtable) and meshes that are not hardware-able keep 1998's 15 m. The
+    partition tree is visited from the root: an instance kept 3D in a frame for a reason that passes later (too close,
+    too big on screen, inside the 3D distance, parallax) keeps its parts 3D too, so it never splits between geometry
+    and impostors; one that can never be cached (level flags, movement, volume) leaves its parts to their own
+    decisions, as in 1998. A static mesh spanning under 1.5 px is not drawn.
+  - Those CPU-drawn polygons (`cpu_polygons.c`) go through `CScreenRenderDWI::DrawPolygon` (`0x0055F540`), whose
+    primitives copy the polygon to `arvRasterVertices` before their walker calls `CRasterVid::Lock` (`0x00503400`).
+    The coordinates are relative to the game's view, which `CRasterWin::Lock` (`0x00504D20`) places
+    `iOffsetPointer` (`+0x90`) bytes into the surface. One DirectDraw Lock spans a run of polygons; each claims the
+    32 px tiles of its screen box, which alone are captured, and the Unlock composites the union of the boxes.
+    Primitives proven to only store pixels (bump, texture linear/perspective, flat) read nothing; any other reads
+    its box from the GPU, never the frame. `FlushBatch`'s Lock (`0x00555AB0`), a wait that touches no pixel, costs
+    nothing. After a Flip the reference matches the other CPU buffer; a polygon run then captures lazily: only tiles
+    claimed since the Flip are filled, compared and uploaded, until something makes the whole copy consistent.
+  - Scene heaps (`engine_heaps.c`): `pvCommitMem` (`0x005F8B10`) ignores `VirtualAlloc`'s result, and
+    `CDArray::bCommit` commits before it checks its capacity, so a shape asking past a heap's reservation left pages
+    marked committed that were not (the 0x0051B90D fault of log 031). Commits are kept inside the reservation, and
+    the four per-scene pipeline arrays (`0x00732EF0`/`F10`/`F28`/`F40`: vertices, polygon pointers, polygons, vertex
+    pointers) and the terrain heaps are reserved 4x larger, capacity with them.
+  - "Max Recommended Tex Dim" 128 -> 256 (world textures, impostors and terrain pages; the impostor scale branch
+    still sees 128).
+  - Texture memory (`iLargeMemAllocMB`) 24 -> 64 MB. The engine splits it with signed 32-bit products
+    (`engine_texture_layout`) that wrap from 46 MB; the host corrects them in place: inside the split
+    (`0x00506EB0`/`0x00506C00`) the image cache (`0x00547710`) gets min(40%, 20 MB) and the regular pool the rest,
+    and `AllocateMemory` (`0x00514FE0`) gets its 85%/95% marks in 64-bit arithmetic. Unused textures are evicted only
+    above the 95% mark.
+  - Small texture surfaces share write-watched 1 MB arenas (`page_arena.c`) instead of a 64 KB address-space
+    granule each.
+- Terrain (`terrain_quality.c`): under Direct3D only `TrrNoDynTextureDist` applies (`TrrNoTextureDist` is
+  software-only): beyond it, or when the terrain pages are full, a node draws a crop of the level's base texture.
+  `CQuadRootTIN::Update` sees own textures out to the far clip (at most 1000 m) and tolerances capped at the
+  community's 4 / 12 px scaled from 480 lines to the render height, for that call only. Terrain pages are 256 px in
+  16 MB. The terrain's fixed heaps (`pHeapAlloc`, no overflow check) are reserved 4x.
+- Texture residency: a texture surface the game frees with an unchanged GPU copy is parked under its content hash and
+  adopted by a new surface with the same pixels and conversion (the game drops all its textures on every device
+  release); parked textures last 30 s, 256 MB at most.
+- Texture uploads (`texture_streaming.c`): each frame `UploadPolygonArray` (`0x0055A4E0`) links the textures of
+  newly visible polygons until `GetTickCount() - start > 7`; the polygons it does not reach draw with another linked
+  mip or, with none, as a fill of the texture's average colour (`GetBestMipLevels`, `0x0055A920`). With GetTickCount's
+  15.6 ms steps that window was anywhere from one upload to 15 ms; inside the call the host's GetTickCount stands
+  still for 10 ms of performance-counter time and then ends the loop (`engine_upload_clock`).
+- Lifted code optimisation: every lifted file compiles at `/O2 /Ob1`, a /Od build included; `/Ob1` expands only the
+  runtime's `inline` helpers (`_pop32`, the x87 ring, flags, `recomp_resolve`): a lifted function is never `inline`, so
+  its calls keep the incremental-link thunks the overrides use. pcrecomp's runtime comes with `patches\pcrecomp`: the
+  x87 stack as a ring (`RECOMP_X87_RING`, with `g_fp_top` still counted), its helpers force-inlined, a two-entry cache
+  per indirect call site for lifted and shim targets (`RECOMP_ICALL_SITE_RANGE`) and an O(1) `native32_name`. The
+  host's own Direct3D methods called per polygon run in place, without native32's bridge (`d3d_method_in_place`).
 - The surface's DIB stays the CPU copy; `target_sync.c` keeps where the picture is (GPU target, CPU
   copy, or both, as WineD3D's resource locations). The game (OpenTrespasser `RenderDB.cpp`,
   `ScreenRenderDWI.cpp`) clears with `Clear(0)`, draws sky and terrain with Direct3D, then
@@ -197,10 +259,16 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   recreation, and an Unlock with no touch restores the previous state. The game's Lock/Unlock pairs
   that only wait for the GPU (`FlushBatch`, the hardware-water upload in `0x0060E590`) therefore read
   nothing back. GetDC and Blt still sync at once: GDI and the host access the pixels directly.
-- `guest_overrides.c` replaces two hot lifted functions through their incremental-link thunks with
-  host kernels (`water_kernels.c`): the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step
-  (`0x00638670`). `tests/water_tests.c` runs them against the lifted C copied out of `src/recomp/gen`;
-  `--lifted-water` keeps the lifted functions.
+- `guest_overrides.c` replaces hot lifted functions through their incremental-link thunks with host
+  kernels: the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step (`0x00638670`, `water_kernels.c`),
+  the occlusion test (`0x00630D90`, `occlusion_kernel.c`) and the per-polygon Direct3D submission (`0x00559240`,
+  `polygon_submit.c`: address modes, the lit and fogged D3DTLVERTEX fan, render states and DrawPrimitive, each call
+  made through the device's vtable as the lifted code makes it). `tests/water_tests.c` runs them against the lifted
+  C copied out of `src/recomp/gen`; `--lifted-water` keeps the lifted functions.
+- `bump_spans.c` models the software renderer's bump-mapped scanlines (SelfMod `0x00640FE0`): the span records,
+  the texel walk in closed form and the per-pixel colour, which `water_tests` checks against the game's own
+  routine run from `game	respass.exe`, and which `d3d11_bump_shader_source` draws on the GPU. The renderer does
+  not draw them yet: bump-mapped polygons still go through the CPU path.
 - Texture formats come from the whole `DDPIXELFORMAT`: RGB565, X/A RGB1555, X/A RGB4444, X/A RGB8888
   and palettised 8-bit (converted through the surface's palette, re-uploaded when it changes).
   Anything else is logged once per layout (`unknown texture format`) and drawn untextured; the draw

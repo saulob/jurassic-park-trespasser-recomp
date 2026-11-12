@@ -67,7 +67,7 @@ exit code.
 
 ## Pages
 
-The header reads **JURASSIC PARK: TRESPASSER RECOMPILED**, `PC PORT · v<version> · BY SAULOB`, over the header art.
+The header reads **JURASSIC PARK: TRESPASSER** over `RECOMPILED · v<version> · BY SAULOB`, over the header art.
 The sidebar has the other ports' icons; the footer has the hints, **Sponsor on GitHub** (with the heart, left of Quit,
 opening `https://github.com/sponsors/saulob` in the browser and nothing else), Quit, Save and PLAY.
 
@@ -75,11 +75,11 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 |---|---|
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Texture filtering, VSync, Graphics card; Advanced graphics, disabled, "Coming later" |
+| Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Texture filtering, VSync, Graphics card |
 | Gameplay | Gore (the game's 0-2), Invert mouse, Frame rate in title |
-| Controls | the port hotkeys |
+| Controls | the game's own bindings; Port hotkeys, one row per key |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
-| About | Sponsor card, folders, settings file, Reset settings, logs folder, port version, game, renderer, architecture, graphics card, libraries, credits, repository link |
+| About | Sponsor card, description and credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 
 ## Play
 
@@ -146,13 +146,18 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
 | `launcher_x`, `_y`, `_width`, `_height`, `_maximized`, `_fullscreen` | the launcher window | |
-| `settings_version` | 2 | written with every change |
+| `settings_version` | 3 | written with every change |
 
 **Migration.** The first, experimental launcher (test 018) wrote no `settings_version`, and its file cannot tell a
 chosen value from one written while trying the page out. A file without `settings_version` therefore has its display
 and graphics keys (`display_mode` to `show_fps` above) removed once, at the next start, so the current defaults apply;
-`show_launcher` and the launcher placement are kept, and the log says `came from the experimental launcher`. Files
-written since carry the version and are never reset.
+`show_launcher` and the launcher placement are kept, and the log says `came from the experimental launcher`.
+
+Version 2 files were written by the launcher whose graphics defaults were Original filtering, MSAA off and VSync
+off (log 023). Once, at the next start, exactly those values are removed (`texture_filter = original`, `msaa = 0` or
+`1`, `vsync = 0`), so Anisotropic 16x, 4x MSAA and VSync On apply; every other value, and any other choice of those
+three keys, is kept, and the log says `held the earlier launcher's graphics defaults`. Files written since carry
+version 3 and are never reset, so choosing Original, Off or Off again sticks.
 
 `recomp-registry.txt` stays the game's own registry; the Gameplay page edits its `Gore` and `InvertMouse` values,
 which the game's options menu also changes. The run log's `[settings]` lines show what a run uses.
@@ -267,25 +272,25 @@ is not part of this work.
 ## Graphics
 
 - **Renderer**: Direct3D 11 (default) or Software. F5 still switches while playing.
-- **Texture filtering**: Original (the filters the game asks for), Bilinear (every texture), Anisotropic 4x/8x/16x
-  (where the game filters; its point-sampled draws stay point). No trilinear: the game's textures have one level.
+- **Texture filtering**: Original (the filters the game asks for, its single texture level), Bilinear (every
+  texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game filters, with generated
+  mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where a card has less and
+  logs it once.
 - **Anti-aliasing**: Off, 2x, 4x, 8x MSAA. The launcher lists only the levels the graphics card supports for the
   game's colour and depth formats (asked of a short-lived device); a saved level that is not supported is pointed
-  out, and the game logs any reduction (`requested level unsupported: reduced`).
+  out, the game falls back 8x, 4x, 2x, off and logs it once, and a multisampled target that cannot be created is
+  created without MSAA instead of failing.
 - **VSync**: On keeps the game's own Flip request (waits for the refresh); Off never waits.
 - **Frame rate in title** (Gameplay, as in the other ports; key `show_fps`): the title shows the renderer, FPS and
   the selected resolution (the render size with D3D11, the gameplay mode with Software or Original), which menus and
   videos do not change; Off shows only the name.
 - **Graphics card**: DXGI adapter 0, the one the game's device uses. No adapter choice yet.
-- **Advanced graphics**: Draw distance, Object LOD, Texture memory, Texture cache, Mipmaps and Texture detail are shown
-  disabled, "Coming later".
+- Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
+  Direct3D 11 renderer (see the README and `[graphics]` in the log).
 
 ## Next targets (not in this work)
 
-Kept apart from resolution: draw distance (the far clip `+0x3C` and the per-quality table `0x0066C518`), object LOD
-and its pixel-error thresholds (`MinPixels`, `PixelRatio`, `PixelError`, measured against the camera's 4:3 LOD scale),
-billboard and impostor distances, LOD pop-in, terrain texture paging and its 1280-1920 KB budget, the texture cache
-and texture memory limits. Also a dedicated ultrawide HUD, an adapter choice and the x64 host (its own branch).
+A dedicated ultrawide HUD, an adapter choice, an uncapped frame rate and the x64 host (its own branch).
 
 ## Manual test
 

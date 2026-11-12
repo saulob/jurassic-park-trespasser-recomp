@@ -37,7 +37,7 @@ needs the files earlier, for the analysis.)
 
 | Stage | Output | Runs again when |
 |---|---|---|
-| pcrecomp | `external\pcrecomp` | the checkout is missing or not at the commit in `config\target.json` |
+| pcrecomp | `external\pcrecomp` | the checkout is missing, not at the commit in `config\target.json`, or `patches\pcrecomp` (applied in `series` order, recorded in `external\pcrecomp.patches`) changed |
 | Game files | `game\` | `trespass.exe` is missing or has another SHA-256, or a DLL or `data\menu\tpassintro.smk` is missing |
 | Analysis (about 15 min) | `analysis\` | the executable's SHA-256 or the pcrecomp commit changed, an output is missing, or `-Reanalyze` |
 | Lift (about 1 min) | `src\recomp\gen\` | the catalog, the RTTI seeds, `config\decoder_fixups.json`, `config\extra_entries.json` or `tools\run_lift.py` changed (by content), an output is missing, or `-Relift` |
@@ -68,7 +68,7 @@ from before this layout stay in `logs\`.
 | `-Arch x86` / `-Arch x64` | `x86` (default) is the playable 32-bit host in `build\cmake\msvc-x86`. `x64` builds only the 64-bit host groundwork (`trespasser_x64_probe`, `x64_tests`) in `build\cmake\msvc-x64` with the native x64 tools; it cannot run the game, so `-Run` is refused (`docs\X64_MIGRATION.md`) |
 | `-Clean` | delete this configuration's build folder first; `game\`, the image, `analysis\`, `src\recomp\gen\` and `logs\` are kept |
 | `-Config Release` | build `build\cmake\msvc-x86-release` instead of RelWithDebInfo |
-| `-GenOpt /O2` | advanced: optimisation of the lifted C (compiler flags only, it never regenerates the C, but changing it recompiles all of it). Default: what the build folder already uses, else `/Od` for RelWithDebInfo and `/O2` for Release |
+| `-GenOpt /O2` | advanced: optimisation of the lifted C (compiler flags only, it never regenerates the C, but changing it recompiles all of it). Default: what the build folder already uses, else `/Od` for RelWithDebInfo and `/O2` for Release. Every lifted file runs during gameplay, so with `/Od` each is still compiled with `/O2 /Ob1`; `/Ob1` is added to any other value |
 | `-Trace` | build with `RECOMP_TRACE` (`--calltrace`, `--firsthit`); default: what the build folder already uses |
 | `-BuildDir`, `-Jobs N` | another build folder (`-Clean` only removes folders under `build\`); parallel compile jobs |
 | `-Iso PATH` | disc image, when the game files must be extracted |
@@ -123,7 +123,7 @@ the game.
 | `--log-dir DIR` | without `--log-file`, create the next `trespasser_NNN.log` in DIR (default `build\logs\`) |
 | `--ddraw system` | call the system `ddraw.dll` instead of the compatibility layer, observing it (diagnostics only) |
 | `--ddraw-cert-dialog` | show the game's legacy "DirectDraw NOT certified" dialog, which the host skips by default |
-| `--generate-mips` | d3d11: give the game's single-level textures generated mip chains (off by default, as the original) |
+| `--original-engine-limits` | d3d11: keep the 1998 draw distance, texture sizes and texture memory (comparison runs) |
 | `--debug-d3d-output texture\|vertex-color\|depth` | d3d11 diagnostics: draws show only their texture, vertex colour or depth |
 | `--legacy-safemode-dialog` | keep the game's "unstable last time, Safe Mode?" prompt and its registry `Safemode` flag (off by default) |
 | `--renderer software\|d3d11` | `d3d11` (default): the game's Direct3D 6 path on the GPU; `software`: its SelfMod rasteriser |
@@ -146,16 +146,17 @@ game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `
 
 ## Headless tests
 
-Four small programs check the host without a window, a GPU device, the game or audio; they are not
+Five small programs check the host without a window, a GPU device, the game or audio; they are not
 part of the default build:
 
 ```powershell
-ninja -C build\cmake\msvc-x86 launcher_tests host_tests com_tests water_tests
+ninja -C build\cmake\msvc-x86 launcher_tests host_tests com_tests water_tests x87_tests
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
 $env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation
 .\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
-.\build\cmake\msvc-x86\water_tests.exe  # host water kernels against the lifted functions they replace, byte for byte
+.\build\cmake\msvc-x86\water_tests.exe  # host kernels (water, occlusion, polygon submission) against the lifted functions, byte for byte; bump scanlines against the game's own routine (needs game\trespass.exe)
+.\build\cmake\msvc-x86\x87_tests.exe    # the patched runtime: x87 ring, inline rounding against the C library, per-site call cache
 ```
 
 The x64 groundwork has its own, from an x64 developer prompt (or after `build.ps1 -Arch x64`):

@@ -8,27 +8,47 @@ You need your own English disc. Nothing from the game is in this repository.
 
 ## Status
 
-**Bring-up. The game has not been run yet.** What exists has been checked statically only.
+**Playable, in testing.** The game installs from your disc, starts, and runs its menus and levels with the Direct3D 11
+renderer or its own software renderer.
 
 | Milestone | State |
 |---|---|
 | Disc and executable inventoried, target fingerprinted | done ([ANALYSIS](docs/ANALYSIS.md)) |
-| All of `.text` lifted to C: 0 lift errors, 0 unimplemented instructions, 0 unresolvable constant targets | done, static evidence |
-| All 297 imports resolve against this Windows' 32-bit DLLs | done, static evidence |
-| Host written: loader, import binding, SelfMod bridge, registry store, logs, fault reports | written, **not yet compiled** |
-| Host builds | not attempted |
-| Recompiled executable starts | not attempted |
-| Original subsystems initialise | not attempted |
-| Game files load | not attempted |
-| Video and audio initialise | not attempted |
-| Main menu | not attempted |
-| First level loads | not attempted |
-| Gameplay | not attempted |
+| All of `.text` lifted to C: 0 lift errors, 0 unimplemented instructions, 0 unresolvable constant targets | done |
+| All 297 imports resolve against this Windows' 32-bit DLLs | done |
+| Host, launcher and installer build and run | done |
+| Menus, video and audio | working |
+| Levels and gameplay | playable, in testing |
 
-A launcher installs the game from your disc image and sets display and graphics options:
-render resolution up to 4K and native, true widescreen (Hor+) up to 32:9, MSAA, anisotropic
-filtering, VSync ([LAUNCHER](docs/LAUNCHER.md)). Not yet: uncapped frame rate, controller support,
-translations, mods, draw distance and LOD changes, x64.
+## What the port adds
+
+Jurassic Park: Trespasser Recompiled is a PC port powered by static recompilation, with a modern host around the
+original game. These are part of the normal Direct3D 11 renderer; there is nothing to turn on:
+
+- **Direct3D 11 renderer**: the game's Direct3D 6 drawing on the graphics card, with the software renderer kept as a
+  compatibility fallback (F5 switches).
+- **Native high resolutions**: the 3D world is drawn at the monitor's resolution (or 720p to 4K), not upscaled.
+- **True widescreen**: 16:9 to 32:9 show more of the world to the sides (Hor+), with no stretching and no holes.
+- **Scaled UI**: menus and dialogs keep their original 4:3 layout, scaled to the screen.
+- **Modern texture filtering**: anisotropic filtering up to 16x, and MSAA up to 8x where the card supports it.
+- **Generated mipmaps**: the 3D world's textures get full mip chains made from the originals at load time (the files
+  are never changed), so distant ground and foliage stay steady and alpha-tested plants keep their density.
+- **Improved draw distance**: every object stays drawn 1.6 times as far, and stays a 3D model out to 100-150 m before
+  the game may swap it for a flat impostor (15 m in 1998).
+- **Textured distant terrain**: the ground keeps its own detailed textures out to the far clip instead of a blurry
+  map beyond 345 m, with more room for terrain textures and safer terrain memory.
+- **Improved LOD behaviour**: models keep their detail measured at the real render size, and textures, terrain and
+  impostors use their full 256-pixel resolution instead of the 1998 limit of 128.
+- **Modern texture cache**: the game's texture memory grows from 24 MB to 64 MB, with the engine's 32-bit budget
+  arithmetic corrected, and textures survive Alt+Tab and menu changes without being rebuilt.
+- **Steady texture streaming**: the game's per-frame texture upload window is timed precisely, so newly visible
+  scenery gets its textures sooner instead of showing flat colours.
+- **Performance**: menus over a paused game and the start-up checks no longer copy the full picture back from
+  the graphics card.
+
+The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
+anti-aliasing, texture filtering, VSync and renderer ([LAUNCHER](docs/LAUNCHER.md)). Not yet: uncapped frame rate,
+controller support, translations, mods, x64.
 
 ## How it works
 

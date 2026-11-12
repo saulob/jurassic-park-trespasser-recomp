@@ -342,12 +342,26 @@ static void note_ignored(int what, const char* text) {
     host_log("window", "%s (later identical calls are not logged)", text);
 }
 
+/* WindowFromPoint is a system call: its answer for an unmoved pointer is kept for POINTER_WINDOW_MS. */
+#define POINTER_WINDOW_MS 50u
+
 static int pointer_over_view(void) {
+    static POINT s_at;
+    static HWND s_window;
+    static DWORD s_when;
     POINT p;
     RECT view;
+    DWORD now;
     if (!s.game || !view_valid() || !GetCursorPos(&p)) return 0;
     view_rect_on_screen(&view);
-    return PtInRect(&view, p) && (WindowFromPoint(p) == s.game || WindowFromPoint(p) == s.surface);
+    if (!PtInRect(&view, p)) return 0;
+    now = GetTickCount();
+    if (p.x != s_at.x || p.y != s_at.y || now - s_when >= POINTER_WINDOW_MS || !s_window) {
+        s_window = WindowFromPoint(p);
+        s_at = p;
+        s_when = now;
+    }
+    return s_window == s.game || s_window == s.surface;
 }
 
 static int game_cursor_hidden(void) { return s.cursor_count < 0; }
@@ -401,7 +415,7 @@ static const char* ui_text(const guest_ui_view_t* g) {
     return g->top_vtable ? guest_ui_class_name(g->top_vtable) : "no window yet";
 }
 
-/* DEBUG_SAULO: the result each window over the gameplay view closed with, for the first few. */
+/* The result each window over the gameplay view closed with, for the first few. */
 static void trace_modal(const guest_ui_view_t* before, const guest_ui_view_t* after) {
     uint32_t result;
     if (s.modal_lines >= MODAL_LOG_LIMIT) return;
@@ -726,7 +740,7 @@ static void set_switch_state(renderer_switch_t state, const char* detail) {
     s.switch_state = state;
 }
 
-/* DEBUG_SAULO: object census around a live switch, to see leaks and early releases. */
+/* Object census around a live switch: leaks and early releases show here. */
 static void log_census(const char* when) {
     host_log("renderer", "F5 %s: DirectDraw objects %ld, surfaces %ld, Direct3D devices %ld, viewports %ld, GPU textures %u, "
              "locks %ld, DCs %ld, scenes %ld", when, dd_census.directdraws, dd_census.surfaces, dd_census.devices,

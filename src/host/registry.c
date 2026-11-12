@@ -246,6 +246,17 @@ static int policy_value(const char* name, int stored, policy_t* p) {
         p->text = "host policy: IID_IDirect3DHALDevice (--renderer d3d11)";
         return 1;
     }
+    if (!_stricmp(name, "Max Recommended Tex Dim") && engine_texture_dim_policy(engine_limits_modern())) {
+        policy_dword(p, engine_texture_dim_policy(1),
+                     "host policy: 256 with d3d11 (textures and impostors at their full size; the 1998 setup offered "
+                     "32 to 128; --original-engine-limits keeps the stored value)");
+        return 1;
+    }
+    if (!_stricmp(name, "RenderQuality") && engine_render_quality_policy(d3dr_hardware(), stored)) {
+        policy_dword(p, engine_render_quality_policy(1, 0),
+                     "host policy: 4, the top render quality, with d3d11 until the game's options store a choice");
+        return 1;
+    }
     if (!_stricmp(name, "Hardware Water") && hardware_water_policy(d3dr_hardware(), stored, s_software_water) == 1) {
         policy_dword(p, 1, "host policy: 1 (--renderer d3d11, as the game's video setup sets it for alpha-capable "
                            "devices; --software-water or a stored value keeps the software water)");

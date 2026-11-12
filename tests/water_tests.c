@@ -1,5 +1,5 @@
 /*
- * Byte-exact comparison of the host water kernels with the lifted functions they replace, which the
+ * Byte-exact comparison of the host kernels (water, occlusion) with the lifted functions they replace, which the
  * build copies out of src/recomp/gen (lifted_sub_*) and compiles with the generated code's options.
  * Each case runs both from the same guest state; everything the guest can observe afterwards must be
  * identical: memory, registers, flags, the x87 model, the backedge counter and every yield.
@@ -10,21 +10,57 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bump_spans.h"
+#include "occlusion_kernel.h"
+#include "polygon_submit.h"
 #include "water_kernels.h"
 
 void lifted_sub_0060E3F0(void);
+void lifted_sub_00559240(void);
+void lifted_alt_sub_00559240(void);
 void lifted_sub_00638670(void);
+void lifted_sub_00630D90(void);
 void lifted_alt_sub_0060E3F0(void);
 void lifted_alt_sub_00638670(void);
+void lifted_alt_sub_00630D90(void);
 
 uint32_t g_eax, g_ecx, g_edx, g_esp, g_ebx, g_esi, g_edi, g_ebp;
 double g_st[8];
 int g_fp_top;
+#ifdef RECOMP_X87_RING
+double g_stbuf[X87_RING], *g_stp = g_stbuf + X87_RING / 2;
+int64_t g_sti64buf[X87_RING], *g_sti64p = g_sti64buf + X87_RING / 2;
+void recomp_x87_recentre(void) {
+    double v[8];
+    int64_t w[8];
+    memcpy(v, g_stp, sizeof v), memcpy(w, g_sti64p, sizeof w);
+    g_stp = g_stbuf + X87_RING / 2, g_sti64p = g_sti64buf + X87_RING / 2;
+    memcpy(g_stp, v, sizeof v), memcpy(g_sti64p, w, sizeof w);
+}
+#define X87_TOP g_stp
+#define X87_TOP_I64 g_sti64p
+#else
+#define X87_TOP g_st
+#define X87_TOP_I64 g_st_i64
+#endif
 uint16_t g_fpu_cw;
 uint32_t g_cur_func;
 uint32_t g_icall_trace[ICALL_TRACE_SIZE], g_icall_from[ICALL_TRACE_SIZE], g_icall_trace_idx, g_icall_count;
+static void stub_set_render_state(void);
+static void stub_draw_primitive(void);
+static void stub_set_stage_state(void);
+static void stub_ftol(void);
+#define FAKE_SET_RENDER_STATE 0x7E000058u
+#define FAKE_DRAW_PRIMITIVE 0x7E000070u
+#define FAKE_SET_STAGE_STATE 0x7E0000A0u
+#define FAKE_FTOL 0x7E000100u
 recomp_func_t recomp_lookup(uint32_t va) {
-    (void)va;
+    switch (va) {
+    case FAKE_SET_RENDER_STATE: return stub_set_render_state;
+    case FAKE_DRAW_PRIMITIVE: return stub_draw_primitive;
+    case FAKE_SET_STAGE_STATE: return stub_set_stage_state;
+    case FAKE_FTOL: return stub_ftol;
+    }
     return NULL;
 }
 recomp_func_t recomp_lookup_manual(uint32_t va) {
@@ -48,6 +84,25 @@ recomp_func_t recomp_lookup_import(uint32_t va) {
 #define ALPHA_SCALE 0x0073F70Cu
 #define ALPHA_TABLE 0x0073F710u
 #define ALPHA_ENTRIES 0x8000u
+#define EPSILON_ON 0x0066CC98u
+#define EPSILON_VALUE 0x00651C20u
+#define EPSILON_USED 0x00741110u
+#define OCCLUDED_COUNT 0x007410F8u
+#define VISIBLE_COUNT 0x007410FCu
+#define P_DEVICE 0x006D0E9Cu
+#define P_WRAP_U 0x006D2108u
+#define P_WRAP_V 0x006D2109u
+#define P_FOG_SENT 0x006D2101u
+#define P_SHADE_SENT 0x006D2103u
+#define P_SPECULAR_SENT 0x006D2104u
+#define P_FOG_ENTRIES 0x00732874u
+#define P_FOG_TABLE 0x00732878u
+#define P_OFFSET_X 0x007382B8u
+#define P_OFFSET_Y 0x007382BCu
+#define P_FTOL_IMPORT 0x00645290u
+#define P_MODE_TABLE 0x00559C5Cu /* the address-mode switch's jump table, in .text */
+/* The vertex fan, the calls' arguments and saved registers: below the stack pointer the function returns with. */
+#define DEAD_STACK (STACK_TOP - 0x8000u)
 
 static uint8_t g_window[0x600000];
 static uint8_t g_initial[REGION_HI - REGION_LO];
@@ -61,7 +116,7 @@ typedef struct {
     uint32_t regs[8], flags[4], cur_func, backedges, alias;
     double st[8];
     int64_t st_i64[8];
-    int fp_top;
+    int fp_top, x87_position;
     uint16_t cw;
     unsigned yields;
     yield_t yield[64];
@@ -107,6 +162,70 @@ static float rnd_divisor(float lo, float hi, int extremes) {
 
 static void put32(uint32_t va, uint32_t v) { memcpy((void*)(uintptr_t)va, &v, 4); }
 static void putf(uint32_t va, float v) { memcpy((void*)(uintptr_t)va, &v, 4); }
+
+static uint32_t get32(uint32_t va) {
+    uint32_t v;
+    memcpy(&v, (const void*)(uintptr_t)va, 4);
+    return v;
+}
+
+/* Calls the polygon code makes through the device, logged in guest memory (so compared): arguments, registers and
+ * flags at the call, and DrawPrimitive's vertices. */
+static uint32_t g_log_base, g_log_at, g_log_end;
+static void log32(uint32_t v) {
+    if (g_log_at + 4 > g_log_end) return;
+    put32(g_log_at, v);
+    g_log_at += 4;
+}
+
+static void log_call(uint32_t kind, int args) {
+    log32(kind);
+    log32(g_eax), log32(g_ecx), log32(g_edx), log32(g_ebx), log32(g_esp), log32(g_ebp), log32(g_esi), log32(g_edi);
+    log32(g_flag_k), log32(g_flag_a), log32(g_flag_b), log32(g_flag_cf), log32(g_cur_func);
+    for (int i = 0; i < args; i++) log32(get32(g_esp + 4 + 4 * i));
+}
+
+static void stub_return(uint32_t kind, int args) {
+    g_eax = 0x5EED0000u ^ (kind << 8) ^ g_log_at;
+    g_ecx = 0xC0C00000u ^ g_log_at;
+    g_edx = 0xD0D00000u ^ g_log_at;
+    g_esp += 4 + 4 * args;
+}
+
+static void stub_set_render_state(void) {
+    log_call(1, 3);
+    stub_return(1, 3);
+}
+
+static void stub_set_stage_state(void) {
+    log_call(2, 4);
+    stub_return(2, 4);
+}
+
+static void stub_draw_primitive(void) {
+    uint32_t verts = get32(g_esp + 16), n = get32(g_esp + 20);
+    log_call(3, 6);
+    for (uint32_t i = 0; i < n * 8 && i < 256 * 8; i++) log32(get32(verts + i * 4));
+    stub_return(3, 6);
+}
+
+/* msvcrt's _ftol as native32 runs it. */
+static void stub_ftol(void) {
+    int64_t q = fp_st0_to_i64(RECOMP_X87_ST(0), X87_TOP_I64[0], 0x0C7F);
+    (void)RECOMP_X87_POP();
+    g_eax = (uint32_t)q;
+    g_edx = (uint32_t)((uint64_t)q >> 32);
+    g_esp += 4;
+}
+
+/* The material's lighting table, allocated on first use. */
+void sub_0050C9C0(void) {
+    uint32_t self = g_ecx;
+    log_call(4, 0);
+    if (!get32(self + 0x54)) put32(self + 0x54, 0x7A000000u | (g_log_at & 0xFFFFu));
+    g_eax = get32(self + 0x54);
+    g_esp += 4;
+}
 
 static uint32_t g_arena;
 static uint32_t alloc(uint32_t bytes) {
@@ -158,8 +277,11 @@ static void enter(const start_t* s) {
     g_eax = s->regs[0], g_ecx = s->regs[1], g_edx = s->regs[2], g_ebx = s->regs[3];
     g_esp = s->regs[4], g_ebp = s->regs[5], g_esi = s->regs[6], g_edi = s->regs[7];
     g_flag_k = s->flags[0], g_flag_a = s->flags[1], g_flag_b = s->flags[2], g_flag_cf = s->flags[3];
-    memcpy(g_st, s->st, sizeof g_st);
-    memcpy(g_st_i64, s->st_i64, sizeof g_st_i64);
+#ifdef RECOMP_X87_RING
+    g_stp = g_stbuf + X87_RING / 2, g_sti64p = g_sti64buf + X87_RING / 2;
+#endif
+    memcpy(X87_TOP, s->st, sizeof s->st);
+    memcpy(X87_TOP_I64, s->st_i64, sizeof s->st_i64);
     g_fp_top = s->fp_top;
     g_fpu_cw = s->cw;
     g_backedges = s->backedges;
@@ -167,6 +289,7 @@ static void enter(const start_t* s) {
     g_alias_entry = 0;
     recomp_yield_hook = s->hook ? record_yield : NULL;
     memset(&g_run, 0, sizeof g_run);
+    g_log_at = g_log_base;
 }
 
 static void leave(machine_t* m) {
@@ -180,9 +303,12 @@ static void leave(machine_t* m) {
     m->cur_func = g_cur_func;
     m->backedges = g_backedges;
     m->alias = g_alias_entry;
-    memcpy(m->st, g_st, sizeof m->st);
-    memcpy(m->st_i64, g_st_i64, sizeof m->st_i64);
+    memcpy(m->st, X87_TOP, sizeof m->st);
+    memcpy(m->st_i64, X87_TOP_I64, sizeof m->st_i64);
     m->fp_top = g_fp_top;
+#ifdef RECOMP_X87_RING
+    m->x87_position = (int)(g_stp - g_stbuf);
+#endif
     m->cw = g_fpu_cw;
     m->yields = yields;
     memcpy(m->yield, yield, sizeof yield);
@@ -201,6 +327,10 @@ static uint8_t g_alt[REGION_HI - REGION_LO];
 
 static int is_nan(uint32_t x) { return (x & 0x7F800000u) == 0x7F800000u && (x & 0x007FFFFFu); }
 
+/* Memory the function leaves below the stack pointer is dead: only compared when g_dead_hi is 0. */
+static uint32_t g_dead_lo, g_dead_hi;
+static int dead(size_t i) { return REGION_LO + i >= g_dead_lo && REGION_LO + i < g_dead_hi; }
+
 static void run(recomp_func_t f, const start_t* s, machine_t* m, uint8_t* memory) {
     enter(s);
     f();
@@ -217,7 +347,7 @@ static int classify(const machine_t* a, const uint8_t* ma, const machine_t* b, c
         uint32_t x, y;
         memcpy(&x, ma + i, 4);
         memcpy(&y, mb + i, 4);
-        if (x == y) continue;
+        if (x == y || dead(i)) continue;
         if (!is_nan(x) || !is_nan(y)) return DIFFERENT;
         nan = 1;
     }
@@ -239,7 +369,7 @@ static void report(const char* what, unsigned long n, const machine_t* a, const 
         uint32_t x, y;
         memcpy(&x, ma + i, 4);
         memcpy(&y, mb + i, 4);
-        if (x != y) {
+        if (x != y && !dead(i)) {
             printf(" memory at 0x%08X: lifted %08X, kernel %08X;", (unsigned)(REGION_LO + i), x, y);
             break;
         }
@@ -248,7 +378,8 @@ static void report(const char* what, unsigned long n, const machine_t* a, const 
         if (a->regs[i] != b->regs[i]) printf(" reg%d %08X/%08X", i, a->regs[i], b->regs[i]);
     for (int i = 0; i < 4; i++)
         if (a->flags[i] != b->flags[i]) printf(" flag%d %08X/%08X", i, a->flags[i], b->flags[i]);
-    if (memcmp(a->st, b->st, sizeof a->st) || memcmp(a->st_i64, b->st_i64, sizeof a->st_i64) || a->fp_top != b->fp_top)
+    if (memcmp(a->st, b->st, sizeof a->st) || memcmp(a->st_i64, b->st_i64, sizeof a->st_i64) || a->fp_top != b->fp_top ||
+        a->x87_position != b->x87_position)
         printf(" x87 state");
     if (a->backedges != b->backedges || a->yields != b->yields || memcmp(a->yield, b->yield, sizeof a->yield))
         printf(" backedges %u/%u yields %u/%u", a->backedges, b->backedges, a->yields, b->yields);
@@ -387,6 +518,180 @@ static void wave_case(unsigned long n, int extremes, int hook, int width_max) {
     compare("water_wave_step", n, lifted_sub_00638670, lifted_alt_sub_00638670, water_wave_step, &s);
 }
 
+/* An occluder set and a point array: planes either random or placed just behind every point (the result then
+ * hangs on the last rounding, the epsilon and the sign of zero), so both answers come up. */
+static unsigned long g_occluded, g_visible;
+
+static uint32_t occluder_planes(uint32_t data, uint32_t points, uint32_t planes, int extremes) {
+    uint32_t table = alloc(planes * 16 + 16);
+    for (uint32_t p = 0; p < planes; p++) {
+        float nx = rnd_float(-1.0f, 1.0f, extremes), ny = rnd_float(-1.0f, 1.0f, extremes),
+              nz = rnd_float(-1.0f, 1.0f, extremes), d = rnd_float(-40.0f, 10.0f, extremes);
+        if (rnd_below(3)) {
+            float most = -1e30f;
+            for (uint32_t i = 0; i < points; i++) {
+                float px, py, pz, dot;
+                memcpy(&px, (void*)(uintptr_t)(data + i * 12), 4);
+                memcpy(&py, (void*)(uintptr_t)(data + i * 12 + 4), 4);
+                memcpy(&pz, (void*)(uintptr_t)(data + i * 12 + 8), 4);
+                dot = nz * pz + ny * py + nx * px;
+                if (dot > most) most = dot;
+            }
+            d = -most - (rnd_below(4) ? rnd_range(0.0f, 0.5f) : 0.0f);
+        }
+        putf(table + p * 16, nx);
+        putf(table + p * 16 + 4, ny);
+        putf(table + p * 16 + 8, nz);
+        putf(table + p * 16 + 12, d);
+    }
+    return table;
+}
+
+static void occlusion_setup(uint32_t occluders, uint32_t points, uint32_t planes_max, int extremes, int empty) {
+    uint32_t data, array, items, set;
+    g_arena = ARENA;
+    data = alloc(points * 12 + 16);
+    for (uint32_t i = 0; i < points * 3; i++) putf(data + i * 4, rnd_float(-10.0f, 10.0f, extremes));
+    array = alloc(16);
+    put32(array, points);
+    put32(array + 4, data);
+    items = alloc(occluders * 4 + 16);
+    for (uint32_t o = 0; o < occluders; o++) {
+        uint32_t occluder = alloc(0x40), planes = empty && rnd_below(6) == 0 ? 0 : 1 + rnd_below(planes_max);
+        for (uint32_t k = 0; k < 0x40; k += 4) put32(occluder + k, rnd());
+        put32(occluder + 0x28, planes);
+        put32(occluder + 0x2C, occluder_planes(data, points, planes, extremes));
+        put32(items + o * 4, occluder);
+    }
+    set = alloc(16);
+    put32(set, occluders);
+    put32(set + 4, items);
+    *(uint8_t*)(uintptr_t)EPSILON_ON = (uint8_t)(rnd_below(2) ? rnd() : 0);
+    putf(EPSILON_VALUE, rnd_float(-0.01f, 0.01f, extremes));
+    put32(EPSILON_USED, rnd());
+    put32(OCCLUDED_COUNT, rnd());
+    put32(VISIBLE_COUNT, rnd());
+    for (uint32_t i = 0; i < 16; i++) put32(STACK_TOP - 0x40 + i * 4, rnd());
+    put32(STACK_TOP, RECOMP_RETADDR);
+    put32(STACK_TOP + 4, set);
+    put32(STACK_TOP + 8, array);
+    put32(STACK_TOP + 0xC, rnd());
+}
+
+static void occlusion_case(unsigned long n, int extremes, int hook) {
+    uint32_t occluders = rnd_below(10) ? 1 + rnd_below(6) : 0, points = rnd_below(10) ? 1 + rnd_below(12) : 0;
+    start_t s;
+    g_non_finite = extremes == NON_FINITE;
+    occlusion_setup(occluders, points, 9, extremes, 1);
+    memcpy(g_initial, (void*)(uintptr_t)REGION_LO, sizeof g_initial);
+    random_start(&s, hook);
+    s.cw = 0x027F;
+    compare("occlusion_test", n, lifted_sub_00630D90, lifted_alt_sub_00630D90, occlusion_test, &s);
+    if ((g_eax & 0xFF) == 1) g_occluded++;
+    else g_visible++;
+}
+
+/* A polygon for the per-polygon submission: material, fog table, vertices and the states last sent, with the cases
+ * that change its path (address modes, clamped z, lit above or below the threshold, fog saturated or negative). */
+static unsigned long g_polygon_paths[8];
+static uint32_t g_polygon_self, g_polygon_vertices;
+
+static void polygon_setup(int extremes, uint32_t max_vertices) {
+    uint32_t dev, vtable, mat, holder, owner, poly, list, self, table, entries, n;
+    float threshold;
+    g_arena = ARENA;
+    g_log_base = alloc(0x4000);
+    g_log_end = g_log_base + 0x4000;
+    vtable = alloc(0xB0);
+    for (uint32_t k = 0; k < 0xB0; k += 4) put32(vtable + k, rnd());
+    put32(vtable + 0x58, FAKE_SET_RENDER_STATE);
+    put32(vtable + 0x70, FAKE_DRAW_PRIMITIVE);
+    put32(vtable + 0xA0, FAKE_SET_STAGE_STATE);
+    dev = alloc(16);
+    put32(dev, vtable);
+    put32(P_DEVICE, dev);
+    put32(P_FTOL_IMPORT, FAKE_FTOL);
+    put32(P_MODE_TABLE, 0x00559268u);
+    put32(P_MODE_TABLE + 4, 0x005592A5u);
+    put32(P_MODE_TABLE + 8, 0x005592D6u);
+    put32(P_MODE_TABLE + 12, 0x00559315u);
+    *(uint8_t*)(uintptr_t)P_WRAP_U = (uint8_t)(rnd_below(4) ? rnd_below(2) : rnd());
+    *(uint8_t*)(uintptr_t)P_WRAP_V = (uint8_t)(rnd_below(4) ? rnd_below(2) : rnd());
+    *(uint8_t*)(uintptr_t)P_FOG_SENT = (uint8_t)(rnd_below(4) ? rnd_below(2) : rnd());
+    *(uint8_t*)(uintptr_t)P_SHADE_SENT = (uint8_t)(rnd_below(4) ? 1 : rnd());
+    *(uint8_t*)(uintptr_t)P_SPECULAR_SENT = (uint8_t)(rnd_below(4) ? 0 : rnd());
+    putf(0x006474D0u, 0.0f);
+    putf(0x006474D4u, 0.5f);
+    putf(0x00645C34u, 1.0f);
+    put32(0x0064C49Cu, 0x3F7FFFFEu);
+    { double one = 1.0; memcpy((void*)(uintptr_t)0x00646570u, &one, 8); }
+    put32(0x0064E70Cu, 0x3F800000u);
+    putf(0x0064E710u, 0.15384616f);
+    putf(0x0064DBCCu, 255.0f);
+    putf(0x0064E708u, 0.99f);
+    entries = rnd_below(16) ? 1 + rnd_below(64) : rnd_below(2);
+    table = alloc(entries * 4 + 8);
+    for (uint32_t i = 0; i < entries + 2; i++) putf(table + i * 4, rnd_float(0.0f, 1.2f, extremes));
+    put32(P_FOG_ENTRIES, entries);
+    put32(P_FOG_TABLE, table);
+    putf(P_OFFSET_X, rnd_float(-1.0f, 1.0f, extremes));
+    putf(P_OFFSET_Y, rnd_float(-1.0f, 1.0f, extremes));
+    mat = alloc(0x60);
+    for (uint32_t k = 0; k < 0x60; k += 4) put32(mat + k, rnd());
+    put32(mat + 0x2C, rnd_below(8) ? rnd_below(200) : rnd_below(2));
+    threshold = (float)(int32_t)get32(mat + 0x2C);
+    put32(mat + 0x14, rnd_below(16) ? get32(mat + 0x2C) + 1 + rnd_below(300) : get32(mat + 0x2C) + rnd_below(2));
+    putf(mat + 0x30, rnd_float(0.0f, 1.0f, extremes));
+    put32(mat + 0x54, rnd_below(6) ? 0x7B000000u | rnd_below(0x10000) : 0);
+    holder = alloc(16);
+    put32(holder + 8, mat);
+    owner = alloc(0x30);
+    put32(owner + 0x2C, holder);
+    n = g_polygon_vertices ? g_polygon_vertices : rnd_below(12) ? 3 + rnd_below(10) : rnd_below(max_vertices + 1);
+    list = alloc(n * 4 + 4);
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t v = alloc(0x24);
+        put32(list + i * 4, v);
+        putf(v + 4, rnd_below(8) ? rnd_float(0.0f, 1.0f, extremes) : rnd_float(-0.5f, 1.5f, extremes));
+        putf(v + 0xC, rnd_float(0.0f, 3440.0f, extremes));
+        putf(v + 0x10, rnd_float(0.0f, 1440.0f, extremes));
+        putf(v + 0x14, rnd_below(8) ? rnd_float(0.0f, 1.0f, extremes) : rnd_float(-0.5f, 1.5f, extremes));
+        putf(v + 0x18, rnd_float(-0.2f * threshold, threshold * 2.0f + 2.0f, extremes));
+        put32(v + 0x1C, rnd());
+        put32(v + 0x20, rnd());
+    }
+    poly = alloc(0x80);
+    for (uint32_t k = 0; k < 0x80; k += 4) put32(poly + k, rnd());
+    put32(poly, n);
+    put32(poly + 4, list);
+    put32(poly + 0xC, owner);
+    put32(poly + 0x78, rnd_below(8) ? rnd_below(4) : rnd_below(8));
+    self = alloc(0x20);
+    putf(self + 0x10, rnd_float(0.0f, 1.0f, extremes));
+    for (uint32_t i = 0; i < 64; i++) put32(STACK_TOP - 0x100 + i * 4, rnd());
+    put32(STACK_TOP, RECOMP_RETADDR);
+    put32(STACK_TOP + 4, poly);
+    put32(STACK_TOP + 8, rnd());
+    g_polygon_paths[get32(poly + 0x78) & 7]++;
+    g_polygon_self = self;
+}
+
+static void polygon_case(unsigned long n, int extremes, int hook, uint32_t max_vertices) {
+    start_t s;
+    uint32_t self;
+    g_non_finite = extremes == NON_FINITE;
+    polygon_setup(extremes, max_vertices);
+    self = g_polygon_self;
+    memcpy(g_initial, (void*)(uintptr_t)REGION_LO, sizeof g_initial);
+    random_start(&s, hook);
+    s.regs[1] = self;
+    s.cw = 0x027F;
+    g_dead_lo = DEAD_STACK, g_dead_hi = STACK_TOP;
+    compare("polygon_submit", n, lifted_sub_00559240, lifted_alt_sub_00559240, polygon_submit, &s);
+    g_dead_lo = g_dead_hi = 0;
+    g_log_base = g_log_end = 0;
+}
+
 static double seconds(void) {
     LARGE_INTEGER f, t;
     QueryPerformanceFrequency(&f);
@@ -508,6 +813,297 @@ static void benchmark(void) {
            kernel_wave * 1e3, lifted_wave / kernel_wave);
 }
 
+/* A box's eight corners behind the six planes of the first occluder: every plane of every point is tested. */
+static void occlusion_benchmark(void) {
+    double t0, lifted, kernel;
+    start_t s;
+    int calls = 20000;
+    uint32_t array;
+    occlusion_setup(4, 8, 6, ORDINARY, 0);
+    array = MEM32(STACK_TOP + 8);
+    for (uint32_t i = 0; i < 8 * 3; i++) putf(MEM32(MEM32(STACK_TOP + 8) + 4) + i * 4, (float)(i % 5) - 2.0f);
+    for (uint32_t o = 0; o < 4; o++) {
+        uint32_t occluder = MEM32(MEM32(MEM32(STACK_TOP + 4) + 4) + o * 4), table = alloc(6 * 16);
+        put32(occluder + 0x28, 6);
+        put32(occluder + 0x2C, table);
+        for (uint32_t p = 0; p < 6; p++) {
+            putf(table + p * 16, p == 0 ? 1.0f : 0.0f);
+            putf(table + p * 16 + 4, p == 1 ? 1.0f : 0.0f);
+            putf(table + p * 16 + 8, p == 2 ? 1.0f : 0.0f);
+            putf(table + p * 16 + 12, -100.0f);
+        }
+    }
+    memcpy(g_initial, (void*)(uintptr_t)REGION_LO, sizeof g_initial);
+    random_start(&s, 0);
+    s.cw = 0x027F;
+    enter(&s);
+    t0 = seconds();
+    for (int i = 0; i < calls; i++) {
+        g_esp = STACK_TOP;
+        put32(STACK_TOP + 8, array);
+        lifted_sub_00630D90();
+    }
+    lifted = (seconds() - t0) / calls;
+    enter(&s);
+    t0 = seconds();
+    for (int i = 0; i < calls; i++) {
+        g_esp = STACK_TOP;
+        put32(STACK_TOP + 8, array);
+        occlusion_test();
+    }
+    kernel = (seconds() - t0) / calls;
+    printf("benchmark: occlusion test (8 corners x 6 planes) lifted %.3f us, kernel %.3f us (x%.1f)\n",
+           lifted * 1e6, kernel * 1e6, lifted / kernel);
+}
+
+/* A ten-vertex fan, lit below the threshold, with fog: the common case in the game. */
+static void polygon_benchmark(void) {
+    double t0, lifted, kernel;
+    start_t s;
+    int calls = 20000;
+    uint32_t self, poly;
+    unsigned long long host, fallback;
+    g_polygon_vertices = 10;
+    polygon_setup(ORDINARY, 10);
+    g_polygon_vertices = 0;
+    poly = get32(STACK_TOP + 4);
+    if (get32(poly + 0x78) > 3) put32(poly + 0x78, 1);
+    self = g_polygon_self;
+    memcpy(g_initial, (void*)(uintptr_t)REGION_LO, sizeof g_initial);
+    random_start(&s, 0);
+    s.regs[1] = self;
+    s.cw = 0x027F;
+    polygon_submit_lifted = lifted_sub_00559240;
+    enter(&s);
+    t0 = seconds();
+    for (int i = 0; i < calls; i++) {
+        g_esp = STACK_TOP, g_ecx = self, g_log_at = g_log_base;
+        lifted_sub_00559240();
+    }
+    lifted = (seconds() - t0) / calls;
+    enter(&s);
+    t0 = seconds();
+    for (int i = 0; i < calls; i++) {
+        g_esp = STACK_TOP, g_ecx = self, g_log_at = g_log_base;
+        polygon_submit();
+    }
+    kernel = (seconds() - t0) / calls;
+    polygon_submit_take_counts(&host, &fallback);
+    printf("benchmark: polygon submission (10 vertices) lifted %.3f us, host %.3f us (x%.1f); host path %llu of %llu\n",
+           lifted * 1e6, kernel * 1e6, lifted / kernel, host, host + fallback);
+    g_log_base = g_log_end = 0;
+}
+
+/* The bump scanline routine (SelfMod 0x00640FE0) run natively from the game's own bytes, against the span model
+ * (bump_linear_spans), the guest-order texel walk and the shader's closed form, pixel for pixel. */
+#define SELFMOD_VA 0x0063B000u
+#define B_TEXTURE_BITMAP 0x00737E88u
+#define B_SUB_BUMP 0x00737E98u
+#define B_LIGHT_THETA 0x00737410u
+#define B_CLUT 0x00737F00u
+#define B_TILE_MASK 0x006699F8u
+#define B_TILE_STEP_U 0x006699FCu
+#define B_TEXTURE_LINE 0x00737F34u
+#define B_DELTA 0x00737EA0u
+#define B_NEG_DU 0x00737E90u
+#define B_NEG_DV 0x00737E40u
+#define B_SCREEN 0x00737EC0u
+#define B_SCREEN_LINE 0x00737EC4u
+#define B_EVEN_ROWS 0x00737F68u
+#define B_CLAMP_UV 0x00737F64u
+#define B_SCREEN_W 640u
+#define B_ROWS 48u
+
+static int load_selfmod(void) {
+    FILE* f = fopen(WATER_GAME_EXE, "rb");
+    uint8_t head[0x400];
+    uint32_t pe, sections, optional;
+    DWORD old;
+    int ok = 0;
+    if (!f) return 0;
+    if (fread(head, 1, sizeof head, f) == sizeof head) {
+        memcpy(&pe, head + 0x3C, 4);
+        sections = *(uint16_t*)(head + pe + 6);
+        optional = *(uint16_t*)(head + pe + 20);
+        for (uint32_t i = 0; i < sections && pe + 24 + optional + 40 * (i + 1) <= sizeof head; i++) {
+            const uint8_t* s = head + pe + 24 + optional + 40 * i;
+            uint32_t va, raw_size, raw;
+            memcpy(&va, s + 12, 4);
+            memcpy(&raw_size, s + 16, 4);
+            memcpy(&raw, s + 20, 4);
+            if (memcmp(s, "SelfMod", 7) || 0x00400000u + va != SELFMOD_VA) continue;
+            ok = !fseek(f, (long)raw, SEEK_SET) && fread((void*)(uintptr_t)SELFMOD_VA, 1, raw_size, f) == raw_size &&
+                 VirtualProtect((void*)(uintptr_t)SELFMOD_VA, raw_size, PAGE_EXECUTE_READWRITE, &old);
+        }
+    }
+    fclose(f);
+    return ok;
+}
+
+typedef struct {
+    uint32_t screen, texels, texel_count, width;
+    int bytes_texels; /* 1: the 8-bit textured routine */
+    bump_walk_t walk;
+    bump_pixel_t pixel;
+    int written_outside;
+    unsigned long spans, pixels, shader_differ;
+} bump_case_t;
+
+static void bump_reference_span(void* context, const bump_span_t* s) {
+    bump_case_t* c = (bump_case_t*)context;
+    bump_walk_state_t w = s->start;
+    for (int32_t k = 0; k < s->n; k++) {
+        uint16_t out;
+        uint32_t texel, shader;
+        if (w.index >= c->texel_count || s->x0 + k < 0 || s->x0 + k >= (int32_t)c->width) {
+            c->written_outside = 1;
+            return;
+        }
+        if (c->bytes_texels) {
+            out = c->pixel.clut[c->pixel.clut_base + ((const uint8_t*)(uintptr_t)c->texels)[w.index]];
+            *(uint16_t*)(uintptr_t)(c->screen + 2u * (s->dst_index + (uint32_t)k)) = out;
+            shader = texture_shader_pixel(s, s->x0 + k, &c->walk, (const uint8_t*)(uintptr_t)c->texels, c->pixel.clut,
+                                          c->pixel.clut_base);
+        } else {
+            texel = ((const uint16_t*)(uintptr_t)c->texels)[w.index];
+            if (bump_texel_rgb565(&c->pixel, (uint16_t)texel, 0, &out))
+                *(uint16_t*)(uintptr_t)(c->screen + 2u * (s->dst_index + (uint32_t)k)) = out;
+            shader = bump_shader_pixel(s, s->x0 + k, &c->walk, (const uint16_t*)(uintptr_t)c->texels, &c->pixel, 0);
+        }
+        if (shader != out) c->shader_differ++;
+        c->pixels++;
+        bump_walk_step(&w, &c->walk);
+    }
+    c->spans++;
+}
+
+static void bump_bounds_span(void* context, const bump_span_t* s) {
+    bump_case_t* c = (bump_case_t*)context;
+    bump_walk_state_t w = s->start;
+    if (s->x0 < 0 || s->x0 + s->n > (int32_t)c->width) c->written_outside = 1;
+    for (int32_t k = 0; k < s->n && !c->written_outside; k++) {
+        if (w.index >= c->texel_count) c->written_outside = 1;
+        bump_walk_step(&w, &c->walk);
+    }
+}
+
+/* A sub-triangle the primitive could hand over: edges, the U/V walk, and a tiled or untiled texel page. */
+static void bump_setup(bump_case_t* c, uint32_t* pscan, uint32_t* pdtri) {
+    uint32_t edge, clut, sub, w = 8u << rnd_below(6), h = 8u << rnd_below(6), tiled = rnd_below(3) != 0;
+    uint32_t rows = 1 + rnd_below(B_ROWS - 1), y0 = rnd_below(4);
+    g_arena = ARENA;
+    c->width = B_SCREEN_W;
+    c->screen = alloc(B_SCREEN_W * (B_ROWS + 8) * 2);
+    for (uint32_t i = 0; i < B_SCREEN_W * (B_ROWS + 8) / 2; i++) put32(c->screen + i * 4, rnd());
+    c->texel_count = 512u * (tiled ? h : 256u);
+    c->texels = alloc(c->texel_count * 2);
+    for (uint32_t i = 0; i < c->texel_count / 2; i++) put32(c->texels + i * 4, rnd());
+    clut = alloc(0x5000 * 2);
+    for (uint32_t i = 0; i < 0x5000 / 2; i++) put32(clut + i * 4, rnd());
+    sub = alloc(1024);
+    for (uint32_t i = 0; i < 1024; i++) *(uint8_t*)(uintptr_t)(sub + i) = (uint8_t)(rnd_below(8) ? rnd_below(32) : rnd_below(64));
+    c->pixel.clut = (const uint16_t*)(uintptr_t)clut;
+    c->pixel.clut_base = (rnd_below(8) << 11);
+    c->pixel.bump = (const uint8_t*)(uintptr_t)sub;
+    c->pixel.light_theta = rnd() & 0x3F0u;
+    put32(B_TEXTURE_BITMAP, c->texels);
+    put32(B_SUB_BUMP, sub);
+    put32(B_LIGHT_THETA, c->pixel.light_theta);
+    put32(B_CLUT, clut + 2 * c->pixel.clut_base);
+    put32(B_TILE_MASK, tiled ? (h - 1) << 9 | (w - 1) : 0xFFFFFFFFu);
+    put32(B_TILE_STEP_U, tiled ? w - 1 : 0xFFFFFFFFu);
+    put32(B_TEXTURE_LINE, 512);
+    put32(B_CLAMP_UV, tiled ? 0 : 1);
+    put32(B_SCREEN, c->screen);
+    put32(B_SCREEN_LINE, B_SCREEN_W);
+    put32(B_EVEN_ROWS, rnd_below(6) ? 0 : 1);
+    {
+        int32_t du_int = (int32_t)rnd_below(5) - 2, dv_int = (int32_t)rnd_below(3) - 1;
+        uint32_t du_frac = rnd() & 0xFFFF0000u, dv_frac = rnd() & 0xFFFF0000u;
+        int32_t step = (tiled ? (du_int & (int32_t)(w - 1)) : du_int) + dv_int * 512;
+        put32(B_DELTA, (uint32_t)(step + 512));
+        put32(B_DELTA + 4, (uint32_t)step);
+        put32(B_DELTA + 8, du_frac);
+        put32(B_DELTA + 12, dv_frac);
+        put32(B_NEG_DU, rnd());
+        put32(B_NEG_DU + 4, (uint32_t)((int32_t)rnd_below(5) - 2));
+        put32(B_NEG_DV, rnd());
+        put32(B_NEG_DV + 4, (uint32_t)(((int32_t)rnd_below(3) - 1) * 512));
+    }
+    edge = alloc(0x60);
+    for (uint32_t i = 0; i < 0x60; i += 4) put32(edge + i, rnd());
+    put32(edge + 0x38, (uint32_t)((int32_t)rnd_below(0x30000) - 0x18000));
+    put32(edge + 0x3C, (uint32_t)((int32_t)rnd_below(0x20000) - 0x10000));
+    put32(edge + 0x38 + 0x10, rnd());
+    put32(edge + 0x38 + 0x14, (uint32_t)((int32_t)rnd_below(3) - 1));
+    put32(edge + 0x38 + 0x18, rnd());
+    put32(edge + 0x38 + 0x1C, (uint32_t)(((int32_t)rnd_below(3) - 1) * 512));
+    *pscan = alloc(0x40);
+    for (uint32_t i = 0; i < 0x40; i += 4) put32(*pscan + i, rnd());
+    put32(*pscan, (200u + rnd_below(200)) << 16 | rnd_below(0x10000));
+    put32(*pscan + 4, rnd_below(0x10000));
+    put32(*pscan + 0x10, rnd());
+    put32(*pscan + 0x14, tiled ? rnd_below(1024) : 4096u + rnd_below(256));
+    put32(*pscan + 0x18, rnd());
+    put32(*pscan + 0x1C, tiled ? rnd_below(h) * 512u : (64u + rnd_below(64)) * 512u);
+    put32(*pscan + 0x20, 512);
+    *pdtri = alloc(0x60);
+    for (uint32_t i = 0; i < 0x60; i += 4) put32(*pdtri + i, rnd());
+    put32(*pdtri, y0);
+    put32(*pdtri + 4, y0 + rows);
+    put32(*pdtri + 8, y0 * B_SCREEN_W);
+    put32(*pdtri + 0xC, (uint32_t)((int32_t)rnd_below(0x500000) - 0x80000));
+    put32(*pdtri + 0x10, (uint32_t)((int32_t)rnd_below(0x40000) - 0x20000));
+    put32(*pdtri + 0x58, edge);
+    bump_walk_from_guest(&c->walk);
+}
+
+static int bump_native_cases(unsigned long cases, int bytes_texels) {
+    typedef void(__cdecl * scanline_fn)(uint32_t, uint32_t);
+    static uint8_t before[0x80000], native[0x80000];
+    uint32_t va = bytes_texels ? TEXTURE_LINEAR_SCANLINE_VA : BUMP_LINEAR_SCANLINE_VA;
+    scanline_fn native_fn = (scanline_fn)(uintptr_t)va;
+    unsigned long ran = 0, differ = 0, state_differ = 0, skipped = 0, spans = 0, pixels = 0, shader_differ = 0;
+    if (!load_selfmod()) {
+        printf("bump scanlines: SKIP (%s not readable)\n", WATER_GAME_EXE);
+        return 1;
+    }
+    while (ran < cases && skipped < cases * 20) {
+        bump_case_t c;
+        uint32_t pscan, pdtri, bytes;
+        memset(&c, 0, sizeof c);
+        c.bytes_texels = bytes_texels;
+        bump_setup(&c, &pscan, &pdtri);
+        bytes = g_arena - ARENA;
+        memcpy(before, (void*)(uintptr_t)ARENA, bytes);
+        bump_linear_spans(pscan, pdtri, &c.walk, bump_bounds_span, &c);
+        memcpy((void*)(uintptr_t)ARENA, before, bytes);
+        if (c.written_outside) {
+            skipped++;
+            continue;
+        }
+        native_fn(pscan, pdtri);
+        memcpy(native, (void*)(uintptr_t)ARENA, bytes);
+        memcpy((void*)(uintptr_t)ARENA, before, bytes);
+        bump_linear_spans(pscan, pdtri, &c.walk, bump_reference_span, &c);
+        if (memcmp((void*)(uintptr_t)c.screen, native + (c.screen - ARENA), B_SCREEN_W * (B_ROWS + 8) * 2)) {
+            if (differ++ < 5) printf("FAIL bump case %lu: pixels differ from the native routine\n", ran);
+        }
+        if (memcmp((void*)(uintptr_t)pscan, native + (pscan - ARENA), 0x40) ||
+            memcmp((void*)(uintptr_t)pdtri, native + (pdtri - ARENA), 0x60)) {
+            if (state_differ++ < 5) printf("FAIL bump case %lu: scanline state differs from the native routine\n", ran);
+        }
+        spans += c.spans;
+        pixels += c.pixels;
+        shader_differ += c.shader_differ;
+        ran++;
+    }
+    printf("%s scanlines vs native 0x%08X: %lu cases (%lu spans, %lu pixels): pixels differ in %lu, state in %lu; "
+           "shader closed form differs in %lu pixels\n", bytes_texels ? "8-bit textured" : "bump", va, ran, spans,
+           pixels, differ, state_differ, shader_differ);
+    return !differ && !state_differ && !shader_differ && ran == cases;
+}
+
 /* An alias entry (a lifted label entered from outside) runs the lifted body. */
 static int alias_reaches_lifted(void) {
     int called;
@@ -519,14 +1115,35 @@ static int alias_reaches_lifted(void) {
     g_alias_entry = 0;
     water_rows_lifted = NULL;
     if (!called) printf("FAIL alias entry did not reach the lifted body\n");
+    occlusion_test_lifted = record_yield;
+    g_run.yields = 0;
+    g_alias_entry = 0x00630DAFu;
+    occlusion_test();
+    if (g_run.yields != 1) {
+        printf("FAIL occlusion alias entry did not reach the lifted body\n");
+        called = 0;
+    }
+    g_alias_entry = 0;
+    occlusion_test_lifted = NULL;
+    polygon_submit_lifted = record_yield;
+    g_run.yields = 0;
+    g_alias_entry = 0x005593A3u;
+    polygon_submit();
+    if (g_run.yields != 1) {
+        printf("FAIL polygon submission alias entry did not reach the lifted body\n");
+        called = 0;
+    }
+    g_alias_entry = 0;
+    polygon_submit_lifted = NULL;
     return called;
 }
 
 int main(int argc, char** argv) {
-    int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias;
+    int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias, bump;
     unsigned long per_kind = quick ? 300 : 3000;
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
-    if (lo > REGION_LO || hi < REGION_HI) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    if (lo > P_MODE_TABLE || hi < REGION_HI) {
         printf("guest window 0x%08X-0x%08X does not cover 0x%08X-0x%08X: link at /BASE:0x00400000 /FIXED\n",
                (unsigned)lo, (unsigned)hi, REGION_LO, REGION_HI);
         return 2;
@@ -540,7 +1157,18 @@ int main(int argc, char** argv) {
     for (unsigned long n = 0; n < per_kind; n++) wave_case(n, ORDINARY, 0, 40);
     for (unsigned long n = 0; n < per_kind; n++) wave_case(n, FINITE_EXTREMES, (int)(n & 1), 300);
     for (unsigned long n = 0; n < per_kind; n++) wave_case(n, NON_FINITE, (int)(n & 1), 300);
+    for (unsigned long n = 0; n < per_kind * 2; n++) occlusion_case(n, ORDINARY, (int)(n & 1));
+    for (unsigned long n = 0; n < per_kind; n++) occlusion_case(n, FINITE_EXTREMES, (int)(n & 1));
+    for (unsigned long n = 0; n < per_kind; n++) occlusion_case(n, NON_FINITE, (int)(n & 1));
+    polygon_submit_lifted = lifted_sub_00559240;
+    for (unsigned long n = 0; n < per_kind * 2; n++) polygon_case(n, ORDINARY, (int)(n & 1), 24);
+    for (unsigned long n = 0; n < per_kind; n++) polygon_case(n, FINITE_EXTREMES, (int)(n & 1), 200);
+    for (unsigned long n = 0; n < per_kind; n++) polygon_case(n, NON_FINITE, (int)(n & 1), 24);
     alias = alias_reaches_lifted();
+    printf("occlusion cases: %lu occluded, %lu visible\n", g_occluded, g_visible);
+    printf("polygon cases by address mode: %lu %lu %lu %lu, other %lu\n", g_polygon_paths[0], g_polygon_paths[1],
+           g_polygon_paths[2], g_polygon_paths[3],
+           g_polygon_paths[4] + g_polygon_paths[5] + g_polygon_paths[6] + g_polygon_paths[7]);
     printf("finite inputs, kernels vs lifted (%s): %lu identical, %lu different\n", WATER_GEN_OPT, g_kernel[0].same,
            g_kernel[0].nan_payload + g_kernel[0].different);
     printf("finite inputs, lifted %s vs the same lifted C at %s: %lu identical, %lu different\n", WATER_GEN_OPT,
@@ -553,5 +1181,9 @@ int main(int argc, char** argv) {
            WATER_GEN_OPT, WATER_ALT_OPT, g_compiler[1].same, g_compiler[1].nan_payload, g_compiler[1].different);
     shared_tables(1);
     benchmark();
-    return g_kernel[0].nan_payload || g_kernel[0].different || !alias ? 1 : 0;
+    occlusion_benchmark();
+    polygon_benchmark();
+    bump = bump_native_cases(quick ? 200 : 2000, 0);
+    bump = bump_native_cases(quick ? 200 : 2000, 1) && bump;
+    return g_kernel[0].nan_payload || g_kernel[0].different || !alias || !bump ? 1 : 0;
 }

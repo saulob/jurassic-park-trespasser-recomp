@@ -154,11 +154,17 @@ static const uint16_t* copy_row(const uint8_t* copy, long pitch, long y) {
     return (const uint16_t*)(copy + (size_t)y * (size_t)pitch);
 }
 
+/* One array per loop: the stores cannot alias, so the compiler fills with wide stores. */
+static void fill16(uint16_t* p, size_t n, uint16_t value) {
+    for (size_t i = 0; i < n; i++) p[i] = value;
+}
+
 void tsync_fill(uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* r, uint16_t value) {
+    size_t n = r->right > r->left ? (size_t)(r->right - r->left) : 0;
+    if (!n) return;
     for (long y = r->top; y < r->bottom; y++) {
-        uint16_t* row = (uint16_t*)(copy + (size_t)y * (size_t)pitch);
-        uint16_t* keep = reference + (size_t)y * width;
-        for (long x = r->left; x < r->right; x++) row[x] = keep[x] = value;
+        fill16((uint16_t*)(copy + (size_t)y * (size_t)pitch) + r->left, n, value);
+        fill16(reference + (size_t)y * width + r->left, n, value);
     }
 }
 
@@ -191,5 +197,154 @@ void tsync_overlay_box(const uint8_t* copy, long pitch, uint16_t* reference, uns
         counts->changed += d3dt_overlay_row(row, keep, bw, out + (size_t)(y - box->top) * bw);
         counts->black += d3dt_black_over_content(row, keep, bw);
         memcpy(keep, row, (size_t)bw * 2);
+    }
+}
+
+void tsync_fill_unwritten(uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* r,
+                          const uint16_t* gpu, size_t gpu_pitch_pixels) {
+    for (long y = r->top; y < r->bottom; y++) {
+        uint16_t* row = (uint16_t*)(copy + (size_t)y * (size_t)pitch);
+        uint16_t* keep = reference + (size_t)y * width;
+        const uint16_t* in = gpu + (size_t)(y - r->top) * gpu_pitch_pixels - r->left;
+        for (long x = r->left; x < r->right; x++)
+            if (row[x] == keep[x]) row[x] = keep[x] = in[x];
+    }
+}
+
+int tsync_tile_claimed(const tsync_tiles_t* m, unsigned tx, unsigned ty) {
+    unsigned i = ty * TSYNC_MAX_TILES_X + tx;
+    return (m->claimed[i / 8] >> (i % 8)) & 1;
+}
+
+#define tile_claimed tsync_tile_claimed
+
+static void claim_tile(tsync_tiles_t* m, unsigned tx, unsigned ty) {
+    unsigned i = ty * TSYNC_MAX_TILES_X + tx;
+    m->claimed[i / 8] |= (uint8_t)(1u << (i % 8));
+}
+
+int tsync_tiles_reset(tsync_tiles_t* m, unsigned width, unsigned height) {
+    unsigned tx = (width + TSYNC_TILE - 1) / TSYNC_TILE, ty = (height + TSYNC_TILE - 1) / TSYNC_TILE;
+    memset(m->claimed, 0, sizeof m->claimed);
+    memset(&m->bounds, 0, sizeof m->bounds);
+    m->width = width;
+    m->height = height;
+    m->tiles_x = tx;
+    m->tiles_y = ty;
+    return tx <= TSYNC_MAX_TILES_X && ty <= TSYNC_MAX_TILES_Y;
+}
+
+void tsync_tiles_claim_all(tsync_tiles_t* m) {
+    memset(m->claimed, 0xFF, sizeof m->claimed);
+    m->bounds.left = m->bounds.top = 0;
+    m->bounds.right = (long)m->width;
+    m->bounds.bottom = (long)m->height;
+}
+
+d3dt_rect_t tsync_tiles_clip(const tsync_tiles_t* m, const d3dt_rect_t* region) {
+    d3dt_rect_t r = *region;
+    if (r.left < m->bounds.left) r.left = m->bounds.left;
+    if (r.top < m->bounds.top) r.top = m->bounds.top;
+    if (r.right > m->bounds.right) r.right = m->bounds.right;
+    if (r.bottom > m->bounds.bottom) r.bottom = m->bounds.bottom;
+    if (r.right < r.left) r.right = r.left;
+    if (r.bottom < r.top) r.bottom = r.top;
+    return r;
+}
+
+void tsync_tiles_claim(tsync_tiles_t* m, const d3dt_rect_t* box, tsync_rect_fn fn, void* context) {
+    long left = box->left < 0 ? 0 : box->left, top = box->top < 0 ? 0 : box->top;
+    long right = box->right > (long)m->width ? (long)m->width : box->right;
+    long bottom = box->bottom > (long)m->height ? (long)m->height : box->bottom;
+    unsigned tx0, tx1, ty0, ty1;
+    if (left >= right || top >= bottom) return;
+    tx0 = (unsigned)left / TSYNC_TILE;
+    tx1 = (unsigned)(right - 1) / TSYNC_TILE;
+    ty0 = (unsigned)top / TSYNC_TILE;
+    ty1 = (unsigned)(bottom - 1) / TSYNC_TILE;
+    {
+        d3dt_rect_t tiles = { (long)(tx0 * TSYNC_TILE), (long)(ty0 * TSYNC_TILE), (long)((tx1 + 1) * TSYNC_TILE),
+                              (long)((ty1 + 1) * TSYNC_TILE) };
+        if (tiles.right > (long)m->width) tiles.right = (long)m->width;
+        if (tiles.bottom > (long)m->height) tiles.bottom = (long)m->height;
+        d3dt_rect_union(&m->bounds, &tiles);
+    }
+    for (unsigned ty = ty0; ty <= ty1; ty++) {
+        unsigned tx = tx0;
+        while (tx <= tx1) {
+            unsigned end;
+            d3dt_rect_t r;
+            if (tile_claimed(m, tx, ty)) {
+                tx++;
+                continue;
+            }
+            for (end = tx; end <= tx1 && !tile_claimed(m, end, ty); end++) claim_tile(m, end, ty);
+            r.left = (long)(tx * TSYNC_TILE);
+            r.top = (long)(ty * TSYNC_TILE);
+            r.right = (long)(end * TSYNC_TILE);
+            r.bottom = (long)((ty + 1) * TSYNC_TILE);
+            if (r.right > (long)m->width) r.right = (long)m->width;
+            if (r.bottom > (long)m->height) r.bottom = (long)m->height;
+            fn(context, &r);
+            tx = end;
+        }
+    }
+}
+
+/* The next run along a row from x on: [x, *end) all in claimed tiles (1) or all in unclaimed ones (0). */
+static int tile_run(const tsync_tiles_t* m, long y, long x, long right, long* end) {
+    unsigned ty = (unsigned)y / TSYNC_TILE;
+    int claimed = tile_claimed(m, (unsigned)x / TSYNC_TILE, ty);
+    long next = (x / TSYNC_TILE + 1) * TSYNC_TILE;
+    while (next < right && tile_claimed(m, (unsigned)next / TSYNC_TILE, ty) == claimed) next += TSYNC_TILE;
+    *end = next < right ? next : right;
+    return claimed;
+}
+
+int tsync_changed_box_in(const uint8_t* copy, long pitch, const uint16_t* reference, unsigned width,
+                         const d3dt_rect_t* region, const tsync_tiles_t* fresh, d3dt_rect_t* box) {
+    d3dt_rect_t found = { 0, 0, 0, 0 };
+    if (!fresh) return tsync_changed_box(copy, pitch, reference, width, region, box);
+    for (long y = region->top; y < region->bottom; y++) {
+        const uint16_t* row = copy_row(copy, pitch, y);
+        const uint16_t* keep = reference + (size_t)y * width;
+        for (long x = region->left, end; x < region->right; x = end) {
+            unsigned first, stop;
+            d3dt_rect_t span;
+            if (!tile_run(fresh, y, x, region->right, &end)) continue;
+            if (!d3dt_row_span(row + x, keep + x, (unsigned)(end - x), &first, &stop)) continue;
+            span.left = x + (long)first;
+            span.right = x + (long)stop;
+            span.top = y;
+            span.bottom = y + 1;
+            d3dt_rect_union(&found, &span);
+        }
+    }
+    *box = found;
+    return !d3dt_rect_empty(&found);
+}
+
+void tsync_overlay_box_in(const uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* box,
+                          const tsync_tiles_t* fresh, uint32_t* out, tsync_counts_t* counts) {
+    unsigned bw = (unsigned)(box->right - box->left);
+    if (!fresh) {
+        tsync_overlay_box(copy, pitch, reference, width, box, out, counts);
+        return;
+    }
+    for (long y = box->top; y < box->bottom; y++) {
+        const uint16_t* row = copy_row(copy, pitch, y);
+        uint16_t* keep = reference + (size_t)y * width;
+        uint32_t* texels = out + (size_t)(y - box->top) * bw - box->left;
+        for (long x = box->left, end; x < box->right; x = end) {
+            unsigned n;
+            if (!tile_run(fresh, y, x, box->right, &end)) {
+                memset(texels + x, 0, (size_t)(end - x) * sizeof *texels);
+                continue;
+            }
+            n = (unsigned)(end - x);
+            counts->changed += d3dt_overlay_row(row + x, keep + x, n, texels + x);
+            counts->black += d3dt_black_over_content(row + x, keep + x, n);
+            memcpy(keep + x, row + x, (size_t)n * 2);
+        }
     }
 }

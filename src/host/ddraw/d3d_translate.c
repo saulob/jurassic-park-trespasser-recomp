@@ -1,6 +1,10 @@
 #include "d3d_translate.h"
 
+#include "d3d11_shaders.h"
+
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 unsigned d3dt_primitive_count(int type, unsigned vertices) {
@@ -318,34 +322,36 @@ const char* d3dt_format_name(int format) {
     return format >= 0 && format < D3DT_FMT_COUNT ? names[format] : "unknown";
 }
 
-static uint32_t expand5(uint32_t v) { return (v << 3) | (v >> 2); }
-static uint32_t expand6(uint32_t v) { return (v << 2) | (v >> 4); }
-static uint32_t expand4(uint32_t v) { return (v << 4) | v; }
+/* Per texel: inline, so a converted row is one loop (the host build's /Ob1 inlines only what is marked). */
+static __inline uint32_t expand5(uint32_t v) { return (v << 3) | (v >> 2); }
+static __inline uint32_t expand6(uint32_t v) { return (v << 2) | (v >> 4); }
+static __inline uint32_t expand4(uint32_t v) { return (v << 4) | v; }
 
-uint32_t d3dt_rgb565_to_bgra(uint16_t v) {
+static __inline uint32_t rgb565(uint32_t v) {
     return 0xFF000000u | (expand5((v >> 11) & 0x1F) << 16) | (expand6((v >> 5) & 0x3F) << 8) | expand5(v & 0x1F);
 }
+
+uint32_t d3dt_rgb565_to_bgra(uint16_t v) { return rgb565(v); }
 
 uint16_t d3dt_bgra_to_rgb565(uint32_t v) {
     uint32_t r = (v >> 16) & 0xFF, g = (v >> 8) & 0xFF, b = v & 0xFF;
     return (uint16_t)((((r * 31 + 127) / 255) << 11) | (((g * 63 + 127) / 255) << 5) | ((b * 31 + 127) / 255));
 }
 
-static uint32_t xrgb1555(uint32_t v) {
+static __inline uint32_t xrgb1555(uint32_t v) {
     return 0xFF000000u | (expand5((v >> 10) & 0x1F) << 16) | (expand5((v >> 5) & 0x1F) << 8) | expand5(v & 0x1F);
 }
 
-static uint32_t argb1555(uint32_t v) { return (v & 0x8000) ? xrgb1555(v) : xrgb1555(v) & 0x00FFFFFFu; }
+static __inline uint32_t argb1555(uint32_t v) { return (v & 0x8000) ? xrgb1555(v) : xrgb1555(v) & 0x00FFFFFFu; }
 
-static uint32_t argb4444(uint32_t v) {
+static __inline uint32_t argb4444(uint32_t v) {
     return (expand4((v >> 12) & 0xF) << 24) | (expand4((v >> 8) & 0xF) << 16) | (expand4((v >> 4) & 0xF) << 8) |
            expand4(v & 0xF);
 }
 
-static uint32_t xrgb4444(uint32_t v) { return argb4444(v) | 0xFF000000u; }
-static uint32_t rgb565(uint32_t v) { return d3dt_rgb565_to_bgra((uint16_t)v); }
-static uint32_t xrgb8888(uint32_t v) { return v | 0xFF000000u; }
-static uint32_t argb8888(uint32_t v) { return v; }
+static __inline uint32_t xrgb4444(uint32_t v) { return argb4444(v) | 0xFF000000u; }
+static __inline uint32_t xrgb8888(uint32_t v) { return v | 0xFF000000u; }
+static __inline uint32_t argb8888(uint32_t v) { return v; }
 
 /* One loop per format, so a whole texture row converts without a per-texel switch. */
 #define CONVERT_ROW(type, convert)                                                                                         for (unsigned x = 0; x < count; x++) {                                                                                     uint32_t raw = ((const type*)src)[x], c = convert(raw);                                                                dst[x] = keyed && raw >= key_low && raw <= key_high ? c & 0x00FFFFFFu : c;                                         }
@@ -383,7 +389,7 @@ unsigned d3dt_overlay_row(const uint16_t* current, const uint16_t* pristine, uns
     unsigned changed = 0;
     for (unsigned x = 0; x < count; x++) {
         if (current[x] != pristine[x]) {
-            out[x] = d3dt_rgb565_to_bgra(current[x]);
+            out[x] = rgb565(current[x]);
             changed++;
         } else {
             out[x] = 0;
@@ -484,9 +490,239 @@ void d3dt_auto_resolution(unsigned view_w, unsigned view_h, unsigned legacy_w, u
     if (legacy_w * 3 != legacy_h * 4 && legacy_h) *w = (unsigned)(((unsigned long long)heights[i] * legacy_w) / legacy_h);
 }
 
+d3dt_rect_t d3dt_vertex_box(const float* first, unsigned stride, unsigned count, unsigned width, unsigned height) {
+    d3dt_rect_t all = { 0, 0, (long)width, (long)height }, box = { 0, 0, 0, 0 };
+    float min_x = 0.0f, min_y = 0.0f, max_x = 0.0f, max_y = 0.0f;
+    const unsigned char* p = (const unsigned char*)first;
+    if (!count) return box;
+    for (unsigned i = 0; i < count; i++, p += stride) {
+        float x = ((const float*)p)[0], y = ((const float*)p)[1];
+        if (d3dt_float_bad(x) || d3dt_float_bad(y) || fabsf(x) > 1e6f || fabsf(y) > 1e6f) return all;
+        if (!i || x < min_x) min_x = x;
+        if (!i || y < min_y) min_y = y;
+        if (!i || x > max_x) max_x = x;
+        if (!i || y > max_y) max_y = y;
+    }
+    box.left = (long)floorf(min_x) - 1;
+    box.top = (long)floorf(min_y) - 1;
+    box.right = (long)ceilf(max_x) + 1;
+    box.bottom = (long)ceilf(max_y) + 1;
+    if (box.left < 0) box.left = 0;
+    if (box.top < 0) box.top = 0;
+    if (box.right > all.right) box.right = all.right;
+    if (box.bottom > all.bottom) box.bottom = all.bottom;
+    if (box.right <= box.left || box.bottom <= box.top) memset(&box, 0, sizeof box);
+    return box;
+}
+
+d3dt_rect_t d3dt_readback_box(int drawn_known, const d3dt_rect_t* drawn, unsigned width, unsigned height) {
+    d3dt_rect_t all = { 0, 0, (long)width, (long)height }, box;
+    if (!drawn_known) return all;
+    if (d3dt_rect_empty(drawn)) {
+        memset(&box, 0, sizeof box);
+        return box;
+    }
+    box.left = drawn->left - 2 < 0 ? 0 : drawn->left - 2;
+    box.top = drawn->top - 2 < 0 ? 0 : drawn->top - 2;
+    box.right = drawn->right + 2 > all.right ? all.right : drawn->right + 2;
+    box.bottom = drawn->bottom + 2 > all.bottom ? all.bottom : drawn->bottom + 2;
+    if (box.right <= box.left || box.bottom <= box.top) return all;
+    return box;
+}
+
 unsigned d3dt_pick_msaa(unsigned requested, uint32_t supported) {
-    for (unsigned n = requested > 16 ? 16 : requested; n > 1; n--)
-        if (supported & (1u << n)) return n;
+    for (unsigned n = 16; n > 1; n /= 2)
+        if (n <= requested && (supported & (1u << n))) return n;
+    return 1;
+}
+
+unsigned d3dt_pick_anisotropy(unsigned requested, unsigned device_max) {
+    for (unsigned n = 16; n > 1; n /= 2)
+        if (n <= requested && n <= device_max) return n;
+    return 1;
+}
+
+int d3dt_filter_uses_mips(int filter) {
+    return filter == D3DT_FILTER_BILINEAR || filter == D3DT_FILTER_TRILINEAR || filter == D3DT_FILTER_ANISOTROPIC;
+}
+
+enum {
+    D3D11_MIN_MAG_MIP_POINT = 0x0,
+    D3D11_MIN_POINT_MAG_LINEAR_MIP_POINT = 0x4,
+    D3D11_MIN_LINEAR_MAG_MIP_POINT = 0x10,
+    D3D11_MIN_MAG_LINEAR_MIP_POINT = 0x14,
+    D3D11_MIN_MAG_MIP_LINEAR = 0x15,
+    D3D11_ANISOTROPIC = 0x55
+};
+
+/* Original and point keep the game's own filters and never reach a generated level; the others filter between
+ * levels too. A draw the game point-samples stays point-sampled unless bilinear is forced. */
+d3dt_sampler_choice_t d3dt_choose_sampler(int filter, int mag_linear, int min_linear, unsigned anisotropy) {
+    d3dt_sampler_choice_t c = { D3D11_MIN_MAG_MIP_POINT, 1, 0 };
+    int forced = filter == D3DT_FILTER_POINT || filter == D3DT_FILTER_BILINEAR;
+    int mag = forced ? filter == D3DT_FILTER_BILINEAR : mag_linear;
+    int min = forced ? filter == D3DT_FILTER_BILINEAR : min_linear;
+    if (!mag && !min) return c;
+    c.mips = d3dt_filter_uses_mips(filter) && mag && min;
+    if (c.mips && filter == D3DT_FILTER_ANISOTROPIC && anisotropy > 1) {
+        c.filter = D3D11_ANISOTROPIC;
+        c.anisotropy = anisotropy;
+    } else if (c.mips) {
+        c.filter = D3D11_MIN_MAG_MIP_LINEAR;
+    } else if (mag && min) {
+        c.filter = D3D11_MIN_MAG_LINEAR_MIP_POINT;
+    } else {
+        c.filter = mag ? D3D11_MIN_POINT_MAG_LINEAR_MIP_POINT : D3D11_MIN_LINEAR_MAG_MIP_POINT;
+    }
+    return c;
+}
+
+unsigned d3dt_mip_count(unsigned w, unsigned h) {
+    unsigned levels = 1;
+    if (!w || !h) return 0;
+    while (w > 1 || h > 1) {
+        w = w > 1 ? w / 2 : 1;
+        h = h > 1 ? h / 2 : 1;
+        levels++;
+    }
+    return levels;
+}
+
+void d3dt_mip_size(unsigned w, unsigned h, unsigned level, unsigned* mw, unsigned* mh) {
+    for (; level; level--) {
+        w = w > 1 ? w / 2 : 1;
+        h = h > 1 ? h / 2 : 1;
+    }
+    *mw = w;
+    *mh = h;
+}
+
+size_t d3dt_mip_chain_texels(unsigned w, unsigned h, unsigned levels) {
+    size_t total = 0;
+    for (unsigned i = 0; i < levels; i++) {
+        unsigned lw, lh;
+        d3dt_mip_size(w, h, i, &lw, &lh);
+        total += (size_t)lw * lh;
+    }
+    return total;
+}
+
+int d3dt_alpha_kind(const uint32_t* bgra, size_t count) {
+    int kind = D3DT_ALPHA_OPAQUE;
+    for (size_t i = 0; i < count; i++) {
+        uint32_t a = bgra[i] >> 24;
+        if (a == 255) continue;
+        if (a != 0) return D3DT_ALPHA_BLENDED;
+        kind = D3DT_ALPHA_BINARY;
+    }
+    return kind;
+}
+
+static __inline uint32_t argb(uint32_t a, uint32_t r, uint32_t g, uint32_t b) { return a << 24 | r << 16 | g << 8 | b; }
+
+/* A binary level keeps the coverage of the level above exactly: the texels whose footprints were most covered turn
+ * opaque first, and among equally covered ones an ordered dither spreads the choice, so sparse alpha-tested
+ * foliage keeps its density at a distance instead of thinning out or vanishing. */
+static void keep_coverage(uint32_t* dst, unsigned dw, unsigned dh, unsigned n, const unsigned long* hist,
+                          unsigned long target) {
+    static const uint8_t bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+    unsigned long remaining = target;
+    for (unsigned k = n; k >= 1; k--) {
+        unsigned long take = hist[k] < remaining ? hist[k] : remaining, ranked[16] = { 0 }, quota;
+        unsigned cut = 0;
+        remaining -= take;
+        if (take == hist[k]) {
+            for (size_t i = 0; take && i < (size_t)dw * dh; i++)
+                if ((dst[i] >> 24) == k) dst[i] |= 0xFF000000u, take--;
+        } else if (take) {
+            /* Lower dither ranks first, each in raster order: the cut rank takes only its first texels. */
+            for (unsigned y = 0; y < dh; y++)
+                for (unsigned x = 0; x < dw; x++)
+                    if ((dst[(size_t)y * dw + x] >> 24) == k) ranked[bayer[(y & 3) * 4 + (x & 3)]]++;
+            for (quota = take; ranked[cut] < quota; cut++) quota -= ranked[cut];
+            for (unsigned y = 0; y < dh; y++)
+                for (unsigned x = 0; x < dw; x++) {
+                    uint32_t* t = &dst[(size_t)y * dw + x];
+                    unsigned rank = bayer[(y & 3) * 4 + (x & 3)];
+                    if ((*t >> 24) != k || rank > cut || (rank == cut && !quota)) continue;
+                    if (rank == cut) quota--;
+                    *t |= 0xFF000000u;
+                }
+        }
+        if (!remaining) break;
+    }
+    for (size_t i = 0; i < (size_t)dw * dh; i++)
+        if ((dst[i] >> 24) != 0xFF) dst[i] &= 0x00FFFFFFu;
+}
+
+/* Colour is averaged over the footprint weighted by alpha, so transparent texels (often black or a key colour)
+ * never darken an edge. A binary-alpha level stays binary at the coverage of the level above, so alpha-tested
+ * foliage keeps its density at a distance. */
+void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst) {
+    unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1;
+    unsigned fx = w > 1 ? 2 : 1, fy = h > 1 ? 2 : 1, n = fx * fy;
+    unsigned long hist[5] = { 0, 0, 0, 0, 0 }, covered = 0;
+    for (unsigned y = 0; y < dh; y++)
+        for (unsigned x = 0; x < dw; x++) {
+            uint32_t sa = 0, sr = 0, sg = 0, sb = 0, ur = 0, ug = 0, ub = 0, opaque = 0, r, g, b;
+            for (unsigned j = 0; j < fy; j++)
+                for (unsigned i = 0; i < fx; i++) {
+                    uint32_t t = src[(size_t)(y * fy + j) * w + x * fx + i], a = t >> 24;
+                    uint32_t tr = (t >> 16) & 0xFF, tg = (t >> 8) & 0xFF, tb = t & 0xFF;
+                    sa += a;
+                    sr += tr * a;
+                    sg += tg * a;
+                    sb += tb * a;
+                    ur += tr;
+                    ug += tg;
+                    ub += tb;
+                    opaque += a >= 128;
+                }
+            if (sa) {
+                r = (sr + sa / 2) / sa;
+                g = (sg + sa / 2) / sa;
+                b = (sb + sa / 2) / sa;
+            } else {
+                r = (ur + n / 2) / n;
+                g = (ug + n / 2) / n;
+                b = (ub + n / 2) / n;
+            }
+            if (alpha_kind == D3DT_ALPHA_OPAQUE) {
+                dst[(size_t)y * dw + x] = argb(255, r, g, b);
+            } else if (alpha_kind == D3DT_ALPHA_BLENDED) {
+                dst[(size_t)y * dw + x] = argb((sa + n / 2) / n, r, g, b);
+            } else {
+                dst[(size_t)y * dw + x] = argb(opaque, r, g, b);
+                hist[opaque]++;
+            }
+        }
+    if (alpha_kind != D3DT_ALPHA_BINARY) return;
+    for (unsigned y = 0; y < dh * fy; y++)
+        for (unsigned x = 0; x < dw * fx; x++) covered += (src[(size_t)y * w + x] >> 24) >= 128;
+    keep_coverage(dst, dw, dh, n, hist, (unsigned long)(((double)covered / n) + 0.5));
+}
+
+void d3dt_build_mips(uint32_t* chain, unsigned w, unsigned h, unsigned levels, int alpha_kind) {
+    uint32_t* level = chain;
+    for (unsigned i = 1; i < levels; i++) {
+        unsigned lw, lh;
+        d3dt_mip_size(w, h, i - 1, &lw, &lh);
+        d3dt_mip_downsample(level, lw, lh, alpha_kind, level + (size_t)lw * lh);
+        level += (size_t)lw * lh;
+    }
+}
+
+int d3dt_note_upload(d3dt_upload_history_t* h, unsigned long long frame) {
+    if (h->dynamic) return 0;
+    if (h->uploads++ == 0) {
+        h->last_frame = frame;
+        return 0;
+    }
+    if (frame == h->last_frame) return 0;
+    h->streak = frame - h->last_frame <= D3DT_DYNAMIC_GAP ? h->streak + 1 : 0;
+    h->last_frame = frame;
+    if (h->streak < D3DT_DYNAMIC_STREAK) return 0;
+    h->dynamic = 1;
     return 1;
 }
 
@@ -497,4 +733,51 @@ void d3dt_matrix_multiply(const float* a, const float* b, float* out) {
             r[i * 4 + j] = a[i * 4 + 0] * b[0 * 4 + j] + a[i * 4 + 1] * b[1 * 4 + j] + a[i * 4 + 2] * b[2 * 4 + j] +
                            a[i * 4 + 3] * b[3 * 4 + j];
     memcpy(out, r, sizeof r);
+}
+
+uint32_t d3dt_world_layer(uint32_t slice, uint32_t slot, uint32_t flags, uint32_t sampler) {
+    return (slice & 0xFFFFu) | (slot & 15u) << D3D11_LAYER_ARRAY_SHIFT | (flags & 7u) << D3D11_LAYER_FLAGS_SHIFT |
+           (sampler & 7u) << D3D11_LAYER_ADDRESS_SHIFT;
+}
+
+static int wrap_or_clamp(uint32_t value) { return value == 0 || value == 1 || value == 3; }
+
+uint32_t d3dt_vertex_sampler(uint32_t address_u, uint32_t address_v) {
+    if (!wrap_or_clamp(address_u) || !wrap_or_clamp(address_v)) return D3D11_DEVICE_SAMPLER;
+    return (address_u == 3 ? 1u : 0u) | (address_v == 3 ? 2u : 0u);
+}
+
+int d3dt_address_joins(uint32_t old_value, uint32_t value) { return wrap_or_clamp(old_value) && wrap_or_clamp(value); }
+
+int d3dt_batch_slot(const void** bound, unsigned* count, unsigned max, const void* item) {
+    for (unsigned i = 0; i < *count; i++)
+        if (bound[i] == item) return (int)i;
+    if (*count >= max) return -1;
+    bound[*count] = item;
+    return (int)(*count)++;
+}
+
+int d3dt_copy_changed(uint8_t* dst, long dst_pitch, const uint8_t* src, long src_pitch, unsigned width, unsigned height,
+                      unsigned pixel_bytes, d3dt_rect_t* changed) {
+    size_t row = (size_t)width * pixel_bytes;
+    long top = -1, bottom = 0, left = (long)width, right = 0;
+    for (unsigned y = 0; y < height; y++) {
+        uint8_t* d = dst + (size_t)y * dst_pitch;
+        const uint8_t* s = src + (size_t)y * src_pitch;
+        size_t a = 0, b = row;
+        if (!memcmp(d, s, row)) continue;
+        while (d[a] == s[a]) a++;
+        while (d[b - 1] == s[b - 1]) b--;
+        memcpy(d + a, s + a, b - a);
+        if (top < 0) top = (long)y;
+        bottom = (long)y + 1;
+        if ((long)(a / pixel_bytes) < left) left = (long)(a / pixel_bytes);
+        if ((long)((b + pixel_bytes - 1) / pixel_bytes) > right) right = (long)((b + pixel_bytes - 1) / pixel_bytes);
+    }
+    if (top < 0) return 0;
+    changed->left = left;
+    changed->top = top;
+    changed->right = right;
+    changed->bottom = bottom;
+    return 1;
 }

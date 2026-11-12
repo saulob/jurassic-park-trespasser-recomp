@@ -70,8 +70,8 @@ constexpr char kRenderResolutionHelp[] =
 constexpr char kAntiAliasingHelp[] =
     "Multisample anti-aliasing of the 3D world. Only the levels this graphics card supports are listed.";
 constexpr char kTextureFilteringHelp[] =
-    "Sharper textures on the ground seen at an angle. Original uses the game's own filtering; Bilinear smooths every "
-    "texture.";
+    "Sharper, steadier textures at a distance and on the ground seen at an angle, with mipmaps generated for the 3D "
+    "world. Original uses the game's own filtering without them; Bilinear smooths every texture.";
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] =
     "Shows the renderer, the frame rate and the game's screen size in the window title.";
@@ -343,11 +343,11 @@ private:
         c.theme = LauncherTheme();
         c.hints = "Enter  Play     Alt+F4  Quit     Ctrl+S  Save";
         c.fonts = fonts_;
-        c.branding.title = "JURASSIC PARK: TRESPASSER RECOMPILED";
+        c.branding.title = "JURASSIC PARK: TRESPASSER";
         c.branding.fade_into_page = false;
         c.branding.subtitle_color = kAccent;
         c.branding.subtitle_segments = {
-            {"PC PORT   \xC2\xB7   ", ""},
+            {"RECOMPILED   \xC2\xB7   ", ""},
             {"v" JPT_PORT_VERSION "   \xC2\xB7   ", ""},
             {"BY SAULOB", kAuthorUrl},
         };
@@ -622,14 +622,6 @@ private:
                   {"anisotropic16", "Anisotropic 16x"}});
         ui.Toggle("VSync", kVSyncHelp, JPT_KEY_VSYNC, true, "Off", "On");
         ui.Info("Graphics card", gpu_.name.empty() ? Tr("Not detected") : gpu_.name.c_str());
-        ui.Heading("Advanced graphics");
-        ui.Help("Coming later: these will lift the original engine's limits and are not active yet.");
-        ImGui::BeginDisabled();
-        for (const char* row : {"Draw distance", "Object LOD", "Texture memory", "Texture cache", "Mipmaps",
-                                "Texture detail"}) {
-            ui.Info(row, Tr("Coming later"));
-        }
-        ImGui::EndDisabled();
         ui.EndRows();
     }
 
@@ -694,17 +686,17 @@ private:
 
     void PageControls(trg::Ui& ui) {
         ui.Info("Keyboard and mouse", "The game's own bindings, set in its Options menu.");
-        ui.EndRows();
         if (ui.Section("Port hotkeys", true)) {
-            ui.InfoGrid({{"F1", "Hint"},
-                         {"F5", "Renderer: Direct3D 11 / Software"},
-                         {"F11", "Windowed / Borderless Fullscreen"},
-                         {"Ctrl+F11", "The game's original cheat input"},
-                         {"F12", "Controls"},
-                         {"Esc", "Menu"},
-                         {"Alt+F4", "Exit"}});
+            ui.Help("Rebinding the hotkeys is not available yet.");
+            ui.Info("Hint", "F1");
+            ui.Info("Renderer: Direct3D 11 / Software", "F5");
+            ui.Info("Windowed / Borderless Fullscreen", "F11");
+            ui.Info("The game's original cheat input", "Ctrl+F11");
+            ui.Info("Controls", "F12");
+            ui.Info("Menu", "Esc");
+            ui.Info("Exit", "Alt+F4");
+            ui.EndRows();
         }
-        ui.Help("Rebinding the hotkeys is not available yet.");
     }
 
     void PageComingLater(trg::Ui& ui, const char* what) {
@@ -719,8 +711,10 @@ private:
             "This open source PC port is maintained and developed in my free time. If you enjoy the project and would "
             "like to support its continued development, you can sponsor my work on GitHub.",
             "Support is completely optional and helps support ongoing improvements and future projects.");
-        ui.Paragraph("Jurassic Park: Trespasser Recompiled: the 1998 PC game, statically recompiled for modern Windows. "
-                     "No game files are included; the game runs from the player's own disc.");
+        ui.Paragraph("Jurassic Park: Trespasser Recompiled. PC port powered by static recompilation: the 1998 game "
+                     "runs as native code on modern Windows, with a Direct3D 11 renderer. No game files are included; "
+                     "the game runs from the player's own disc. Port by saulob, recompiled with pcrecomp by sp00nz. "
+                     "Original game by DreamWorks Interactive.");
         ui.Spacer(4);
         std::error_code ec;
         if (std::filesystem::is_directory(game_dir_, ec)) {
@@ -747,15 +741,12 @@ private:
         ui.InfoGrid({{"Port version", JPT_PORT_VERSION},
                      {"Game", Ready() ? check_.profile->label : GameStateTitle(check_.state)},
                      {"Renderer", renderer},
-                     {"Architecture", "Windows x86"},
-                     {"Graphics card", gpu_.name.empty() ? Tr("Not detected") : gpu_.name}});
+                     {"Platform", "Windows x86"}});
         char libraries[96];
         std::snprintf(libraries, sizeof(libraries), "SDL %d.%d.%d  \xC2\xB7  Dear ImGui %s  \xC2\xB7  TRG Launcher %s",
                       SDL_VERSIONNUM_MAJOR(SDL_GetVersion()), SDL_VERSIONNUM_MINOR(SDL_GetVersion()),
                       SDL_VERSIONNUM_MICRO(SDL_GetVersion()), IMGUI_VERSION, JPT_TRG_LAUNCHER_VERSION);
         ui.Info("Libraries", libraries);
-        ui.Info("Credits", "Port by saulob. Recompiled with pcrecomp by sp00nz. Original game by DreamWorks Interactive.");
-        ui.EndRows();
         ui.Link(kPortRepository, kPortUrl);
     }
 

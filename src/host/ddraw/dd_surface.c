@@ -5,6 +5,8 @@
  */
 #include "d3d_legacy.h"
 #include "host.h"
+#include "page_arena.h"
+#include "page_guard.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -42,7 +44,11 @@ static int allocate_heap_pixels(dd_surface_t* s) {
     size_t bytes;
     s->pitch = (LONG)(((s->width * (DWORD)pixel_bytes(s)) + 3) & ~3u);
     bytes = (size_t)s->pitch * s->height;
-    if (s->caps & DDSCAPS_TEXTURE)
+    if ((s->caps & DDSCAPS_TEXTURE) && bytes <= PAGE_ARENA_MAX_BYTES) {
+        s->heap_bits = (BYTE*)page_arena_alloc(bytes);
+        s->arena = s->heap_bits != NULL;
+    }
+    if ((s->caps & DDSCAPS_TEXTURE) && !s->heap_bits)
         s->heap_bits = (BYTE*)VirtualAlloc(NULL, bytes, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH, PAGE_READWRITE);
     s->watched = s->heap_bits != NULL;
     if (!s->heap_bits) s->heap_bits = (BYTE*)calloc(bytes, 1);
@@ -51,10 +57,12 @@ static int allocate_heap_pixels(dd_surface_t* s) {
 }
 
 static void free_heap_pixels(dd_surface_t* s) {
-    if (s->watched) VirtualFree(s->heap_bits, 0, MEM_RELEASE);
+    if (s->arena) page_arena_free(s->heap_bits, (size_t)s->pitch * s->height);
+    else if (s->watched) VirtualFree(s->heap_bits, 0, MEM_RELEASE);
     else free(s->heap_bits);
     s->heap_bits = NULL;
     s->watched = 0;
+    s->arena = 0;
 }
 
 static int map_dib_section(dd_surface_t* s, const BITMAPINFO* info);
@@ -128,6 +136,7 @@ static void free_surface(dd_surface_t* s) {
         DeleteDC(s->dc);
     }
     if (s->dib) DeleteObject(s->dib);
+    page_alias_destroy(s->guard_alias);
     if (s->section) {
         UnmapViewOfFile(s->view);
         CloseHandle(s->section);
@@ -688,14 +697,17 @@ static void exchange_pixels(dd_surface_t* a, dd_surface_t* b) {
     BYTE* view = a->view;
     HBITMAP dib = a->dib;
     HANDLE section = a->section;
+    int alias = a->guard_alias;
     a->bits = b->bits;
     a->view = b->view;
     a->dib = b->dib;
     a->section = b->section;
+    a->guard_alias = b->guard_alias;
     b->bits = bits;
     b->view = view;
     b->dib = dib;
     b->section = section;
+    b->guard_alias = alias;
 }
 
 static HRESULT STDMETHODCALLTYPE s_Flip(IDirectDrawSurface* This, LPDIRECTDRAWSURFACE target_iface, DWORD flags) {
@@ -865,10 +877,13 @@ static HRESULT STDMETHODCALLTYPE s_Lock(IDirectDrawSurface* This, LPRECT rect, L
     s->lock_flags = flags;
     s->lock_rect = *rect;
     GdiFlush();
+    s->lock_alias = 0;
     d3dr_surface_cpu_access(s, s->lock_write, CPU_ACCESS_LOCK);
     describe(s, out, size);
     out->dwFlags |= DDSD_LPSURFACE;
     out->lpSurface = pixel_address(s, rect->left, rect->top);
+    if (s->lock_alias) out->lpSurface = page_alias_view(s->guard_alias) + ((BYTE*)out->lpSurface - s->bits);
+    if (s->watched) s->exposed = 1;
     s->locked = 1;
     InterlockedIncrement(&dd_census.locks);
     DD_RETURN(DD_OK);
@@ -973,6 +988,7 @@ static HRESULT STDMETHODCALLTYPE s_Unlock(IDirectDrawSurface* This, LPVOID point
     DD_METHOD("IDirectDrawSurface::Unlock");
     if (!s->locked) DD_RETURN(DDERR_NOTLOCKED);
     s->locked = 0;
+    s->lock_alias = 0;
     InterlockedDecrement(&dd_census.locks);
     if (!d3dr_surface_unlocked(s) && s->lock_write) d3dr_surface_cpu_written(s, &s->lock_rect);
     if (is_front(s)) dd_present(s, 0);

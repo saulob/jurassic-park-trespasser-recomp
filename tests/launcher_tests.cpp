@@ -359,7 +359,7 @@ static void TestSettings(const fs::path& dir) {
     CHECK(text.find("renderer = d3d11") != std::string::npos && text.find("software") == std::string::npos);
     CHECK(text.find("display_mode = borderless") != std::string::npos);
     CHECK(!fs::exists(dir / "trespasser.ini.tmp"));
-    CHECK(text.find("settings_version = 2") != std::string::npos);
+    CHECK(text.find("settings_version = 3") != std::string::npos);
     jpt_config_load(ini.string().c_str(), &c);
     CHECK(!c.vsync && c.hardware && c.borderless);
     // The command line wins over the file.
@@ -396,13 +396,13 @@ static void TestMigration(const fs::path& dir) {
     // What the first launcher wrote in test 018: no settings_version.
     WriteFile(ini, "# Set by Trespasser Recompiled\nmsaa = 0\nrender_resolution = 1440p\ntexture_filter = original\n"
                    "vsync = 0\nshow_launcher = 0\nlauncher_x = 96\n");
-    CHECK(jpt_config_migrate(ini.string().c_str()) == 1);
+    CHECK(jpt_config_migrate(ini.string().c_str()) == JPT_MIGRATED_EXPERIMENTAL);
     jpt_config_t c;
     jpt_config_load(ini.string().c_str(), &c);
     CHECK(c.msaa == 4 && c.render_preset == JPT_RENDER_NATIVE && c.texture_filter == JPT_FILTER_ANISO16 && c.vsync);
     CHECK(c.aspect == JPT_ASPECT_16_9 && !c.show_launcher);
     const std::string text = ReadFile(ini);
-    CHECK(text.find("launcher_x = 96") != std::string::npos && text.find("settings_version = 2") != std::string::npos);
+    CHECK(text.find("launcher_x = 96") != std::string::npos && text.find("settings_version = 3") != std::string::npos);
     CHECK(text.find("msaa") == std::string::npos && text.find("1440p") == std::string::npos);
     CHECK(jpt_config_migrate(ini.string().c_str()) == 0);  // once
     // A file written by this version keeps the player's choices.
@@ -413,6 +413,31 @@ static void TestMigration(const fs::path& dir) {
     jpt_config_load(ini.string().c_str(), &c);
     CHECK(c.aspect == JPT_ASPECT_4_3 && c.msaa == 1);
     CHECK(jpt_config_migrate((dir / "missing.ini").string().c_str()) == 0);
+
+    // Version 2 with the earlier launcher's graphics defaults (log 023): only those values are reset, once.
+    const fs::path v2 = dir / "v2.ini";
+    WriteFile(v2, "# Set by Trespasser Recompiled\nlauncher_x = 96\nsettings_version = 2\nmsaa = 0\n"
+                  "render_resolution = 1440p\ntexture_filter = original\nvsync = 0\ndisplay_mode = windowed\n");
+    CHECK(jpt_config_migrate(v2.string().c_str()) == JPT_MIGRATED_GRAPHICS_DEFAULTS);
+    jpt_config_load(v2.string().c_str(), &c);
+    CHECK(c.msaa == 4 && c.texture_filter == JPT_FILTER_ANISO16 && c.vsync);
+    CHECK(c.render_preset == jpt_render_preset_index("1440p") && !c.borderless);
+    CHECK(ReadFile(v2).find("settings_version = 3") != std::string::npos);
+    CHECK(ReadFile(v2).find("launcher_x = 96") != std::string::npos);
+    CHECK(jpt_config_migrate(v2.string().c_str()) == 0);
+    const char* old_keys[] = {JPT_KEY_TEXTURE_FILTER, JPT_KEY_MSAA, JPT_KEY_VSYNC};
+    const char* old_values[] = {"original", "0", "0"};
+    CHECK(jpt_ini_set(v2.string().c_str(), old_keys, old_values, 3));
+    CHECK(jpt_config_migrate(v2.string().c_str()) == 0);  // chosen again after the migration: kept
+    jpt_config_load(v2.string().c_str(), &c);
+    CHECK(c.texture_filter == JPT_FILTER_ORIGINAL && c.msaa == 1 && !c.vsync);
+
+    // Version 2 with explicit modern or other choices keeps them.
+    WriteFile(v2, "settings_version = 2\nmsaa = 2\ntexture_filter = bilinear\nvsync = 1\n");
+    CHECK(jpt_config_migrate(v2.string().c_str()) == JPT_MIGRATED_VERSION_ONLY);
+    jpt_config_load(v2.string().c_str(), &c);
+    CHECK(c.msaa == 2 && c.texture_filter == JPT_FILTER_BILINEAR && c.vsync);
+    CHECK(ReadFile(v2).find("settings_version = 3") != std::string::npos);
 }
 
 static void TestPages() {

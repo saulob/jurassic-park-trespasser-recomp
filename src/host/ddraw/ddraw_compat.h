@@ -75,6 +75,12 @@ struct dd_surface {
     int front_from_gpu;
     unsigned long cpu_writes;
     int watched;
+    int arena; /* heap_bits come from page_arena.c */
+    /* Only a Lock hands the guest a pointer into the pixels, so only then can they change unannounced. */
+    int exposed;
+    unsigned long long watch_frame;
+    int guard_alias;  /* page_guard.c alias of section; moves with it at Flip */
+    int lock_alias;   /* this Lock handed out the alias */
 };
 
 struct dd_clipper {
@@ -99,6 +105,7 @@ void dd_lock(void);
 void dd_unlock(void);
 void dd_begin(dd_method_t* m);
 HRESULT dd_done(dd_method_t* m, HRESULT hr);
+void dd_returned(dd_method_t* m, HRESULT hr);
 HRESULT dd_unsupported(dd_method_t* m, const char* reason, HRESULT hr);
 void dd_log(const char* fmt, ...);
 
