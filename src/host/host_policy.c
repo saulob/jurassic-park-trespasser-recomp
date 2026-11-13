@@ -172,6 +172,27 @@ int ui_present_held(int in_ui_frame, int menu_on_canvas, guest_wnd_t top) {
     return !in_ui_frame && menu_on_canvas && top != GUEST_WND_VIDEO && top != GUEST_WND_LOADER && top != GUEST_WND_NONE;
 }
 
+void load_hold_arm(load_hold_t* h, uint32_t now_ms) {
+    h->armed = 1;
+    h->held = 0;
+    h->since = now_ms;
+}
+
+void load_hold_release(load_hold_t* h) {
+    h->armed = 0;
+    h->held = 0;
+}
+
+int load_hold_present(load_hold_t* h, int loading_screen_present, uint32_t now_ms) {
+    if (!h->armed || loading_screen_present) return 0;
+    if (h->held >= LOAD_HOLD_MAX_PRESENTS || now_ms - h->since > LOAD_HOLD_MAX_MS) {
+        load_hold_release(h);
+        return 0;
+    }
+    h->held++;
+    return 1;
+}
+
 quit_action_t quit_action_for(guest_wnd_t top, int at_video_pump) {
     quit_action_t a = { QUIT_WAIT, 0, 0, SHUTDOWN_NONE };
     if (at_video_pump) {

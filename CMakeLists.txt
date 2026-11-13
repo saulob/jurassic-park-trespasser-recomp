@@ -79,6 +79,8 @@ set(HOST_SOURCES
   src/host/frontend_hd.c
   src/host/frontend_layout.c
   src/host/frontend_assets.c
+  src/host/loading_hd.c
+  src/host/loading_layout.c
   src/host/save_preview.c
   src/host/engine_limits.c
   src/host/engine_heaps.c
@@ -215,6 +217,26 @@ endforeach()
 add_custom_target(jpt_launcher_assets DEPENDS ${JPT_LAUNCHER_ASSET_COPIES})
 add_dependencies(trespasser jpt_launcher_assets)
 
+# HD loading art drawn for the port (assets/frontend/loading_hd/README.md), read next to the executable.
+file(GLOB JPT_LOADING_ART CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/frontend/loading_hd/*.png
+  ${CMAKE_SOURCE_DIR}/assets/frontend/loading_hd/*.jpg)
+set(JPT_LOADING_ART_COPIES)
+foreach(art_source IN LISTS JPT_LOADING_ART)
+  get_filename_component(art_name "${art_source}" NAME)
+  set(art_stamp "${CMAKE_BINARY_DIR}/loading-art/${art_name}.stamp")
+  add_custom_command(OUTPUT "${art_stamp}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:trespasser>/assets/frontend/loading_hd"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${art_source}" "$<TARGET_FILE_DIR:trespasser>/assets/frontend/loading_hd/${art_name}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${art_stamp}"
+    DEPENDS "${art_source}"
+    VERBATIM)
+  list(APPEND JPT_LOADING_ART_COPIES "${art_stamp}")
+endforeach()
+if(JPT_LOADING_ART_COPIES)
+  add_custom_target(jpt_loading_art DEPENDS ${JPT_LOADING_ART_COPIES})
+  add_dependencies(trespasser jpt_loading_art)
+endif()
+
 # The guest image has no relocations and must sit at 0x00400000, so the host links high
 # and keeps its own first stack small; lifted code runs on a thread with a large stack.
 # Not /LARGEADDRESSAWARE: the original was a 2 GB process.
@@ -291,11 +313,12 @@ add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_poli
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
-# The HD frontend's layout, pointer mapping and painter (headless: GDI draws into memory only):
+# The HD frontend's and loading screen's layout, pointer mapping and painter (headless: GDI draws into memory only):
 #   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
-  tests/save_preview_tests.c src/host/frontend_hd.c src/host/frontend_layout.c src/host/frontend_assets.c
-  src/host/save_preview.c src/host/host_policy.c src/common/jpt_display.c)
+  tests/save_preview_tests.c tests/loading_tests.c src/host/frontend_hd.c src/host/frontend_layout.c
+  src/host/frontend_assets.c src/host/loading_hd.c src/host/loading_layout.c src/host/save_preview.c
+  src/host/host_policy.c src/common/jpt_display.c)
 target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(frontend_tests PRIVATE /W3)

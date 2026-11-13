@@ -14,6 +14,7 @@
 #include "jpt_display.h"
 #include "jpt_launcher.h"
 #include "jpt_user_data.h"
+#include "loading_hd.h"
 #include "recomp_trace.h"
 
 #ifndef TRESPASSER_DEFAULT_GAME_DIR
@@ -503,6 +504,7 @@ int main(int argc, char** argv) {
     }
     game_text_install();
     ui_canvas_install();
+    loading_hd_install();
     engine_limits_install(d3dr_hardware());
     texture_streaming_install();
     engine_heaps_install();

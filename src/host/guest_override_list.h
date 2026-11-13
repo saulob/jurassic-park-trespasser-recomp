@@ -2,11 +2,15 @@
  * Every lifted function the host may replace, sorted by guest address. tools/run_lift.py names each one's lifted body
  * lifted_sub_<va>; guest_overrides.c defines sub_<va>, the stable entry every direct call, alias entry and dispatch
  * reaches, so an override never depends on how the linker lays out or reaches the lifted code.
- * REQUIRED: the port's behaviour depends on it. OPTIONAL: a host kernel the lifted body replaces exactly.
+ * REQUIRED: the port's behaviour depends on it. OPTIONAL: without it the game runs as retail (a host kernel the lifted
+ * body replaces exactly, or a presentation layer).
  */
 GUEST_OVERRIDE(0040C780, REQUIRED) /* CGameWnd::DrawBackground (ui_canvas.c) */
 GUEST_OVERRIDE(00411EA0, REQUIRED) /* window centring (ui_canvas.c) */
 GUEST_OVERRIDE(004128A0, REQUIRED) /* RasterBlt (ui_canvas.c) */
+GUEST_OVERRIDE(00413040, OPTIONAL) /* screen message (loading_hd.c) */
+GUEST_OVERRIDE(004142C0, OPTIONAL) /* level load (loading_hd.c) */
+GUEST_OVERRIDE(00415AD0, OPTIONAL) /* CLoaderWnd draw and present (loading_hd.c) */
 GUEST_OVERRIDE(00417300, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
 GUEST_OVERRIDE(00417380, REQUIRED) /* UI windows (ui_canvas.c) */
 GUEST_OVERRIDE(00417410, REQUIRED) /* UI cursor (ui_canvas.c) */

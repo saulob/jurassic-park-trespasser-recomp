@@ -13,6 +13,7 @@
 #include "d3d11_shaders.h"
 #include "host.h"
 #include "jpt_display.h"
+#include "loading_hd.h"
 #include "page_arena.h"
 #include "page_guard.h"
 #include "target_sync.h"
@@ -2919,6 +2920,7 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
             host_log("ui", "a blank present between two menu frames was held: the last menu frame stays on screen");
         return 1;
     }
+    if (loading_hd_present_held()) return 1;
     rtv = present_target(window, width, height);
     if (!rtv) return 0;
     update_gamma(gamma);

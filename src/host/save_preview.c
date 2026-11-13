@@ -212,23 +212,38 @@ int save_preview_delete(const char* save_path) {
     return DeleteFileA(path) || GetLastError() == ERROR_FILE_NOT_FOUND;
 }
 
-static int decode(const char* path, sp_image_t* out) {
+#define MAX_ART_SIDE 16384
+
+/* fit_w and fit_h 0: the picture as stored, at most MAX_SIDE a side; otherwise shrunk to fit them. */
+static int decode(const char* path, int fit_w, int fit_h, sp_image_t* out) {
     IWICImagingFactory* f = wic_factory();
     IWICBitmapDecoder* decoder = NULL;
     IWICBitmapFrameDecode* frame = NULL;
+    IWICBitmapScaler* scaler = NULL;
     IWICFormatConverter* converter = NULL;
+    IWICBitmapSource* source = NULL;
     WCHAR wpath[MAX_PATH];
-    UINT w = 0, h = 0;
+    UINT w = 0, h = 0, limit = fit_w > 0 && fit_h > 0 ? MAX_ART_SIDE : MAX_SIDE;
     HRESULT hr = E_FAIL;
     if (!f || !wide(path, wpath, MAX_PATH)) goto done;
     hr = IWICImagingFactory_CreateDecoderFromFilename(f, wpath, NULL, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder);
     if (SUCCEEDED(hr)) hr = IWICBitmapDecoder_GetFrame(decoder, 0, &frame);
     if (SUCCEEDED(hr)) hr = IWICBitmapFrameDecode_GetSize(frame, &w, &h);
-    if (SUCCEEDED(hr) && (w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE)) hr = E_FAIL;
+    if (SUCCEEDED(hr) && (w == 0 || h == 0 || w > limit || h > limit)) hr = E_FAIL;
+    source = (IWICBitmapSource*)frame;
+    if (SUCCEEDED(hr) && fit_w > 0 && fit_h > 0 && (w > (UINT)fit_w || h > (UINT)fit_h)) {
+        double k = (double)fit_w / w < (double)fit_h / h ? (double)fit_w / w : (double)fit_h / h;
+        UINT sw = (UINT)(w * k + 0.5), sh = (UINT)(h * k + 0.5);
+        w = sw ? sw : 1;
+        h = sh ? sh : 1;
+        hr = IWICImagingFactory_CreateBitmapScaler(f, &scaler);
+        if (SUCCEEDED(hr)) hr = IWICBitmapScaler_Initialize(scaler, source, w, h, WICBitmapInterpolationModeFant);
+        source = (IWICBitmapSource*)scaler;
+    }
     if (SUCCEEDED(hr)) hr = IWICImagingFactory_CreateFormatConverter(f, &converter);
     if (SUCCEEDED(hr))
-        hr = IWICFormatConverter_Initialize(converter, (IWICBitmapSource*)frame, &GUID_WICPixelFormat32bppBGRA,
-                                            WICBitmapDitherTypeNone, NULL, 0.0, WICBitmapPaletteTypeCustom);
+        hr = IWICFormatConverter_Initialize(converter, source, &GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, NULL, 0.0,
+                                            WICBitmapPaletteTypeCustom);
     if (SUCCEEDED(hr)) {
         out->pixels = (uint32_t*)malloc((size_t)w * h * 4);
         hr = out->pixels ? IWICFormatConverter_CopyPixels(converter, NULL, w * 4, w * h * 4, (BYTE*)out->pixels) : E_OUTOFMEMORY;
@@ -240,6 +255,7 @@ static int decode(const char* path, sp_image_t* out) {
     }
 done:
     if (converter) IWICFormatConverter_Release(converter);
+    if (scaler) IWICBitmapScaler_Release(scaler);
     if (frame) IWICBitmapFrameDecode_Release(frame);
     if (decoder) IWICBitmapDecoder_Release(decoder);
     if (f) IWICImagingFactory_Release(f);
@@ -254,7 +270,18 @@ int save_preview_load(const char* save_path, sp_image_t* out) {
     if (!save_preview_path(save_path, path, sizeof path) || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return 0;
     entered = com_enter();
     if (entered < 0) return 0;
-    ok = decode(path, out);
+    ok = decode(path, 0, 0, out);
+    com_leave(entered);
+    return ok;
+}
+
+int sp_image_load(const char* path, int fit_w, int fit_h, sp_image_t* out) {
+    int entered, ok;
+    memset(out, 0, sizeof *out);
+    if (!path || fit_w <= 0 || fit_h <= 0 || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return 0;
+    entered = com_enter();
+    if (entered < 0) return 0;
+    ok = decode(path, fit_w, fit_h, out);
     com_leave(entered);
     return ok;
 }

@@ -2,8 +2,10 @@
  * each window, the Options and Audio edits, and the fallbacks. A 32-bit build, so host pointers are guest addresses. */
 #include "frontend_hd.h"
 #include "host.h"
+#include "loading_hd.h"
 #include "save_preview.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,7 +52,7 @@ static struct {
     size_t n;
 } g_blocks[MAX_BLOCKS];
 static int g_block_count;
-static uint32_t g_main;
+static uint32_t g_main, g_scene_name, g_art_table, g_screen_raster;
 
 static uint32_t fake(size_t bytes) {
     uint8_t* p = (uint8_t*)calloc(1, bytes);
@@ -64,6 +66,7 @@ static void free_fakes(void) {
     for (int i = 0; i < g_block_count; i++) free(g_blocks[i].p);
     g_block_count = 0;
     g_main = 0;
+    g_scene_name = g_art_table = g_screen_raster = 0;
 }
 
 static int inside(uint32_t va, uint32_t bytes) {
@@ -77,20 +80,36 @@ static int inside(uint32_t va, uint32_t bytes) {
 static void put32(uint32_t va, uint32_t v) { *(uint32_t*)(uintptr_t)va = v; }
 static uint32_t get32(uint32_t va) { return *(const uint32_t*)(uintptr_t)va; }
 
+/* The game's data at fixed addresses: the loading window's scene name and picture table. */
+#define SCENE_NAME 0x0066E342u
+#define ART_TABLE 0x006610D0u
+#define ART_TABLE_BYTES (10u * 0x28u)
+#define SCREEN_RASTER 0x0073DC40u
+#define SCREEN_RASTER 0x0073DC40u
+
+static uint32_t fixed(uint32_t va) {
+    if (g_scene_name && va >= SCENE_NAME && va < SCENE_NAME + 64u) return g_scene_name + (va - SCENE_NAME);
+    if (g_art_table && va >= ART_TABLE && va < ART_TABLE + ART_TABLE_BYTES) return g_art_table + (va - ART_TABLE);
+    if (g_screen_raster && va == SCREEN_RASTER) return g_screen_raster;
+    return va;
+}
+
 int guest_read32(uint32_t va, uint32_t* out) {
     if (va == MAIN_WINDOW_OBJECT && g_main) {
         *out = g_main;
         return 1;
     }
+    va = fixed(va);
     if (!inside(va, 4)) return 0;
     *out = get32(va);
     return 1;
 }
 
-int guest_readable(uint32_t va, uint32_t bytes) { return bytes == 0 || inside(va, bytes); }
+int guest_readable(uint32_t va, uint32_t bytes) { return bytes == 0 || inside(fixed(va), bytes); }
 
 int guest_read_string(uint32_t va, char* out, int cap) {
     int n = 0;
+    va = fixed(va);
     if (cap <= 0) return 0;
     for (; n < cap - 1; n++) {
         if (!inside(va + (uint32_t)n, 1)) return 0;
@@ -157,6 +176,18 @@ int window_host_pointer(int* x, int* y) {
     *x = *y = 0;
     return 0;
 }
+
+/* loading_hd.c's hooks are never entered here: only its reader runs. */
+uint32_t g_ecx, g_esp;
+int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t* lifted) {
+    (void)va;
+    (void)replacement;
+    (void)lifted;
+    return 0;
+}
+static int g_hardware = 1;
+int d3dr_hardware(void) { return g_hardware; }
+int guest_display_built(void) { return 1; }
 
 /* ---- game objects ---- */
 
@@ -683,9 +714,198 @@ static void test_fallbacks(void) {
     CHECK(!frontend_hd_read_scene(&g_scene, 1920, 1080), "a scene is read without a window stack");
 }
 
+/* ---- the loading window (CLoaderWnd from menu\loader.ddf, centred on the screen) ---- */
+
+#define VT_LOADER 0x006467A0u
+#define VT_DIRECT_LOAD 0x00646888u
+
+static void game_tables(const char* scene) {
+    g_art_table = fake(ART_TABLE_BYTES);
+    for (int i = 0; i < LD_TABLE_ROWS; i++) {
+        strcpy((char*)(uintptr_t)(g_art_table + 0x28u * (uint32_t)i), ld_retail_table[i].scene);
+        strcpy((char*)(uintptr_t)(g_art_table + 0x28u * (uint32_t)i + 0x14u), ld_retail_table[i].image);
+    }
+    g_scene_name = fake(64);
+    strcpy((char*)(uintptr_t)g_scene_name, scene);
+}
+
+/* loader.ddf's "progress 1 0 ...": enabled, not visible (the game draws its bars regardless). */
+static uint32_t progress(int32_t id, fe_rect_t r, int32_t lo, int32_t hi, int32_t pos) {
+    uint32_t c = control(VT_PROGRESS, id, r);
+    put32(c + 0x08, 2);
+    put32(c + 0x20, (uint32_t)lo);
+    put32(c + 0x24, (uint32_t)hi);
+    put32(c + 0x28, (uint32_t)pos);
+    *(uint16_t*)(uintptr_t)(c + 0x30) = (uint16_t)((31u << 11) | (16u << 5));
+    return c;
+}
+
+enum { L_RETAIL, L_BUTTON, L_PLEASE_WAIT, L_EMPTY_TEXT, L_HIDDEN_TEXT, L_THREE_TEXTS, L_CAPTIONS_MOVED, L_FIVE_BARS };
+
+/* loader.ddf: two captions, two bar frames (statics) and two progress bars in a 320x200 box centred on the screen. */
+static uint32_t loader(int sw, int sh, int extra, uint32_t background) {
+    fe_rect_t b = fe_rect(sw / 2 - 160, sh / 2 - 100, sw / 2 + 160, sh / 2 + 100);
+    uint32_t c[16];
+    int n = 0, moved = extra == L_CAPTIONS_MOVED;
+    c[n++] = label(1000, moved ? at(b, 0, 150, 320, 165) : at(b, 0, 45, 320, 60), "World Initialization", 0);
+    c[n++] = control(VT_STATIC, -1, at(b, 23, 67, 297, 91));
+    c[n++] = progress(100, at(b, 29, 81, 288, 84), 0, 99, 50);
+    c[n++] = label(1001, moved ? at(b, 0, 5, 320, 20) : at(b, 0, 95, 320, 110), "Level File Copy", 0);
+    c[n++] = control(VT_STATIC, -1, at(b, 23, 110, 297, 134));
+    c[n++] = progress(101, at(b, 29, 116, 288, 119), 0, 99, 0);
+    if (extra == L_BUTTON) c[n++] = control(VT_BUTTON, 1000, at(b, 120, 170, 200, 190));
+    if (extra == L_PLEASE_WAIT || extra == L_THREE_TEXTS) c[n++] = label(102, at(b, 0, 15, 320, 40), "Please Wait", 0);
+    if (extra == L_THREE_TEXTS) {
+        c[n++] = label(103, at(b, 0, 150, 320, 165), "Second line", 0);
+        c[n++] = label(104, at(b, 0, 170, 320, 185), "Third line", 0);
+    }
+    if (extra == L_EMPTY_TEXT) c[n++] = label(102, at(b, 0, 15, 320, 40), "", 0);
+    if (extra == L_HIDDEN_TEXT) {
+        c[n] = label(102, at(b, 0, 15, 320, 40), "Hidden", 0);
+        put32(c[n++] + 0x08, 2);
+    }
+    if (extra == L_FIVE_BARS)
+        for (int i = 0; i < 3; i++) c[n++] = progress(102 + i, at(b, 29, 140 + 10 * i, 288, 143 + 10 * i), 0, 9, i);
+    return window(VT_LOADER, fe_rect(0, 0, sw, sh), c, n, background);
+}
+
+static int read_loader(int extra, ld_scene_t* s, char* slot) {
+    uint32_t w;
+    game_tables("BE.SCN");
+    w = loader(2560, 1920, extra, raster(2560, 1920, 0));
+    return loading_hd_read(w, 2560, 1920, s, slot, LD_SLOT_BYTES);
+}
+
+static int retail_gauges(const ld_scene_t* s) {
+    return s->gauge_count == 2 && !strcmp(s->gauges[0].caption, "World Initialization") &&
+           !strcmp(s->gauges[1].caption, "Level File Copy");
+}
+
+static void test_loading_window(void) {
+    ld_scene_t s;
+    char slot[LD_SLOT_BYTES];
+    uint32_t background = raster(1920, 1080, 0x0000), w;
+    ((uint16_t*)(uintptr_t)get32(background + 0x18))[300 * 1920 + 640] = 0xF800;
+    game_tables("BE.SCN");
+    w = loader(1920, 1080, L_RETAIL, background);
+    CHECK(loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot), "the retail loading window is read");
+    CHECK(s.kind == LD_SCENE_LOADER && s.screen_w == 1920 && s.screen_h == 1080, "loading scene kind/size");
+    CHECK(s.art565 && s.art565[0] == 0xF800 && s.art_w == 640 && s.art_h == 480 && s.art_pitch == 1920,
+          "the picture is the 640x480 the game centred in its background");
+    CHECK(!strcmp(slot, "li_be"), "New Game's BE.SCN shows li_be (got %s)", slot);
+    CHECK(retail_gauges(&s) && s.note_count == 0, "two captioned gauges, no other text (%d gauges, %d notes)", s.gauge_count,
+          s.note_count);
+    CHECK(fabsf(s.gauges[0].fraction - 50.0f / 99.0f) < 1e-4f && s.gauges[1].fraction == 0.0f,
+          "World Initialization at 50 of 0..99, Level File Copy empty (%.3f)", s.gauges[0].fraction);
+    CHECK(s.gauges[0].color == 0xFF4000 && s.gauges[0].text_color == 0xFFFFFF, "the bar keeps the game's colour %06X",
+          s.gauges[0].color);
+    put32(get32(get32(w + 0x20) + 8) + 0x28, 120);
+    CHECK(loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot) && s.gauges[0].fraction == 1.0f,
+          "a bar past its range is full, as the game clips it");
+    free_fakes();
+
+    background = raster(2560, 1440, 0);
+    game_tables("TestScene.scn");
+    w = loader(2560, 1440, L_RETAIL, background);
+    CHECK(loading_hd_read(w, 2560, 1440, &s, slot, sizeof slot) && !strcmp(slot, "li_other"),
+          "a scene not in the table shows li_other (got %s)", slot);
+    free_fakes();
+
+    background = raster(2560, 1440, 0);
+    w = loader(2560, 1440, L_RETAIL, background);
+    CHECK(loading_hd_read(w, 2560, 1440, &s, slot, sizeof slot) && !slot[0],
+          "without the game's table the picture is still shown, with no HD art slot");
+    free_fakes();
+}
+
+/* Log 042: loader.ddf's bars are not visible by their flags, yet drawn; the captions must still find them. */
+static void test_loading_042(void) {
+    ld_scene_t s;
+    char slot[LD_SLOT_BYTES];
+    CHECK(read_loader(L_RETAIL, &s, slot), "042: the retail loading window (bars without the visible bit) is HD");
+    CHECK(retail_gauges(&s) && s.note_count == 0, "042: both captions belong to their bars (%d gauges, %d notes)", s.gauge_count,
+          s.note_count);
+    CHECK(!strcmp(slot, "li_be"), "042: Beach shows li_be");
+    free_fakes();
+}
+
+static void test_loading_texts(void) {
+    ld_scene_t s;
+    char slot[LD_SLOT_BYTES];
+    CHECK(read_loader(L_PLEASE_WAIT, &s, slot) && retail_gauges(&s) && s.note_count == 1 && !strcmp(s.notes[0], "Please Wait"),
+          "a text of its own (the DDF's commented Please Wait) is a line on the plate, not a fallback");
+    free_fakes();
+    CHECK(read_loader(L_EMPTY_TEXT, &s, slot) && retail_gauges(&s) && s.note_count == 0, "an empty text is ignored");
+    free_fakes();
+    CHECK(read_loader(L_HIDDEN_TEXT, &s, slot) && retail_gauges(&s) && s.note_count == 0,
+          "a text the game does not draw (visible bit clear) is not drawn either");
+    free_fakes();
+    CHECK(read_loader(L_THREE_TEXTS, &s, slot) && retail_gauges(&s) && s.note_count == LD_MAX_NOTES &&
+              !strcmp(s.notes[0], "Please Wait") && !strcmp(s.notes[1], "Second line"),
+          "texts past the plate's room are left out alone, top first (%d notes)", s.note_count);
+    free_fakes();
+    CHECK(read_loader(L_CAPTIONS_MOVED, &s, slot) && retail_gauges(&s) && s.note_count == 0,
+          "captions find their bars by id wherever they are placed");
+    free_fakes();
+    CHECK(read_loader(L_BUTTON, &s, slot) && retail_gauges(&s), "an unknown control is left out, the screen stays HD");
+    free_fakes();
+    CHECK(read_loader(L_FIVE_BARS, &s, slot) && s.gauge_count == LD_MAX_GAUGES && !strcmp(s.gauges[0].caption, "World Initialization"),
+          "bars past the fourth are left out, the screen stays HD (%d)", s.gauge_count);
+    free_fakes();
+}
+
+static void test_loading_fallbacks(void) {
+    ld_scene_t s;
+    char slot[LD_SLOT_BYTES];
+    uint32_t w, screen;
+    int sw = 0, sh = 0;
+    game_tables("jr.scn");
+    w = loader(1920, 1080, L_RETAIL, raster(320, 200, 0));
+    CHECK(!loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot), "a background without the 640x480 picture is refused");
+    free_fakes();
+
+    game_tables("jr.scn");
+    w = loader(1920, 1080, L_RETAIL, 0);
+    CHECK(!loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot), "a loading window without its background is refused");
+    free_fakes();
+
+    game_tables("jr.scn");
+    w = loader(1920, 1080, L_RETAIL, raster(1920, 1080, 0));
+    put32(w + 0x24, get32(w + 0x20) - 4);
+    CHECK(!loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot), "a control list that cannot be read is refused");
+    free_fakes();
+
+    game_tables("jr.scn");
+    w = loader(640, 480, L_RETAIL, raster(640, 480, 0));
+    CHECK(!loading_hd_read(w, 640, 480, &s, slot, sizeof slot), "a 640x480 screen keeps the game's own loading screen");
+    free_fakes();
+
+    w = window(VT_VIDEO, fe_rect(0, 0, 1920, 1080), NULL, 0, raster(1920, 1080, 0));
+    CHECK(!loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot), "a video window is never read as a loading screen");
+    w = window(VT_DIRECT_LOAD, fe_rect(0, 0, 1920, 1080), NULL, 0, raster(1920, 1080, 0));
+    CHECK(!loading_hd_read(w, 1920, 1080, &s, slot, sizeof slot), "the direct-load list is not a loading screen");
+    CHECK(!loading_hd_read(0, 1920, 1080, &s, slot, sizeof slot), "no window, no loading screen");
+    free_fakes();
+
+    screen = fake(0x90);
+    put32(screen + 0x7C, 2560);
+    put32(screen + 0x80, 1920);
+    g_screen_raster = fake(4);
+    put32(g_screen_raster, screen);
+    CHECK(loading_hd_screen(&sw, &sh) && sw == 2560 && sh == 1920, "Direct3D 11 paints at the game's screen size (%dx%d)", sw, sh);
+    g_hardware = 0;
+    CHECK(!loading_hd_screen(&sw, &sh), "the software renderer keeps the game's own loading screen");
+    g_hardware = 1;
+    free_fakes();
+}
+
 void frontend_bridge_tests(int* checks, int* failures) {
     g_checks = checks;
     g_failures = failures;
+    test_loading_window();
+    test_loading_042();
+    test_loading_texts();
+    test_loading_fallbacks();
     test_options();
     test_options_in_game();
     test_audio();

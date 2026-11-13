@@ -11,6 +11,7 @@
 #include "ddraw/target_sync.h"
 #include "frontend_hd.h"
 #include "jpt_display.h"
+#include "loading_hd.h"
 
 #define SCREEN_RASTER 0x0073DC40u
 #define RASTER_WIDTH 0x08u
@@ -126,6 +127,7 @@ static void ui_frame(void) {
         s_frame_lifted();
         return;
     }
+    loading_hd_ui_frame();
     if (!scaling_wanted(&screen_w, &screen_h) || !make_canvas()) {
         window_host_set_ui_canvas(0);
         d3dr_set_ui_layer(NULL, 0, 0, 0);

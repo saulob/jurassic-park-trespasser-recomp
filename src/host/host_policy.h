@@ -176,6 +176,24 @@ quit_action_t quit_action_for(guest_wnd_t top, int at_video_pump);
  * keeps the menu's last frame; videos and loading windows present themselves and are always shown. */
 int ui_present_held(int in_ui_frame, int menu_on_canvas, guest_wnd_t top);
 
+/* A level load clears and flips the screen outside any UI frame: its DirectDraw restart (0x00412B70) before the loading
+ * screen, the next window's DoModal (0x00417840) after it, three times each. Held from the load's start until the first
+ * UI frame, the screen keeps the last loading picture; the loading screen's own presents are never held, and the caps
+ * let any other present through. */
+#define LOAD_HOLD_MAX_PRESENTS 4u
+#define LOAD_HOLD_MAX_MS 8000u
+
+typedef struct {
+    int armed;
+    unsigned held;
+    uint32_t since;
+} load_hold_t;
+
+void load_hold_arm(load_hold_t* h, uint32_t now_ms);
+void load_hold_release(load_hold_t* h);
+/* 1 when this present is held. */
+int load_hold_present(load_hold_t* h, int loading_screen_present, uint32_t now_ms);
+
 typedef enum {
     READBACK_LOCK_READ,
     READBACK_LOCK_WRITE,

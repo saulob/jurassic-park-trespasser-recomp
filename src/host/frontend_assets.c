@@ -18,6 +18,8 @@
 #define UP 2
 #define BLUR_W 80
 #define BLUR_H 60
+#define FIELD_W 16
+#define FIELD_H 12
 #define PI 3.14159265358979
 
 typedef struct {
@@ -47,7 +49,9 @@ typedef enum {
     OP_GROOVE,
     OP_BAR,
     OP_IMAGE,
-    OP_ARROW
+    OP_ARROW,
+    OP_AMBIENT,
+    OP_PHOTO
 } op_kind_t;
 
 enum { MAT_IRON, MAT_BRASS, MAT_STEEL, MAT_COPPER, MAT_PLAIN };
@@ -110,6 +114,12 @@ struct fe_painter {
     fe_rect_t clip; /* applied to new ops while clipping */
     int clipping;
     uint32_t base_key;
+    uint32_t* photo; /* a loading screen's picture, de-dithered and up-sampled from the game's */
+    const uint32_t* photo_src;
+    int photo_w, photo_h, photo_ready;
+    uint32_t photo_key;
+    float* photo_blur;  /* BLUR_W x BLUR_H */
+    float* photo_field; /* FIELD_W x FIELD_H: the picture's colours with no shape left */
     op_t ops[MAX_OPS];
     int op_count;
     fe_view_t view;
@@ -757,6 +767,79 @@ static void run_footer(const band_t* b, const op_t* o) {
     }
 }
 
+/* A grid of RGB cells at normalised coordinates, clamped, eased between cells. */
+static void grid_sample(const float* grid, int gw, int gh, double nu, double nv, float* c) {
+    double fx = clampd(nu * gw - 0.5, 0, gw - 1.001), fy = clampd(nv * gh - 0.5, 0, gh - 1.001);
+    int ix = (int)fx, iy = (int)fy;
+    float tx = (float)(fx - ix), ty = (float)(fy - iy);
+    tx = tx * tx * (3.0f - 2.0f * tx);
+    ty = ty * ty * (3.0f - 2.0f * ty);
+    for (int k = 0; k < 3; k++) {
+        const float* g = grid + k;
+        float a = g[(iy * gw + ix) * 3] + (g[(iy * gw + ix + 1) * 3] - g[(iy * gw + ix) * 3]) * tx;
+        float d = g[((iy + 1) * gw + ix) * 3] + (g[((iy + 1) * gw + ix + 1) * 3] - g[((iy + 1) * gw + ix) * 3]) * tx;
+        c[k] = a + (d - a) * ty;
+    }
+}
+
+static double mirror01(double t) {
+    t = fmod(fabs(t), 2.0);
+    return t > 1.0 ? 2.0 - t : t;
+}
+
+/* The surroundings of the framed picture (pts: its screen box): the picture's own edges carried outwards, blurred and
+ * mirrored, turning within a fifth of its height into a field of its colours with no shape left, darker further out. */
+static void run_ambient(const band_t* b, const op_t* o) {
+    const fe_painter_t* p = b->p;
+    float cxs = p->view.screen_w * 0.5f, cys = p->view.screen_h * 0.5f, rmax = sqrtf(cxs * cxs + cys * cys);
+    double pw = o->pts[2] - o->pts[0], ph = o->pts[3] - o->pts[1];
+    FOR_PIXELS(b, o, r) {
+        float near_[3], far_[3], c[3], lum, t, vig, grain, dx = x + 0.5f - cxs, dy = y + 0.5f - cys;
+        double u = (x + 0.5 - o->pts[0]) / pw, v = (y + 0.5 - o->pts[1]) / ph;
+        double ox = u < 0 ? -u * pw / ph : u > 1 ? (u - 1) * pw / ph : 0, oy = v < 0 ? -v : v > 1 ? v - 1 : 0;
+        float out = (float)sqrt(ox * ox + oy * oy);
+        rgb_t col;
+        grid_sample(p->photo_blur, BLUR_W, BLUR_H, mirror01(u), mirror01(v), near_);
+        grid_sample(p->photo_field, FIELD_W, FIELD_H, mirror01(u), mirror01(v), far_);
+        t = smooth(0.0f, 0.2f, out);
+        for (int k = 0; k < 3; k++) c[k] = near_[k] + (far_[k] - near_[k]) * t;
+        lum = 0.30f * c[0] + 0.59f * c[1] + 0.11f * c[2];
+        col = scale(mix(rgb(c[0], c[1], c[2]), rgb(lum, lum * 0.97f, lum * 0.9f), 0.25f), 0.56f - 0.24f * smooth(0.0f, 0.9f, out));
+        vig = 1.0f - 0.40f * smooth(0.45f, 1.1f, sqrtf(dx * dx + dy * dy) / rmax);
+        grain = (noise_at(p, x * 1.9f + 33, y * 1.9f + 71) - 0.5f) * 0.03f;
+        put(PIXEL(b, x, y), add(scale(col, vig), grain), 1.0f);
+    }
+}
+
+/* The framed picture: filtered from the prepared picture, with grain at the screen's resolution and a little shading
+ * towards the frame. */
+static void run_photo(const band_t* b, const op_t* o) {
+    const fe_painter_t* p = b->p;
+    double kx = (o->src[2] - o->src[0]) / (o->x1 - o->x0), ky = (o->src[3] - o->src[1]) / (o->y1 - o->y0);
+    double edge = o->unit * 26.0;
+    int footprint = kx > 1.25 || ky > 1.25;
+    FOR_PIXELS(b, o, r) {
+        float acc[3] = { 0, 0, 0 }, shade, grain;
+        double sx = o->src[0] + (x + 0.5 - o->x0) * kx, sy = o->src[1] + (y + 0.5 - o->y0) * ky;
+        double e = x + 0.5 - o->x0;
+        if (o->x1 - (x + 0.5) < e) e = o->x1 - (x + 0.5);
+        if (y + 0.5 - o->y0 < e) e = y + 0.5 - o->y0;
+        if (o->y1 - (y + 0.5) < e) e = o->y1 - (y + 0.5);
+        if (footprint) {
+            bilinear32(o, sx - kx * 0.25, sy - ky * 0.25, acc);
+            bilinear32(o, sx + kx * 0.25, sy - ky * 0.25, acc);
+            bilinear32(o, sx - kx * 0.25, sy + ky * 0.25, acc);
+            bilinear32(o, sx + kx * 0.25, sy + ky * 0.25, acc);
+            for (int i = 0; i < 3; i++) acc[i] *= 0.25f;
+        } else {
+            bilinear32(o, sx, sy, acc);
+        }
+        shade = 0.80f + 0.20f * smooth(0.0f, (float)edge, (float)e);
+        grain = (noise_at(p, x * 2.3f + 17, y * 2.3f + 5) - 0.5f) * 0.035f;
+        put(PIXEL(b, x, y), add(scale(rgb(grade(acc[0]), grade(acc[1]), grade(acc[2])), shade), grain), 1.0f);
+    }
+}
+
 static void run_op(const band_t* b, const op_t* o) {
     switch (o->kind) {
     case OP_DIM: run_dim(b, o); break;
@@ -775,6 +858,8 @@ static void run_op(const band_t* b, const op_t* o) {
     case OP_BAR: run_bar(b, o); break;
     case OP_IMAGE: run_image(b, o); break;
     case OP_ARROW: run_arrow(b, o); break;
+    case OP_AMBIENT: run_ambient(b, o); break;
+    case OP_PHOTO: run_photo(b, o); break;
     }
 }
 
@@ -955,41 +1040,61 @@ void fe_painter_destroy(fe_painter_t* p) {
     free(p->up);
     free(p->blur);
     free(p->base);
+    free(p->photo);
+    free(p->photo_blur);
+    free(p->photo_field);
     free(p);
 }
 
-static int prepare_backdrop(fe_painter_t* p, const fe_scene_t* s) {
-    const int w = BACKDROP_W * UP, h = BACKDROP_H * UP;
-    if (!s->backdrop) return 0;
-    if (p->up && p->backdrop_src == s->backdrop && p->backdrop_hash == s->backdrop_hash) return 1;
-    if (!p->up) p->up = (uint32_t*)malloc(sizeof(uint32_t) * (size_t)w * h);
-    if (!p->blur) p->blur = (float*)malloc(sizeof(float) * BLUR_W * BLUR_H * 3);
-    if (!p->up || !p->blur) return 0;
-    for (int y = 0; y < h; y++) {
+/* Catmull-Rom up-sampling by UP of w x h RGB texels (0..1) into BGRA rows of w * UP pixels. */
+static void up_rgb(const float* rgb, int w, int h, uint32_t* out) {
+    const int ow = w * UP, oh = h * UP;
+    for (int y = 0; y < oh; y++) {
         double sy = (y + 0.5) / UP;
         int iy = (int)floor(sy - 0.5);
         float fy = (float)(sy - 0.5 - iy);
-        for (int x = 0; x < w; x++) {
+        for (int x = 0; x < ow; x++) {
             double sx = (x + 0.5) / UP;
             int ix = (int)floor(sx - 0.5);
             float fx = (float)(sx - 0.5 - ix), acc[3] = { 0, 0, 0 };
             for (int j = -1; j <= 2; j++) {
-                int yy = iy + j < 0 ? 0 : iy + j >= BACKDROP_H ? BACKDROP_H - 1 : iy + j;
+                int yy = iy + j < 0 ? 0 : iy + j >= h ? h - 1 : iy + j;
                 float wy = cubic_w((float)j - fy);
                 for (int i = -1; i <= 2; i++) {
-                    int xx = ix + i < 0 ? 0 : ix + i >= BACKDROP_W ? BACKDROP_W - 1 : ix + i;
-                    float wgt = wy * cubic_w((float)i - fx), t[4];
-                    texel565(s->backdrop[(long)yy * s->backdrop_pitch + xx], t);
+                    int xx = ix + i < 0 ? 0 : ix + i >= w ? w - 1 : ix + i;
+                    float wgt = wy * cubic_w((float)i - fx);
+                    const float* t = rgb + ((long)yy * w + xx) * 3;
                     acc[0] += t[0] * wgt;
                     acc[1] += t[1] * wgt;
                     acc[2] += t[2] * wgt;
                 }
             }
-            p->up[(long)y * w + x] = ((uint32_t)(clamp01(acc[0]) * 255.0f + 0.5f) << 16) |
-                                     ((uint32_t)(clamp01(acc[1]) * 255.0f + 0.5f) << 8) |
-                                     (uint32_t)(clamp01(acc[2]) * 255.0f + 0.5f);
+            out[(long)y * ow + x] = ((uint32_t)(clamp01(acc[0]) * 255.0f + 0.5f) << 16) |
+                                    ((uint32_t)(clamp01(acc[1]) * 255.0f + 0.5f) << 8) | (uint32_t)(clamp01(acc[2]) * 255.0f + 0.5f);
         }
     }
+}
+
+static int prepare_backdrop(fe_painter_t* p, const fe_scene_t* s) {
+    const int w = BACKDROP_W * UP, h = BACKDROP_H * UP;
+    float* rgb;
+    if (!s->backdrop) return 0;
+    if (p->up && p->backdrop_src == s->backdrop && p->backdrop_hash == s->backdrop_hash) return 1;
+    if (!p->up) p->up = (uint32_t*)malloc(sizeof(uint32_t) * (size_t)w * h);
+    if (!p->blur) p->blur = (float*)malloc(sizeof(float) * BLUR_W * BLUR_H * 3);
+    rgb = (float*)malloc(sizeof(float) * BACKDROP_W * BACKDROP_H * 3);
+    if (!p->up || !p->blur || !rgb) {
+        free(rgb);
+        return 0;
+    }
+    for (int y = 0; y < BACKDROP_H; y++)
+        for (int x = 0; x < BACKDROP_W; x++) {
+            float t[4];
+            texel565(s->backdrop[(long)y * s->backdrop_pitch + x], t);
+            memcpy(rgb + ((long)y * BACKDROP_W + x) * 3, t, sizeof(float) * 3);
+        }
+    up_rgb(rgb, BACKDROP_W, BACKDROP_H, p->up);
+    free(rgb);
     for (int by = 0; by < BLUR_H; by++)
         for (int bx = 0; bx < BLUR_W; bx++) {
             float acc[3] = { 0, 0, 0 };
@@ -1008,6 +1113,138 @@ static int prepare_backdrop(fe_painter_t* p, const fe_scene_t* s) {
         }
     p->backdrop_src = s->backdrop;
     p->backdrop_hash = s->backdrop_hash;
+    return 1;
+}
+
+/* The 1998 pictures are dithered 15-bit renders: each texel is averaged with the neighbours within a couple of 5-bit
+ * steps of it, so the dither goes and edges stay. */
+#define DITHER_STEP 0.07f
+
+static void dedither(const uint16_t* src, int pitch, int w, int h, float* rgb) {
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float c[4], sum[3], n = 2.0f;
+            texel565(src[(long)y * pitch + x], c);
+            for (int k = 0; k < 3; k++) sum[k] = c[k] * 2.0f;
+            for (int j = -1; j <= 1; j++)
+                for (int i = -1; i <= 1; i++) {
+                    int xx = x + i < 0 ? 0 : x + i >= w ? w - 1 : x + i, yy = y + j < 0 ? 0 : y + j >= h ? h - 1 : y + j;
+                    float t[4];
+                    if (!i && !j) continue;
+                    texel565(src[(long)yy * pitch + xx], t);
+                    if (fabsf(t[0] - c[0]) > DITHER_STEP || fabsf(t[1] - c[1]) > DITHER_STEP || fabsf(t[2] - c[2]) > DITHER_STEP)
+                        continue;
+                    for (int k = 0; k < 3; k++) sum[k] += t[k];
+                    n += 1.0f;
+                }
+            for (int k = 0; k < 3; k++) rgb[((long)y * w + x) * 3 + k] = sum[k] / n;
+        }
+}
+
+/* BLUR_W x BLUR_H cell averages of a BGRA picture, each over twice its cell, then smoothed twice more. */
+static int blur_grid(const uint32_t* px, int w, int h, float* grid) {
+    float* tmp = (float*)malloc(sizeof(float) * BLUR_W * BLUR_H * 3);
+    if (!tmp) return 0;
+    for (int by = 0; by < BLUR_H; by++)
+        for (int bx = 0; bx < BLUR_W; bx++) {
+            int x0 = (int)((bx - 0.5) * w / BLUR_W), x1 = (int)((bx + 1.5) * w / BLUR_W);
+            int y0 = (int)((by - 0.5) * h / BLUR_H), y1 = (int)((by + 1.5) * h / BLUR_H);
+            int sx = (x1 - x0) / 12 > 1 ? (x1 - x0) / 12 : 1, sy = (y1 - y0) / 12 > 1 ? (y1 - y0) / 12 : 1;
+            float acc[3] = { 0, 0, 0 }, n = 0;
+            for (int y = y0; y < y1; y += sy)
+                for (int x = x0; x < x1; x += sx) {
+                    uint32_t v = px[(long)(y < 0 ? 0 : y >= h ? h - 1 : y) * w + (x < 0 ? 0 : x >= w ? w - 1 : x)];
+                    acc[0] += (float)((v >> 16) & 255);
+                    acc[1] += (float)((v >> 8) & 255);
+                    acc[2] += (float)(v & 255);
+                    n += 1.0f;
+                }
+            for (int k = 0; k < 3; k++) grid[(by * BLUR_W + bx) * 3 + k] = acc[k] / (n * 255.0f);
+        }
+    for (int pass = 0; pass < 2; pass++) {
+        for (int y = 0; y < BLUR_H; y++)
+            for (int x = 0; x < BLUR_W; x++)
+                for (int k = 0; k < 3; k++) {
+                    int l = x > 0 ? x - 1 : 0, r = x + 1 < BLUR_W ? x + 1 : BLUR_W - 1;
+                    tmp[(y * BLUR_W + x) * 3 + k] = (grid[(y * BLUR_W + l) * 3 + k] + 2.0f * grid[(y * BLUR_W + x) * 3 + k] +
+                                                     grid[(y * BLUR_W + r) * 3 + k]) * 0.25f;
+                }
+        for (int y = 0; y < BLUR_H; y++)
+            for (int x = 0; x < BLUR_W; x++)
+                for (int k = 0; k < 3; k++) {
+                    int t = y > 0 ? y - 1 : 0, b = y + 1 < BLUR_H ? y + 1 : BLUR_H - 1;
+                    grid[(y * BLUR_W + x) * 3 + k] = (tmp[(t * BLUR_W + x) * 3 + k] + 2.0f * tmp[(y * BLUR_W + x) * 3 + k] +
+                                                      tmp[(b * BLUR_W + x) * 3 + k]) * 0.25f;
+                }
+    }
+    free(tmp);
+    return 1;
+}
+
+/* FIELD_W x FIELD_H averages of the blur grid, smoothed across cells. */
+static void colour_field(const float* blur, float* field) {
+    const int bx = BLUR_W / FIELD_W, by = BLUR_H / FIELD_H;
+    float tmp[FIELD_W * FIELD_H * 3];
+    for (int y = 0; y < FIELD_H; y++)
+        for (int x = 0; x < FIELD_W; x++)
+            for (int k = 0; k < 3; k++) {
+                float sum = 0;
+                for (int j = 0; j < by; j++)
+                    for (int i = 0; i < bx; i++) sum += blur[((y * by + j) * BLUR_W + x * bx + i) * 3 + k];
+                field[(y * FIELD_W + x) * 3 + k] = sum / (float)(bx * by);
+            }
+    for (int pass = 0; pass < 2; pass++) {
+        for (int y = 0; y < FIELD_H; y++)
+            for (int x = 0; x < FIELD_W; x++)
+                for (int k = 0; k < 3; k++) {
+                    int l = x > 0 ? x - 1 : 0, r = x + 1 < FIELD_W ? x + 1 : FIELD_W - 1;
+                    tmp[(y * FIELD_W + x) * 3 + k] = (field[(y * FIELD_W + l) * 3 + k] + 2.0f * field[(y * FIELD_W + x) * 3 + k] +
+                                                      field[(y * FIELD_W + r) * 3 + k]) * 0.25f;
+                }
+        for (int y = 0; y < FIELD_H; y++)
+            for (int x = 0; x < FIELD_W; x++)
+                for (int k = 0; k < 3; k++) {
+                    int t = y > 0 ? y - 1 : 0, b = y + 1 < FIELD_H ? y + 1 : FIELD_H - 1;
+                    field[(y * FIELD_W + x) * 3 + k] = (tmp[(t * FIELD_W + x) * 3 + k] + 2.0f * tmp[(y * FIELD_W + x) * 3 + k] +
+                                                        tmp[(b * FIELD_W + x) * 3 + k]) * 0.25f;
+                }
+    }
+}
+
+static int prepare_photo(fe_painter_t* p, const ld_scene_t* s) {
+    if (p->photo_ready && p->photo_key == s->art_key) return 1;
+    p->photo_ready = 0;
+    p->photo_src = NULL;
+    if (!p->photo_blur) p->photo_blur = (float*)malloc(sizeof(float) * BLUR_W * BLUR_H * 3);
+    if (!p->photo_field) p->photo_field = (float*)malloc(sizeof(float) * FIELD_W * FIELD_H * 3);
+    if (!p->photo_blur || !p->photo_field || s->art_w <= 0 || s->art_h <= 0) return 0;
+    if (s->art32) {
+        free(p->photo);
+        p->photo = NULL;
+        p->photo_src = s->art32;
+        p->photo_w = s->art_w;
+        p->photo_h = s->art_h;
+    } else if (s->art565 && s->art_pitch >= s->art_w && s->art_w <= 2048 && s->art_h <= 2048) {
+        float* rgb = (float*)malloc(sizeof(float) * (size_t)s->art_w * s->art_h * 3);
+        uint32_t* up = (uint32_t*)realloc(p->photo, sizeof(uint32_t) * (size_t)s->art_w * UP * s->art_h * UP);
+        if (up) p->photo = up;
+        if (!rgb || !up) {
+            free(rgb);
+            return 0;
+        }
+        dedither(s->art565, s->art_pitch, s->art_w, s->art_h, rgb);
+        up_rgb(rgb, s->art_w, s->art_h, p->photo);
+        free(rgb);
+        p->photo_src = p->photo;
+        p->photo_w = s->art_w * UP;
+        p->photo_h = s->art_h * UP;
+    } else {
+        return 0;
+    }
+    if (!blur_grid(p->photo_src, p->photo_w, p->photo_h, p->photo_blur)) return 0;
+    colour_field(p->photo_blur, p->photo_field);
+    p->photo_key = s->art_key;
+    p->photo_ready = 1;
     return 1;
 }
 
@@ -1822,6 +2059,14 @@ void fe_painter_trim(fe_painter_t* p) {
     p->blur = NULL;
     p->base_valid = 0;
     p->backdrop_src = NULL;
+    free(p->photo);
+    free(p->photo_blur);
+    free(p->photo_field);
+    p->photo = NULL;
+    p->photo_blur = NULL;
+    p->photo_field = NULL;
+    p->photo_src = NULL;
+    p->photo_ready = 0;
     for (int i = 0; i < GLYPH_CACHE; i++) {
         free(p->glyphs[i].a);
         p->glyphs[i].a = NULL;
@@ -1839,6 +2084,170 @@ int fe_paint(fe_painter_t* p, const fe_scene_t* s, uint32_t* pixels, long pitch,
     build(p, s);
     if (has_base_ops(p) && ensure_base(p, s, threads)) mode = RUN_OVER_BASE;
     execute(p, pixels, pitch, clip, mode, threads);
+    return 1;
+}
+
+/* The level's picture in a bolted iron frame over its own blurred surroundings. */
+static void add_loading_picture(fe_painter_t* p, const ld_layout_t* l) {
+    enum { TOP, BOTTOM, LEFT, RIGHT };
+    static const struct {
+        int edge;
+        double at;
+    } k_bolts[] = { { TOP, 0.25 },    { TOP, 0.5 },    { TOP, 0.75 },  { BOTTOM, 0.25 }, { BOTTOM, 0.5 },
+                    { BOTTOM, 0.75 }, { LEFT, 0.33 },  { LEFT, 0.67 }, { RIGHT, 0.33 },  { RIGHT, 0.67 } };
+    double u = p->view.sy, src[4], dst[4];
+    box_t frame = box_rect(p, l->frame), inner = box_rect(p, l->photo);
+    double in = u * FE_PANEL_MARGIN * 0.6;
+    uint32_t seed = 0x10AD;
+    op_t* o;
+    fe_photo_fit(p->photo_w, p->photo_h, inner.x1 - inner.x0, inner.y1 - inner.y0, src, dst);
+    o = op(p, OP_AMBIENT, 0, 0, p->view.screen_w, p->view.screen_h, 0);
+    if (o) {
+        o->pts[0] = inner.x0 + dst[0];
+        o->pts[1] = inner.y0 + dst[1];
+        o->pts[2] = inner.x0 + dst[2];
+        o->pts[3] = inner.y0 + dst[3];
+    }
+    add_shadow(p, frame, u * 3.0, u * 6.0, u * 16.0, u * 4.0, 0.8f);
+    add_plate(p, frame, u * 2.5, u * 3.0, MAT_IRON, 0, seed);
+    o = add_well(p, box_of(p, l->photo.left - 1.5, l->photo.top - 1.5, l->photo.right + 1.5, l->photo.bottom + 1.5), u * 1.5, 0,
+                 seed + 1);
+    if (o) o->color = rgb(0.015f, 0.015f, 0.015f);
+    o = op(p, OP_PHOTO, inner.x0 + dst[0], inner.y0 + dst[1], inner.x0 + dst[2], inner.y0 + dst[3], 0);
+    if (o) {
+        o->image32 = p->photo_src;
+        o->image_w = p->photo_w;
+        o->image_h = p->photo_h;
+        o->image_pitch = p->photo_w;
+        for (int i = 0; i < 4; i++) o->src[i] = src[i];
+    }
+    for (int corner = 0; corner < 4; corner++)
+        add_rivet(p, corner & 1 ? frame.x1 - in : frame.x0 + in, corner & 2 ? frame.y1 - in : frame.y0 + in, u * 2.2, MAT_IRON,
+                  seed + 2 + (uint32_t)corner, 1.05f);
+    for (int i = 0; i < (int)(sizeof k_bolts / sizeof k_bolts[0]); i++) {
+        uint32_t h = hash32(seed + (uint32_t)i * 977);
+        double jitter = u * (((h & 255) / 255.0) - 0.5) * 6.0, x, y;
+        int edge = k_bolts[i].edge;
+        if (edge == TOP || edge == BOTTOM) {
+            x = frame.x0 + (frame.x1 - frame.x0) * k_bolts[i].at + jitter;
+            y = edge == TOP ? frame.y0 + in : frame.y1 - in;
+        } else {
+            x = edge == LEFT ? frame.x0 + in : frame.x1 - in;
+            y = frame.y0 + (frame.y1 - frame.y0) * k_bolts[i].at + jitter;
+        }
+        if ((h >> 16) % 5) add_rivet(p, x, y, u * 1.8, MAT_IRON, h, 1.05f);
+    }
+}
+
+/* The window's free lines and progress bars on a riveted plate: each caption over its groove, filled as far as the game
+ * fills it. */
+static void add_gauges(fe_painter_t* p, const ld_scene_t* s, const ld_layout_t* l) {
+    double u = p->view.sy, in = u * 4.0;
+    box_t pb = box_rect(p, l->plate);
+    uint32_t seed = 0x6A06;
+    text_style_t st;
+    if (!l->gauge_count && !l->note_count) return;
+    add_shadow(p, pb, u * 2.0, u * 4.5, u * 12.0, u * 3.0, 0.75f);
+    make_torn(add_plate(p, pb, u * 2.5, u * 3.2, MAT_STEEL, 0, seed), u * 1.2, u * 7.0, seed);
+    add_plate(p, box_of(p, l->plate.left + 7, l->plate.top + 6, l->plate.right - 7, l->plate.bottom - 6), u * 2.0, u * 2.2,
+              MAT_BRASS, F_RECESSED | F_AO, seed + 1);
+    for (int corner = 0; corner < 4; corner++)
+        if (corner != 1)
+            add_rivet(p, corner & 1 ? pb.x1 - in : pb.x0 + in, corner & 2 ? pb.y1 - in : pb.y0 + in, u * 1.8, MAT_STEEL,
+                      seed + 2 + (uint32_t)corner, 1.0f);
+    memset(&st, 0, sizeof st);
+    st.role = FE_FONT_LABEL;
+    st.weight = FW_NORMAL;
+    st.px = 11.5 * u;
+    st.flags = FE_TEXT_CENTER | FE_TEXT_VCENTER;
+    st.shadow = u * 0.7 > 1.0 ? u * 0.7 : 1.0;
+    st.fit = 1;
+    for (int i = 0; i < l->note_count; i++) {
+        st.color = rgb_hex(s->note_colors[i]);
+        add_text(p, &st, s->notes[i], box_rect(p, l->notes[i]));
+    }
+    for (int i = 0; i < l->gauge_count; i++) {
+        const ld_gauge_t* g = &s->gauges[i];
+        box_t groove = box_rect(p, l->grooves[i]);
+        double right = ld_fill_right(l, i, g->fraction);
+        op_t* o;
+        st.color = rgb_hex(g->text_color);
+        add_text(p, &st, g->caption, box_rect(p, l->captions[i]));
+        o = op(p, OP_GROOVE, groove.x0, groove.y0, groove.x1, groove.y1, 1);
+        if (o) {
+            o->radius = u * 3.0;
+            o->width = u * 2.5;
+            o->color = rgb(0.03f, 0.03f, 0.028f);
+            o->flags = F_RECESSED;
+        }
+        o = right > groove.x0 + u * 1.5 ? op(p, OP_BAR, groove.x0 + u, groove.y0 + u, right, groove.y1 - u, 1) : NULL;
+        if (o) {
+            o->radius = u * 2.0;
+            o->color = rgb_hex(g->color);
+            o->flags = F_GRADIENT;
+            o->alpha = 0.95f;
+        }
+        for (int t = 0; t <= 10; t++) {
+            double x = groove.x0 + (groove.x1 - groove.x0) * t / 10.0;
+            o = op(p, OP_BAR, x - u * 0.35, groove.y1 + u * 1.5, x + u * 0.35, groove.y1 + u * (t % 5 ? 3.5 : 5.0), 1);
+            if (o) {
+                o->color = rgb(0.85f, 0.78f, 0.62f);
+                o->alpha = 0.5f;
+            }
+        }
+    }
+}
+
+/* A message the game writes over the screen, on a plaque as the menus' own. */
+static void add_message(fe_painter_t* p, const ld_scene_t* s, const ld_layout_t* l) {
+    double u = p->view.sy, cx = (l->message.left + l->message.right) * 0.5, w, h = l->message.bottom - l->message.top;
+    uint32_t seed = 0x3E55;
+    text_style_t st;
+    op_t* plate;
+    box_t b;
+    memset(&st, 0, sizeof st);
+    st.role = FE_FONT_PLAQUE;
+    st.weight = FW_NORMAL;
+    st.px = h * 0.40 * u;
+    st.spacing = 0.04;
+    st.color = k_ink;
+    st.flags = FE_TEXT_CENTER | FE_TEXT_VCENTER;
+    st.wear = 0.22;
+    st.wear_size = 40.0;
+    st.emboss = u * 0.5;
+    st.seed = seed;
+    st.fit = 1;
+    w = measure(p, &st, s->message, (int)strlen(s->message)) / u + 64.0;
+    w = clampd(w, 200.0, FE_CANVAS_W - 40.0);
+    b = box_of(p, cx - w * 0.5, l->message.top, cx + w * 0.5, l->message.bottom);
+    add_shadow(p, b, u * 1.5, u * 3.0, u * 8.0, u * 3.0, 0.7f);
+    plate = add_plate(p, b, u * 2.5, u * 3.6, MAT_STEEL, 0, seed);
+    make_torn(plate, u * 2.0, u * 8.0, seed);
+    for (int corner = 0; corner < 4; corner++)
+        if (corner != 2)
+            add_rivet(p, corner & 1 ? b.x1 - u * 7.5 : b.x0 + u * 7.5, corner & 2 ? b.y1 - u * 7.5 : b.y0 + u * 7.5, u * 2.4,
+                      MAT_STEEL, seed + 1 + (uint32_t)corner, 1.0f);
+    add_text(p, &st, s->message, box_of(p, cx - w * 0.5 + 18.0, l->message.top, cx + w * 0.5 - 18.0, l->message.bottom));
+}
+
+int fe_paint_loading(fe_painter_t* p, const ld_scene_t* s, uint32_t* pixels, long pitch, fe_rect_t clip, int threads) {
+    ld_layout_t l;
+    if (!p || !s || !pixels || s->screen_w <= 0 || s->screen_h <= 0 || s->kind == LD_SCENE_NONE) return 0;
+    clip = fe_rect_intersect(clip, fe_rect(0, 0, s->screen_w, s->screen_h));
+    if (fe_rect_empty(clip)) return 1;
+    ld_layout_scene(&l, s);
+    p->view = l.view;
+    if (s->kind == LD_SCENE_LOADER && !prepare_photo(p, s)) return 0;
+    p->op_count = 0;
+    p->marking_base = 0;
+    p->clipping = 0;
+    if (s->kind == LD_SCENE_LOADER) {
+        add_loading_picture(p, &l);
+        add_gauges(p, s, &l);
+    } else if (s->message[0]) {
+        add_message(p, s, &l);
+    }
+    execute(p, pixels, pitch, clip, RUN_ALL, threads);
     return 1;
 }
 

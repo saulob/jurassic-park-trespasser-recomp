@@ -37,6 +37,8 @@ typedef struct {
 /* 0 when the save has no picture or it cannot be read. */
 int save_preview_load(const char* save_path, sp_image_t* out);
 void save_preview_free(sp_image_t* image);
+/* Any picture file WIC reads, opaque BGRA, made smaller (Fant) to fit fit_w x fit_h when larger; 0 when unreadable. */
+int sp_image_load(const char* path, int fit_w, int fit_h, sp_image_t* out);
 
 /* The picture of a screen at save_preview_size, area averaged (opaque BGRA). */
 int save_preview_shrink(const uint16_t* rgb565, int w, int h, long pitch, sp_image_t* out);

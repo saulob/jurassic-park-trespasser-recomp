@@ -868,6 +868,18 @@ void frontend_hd_idle(void) {
     release_all();
 }
 
+fe_painter_t* frontend_hd_painter(int* threads) {
+    if (!ensure_painter()) return NULL;
+    *threads = F.threads;
+    return F.painter;
+}
+
+void frontend_hd_release(void) {
+    F.shown = 0;
+    F.idle_frames = 0;
+    release_all();
+}
+
 static uint32_t find_control(uint32_t window, int32_t id, uint32_t vtable) {
     uint32_t controls[MAX_CONTROLS];
     unsigned count;
