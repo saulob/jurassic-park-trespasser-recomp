@@ -505,6 +505,7 @@ int main(int argc, char** argv) {
     game_text_install();
     ui_canvas_install();
     loading_hd_install();
+    video_hd_install();
     engine_limits_install(d3dr_hardware());
     texture_streaming_install();
     engine_heaps_install();

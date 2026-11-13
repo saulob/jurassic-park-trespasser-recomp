@@ -262,6 +262,33 @@ int d3dr_frontend_failed(void);
 void d3dr_frontend_release(void);
 /* The frame Direct3D 11 presents for a game screen of guest_w x guest_h: the size an HD layer should have. */
 int d3dr_frame_size(int guest_w, int guest_h, int* w, int* h);
+/* --render-resolution's box; 0x0 when there is none. */
+void d3dr_render_box(unsigned* w, unsigned* h);
+/* video_hd.c: the game's Smacker videos (CVideoWnd::Play) presented in HD on a surface of their own. */
+void video_hd_install(void);
+/* A present of the game's screen; 1 when the video surface showed it. gamma: DDGAMMARAMP. */
+int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565, const uint16_t* gamma);
+/* After each Present of the game's own surface. */
+void video_hd_main_presented(void);
+void video_hd_release(void);
+/* The next Play only (vl_play_mode_t); it is AUTO again from the one after. */
+void video_hd_force(int mode);
+/* video_test.c: the Video Test panel of the main menu (F5). 1 when F5 was the panel's, 0 for the renderer switch. */
+int video_test_f5(void);
+int video_test_visible(void);
+struct ID3D11Device;
+struct ID3D11DeviceContext;
+struct ID3D11RenderTargetView;
+/* Before each Present of the game's own surface: the panel over its back buffer. */
+void video_test_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext* context,
+                        struct ID3D11RenderTargetView* target, int width, int height);
+/* A mouse message of the game window while the panel shows: 1 when the game must not get it. */
+int video_test_mouse(UINT msg, WPARAM wparam, LPARAM lparam);
+/* In the menu frame, before the game draws it: a requested playback runs here. */
+void video_test_ui_frame(void);
+void video_test_release(void);
+/* window_host.c: the presentation surface inside the game window's client. */
+int window_host_view_rect(RECT* view);
 /* The real pointer in the game's screen pixels; 0 when it is outside the picture. */
 int window_host_pointer(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */

@@ -992,6 +992,11 @@ static void choose_size(UINT legacy_w, UINT legacy_h, UINT* w, UINT* h) {
     d3dt_auto_resolution((unsigned)view_w, (unsigned)view_h, legacy_w, legacy_h, w, h);
 }
 
+void d3dr_render_box(unsigned* w, unsigned* h) {
+    *w = R.fixed_w;
+    *h = R.fixed_h;
+}
+
 int d3dr_frame_size(int guest_w, int guest_h, int* w, int* h) {
     UINT out_w, out_h;
     if (!R.hardware || guest_w <= 0 || guest_h <= 0) return 0;
@@ -3278,6 +3283,10 @@ void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
     unsigned long selfmod_now = selfmod_entries();
     if (!ensure_device() || format->dwRGBBitCount != 16 || !w || !h) return;
     R.selfmod_mark = selfmod_now;
+    if (video_hd_present(window, bits, pitch, source, format->dwRBitMask == 0xF800, (const uint16_t*)gamma)) {
+        R.bound.valid = 0;
+        return;
+    }
     if (!R.screen || R.screen_w != w || R.screen_h != h) {
         SAFE_RELEASE(R.screen_srv);
         SAFE_RELEASE(R.screen);

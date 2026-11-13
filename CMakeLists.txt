@@ -82,6 +82,11 @@ set(HOST_SOURCES
   src/host/frontend_art.c
   src/host/loading_hd.c
   src/host/loading_layout.c
+  src/host/video_hd.c
+  src/host/video_layout.c
+  src/host/video_test.c
+  src/host/video_test_state.c
+  src/host/video_test_panel.cpp
   src/host/save_preview.c
   src/host/engine_limits.c
   src/host/engine_heaps.c
@@ -104,6 +109,7 @@ set(HOST_SOURCES
   src/host/ddraw/target_sync.c
   src/host/ddraw/page_guard.c
   src/host/ddraw/page_arena.c
+  src/host/ddraw/video_gpu.c
 )
 set(PCRECOMP_SOURCES
   ${PCRECOMP}/runtime/native32/native32.c
@@ -144,6 +150,10 @@ target_link_libraries(imgui_sdl PUBLIC SDL3::SDL3-static)
 add_library(trg_ui STATIC ${TRG_DIR}/src/launcher.cpp ${TRG_DIR}/src/headers.cpp)
 target_link_libraries(trg_ui PUBLIC trg_core imgui_sdl)
 set_target_properties(trg_core imgui_sdl trg_ui PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+# The game's Video Test panel (src/host/video_test_panel.cpp): ImGui's D3D11 renderer over the core above.
+add_library(imgui_dx11 STATIC ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp)
+target_link_libraries(imgui_dx11 PUBLIC imgui_sdl d3d11)
+set_target_properties(imgui_dx11 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 
 # The sidebar's page icons (assets/launcher/icons/*.svg) as a table of byte arrays, page_icons.cpp.
 file(GLOB JPT_PAGE_ICONS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/launcher/icons/*.svg)
@@ -245,8 +255,10 @@ target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPA
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11 dxgi dxguid
-  ole32 uuid windowscodecs)
+target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common imgui_dx11 kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11
+  dxgi dxguid ole32 uuid windowscodecs delayimp)
+# ImGui's D3D11 renderer imports D3DCompile; the renderer loads d3dcompiler_47.dll itself, so start-up does not need it.
+target_link_options(trespasser PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
 
 # TRESPASSER_GEN_OPT alone sets the lifted sources' optimisation: the configuration's /O
 # options would only be overridden there (D9025), so they move to the other sources.
@@ -326,6 +338,14 @@ target_compile_options(frontend_tests PRIVATE /W3)
 target_compile_definitions(frontend_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
   ${TRESPASSER_X87_MODEL} "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 target_link_libraries(frontend_tests PRIVATE gdi32 user32 ole32 uuid windowscodecs)
+# The HD videos: the retail inventory, the original decoder (no audio track, no window), the layout and session, and the
+# GPU passes on a WARP device (headless): ninja -C <build dir> video_tests && video_tests.exe
+add_executable(video_tests EXCLUDE_FROM_ALL tests/video_tests.c src/host/video_layout.c src/host/ddraw/video_gpu.c
+  src/host/video_test_state.c src/host/video_test_panel.cpp)
+target_include_directories(video_tests PRIVATE src/host)
+target_compile_options(video_tests PRIVATE /W3)
+target_compile_definitions(video_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(video_tests PRIVATE imgui_dx11 d3d11 dxguid)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c)

@@ -127,6 +127,7 @@ static void ui_frame(void) {
         s_frame_lifted();
         return;
     }
+    video_test_ui_frame();
     loading_hd_ui_frame();
     if (!scaling_wanted(&screen_w, &screen_h) || !make_canvas()) {
         window_host_set_ui_canvas(0);

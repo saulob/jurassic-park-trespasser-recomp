@@ -14,6 +14,7 @@ GUEST_OVERRIDE(00415AD0, OPTIONAL) /* CLoaderWnd draw and present (loading_hd.c)
 GUEST_OVERRIDE(00417300, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
 GUEST_OVERRIDE(00417380, REQUIRED) /* UI windows (ui_canvas.c) */
 GUEST_OVERRIDE(00417410, REQUIRED) /* UI cursor (ui_canvas.c) */
+GUEST_OVERRIDE(00418AE0, OPTIONAL) /* CVideoWnd::Play (video_hd.c) */
 GUEST_OVERRIDE(00477A40, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
 GUEST_OVERRIDE(00477E00, REQUIRED) /* combined culling (engine_limits.c) */
 GUEST_OVERRIDE(00478A30, REQUIRED) /* CPartition::bFlagCacheable (engine_limits.c) */

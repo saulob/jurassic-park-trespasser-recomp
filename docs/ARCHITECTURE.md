@@ -346,6 +346,44 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
 calls. The game itself drops DirectDraw failures (`0x005053A0` reports to `0x00471710`, an empty
 function), so the `ddraw` log lines are the only place they show.
 
+### Videos
+
+`CVideoWnd::Play(name)` (`0x00418AE0`) plays four Smacker files from `data\menu`: `tpassintro` at start-up
+(`0x0040F2A0`), `newgame` from New Game before `BE.SCN` loads (`0x00415687`), `credits` from the main menu
+(`0x004163FA`), and `win` then `credits` when the game is finished (state -2 of `0x0040F2E0`). All are SMK2, 8-bit
+palette, 640 wide, 15 fps, 22050 Hz 16-bit stereo audio, on a 640x480 screen (`CGameWnd` slot 40, `0x0040BB50`,
+restores 640x480 before the ending plays). The registry value `NoVideo` skips them.
+
+The player opens the file with every audio track (`SMACKFILEHANDLE | SMACKNEEDVOLUME | SMACKTRACKS`), checks that the
+primary has an `lpSurface` (always, here), decodes each frame with `SmackToBuffer(..., SMACKBUFFER565)` into a cleared
+640x480 `CRasterMem` with the picture centred, copies Smacker's changed rectangles into the locked primary
+(`0x004188C0`), and the primary's `Unlock` presents it. `SmackWait` paces the frames against Smacker's own audio
+clock. Any key-up but Print Screen, or a left or right button-up, ends a video after its eighth frame; so do Esc and
+Space through the window's key handler (`0x00418F60`).
+
+`newgame.smk` is flagged Y-interlaced: it stores 172 rows and the decoder writes them to every second row of a 344-row
+band, leaving the rows between them as the cleared raster's black. Those black rows are the horizontal lines of that
+video. It is not interlaced (there is no second field). The other three are progressive; what remains in them is the
+palette's ordered dither.
+
+With D3D11, `src/host/video_hd.c` wraps `Play` (an optional override). While it runs, each present of the screen is
+drawn on a child surface covering the whole client instead of the game's 4:3 surface (`src/host/ddraw/video_gpu.c`):
+the RGB565 codes mapped back to the frame's palette colours, a Y-interlaced file's missing rows rebuilt edge-directed
+from the rows above and below, a light smoothing of the dither (only pixels above or below both neighbours of a pair,
+up to the palette's step), then a Catmull-Rom scale (clamped to its four nearest texels) to the largest size of the
+picture's shape, black bars above and below, and on wider screens sides that extend the picture's edge colours,
+blurred and darkened. The surface renders at the client's shape inside the render box, never above the client's size.
+The player's three black clears come before its first frame; after the last one the frame stays until the game's own
+surface has presented and the compositor has shown it (`DwmFlush`), then the surface is hidden and released. A failure
+logs one line and leaves the rest to the game's own playback, as does the software renderer.
+
+Video Test (development, `src/host/video_test.c`): F5 with the main menu alone in front opens an ImGui panel (drawn
+into the back buffer before Present; elsewhere F5 still switches the renderer) listing the four files with Original
+and HD. A click is a request; the main menu's next frame (`0x00417300`, before the game draws it) runs what the Options
+window's Credits button runs (`0x004163D5`): menu music and its timer off, a `CVideoWnd` on the game's stack, `Play`
+with the game's own name string, music and timer back. The request forces that one `Play`: ORIGINAL starts no HD
+session (every present is the game's own), HD the normal one; the next `Play` is AUTO again.
+
 ## Window
 
 `src/host/window_host.c`. The game creates one popup window at (0,0), 640x480, and from then on

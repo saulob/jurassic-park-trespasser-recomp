@@ -84,6 +84,8 @@ static void release_back_view(void) {
 }
 
 void present_release(void) {
+    video_hd_release();
+    video_test_release();
     if (s_p.device) d3dr_device_lost();
     release_back_view();
     release_staging();
@@ -347,12 +349,20 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         return;
     }
     ID3D11DeviceContext_CopyResource(s_p.context, (ID3D11Resource*)back, (ID3D11Resource*)staging);
+    if (video_test_visible()) {
+        ID3D11RenderTargetView* view = NULL;
+        if (SUCCEEDED(ID3D11Device_CreateRenderTargetView(s_p.device, (ID3D11Resource*)back, NULL, &view))) {
+            video_test_overlay(s_p.device, s_p.context, view, (int)width, (int)height);
+            ID3D11RenderTargetView_Release(view);
+        }
+    }
     ID3D11Texture2D_Release(back);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);
     if (hr != S_OK) return;
     d3dr_frame_presented(ms_since(start));
     window_host_frame_presented();
+    video_hd_main_presented();
     if (++s_p.frames == 1)
         host_log("d3d11", "first frame presented: %ux%u RGB %lX/%lX/%lX expanded to B8G8R8A8", width, height,
                  format->dwRBitMask, format->dwGBitMask, format->dwBBitMask);
@@ -379,12 +389,14 @@ int present_submit(int vsync) {
     HRESULT hr;
     LARGE_INTEGER start;
     if (!s_p.swapchain) return 0;
+    if (s_p.back_rtv) video_test_overlay(s_p.device, s_p.context, s_p.back_rtv, (int)s_p.width, (int)s_p.height);
     QueryPerformanceCounter(&start);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);
     if (hr != S_OK) return 0;
     d3dr_frame_presented(ms_since(start));
     window_host_frame_presented();
+    video_hd_main_presented();
     if (++s_p.frames == 1) host_log("d3d11", "first frame presented by the hardware path: %ux%u", s_p.width, s_p.height);
     return 1;
 }

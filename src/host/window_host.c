@@ -533,6 +533,12 @@ void window_host_set_title_sizes(int hardware_w, int hardware_h, int software_w,
     refresh_title();
 }
 
+int window_host_view_rect(RECT* view) {
+    if (!view_valid()) return 0;
+    *view = s.view;
+    return 1;
+}
+
 void window_host_view_size(int* width, int* height) {
     *width = view_valid() ? (int)(s.view.right - s.view.left) : 0;
     *height = view_valid() ? (int)(s.view.bottom - s.view.top) : 0;
@@ -1005,6 +1011,7 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         toggle_fullscreen();
         return 0;
     case KEY_HOST_RENDERER:
+        if (video_test_f5()) return 0;
         request_renderer_switch();
         return 0;
     case KEY_HOST_CLOSE:
@@ -1037,8 +1044,13 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         int handled;
         LRESULT r = handle_key(window, msg, wparam, lparam, &handled);
         if (handled) return r;
+        if (video_test_visible()) return 0;
         break;
     }
+    case WM_CHAR:
+    case WM_DEADCHAR:
+        if (video_test_visible()) return 0;
+        break;
     case WM_HOST_RENDERER:
         switch_renderer(window);
         return 0;
@@ -1163,6 +1175,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     case 0x020D:
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL_:
+        if (video_test_mouse(msg, wparam, lparam)) return 0;
         if (virtual_input_active() && !route_mouse(msg, &lparam)) return 0;
         break;
     }
