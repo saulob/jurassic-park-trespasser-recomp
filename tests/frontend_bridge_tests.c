@@ -1,6 +1,7 @@
 /* The HD frontend's bridge (frontend_hd.c) against fake game objects laid out as the retail ones: what it reads from
  * each window, the Options and Audio edits, and the fallbacks. A 32-bit build, so host pointers are guest addresses. */
 #include "frontend_hd.h"
+#include "gamepad.h"
 #include "host.h"
 #include "loading_hd.h"
 #include "save_preview.h"
@@ -193,6 +194,14 @@ int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t
 static int g_hardware = 1;
 int d3dr_hardware(void) { return g_hardware; }
 int guest_display_built(void) { return 1; }
+
+static int g_pad_in_use;
+static jpt_gamepad_settings_t g_pad_settings;
+void gamepad_prompts(gamepad_prompts_t* out) {
+    out->gamepad = g_pad_in_use;
+    out->family = JPT_FAMILY_PLAYSTATION;
+    out->settings = &g_pad_settings;
+}
 
 /* ---- game objects ---- */
 
@@ -1054,6 +1063,46 @@ static void test_direct_load(void) {
     free_fakes();
 }
 
+/* The Controls window's binding fields follow the device used last: the game's key names, or the gamepad's glyphs. */
+static void test_controls_prompts(void) {
+    fe_rect_t wr = fe_rect(160, 140, 480, 340);
+    uint32_t c[4], ws[2];
+    const fe_widget_t *walk, *jump, *hand;
+    c[0] = label(1030, at(wr, 94, 46, 164, 60), "S", 1);
+    c[1] = label(1035, at(wr, 94, 116, 164, 130), "Q", 1);
+    c[2] = label(1039, at(wr, 164, 88, 246, 102), "Left Mouse", 1);
+    c[3] = label(-1, at(wr, 10, 46, 90, 60), "Walk Forward", 0);
+    ws[0] = main_window(0);
+    ws[1] = window(VT_CONTROLS, wr, c, 4, 0);
+    stack(ws, 2);
+    jpt_gamepad_defaults(&g_pad_settings);
+    g_pad_in_use = 0;
+    CHECK(frontend_hd_read_scene(&g_scene, 1920, 1440), "the Controls scene is refused");
+    frontend_hd_prompts(&g_scene);
+    CHECK(g_scene.legend_count == 0 && find(&g_scene, FE_W_FIELD, 1035) && !find(&g_scene, FE_W_FIELD, 1035)->prompt.kind,
+          "keyboard and mouse keep the game's own key names");
+    g_pad_in_use = 1;
+    CHECK(frontend_hd_read_scene(&g_scene, 1920, 1440), "the Controls scene is refused");
+    frontend_hd_prompts(&g_scene);
+    walk = find(&g_scene, FE_W_FIELD, 1030);
+    jump = find(&g_scene, FE_W_FIELD, 1035);
+    hand = find(&g_scene, FE_W_FIELD, 1039);
+    CHECK(jump && jump->prompt.kind == FE_PROMPT_PAD && jump->prompt.control == JPT_PAD_SOUTH &&
+              jump->prompt.family == JPT_FAMILY_PLAYSTATION, "Jump shows the bound face button");
+    CHECK(walk && walk->prompt.control == JPT_PAD_LEFT_STICK_MOVE && walk->prompt.dir == JPT_DIR_UP && walk->prompt.tilt == 1,
+          "Walk Forward shows the left stick half up");
+    CHECK(hand && hand->prompt.control == JPT_PAD_LEFT_TRIGGER, "Move Hand shows the left trigger");
+    CHECK(g_scene.legend_count == 2 && g_scene.legend[0].control == JPT_PAD_SOUTH && g_scene.legend[1].control == JPT_PAD_EAST,
+          "the menu legend shows select and back");
+    g_pad_settings.bind[JPT_ACT_JUMP] = JPT_PAD_NONE;
+    CHECK(frontend_hd_read_scene(&g_scene, 1920, 1440), "the Controls scene is refused");
+    frontend_hd_prompts(&g_scene);
+    jump = find(&g_scene, FE_W_FIELD, 1035);
+    CHECK(jump && !jump->prompt.kind && !strcmp(fe_scene_str(&g_scene, jump->text), "-"), "an unbound action shows a dash");
+    g_pad_in_use = 0;
+    free_fakes();
+}
+
 void frontend_bridge_tests(int* checks, int* failures) {
     g_checks = checks;
     g_failures = failures;
@@ -1072,4 +1121,5 @@ void frontend_bridge_tests(int* checks, int* failures) {
     test_layer_size();
     test_button_pictures();
     test_direct_load();
+    test_controls_prompts();
 }

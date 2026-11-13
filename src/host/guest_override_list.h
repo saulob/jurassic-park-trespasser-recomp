@@ -42,6 +42,7 @@ GUEST_OVERRIDE(005668C0, REQUIRED) /* texture primitive, linear (cpu_polygons.c)
 GUEST_OVERRIDE(00568EF0, REQUIRED) /* texture primitive, perspective (cpu_polygons.c) */
 GUEST_OVERRIDE(0057B7B0, REQUIRED) /* bump primitive, linear (cpu_polygons.c) */
 GUEST_OVERRIDE(0057DB50, REQUIRED) /* bump primitive, perspective (cpu_polygons.c) */
+GUEST_OVERRIDE(005F80B0, OPTIONAL) /* CInput::tinReadDefaultControls (gamepad.c) */
 GUEST_OVERRIDE(005F8A20, REQUIRED) /* pHeapAlloc (engine_heaps.c) */
 GUEST_OVERRIDE(005F8B10, REQUIRED) /* pvCommitMem (engine_heaps.c) */
 GUEST_OVERRIDE(0060E3F0, OPTIONAL) /* water texture rows (water_kernels.c) */

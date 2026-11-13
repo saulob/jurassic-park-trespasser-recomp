@@ -27,6 +27,12 @@ struct HostOptions {
     bool hidden = false;                     // page screenshots without showing the window
 };
 
+struct ConnectedGamepad {
+    std::string name;
+    int type = 0;  // SDL_GamepadType
+    uint16_t vendor = 0, product = 0;
+};
+
 class LauncherHost {
 public:
     LauncherHost() = default;
@@ -55,6 +61,9 @@ public:
     // A picture for ImGui to draw (RGBA8, width * height * 4 bytes). The host owns it until Close; 0 when it could not be made.
     ImTextureID CreateTexture(const uint8_t* rgba, int width, int height);
     void DestroyTexture(ImTextureID texture);
+
+    // The controllers SDL sees now, in connection order; empty when its gamepad support could not start.
+    std::vector<ConnectedGamepad> Gamepads() const;
 
     // The saved placement the window was opened with, when it lay on a display.
     const std::optional<WindowPlacement>& Restored() const { return restored_; }

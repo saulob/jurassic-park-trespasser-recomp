@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 
+#include "jpt_gamepad.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,6 +46,7 @@ typedef struct {
     unsigned msaa;            /* 1, 2, 4 or 8 */
     int vsync;
     int show_fps;
+    jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
 
 typedef struct {
@@ -51,7 +54,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT 12
+#define JPT_SETTING_COUNT (12 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

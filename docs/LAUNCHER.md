@@ -77,7 +77,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Texture filtering, VSync, Graphics card |
 | Gameplay | Gore (the game's 0-2), Invert mouse, Frame rate in title |
-| Controls | the game's own bindings; Port hotkeys, one row per key |
+| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys ([CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
 | About | Sponsor card, description and credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 

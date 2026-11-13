@@ -498,6 +498,54 @@ on it answer that way. The game's cursor is virtual and the real cursor is never
 - With no virtual mode set (the game's own windowed mode) positions and rectangles pass through
   unchanged and the presentation surface still follows the last display's aspect ratio.
 
+### Gamepad
+
+`src/host/gamepad.c`, `gamepad_menu.c`, `gamepad_policy.c` (no SDL, no window: tested by `gamepad_tests`) and
+`pad_glyphs.c`. SDL3 (the launcher's static SDL) is started for gamepads only (`SDL_INIT_GAMEPAD`, no SDL video and no
+SDL window) on the guest thread, the first time it is needed; every SDL call stays on that thread. A failure leaves the
+keyboard and mouse as they are. SDL's raw input joystick driver stays off: it reads the thread's whole raw input buffer,
+the game's mouse included. Only connection events are taken from SDL's queue (the per-input events are turned off);
+buttons and axes are read directly once per frame.
+
+- Gameplay: `CInput::tinReadDefaultControls` (`0x005F80B0`, an optional override) runs as it is, then the gamepad is
+  added to its `SInput` (`CInput + 8`: elapsed, rotate x/y, move x/y, state, hit). Movement is analog through the game's
+  own `v2Move` (the player moves at `min(|v2Move|, 1)`): forward up to the keyboard's run (1.0), back to its 0.4,
+  sidestep to its 0.6. The right stick adds radians to `v2Rotate` (rate x frame time, look curve, invert Y); while Move
+  Hand is held it moves the hand, as the mouse does, at 0.6 of the speed. Buttons set the game's command bits (`state`,
+  and `hit` on a new press), so the keyboard's remapped keys keep working beside them. Buttons held when gameplay resumes
+  are ignored until released.
+- Start posts Esc (pause menu) and the Jump button posts Space (the game's restart prompt after death) to the window as
+  key messages with scan code `0xFE`, which never count as keyboard use. In the video player a press skips as a key-up
+  would.
+- Menus: the game's UI has no keyboard focus, so focus is the game's own pointer. In `CUIWnd::DoModal`'s loop
+  (`0x00417840`), just before it reads the pointer, the front window's controls are read (buttons, checkboxes, sliders,
+  list rows, the save-name box, hotspots; the Controls window's key-remapping hotspots are left out, as a click there
+  would bind the mouse button). D-pad and left stick move between them, the pointer goes to the control's centre (the
+  control shows its own hover picture), A is a left click there (`WM_APP + 0x47` turned into the game's mouse message),
+  B and Start post Esc. Sliders are dragged a tenth of their track; lists select row by row and scroll with their own
+  arrow buttons; A on the selected row is a double click (Load loads). In Save, a gamepad user's new save gets a name
+  typed through the window's own `WM_CHAR` handling (the game saves only under a name). The right stick moves the
+  pointer freely.
+- The last device used decides the prompts: a new button press, a stick or trigger crossing its threshold (beyond the
+  deadzone, with hysteresis) for the gamepad; a key, a mouse button or 24 counts of mouse motion within 250 ms for the
+  keyboard and mouse. Using the mouse gives it the pointer back.
+- Prompts: with the gamepad in use, the HD frontend draws the Controls window's binding fields as the gamepad's glyphs
+  for the game's commands (the left stick for walking, half or full), and a Select/Back legend in the screen's lower
+  right corner. Glyphs are vector shapes with analytic anti-aliasing at the layer's resolution (`pad_glyphs.c`), their
+  text in the menu font.
+- In-game prompts (`tutorial_prompts.c`, text rules in `src/common/jpt_prompt_text.c`): the beach tutorial's
+  subtitles (in `data\Stream.tpa`, not the executable) name keys and mouse buttons. The text overlay's draw
+  (0x0050EAF0) reads each laid-out text back, rewrites it for the device in use (each key or button an action
+  resolved through the live key map at 0x0066AE78 or the gamepad bindings), and lays it out again with the game's
+  own routine (0x0050E8C0) in a host buffer, each token a run of DEL characters whose advance width is set so the run
+  is as wide as its glyph. `TextOutA` then draws the text pieces and paints opaque glyph pixels over the runs
+  (`TransparentBlt` from a cached DIB), inside the box claimed for the text overlay. The rewrite is cached per text
+  and redone when the device, glyph family, bindings or font change, so prompts switch on the next frame. LB/RB also
+  hold Move Hand: the game turns the wrist only while the hand is up. View adds a controls card to the same overlay
+  (0x00468710, category 0x4A50) and removes it by setting its expiry to the game clock.
+- Hotplug: controllers can come and go at any time; the one used last is in use, the first connected until then. When
+  the one in use goes, the last used of the others takes over; with none left, the keyboard and mouse do.
+
 ### Title bar
 
 `Jurassic Park: Trespasser Recompiled | x86 | D3D11 | FPS: 59.9 | 2560x1440`: host architecture,

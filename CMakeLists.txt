@@ -63,6 +63,10 @@ set(HOST_SOURCES
   src/host/registry.c
   src/host/io_trace.c
   src/host/window_host.c
+  src/host/gamepad.c
+  src/host/gamepad_menu.c
+  src/host/gamepad_policy.c
+  src/host/pad_glyphs.c
   src/host/guest_ui.c
   src/host/host_policy.c
   src/host/exit_policy.c
@@ -75,6 +79,7 @@ set(HOST_SOURCES
   src/host/polygon_submit.c
   src/host/widescreen.c
   src/host/game_text.c
+  src/host/tutorial_prompts.c
   src/host/ui_canvas.c
   src/host/frontend_hd.c
   src/host/frontend_layout.c
@@ -118,8 +123,8 @@ set(PCRECOMP_SOURCES
 )
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
-add_library(jpt_common STATIC src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_monitors.c
-  src/common/jpt_user_data.c)
+add_library(jpt_common STATIC src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c
+  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_compile_options(jpt_common PRIVATE /W4)
 target_compile_definitions(jpt_common PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -255,7 +260,7 @@ target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPA
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common imgui_dx11 kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11
+target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
   dxgi dxguid ole32 uuid windowscodecs delayimp)
 # ImGui's D3D11 renderer imports D3DCompile; the renderer loads d3dcompiler_47.dll itself, so start-up does not need it.
 target_link_options(trespasser PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
@@ -331,13 +336,21 @@ target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
   tests/save_preview_tests.c tests/frontend_art_tests.c tests/frontend_retail_tests.c tests/loading_tests.c src/host/frontend_art.c src/host/frontend_hd.c src/host/frontend_layout.c
   src/host/frontend_assets.c src/host/loading_hd.c src/host/loading_layout.c src/host/save_preview.c
-  src/host/host_policy.c src/common/jpt_display.c)
+  src/host/host_policy.c src/host/pad_glyphs.c src/common/jpt_display.c src/common/jpt_gamepad.c
+  src/common/jpt_prompt_text.c)
 target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(frontend_tests PRIVATE /W3)
 target_compile_definitions(frontend_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
   ${TRESPASSER_X87_MODEL} "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 target_link_libraries(frontend_tests PRIVATE gdi32 user32 ole32 uuid windowscodecs)
+# The gamepad's decisions, bindings, glyphs and prompts (headless, no SDL device):
+#   ninja -C <build dir> gamepad_tests && gamepad_tests.exe
+add_executable(gamepad_tests EXCLUDE_FROM_ALL tests/gamepad_tests.c src/host/gamepad_policy.c src/host/pad_glyphs.c)
+target_include_directories(gamepad_tests PRIVATE src/host)
+target_link_libraries(gamepad_tests PRIVATE jpt_common)
+target_compile_options(gamepad_tests PRIVATE /W3)
+target_compile_definitions(gamepad_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The HD videos: the retail inventory, the original decoder (no audio track, no window), the layout and session, and the
 # GPU passes on a WARP device (headless): ninja -C <build dir> video_tests && video_tests.exe
 add_executable(video_tests EXCLUDE_FROM_ALL tests/video_tests.c src/host/video_layout.c src/host/ddraw/video_gpu.c

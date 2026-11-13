@@ -28,6 +28,23 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_MSAA, "4" },
     { JPT_KEY_VSYNC, "1" },
     { JPT_KEY_SHOW_FPS, "1" },
+    { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
+    { JPT_KEY_GAMEPAD_LOOK_X, "100" },
+    { JPT_KEY_GAMEPAD_LOOK_Y, "100" },
+    { JPT_KEY_GAMEPAD_INVERT_Y, "0" },
+    { JPT_KEY_GAMEPAD_STICK_DEADZONE, "15" },
+    { JPT_KEY_GAMEPAD_TRIGGER_DEADZONE, "12" },
+    { "gamepad_bind_jump", "south" },
+    { "gamepad_bind_crouch", "east" },
+    { "gamepad_bind_crouch_toggle", "leftstick" },
+    { "gamepad_bind_use", "righttrigger" },
+    { "gamepad_bind_hand", "lefttrigger" },
+    { "gamepad_bind_grab", "west" },
+    { "gamepad_bind_throw", "north" },
+    { "gamepad_bind_stow", "dpup" },
+    { "gamepad_bind_wrist", "leftshoulder" },
+    { "gamepad_bind_arm", "rightshoulder" },
+    { "gamepad_bind_replay", "dpdown" },
 };
 
 const char* jpt_default_value(const char* key) {
@@ -58,6 +75,7 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     static const char* const renderers[] = { "software", "d3d11" };
     int n, w, h;
     char* end;
+    if (jpt_gamepad_is_key(key)) return jpt_gamepad_apply(&c->gamepad, key, value);
     if (!strcmp(key, JPT_KEY_SHOW_LAUNCHER)) return jpt_parse_bool(value, &c->show_launcher);
     if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);
     if (!strcmp(key, JPT_KEY_SHOW_FPS)) return jpt_parse_bool(value, &c->show_fps);

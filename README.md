@@ -46,9 +46,15 @@ original game. These are part of the normal Direct3D 11 renderer; there is nothi
 - **Performance**: menus over a paused game and the start-up checks no longer copy the full picture back from
   the graphics card.
 
+**Gamepads** work out of the box: Xbox, PlayStation, Switch Pro, Steam Deck and other SDL3 controllers, at the same time
+as the keyboard and mouse, with analog movement, a layout built around Anne's arm, menu, Save and Load navigation,
+hotplug, and prompts that follow the device used last in Xbox, PlayStation, Steam Deck or generic glyphs. The beach
+tutorial's instructions show the bound keycaps or controller buttons as glyphs and switch the moment you change device,
+and View shows every control in a level ([CONTROLS](docs/CONTROLS.md) explains the hand, crouching and each button).
+
 The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
-anti-aliasing, texture filtering, VSync and renderer ([LAUNCHER](docs/LAUNCHER.md)). Not yet: uncapped frame rate,
-controller support, translations, mods, x64.
+anti-aliasing, texture filtering, VSync and renderer, and the gamepad's layout and feel ([LAUNCHER](docs/LAUNCHER.md)).
+Not yet: uncapped frame rate, vibration, translations, mods, x64.
 
 ## How it works
 
@@ -88,7 +94,7 @@ launcher/      the launcher: pages, disc image reader, installer (C++)
 assets/        launcher header art, sponsor heart and page icons
 packaging/     third-party licence notices
 src/common/    settings file and display arithmetic shared by host, launcher and tests
-docs/          ANALYSIS, ARCHITECTURE, BUILD, LAUNCHER, LEGAL
+docs/          ANALYSIS, ARCHITECTURE, BUILD, CONTROLS, LAUNCHER, LEGAL, REFERENCES
 external/      pcrecomp checkout (fetched, ignored by Git)
 game/          your installed game files (ignored by Git)
 user/          trespasser.ini, the game's registry store, saves (ignored by Git)
@@ -100,4 +106,4 @@ logs/          one log per run (ignored by Git)
 
 Built on [sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp), following the
 reconnaissance of [sp00nznet/trespasser](https://github.com/sp00nznet/trespasser).
-See [LEGAL](docs/LEGAL.md).
+See [LEGAL](docs/LEGAL.md) and [REFERENCES](docs/REFERENCES.md).

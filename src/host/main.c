@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "ddraw/d3d_legacy.h"
+#include "gamepad.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_launcher.h"
@@ -440,6 +441,7 @@ int main(int argc, char** argv) {
         box = jpt_render_box(cfg.render_preset, cfg.aspect, monitor_w, monitor_h);
     }
     log_settings(&cfg, box, monitor_w, monitor_h);
+    gamepad_configure(&cfg.gamepad);
     if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
@@ -511,6 +513,7 @@ int main(int argc, char** argv) {
     engine_heaps_install();
     terrain_quality_install();
     cpu_polygons_install();
+    gamepad_install();
     if (!guest_overrides_check()) return HOST_EXIT_SETUP;
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);

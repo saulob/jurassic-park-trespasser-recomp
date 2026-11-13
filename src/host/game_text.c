@@ -1,10 +1,11 @@
 /*
- * The gameplay text overlay (hints, subtitles): font class 0x0050E750 (HFONT +0, tallest glyph +0xC, advance widths of
+ * The gameplay text overlay (hints, subtitles, tutorial prompts): font class 0x0050E750 (HFONT +0, tallest glyph +0xC, advance widths of
  * 0x20..0xFE from +0x90), drawn through GetDC by 0x0050EAF0 and 0x0050E830.
  */
 #include "host.h"
 
 #include "jpt_display.h"
+#include "tutorial_prompts.h"
 
 #define FONT_CTOR_VA 0x0050E750u
 #define TEXT_DRAW_VA 0x0050EAF0u
@@ -67,7 +68,7 @@ static void font_ctor(void) {
 
 static void text_draw(void) {
     s_drawing++;
-    s_draw_lifted();
+    if (g_alias_entry || !tutorial_prompts_draw(s_draw_lifted)) s_draw_lifted();
     s_drawing--;
 }
 
@@ -115,6 +116,11 @@ void shim_TextOutA(void) {
     int x = (int)GUEST_ARG(1), y = (int)GUEST_ARG(2), count = (int)GUEST_ARG(4);
     const char* text = (const char*)GUEST_PTR(3);
     RECT box;
+    if (s_drawing > 0 && count > 0 && tutorial_prompts_textout(dc, x, y, text, count)) {
+        g_eax = TRUE;
+        GUEST_RETURN_STDCALL(5);
+        return;
+    }
     if (s_drawing > 0 && count > 0) d3dr_text_box(dc, text_box(dc, x, y, text, count, &box) ? &box : NULL);
     g_eax = (uint32_t)TextOutA(dc, x, y, text, count);
     GUEST_RETURN_STDCALL(5);

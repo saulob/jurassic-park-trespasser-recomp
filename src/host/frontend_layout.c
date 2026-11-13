@@ -100,6 +100,7 @@ void fe_scene_reset_for(fe_scene_t* s, int guest_w, int guest_h, int screen_w, i
     s->backdrop = NULL;
     s->backdrop_pitch = 0;
     s->backdrop_hash = 0;
+    s->legend_count = 0;
 }
 
 int fe_scene_text(fe_scene_t* s, const char* text) {
@@ -153,6 +154,19 @@ int fe_scene_item(fe_scene_t* s, const char* text) {
     return 1;
 }
 
+int fe_scene_legend(fe_scene_t* s, fe_prompt_t prompt, const char* text) {
+    int at;
+    if (s->legend_count >= FE_LEGEND_MAX || (at = fe_scene_text(s, text)) < 0) return 0;
+    s->legend[s->legend_count] = prompt;
+    s->legend_text[s->legend_count++] = at;
+    return 1;
+}
+
+static int same_prompt(const fe_prompt_t* a, const fe_prompt_t* b) {
+    return a->kind == b->kind && a->family == b->family && a->control == b->control && a->dir == b->dir &&
+           a->tilt == b->tilt && a->vk == b->vk;
+}
+
 void fe_scene_finish_window(fe_scene_t* s, fe_window_t* w) {
     fe_rect_t r = w->rect;
     if (w->kind == FE_WND_MAIN || w->kind == FE_WND_GAME) {
@@ -182,8 +196,13 @@ uint32_t fe_hash_pixels(const uint16_t* rows, int w, int h, int pitch, int step)
 
 static int same_structure(const fe_scene_t* a, const fe_scene_t* b) {
     if (a->screen_w != b->screen_w || a->screen_h != b->screen_h || a->window_count != b->window_count ||
-        a->widget_count != b->widget_count || a->backdrop != b->backdrop || a->backdrop_hash != b->backdrop_hash)
+        a->widget_count != b->widget_count || a->backdrop != b->backdrop || a->backdrop_hash != b->backdrop_hash ||
+        a->legend_count != b->legend_count)
         return 0;
+    for (int i = 0; i < a->legend_count; i++)
+        if (!same_prompt(&a->legend[i], &b->legend[i]) ||
+            strcmp(fe_scene_str(a, a->legend_text[i]), fe_scene_str(b, b->legend_text[i])))
+            return 0;
     for (int i = 0; i < a->window_count; i++) {
         const fe_window_t *x = &a->windows[i], *y = &b->windows[i];
         if (x->kind != y->kind || !fe_rect_equal(x->rect, y->rect) || !fe_rect_equal(x->panel, y->panel) ||
@@ -220,7 +239,8 @@ static int same_content(const fe_scene_t* a, const fe_widget_t* x, const fe_scen
            x->selected == y->selected && x->row_h == y->row_h && x->rows == y->rows && x->caret == y->caret &&
            fe_rect_equal(x->track, y->track) && x->image == y->image && x->image_w == y->image_w &&
            x->image_h == y->image_h && x->image_hash == y->image_hash && x->image32 == y->image32 &&
-           !strcmp(fe_scene_str(a, x->text), fe_scene_str(b, y->text)) && same_items(a, x, b, y);
+           !strcmp(fe_scene_str(a, x->text), fe_scene_str(b, y->text)) && same_items(a, x, b, y) &&
+           same_prompt(&x->prompt, &y->prompt);
 }
 
 int fe_scene_diff(const fe_scene_t* before, const fe_scene_t* now, fe_rect_t* dirty) {

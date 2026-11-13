@@ -22,6 +22,8 @@
 #include "host.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
+#include "jpt_gamepad.h"
+#include "jpt_prompt_text.h"
 #include "launcher_log.h"
 #include "launcher_quit.h"
 #include "localization/ui_text.h"
@@ -75,6 +77,28 @@ constexpr char kTextureFilteringHelp[] =
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] =
     "Shows the renderer, the frame rate and the game's screen size in the window title.";
+constexpr char kKeyboardHelp[] =
+    "The game's own bindings as it loads them, changed in its Controls screen (Options > Controls, or F12 in a "
+    "level). They keep working while a gamepad is connected.";
+constexpr char kGamepadHelp[] =
+    "Xbox, PlayStation, Switch Pro, Steam Deck and other controllers SDL3 recognises work without setup, at the same "
+    "time as the keyboard and mouse. The tutorial's instructions show the buttons of the device you used last. "
+    "Controllers can be connected or disconnected at any time.";
+constexpr char kGlyphsHelp[] =
+    "The button pictures the game shows. Automatic follows the controller in use; the others always show that style.";
+constexpr char kLookHelp[] =
+    "How fast the right stick turns the view, in percent of the default speed. The same stick moves Anne's hand while "
+    "Move Hand is held, a little slower.";
+constexpr char kInvertLookHelp[] = "Right stick up looks down. The game's Invert mouse setting stays for the mouse.";
+constexpr char kStickDeadzoneHelp[] =
+    "How far a stick moves before it counts. Raise it if the view or Anne drifts with the stick at rest.";
+constexpr char kTriggerDeadzoneHelp[] = "How far a trigger is pressed before it counts.";
+constexpr char kGuideHelp[] =
+    "Hold Move Hand to raise Anne's hand; the right stick then moves it instead of the view. Rotate Wrist and Rotate "
+    "Arm raise the hand by themselves. In a level, View shows this list.";
+constexpr char kBindingHelp[] =
+    "Choosing a button another action uses gives that action this one's button. Start always opens the pause menu, "
+    "and View/Back is kept free.";
 
 trg::Theme LauncherTheme() {
     trg::Theme theme = trg::Theme::Midnight().WithAccent(kAccent).WithAction(kAccent, kActionEdge, kActionLink);
@@ -419,7 +443,7 @@ private:
             return {name, "The game's own options and frame rate readouts.", [this](trg::Ui& ui) { PageGameplay(ui); },
                     nullptr, nullptr};
         case PageId::kControls:
-            return {name, "Keyboard and mouse.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
+            return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
         case PageId::kCheats:
             return {name, "Coming later.", [this](trg::Ui& ui) { PageComingLater(ui, "Cheats"); }, nullptr, nullptr};
         case PageId::kBugReport:
@@ -653,6 +677,10 @@ private:
             gore_ = level < 0 ? 0 : level > 2 ? 2 : static_cast<int>(level);
         }
         invert_ = registry_.GetDword("InvertMouse", value) && value != 0;
+        std::vector<uint8_t> keymap;
+        if (!registry_.GetBinary("KeyMap", keymap) || !jpt_keymap_parse(keymap.data(), keymap.size(), keymap_)) {
+            jpt_keymap_default(keymap_);
+        }
     }
 
     bool SaveGameRegistry() {
@@ -685,7 +713,47 @@ private:
     // ---- Controls
 
     void PageControls(trg::Ui& ui) {
-        ui.Info("Keyboard and mouse", "The game's own bindings, set in its Options menu.");
+        const std::vector<ConnectedGamepad> pads = host_.Gamepads();
+        const jpt_gamepad_settings_t pad = GamepadSettings();
+        const jpt_pad_family_t family = ShownFamily(pads);
+        if (ui.Section("Gamepad", true)) {
+            ui.Help(kGamepadHelp);
+            ui.Info("Connected controller", pads.empty() ? "None" : pads.front().name.c_str());
+            const std::string status = pads.empty()       ? "Not connected"
+                                       : pads.size() == 1 ? "Connected"
+                                                          : "Connected (" + std::to_string(pads.size()) + " controllers)";
+            ui.Info("Status", status.c_str());
+            GamepadSettingsRows(ui);
+            ui.EndRows();
+        }
+        if (ui.Section("Gamepad controls", true)) {
+            const std::string help = std::string("With ") + jpt_pad_family_name(family) + " buttons. " + kGuideHelp;
+            ui.Help(help.c_str());
+            GuideRows(ui, 1, family, pad);
+            const std::string menus = "D-pad or left stick, " + ControlName(JPT_PAD_SOUTH) + " select, " +
+                                      ControlName(JPT_PAD_EAST) + " back, right stick pointer";
+            ui.Info("Menus", menus.c_str());
+            ui.EndRows();
+        }
+        if (ui.Section("Gamepad bindings", false)) {
+            ui.Help(kBindingHelp);
+            for (int action = 0; action < JPT_ACT_COUNT; ++action) {
+                BindingRow(ui, action);
+            }
+            if (ui.ConfirmRow("Gamepad defaults", "Puts the gamepad buttons and settings back to their defaults.",
+                              "Reset to defaults", "Put every gamepad setting back to its default?", "Reset")) {
+                for (int i = 0; i < JPT_GAMEPAD_SETTING_COUNT; ++i) {
+                    settings_.Set(jpt_gamepad_setting_key(i), jpt_gamepad_setting_default(i));
+                }
+                ui.SetStatus("Gamepad settings reset to defaults.");
+            }
+            ui.EndRows();
+        }
+        if (ui.Section("Keyboard & Mouse", true)) {
+            ui.Help(kKeyboardHelp);
+            GuideRows(ui, 0, family, pad);
+            ui.EndRows();
+        }
         if (ui.Section("Port hotkeys", true)) {
             ui.Help("Rebinding the hotkeys is not available yet.");
             ui.Info("Hint", "F1");
@@ -695,6 +763,105 @@ private:
             ui.Info("Menu", "Esc");
             ui.Info("Exit", "Alt+F4");
             ui.EndRows();
+        }
+    }
+
+    void GamepadSettingsRows(trg::Ui& ui) {
+        std::vector<trg::Option> styles;
+        for (int i = 0; i < JPT_GLYPHS_COUNT; ++i) {
+            styles.push_back({jpt_glyph_style_keys[i], jpt_glyph_style_labels[i]});
+        }
+        ui.Combo("Controller glyphs", kGlyphsHelp, JPT_KEY_GAMEPAD_GLYPHS, "automatic", styles);
+        ui.SliderInt("Look sensitivity X", kLookHelp, JPT_KEY_GAMEPAD_LOOK_X, 100, JPT_PAD_LOOK_MIN, JPT_PAD_LOOK_MAX,
+                     "%d%%", 5);
+        ui.SliderInt("Look sensitivity Y", kLookHelp, JPT_KEY_GAMEPAD_LOOK_Y, 100, JPT_PAD_LOOK_MIN, JPT_PAD_LOOK_MAX,
+                     "%d%%", 5);
+        ui.Toggle("Invert look Y", kInvertLookHelp, JPT_KEY_GAMEPAD_INVERT_Y, false, "Off", "On");
+        ui.SliderInt("Stick deadzone", kStickDeadzoneHelp, JPT_KEY_GAMEPAD_STICK_DEADZONE, 15, JPT_PAD_STICK_DEADZONE_MIN,
+                     JPT_PAD_STICK_DEADZONE_MAX, "%d%%");
+        ui.SliderInt("Trigger deadzone", kTriggerDeadzoneHelp, JPT_KEY_GAMEPAD_TRIGGER_DEADZONE, 12,
+                     JPT_PAD_TRIGGER_DEADZONE_MIN, JPT_PAD_TRIGGER_DEADZONE_MAX, "%d%%");
+    }
+
+    void GuideRows(trg::Ui& ui, int gamepad, jpt_pad_family_t family, const jpt_gamepad_settings_t& pad) const {
+        jpt_prompt_context_t context{};
+        context.gamepad = gamepad;
+        context.family = family;
+        context.settings = &pad;
+        context.keymap = keymap_;
+        context.keymap_count = JPT_KEYMAP_COUNT;
+        jpt_guide_row_t rows[JPT_GUIDE_MAX_ROWS];
+        const int count = jpt_controls_guide(&context, rows, JPT_GUIDE_MAX_ROWS);
+        for (int i = 0; i < count; ++i) {
+            ui.Info(rows[i].action, rows[i].binding);
+        }
+    }
+
+    jpt_gamepad_settings_t GamepadSettings() const {
+        jpt_gamepad_settings_t pad;
+        jpt_gamepad_defaults(&pad);
+        for (int i = 0; i < JPT_GAMEPAD_SETTING_COUNT; ++i) {
+            const char* key = jpt_gamepad_setting_key(i);
+            jpt_gamepad_apply(&pad, key, settings_.Get(key).c_str());
+        }
+        return pad;
+    }
+
+    int GlyphStyle() const {
+        const std::string saved = settings_.Get(JPT_KEY_GAMEPAD_GLYPHS);
+        for (int i = 0; i < JPT_GLYPHS_COUNT; ++i) {
+            if (saved == jpt_glyph_style_keys[i]) {
+                return i;
+            }
+        }
+        return JPT_GLYPHS_AUTOMATIC;
+    }
+
+    // The chosen style, or with Automatic the first connected controller's (Xbox when none is connected).
+    jpt_pad_family_t ShownFamily(const std::vector<ConnectedGamepad>& pads) const {
+        jpt_pad_family_t connected = JPT_FAMILY_XBOX;
+        if (!pads.empty()) {
+            const ConnectedGamepad& first = pads.front();
+            const jpt_pad_type_t type = first.type > 0 && first.type < JPT_PAD_TYPE_COUNT
+                                            ? static_cast<jpt_pad_type_t>(first.type)
+                                            : JPT_PAD_TYPE_UNKNOWN;
+            connected = jpt_pad_family_of(type, first.vendor, first.product, first.name.c_str());
+        }
+        return jpt_glyph_family(static_cast<jpt_glyph_style_t>(GlyphStyle()), !pads.empty(), connected);
+    }
+
+    // Automatic names a button in both common layouts: the controller in use decides the glyphs.
+    std::string ControlName(int control) const {
+        const int style = GlyphStyle();
+        if (style != JPT_GLYPHS_AUTOMATIC) {
+            return jpt_pad_control_name(jpt_glyph_family(static_cast<jpt_glyph_style_t>(style), 1, JPT_FAMILY_XBOX),
+                                        control);
+        }
+        const std::string xbox = jpt_pad_control_name(JPT_FAMILY_XBOX, control);
+        const std::string playstation = jpt_pad_control_name(JPT_FAMILY_PLAYSTATION, control);
+        return xbox == playstation ? xbox : xbox + " / " + playstation;
+    }
+
+    void BindingRow(trg::Ui& ui, int action) {
+        const char* key = jpt_pad_actions[action].key;
+        const std::string before = settings_.Get(key);
+        std::vector<trg::Option> options{{"none", "Not bound"}};
+        for (int control = 0; control < JPT_PAD_CONTROL_COUNT; ++control) {
+            if (jpt_pad_bindable(control)) {
+                options.push_back({jpt_pad_control_key(control), ControlName(control)});
+            }
+        }
+        if (!ui.Combo(jpt_pad_actions[action].name, nullptr, key, jpt_default_value(key), options)) {
+            return;
+        }
+        const std::string chosen = settings_.Get(key);
+        if (chosen == "none") {
+            return;
+        }
+        for (int other = 0; other < JPT_ACT_COUNT; ++other) {
+            if (other != action && settings_.Get(jpt_pad_actions[other].key) == chosen) {
+                settings_.Set(jpt_pad_actions[other].key, before);
+            }
         }
     }
 
@@ -786,6 +953,7 @@ private:
     double play_started_ = 0.0;
     int gore_ = 1;
     bool invert_ = false, gore_dirty_ = false, invert_dirty_ = false;
+    jpt_key_binding_t keymap_[JPT_KEYMAP_COUNT] = {};
 };
 
 } // namespace

@@ -6,6 +6,7 @@
 #include "frontend_layout.h"
 #include "host_policy.h"
 #include "jpt_display.h"
+#include "jpt_gamepad.h"
 #include "save_preview.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -887,6 +888,113 @@ static void test_cursor(void) {
     }
 }
 
+/* Every gamepad family's glyphs and the keys, in binding fields as the Controls window has them, and the legend. */
+#define SHEET_CELL_W 32
+#define SHEET_CELL_H 18
+
+static fe_widget_t* sheet_field(fe_scene_t* s, int column, int row, fe_prompt_t prompt) {
+    fe_rect_t r = fe_rect(8 + column * SHEET_CELL_W, 40 + row * (SHEET_CELL_H + 6), 8 + column * SHEET_CELL_W + SHEET_CELL_W - 2,
+                          40 + row * (SHEET_CELL_H + 6) + SHEET_CELL_H);
+    fe_widget_t* w = fe_scene_widget(s, FE_W_FIELD, 1000 + row * 32 + column, r);
+    if (w) {
+        w->prompt = prompt;
+        w->text_h = 10;
+    }
+    return w;
+}
+
+static void make_glyph_sheet(fe_scene_t* s, int w, int h) {
+    static const uint32_t keys[] = { 'W', 0x20, 0x11, 0x10, 0x01, 0x02, 0x04, 0x70, 0x0D, 0x60, 0xA0, 'Q' };
+    fe_window_t* win;
+    fe_prompt_t pr;
+    fe_scene_reset_for(s, w, h, w, h);
+    win = fe_scene_window(s, FE_WND_CONTROLS, fe_rect(0, 0, 640, 480));
+    memset(&pr, 0, sizeof pr);
+    for (int family = 0; family < JPT_FAMILY_COUNT; family++)
+        for (int control = 0; control <= JPT_PAD_RIGHT_STICK_MOVE; control++) {
+            if (control == JPT_PAD_GUIDE) continue;
+            pr.kind = FE_PROMPT_PAD;
+            pr.family = (uint8_t)family;
+            pr.control = (uint8_t)control;
+            pr.dir = (uint8_t)(control == JPT_PAD_LEFT_STICK_MOVE ? JPT_DIR_UP : JPT_DIR_NONE);
+            pr.tilt = (uint8_t)(control == JPT_PAD_LEFT_STICK_MOVE ? 2 : 0);
+            sheet_field(s, control, family, pr);
+        }
+    for (int dir = JPT_DIR_UP; dir <= JPT_DIR_RIGHT; dir++)
+        for (int tilt = 1; tilt <= 2; tilt++) {
+            pr.kind = FE_PROMPT_PAD;
+            pr.family = JPT_FAMILY_XBOX;
+            pr.control = JPT_PAD_LEFT_STICK_MOVE;
+            pr.dir = (uint8_t)dir;
+            pr.tilt = (uint8_t)tilt;
+            sheet_field(s, (dir - 1) * 2 + tilt - 1, JPT_FAMILY_COUNT, pr);
+        }
+    memset(&pr, 0, sizeof pr);
+    for (size_t k = 0; k < sizeof keys / sizeof keys[0]; k++) {
+        fe_widget_t* f;
+        pr.kind = FE_PROMPT_KEY;
+        pr.vk = keys[k];
+        f = sheet_field(s, (int)(k % 9) * 2, JPT_FAMILY_COUNT + 1 + (int)(k / 9), pr);
+        if (f) f->rect.right = f->rect.left + SHEET_CELL_W * 2 - 4;
+    }
+    fe_scene_finish_window(s, win);
+    memset(&pr, 0, sizeof pr);
+    pr.kind = FE_PROMPT_PAD;
+    pr.family = JPT_FAMILY_XBOX;
+    pr.control = JPT_PAD_SOUTH;
+    fe_scene_legend(s, pr, "Select");
+    pr.control = JPT_PAD_EAST;
+    fe_scene_legend(s, pr, "Back");
+}
+
+/* The drawn pixels' box inside a rectangle of the screen. */
+static fe_rect_t ink_box(const uint32_t* px, int w, fe_rect_t r) {
+    fe_rect_t box = fe_rect(r.right, r.bottom, r.left, r.top);
+    for (int y = r.top; y < r.bottom; y++)
+        for (int x = r.left; x < r.right; x++)
+            if ((px[(long)y * w + x] >> 24) > 128) {
+                if (x < box.left) box.left = x;
+                if (y < box.top) box.top = y;
+                if (x + 1 > box.right) box.right = x + 1;
+                if (y + 1 > box.bottom) box.bottom = y + 1;
+            }
+    return box;
+}
+
+static void test_prompt_glyphs(const char* dump_dir) {
+    static const int sizes[][2] = { { 1920, 1080 }, { 3840, 2160 }, { 2560, 1080 }, { 1600, 1200 } };
+    fe_painter_t* p = fe_painter_create();
+    CHECK(p != NULL, "the painter cannot be created");
+    if (!p) return;
+    for (int k = 0; k < 4; k++) {
+        int w = sizes[k][0], h = sizes[k][1], empty = 0, round_bad = 0;
+        uint32_t* px = surface(w, h, 0);
+        fe_view_t v = fe_view_make(w, h);
+        fe_rect_t legend;
+        if (!px) continue;
+        make_glyph_sheet(&g_scene, w, h);
+        CHECK(fe_paint(p, &g_scene, px, w, fe_rect(0, 0, w, h), 4), "%dx%d: the glyph sheet does not paint", w, h);
+        for (int i = 0; i < g_scene.widget_count; i++) {
+            const fe_widget_t* f = &g_scene.widgets[i];
+            fe_rect_t box = ink_box(px, w, fe_rect_inflate(fe_view_rect(&v, f->rect), -2, -2));
+            int bw = box.right - box.left, bh = box.bottom - box.top;
+            if (bw <= 0 || bh <= 0) {
+                empty++;
+                continue;
+            }
+            if (f->prompt.kind == FE_PROMPT_PAD && f->prompt.control <= JPT_PAD_NORTH && abs(bw - bh) > 2) round_bad++;
+        }
+        CHECK(empty == 0, "%dx%d: %d glyphs are not drawn", w, h, empty);
+        CHECK(round_bad == 0, "%dx%d: %d face buttons are not round (stretched)", w, h, round_bad);
+        legend = ink_box(px, w, fe_rect(w * 3 / 4, h * 7 / 8, w, h));
+        CHECK(legend.right > legend.left && legend.bottom - legend.top >= h / 40,
+              "%dx%d: the legend is missing or too small (%d px)", w, h, legend.bottom - legend.top);
+        if (dump_dir) write_ppm(dump_dir, "prompts", w, h, px);
+        free(px);
+    }
+    fe_painter_destroy(p);
+}
+
 int main(int argc, char** argv) {
     const char* dump = NULL;
     char path[MAX_PATH];
@@ -915,6 +1023,7 @@ int main(int argc, char** argv) {
     test_diff();
     test_cursor();
     test_painter(dump);
+    test_prompt_glyphs(dump);
     frontend_bridge_tests(&g_checks, &g_failures);
     save_preview_tests(&g_checks, &g_failures);
     frontend_art_tests(&g_checks, &g_failures);

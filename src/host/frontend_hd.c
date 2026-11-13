@@ -14,6 +14,7 @@
 #include "frontend_art.h"
 #include "frontend_assets.h"
 #include "frontend_hd.h"
+#include "gamepad.h"
 #include "save_preview.h"
 
 #define MAIN_WINDOW_OBJECT 0x0066E010u
@@ -139,6 +140,7 @@ static const window_class_t k_windows[] = {
 #define AUDIO_ROWS 5
 #define AUDIO_ROW_H 15
 #define OPTIONS_VIDEO_ID 1001
+#define CONTROLS_FIRST_FIELD 1030
 
 static struct {
     fe_painter_t* painter;
@@ -730,6 +732,39 @@ static int read_window(reader_t* r, uint32_t window, int top) {
     return 1;
 }
 
+/* With the gamepad in use, the Controls window's binding fields show the gamepad's buttons for the game's commands,
+ * and the corner shows the menu's buttons; with the keyboard and mouse the game's own key names stay. */
+void frontend_hd_prompts(fe_scene_t* s) {
+    gamepad_prompts_t g;
+    const fe_window_t* top;
+    fe_prompt_t pad;
+    if (!s->window_count) return;
+    gamepad_prompts(&g);
+    if (!g.gamepad || !g.settings) return;
+    top = &s->windows[s->window_count - 1];
+    memset(&pad, 0, sizeof pad);
+    pad.kind = FE_PROMPT_PAD;
+    pad.family = (uint8_t)g.family;
+    for (int i = top->first; top->kind == FE_WND_CONTROLS && i < top->first + top->count; i++) {
+        fe_widget_t* w = &s->widgets[i];
+        int row = w->id - CONTROLS_FIRST_FIELD;
+        jpt_prompt_t binding;
+        if (w->kind != FE_W_FIELD || w->filled || row < 0 || row >= JPT_GAME_CONTROL_COUNT) continue;
+        if (!jpt_prompt_for_command(jpt_game_controls[row].command, 1, g.settings, NULL, 0, &binding)) {
+            w->text = fe_scene_text(s, "-");
+            continue;
+        }
+        w->prompt = pad;
+        w->prompt.control = (uint8_t)binding.control;
+        w->prompt.dir = (uint8_t)binding.dir;
+        w->prompt.tilt = (uint8_t)binding.tilt;
+    }
+    pad.control = JPT_PAD_SOUTH;
+    fe_scene_legend(s, pad, "Select");
+    pad.control = JPT_PAD_EAST;
+    fe_scene_legend(s, pad, "Back");
+}
+
 int frontend_hd_read_scene(fe_scene_t* s, int screen_w, int screen_h) {
     return frontend_hd_read_scene_for(s, screen_w, screen_h, screen_w, screen_h);
 }
@@ -906,6 +941,7 @@ int frontend_hd_frame(int screen_w, int screen_h) {
         if (!F.last_refusal[0]) refuse("a window the frontend could not read");
         return 0;
     }
+    frontend_hd_prompts(now);
     if (!ensure_layer(layer_w, layer_h)) {
         refuse("no memory for the HD layer");
         return 0;

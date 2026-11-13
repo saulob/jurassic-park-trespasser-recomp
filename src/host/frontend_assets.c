@@ -1,6 +1,7 @@
 #include "frontend_assets.h"
 
 #include "frontend_art.h"
+#include "pad_glyphs.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -24,6 +25,7 @@
 #define FIELD_W 16
 #define FIELD_H 12
 #define PI 3.14159265358979
+#define MAX_GLYPHS 192
 
 typedef struct {
     float r, g, b;
@@ -57,7 +59,8 @@ typedef enum {
     OP_PHOTO,
     OP_ART,
     OP_WIDE,
-    OP_FILL
+    OP_FILL,
+    OP_GLYPH
 } op_kind_t;
 
 enum { MAT_IRON, MAT_BRASS, MAT_STEEL, MAT_COPPER, MAT_PLAIN };
@@ -95,6 +98,7 @@ typedef struct {
     const fa_bitmap_t* art;  /* OP_ART, OP_WIDE: a scaled picture with its corner at art_x, art_y */
     const fa_bitmap_t* art2; /* OP_WIDE: the same picture very small, for the blurred sides */
     int art_x, art_y;
+    const pad_glyph_t* glyph;
 } op_t;
 
 typedef struct {
@@ -131,6 +135,8 @@ struct fe_painter {
     float* photo_field; /* FIELD_W x FIELD_H: the picture's colours with no shape left */
     op_t ops[MAX_OPS];
     int op_count;
+    pad_glyph_t pad_glyphs[MAX_GLYPHS];
+    int pad_glyph_count;
     fe_view_t view;
     fa_cache_t* art;
 };
@@ -589,6 +595,7 @@ static void run_photo(const band_t* b, const op_t* o) {
 
 static void run_fill(const band_t* b, const op_t* o);
 static void run_wide(const band_t* b, const op_t* o);
+static void run_glyph(const band_t* b, const op_t* o);
 
 static void run_op(const band_t* b, const op_t* o) {
     switch (o->kind) {
@@ -604,6 +611,7 @@ static void run_op(const band_t* b, const op_t* o) {
     case OP_ART: fa_blit_over(b->px, b->pitch, b->clip, o->art, o->art_x, o->art_y); break;
     case OP_WIDE: run_wide(b, o); break;
     case OP_FILL: run_fill(b, o); break;
+    case OP_GLYPH: run_glyph(b, o); break;
     default: break;
     }
 }
@@ -1315,9 +1323,98 @@ static void add_sunken_edge(fe_painter_t* p, fe_rect_t r) {
     }
 }
 
+static void run_glyph(const band_t* b, const op_t* o) {
+    const pad_glyph_t* g = o->glyph;
+    double h = o->y1 - o->y0;
+    float aa = (float)(1.0 / h);
+    FOR_PIXELS(b, o, r) {
+        float u = (float)((x + 0.5 - o->x0) / h), v = (float)((y + 0.5 - o->y0) / h);
+        for (int layer = 0; layer < PAD_LAYER_COUNT; layer++) {
+            float c = pad_glyph_coverage(g, layer, u, v, aa);
+            if (c > 0.0f) put(PIXEL(b, x, y), rgb_hex(g->color[layer]), c * o->alpha);
+        }
+    }
+}
+
+static int prompt_glyph(const fe_prompt_t* prompt, pad_glyph_t* g) {
+    char buf[24];
+    if (prompt->kind == FE_PROMPT_PAD)
+        return pad_glyph_control((jpt_pad_family_t)prompt->family, prompt->control, prompt->dir, prompt->tilt, g);
+    if (prompt->kind == FE_PROMPT_KEY) return pad_glyph_key(prompt->vk, jpt_key_label(prompt->vk, buf, sizeof buf), g);
+    return 0;
+}
+
+/* Text on a glyph, centred on its text point; keys and pills grow to hold it. */
+static double glyph_text(fe_painter_t* p, pad_glyph_t* g, double x0, double y0, double h, int emit) {
+    int px = (int)floor(g->text_size * h + 0.5), len = (int)strlen(g->text);
+    const glyphs_t* t;
+    if (!len || px < 4 || !(t = glyphs(p, FE_FONT_UI, px, FW_BOLD, 0, g->text, len))) return g->width;
+    if (!emit && (g->shape == PAD_GLYPH_KEY || g->shape == PAD_GLYPH_PILL)) {
+        double need = t->advance / h + (g->shape == PAD_GLYPH_KEY ? 0.5 : 0.6), least = g->shape == PAD_GLYPH_KEY ? 1.0 : 1.2;
+        g->width = (float)(need > least ? need : least);
+        g->text_x = g->width * 0.5f;
+    }
+    if (emit)
+        add_text_line(p, FE_FONT_UI, px, FW_BOLD, 0, g->text, len, floor(x0 + g->text_x * h - t->advance * 0.5 + 0.5),
+                      floor(y0 + g->text_y * h - t->line_h * 0.5 + 0.5), rgb_hex(g->text_color), 1.0f, 0, 0, 0, 0);
+    return g->width;
+}
+
+/* A prompt glyph of height h (pixels) with its corner at x0, y0; returns its width, 0 when there is none. */
+static double add_glyph(fe_painter_t* p, const fe_prompt_t* prompt, double x0, double y0, double h) {
+    pad_glyph_t* g;
+    op_t* o;
+    if (p->pad_glyph_count >= MAX_GLYPHS || h < 6) return 0;
+    g = &p->pad_glyphs[p->pad_glyph_count];
+    if (!prompt_glyph(prompt, g)) return 0;
+    glyph_text(p, g, x0, y0, h, 0);
+    o = op(p, OP_GLYPH, x0, y0, x0 + g->width * h, y0 + h, 1);
+    if (!o) return 0;
+    p->pad_glyph_count++;
+    o->glyph = g;
+    glyph_text(p, g, x0, y0, h, 1);
+    return g->width * h;
+}
+
 static void add_field(fe_painter_t* p, const fe_scene_t* s, const fe_widget_t* w) {
-    add_label(p, s, w);
+    if (w->prompt.kind) {
+        box_t b = box_rect(p, w->rect);
+        double h = (b.y1 - b.y0) * 0.86;
+        add_glyph(p, &w->prompt, floor(b.x0 + (b.y1 - b.y0 - h) * 0.5 + p->view.sy * 2.0 + 0.5),
+                  floor((b.y0 + b.y1 - h) * 0.5 + 0.5), floor(h + 0.5));
+    } else {
+        add_label(p, s, w);
+    }
     if (w->border) add_sunken_edge(p, w->rect);
+}
+
+/* The buttons that work in a menu, in the lower right corner of the screen, laid out from the right. */
+static void add_legend(fe_painter_t* p, const fe_scene_t* s) {
+    double h = floor(p->view.screen_h * 0.034 + 0.5), margin = h * 0.9, x, y, gap = h * 0.3, space = h * 0.9;
+    int px;
+    if (s->legend_count <= 0) return;
+    if (h < 18) h = 18;
+    px = (int)floor(h * 0.56 + 0.5);
+    x = p->view.screen_w - margin;
+    y = p->view.screen_h - margin - h;
+    for (int i = s->legend_count - 1; i >= 0; i--) {
+        const char* text = fe_scene_str(s, s->legend_text[i]);
+        int len = (int)strlen(text);
+        const glyphs_t* t = len ? glyphs(p, FE_FONT_UI, px, FW_BOLD, 0, text, len) : NULL;
+        pad_glyph_t probe;
+        double label_w = t ? t->advance : 0, glyph_w, ty;
+        if (!prompt_glyph(&s->legend[i], &probe)) continue;
+        glyph_w = glyph_text(p, &probe, 0, 0, h, 0) * h;
+        ty = floor(y + h * 0.5 - (t ? t->line_h : 0) * 0.5 + 0.5);
+        x -= label_w;
+        if (t) {
+            add_text_line(p, FE_FONT_UI, px, FW_BOLD, 0, text, len, floor(x + 0.5) + 2, ty + 2, k_black, 0.75f, F_BLUR, 0, 0, 0);
+            add_text_line(p, FE_FONT_UI, px, FW_BOLD, 0, text, len, floor(x + 0.5), ty, rgb(1, 1, 1), 1.0f, 0, 0, 0, 0);
+        }
+        x -= gap + glyph_w;
+        add_glyph(p, &s->legend[i], floor(x + 0.5), floor(y + 0.5), h);
+        x -= space;
+    }
 }
 
 /* CUIEditBox: the text, then a caret one canvas unit wide at its end. */
@@ -1452,6 +1549,7 @@ static int add_main_backdrop(fe_painter_t* p, const fe_scene_t* s) {
 static int build(fe_painter_t* p, const fe_scene_t* s) {
     int top = s->window_count - 1;
     p->op_count = 0;
+    p->pad_glyph_count = 0;
     for (int i = 0; i <= top; i++) {
         const fe_window_t* w = &s->windows[i];
         if (w->kind == FE_WND_MAIN && s->backdrop) {
@@ -1463,6 +1561,7 @@ static int build(fe_painter_t* p, const fe_scene_t* s) {
         if (w->kind == FE_WND_DIRECT_LOAD) add_fill(p, fe_rect_inflate(w->rect, 4, 4), rgb(0, 0, 0), 0.62f);
         for (int k = w->first; k < w->first + w->count; k++) add_widget(p, s, w, &s->widgets[k]);
     }
+    add_legend(p, s);
     return 1;
 }
 

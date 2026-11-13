@@ -13,6 +13,7 @@
  * its message pump while the window stays up; WinMain then returns and exit_policy.c finishes.
  */
 #include "host.h"
+#include "gamepad.h"
 #include "host_policy.h"
 
 #include <stdarg.h>
@@ -58,6 +59,13 @@
  * a dummy return address, so the caller is the current lifted function. */
 #define MODAL_PUMP 0x00417760u
 #define VIDEO_PLAYER 0x00418AE0u
+/* CUIWnd::DoModal's loop reads the pointer into its manager here before taking its messages, every frame. */
+#define UI_LOOP 0x00417840u
+#define WM_HOST_PAD_MOUSE (WM_APP + 0x47)
+/* Gamepad keys are posted with a scan code no keyboard sends, so they never count as keyboard use. */
+#define PAD_SCAN_CODE 0xFEu
+#define PAD_KEY_DOWN ((LPARAM)(1u | (PAD_SCAN_CODE << 16)))
+#define PAD_KEY_UP ((LPARAM)(0xC0000001u | (PAD_SCAN_CODE << 16)))
 #define WND_RESULT_OFFSET 0x0Cu
 
 typedef BOOL (WINAPI* set_dpi_context_fn)(HANDLE);
@@ -92,6 +100,10 @@ static struct {
     POINT last_move;
     int last_move_valid;
     POINT cursor;
+    POINT pad_at;
+    int pad_cursor;
+    POINT menu_mouse;
+    int menu_mouse_valid;
     HWND capture;
     unsigned long relative_moves, captures, dropped_repeats;
     int input_lines, key_lines, quit_lines, ignored_logged;
@@ -251,12 +263,27 @@ static int view_valid(void) { return s.view.right > s.view.left && s.view.bottom
 
 static int virtual_input_active(void) { return virtual_window(s.game) && view_valid() && !IsIconic(s.game); }
 
+static int ui_canvas_active(void) { return s.ui_canvas && (s.state == INPUT_MENU || s.state == INPUT_DIALOG); }
+
+/* The gamepad's pointer is in the game's own coordinates: the UI canvas while it is used, else the display. */
+static POINT pad_cursor_on_display(void) {
+    POINT d = s.pad_at;
+    if (ui_canvas_active()) {
+        jpt_ui_canvas_t canvas = jpt_ui_canvas(s.fbw, s.fbh);
+        int x, y;
+        jpt_ui_to_frame(&canvas, (int)s.pad_at.x, (int)s.pad_at.y, &x, &y);
+        d.x = x;
+        d.y = y;
+    }
+    return d;
+}
+
 static POINT client_to_display(POINT c) {
     POINT v;
     long view_w = s.view.right - s.view.left, view_h = s.view.bottom - s.view.top;
     v.x = (LONG)floor_div((long)(c.x - s.view.left) * s.fbw, view_w);
     v.y = (LONG)floor_div((long)(c.y - s.view.top) * s.fbh, view_h);
-    if (s.ui_canvas && (s.state == INPUT_MENU || s.state == INPUT_DIALOG)) {
+    if (ui_canvas_active()) {
         jpt_ui_canvas_t canvas = jpt_ui_canvas(s.fbw, s.fbh);
         int x, y;
         jpt_ui_to_canvas(&canvas, (int)v.x, (int)v.y, &x, &y);
@@ -457,6 +484,8 @@ static void update_input(const char* why) {
         }
         s.last_move_valid = 0;
         s.raw_abs_valid = 0;
+        s.menu_mouse_valid = 0;
+        if (input_cursor_virtual(next)) s.pad_cursor = 0;
         s.state = next;
         refresh_pointer_shape();
     }
@@ -507,7 +536,14 @@ void window_host_set_ui_canvas(int on) { s.ui_canvas = on != 0; }
 int window_host_pointer(int* x, int* y) {
     POINT p, c;
     long view_w = s.view.right - s.view.left, view_h = s.view.bottom - s.view.top;
-    if (!virtual_input_active() || input_cursor_virtual(s.state) || !GetCursorPos(&p)) return 0;
+    if (!virtual_input_active() || input_cursor_virtual(s.state)) return 0;
+    if (s.pad_cursor) {
+        p = pad_cursor_on_display();
+        *x = (int)p.x;
+        *y = (int)p.y;
+        return *x >= 0 && *y >= 0 && *x < s.fbw && *y < s.fbh;
+    }
+    if (!GetCursorPos(&p)) return 0;
     c = screen_to_client_point(p);
     *x = (int)floor_div((long)(c.x - s.view.left) * s.fbw, view_w);
     *y = (int)floor_div((long)(c.y - s.view.top) * s.fbh, view_h);
@@ -656,6 +692,10 @@ static LPARAM pack_point(POINT p) {
 /* The original ran full screen, so its cursor never left the display. */
 static POINT game_cursor(void) {
     POINT real;
+    if (!input_cursor_virtual(s.state) && s.pad_cursor) {
+        s.cursor = s.pad_at;
+        return s.cursor;
+    }
     if (!input_cursor_virtual(s.state) && GetCursorPos(&real)) {
         s.cursor = screen_to_display(real);
         if (s.cursor.x < 0) s.cursor.x = 0;
@@ -673,6 +713,57 @@ static void add_relative(LONG dx, LONG dy) {
     s.relative_moves++;
 }
 
+int window_host_input_focused(void) {
+    return s.game && s.active && s.focused && GetForegroundWindow() == s.game && !shutdown_active(&s.shutdown) &&
+           !IsIconic(s.game);
+}
+
+void window_host_set_pad_cursor(int x, int y) {
+    int w = ui_canvas_active() ? JPT_UI_CANVAS_W : s.fbw, h = ui_canvas_active() ? JPT_UI_CANVAS_H : s.fbh;
+    if (!display_known() || input_cursor_virtual(s.state)) return;
+    s.pad_at.x = x < 0 ? 0 : x >= w ? w - 1 : x;
+    s.pad_at.y = y < 0 ? 0 : y >= h ? h - 1 : y;
+    s.pad_cursor = 1;
+}
+
+void window_host_release_pad_cursor(void) { s.pad_cursor = 0; }
+
+int window_host_game_cursor(int* x, int* y) {
+    POINT p;
+    if (!virtual_input_active()) return 0;
+    p = game_cursor();
+    *x = (int)p.x;
+    *y = (int)p.y;
+    return 1;
+}
+
+void window_host_post_key(unsigned vk) {
+    if (!s.game) return;
+    PostMessageA(s.game, WM_KEYDOWN, vk, PAD_KEY_DOWN);
+    PostMessageA(s.game, WM_KEYUP, vk, PAD_KEY_UP);
+}
+
+void window_host_post_key_up(unsigned vk) {
+    if (s.game) PostMessageA(s.game, WM_KEYUP, vk, PAD_KEY_UP);
+}
+
+void window_host_post_char(char c) {
+    if (s.game) PostMessageA(s.game, WM_CHAR, (WPARAM)(unsigned char)c, PAD_KEY_DOWN);
+}
+
+void window_host_post_mouse(int kind) {
+    if (s.game) PostMessageA(s.game, WM_HOST_PAD_MOUSE, (WPARAM)kind, 0);
+}
+
+/* A gamepad click or drag at the game's pointer, delivered as the mouse message its window expects. */
+static LRESULT pad_mouse(HWND window, WPARAM kind) {
+    static const UINT msgs[] = { WM_LBUTTONDOWN, WM_LBUTTONUP, WM_LBUTTONDBLCLK, WM_MOUSEMOVE };
+    WPARAM keys = kind == PAD_MOUSE_UP ? 0 : MK_LBUTTON;
+    if (kind > PAD_MOUSE_MOVE || !virtual_input_active()) return 0;
+    update_input("gamepad");
+    return CallWindowProcA(s.previous, window, msgs[kind], keys, pack_point(game_cursor()));
+}
+
 static int is_press(UINT msg) {
     return msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK || msg == WM_RBUTTONDOWN || msg == WM_RBUTTONDBLCLK ||
            msg == WM_MBUTTONDOWN || msg == WM_MBUTTONDBLCLK || msg == 0x020B || msg == 0x020D;
@@ -688,12 +779,18 @@ static int route_mouse(UINT msg, LPARAM* lparam) {
         return 1;
     }
     update_input("mouse");
+    if (!s.raw_input && msg == WM_MOUSEMOVE && !input_captured(s.state)) {
+        if (s.menu_mouse_valid) gamepad_note_mouse_motion(client.x - s.menu_mouse.x, client.y - s.menu_mouse.y);
+        s.menu_mouse = client;
+        s.menu_mouse_valid = 1;
+    }
     if (!s.raw_input && msg == WM_MOUSEMOVE && input_captured(s.state)) {
         if (s.last_move_valid) add_relative(client.x - s.last_move.x, client.y - s.last_move.y);
         s.last_move = client;
         s.last_move_valid = 1;
     }
     if (is_press(msg) && !PtInRect(&s.view, client)) return 0;
+    if (is_press(msg)) gamepad_note_mouse_button();
     *lparam = pack_point(input_cursor_virtual(s.state) ? s.cursor : client_to_display(client));
     return 1;
 }
@@ -723,11 +820,15 @@ static void read_raw_input(HRAWINPUT handle) {
         int w = GetSystemMetrics(virtual_desktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
         int h = GetSystemMetrics(virtual_desktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
         LONG x = MulDiv(input.data.mouse.lLastX, w, 65535), y = MulDiv(input.data.mouse.lLastY, h, 65535);
-        if (s.raw_abs_valid) add_relative(x - s.raw_abs_x, y - s.raw_abs_y);
+        if (s.raw_abs_valid) {
+            gamepad_note_mouse_motion((int)(x - s.raw_abs_x), (int)(y - s.raw_abs_y));
+            add_relative(x - s.raw_abs_x, y - s.raw_abs_y);
+        }
         s.raw_abs_x = x;
         s.raw_abs_y = y;
         s.raw_abs_valid = 1;
     } else {
+        gamepad_note_mouse_motion((int)input.data.mouse.lLastX, (int)input.data.mouse.lLastY);
         add_relative(input.data.mouse.lLastX, input.data.mouse.lLastY);
     }
 }
@@ -879,6 +980,9 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     key_action_t action = key_policy(msg, (unsigned)wparam, repeat, ctrl, alt);
     guest_ui_view_t g;
     *handled = 1;
+    if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !repeat && action == KEY_TO_GAME &&
+        ((lparam >> 16) & 0xFF) != PAD_SCAN_CODE)
+        gamepad_note_keyboard();
     if (msg == WM_KEYDOWN || msg == WM_KEYUP) guest_ui_probe(&g);
     if (msg == WM_KEYDOWN) open_press_keydown(&s.open_press, (unsigned)wparam, repeat, g.ui == GUEST_UI_GAMEPLAY, g.depth);
     if (msg == WM_KEYUP && open_press_keyup(&s.open_press, (unsigned)wparam, g.depth)) {
@@ -921,6 +1025,8 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     if (shutdown_host_driving(&s.shutdown) && is_user_input(msg))
         return msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP || msg == WM_SYSCHAR ? 0 : DefWindowProcA(window, msg, wparam, lparam);
     switch (msg) {
+    case WM_HOST_PAD_MOUSE:
+        return shutdown_host_driving(&s.shutdown) ? 0 : pad_mouse(window, wparam);
     case WM_KEYDOWN:
     case WM_KEYUP:
     case WM_SYSKEYDOWN:
@@ -1013,6 +1119,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         if (wparam == POLICY_TIMER_ID) {
             if (fps_counter_idle(&s.fps, qpc_now())) refresh_title();
             update_input("timer");
+            gamepad_idle();
             return 0;
         }
         break;
@@ -1122,6 +1229,7 @@ void window_host_set_display(HWND window, int width, int height) {
     s.virtual_on = 1;
     s.cursor.x = width / 2;
     s.cursor.y = height / 2;
+    s.pad_cursor = 0;
     if (aspect_changed && !s.fullscreen && !IsZoomed(window) && !IsIconic(window)) {
         RECT client, outer;
         GetClientRect(window, &client);
@@ -1297,6 +1405,7 @@ void shim_GetCursorPos(void) {
     BOOL ok = TRUE;
     if (virtual_input_active()) {
         update_input("GetCursorPos");
+        if (g_cur_func == UI_LOOP) gamepad_ui_loop();
         *out = game_cursor();
     } else {
         ok = GetCursorPos(out);
@@ -1378,6 +1487,7 @@ void shim_PeekMessageA(void) {
     MSG* msg = (MSG*)GUEST_PTR(0);
     UINT remove = GUEST_ARG(4);
     BOOL got;
+    if (g_cur_func == VIDEO_PLAYER && !shutdown_active(&s.shutdown)) gamepad_video_loop();
     if (drive_quit(msg, g_cur_func)) {
         got = TRUE;
     } else {

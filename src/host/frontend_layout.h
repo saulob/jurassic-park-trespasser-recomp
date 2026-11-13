@@ -101,6 +101,15 @@ enum {
     FE_TEXT_EXACT = 128 /* as the game draws it: left/top at the box, no fitting, the shadow its own offset copy */
 };
 
+/* A button prompt: a gamepad control in a family's glyphs, or a key. */
+enum { FE_PROMPT_NONE, FE_PROMPT_PAD, FE_PROMPT_KEY };
+typedef struct {
+    uint8_t kind, family, control, dir, tilt;
+    uint32_t vk;
+} fe_prompt_t;
+
+#define FE_LEGEND_MAX 4
+
 typedef struct {
     uint8_t kind, style;
     uint16_t state;
@@ -128,6 +137,7 @@ typedef struct {
     uint8_t filled;                         /* a text box that paints its own background */
     uint32_t fill_color;                    /* 0xRRGGBB */
     uint32_t selected_color;                /* list: the text colour on the selected row's band */
+    fe_prompt_t prompt;                     /* field: drawn in place of its text */
 } fe_widget_t;
 
 typedef struct {
@@ -150,6 +160,9 @@ typedef struct {
     const uint16_t* backdrop; /* the main screen's 640x480 art, RGB565 */
     int backdrop_pitch;
     uint32_t backdrop_hash;
+    int legend_count;         /* prompts in the screen's lower right corner */
+    fe_prompt_t legend[FE_LEGEND_MAX];
+    int legend_text[FE_LEGEND_MAX];
 } fe_scene_t;
 
 void fe_scene_reset(fe_scene_t* s, int screen_w, int screen_h);
@@ -160,6 +173,8 @@ const char* fe_scene_str(const fe_scene_t* s, int offset);
 fe_window_t* fe_scene_window(fe_scene_t* s, fe_window_kind_t kind, fe_rect_t rect);
 fe_widget_t* fe_scene_widget(fe_scene_t* s, fe_widget_kind_t kind, int32_t id, fe_rect_t rect);
 int fe_scene_item(fe_scene_t* s, const char* text);
+/* 0 when the legend is full or the text does not fit. */
+int fe_scene_legend(fe_scene_t* s, fe_prompt_t prompt, const char* text);
 /* Items a list shows: rows from its top one, fewer at the end of the list. */
 int fe_list_shown(const fe_widget_t* w);
 

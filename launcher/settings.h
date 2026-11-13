@@ -1,10 +1,12 @@
 // The launcher's view of user\trespasser.ini (src/common/jpt_config.h): edits stay pending until Save or Play.
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "trg/settings.h"
 
@@ -50,6 +52,8 @@ class GameRegistry {
 public:
     explicit GameRegistry(std::filesystem::path file) : file_(std::move(file)) {}
     bool GetDword(const std::string& name, unsigned long& value) const;
+    // A hex(N) value's bytes, as the game's KeyMap is stored.
+    bool GetBinary(const std::string& name, std::vector<uint8_t>& value) const;
     bool SetDword(const std::string& name, unsigned long value);
 
 private:

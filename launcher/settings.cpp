@@ -103,6 +103,25 @@ bool GameRegistry::GetDword(const std::string& name, unsigned long& value) const
     return false;
 }
 
+bool GameRegistry::GetBinary(const std::string& name, std::vector<uint8_t>& value) const {
+    for (const std::string& line : ReadLines(file_)) {
+        if (!NameMatches(line, name)) continue;
+        const std::string rest = line.substr(name.size() + 1);
+        const size_t colon = rest.find(':');
+        if (rest.rfind("hex", 0) != 0 || colon == std::string::npos || (rest.size() - colon - 1) % 2) return false;
+        value.clear();
+        for (size_t i = colon + 1; i + 1 < rest.size(); i += 2) {
+            const std::string pair = rest.substr(i, 2);
+            char* end = nullptr;
+            const unsigned long byte = std::strtoul(pair.c_str(), &end, 16);
+            if (end != pair.c_str() + 2) return false;
+            value.push_back(static_cast<uint8_t>(byte));
+        }
+        return true;
+    }
+    return false;
+}
+
 bool GameRegistry::SetDword(const std::string& name, unsigned long value) {
     std::vector<std::string> lines = ReadLines(file_);
     char text[160];

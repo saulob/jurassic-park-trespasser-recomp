@@ -278,6 +278,18 @@ void video_test_release(void);
 int window_host_view_rect(RECT* view);
 /* The real pointer in the game's screen pixels; 0 when it is outside the picture. */
 int window_host_pointer(int* x, int* y);
+/* Gamepad input reaches the game as its own key, character and mouse messages (gamepad.c, gamepad_menu.c). */
+enum { PAD_MOUSE_DOWN, PAD_MOUSE_UP, PAD_MOUSE_DOUBLE, PAD_MOUSE_MOVE };
+int window_host_input_focused(void);
+void window_host_post_key(unsigned vk);
+void window_host_post_key_up(unsigned vk);
+void window_host_post_char(char c);
+/* A left-button message at the game's pointer. */
+void window_host_post_mouse(int kind);
+/* The game's pointer in menus, in its own coordinates, placed by the gamepad until the mouse is used. */
+void window_host_set_pad_cursor(int x, int y);
+void window_host_release_pad_cursor(void);
+int window_host_game_cursor(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */
 int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h);
 /* dd_device.c: the gameplay modes of both renderers, listed whatever the desktop size. */

@@ -6,6 +6,7 @@
  * stays a failure.
  */
 #include "host.h"
+#include "gamepad.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -85,6 +86,7 @@ void guest_threads_log(const char* when) {
 static void finish_logging(void) {
     window_host_release_cursor();
     window_host_input_summary();
+    gamepad_summary();
     d3dr_summary();
     guest_profile_summary();
     io_trace_summary();

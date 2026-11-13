@@ -152,7 +152,7 @@ Small programs check the host without a window, a GPU device, the game or audio;
 part of the default build:
 
 ```powershell
-ninja -C build\cmake\msvc-x86 launcher_tests host_tests com_tests water_tests x87_tests override_tests_incremental override_tests_non_incremental
+ninja -C build\cmake\msvc-x86 launcher_tests host_tests gamepad_tests com_tests water_tests x87_tests override_tests_incremental override_tests_non_incremental
 .\build\cmake\msvc-x86\override_tests_incremental.exe      # host overrides through stable entries: direct, alias and dispatched calls, refusals, counts
 .\build\cmake\msvc-x86\override_tests_non_incremental.exe  # the same fixture linked /INCREMENTAL:NO, as Release links
 py -3 -m unittest discover -s tests -p "test_stable_entries.py"  # the lift's stable-entry renaming and check
@@ -161,6 +161,7 @@ py -3 -m unittest discover -s tests -p "test_renderer_fixed.py"  # no runtime re
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
 $env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation
+.\build\cmake\msvc-x86\gamepad_tests.exe  # last device used, deadzones and drift, controller families, glyph styles, bindings and prompts (keys and gamepad), hotplug, gameplay input for CInput, menu focus
 .\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
 .\build\cmake\msvc-x86\water_tests.exe  # host kernels (water, occlusion, polygon submission) against the lifted functions, byte for byte; bump scanlines against the game's own routine (needs game\trespass.exe)
 .\build\cmake\msvc-x86\x87_tests.exe    # the patched runtime: x87 ring, inline rounding against the C library, per-site call cache

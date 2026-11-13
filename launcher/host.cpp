@@ -211,6 +211,22 @@ bool LauncherHost::PumpEvents() {
     return !quit_;
 }
 
+std::vector<ConnectedGamepad> LauncherHost::Gamepads() const {
+    std::vector<ConnectedGamepad> pads;
+    if (!gamepad_) {
+        return pads;
+    }
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&count);
+    for (int i = 0; ids && i < count; ++i) {
+        const char* name = SDL_GetGamepadNameForID(ids[i]);
+        pads.push_back({name ? name : "Unnamed controller", static_cast<int>(SDL_GetGamepadTypeForID(ids[i])),
+                        SDL_GetGamepadVendorForID(ids[i]), SDL_GetGamepadProductForID(ids[i])});
+    }
+    SDL_free(ids);
+    return pads;
+}
+
 bool LauncherHost::Minimized() const {
     return (SDL_GetWindowFlags(window_) & SDL_WINDOW_MINIMIZED) != 0;
 }
