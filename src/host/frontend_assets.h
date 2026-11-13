@@ -1,5 +1,6 @@
-/* The HD frontend's art: procedural metal, wood and stamped lettering painted at the screen's resolution, with
- * text from the system's TrueType fonts. Works on memory only (GDI for glyphs), so it runs headless. */
+/* The HD frontend's painter: the game's own menu pictures scaled to the screen (frontend_art.c) and its text set at the
+ * screen's resolution from the system's TrueType fonts; the loading screen's scene is painted here too. Works on memory
+ * only (GDI for glyphs), so it runs headless. */
 #ifndef FRONTEND_ASSETS_H
 #define FRONTEND_ASSETS_H
 
@@ -19,7 +20,8 @@ void fe_painter_destroy(fe_painter_t* p);
 void fe_painter_trim(fe_painter_t* p);
 /* The face each font role resolved to, for the log. */
 const char* fe_painter_face(const fe_painter_t* p, int role);
-enum { FE_FONT_PLAQUE, FE_FONT_LABEL, FE_FONT_BODY, FE_FONT_COUNT };
+/* FE_FONT_UI: the face the game itself draws its menu text in (Arial), which every Windows install has. */
+enum { FE_FONT_PLAQUE, FE_FONT_LABEL, FE_FONT_BODY, FE_FONT_UI, FE_FONT_COUNT };
 
 /* Paints the scene into premultiplied BGRA rows of the scene's screen size, only inside clip (screen pixels); the
  * pixels outside are left untouched. threads <= 1 paints on the calling thread. 0 on failure. */

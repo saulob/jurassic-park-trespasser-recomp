@@ -79,6 +79,7 @@ set(HOST_SOURCES
   src/host/frontend_hd.c
   src/host/frontend_layout.c
   src/host/frontend_assets.c
+  src/host/frontend_art.c
   src/host/loading_hd.c
   src/host/loading_layout.c
   src/host/save_preview.c
@@ -316,7 +317,7 @@ target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The HD frontend's and loading screen's layout, pointer mapping and painter (headless: GDI draws into memory only):
 #   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
-  tests/save_preview_tests.c tests/loading_tests.c src/host/frontend_hd.c src/host/frontend_layout.c
+  tests/save_preview_tests.c tests/frontend_art_tests.c tests/frontend_retail_tests.c tests/loading_tests.c src/host/frontend_art.c src/host/frontend_hd.c src/host/frontend_layout.c
   src/host/frontend_assets.c src/host/loading_hd.c src/host/loading_layout.c src/host/save_preview.c
   src/host/host_policy.c src/common/jpt_display.c)
 target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP}/runtime/native32

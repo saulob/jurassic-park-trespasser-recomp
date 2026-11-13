@@ -20,6 +20,8 @@ static int g_checks, g_failures;
 
 void frontend_bridge_tests(int* checks, int* failures);
 void save_preview_tests(int* checks, int* failures);
+void frontend_art_tests(int* checks, int* failures);
+void frontend_retail_tests(int* checks, int* failures, const char* dump_dir);
 void loading_tests(int* checks, int* failures, const char* dump_dir);
 
 #define CHECK(cond, ...)                                                                                                \
@@ -132,12 +134,60 @@ static fe_rect_t at(fe_rect_t window, int l, int t, int r, int b) {
 
 static fe_rect_t dialog_rect(void) { return fe_rect(160, 140, 480, 340); }
 
+#define PIC_POOL 48
+
+/* A stand-in for one of the game's keyed 16-bit pictures: a torn-edged plate with a bevel, the rest the key colour. */
+static const uint16_t* synth_art(int w, int h, int tone, int keyed) {
+    static struct {
+        int w, h, tone, keyed;
+        uint16_t* bits;
+    } pool[PIC_POOL];
+    static int used;
+    uint16_t* px;
+    for (int i = 0; i < used; i++)
+        if (pool[i].w == w && pool[i].h == h && pool[i].tone == tone && pool[i].keyed == keyed) return pool[i].bits;
+    if (used >= PIC_POOL) return NULL;
+    px = (uint16_t*)malloc(sizeof(uint16_t) * (size_t)w * h);
+    if (!px) return NULL;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            int edge = x < 2 || y < 2 || x >= w - 2 || y >= h - 2, corner = x + y < 4 || (w - 1 - x) + y < 4;
+            int v = 90 + tone * 25 + ((x * 7 + y * 13) & 15) + (y * 40 / h);
+            px[(size_t)y * w + x] = keyed && (corner || (edge && ((x ^ y) & 1))) ? 0x07E0 : rgb565(v, v * 3 / 4, v / 2);
+        }
+    px[0] = keyed ? 0x07E0 : px[0];
+    pool[used].w = w;
+    pool[used].h = h;
+    pool[used].tone = tone;
+    pool[used].keyed = keyed;
+    pool[used].bits = px;
+    return pool[used++].bits;
+}
+
+static void set_art(fe_widget_t* w, int pw, int ph, int tone, int keyed) {
+    w->image = synth_art(pw, ph, tone, keyed);
+    w->image_w = pw;
+    w->image_h = ph;
+    w->image_pitch = pw;
+    w->image_keyed = (uint8_t)keyed;
+    w->image_key = 0x07E0;
+    w->image_hash = fe_hash_pixels(w->image, pw, ph, pw, 3) ^ (uint32_t)tone;
+}
+
+/* A button's picture is its rectangle's size and starts at its corner; the state picks the tone. */
 static fe_widget_t* button(fe_scene_t* s, fe_rect_t r, int id, const char* label, int style, int state) {
     fe_widget_t* w = fe_scene_widget(s, FE_W_BUTTON, id, r);
+    (void)label;
     if (!w) return NULL;
     w->style = (uint8_t)style;
     w->state = (uint16_t)state;
-    w->text = fe_scene_text(s, label);
+    set_art(w, r.right - r.left, r.bottom - r.top, (state & FE_ST_HOVER) ? 3 : (state & FE_ST_PRESSED) ? 1 : (state & FE_ST_DISABLED) ? 0 : 2, 1);
+    return w;
+}
+
+static fe_widget_t* panel_picture(fe_scene_t* s, fe_rect_t window) {
+    fe_widget_t* w = fe_scene_widget(s, FE_W_IMAGE, -1, window);
+    if (w) set_art(w, window.right - window.left, window.bottom - window.top, 1, 1);
     return w;
 }
 
@@ -146,24 +196,21 @@ static fe_widget_t* label(fe_scene_t* s, fe_rect_t r, const char* text, float h,
     if (!w) return NULL;
     w->text = fe_scene_text(s, text);
     w->text_h = h;
-    w->text_flags = (uint16_t)(flags | FE_TEXT_SHADOW);
+    w->text_flags = (uint16_t)(flags | FE_TEXT_EXACT);
+    w->shadow_offset = 1;
+    w->weight = 500;
     return w;
 }
 
 /* hover < 0: the main screen under a dialog, which the game draws without its buttons. */
 static void main_screen(fe_scene_t* s, int hover) {
-    static const char* labels[] = { "NEW GAME", "LOAD", "OPTIONS", "EXIT" };
     fe_window_t* w = fe_scene_window(s, FE_WND_MAIN, fe_rect(0, 0, 640, 480));
     s->backdrop = &g_backdrop[0][0];
     s->backdrop_pitch = 640;
     s->backdrop_hash = fe_hash_pixels(&g_backdrop[0][0], 640, 480, 640, 7);
-    if (hover >= 0) {
-        int lengths[4];
-        fe_rect_t rects[4];
-        for (int i = 0; i < 4; i++) lengths[i] = (int)strlen(labels[i]);
-        fe_layout_main_menu(lengths, 4, rects);
-        for (int i = 0; i < 4; i++) button(s, rects[i], 1000 + i, labels[i], FE_BUTTON_LARGE, i == hover ? FE_ST_HOVER : 0);
-    }
+    if (hover >= 0)
+        for (int i = 0; i < 4; i++)
+            button(s, fe_rect(205, 70 + 90 * i, 205 + 208, 70 + 90 * i + 81), 1000 + i, "", FE_BUTTON_PLAQUE, i == hover ? FE_ST_HOVER : 0);
     fe_scene_finish_window(s, w);
 }
 
@@ -174,18 +221,15 @@ static const int k_option_game_w[] = { 87, 130, 87 }, k_option_game_h[] = { 36, 
 
 static void options_screen(fe_scene_t* s, int in_game) {
     static const int32_t ids_full[] = { 1002, 1000, 1003, 1004 }, ids_game[] = { 1002, 1000, 1004 };
-    static const char* names_full[] = { "AUDIO", "CONTROLS", "CREDITS", "CLOSE" };
-    static const char* names_game[] = { "AUDIO", "CONTROLS", "CLOSE" };
     const int32_t* ids = in_game ? ids_game : ids_full;
-    const char** names = in_game ? names_game : names_full;
     int n = in_game ? 3 : 4;
     fe_rect_t rects[4], wr = dialog_rect();
     fe_window_t* w = fe_scene_window(s, FE_WND_OPTIONS, wr);
-    w->title = fe_scene_text(s, "OPTIONS");
+    panel_picture(s, wr);
     fe_layout_options(ids, in_game ? k_option_game_w : k_option_w, in_game ? k_option_game_h : k_option_h, n, 320, 200,
                       rects);
     for (int i = 0; i < n; i++)
-        button(s, fe_rect_offset(rects[i], wr.left, wr.top), ids[i], names[i], FE_BUTTON_PLAQUE, i == 1 ? FE_ST_HOVER : 0);
+        button(s, fe_rect_offset(rects[i], wr.left, wr.top), ids[i], "", FE_BUTTON_PLAQUE, i == 1 ? FE_ST_HOVER : 0);
     fe_scene_finish_window(s, w);
 }
 
@@ -196,22 +240,31 @@ static void audio_screen(fe_scene_t* s) {
     fe_window_t* w = fe_scene_window(s, FE_WND_AUDIO, wr);
     int tops[5];
     fe_widget_t* x;
-    w->title = fe_scene_text(s, "AUDIO");
-    button(s, at(wr, 185, 155, 303, 197), 1000, "CANCEL", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 22, 155, 84, 197), 1001, "OK", FE_BUTTON_PLAQUE, FE_ST_HOVER);
+    panel_picture(s, wr);
+    button(s, at(wr, 185, 155, 303, 197), 1000, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 22, 155, 84, 197), 1001, "", FE_BUTTON_PLAQUE, FE_ST_HOVER);
     x = fe_scene_widget(s, FE_W_SLIDER, 1004, at(wr, 144, 20, 290, 43));
     x->range = 101;
     x->value = fe_slider_thumb_x(x->rect, 10, 72, x->range);
-        fe_layout_rows(5, 58, 150, 15, tops);
+    set_art(x, 10, 21, 2, 0);
+    fe_layout_rows(5, 58, 150, 15, tops);
     for (int i = 0; i < 5; i++) {
         x = fe_scene_widget(s, FE_W_CHECK, 1020 + i, at(wr, 80, tops[i], 92, tops[i] + 12));
-        x->state = (uint16_t)((i != 4 ? FE_ST_CHECKED : 0) | (i == 2 ? FE_ST_ROW_HOVER : 0));
-        x = label(s, at(wr, 120, tops[i] - 2, 300, tops[i] + 15), names[i], 12.0f, 0);
-        if (i == 2) x->state = FE_ST_ROW_HOVER;
+        x->state = (uint16_t)(i != 4 ? FE_ST_CHECKED : 0);
+        set_art(x, 12, 12, i != 4 ? 3 : 0, 0);
+        label(s, at(wr, 120, tops[i] - 2, 300, tops[i] + 15), names[i], 12.0f, 0);
     }
-    label(s, at(wr, 16, 20, 138, 43), "Master Volume", 12.0f, FE_TEXT_RIGHT | FE_TEXT_VCENTER);
-    fe_scene_tidy_check_rows(s, w);
     fe_scene_finish_window(s, w);
+}
+
+static fe_widget_t* field(fe_scene_t* s, fe_rect_t r, int id, const char* text) {
+    fe_widget_t* x = fe_scene_widget(s, FE_W_FIELD, id, r);
+    x->text = fe_scene_text(s, text);
+    x->text_h = 10.0f;
+    x->text_flags = FE_TEXT_VCENTER | FE_TEXT_EXACT;
+    x->border = 1;
+    x->color = 0xFFFFFF;
+    return x;
 }
 
 static void controls_screen(fe_scene_t* s) {
@@ -223,38 +276,21 @@ static void controls_screen(fe_scene_t* s) {
     fe_rect_t wr = dialog_rect();
     fe_window_t* w = fe_scene_window(s, FE_WND_CONTROLS, wr);
     fe_widget_t* x;
-    w->title = fe_scene_text(s, "CONTROLS");
-    button(s, at(wr, 4, 157, 66, 199), 1001, "OK", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 67, 157, 197, 199), 1002, "DEFAULTS", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 198, 158, 316, 200), 1000, "CANCEL", FE_BUTTON_PLAQUE, 0);
+    panel_picture(s, wr);
+    button(s, at(wr, 4, 157, 66, 199), 1001, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 67, 157, 197, 199), 1002, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 198, 158, 316, 200), 1000, "", FE_BUTTON_PLAQUE, 0);
     for (int i = 0; i < 7; i++) {
         int y = 46 + 14 * i;
         label(s, at(wr, 10, y, 90, y + 14), left[i], 10.0f, FE_TEXT_RIGHT | FE_TEXT_VCENTER);
-        x = fe_scene_widget(s, FE_W_FIELD, 1030 + i, at(wr, 94, y, 164, y + 14));
-        x->text = fe_scene_text(s, left_keys[i]);
-        x->text_h = 10.0f;
-        x->text_flags = FE_TEXT_CENTER | FE_TEXT_VCENTER;
-        if (i == 3) x->state = FE_ST_ROW_HOVER;
-        x = fe_scene_widget(s, FE_W_FIELD, 1037 + i, at(wr, 164, y, 246, y + 14));
-        x->text = fe_scene_text(s, right_keys[i]);
-        x->text_h = 10.0f;
-        x->text_flags = FE_TEXT_CENTER | FE_TEXT_VCENTER;
+        field(s, at(wr, 94, y, 164, y + 14), 1030 + i, left_keys[i]);
+        field(s, at(wr, 164, y, 246, y + 14), 1037 + i, right_keys[i]);
         label(s, at(wr, 248, y, 320, y + 14), right[i], 10.0f, FE_TEXT_VCENTER);
     }
-    label(s, at(wr, 248, 144, 320, 160), "voice over", 10.0f, 0);
-    label(s, at(wr, 10, 32, 90, 46), "Gore", 10.0f, FE_TEXT_RIGHT | FE_TEXT_VCENTER);
-    x = fe_scene_widget(s, FE_W_FIELD, 100, at(wr, 94, 32, 164, 46));
-    x->text = fe_scene_text(s, "Full");
-    x->text_h = 10.0f;
-    x->text_flags = FE_TEXT_CENTER | FE_TEXT_VCENTER;
     x = fe_scene_widget(s, FE_W_CHECK, 102, at(wr, 170, 18, 182, 30));
     x->state = FE_ST_CHECKED;
+    set_art(x, 12, 12, 3, 0);
     label(s, at(wr, 80, 18, 168, 32), "Invert Mouse", 10.0f, FE_TEXT_RIGHT | FE_TEXT_VCENTER);
-    x = fe_scene_widget(s, FE_W_FIELD, 1044, at(wr, 164, 32, 246, 46));
-    x->text = fe_scene_text(s, "Z");
-    x->text_h = 10.0f;
-    x->text_flags = FE_TEXT_CENTER | FE_TEXT_VCENTER;
-    label(s, at(wr, 248, 32, 320, 46), "Rotate Arm", 10.0f, FE_TEXT_VCENTER);
     fe_scene_finish_window(s, w);
 }
 
@@ -270,8 +306,7 @@ static void load_screen(fe_scene_t* s, int save) {
     fe_rect_t wr = dialog_rect();
     fe_window_t* w = fe_scene_window(s, save ? FE_WND_SAVE : FE_WND_LOAD, wr);
     fe_widget_t* x;
-    w->title = fe_scene_text(s, save ? "SAVE GAME" : "LOAD GAME");
-    x = fe_scene_widget(s, FE_W_IMAGE, 1003, fe_layout_photo(save ? FE_WND_SAVE : FE_WND_LOAD, wr));
+    x = fe_scene_widget(s, FE_W_IMAGE, 1003, at(wr, 13, 10, 113, 85));
     x->style = FE_IMAGE_PHOTO;
     if (save) {
         x->image = &g_preview[0][0];
@@ -286,12 +321,18 @@ static void load_screen(fe_scene_t* s, int save) {
         x->image_pitch = g_photo.width;
         x->image_hash = 1;
     }
+    panel_picture(s, wr);
     x = fe_scene_widget(s, FE_W_LIST, 1002, save ? at(wr, 125, 41, 297, 155) : at(wr, 124, 14, 300, 150));
     x->text_h = 12.0f;
     x->row_h = 14;
     x->rows = (x->rect.bottom - x->rect.top) / 14;
     x->top = 1;
     x->selected = 3;
+    x->arrow_w = 16;
+    x->color = 0xFFFFFF;
+    x->selected_color = 0x808080;
+    x->shadow_offset = 1;
+    x->text_flags = FE_TEXT_EXACT;
     x->track = fe_rect(x->rect.right - 16, x->rect.top, x->rect.right, x->rect.bottom);
     list_items(s, x);
     {
@@ -307,20 +348,23 @@ static void load_screen(fe_scene_t* s, int save) {
         x->text_h = 12.0f;
         x->caret = 22;
         x->state = FE_ST_CARET;
+        x->color = 0xFFFFFF;
+        x->shadow_offset = 1;
+        x->text_flags = FE_TEXT_EXACT | FE_TEXT_VCENTER;
     }
-    button(s, at(wr, 15, 159, 77, 201), 1001, "OK", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 82, 159, 186, 201), save ? 1005 : 1004, "DELETE", FE_BUTTON_PLAQUE, FE_ST_DISABLED);
-    button(s, at(wr, 190, 159, 308, 201), 1000, "CANCEL", FE_BUTTON_PLAQUE, FE_ST_PRESSED);
+    button(s, at(wr, 15, 159, 77, 201), 1001, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 82, 159, 186, 201), save ? 1005 : 1004, "", FE_BUTTON_PLAQUE, FE_ST_DISABLED);
+    button(s, at(wr, 190, 159, 308, 201), 1000, "", FE_BUTTON_PLAQUE, FE_ST_PRESSED);
     fe_scene_finish_window(s, w);
 }
 
 static void quit_screen(fe_scene_t* s) {
     fe_rect_t wr = dialog_rect();
     fe_window_t* w = fe_scene_window(s, FE_WND_QUIT, wr);
-    w->title = fe_scene_text(s, "QUIT");
-    button(s, at(wr, 102, 40, 218, 78), 1001, "DESKTOP", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 87, 84, 232, 126), 1002, "MAIN MENU", FE_BUTTON_PLAQUE, FE_ST_HOVER);
-    button(s, at(wr, 101, 132, 219, 174), 1000, "CANCEL", FE_BUTTON_PLAQUE, 0);
+    panel_picture(s, wr);
+    button(s, at(wr, 102, 40, 218, 78), 1001, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 87, 84, 232, 126), 1002, "", FE_BUTTON_PLAQUE, FE_ST_HOVER);
+    button(s, at(wr, 101, 132, 219, 174), 1000, "", FE_BUTTON_PLAQUE, 0);
     fe_scene_finish_window(s, w);
 }
 
@@ -329,23 +373,49 @@ static void game_menu_screen(fe_scene_t* s) {
     fe_window_t* w;
     fe_scene_window(s, FE_WND_GAME, fe_rect(0, 0, 640, 480));
     w = fe_scene_window(s, FE_WND_GAME_MENU, wr);
-    w->title = fe_scene_text(s, "PAUSED");
-    button(s, at(wr, 93, 142, 238, 184), 1002, "RESTART LEVEL", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 118, 26, 204, 68), 1003, "SAVE", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 22, 29, 109, 65), 1004, "LOAD", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 38, 82, 156, 124), 1005, "OPTIONS", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 211, 27, 295, 69), 1000, "QUIT", FE_BUTTON_PLAQUE, 0);
-    button(s, at(wr, 160, 82, 275, 124), 1001, "RESUME", FE_BUTTON_PLAQUE, FE_ST_HOVER);
+    panel_picture(s, wr);
+    button(s, at(wr, 93, 142, 238, 184), 1002, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 118, 26, 204, 68), 1003, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 22, 29, 109, 65), 1004, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 38, 82, 156, 124), 1005, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 211, 27, 295, 69), 1000, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 160, 82, 275, 124), 1001, "", FE_BUTTON_PLAQUE, FE_ST_HOVER);
     fe_scene_finish_window(s, w);
 }
 
 static void message_screen(fe_scene_t* s) {
     fe_rect_t wr = dialog_rect();
     fe_window_t* w = fe_scene_window(s, FE_WND_MESSAGE, wr);
-    label(s, at(wr, 10, 10, 320, 180),
-          "Are you sure you want to delete the saved game \"Town - Hammond's house\"? This cannot be undone.", 14.0f,
-          FE_TEXT_CENTER | FE_TEXT_WRAP | FE_TEXT_VCENTER);
-    button(s, at(wr, 205, 190, 267, 232), 1000, "OK", FE_BUTTON_PLAQUE, 0);
+    label(s, at(wr, 10, 10, 320, 155), "Do you wish to exit Trespasser?", 14.0f, FE_TEXT_CENTER | FE_TEXT_WRAP | FE_TEXT_VCENTER);
+    button(s, at(wr, 80, 160, 160, 202), 1000, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 165, 160, 230, 202), 1001, "", FE_BUTTON_PLAQUE, FE_ST_HOVER);
+    fe_scene_finish_window(s, w);
+}
+
+static void direct_load_screen(fe_scene_t* s) {
+    fe_rect_t wr = fe_rect(50, 120, 370, 360);
+    fe_window_t* w = fe_scene_window(s, FE_WND_DIRECT_LOAD, wr);
+    fe_widget_t* x = fe_scene_widget(s, FE_W_LIST, 1002, at(wr, 10, 10, 300, 180));
+    x->text_h = 12.0f;
+    x->row_h = 14;
+    x->rows = 12;
+    x->selected = 2;
+    x->arrow_w = 16;
+    x->color = 0xFFFFFF;
+    x->selected_color = 0x808080;
+    x->shadow_offset = 1;
+    x->text_flags = FE_TEXT_EXACT;
+    list_items(s, x);
+    button(s, at(wr, 120, 190, 238, 232), 1000, "", FE_BUTTON_PLAQUE, 0);
+    button(s, at(wr, 230, 190, 292, 232), 1001, "", FE_BUTTON_PLAQUE, FE_ST_HOVER);
+    x = fe_scene_widget(s, FE_W_IMAGE, 1003, fe_layout_direct_photo(wr));
+    x->style = FE_IMAGE_PHOTO;
+    x->image32 = g_photo.pixels;
+    x->image_w = g_photo.width;
+    x->image_h = g_photo.height;
+    x->image_pitch = g_photo.width;
+    x->image_hash = 2;
+    x->text = fe_scene_text(s, "as.scn");
     fe_scene_finish_window(s, w);
 }
 
@@ -384,6 +454,10 @@ static void build_message(fe_scene_t* s) {
     main_screen(s, -1);
     message_screen(s);
 }
+static void build_direct_load(fe_scene_t* s) {
+    main_screen(s, -1);
+    direct_load_screen(s);
+}
 
 static const struct {
     const char* name;
@@ -392,7 +466,7 @@ static const struct {
     { "main", build_main },   { "options", build_options }, { "options_game", build_options_game },
     { "audio", build_audio }, { "controls", build_controls }, { "load", build_load },
     { "save", build_save },   { "quit", build_quit },        { "game_menu", game_menu_screen },
-    { "message", build_message },
+    { "message", build_message }, { "direct_load", build_direct_load },
 };
 #define SCENE_COUNT (int)(sizeof k_scenes / sizeof k_scenes[0])
 
@@ -501,24 +575,6 @@ static void test_options_layout(void) {
     }
 }
 
-static void test_main_menu_layout(void) {
-    static const int lengths[4] = { 8, 4, 7, 4 };
-    fe_rect_t r[4];
-    int widths_differ = 0, lefts_differ = 0;
-    fe_layout_main_menu(lengths, 4, r);
-    for (int k = 0; k < 4; k++) {
-        fe_rect_t original = fe_rect(205, 70 + 90 * k, 413, 151 + 90 * k);
-        CHECK(fe_rect_equal(fe_rect_intersect(r[k], fe_rect_inflate(original, 12, 6)), r[k]),
-              "main menu plaque %d strays from its place", k);
-        CHECK(r[k].right - r[k].left >= 150 && r[k].bottom - r[k].top >= 60, "main menu plaque %d too small to read", k);
-        for (int j = 0; j < k; j++) CHECK(!overlaps(r[k], r[j]), "main menu plaques %d and %d overlap", j, k);
-        if (k && r[k].right - r[k].left != r[0].right - r[0].left) widths_differ = 1;
-        if (k && r[k].left != r[0].left) lefts_differ = 1;
-    }
-    CHECK(widths_differ && lefts_differ, "the main menu plaques are all alike");
-    CHECK(r[0].right - r[0].left > r[1].right - r[1].left, "NEW GAME's plaque is not wider than LOAD's");
-}
-
 /* The aspect of what is shown always matches the part of the picture taken: nothing is stretched. */
 static void test_photo_fit(void) {
     static const int screens[][2] = { { 2560, 1920 }, { 2560, 1440 }, { 2560, 1600 }, { 3440, 1440 }, { 5120, 1440 }, { 640, 480 } };
@@ -543,13 +599,24 @@ static void test_photo_fit(void) {
             else
                 CHECK(cover > 0.35, "a %dx%d picture fills only %.0f%% of its frame", screens[i][0], screens[i][1], cover * 100);
         }
-    for (int kind = FE_WND_LOAD; kind <= FE_WND_SAVE; kind++) {
-        fe_rect_t window = fe_rect(160, 140, 480, 340), photo = fe_layout_photo((fe_window_kind_t)kind, window);
-        fe_rect_t list = kind == FE_WND_LOAD ? fe_rect(284, 154, 460, 290) : fe_rect(285, 181, 457, 295);
-        CHECK(photo.right - photo.left >= 170 && photo.bottom - photo.top >= 110, "the save picture's frame is small");
-        CHECK(!overlaps(photo, list), "the save picture covers the list");
-        CHECK(photo.left >= 0 && photo.bottom < window.top + 159, "the save picture leaves the canvas or covers the buttons");
-    }
+}
+
+/* Direct Load: the window moves left, the level's picture sits on its right, both inside the 640x480 canvas and larger
+ * than the 100x75 thumbnails of Load and Save. */
+static void test_direct_load_layout(void) {
+    fe_rect_t window = fe_rect(160, 120, 480, 360);
+    int dx = fe_layout_direct_dx(window);
+    fe_rect_t moved = fe_rect_offset(window, dx, 0), photo = fe_layout_direct_photo(moved);
+    CHECK(dx < 0, "the window does not move left (%d)", dx);
+    CHECK(moved.left >= 0 && photo.right <= FE_CANVAS_W, "the window and the picture leave the canvas (%d..%d)", moved.left, photo.right);
+    CHECK(!overlaps(moved, photo), "the level's picture covers the window");
+    CHECK(abs((photo.left - moved.right) - FE_DIRECT_GAP) <= 1, "the gap between window and picture");
+    CHECK((photo.right - photo.left) * 3 == (photo.bottom - photo.top) * 4 + 1 || (photo.right - photo.left) * 3 == (photo.bottom - photo.top) * 4 - 1 ||
+              (photo.right - photo.left) * 3 == (photo.bottom - photo.top) * 4,
+          "the level's picture frame is not 4:3");
+    CHECK((photo.right - photo.left) >= 2 * 100 && (photo.bottom - photo.top) >= 2 * 75, "the level's picture is not larger than the old thumbnail");
+    CHECK(abs((moved.left + photo.right) - FE_CANVAS_W) <= 2, "the window and picture are not centred together");
+    CHECK(fe_layout_direct_dx(fe_rect(0, 0, 700, 100)) == 0, "a window wider than the canvas is moved");
 }
 
 /* The game's frames around a window opening (DoModal: three clear-and-flip presents, then UI frames) and closing. */
@@ -653,10 +720,10 @@ static void test_diff(void) {
     CHECK(fe_scene_diff(&g_scene, &g_other, &dirty) == FE_DIFF_ALL, "a closed window is not a full repaint");
     make_scene(&g_other, 1, 2560, 1440);
     CHECK(fe_scene_diff(&g_scene, &g_other, &dirty) == FE_DIFF_ALL, "a new screen size is not a full repaint");
-    make_scene(&g_scene, 7, 1920, 1080);
-    make_scene(&g_other, 7, 1920, 1080);
-    g_other.text_used = fe_scene_text(&g_other, "x") >= 0 ? g_other.text_used : g_other.text_used;
-    g_other.widgets[1].text = fe_scene_text(&g_other, "MAIN MENU!");
+    make_scene(&g_scene, 9, 1920, 1080);
+    make_scene(&g_other, 9, 1920, 1080);
+    for (int i = 0; i < g_other.widget_count; i++)
+        if (g_other.widgets[i].kind == FE_W_LABEL) g_other.widgets[i].text = fe_scene_text(&g_other, "Do you wish to quit?");
     CHECK(fe_scene_diff(&g_scene, &g_other, &dirty) == FE_DIFF_RECT, "a label change is not a partial repaint");
 }
 
@@ -706,8 +773,12 @@ static void test_painter(const char* dump_dir) {
     fe_painter_t* p = fe_painter_create();
     CHECK(p != NULL, "the painter cannot be created");
     if (!p) return;
-    printf("fonts: plaque \"%s\", labels \"%s\", body \"%s\"\n", fe_painter_face(p, FE_FONT_PLAQUE),
-           fe_painter_face(p, FE_FONT_LABEL), fe_painter_face(p, FE_FONT_BODY));
+    printf("fonts: menu text \"%s\"; the loading screen's plaque \"%s\", labels \"%s\", body \"%s\"\n",
+           fe_painter_face(p, FE_FONT_UI), fe_painter_face(p, FE_FONT_PLAQUE), fe_painter_face(p, FE_FONT_LABEL),
+           fe_painter_face(p, FE_FONT_BODY));
+    CHECK(!_stricmp(fe_painter_face(p, FE_FONT_UI), "Arial") || !_stricmp(fe_painter_face(p, FE_FONT_UI), "Segoe UI") ||
+              !_stricmp(fe_painter_face(p, FE_FONT_UI), "Tahoma") || !_stricmp(fe_painter_face(p, FE_FONT_UI), "Microsoft Sans Serif"),
+          "the menu font is not in the chain");
     {
         const int w = 1280, h = 720;
         uint32_t *full = surface(w, h, 0), *part = surface(w, h, 0xDEADBEEFu), *mt = surface(w, h, 0);
@@ -734,15 +805,8 @@ static void test_painter(const char* dump_dir) {
                 for (long i = 0; i < (long)w * h; i++) clear += (full[i] >> 24) != 255;
                 CHECK(clear == 0, "%s: the main screen leaves %ld pixels transparent", k_scenes[n].name, clear);
             } else {
-                fe_rect_t panel;
-                fe_view_t v = fe_view_make(w, h);
-                const fe_window_t* top = &g_scene.windows[g_scene.window_count - 1];
-                uint32_t corner = full[2 * w + 2], centre;
-                panel = fe_view_rect(&v, top->panel);
-                centre = full[(long)((panel.top + panel.bottom) / 2) * w + (panel.left + panel.right) / 2];
-                CHECK((corner >> 24) > 40 && (corner >> 24) < 120, "%s: the game picture is dimmed to alpha %u", k_scenes[n].name,
-                      corner >> 24);
-                CHECK((centre >> 24) == 255, "%s: the panel is not opaque", k_scenes[n].name);
+                uint32_t corner = full[2 * w + 2];
+                CHECK((corner >> 24) == 0, "%s: the game picture under the menu is touched (alpha %u)", k_scenes[n].name, corner >> 24);
             }
         }
         free(full);
@@ -843,8 +907,8 @@ int main(int argc, char** argv) {
     test_view();
     test_mouse_mapping();
     test_options_layout();
-    test_main_menu_layout();
     test_photo_fit();
+    test_direct_load_layout();
     test_transitions();
     test_rows();
     test_slider();
@@ -853,6 +917,8 @@ int main(int argc, char** argv) {
     test_painter(dump);
     frontend_bridge_tests(&g_checks, &g_failures);
     save_preview_tests(&g_checks, &g_failures);
+    frontend_art_tests(&g_checks, &g_failures);
+    frontend_retail_tests(&g_checks, &g_failures, dump);
     loading_tests(&g_checks, &g_failures, dump);
     printf("frontend_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

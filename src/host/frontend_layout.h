@@ -24,10 +24,14 @@ typedef struct {
  * is drawn exactly where the game hit-tests it. */
 typedef struct {
     int screen_w, screen_h;
+    int guest_w, guest_h;
     double x0, y0, sx, sy;
 } fe_view_t;
 
 fe_view_t fe_view_make(int screen_w, int screen_h);
+/* The view of a layer of screen_w x screen_h pixels laid over a game screen of guest_w x guest_h: the canvas rectangle
+ * of the game's screen (the one its pointer mapping uses), at the layer's resolution. */
+fe_view_t fe_view_make_for(int guest_w, int guest_h, int screen_w, int screen_h);
 /* Screen pixels covering a canvas rectangle (left/top down, right/bottom up), not clipped. */
 fe_rect_t fe_view_rect(const fe_view_t* v, fe_rect_t r);
 double fe_view_x(const fe_view_t* v, double u);
@@ -55,6 +59,7 @@ typedef enum {
     FE_WND_SAVE,
     FE_WND_QUIT,
     FE_WND_MESSAGE,
+    FE_WND_DIRECT_LOAD,
     FE_WND_KIND_COUNT
 } fe_window_kind_t;
 
@@ -82,7 +87,7 @@ enum {
 
 enum { FE_BUTTON_PLAQUE, FE_BUTTON_LARGE, FE_BUTTON_ARROW_UP, FE_BUTTON_ARROW_DOWN };
 
-/* FE_IMAGE_PHOTO: a save's picture in its own frame bolted over the plate's edge, outside the plate's bounds. */
+/* FE_IMAGE_PHOTO: a save's or a level's picture, taken from a file or the frozen game picture instead of a game raster. */
 enum { FE_IMAGE_PLAIN, FE_IMAGE_FRAMED, FE_IMAGE_PHOTO };
 
 enum {
@@ -92,7 +97,8 @@ enum {
     FE_TEXT_BOTTOM = 8,
     FE_TEXT_WRAP = 16,
     FE_TEXT_SHADOW = 32,
-    FE_TEXT_ELLIPSIS = 64
+    FE_TEXT_ELLIPSIS = 64,
+    FE_TEXT_EXACT = 128 /* as the game draws it: left/top at the box, no fitting, the shadow its own offset copy */
 };
 
 typedef struct {
@@ -109,12 +115,19 @@ typedef struct {
     int first_item, item_count, top, selected, row_h, rows; /* list: the shown items from first_item, item_count in all */
     fe_rect_t track;                        /* list: scroll bar column, arrows included (empty when none) */
     int caret;                              /* edit: caret index in the text */
+    int arrow_w;                            /* list: width of the scroll column */
     const uint16_t* image;                  /* RGB565 rows */
     const uint32_t* image32;                /* or opaque BGRA rows (image_pitch pixels apart) */
     int image_w, image_h, image_pitch;
     uint16_t image_key;                     /* the transparent colour when image_keyed */
     uint8_t image_keyed;
     uint32_t image_hash;
+    uint32_t shadow_color;                  /* 0xRRGGBB, the text's offset copy (shadow_offset canvas units; 0: none) */
+    uint8_t shadow_offset;
+    uint8_t border;                         /* a field's sunken edge */
+    uint8_t filled;                         /* a text box that paints its own background */
+    uint32_t fill_color;                    /* 0xRRGGBB */
+    uint32_t selected_color;                /* list: the text colour on the selected row's band */
 } fe_widget_t;
 
 typedef struct {
@@ -126,7 +139,8 @@ typedef struct {
 } fe_window_t;
 
 typedef struct {
-    int screen_w, screen_h;
+    int screen_w, screen_h; /* the layer */
+    int guest_w, guest_h;   /* the game's screen the layer covers */
     int window_count, widget_count, item_count, text_used;
     fe_window_t windows[FE_MAX_WINDOWS];
     fe_widget_t widgets[FE_MAX_WIDGETS];
@@ -139,6 +153,7 @@ typedef struct {
 } fe_scene_t;
 
 void fe_scene_reset(fe_scene_t* s, int screen_w, int screen_h);
+void fe_scene_reset_for(fe_scene_t* s, int guest_w, int guest_h, int screen_w, int screen_h);
 /* Offset of a copy of text in the scene, -1 when full. */
 int fe_scene_text(fe_scene_t* s, const char* text);
 const char* fe_scene_str(const fe_scene_t* s, int offset);
@@ -151,9 +166,6 @@ int fe_list_shown(const fe_widget_t* w);
 /* The plate of a dialog: its window and every widget in it, with a margin for the frame. */
 #define FE_PANEL_MARGIN 6
 void fe_scene_finish_window(fe_scene_t* s, fe_window_t* w);
-/* Labels to the right of a check box are drawn next to it (labels are never hit-tested). */
-void fe_scene_tidy_check_rows(fe_scene_t* s, const fe_window_t* w);
-
 enum { FE_DIFF_SAME, FE_DIFF_RECT, FE_DIFF_ALL };
 /* What must be painted again: nothing, *dirty (canvas units, glow included) or the whole screen. */
 int fe_scene_diff(const fe_scene_t* before, const fe_scene_t* now, fe_rect_t* dirty);
@@ -171,10 +183,6 @@ uint32_t fe_hash_pixels(const uint16_t* rows, int w, int h, int pitch, int step)
 void fe_layout_options(const int32_t* ids, const int* widths, const int* heights, int count, int window_w, int window_h,
                        fe_rect_t* rects);
 
-/* The main screen's plaques (mainscreen.ddf: 208x81 at 205,70+90k), each sized to its label and a little off a
- * straight column, as the original's torn plates are. */
-void fe_layout_main_menu(const int* label_lengths, int count, fe_rect_t* rects);
-
 /* Rows of the audio options spread evenly over the band [top, bottom): the new top of each row. */
 void fe_layout_rows(int count, int top, int bottom, int row_h, int* row_tops);
 
@@ -182,14 +190,21 @@ void fe_layout_rows(int count, int top, int bottom, int row_h, int* row_tops);
 int fe_slider_thumb_x(fe_rect_t track, int thumb_w, int value, int range);
 int fe_slider_drag_x(fe_rect_t track, int thumb_w, int pointer_x);
 
-/* The frame of a save's picture in Load and Save (canvas): larger than the game's 100x75 thumbnail, over the
- * plate's left edge, clear of the list and the name field. */
-fe_rect_t fe_layout_photo(fe_window_kind_t kind, fe_rect_t window);
-
 /* The part of a picture shown (src, picture pixels) and where it goes inside a frame (dst, from the frame's corner):
  * cropped to the frame's shape by up to FE_PHOTO_CROP in one direction, the rest letterboxed. */
 #define FE_PHOTO_CROP 1.34
 void fe_photo_fit(int image_w, int image_h, double frame_w, double frame_h, double src[4], double dst[4]);
+
+/* Direct Load: how far its window and controls move (canvas, to the left) so that a picture of the selected level fits
+ * on its right, and where that picture goes for the moved window. */
+#define FE_DIRECT_PHOTO_W 212
+#define FE_DIRECT_PHOTO_H 159
+#define FE_DIRECT_GAP 8
+int fe_layout_direct_dx(fe_rect_t window);
+fe_rect_t fe_layout_direct_photo(fe_rect_t window);
+
+/* The loading picture the game shows for a level file ("as.scn": li_a1_0.tga), the largest picture a level has. */
+const char* fe_level_picture(const char* scene_file);
 
 /* A list's scroll thumb inside the track between its arrows (canvas); empty when every item fits. */
 fe_rect_t fe_list_thumb(fe_rect_t column, int arrow_h, int top, int rows, int count);

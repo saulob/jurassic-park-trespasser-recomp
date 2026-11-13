@@ -83,8 +83,8 @@ static int scaling_wanted_for(uint32_t* screen_w, uint32_t* screen_h, guest_ui_v
     raster = MEM32(SCREEN_RASTER);
     *screen_w = MEM32(raster + RASTER_DISPLAY_W);
     *screen_h = MEM32(raster + RASTER_DISPLAY_H);
-    if (*screen_w <= JPT_UI_CANVAS_W && *screen_h <= JPT_UI_CANVAS_H) return 0;
     guest_ui_probe(view);
+    if (view->kind == GUEST_WND_VIDEO && *screen_w <= JPT_UI_CANVAS_W && *screen_h <= JPT_UI_CANVAS_H) return 0;
     return (view->ui == GUEST_UI_MENU || view->ui == GUEST_UI_DIALOG) && view->kind != GUEST_WND_LOADER;
 }
 

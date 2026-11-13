@@ -21,6 +21,10 @@ void frontend_hd_save_opened(const char* path, const char* user_dir);
 void frontend_hd_save_deleted(const char* path, const char* user_dir);
 /* The game's window stack as the frontend reads it; 0 when the game's own menu must be shown. */
 int frontend_hd_read_scene(fe_scene_t* s, int screen_w, int screen_h);
+/* The same for a layer of layer_w x layer_h pixels over a game screen of guest_w x guest_h. */
+int frontend_hd_read_scene_for(fe_scene_t* s, int guest_w, int guest_h, int layer_w, int layer_h);
+/* The HD layer's size over a game screen: the frame the renderer presents, within the layer's pixel budget. */
+void frontend_hd_layer_size(int guest_w, int guest_h, int frame_w, int frame_h, int* layer_w, int* layer_h);
 /* The painter the HD menus use (fonts, materials, threads), shared with the loading screen; NULL when it cannot start. */
 struct fe_painter* frontend_hd_painter(int* threads);
 /* Frees the menus' layer and caches now (a level load needs the memory); the next menu frame paints them again. */

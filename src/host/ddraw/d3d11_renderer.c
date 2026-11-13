@@ -992,6 +992,16 @@ static void choose_size(UINT legacy_w, UINT legacy_h, UINT* w, UINT* h) {
     d3dt_auto_resolution((unsigned)view_w, (unsigned)view_h, legacy_w, legacy_h, w, h);
 }
 
+int d3dr_frame_size(int guest_w, int guest_h, int* w, int* h) {
+    UINT out_w, out_h;
+    if (!R.hardware || guest_w <= 0 || guest_h <= 0) return 0;
+    choose_size((UINT)guest_w, (UINT)guest_h, &out_w, &out_h);
+    if (!out_w || !out_h) return 0;
+    *w = (int)out_w;
+    *h = (int)out_h;
+    return 1;
+}
+
 static int create_target_resources_with(d3dr_target_t* t, UINT samples);
 
 static int create_target_resources(d3dr_target_t* t) {

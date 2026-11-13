@@ -15,25 +15,31 @@ static long floor_div(long long a, long long b) {
 
 static long ceil_div(long long a, long long b) { return -floor_div(-a, b); }
 
-fe_view_t fe_view_make(int screen_w, int screen_h) {
-    jpt_ui_canvas_t c = jpt_ui_canvas(screen_w, screen_h);
+fe_view_t fe_view_make_for(int guest_w, int guest_h, int screen_w, int screen_h) {
+    jpt_ui_canvas_t c = jpt_ui_canvas(guest_w, guest_h);
+    double kx = (double)screen_w / guest_w, ky = (double)screen_h / guest_h;
     fe_view_t v;
     v.screen_w = screen_w;
     v.screen_h = screen_h;
-    v.x0 = c.rect.left;
-    v.y0 = c.rect.top;
-    v.sx = (double)(c.rect.right - c.rect.left) / FE_CANVAS_W;
-    v.sy = (double)(c.rect.bottom - c.rect.top) / FE_CANVAS_H;
+    v.guest_w = guest_w;
+    v.guest_h = guest_h;
+    v.x0 = c.rect.left * kx;
+    v.y0 = c.rect.top * ky;
+    v.sx = (double)(c.rect.right - c.rect.left) * kx / FE_CANVAS_W;
+    v.sy = (double)(c.rect.bottom - c.rect.top) * ky / FE_CANVAS_H;
     return v;
 }
 
+fe_view_t fe_view_make(int screen_w, int screen_h) { return fe_view_make_for(screen_w, screen_h, screen_w, screen_h); }
+
 fe_rect_t fe_view_rect(const fe_view_t* v, fe_rect_t r) {
     long long w = (long long)(v->sx * FE_CANVAS_W + 0.5), h = (long long)(v->sy * FE_CANVAS_H + 0.5);
+    int x0 = (int)floor(v->x0 + 0.5), y0 = (int)floor(v->y0 + 0.5);
     fe_rect_t out;
-    out.left = (int)v->x0 + (int)floor_div((long long)r.left * w, FE_CANVAS_W);
-    out.top = (int)v->y0 + (int)floor_div((long long)r.top * h, FE_CANVAS_H);
-    out.right = (int)v->x0 + (int)ceil_div((long long)r.right * w, FE_CANVAS_W);
-    out.bottom = (int)v->y0 + (int)ceil_div((long long)r.bottom * h, FE_CANVAS_H);
+    out.left = x0 + (int)floor_div((long long)r.left * w, FE_CANVAS_W);
+    out.top = y0 + (int)floor_div((long long)r.top * h, FE_CANVAS_H);
+    out.right = x0 + (int)ceil_div((long long)r.right * w, FE_CANVAS_W);
+    out.bottom = y0 + (int)ceil_div((long long)r.bottom * h, FE_CANVAS_H);
     return out;
 }
 
@@ -42,8 +48,8 @@ double fe_view_x(const fe_view_t* v, double u) { return v->x0 + u * v->sx; }
 double fe_view_y(const fe_view_t* v, double u) { return v->y0 + u * v->sy; }
 
 void fe_view_to_canvas(const fe_view_t* v, int x, int y, int* u, int* w) {
-    jpt_ui_canvas_t c = jpt_ui_canvas(v->screen_w, v->screen_h);
-    jpt_ui_to_canvas(&c, x, y, u, w);
+    jpt_ui_canvas_t c = jpt_ui_canvas(v->guest_w, v->guest_h);
+    jpt_ui_to_canvas(&c, (int)((long long)x * v->guest_w / v->screen_w), (int)((long long)y * v->guest_h / v->screen_h), u, w);
 }
 
 fe_rect_t fe_rect(int left, int top, int right, int bottom) {
@@ -80,9 +86,13 @@ int fe_rect_equal(fe_rect_t a, fe_rect_t b) {
     return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom;
 }
 
-void fe_scene_reset(fe_scene_t* s, int screen_w, int screen_h) {
+void fe_scene_reset(fe_scene_t* s, int screen_w, int screen_h) { fe_scene_reset_for(s, screen_w, screen_h, screen_w, screen_h); }
+
+void fe_scene_reset_for(fe_scene_t* s, int guest_w, int guest_h, int screen_w, int screen_h) {
     s->screen_w = screen_w;
     s->screen_h = screen_h;
+    s->guest_w = guest_w;
+    s->guest_h = guest_h;
     s->window_count = s->widget_count = s->item_count = 0;
     s->text_used = 1;
     s->text[0] = 0;
@@ -152,23 +162,6 @@ void fe_scene_finish_window(fe_scene_t* s, fe_window_t* w) {
     for (int i = w->first; i < w->first + w->count; i++)
         if (s->widgets[i].kind != FE_W_IMAGE || s->widgets[i].style != FE_IMAGE_PHOTO) r = fe_rect_union(r, s->widgets[i].rect);
     w->panel = fe_rect_inflate(r, FE_PANEL_MARGIN, FE_PANEL_MARGIN);
-}
-
-#define FE_CHECK_LABEL_GAP 8
-
-void fe_scene_tidy_check_rows(fe_scene_t* s, const fe_window_t* w) {
-    for (int i = w->first; i < w->first + w->count; i++) {
-        const fe_widget_t* c = &s->widgets[i];
-        if (c->kind != FE_W_CHECK) continue;
-        for (int k = w->first; k < w->first + w->count; k++) {
-            fe_widget_t* l = &s->widgets[k];
-            int mid = (l->rect.top + l->rect.bottom) / 2;
-            if (l->kind != FE_W_LABEL || l->rect.left < c->rect.right || mid < c->rect.top - 2 || mid > c->rect.bottom + 2 ||
-                (l->text_flags & (FE_TEXT_CENTER | FE_TEXT_RIGHT)))
-                continue;
-            if (l->rect.left > c->rect.right + FE_CHECK_LABEL_GAP) l->rect.left = c->rect.right + FE_CHECK_LABEL_GAP;
-        }
-    }
 }
 
 uint32_t fe_hash(uint32_t h, const void* data, size_t bytes) {
@@ -281,17 +274,6 @@ void fe_layout_options(const int32_t* ids, const int* widths, const int* heights
     }
 }
 
-void fe_layout_main_menu(const int* label_lengths, int count, fe_rect_t* rects) {
-    static const int heights[] = { 72, 66, 70, 64 }, dx[] = { 0, -9, 7, -4 }, dy[] = { 0, 3, -2, 4 };
-    for (int k = 0; k < count; k++) {
-        int w = 116 + 11 * label_lengths[k], h = heights[k % 4], cx = 309 + dx[k % 4];
-        int top = 70 + 90 * k + (81 - h) / 2 + dy[k % 4];
-        if (w > 208) w = 208;
-        if (w < 150) w = 150;
-        rects[k] = fe_rect(cx - w / 2, top, cx - w / 2 + w, top + h);
-    }
-}
-
 void fe_layout_rows(int count, int top, int bottom, int row_h, int* row_tops) {
     int span = bottom - top - row_h;
     if (span < 0) span = 0;
@@ -322,11 +304,6 @@ fe_rect_t fe_list_thumb(fe_rect_t column, int arrow_h, int top, int rows, int co
                    track_top + (int)((double)(top + rows) / count * track_h));
 }
 
-fe_rect_t fe_layout_photo(fe_window_kind_t kind, fe_rect_t window) {
-    if (kind == FE_WND_SAVE) return fe_rect(window.left - 62, window.top + 38, window.left + 120, window.top + 156);
-    return fe_rect(window.left - 62, window.top + 10, window.left + 118, window.top + 145);
-}
-
 void fe_photo_fit(int image_w, int image_h, double frame_w, double frame_h, double src[4], double dst[4]) {
     double ai = (double)image_w / image_h, af = frame_w / frame_h, shown = af, w, h;
     if (ai > af && ai / FE_PHOTO_CROP > af) shown = ai / FE_PHOTO_CROP;
@@ -354,4 +331,37 @@ void fe_photo_fit(int image_w, int image_h, double frame_w, double frame_h, doub
     dst[1] = (frame_h - h) * 0.5;
     dst[2] = dst[0] + w;
     dst[3] = dst[1] + h;
+}
+
+const char* fe_level_picture(const char* scene_file) {
+    static const struct {
+        const char* scene;
+        const char* picture;
+    } k_levels[] = {
+        { "as", "li_a1_0.tga" }, { "as2", "li_a2_0.tga" }, { "be", "li_be_0.tga" },   { "ij", "li_ij_0.tga" },
+        { "it", "li_it_0.tga" }, { "jr", "li_jr_0.tga" },  { "lab", "li_lab_0.tga" }, { "pv", "li_pv_0.tga" },
+        { "sum", "li_sum_0.tga" },
+    };
+    char name[32];
+    size_t n = 0;
+    if (scene_file)
+        while (scene_file[n] && scene_file[n] != '.' && n < sizeof name - 1) {
+            char c = scene_file[n];
+            name[n++] = (char)(c >= 'A' && c <= 'Z' ? c + 32 : c);
+        }
+    name[n] = 0;
+    for (size_t i = 0; i < sizeof k_levels / sizeof k_levels[0]; i++)
+        if (!strcmp(name, k_levels[i].scene)) return k_levels[i].picture;
+    return "li_other_0.tga";
+}
+
+int fe_layout_direct_dx(fe_rect_t window) {
+    int total = window.right - window.left + FE_DIRECT_GAP + FE_DIRECT_PHOTO_W;
+    int left = (FE_CANVAS_W - total) / 2;
+    return left < 0 ? 0 : left - window.left;
+}
+
+fe_rect_t fe_layout_direct_photo(fe_rect_t window) {
+    int left = window.right + FE_DIRECT_GAP, top = window.top + 10;
+    return fe_rect(left, top, left + FE_DIRECT_PHOTO_W, top + FE_DIRECT_PHOTO_H);
 }

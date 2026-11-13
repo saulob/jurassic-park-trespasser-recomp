@@ -260,6 +260,8 @@ void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty);
 void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y);
 int d3dr_frontend_failed(void);
 void d3dr_frontend_release(void);
+/* The frame Direct3D 11 presents for a game screen of guest_w x guest_h: the size an HD layer should have. */
+int d3dr_frame_size(int guest_w, int guest_h, int* w, int* h);
 /* The real pointer in the game's screen pixels; 0 when it is outside the picture. */
 int window_host_pointer(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */

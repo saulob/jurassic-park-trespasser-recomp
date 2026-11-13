@@ -51,7 +51,7 @@ static const struct {
     { 0x006460D0u, "CLoadGameWnd", GUEST_WND_OTHER },
     { 0x00646C28u, "CAudioWnd", GUEST_WND_OTHER },
     { 0x00645B4Cu, "CRenderWnd", GUEST_WND_OTHER },
-    { 0x00646888u, "CDirectLoadWnd", GUEST_WND_LOADER },
+    { 0x00646888u, "CDirectLoadWnd", GUEST_WND_OTHER },
 };
 
 const char* guest_ui_class_name(uint32_t vtable) {

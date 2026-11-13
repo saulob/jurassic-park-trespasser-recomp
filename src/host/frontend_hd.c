@@ -6,9 +6,12 @@
  */
 #include "host.h"
 
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "frontend_art.h"
 #include "frontend_assets.h"
 #include "frontend_hd.h"
 #include "save_preview.h"
@@ -48,9 +51,11 @@
 #define VT_HOTSPOT 0x006459CCu
 #define VT_OPTIONS 0x00646A58u
 #define VT_AUDIO 0x00646C28u
+#define VT_DIRECT_LOAD 0x00646888u
 
 #define BUTTON_STATE 0x28u
 #define BUTTON_IMAGES 0x2Cu
+#define CHECK_IMAGES 0x2Cu
 #define BUTTON_HOVER 2u
 #define BUTTON_PRESSED 4u
 #define CHECK_STATE 0x28u
@@ -65,7 +70,11 @@
 #define SLIDER_GRABBED 2u
 #define SLIDER_DRAGGING 4u
 #define TEXT_STRING 0x28u
+#define TEXT_BK 0x2Cu
 #define TEXT_FG 0x30u
+#define TEXT_SHADOW_COLOR 0x34u
+#define TEXT_SHADOW_OFFSET 0x38u
+#define TEXT_WEIGHT 0x50u
 #define TEXT_DT 0x3Cu
 #define TEXT_SHADOW 0x40u
 #define TEXT_BORDER 0x44u
@@ -74,6 +83,10 @@
 #define EDIT_TEXT 0x24u
 #define EDIT_FG 0x3Cu
 #define EDIT_POINTS 0x48u
+#define EDIT_SHADOW_COLOR 0x58u
+#define EDIT_SHADOW_OFFSET 0x5Cu
+#define EDIT_SHADOW 0x60u
+#define EDIT_BG 0x38u
 #define EDIT_SCROLL 0x54u
 #define LIST_ITEMS_BEGIN 0x24u
 #define LIST_ITEMS_END 0x28u
@@ -85,7 +98,10 @@
 #define LIST_ROWS 0x44u
 #define LIST_BUTTON_W 0x48u
 #define LIST_LINE_H 0x4Cu
+#define LIST_BG 0x64u
 #define LIST_FG 0x68u
+#define LIST_SHADOW_COLOR 0x78u
+#define LIST_SHADOW_OFFSET 0x7Cu
 #define LIST_POINTS 0x6Cu
 #define LIST_ITEM_SIZE 12u
 #define LIST_SCROLLBAR 0x0Cu
@@ -93,6 +109,8 @@
 #define STATIC_KEY 0x22u
 #define STATIC_IMAGE 0x24u
 
+#define CURSOR_MAX 128
+#define CURSOR_SHARE 0.7
 #define MAX_STACK 16u
 #define MAX_CONTROLS 160u
 #define TEXT_CAP 512
@@ -101,39 +119,18 @@
 
 typedef struct {
     uint32_t vtable;
-    uint8_t kind, yes_no;
-    const char* title;
+    uint8_t kind;
 } window_class_t;
 
 static const window_class_t k_windows[] = {
-    { 0x00645C3Cu, FE_WND_GAME, 0, NULL },          { 0x006466B8u, FE_WND_MAIN, 0, NULL },
-    { VT_OPTIONS, FE_WND_OPTIONS, 0, "OPTIONS" },   { 0x00646B40u, FE_WND_GAME_MENU, 0, "PAUSED" },
-    { VT_AUDIO, FE_WND_AUDIO, 0, "AUDIO" },         { 0x00645F38u, FE_WND_CONTROLS, 0, "CONTROLS" },
-    { 0x006460D0u, FE_WND_LOAD, 0, "LOAD GAME" },   { 0x006462A8u, FE_WND_SAVE, 0, "SAVE GAME" },
-    { 0x00646970u, FE_WND_QUIT, 0, "QUIT" },        { 0x00645D34u, FE_WND_MESSAGE, 1, NULL },
-    { 0x00645E24u, FE_WND_MESSAGE, 1, NULL },       { 0x006461B8u, FE_WND_MESSAGE, 1, NULL },
-    { 0x00646390u, FE_WND_MESSAGE, 0, NULL },       { 0x00646480u, FE_WND_MESSAGE, 0, NULL },
-    { 0x00646D10u, FE_WND_MESSAGE, 0, NULL },
+    { 0x00645C3Cu, FE_WND_GAME },    { 0x006466B8u, FE_WND_MAIN },    { VT_OPTIONS, FE_WND_OPTIONS },
+    { 0x00646B40u, FE_WND_GAME_MENU }, { VT_AUDIO, FE_WND_AUDIO },   { 0x00645F38u, FE_WND_CONTROLS },
+    { 0x006460D0u, FE_WND_LOAD },    { 0x006462A8u, FE_WND_SAVE },    { 0x00646970u, FE_WND_QUIT },
+    { 0x00645D34u, FE_WND_MESSAGE }, { 0x00645E24u, FE_WND_MESSAGE }, { 0x006461B8u, FE_WND_MESSAGE },
+    { 0x00646390u, FE_WND_MESSAGE }, { 0x00646480u, FE_WND_MESSAGE }, { 0x00646D10u, FE_WND_MESSAGE },
+    { VT_DIRECT_LOAD, FE_WND_DIRECT_LOAD },
 };
 
-static const struct {
-    uint8_t window;
-    int32_t id;
-    const char* label;
-} k_labels[] = {
-    { FE_WND_MAIN, 1000, "NEW GAME" },     { FE_WND_MAIN, 1001, "LOAD" },        { FE_WND_MAIN, 1002, "OPTIONS" },
-    { FE_WND_MAIN, 1003, "EXIT" },         { FE_WND_OPTIONS, 1000, "CONTROLS" }, { FE_WND_OPTIONS, 1001, "VIDEO" },
-    { FE_WND_OPTIONS, 1002, "AUDIO" },     { FE_WND_OPTIONS, 1003, "CREDITS" },  { FE_WND_OPTIONS, 1004, "CLOSE" },
-    { FE_WND_GAME_MENU, 1000, "QUIT" },    { FE_WND_GAME_MENU, 1001, "RESUME" }, { FE_WND_GAME_MENU, 1002, "RESTART LEVEL" },
-    { FE_WND_GAME_MENU, 1003, "SAVE" },    { FE_WND_GAME_MENU, 1004, "LOAD" },   { FE_WND_GAME_MENU, 1005, "OPTIONS" },
-    { FE_WND_AUDIO, 1000, "CANCEL" },      { FE_WND_AUDIO, 1001, "OK" },         { FE_WND_CONTROLS, 1000, "CANCEL" },
-    { FE_WND_CONTROLS, 1001, "OK" },       { FE_WND_CONTROLS, 1002, "DEFAULTS" }, { FE_WND_LOAD, 1000, "CANCEL" },
-    { FE_WND_LOAD, 1001, "OK" },           { FE_WND_LOAD, 1004, "DELETE" },      { FE_WND_SAVE, 1000, "CANCEL" },
-    { FE_WND_SAVE, 1001, "OK" },           { FE_WND_SAVE, 1005, "DELETE" },      { FE_WND_QUIT, 1000, "CANCEL" },
-    { FE_WND_QUIT, 1001, "DESKTOP" },      { FE_WND_QUIT, 1002, "MAIN MENU" },
-};
-
-#define MAIN_LOGO_ID 1005
 #define PREVIEW_ID 1003
 #define AUDIO_3D_CHECK 1025
 #define AUDIO_3D_HOTSPOT 1105
@@ -150,7 +147,8 @@ static struct {
     int current, have_previous;
     uint32_t* layer;
     int layer_w, layer_h;
-    uint32_t cursor[96 * 96];
+    uint32_t cursor[CURSOR_MAX * CURSOR_MAX];
+    uint32_t cursor_raster;
     int cursor_size, cursor_hot_x, cursor_hot_y;
     double cursor_scale;
     unsigned cursor_generation;
@@ -202,13 +200,6 @@ static const window_class_t* window_class(uint32_t vtable) {
     return NULL;
 }
 
-static const char* button_label(const window_class_t* wc, int32_t id) {
-    if (wc->kind == FE_WND_MESSAGE) return id == 1000 ? (wc->yes_no ? "YES" : "OK") : id == 1001 && wc->yes_no ? "NO" : NULL;
-    for (size_t i = 0; i < sizeof k_labels / sizeof k_labels[0]; i++)
-        if (k_labels[i].window == wc->kind && k_labels[i].id == id) return k_labels[i].label;
-    return NULL;
-}
-
 static uint32_t colorref_rgb(uint32_t c) { return ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF); }
 
 static uint16_t text_flags(uint32_t dt, int shadow) {
@@ -243,11 +234,9 @@ typedef struct {
     uint32_t window;
     uint32_t arrows[8];
     int arrow_count;
-    fe_rect_t hotspots[32];
-    int hotspot_count;
     int cursor_x, cursor_y;
-    const uint16_t* thumb; /* the game's own thumbnail of the selected save */
-    int thumb_w, thumb_h, thumb_pitch;
+    int selected_item; /* the list's selected row, -1 for none */
+    char selected_text[64];
 } reader_t;
 
 static int is_arrow(const reader_t* r, uint32_t control, int* down) {
@@ -259,41 +248,62 @@ static int is_arrow(const reader_t* r, uint32_t control, int* down) {
     return 0;
 }
 
+static uint32_t image_hash(const uint16_t* bits, int w, int h, int pitch) {
+    return fe_hash_pixels(bits, w, h, pitch, w * h > 20000 ? 5 : 1);
+}
+
+/* The game's picture in a raster, drawn at the widget's corner; keyed by its top-left pixel as the game does. */
+static int set_picture(fe_widget_t* w, uint32_t raster, int keyed) {
+    const uint16_t* bits;
+    int iw, ih, pitch;
+    if (!read_image(raster, &bits, &iw, &ih, &pitch)) return 0;
+    w->image = bits;
+    w->image_w = iw;
+    w->image_h = ih;
+    w->image_pitch = pitch;
+    w->image_key = bits[0];
+    w->image_keyed = keyed != 0;
+    w->image_hash = image_hash(bits, iw, ih, pitch);
+    return 1;
+}
+
+/* CUIButton::Draw (0x004036D0): the image slot a state selects (0x004035D0). */
+static uint32_t button_slot(uint32_t flags, uint32_t state) {
+    if (!(flags & CTRL_ENABLED)) return 3;
+    if (state & BUTTON_PRESSED) return 2;
+    if (state & BUTTON_HOVER) return 1;
+    return 0;
+}
+
 static int add_button(reader_t* r, uint32_t c, uint32_t flags, int32_t id, fe_rect_t rect) {
-    uint32_t state = peek32(c + BUTTON_STATE), images = 0;
-    const char* label;
+    uint32_t state = peek32(c + BUTTON_STATE), slot = button_slot(flags, state);
+    uint32_t raster = peek32(c + BUTTON_IMAGES + 4 * slot);
     int down;
     fe_widget_t* w;
-    for (uint32_t i = 0; i < 4; i++) images |= peek32(c + BUTTON_IMAGES + 4 * i);
-    if (!images) return 1;
+    if (!raster) return 1;
     w = fe_scene_widget(r->s, FE_W_BUTTON, id, rect);
     if (!w) return 0;
     if (!(flags & CTRL_ENABLED)) w->state = FE_ST_DISABLED;
     else w->state = (uint16_t)(((state & BUTTON_HOVER) ? FE_ST_HOVER : 0) | ((state & BUTTON_PRESSED) ? FE_ST_PRESSED : 0));
-    if (is_arrow(r, c, &down)) {
-        w->style = down ? FE_BUTTON_ARROW_DOWN : FE_BUTTON_ARROW_UP;
-        return 1;
-    }
-    label = button_label(r->wc, id);
-    if (!label) {
-        refuse("a button the frontend has no label for");
-        return 0;
-    }
-    w->style = r->wc->kind == FE_WND_MAIN ? FE_BUTTON_LARGE : FE_BUTTON_PLAQUE;
-    w->text = fe_scene_text(r->s, label);
+    w->style = is_arrow(r, c, &down) ? (down ? FE_BUTTON_ARROW_DOWN : FE_BUTTON_ARROW_UP) : FE_BUTTON_PLAQUE;
+    if (!set_picture(w, raster, state & 1)) w->image = NULL;
     return 1;
 }
 
+/* CUICheckBox::Draw (0x00405890): the image checked * 2 + hover, opaque. */
 static int add_check(reader_t* r, uint32_t c, uint32_t flags, int32_t id, fe_rect_t rect) {
     uint32_t state = peek32(c + CHECK_STATE);
+    uint32_t index = ((state & CHECK_CHECKED) ? 2u : 0u) | ((state & CHECK_HOVER) ? 1u : 0u);
     fe_widget_t* w;
     if (!(flags & CTRL_ENABLED)) return 1;
     w = fe_scene_widget(r->s, FE_W_CHECK, id, rect);
     if (!w) return 0;
     w->state = (uint16_t)(((state & CHECK_HOVER) ? FE_ST_HOVER : 0) | ((state & CHECK_CHECKED) ? FE_ST_CHECKED : 0));
+    if (!set_picture(w, peek32(c + CHECK_IMAGES + 4 * index), 0)) w->image = NULL;
     return 1;
 }
 
+/* CUISlider::Draw (0x004065D0): its track is part of the window's picture; the thumb is slider.tga. */
 static int add_slider(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     uint32_t state = peek32(c + SLIDER_STATE), units = peek32(c + SLIDER_UNITS), thumb = peek32(c + SLIDER_THUMB);
     int thumb_w = thumb ? (int)peek32(thumb + RASTER_W) : 10;
@@ -304,7 +314,14 @@ static int add_slider(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     w->value = (state & SLIDER_DRAGGING) ? fe_slider_drag_x(rect, thumb_w, (int32_t)peek32(c + SLIDER_DRAG_X))
                                          : fe_slider_thumb_x(rect, thumb_w, (int32_t)peek32(c + SLIDER_VALUE), (int)units);
     w->state = (uint16_t)(((state & SLIDER_HOVER) ? FE_ST_HOVER : 0) | ((state & (SLIDER_GRABBED | SLIDER_DRAGGING)) ? FE_ST_PRESSED : 0));
+    if (!set_picture(w, thumb, 0)) w->image = NULL;
     return 1;
+}
+
+static void text_shadow(fe_widget_t* w, uint32_t enabled, uint32_t color, uint32_t offset) {
+    if (!enabled || !offset || offset > 8) return;
+    w->shadow_offset = (uint8_t)offset;
+    w->shadow_color = colorref_rgb(color);
 }
 
 static int add_textbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
@@ -319,11 +336,14 @@ static int add_textbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     if (!w) return 0;
     w->text = fe_scene_text(r->s, text);
     w->text_h = points;
+    w->weight = (uint16_t)(peek32(c + TEXT_WEIGHT) & 0xFFFF);
     w->color = colorref_rgb(peek32(c + TEXT_FG));
-    w->text_flags = text_flags(peek32(c + TEXT_DT), peek32(c + TEXT_SHADOW) != 0);
+    w->text_flags = (uint16_t)(text_flags(peek32(c + TEXT_DT), 0) | FE_TEXT_EXACT);
+    w->border = border != 0;
+    text_shadow(w, peek32(c + TEXT_SHADOW), peek32(c + TEXT_SHADOW_COLOR), peek32(c + TEXT_SHADOW_OFFSET));
     if (!transparent) {
-        w->state = FE_ST_FOCUS;
-        w->color = 0xFFFFFF;
+        w->filled = 1;
+        w->fill_color = colorref_rgb(peek32(c + TEXT_BK));
     }
     return 1;
 }
@@ -343,8 +363,10 @@ static int add_editbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     w->text = fe_scene_text(r->s, text + scroll);
     w->text_h = points;
     w->color = colorref_rgb(peek32(c + EDIT_FG));
+    w->text_flags = FE_TEXT_EXACT | FE_TEXT_VCENTER;
     w->caret = (int)(len - scroll);
     w->state = FE_ST_CARET;
+    text_shadow(w, peek32(c + EDIT_SHADOW) & 0xFF, peek32(c + EDIT_SHADOW_COLOR), peek32(c + EDIT_SHADOW_OFFSET) & 0xFF);
     return 1;
 }
 
@@ -366,8 +388,15 @@ static int add_listbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     w->selected = (int32_t)peek32(c + LIST_SELECTED);
     w->rows = (int32_t)peek32(c + LIST_ROWS);
     w->row_h = line_h;
+    w->arrow_w = side > 0 && side <= 64 ? side : 16;
+    w->arrow_w = side > 0 && side <= 64 ? side : 16;
+    w->arrow_w = side > 0 && side <= 64 ? side : 16;
+    w->arrow_w = side > 0 && side <= 64 ? side : 16;
     w->text_h = points;
     w->color = colorref_rgb(peek32(c + LIST_FG));
+    w->selected_color = colorref_rgb(peek32(c + LIST_BG));
+    text_shadow(w, 1, peek32(c + LIST_SHADOW_COLOR), peek32(c + LIST_SHADOW_OFFSET));
+    w->text_flags = FE_TEXT_EXACT;
     if (w->top < 0) w->top = 0;
     if (side <= 0 || side > 64) side = 16;
     if (flags & LIST_SCROLLBAR) w->track = fe_rect(rect.right - side, rect.top, rect.right, rect.bottom);
@@ -380,38 +409,25 @@ static int add_listbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
             return 0;
         }
     }
+    if (w->selected >= 0 && w->selected < w->item_count &&
+        guest_read_string(peek32(begin + (uint32_t)w->selected * LIST_ITEM_SIZE), r->selected_text, sizeof r->selected_text))
+        r->selected_item = w->selected;
     return 1;
 }
 
+static int add_photo(reader_t* r, fe_rect_t at, uint32_t fallback_raster);
+
+/* CUIStatic::Draw (0x00403AE0): the picture at the control's corner, keyed when the control says so. */
 static int add_static(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     uint8_t transparent = 1;
-    uint16_t key = 0;
-    const uint16_t* bits;
-    int w_, h_, pitch;
     fe_widget_t* w;
-    int logo = r->wc->kind == FE_WND_MAIN && id == MAIN_LOGO_ID;
-    int preview = (r->wc->kind == FE_WND_LOAD || r->wc->kind == FE_WND_SAVE) && id == PREVIEW_ID;
-    if (!logo && !preview) return 1;
-    if (!read_image(peek32(c + STATIC_IMAGE), &bits, &w_, &h_, &pitch)) return 1;
-    if (preview) {
-        r->thumb = bits;
-        r->thumb_w = w_;
-        r->thumb_h = h_;
-        r->thumb_pitch = pitch;
-        return 1;
-    }
+    uint32_t raster = peek32(c + STATIC_IMAGE);
+    if (!raster) return 1;
+    if ((r->wc->kind == FE_WND_LOAD || r->wc->kind == FE_WND_SAVE) && id == PREVIEW_ID) return add_photo(r, rect, raster);
     read8(c + STATIC_TRANSPARENT, &transparent);
-    if (guest_readable(c + STATIC_KEY, 2)) key = *(const volatile uint16_t*)(uintptr_t)(c + STATIC_KEY);
     w = fe_scene_widget(r->s, FE_W_IMAGE, id, rect);
     if (!w) return 0;
-    w->style = (uint8_t)preview;
-    w->image = bits;
-    w->image_w = w_;
-    w->image_h = h_;
-    w->image_pitch = pitch;
-    w->image_key = key;
-    w->image_keyed = transparent != 0;
-    w->image_hash = fe_hash_pixels(bits, w_, h_, pitch, w_ * h_ > 20000 ? 3 : 1);
+    if (!set_picture(w, raster, transparent)) w->image = NULL;
     return 1;
 }
 
@@ -429,11 +445,9 @@ static int add_control(reader_t* r, uint32_t c) {
     case VT_EDITBOX: return add_editbox(r, c, (int32_t)id, rect);
     case VT_LISTBOX: return add_listbox(r, c, (int32_t)id, rect);
     case VT_STATIC: return add_static(r, c, (int32_t)id, rect);
-    case VT_HOTSPOT:
-        if (r->hotspot_count < (int)(sizeof r->hotspots / sizeof r->hotspots[0])) r->hotspots[r->hotspot_count++] = rect;
-        return 1;
+    case VT_HOTSPOT: return 1;
     case VT_PROGRESS: refuse("a progress bar"); return 0;
-    default: refuse("a control the frontend does not know"); return 0;
+    default: log_limited("a control the frontend does not know is not drawn: %s", "its window stays HD"); return 1;
     }
 }
 
@@ -445,36 +459,6 @@ static int read_controls(uint32_t window, uint32_t* out, unsigned* count) {
     *count = (end - begin) / 4;
     for (unsigned i = 0; i < *count; i++) out[i] = ((const uint32_t*)(uintptr_t)begin)[i];
     return 1;
-}
-
-/* Labels, fields and check boxes under the pointer's row (the game's hotspots, which it never draws). */
-static void mark_row_hover(reader_t* r, const fe_window_t* w) {
-    for (int h = 0; h < r->hotspot_count; h++) {
-        if (!fe_rect_contains(r->hotspots[h], r->cursor_x, r->cursor_y)) continue;
-        for (int i = w->first; i < w->first + w->count; i++) {
-            fe_widget_t* x = &r->s->widgets[i];
-            if ((x->kind == FE_W_LABEL || x->kind == FE_W_FIELD || x->kind == FE_W_CHECK) &&
-                !fe_rect_empty(fe_rect_intersect(x->rect, r->hotspots[h])))
-                x->state |= FE_ST_ROW_HOVER;
-        }
-    }
-}
-
-static void add_volume_caption(fe_scene_t* s, const fe_window_t* w) {
-    for (int i = w->first; i < w->first + w->count; i++) {
-        const fe_widget_t* x = &s->widgets[i];
-        fe_widget_t* c;
-        fe_rect_t r;
-        if (x->kind != FE_W_SLIDER) continue;
-        r = fe_rect(w->rect.left + 16, x->rect.top, x->rect.left - 6, x->rect.bottom);
-        if (r.right - r.left < 40) return;
-        c = fe_scene_widget(s, FE_W_LABEL, -1, r);
-        if (!c) return;
-        c->text = fe_scene_text(s, "Master Volume");
-        c->text_h = 12.0f;
-        c->text_flags = FE_TEXT_RIGHT | FE_TEXT_VCENTER | FE_TEXT_SHADOW;
-        return;
-    }
 }
 
 /* Load (CLoadGameWnd) and Save (CSaveGameWnd) keep one 84-byte entry per listed save, in list order, with the save's
@@ -581,14 +565,18 @@ static const sp_image_t* frozen_preview(void) {
 }
 
 /* The selected save's HD picture, else the game's own thumbnail; in Save with nothing selected, the picture a new save
- * will get. */
-static int add_photo(reader_t* r) {
+ * will get. The picture takes the place and size of the game's own 100x75 thumbnail. */
+static int add_photo(reader_t* r, fe_rect_t at, uint32_t fallback_raster) {
     char path[MAX_PATH];
     const preview_slot_t* slot = NULL;
     const sp_image_t* still = NULL;
-    int chosen = selected_save(r, path, sizeof path);
-    fe_rect_t frame = fe_layout_photo((fe_window_kind_t)r->wc->kind, r->s->windows[r->s->window_count - 1].rect);
-    fe_widget_t* w = fe_scene_widget(r->s, FE_W_IMAGE, PREVIEW_ID, frame);
+    const uint16_t* bits;
+    int bw, bh, pitch, chosen = selected_save(r, path, sizeof path);
+    fe_rect_t frame = at;
+    fe_widget_t* w;
+    if (read_image(fallback_raster, &bits, &bw, &bh, &pitch)) frame = fe_rect(at.left, at.top, at.left + bw, at.top + bh);
+    else bits = NULL;
+    w = fe_scene_widget(r->s, FE_W_IMAGE, PREVIEW_ID, frame);
     if (!w) return 0;
     w->style = FE_IMAGE_PHOTO;
     if (chosen) slot = preview_of(path);
@@ -601,12 +589,72 @@ static int add_photo(reader_t* r) {
         w->image_pitch = image->width;
         w->image_hash = slot ? fe_hash(fe_hash(0, slot->path, strlen(slot->path)), &slot->written, sizeof slot->written)
                              : P.frozen_hash;
-    } else if (chosen && r->thumb) {
-        w->image = r->thumb;
-        w->image_w = r->thumb_w;
-        w->image_h = r->thumb_h;
-        w->image_pitch = r->thumb_pitch;
-        w->image_hash = fe_hash_pixels(r->thumb, r->thumb_w, r->thumb_h, r->thumb_pitch, 1);
+    } else if (bits) {
+        w->image = bits;
+        w->image_w = bw;
+        w->image_h = bh;
+        w->image_pitch = pitch;
+        w->image_key = bits[0];
+        w->image_hash = image_hash(bits, bw, bh, pitch);
+    }
+    return 1;
+}
+
+/* Direct Load's picture of the selected level: the level's own 640x480 loading picture, read from the game's menu
+ * folder once and kept while that level stays selected. */
+static struct {
+    char name[32];
+    uint32_t* pixels;
+    int w, h, failed;
+    uint32_t hash;
+} L;
+
+static void release_level_picture(void) {
+    free(L.pixels);
+    memset(&L, 0, sizeof L);
+}
+
+static int load_level_picture(const char* file) {
+    static const char* const k_dirs[] = { "data\\menu\\", "menu\\" };
+    uint8_t* data = NULL;
+    size_t size = 0;
+    if (!strcmp(L.name, file)) return L.pixels != NULL;
+    release_level_picture();
+    strncpy(L.name, file, sizeof L.name - 1);
+    for (size_t i = 0; i < sizeof k_dirs / sizeof k_dirs[0] && !data; i++) {
+        char path[MAX_PATH];
+        FILE* f;
+        _snprintf(path, sizeof path - 1, "%s%s", k_dirs[i], file);
+        path[sizeof path - 1] = 0;
+        f = fopen(path, "rb");
+        if (!f) continue;
+        if (!fseek(f, 0, SEEK_END) && (size = (size_t)ftell(f)) > 0 && size < (64u << 20) && !fseek(f, 0, SEEK_SET) &&
+            (data = (uint8_t*)malloc(size)) != NULL && fread(data, 1, size, f) != size) {
+            free(data);
+            data = NULL;
+        }
+        fclose(f);
+    }
+    if (!data || !fa_tga_decode(data, size, &L.pixels, &L.w, &L.h)) {
+        free(data);
+        return 0;
+    }
+    free(data);
+    L.hash = fe_hash(0, file, strlen(file));
+    return 1;
+}
+
+static int add_level_photo(reader_t* r, const fe_window_t* win) {
+    fe_widget_t* w = fe_scene_widget(r->s, FE_W_IMAGE, PREVIEW_ID, fe_layout_direct_photo(win->rect));
+    if (!w) return 0;
+    w->style = FE_IMAGE_PHOTO;
+    if (r->selected_item >= 0 && load_level_picture(fe_level_picture(r->selected_text))) {
+        w->image32 = L.pixels;
+        w->image_w = L.w;
+        w->image_h = L.h;
+        w->image_pitch = L.w;
+        w->image_hash = L.hash;
+        w->text = fe_scene_text(r->s, r->selected_text);
     }
     return 1;
 }
@@ -646,24 +694,6 @@ void frontend_hd_save_deleted(const char* path, const char* user_dir) {
     save_preview_delete(path);
 }
 
-/* The main screen is never centred: its plaques get their sizes when the frontend first draws it. */
-static void edit_main_screen(const reader_t* r) {
-    static int logged;
-    int lengths[4];
-    fe_rect_t rects[4];
-    for (int k = 0; k < 4; k++) {
-        const char* label = button_label(r->wc, 1000 + k);
-        lengths[k] = label ? (int)strlen(label) : 8;
-    }
-    fe_layout_main_menu(lengths, 4, rects);
-    for (int k = 0; k < 4; k++) {
-        uint32_t c = find_control(r->window, 1000 + k, VT_BUTTON);
-        fe_rect_t now;
-        if (c && read_rect(c + CTRL_RECT, &now) && !fe_rect_equal(now, rects[k]) && write_rect(c, rects[k]) && !logged++)
-            host_log("frontend", "main menu: plaques sized to their labels, the game's buttons moved with them");
-    }
-}
-
 static int read_window(reader_t* r, uint32_t window, int top) {
     uint32_t controls[MAX_CONTROLS];
     unsigned count = 0;
@@ -672,7 +702,6 @@ static int read_window(reader_t* r, uint32_t window, int top) {
     if (!read_rect(window + WND_RECT, &rect)) return 0;
     w = fe_scene_window(r->s, (fe_window_kind_t)r->wc->kind, rect);
     if (!w) return 0;
-    if (r->wc->title) w->title = fe_scene_text(r->s, r->wc->title);
     if (r->wc->kind == FE_WND_MAIN) {
         const uint16_t* bits;
         int bw, bh, pitch;
@@ -685,9 +714,9 @@ static int read_window(reader_t* r, uint32_t window, int top) {
         r->s->backdrop_hash = fe_hash_pixels(bits, bw, bh, pitch, 7);
     }
     if (top && r->wc->kind != FE_WND_GAME) {
-        if (r->wc->kind == FE_WND_MAIN) edit_main_screen(r);
         if (!read_controls(window, controls, &count)) return 0;
-        r->arrow_count = r->hotspot_count = 0;
+        r->arrow_count = 0;
+        r->selected_item = -1;
         for (unsigned i = 0; i < count; i++)
             if (peek32(controls[i]) == VT_LISTBOX && r->arrow_count + 2 <= (int)(sizeof r->arrows / sizeof r->arrows[0])) {
                 r->arrows[r->arrow_count++] = peek32(controls[i] + LIST_UP);
@@ -695,22 +724,36 @@ static int read_window(reader_t* r, uint32_t window, int top) {
             }
         for (unsigned i = 0; i < count; i++)
             if (!add_control(r, controls[i])) return 0;
-        mark_row_hover(r, w);
-        if ((r->wc->kind == FE_WND_LOAD || r->wc->kind == FE_WND_SAVE) && !add_photo(r)) return 0;
-        if (r->wc->kind == FE_WND_AUDIO) {
-            fe_scene_tidy_check_rows(r->s, w);
-            add_volume_caption(r->s, w);
-        }
+        if (r->wc->kind == FE_WND_DIRECT_LOAD && !add_level_photo(r, w)) return 0;
     }
     fe_scene_finish_window(r->s, w);
     return 1;
 }
 
 int frontend_hd_read_scene(fe_scene_t* s, int screen_w, int screen_h) {
+    return frontend_hd_read_scene_for(s, screen_w, screen_h, screen_w, screen_h);
+}
+
+#define LAYER_MAX_PIXELS (17 << 20)
+
+void frontend_hd_layer_size(int guest_w, int guest_h, int frame_w, int frame_h, int* layer_w, int* layer_h) {
+    double k = 1.0;
+    if (frame_w < guest_w || frame_h < guest_h || frame_w <= 0 || frame_h <= 0) {
+        frame_w = guest_w;
+        frame_h = guest_h;
+    }
+    if ((double)frame_w * frame_h > LAYER_MAX_PIXELS) k = sqrt((double)LAYER_MAX_PIXELS / ((double)frame_w * frame_h));
+    *layer_w = (int)(frame_w * k);
+    *layer_h = (int)(frame_h * k);
+    if (*layer_w < guest_w) *layer_w = guest_w;
+    if (*layer_h < guest_h) *layer_h = guest_h;
+}
+
+int frontend_hd_read_scene_for(fe_scene_t* s, int screen_w, int screen_h, int layer_w, int layer_h) {
     uint32_t main_wnd, manager, begin, end, stack[MAX_STACK];
     unsigned depth;
     reader_t r;
-    fe_scene_reset(s, screen_w, screen_h);
+    fe_scene_reset_for(s, screen_w, screen_h, layer_w, layer_h);
     memset(&r, 0, sizeof r);
     r.s = s;
     if (!read32(MAIN_WINDOW_OBJECT, &main_wnd) || !read32(main_wnd + MANAGER_OFFSET, &manager) ||
@@ -775,26 +818,66 @@ static int ensure_layer(int w, int h) {
     return F.layer != NULL;
 }
 
+static uint32_t pointer_raster(void) {
+    uint32_t main_wnd = peek32(MAIN_WINDOW_OBJECT), manager = main_wnd ? peek32(main_wnd + MANAGER_OFFSET) : 0, index;
+    if (!manager) return 0;
+    index = peek32(manager + MGR_CURSOR_INDEX);
+    return index < 16 ? peek32(manager + MGR_CURSOR_IMAGES + 4 * index) : 0;
+}
+
+/* The game's own pointer picture (a keyed 16-bit raster), scaled like the menus; 0 when it cannot be read. */
+static int game_pointer(uint32_t raster, double scale) {
+    const uint16_t* bits;
+    int w, h, pitch, dw, dh;
+    fa_source_t src;
+    fa_bitmap_t big;
+    if (!read_image(raster, &bits, &w, &h, &pitch) || w > 64 || h > 64) return 0;
+    dw = (int)ceil(w * scale * CURSOR_SHARE);
+    dh = (int)ceil(h * scale * CURSOR_SHARE);
+    if (dw < 1 || dh < 1 || dw > CURSOR_MAX || dh > CURSOR_MAX) return 0;
+    memset(&src, 0, sizeof src);
+    src.bits = bits;
+    src.w = w;
+    src.h = h;
+    src.pitch = pitch;
+    src.keyed = 1;
+    src.key = bits[0];
+    if (!fa_resample16(&src, NULL, dw, dh, FA_CRISP_EDGE, &big)) return 0;
+    F.cursor_size = dw > dh ? dw : dh;
+    memset(F.cursor, 0, sizeof(uint32_t) * (size_t)F.cursor_size * F.cursor_size);
+    for (int y = 0; y < dh; y++) memcpy(F.cursor + (size_t)y * F.cursor_size, big.px + (size_t)y * dw, sizeof(uint32_t) * (size_t)dw);
+    fa_bitmap_free(&big);
+    F.cursor_hot_x = F.cursor_hot_y = (int)(scale * CURSOR_SHARE + 0.5);
+    return 1;
+}
+
 static void update_pointer(const fe_scene_t* s) {
-    fe_view_t v = fe_view_make(s->screen_w, s->screen_h);
+    fe_view_t v = fe_view_make_for(s->guest_w, s->guest_h, s->screen_w, s->screen_h);
+    uint32_t raster = pointer_raster();
     int x, y;
-    if (v.sy != F.cursor_scale) {
-        int size = fe_cursor_size(v.sy);
-        if (size > 96) size = 96;
-        fe_paint_cursor(size == fe_cursor_size(v.sy) ? v.sy : v.sy * 96.0 / fe_cursor_size(v.sy), F.cursor, size,
-                        &F.cursor_hot_x, &F.cursor_hot_y);
-        F.cursor_size = size;
+    if (v.sy != F.cursor_scale || raster != F.cursor_raster) {
+        if (!game_pointer(raster, v.sy)) {
+            int size = fe_cursor_size(v.sy);
+            if (size > 96) size = 96;
+            fe_paint_cursor(size == fe_cursor_size(v.sy) ? v.sy : v.sy * 96.0 / fe_cursor_size(v.sy), F.cursor, size,
+                            &F.cursor_hot_x, &F.cursor_hot_y);
+            F.cursor_size = size;
+        }
         F.cursor_scale = v.sy;
+        F.cursor_raster = raster;
         F.cursor_generation++;
     }
     if (!pointer_shown() || !window_host_pointer(&x, &y)) {
         d3dr_set_frontend_pointer(NULL, 0, 0, 0, 0);
         return;
     }
+    x = (int)((long long)x * s->screen_w / s->guest_w);
+    y = (int)((long long)y * s->screen_h / s->guest_h);
     d3dr_set_frontend_pointer(F.cursor, F.cursor_size, F.cursor_generation, x - F.cursor_hot_x, y - F.cursor_hot_y);
 }
 
 static void release_all(void) {
+    release_level_picture();
     free(F.layer);
     F.layer = NULL;
     F.layer_w = F.layer_h = 0;
@@ -809,7 +892,7 @@ int frontend_hd_frame(int screen_w, int screen_h) {
     const fe_scene_t* before = F.have_previous ? &F.scenes[F.current] : NULL;
     fe_rect_t dirty, clip;
     RECT box;
-    int diff;
+    int diff, frame_w = 0, frame_h = 0, layer_w, layer_h;
     LARGE_INTEGER t0, t1, freq;
     F.idle_frames = 0;
     if (d3dr_frontend_failed()) {
@@ -817,22 +900,24 @@ int frontend_hd_frame(int screen_w, int screen_h) {
         return 0;
     }
     if (screen_w <= 0 || screen_h <= 0 || !ensure_painter()) return 0;
-    if (!frontend_hd_read_scene(now, screen_w, screen_h)) {
+    if (!d3dr_frame_size(screen_w, screen_h, &frame_w, &frame_h)) frame_w = frame_h = 0;
+    frontend_hd_layer_size(screen_w, screen_h, frame_w, frame_h, &layer_w, &layer_h);
+    if (!frontend_hd_read_scene_for(now, screen_w, screen_h, layer_w, layer_h)) {
         if (!F.last_refusal[0]) refuse("a window the frontend could not read");
         return 0;
     }
-    if (!ensure_layer(screen_w, screen_h)) {
+    if (!ensure_layer(layer_w, layer_h)) {
         refuse("no memory for the HD layer");
         return 0;
     }
     diff = fe_scene_diff(F.have_previous ? before : NULL, now, &dirty);
-    if (diff == FE_DIFF_ALL) clip = fe_rect(0, 0, screen_w, screen_h);
+    if (diff == FE_DIFF_ALL) clip = fe_rect(0, 0, layer_w, layer_h);
     else if (diff == FE_DIFF_RECT) {
-        fe_view_t v = fe_view_make(screen_w, screen_h);
-        clip = fe_rect_intersect(fe_view_rect(&v, dirty), fe_rect(0, 0, screen_w, screen_h));
+        fe_view_t v = fe_view_make_for(screen_w, screen_h, layer_w, layer_h);
+        clip = fe_rect_intersect(fe_view_rect(&v, dirty), fe_rect(0, 0, layer_w, layer_h));
     } else clip = fe_rect(0, 0, 0, 0);
     QueryPerformanceCounter(&t0);
-    if (!fe_rect_empty(clip) && !fe_paint(F.painter, now, F.layer, screen_w, clip, F.threads)) {
+    if (!fe_rect_empty(clip) && !fe_paint(F.painter, now, F.layer, layer_w, clip, F.threads)) {
         refuse("the HD layer could not be painted");
         F.have_previous = 0;
         return 0;
@@ -841,8 +926,8 @@ int frontend_hd_frame(int screen_w, int screen_h) {
     if (diff == FE_DIFF_ALL && F.sizes_logged < 4) {
         QueryPerformanceFrequency(&freq);
         F.sizes_logged++;
-        host_log("frontend", "HD menus at %dx%d (canvas scale %.3f): painted in %.1f ms", screen_w, screen_h,
-                 fe_view_make(screen_w, screen_h).sy, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)freq.QuadPart);
+        host_log("frontend", "HD menus at %dx%d over the %dx%d game screen (canvas scale %.3f): painted in %.1f ms", layer_w,
+                 layer_h, screen_w, screen_h, fe_view_make_for(screen_w, screen_h, layer_w, layer_h).sy, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)freq.QuadPart);
     }
     F.current ^= 1;
     F.have_previous = 1;
@@ -851,7 +936,7 @@ int frontend_hd_frame(int screen_w, int screen_h) {
     box.top = clip.top;
     box.right = clip.right;
     box.bottom = clip.bottom;
-    d3dr_set_frontend(F.layer, screen_w, screen_h, fe_rect_empty(clip) ? NULL : &box);
+    d3dr_set_frontend(F.layer, layer_w, layer_h, fe_rect_empty(clip) ? NULL : &box);
     update_pointer(now);
     F.shown = 1;
     return 1;
@@ -984,10 +1069,26 @@ static void edit_audio(uint32_t window) {
                              "the other rows are spread over its space");
 }
 
+/* Direct Load is a 320x240 list; its window and controls move left to leave room for the level's picture. */
+static void edit_direct_load(uint32_t window, fe_rect_t wr) {
+    static int logged;
+    uint32_t controls[MAX_CONTROLS];
+    unsigned count;
+    int dx = fe_layout_direct_dx(wr);
+    if (!dx || !read_controls(window, controls, &count)) return;
+    for (unsigned i = 0; i < count; i++) {
+        fe_rect_t r;
+        if (read_rect(controls[i] + CTRL_RECT, &r)) write_rect(controls[i], fe_rect_offset(r, dx, 0));
+    }
+    write_rect(window, fe_rect_offset(wr, dx, 0)); /* a window's rectangle is at the offset a control's is */
+    if (!logged++) host_log("frontend", "Direct Load: the window moved %d units left for the level's picture", -dx);
+}
+
 void frontend_hd_window_centred(uint32_t window) {
     uint32_t vt;
     fe_rect_t wr;
     if (!window || !read32(window, &vt) || !read_rect(window + WND_RECT, &wr)) return;
     if (vt == VT_OPTIONS) edit_options(window, wr);
     else if (vt == VT_AUDIO) edit_audio(window);
+    else if (vt == VT_DIRECT_LOAD) edit_direct_load(window, wr);
 }
