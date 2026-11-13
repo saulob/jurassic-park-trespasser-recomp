@@ -211,6 +211,8 @@ static void policy_dword(policy_t* p, DWORD value, const char* text) {
  * "Hardware Water": the game's video setup (0x0040AA80) checks it for every device that can draw alpha
  * water. Unset, water keeps its software texture of alpha codes, which the full-texturing path then
  * draws as an opaque colour texture; d3d11 answers 1 unless a value is stored or --software-water.
+ * "AudioEnable3D" only matters when DirectSound reports hardware 3D voices (0x00435BE2), which it never does since
+ * Windows Vista; the frontend no longer offers it, so a stored 1 cannot come back through a DirectSound wrapper.
  */
 static int policy_value(const char* name, int stored, policy_t* p) {
     if (is_safemode(name) && safemode_value_virtual(s_legacy_safemode)) {
@@ -218,6 +220,10 @@ static int policy_value(const char* name, int stored, policy_t* p) {
         s_safemode_logged = 1;
         policy_dword(p, 0, "host policy: 0 (the last run is never reported unstable; --legacy-safemode-dialog keeps "
                            "the game's own crash flag)");
+        return 1;
+    }
+    if (name && !_stricmp(name, "AudioEnable3D")) {
+        policy_dword(p, 0, "host policy: 0 (hardware 3D sound buffers; the audio options no longer show it)");
         return 1;
     }
     if (!name || !ddraw_compat_active()) return 0;

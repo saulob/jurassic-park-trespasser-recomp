@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include "ddraw/target_sync.h"
+#include "frontend_hd.h"
 #include "jpt_display.h"
 
 #define SCREEN_RASTER 0x0073DC40u
@@ -74,16 +75,30 @@ static int make_canvas(void) {
     return 1;
 }
 
-static int scaling_wanted(uint32_t* screen_w, uint32_t* screen_h) {
-    guest_ui_view_t view;
+static int scaling_wanted_for(uint32_t* screen_w, uint32_t* screen_h, guest_ui_view_t* view) {
     uint32_t raster;
+    view->kind = GUEST_WND_NONE;
     if (!s_enabled || !d3dr_hardware() || !guest_display_built()) return 0;
     raster = MEM32(SCREEN_RASTER);
     *screen_w = MEM32(raster + RASTER_DISPLAY_W);
     *screen_h = MEM32(raster + RASTER_DISPLAY_H);
     if (*screen_w <= JPT_UI_CANVAS_W && *screen_h <= JPT_UI_CANVAS_H) return 0;
-    guest_ui_probe(&view);
-    return (view.ui == GUEST_UI_MENU || view.ui == GUEST_UI_DIALOG) && view.kind != GUEST_WND_LOADER;
+    guest_ui_probe(view);
+    return (view->ui == GUEST_UI_MENU || view->ui == GUEST_UI_DIALOG) && view->kind != GUEST_WND_LOADER;
+}
+
+static int scaling_wanted(uint32_t* screen_w, uint32_t* screen_h) {
+    guest_ui_view_t view;
+    return scaling_wanted_for(screen_w, screen_h, &view);
+}
+
+int ui_canvas_present_held(void) {
+    uint32_t screen_w = 0, screen_h = 0;
+    guest_ui_view_t view;
+    int menu;
+    if (s_in_frame) return 0;
+    menu = scaling_wanted_for(&screen_w, &screen_h, &view);
+    return ui_present_held(s_in_frame, menu, view.kind);
 }
 
 static void clear_canvas(void) {
@@ -101,9 +116,12 @@ static void log_canvas(uint32_t screen_w, uint32_t screen_h) {
     if (++s_logged == LOG_LIMIT) host_log("ui", "UI canvas log limit reached");
 }
 
+/* The frame presents inside the lifted call, so the HD layer is ready before it; the canvas, drawn by the game as
+ * always, is what the renderer shows when the HD layer is not. */
 static void ui_frame(void) {
     static uint32_t last_w, last_h;
     uint32_t screen_w = 0, screen_h = 0;
+    int hd;
     if (g_alias_entry) {
         s_frame_lifted();
         return;
@@ -111,6 +129,7 @@ static void ui_frame(void) {
     if (!scaling_wanted(&screen_w, &screen_h) || !make_canvas()) {
         window_host_set_ui_canvas(0);
         d3dr_set_ui_layer(NULL, 0, 0, 0);
+        frontend_hd_idle();
         s_frame_lifted();
         return;
     }
@@ -121,12 +140,14 @@ static void ui_frame(void) {
     }
     clear_canvas();
     window_host_set_ui_canvas(1);
+    hd = frontend_hd_frame((int)screen_w, (int)screen_h);
     d3dr_set_ui_layer((const uint16_t*)ADDR(MEM32(s_canvas + RASTER_BITS)), (long)MEM32(s_canvas + RASTER_PITCH),
                       (int)screen_w, (int)screen_h);
     s_in_frame = 1;
     s_frame_lifted();
     s_in_frame = 0;
     d3dr_set_ui_layer(NULL, 0, 0, 0);
+    if (hd) frontend_hd_frame_done();
 }
 
 /* Replaces the raster argument (the first stack argument) of a lifted function for the call. */
@@ -164,6 +185,22 @@ static int frozen_picture_on_gpu(void) {
                                    (int)MEM32(still + RASTER_WIDTH), (int)MEM32(still + RASTER_HEIGHT));
 }
 
+int ui_frozen_picture(const uint16_t** bits, int* w, int* h, long* pitch) {
+    uint32_t still = 0, sw = 0, sh = 0, bpp = 0, sp = 0, sb = 0;
+    if (!guest_read32(FROZEN_PICTURE, &still) || !still || !guest_read32(still + RASTER_WIDTH, &sw) ||
+        !guest_read32(still + RASTER_HEIGHT, &sh) || !guest_read32(still + 0x10u, &bpp) ||
+        !guest_read32(still + RASTER_PITCH, &sp) || !guest_read32(still + RASTER_BITS, &sb))
+        return 0;
+    if (bpp != PIXEL_BITS || !sb || !sw || !sh || sw > 16384 || sh > 16384 || sp < sw ||
+        !guest_readable(sb, (sp * (sh - 1) + sw) * 2u))
+        return 0;
+    *bits = (const uint16_t*)(uintptr_t)sb;
+    *w = (int)sw;
+    *h = (int)sh;
+    *pitch = (long)sp;
+    return 1;
+}
+
 static void game_background(void) {
     if (!g_alias_entry && frozen_picture_on_gpu()) {
         g_esp += 4 + 2 * 4;
@@ -173,10 +210,14 @@ static void game_background(void) {
 }
 
 static void centre_window(void) {
-    uint32_t screen_w = 0, screen_h = 0, raster;
-    if (g_alias_entry || !scaling_wanted(&screen_w, &screen_h) ||
-        guest_ui_window_kind(MEM32(g_esp + 4)) == GUEST_WND_LOADER) {
+    uint32_t screen_w = 0, screen_h = 0, raster, window = MEM32(g_esp + 4);
+    if (g_alias_entry) {
         s_centre_lifted();
+        return;
+    }
+    if (!scaling_wanted(&screen_w, &screen_h) || guest_ui_window_kind(window) == GUEST_WND_LOADER) {
+        s_centre_lifted();
+        frontend_hd_window_centred(window);
         return;
     }
     raster = MEM32(SCREEN_RASTER);
@@ -185,6 +226,7 @@ static void centre_window(void) {
     s_centre_lifted();
     MEM32(raster + RASTER_DISPLAY_W) = screen_w;
     MEM32(raster + RASTER_DISPLAY_H) = screen_h;
+    frontend_hd_window_centred(window);
 }
 
 /* A blit onto the screen from another raster overwrites the screen's pixels and never reads them. */

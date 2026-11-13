@@ -72,6 +72,7 @@ static native32_shim_t s_shims[] = {
     { "LoadLibraryA", shim_LoadLibraryA },
     { "fopen", shim_fopen },
     { "_open", shim_open },
+    { "DeleteFileA", shim_DeleteFileA },
     { "CreateWindowExA", shim_CreateWindowExA },
     { "DestroyWindow", shim_DestroyWindow },
     { "PostQuitMessage", shim_PostQuitMessage },

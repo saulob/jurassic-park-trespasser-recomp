@@ -510,6 +510,16 @@ void window_host_frame_presented(void) {
 
 void window_host_set_ui_canvas(int on) { s.ui_canvas = on != 0; }
 
+int window_host_pointer(int* x, int* y) {
+    POINT p, c;
+    long view_w = s.view.right - s.view.left, view_h = s.view.bottom - s.view.top;
+    if (!virtual_input_active() || input_cursor_virtual(s.state) || !GetCursorPos(&p)) return 0;
+    c = screen_to_client_point(p);
+    *x = (int)floor_div((long)(c.x - s.view.left) * s.fbw, view_w);
+    *y = (int)floor_div((long)(c.y - s.view.top) * s.fbh, view_h);
+    return *x >= 0 && *y >= 0 && *x < s.fbw && *y < s.fbh;
+}
+
 void window_host_display_size(int* width, int* height) {
     *width = s.virtual_on ? s.fbw : 0;
     *height = s.virtual_on ? s.fbh : 0;

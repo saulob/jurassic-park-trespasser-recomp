@@ -194,6 +194,20 @@ static struct {
         long pitch;
         int guest_w, guest_h;
     } ui;
+    struct {
+        const uint32_t* pixels;
+        int w, h, failed, pending;
+        RECT dirty;
+        ID3D11Texture2D* tex;
+        ID3D11ShaderResourceView* srv;
+        int tex_w, tex_h;
+        const uint32_t* pointer;
+        int pointer_size, pointer_x, pointer_y;
+        unsigned pointer_generation, pointer_uploaded;
+        ID3D11Texture2D* pointer_tex;
+        ID3D11ShaderResourceView* pointer_srv;
+        int pointer_tex_size;
+    } fe;
     ID3D11Texture2D* last_frame;
     ID3D11ShaderResourceView* last_frame_srv;
     UINT last_w, last_h, last_legacy_w, last_legacy_h;
@@ -525,6 +539,7 @@ static void release_static_objects(void) {
     SAFE_RELEASE(R.blend_premultiplied);
     SAFE_RELEASE(R.ui_srv);
     SAFE_RELEASE(R.ui_tex);
+    d3dr_frontend_release();
     SAFE_RELEASE(R.still_srv);
     SAFE_RELEASE(R.still_tex);
     R.still_w = R.still_h = 0;
@@ -2784,10 +2799,126 @@ static void draw_ui_layer(UINT width, UINT height) {
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], R.ui_srv, R.linear_clamp, R.blend_premultiplied, NULL, width, height, NULL);
 }
 
+void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty) {
+    R.fe.pixels = pixels;
+    if (!pixels) return;
+    R.fe.w = w;
+    R.fe.h = h;
+    if (!dirty || dirty->right <= dirty->left || dirty->bottom <= dirty->top) return;
+    if (!R.fe.pending) R.fe.dirty = *dirty;
+    else UnionRect(&R.fe.dirty, &R.fe.dirty, dirty);
+    R.fe.pending = 1;
+}
+
+void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y) {
+    R.fe.pointer = sprite;
+    R.fe.pointer_size = size;
+    R.fe.pointer_generation = generation;
+    R.fe.pointer_x = x;
+    R.fe.pointer_y = y;
+}
+
+int d3dr_frontend_failed(void) { return R.fe.failed; }
+
+void d3dr_frontend_release(void) {
+    SAFE_RELEASE(R.fe.srv);
+    SAFE_RELEASE(R.fe.tex);
+    SAFE_RELEASE(R.fe.pointer_srv);
+    SAFE_RELEASE(R.fe.pointer_tex);
+    R.fe.tex_w = R.fe.tex_h = R.fe.pointer_tex_size = 0;
+    R.fe.pending = 0;
+}
+
+static int frontend_texture(ID3D11Texture2D** tex, ID3D11ShaderResourceView** srv, int w, int h) {
+    *tex = make_texture((UINT)w, (UINT)h, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 1,
+                        0);
+    if (*tex && SUCCEEDED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)*tex, NULL, srv))) return 1;
+    SAFE_RELEASE(*tex);
+    return 0;
+}
+
+static void draw_pointer(UINT width, UINT height) {
+    float rect[4];
+    int size = R.fe.pointer_size;
+    if (!R.fe.pointer || size <= 0) return;
+    if (!R.fe.pointer_tex || R.fe.pointer_tex_size != size) {
+        SAFE_RELEASE(R.fe.pointer_srv);
+        SAFE_RELEASE(R.fe.pointer_tex);
+        R.fe.pointer_tex_size = 0;
+        if (!frontend_texture(&R.fe.pointer_tex, &R.fe.pointer_srv, size, size)) return;
+        R.fe.pointer_tex_size = size;
+        R.fe.pointer_uploaded = R.fe.pointer_generation - 1;
+    }
+    if (R.fe.pointer_uploaded != R.fe.pointer_generation) {
+        ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)R.fe.pointer_tex, 0, NULL, R.fe.pointer,
+                                              (UINT)size * 4, 0);
+        R.fe.pointer_uploaded = R.fe.pointer_generation;
+    }
+    rect[0] = (float)R.fe.pointer_x / (float)R.fe.w * 2.0f - 1.0f;
+    rect[1] = 1.0f - (float)R.fe.pointer_y / (float)R.fe.h * 2.0f;
+    rect[2] = (float)(R.fe.pointer_x + size) / (float)R.fe.w * 2.0f - 1.0f;
+    rect[3] = 1.0f - (float)(R.fe.pointer_y + size) / (float)R.fe.h * 2.0f;
+    set_pass(rect, k_full_uv, NULL, 0.0f);
+    draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], R.fe.pointer_srv, R.point_clamp, R.blend_premultiplied, NULL, width, height,
+              NULL);
+}
+
+/* The HD menu layer (frontend_hd.c): the game's screen size, premultiplied, only its changed rectangle uploaded. */
+static int draw_frontend(UINT width, UINT height) {
+    if (!R.fe.pixels || R.fe.w <= 0 || R.fe.h <= 0 || R.fe.failed || !R.blend_premultiplied) return 0;
+    if (!R.fe.tex || R.fe.tex_w != R.fe.w || R.fe.tex_h != R.fe.h) {
+        SAFE_RELEASE(R.fe.srv);
+        SAFE_RELEASE(R.fe.tex);
+        R.fe.tex_w = R.fe.tex_h = 0;
+        if (!frontend_texture(&R.fe.tex, &R.fe.srv, R.fe.w, R.fe.h)) {
+            R.fe.failed = 1;
+            host_log("d3d11", "the %dx%d HD menu texture could not be created: the game's own menus are shown", R.fe.w,
+                     R.fe.h);
+            return 0;
+        }
+        R.fe.tex_w = R.fe.w;
+        R.fe.tex_h = R.fe.h;
+        SetRect(&R.fe.dirty, 0, 0, R.fe.w, R.fe.h);
+        R.fe.pending = 1;
+    }
+    if (R.fe.pending) {
+        RECT d = R.fe.dirty;
+        D3D11_BOX box;
+        if (d.left < 0) d.left = 0;
+        if (d.top < 0) d.top = 0;
+        if (d.right > R.fe.w) d.right = R.fe.w;
+        if (d.bottom > R.fe.h) d.bottom = R.fe.h;
+        if (d.right > d.left && d.bottom > d.top) {
+            box.left = (UINT)d.left;
+            box.top = (UINT)d.top;
+            box.right = (UINT)d.right;
+            box.bottom = (UINT)d.bottom;
+            box.front = 0;
+            box.back = 1;
+            ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)R.fe.tex, 0, &box,
+                                                  R.fe.pixels + (size_t)d.top * (size_t)R.fe.w + (size_t)d.left,
+                                                  (UINT)R.fe.w * 4, 0);
+        }
+        R.fe.pending = 0;
+    }
+    set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
+    draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], R.fe.srv,
+              width == (UINT)R.fe.w && height == (UINT)R.fe.h ? R.point_clamp : R.linear_clamp, R.blend_premultiplied, NULL,
+              width, height, NULL);
+    draw_pointer(width, height);
+    return 1;
+}
+
 static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height, ID3D11SamplerState* sampler,
                         const DDGAMMARAMP* gamma, int vsync) {
+    static int s_held_logged;
     ID3D11RenderTargetView* rtv;
     if (!window_host_frames_allowed()) return 1;
+    if (ui_canvas_present_held()) {
+        if (!s_held_logged++)
+            host_log("ui", "a blank present between two menu frames was held: the last menu frame stays on screen");
+        return 1;
+    }
     rtv = present_target(window, width, height);
     if (!rtv) return 0;
     update_gamma(gamma);
@@ -2795,7 +2926,7 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     R.bound.valid = 0;
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], srv, sampler, R.blend_none, NULL, width, height, NULL);
-    draw_ui_layer(width, height);
+    if (!draw_frontend(width, height)) draw_ui_layer(width, height);
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
     R.bound.valid = 0;

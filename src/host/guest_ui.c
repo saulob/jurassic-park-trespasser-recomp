@@ -135,6 +135,32 @@ static int read32(uint32_t va, uint32_t* out) {
 
 int guest_read32(uint32_t va, uint32_t* out) { return read32(va, out); }
 
+int guest_readable(uint32_t va, uint32_t bytes) { return bytes == 0 || readable(va, bytes); }
+
+int guest_read_string(uint32_t va, char* out, int cap) {
+    int n = 0;
+    if (!out || cap <= 0) return 0;
+    out[0] = 0;
+    while (n < cap - 1) {
+        uint32_t at = va + (uint32_t)n, room = 0x1000u - (at & 0xFFFu), want = (uint32_t)(cap - 1 - n);
+        const char* src = (const char*)(uintptr_t)at;
+        if (want > room) want = room;
+        if (!readable(at, want)) return 0;
+        for (uint32_t i = 0; i < want; i++, n++) {
+            out[n] = src[i];
+            if (!src[i]) return 1;
+        }
+    }
+    out[n] = 0;
+    return 1;
+}
+
+int guest_write32(uint32_t va, uint32_t value) {
+    if (!writable(va, 4)) return 0;
+    *(volatile uint32_t*)(uintptr_t)va = value;
+    return 1;
+}
+
 guest_wnd_t guest_ui_window_kind(uint32_t window) {
     uint32_t vtable;
     return window && read32(window, &vtable) ? class_kind(vtable) : GUEST_WND_NONE;

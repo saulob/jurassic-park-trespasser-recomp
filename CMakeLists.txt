@@ -76,6 +76,10 @@ set(HOST_SOURCES
   src/host/widescreen.c
   src/host/game_text.c
   src/host/ui_canvas.c
+  src/host/frontend_hd.c
+  src/host/frontend_layout.c
+  src/host/frontend_assets.c
+  src/host/save_preview.c
   src/host/engine_limits.c
   src/host/engine_heaps.c
   src/host/guest_profile.c
@@ -218,7 +222,8 @@ target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPA
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11 dxgi dxguid)
+target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common kernel32 user32 gdi32 advapi32 bcrypt lz32 d3d11 dxgi dxguid
+  ole32 uuid windowscodecs)
 
 # TRESPASSER_GEN_OPT alone sets the lifted sources' optimisation: the configuration's /O
 # options would only be overridden there (D9025), so they move to the other sources.
@@ -286,6 +291,17 @@ add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_poli
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The HD frontend's layout, pointer mapping and painter (headless: GDI draws into memory only):
+#   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
+add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
+  tests/save_preview_tests.c src/host/frontend_hd.c src/host/frontend_layout.c src/host/frontend_assets.c
+  src/host/save_preview.c src/host/host_policy.c src/common/jpt_display.c)
+target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP}/runtime/native32
+  ${PCRECOMP}/runtime/recomp32)
+target_compile_options(frontend_tests PRIVATE /W3)
+target_compile_definitions(frontend_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
+  ${TRESPASSER_X87_MODEL} "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(frontend_tests PRIVATE gdi32 user32 ole32 uuid windowscodecs)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c)

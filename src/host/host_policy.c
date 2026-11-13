@@ -168,6 +168,10 @@ uint32_t shutdown_stall_threshold(unsigned reports) {
     return reports > 8 ? 1000u << 7 : 1000u << (reports - 1);
 }
 
+int ui_present_held(int in_ui_frame, int menu_on_canvas, guest_wnd_t top) {
+    return !in_ui_frame && menu_on_canvas && top != GUEST_WND_VIDEO && top != GUEST_WND_LOADER && top != GUEST_WND_NONE;
+}
+
 quit_action_t quit_action_for(guest_wnd_t top, int at_video_pump) {
     quit_action_t a = { QUIT_WAIT, 0, 0, SHUTDOWN_NONE };
     if (at_video_pump) {

@@ -7,9 +7,12 @@
  */
 #include "host.h"
 
+#include <fcntl.h>
 #include <lzexpand.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "frontend_hd.h"
 
 #define SUCCESS_LINE_LIMIT 300
 #define FAILURE_LINE_LIMIT 1000
@@ -44,6 +47,8 @@ int io_trace_init(void) {
 static int is_relative(const char* path) { return path[0] != '\\' && path[0] != '/' && !strchr(path, ':'); }
 
 void io_trace_user_dir(const char* dir) { strncpy(s_user_dir, dir, sizeof s_user_dir - 1); }
+
+const char* io_trace_user_folder(void) { return s_user_dir; }
 
 static size_t under(const char* path, const char* dir) {
     size_t n = strlen(dir);
@@ -196,8 +201,22 @@ void shim_fopen(void) {
 
 void shim_open(void) {
     const char* path = (const char*)GUEST_PTR(0);
-    int fd = s_crt_open(path, (int)GUEST_ARG(1), (int)GUEST_ARG(2));
-    report("_open", path, fd >= 0, GetLastError());
+    int flags = (int)GUEST_ARG(1), fd = s_crt_open(path, flags, (int)GUEST_ARG(2));
+    DWORD error = GetLastError();
+    report("_open", path, fd >= 0, error);
+    if (fd >= 0 && (flags & (_O_CREAT | _O_TRUNC)) == (_O_CREAT | _O_TRUNC)) frontend_hd_save_opened(path, s_user_dir);
+    SetLastError(error);
     g_eax = (uint32_t)fd;
     g_esp += 4;
+}
+
+void shim_DeleteFileA(void) {
+    const char* path = (const char*)GUEST_PTR(0);
+    BOOL ok = DeleteFileA(path);
+    DWORD error = GetLastError();
+    report("DeleteFileA", path, ok, error);
+    if (ok) frontend_hd_save_deleted(path, s_user_dir);
+    SetLastError(error);
+    g_eax = (uint32_t)ok;
+    GUEST_RETURN_STDCALL(1);
 }

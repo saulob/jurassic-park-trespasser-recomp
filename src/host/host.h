@@ -62,6 +62,7 @@ void shim_LZOpenFileA(void);
 void shim_LoadLibraryA(void);
 void shim_fopen(void);
 void shim_open(void);
+void shim_DeleteFileA(void);
 
 void milestones_init(void);
 void milestones_observe(uint32_t target);
@@ -155,6 +156,10 @@ guest_wnd_t guest_ui_window_kind(uint32_t window);
 const char* guest_ui_class_name(uint32_t vtable);
 int guest_display_built(void);
 int guest_read32(uint32_t va, uint32_t* out);
+int guest_readable(uint32_t va, uint32_t bytes);
+/* A NUL-terminated guest string, cut to cap - 1 bytes; 0 when unreadable. */
+int guest_read_string(uint32_t va, char* out, int cap);
+int guest_write32(uint32_t va, uint32_t value);
 /* The game's own "app active" flag: its message pump returns to its loops only while it is set. */
 int guest_ui_active(const guest_ui_view_t* v);
 /* The game's EndModal(code) on the window in front; quit_to_windows adds the flags its in-game Quit
@@ -242,7 +247,21 @@ void terrain_quality_set_render_height(int height);
 void terrain_quality_log(void);
 /* Inside a RasterBlt from another raster onto the game's screen. */
 int ui_screen_blt_writes_only(void);
+/* A present now would show a blank screen between two menu frames (ui_present_held): the last frame stays up. */
+int ui_canvas_present_held(void);
+/* The gameplay picture the game froze behind its pause menus (RGB565), as its own save thumbnail is taken from. */
+int ui_frozen_picture(const uint16_t** bits, int* w, int* h, long* pitch);
+/* io_trace.c: the game's Installed Directory, where its saves are. */
+const char* io_trace_user_folder(void);
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
+/* The HD layer (premultiplied BGRA of the game's screen size; NULL: none this frame) and the changed rectangle. */
+void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty);
+/* The pointer sprite (size x size, premultiplied) with its corner at x, y of the game's screen; NULL hides it. */
+void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y);
+int d3dr_frontend_failed(void);
+void d3dr_frontend_release(void);
+/* The real pointer in the game's screen pixels; 0 when it is outside the picture. */
+int window_host_pointer(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */
 int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h);
 /* dd_device.c: the gameplay modes of both renderers, listed whatever the desktop size. */

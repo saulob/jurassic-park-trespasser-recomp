@@ -171,6 +171,11 @@ typedef struct {
  * ends gameplay with -1), the main menu's Exit (-1), Cancel (0) for any other window. */
 quit_action_t quit_action_for(guest_wnd_t top, int at_video_pump);
 
+/* A present the game makes outside its UI frame while its menus are on the UI canvas: DoModal (0x00417840) clears the
+ * screen and flips it three times before a window's first frame, and those frames hold nothing. Held back, the screen
+ * keeps the menu's last frame; videos and loading windows present themselves and are always shown. */
+int ui_present_held(int in_ui_frame, int menu_on_canvas, guest_wnd_t top);
+
 typedef enum {
     READBACK_LOCK_READ,
     READBACK_LOCK_WRITE,
