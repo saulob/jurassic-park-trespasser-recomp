@@ -124,8 +124,6 @@ static int map_dib_section(dd_surface_t* s, const BITMAPINFO* info) {
 
 static void free_surface(dd_surface_t* s) {
     dd_device_t* d = s->device;
-    if (s->locked) InterlockedDecrement(&dd_census.locks);
-    if (s->dc_out) InterlockedDecrement(&dd_census.dcs);
     d3dr_surface_freed(s);
     if (s->zbuffer) dd_surface_release(s->zbuffer);
     free_heap_pixels(s);
@@ -808,7 +806,6 @@ static HRESULT STDMETHODCALLTYPE s_GetDC(IDirectDrawSurface* This, HDC* out) {
     if (!s->dc) DD_RETURN(DDERR_CANTCREATEDC);
     s->dc_previous = SelectObject(s->dc, s->dib);
     s->dc_out = 1;
-    InterlockedIncrement(&dd_census.dcs);
     *out = s->dc;
     DD_RETURN(DD_OK);
 }
@@ -885,7 +882,6 @@ static HRESULT STDMETHODCALLTYPE s_Lock(IDirectDrawSurface* This, LPRECT rect, L
     if (s->lock_alias) out->lpSurface = page_alias_view(s->guard_alias) + ((BYTE*)out->lpSurface - s->bits);
     if (s->watched) s->exposed = 1;
     s->locked = 1;
-    InterlockedIncrement(&dd_census.locks);
     DD_RETURN(DD_OK);
 }
 
@@ -896,7 +892,6 @@ static HRESULT STDMETHODCALLTYPE s_ReleaseDC(IDirectDrawSurface* This, HDC dc) {
     GdiFlush();
     SelectObject(s->dc, s->dc_previous);
     s->dc_out = 0;
-    InterlockedDecrement(&dd_census.dcs);
     d3dr_surface_cpu_written(s, NULL);
     if (is_front(s)) dd_present(s, 0);
     DD_RETURN(DD_OK);
@@ -989,7 +984,6 @@ static HRESULT STDMETHODCALLTYPE s_Unlock(IDirectDrawSurface* This, LPVOID point
     if (!s->locked) DD_RETURN(DDERR_NOTLOCKED);
     s->locked = 0;
     s->lock_alias = 0;
-    InterlockedDecrement(&dd_census.locks);
     if (!d3dr_surface_unlocked(s) && s->lock_write) d3dr_surface_cpu_written(s, &s->lock_rect);
     if (is_front(s)) dd_present(s, 0);
     DD_RETURN(DD_OK);

@@ -288,7 +288,6 @@ static struct {
     unsigned untracked_logged;
     /* [0] menus, in-game dialogs, videos and loading, [1] gameplay */
     unsigned long long cpu_pixels[2], black_over_gpu[2], black_over_unknown[2];
-    pending_switch_t pending;
     int debug_output;
     unsigned char sampler_logged[2][2][5][5];
     uint32_t* upload_buffer;
@@ -344,24 +343,6 @@ void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, un
 }
 
 int d3dr_hardware(void) { return R.hardware; }
-
-unsigned d3dr_device_count(void) { return R.devices; }
-
-void d3dr_defer_switch(int hardware) { pending_switch_set(&R.pending, hardware); }
-
-void d3dr_defer_switch_cancel(void) { pending_switch_cancel(&R.pending); }
-
-unsigned d3dr_textures_alive(void) { return R.textures_alive; }
-
-int d3dr_pending_switch(void) { return pending_switch_peek(&R.pending); }
-
-void d3dr_directdraw_created(void) {
-    int to_hardware = pending_switch_take(&R.pending);
-    if (to_hardware < 0) return;
-    host_log("renderer", "the game is restarting DirectDraw (its renderer change point): the switch to %s waiting since "
-             "F5 applies now", to_hardware ? "D3D11" : "Software");
-    if (!d3dr_set_hardware(to_hardware)) host_log("renderer", "the switch failed; the renderer stays %s", d3dr_name());
-}
 
 int d3dr_set_debug_output(const char* mode) {
     static const char* const modes[] = { "texture", "vertex-color", "depth" };
@@ -653,29 +634,11 @@ int d3dr_startup(void) {
 }
 
 static void flush(void);
-static void flush_parked(void);
 static void apply_sync(d3dr_target_t* t, unsigned acts, const d3dt_rect_t* region, readback_reason_t reason, int exact);
 static void check_front(d3dr_target_t* t);
 static void settle_deferred(void);
 static void drop_deferred(const d3dr_target_t* t);
 static void end_polygon_run(const d3dr_target_t* t);
-
-/* Called by the window host between the game's own display release and rebuild (F5). */
-int d3dr_set_hardware(int hardware) {
-    if (hardware == R.hardware) return 1;
-    if (hardware && !prepare_hardware()) return 0;
-    if (R.nindices) flush();
-    if (!hardware) flush_parked();
-    R.nverts = R.nindices = 0;
-    R.batch_arrays = 0;
-    R.batch_dev = NULL;
-    R.hardware = hardware;
-    R.draw_cb_valid = R.frame_cb_valid = 0;
-    R.bound.valid = 0;
-    engine_limits_apply(hardware);
-    log_renderer_line();
-    return 1;
-}
 
 /* ---- per-surface GPU objects ---- */
 

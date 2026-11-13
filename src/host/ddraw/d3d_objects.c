@@ -203,7 +203,6 @@ static HRESULT STDMETHODCALLTYPE d3_CreateViewport(IDirect3D3* This, LPDIRECT3DV
     *out = NULL;
     if (outer) D3D_RETURN(CLASS_E_NOAGGREGATION);
     v = (d3d_viewport_t*)calloc(1, sizeof *v);
-    if (v) InterlockedIncrement(&dd_census.viewports);
     if (!v) D3D_RETURN(DDERR_OUTOFMEMORY);
     v->face.vtbl = &s_viewport3_vtbl;
     v->face.owner = v;
@@ -232,7 +231,6 @@ static HRESULT STDMETHODCALLTYPE d3_CreateDevice(IDirect3D3* This, REFCLSID guid
     if (!IsEqualGUID(guid, &IID_IDirect3DHALDevice))
         d3d_log("CreateDevice for {%08lX-%04X-...}: answered with the D3D11 hardware device", guid->Data1, guid->Data2);
     dev = (d3d_device_t*)calloc(1, sizeof *dev);
-    if (dev) InterlockedIncrement(&dd_census.devices);
     if (!dev) D3D_RETURN(DDERR_OUTOFMEMORY);
     dev->face.vtbl = &s_device3_vtbl;
     dev->face.owner = dev;
@@ -279,7 +277,6 @@ static HRESULT STDMETHODCALLTYPE d3_CreateDevice(IDirect3D3* This, REFCLSID guid
     if (FAILED(hr)) {
         dd_surface_release(target);
         InterlockedDecrement(&d->refs);
-        InterlockedDecrement(&dd_census.devices);
         free(dev);
         D3D_RETURN(hr);
     }
@@ -339,7 +336,6 @@ static ULONG STDMETHODCALLTYPE vp_Release(IDirect3DViewport3* This) {
     d3d_viewport_t* v = VP(This);
     LONG refs = InterlockedDecrement(&v->refs);
     if (refs <= 0) {
-        InterlockedDecrement(&dd_census.viewports);
         free(v);
         return 0;
     }
@@ -519,8 +515,6 @@ static ULONG STDMETHODCALLTYPE dv_Release(IDirect3DDevice3* This) {
     LONG refs = InterlockedDecrement(&dev->refs);
     if (refs > 0) return (ULONG)refs;
     dd_lock();
-    if (dev->in_scene) InterlockedDecrement(&dd_census.scenes);
-    InterlockedDecrement(&dd_census.devices);
     d3dr_detach(dev);
     while (dev->viewports) drop_viewport(dev, dev->viewports);
     if (dev->texture) dd_surface_release(dev->texture);
@@ -621,7 +615,6 @@ static HRESULT STDMETHODCALLTYPE dv_BeginScene(IDirect3DDevice3* This) {
     D3D_METHOD("IDirect3DDevice3::BeginScene");
     if (dev->in_scene) D3D_RETURN(D3DERR_SCENE_IN_SCENE);
     dev->in_scene = 1;
-    InterlockedIncrement(&dd_census.scenes);
     d3dr_begin_scene(dev);
     D3D_RETURN(DD_OK);
 }
@@ -631,7 +624,6 @@ static HRESULT STDMETHODCALLTYPE dv_EndScene(IDirect3DDevice3* This) {
     D3D_METHOD("IDirect3DDevice3::EndScene");
     if (!dev->in_scene) D3D_RETURN(D3DERR_SCENE_NOT_IN_SCENE);
     dev->in_scene = 0;
-    InterlockedDecrement(&dd_census.scenes);
     d3dr_end_scene(dev);
     D3D_RETURN(DD_OK);
 }

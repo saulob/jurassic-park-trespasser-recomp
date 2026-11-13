@@ -472,7 +472,6 @@ static void log_load(void) {
              L.updates, bars[0] ? bars : "no bars", L.held);
 }
 
-/* The renderer may change inside the load (F5's switch to software waits for its DirectDraw restart). */
 static void level_load(void) {
     if (g_alias_entry) {
         L.level_lifted();

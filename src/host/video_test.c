@@ -66,13 +66,11 @@ static void read_rows(void) {
     s_rows_read = 1;
 }
 
-int video_test_f5(void) {
+void video_test_f5(void) {
     guest_ui_view_t front;
-    int taken;
     guest_ui_probe(&front);
-    taken = vt_f5(&s_state, main_menu_front(&front));
-    if (taken) host_log("video-test", "panel %s", s_state.open ? "opened (F5 in the main menu)" : "closed");
-    return taken;
+    if (vt_f5(&s_state, main_menu_front(&front)))
+        host_log("video-test", "panel %s", s_state.open ? "opened (F5 in the main menu)" : "closed");
 }
 
 int video_test_visible(void) { return vt_visible(&s_state); }

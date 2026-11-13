@@ -54,7 +54,7 @@ int input_hide_pointer(input_state_t state, int game_cursor_hidden);
  * on its title bar), so that drag is not pulled into the view. */
 int input_should_clip(input_state_t state, int pointer_in_view, int button_held);
 
-typedef enum { KEY_TO_GAME, KEY_DROP, KEY_HOST_FULLSCREEN, KEY_HOST_RENDERER, KEY_HOST_CLOSE } key_action_t;
+typedef enum { KEY_TO_GAME, KEY_DROP, KEY_HOST_FULLSCREEN, KEY_HOST_VIDEO_TEST, KEY_HOST_CLOSE } key_action_t;
 
 /* msg is WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP; repeat is lParam bit 30. */
 key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt);
@@ -111,40 +111,6 @@ int shutdown_renderer_allowed(const shutdown_state_t* s);
 const char* shutdown_phase_name(shutdown_phase_t phase);
 /* Milliseconds without progress after which the n-th stall report is due: 250, 1000, 2000, 4000... */
 uint32_t shutdown_stall_threshold(unsigned reports);
-
-/* F5. The game rebuilds its display in place only with the renderer its DirectDraw start-up chose:
- * a scene rendered with Direct3D keeps hardware render types on its polygons (sub_0053A680 never
- * re-types one) and those reach the Direct3D device the software fallback releases. So Direct3D to
- * software waits for the game's own DirectDraw restart at the next level load while a level is in
- * memory; everything else switches at a frame boundary with nothing locked or in a scene. */
-typedef enum {
-    RENDERER_ACTIVE,
-    RENDERER_SWITCH_REQUESTED,
-    RENDERER_DRAINING,
-    RENDERER_REBUILDING,
-    RENDERER_ACTIVE_NEW,
-    RENDERER_SWITCH_FAILED,
-    RENDERER_SWITCH_DEFERRED
-} renderer_switch_t;
-
-typedef enum { SWITCH_NOW, SWITCH_WAIT, SWITCH_DEFER, SWITCH_GIVE_UP } switch_decision_t;
-
-#define RENDERER_SWITCH_ATTEMPTS 30
-
-switch_decision_t renderer_switch_decide(int to_hardware, int scene_loaded, long locks, long dcs, long scenes,
-                                         unsigned attempts);
-const char* renderer_switch_name(renderer_switch_t state);
-
-/* A renderer change waiting for the game's next DirectDraw creation. */
-typedef struct {
-    int value;
-} pending_switch_t;
-
-void pending_switch_set(pending_switch_t* p, int hardware);
-void pending_switch_cancel(pending_switch_t* p);
-/* -1 when nothing waits, else 0 (software) or 1 (hardware). take also clears it. */
-int pending_switch_peek(const pending_switch_t* p);
-int pending_switch_take(pending_switch_t* p);
 
 /* The game's windows the host's quit path tells apart. */
 typedef enum {

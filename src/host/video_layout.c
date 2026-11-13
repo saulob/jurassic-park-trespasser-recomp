@@ -164,9 +164,24 @@ void vl_session_failed(vl_session_t* s) { s->failed = 1; }
 
 void vl_session_end(vl_session_t* s) { s->playing = 0; }
 
-int vl_session_main_presented(vl_session_t* s, int hardware) {
-    if (s->playing && !hardware) s->failed = 1;
+int vl_session_main_presented(vl_session_t* s) {
     if (!s->overlay || (s->playing && !s->failed)) return 0;
     s->overlay = 0;
+    return 1;
+}
+
+int vl_lone_bottom_pixels(const uint8_t* rows, long stride, int width, int height) {
+    const uint16_t *last, *above[3];
+    int lone = 0;
+    if (!rows || width <= 0 || height < 4) return 0;
+    last = (const uint16_t*)(rows + (size_t)(height - 1) * stride);
+    for (int k = 0; k < 3; k++) above[k] = (const uint16_t*)(rows + (size_t)(height - 2 - k) * stride);
+    for (int x = 0; x < width; x++) lone += last[x] && !above[0][x] && !above[1][x] && !above[2][x];
+    return lone;
+}
+
+int vl_session_stray_line(vl_session_t* s, int lone_pixels) {
+    if (s->stray_line || lone_pixels < VL_STRAY_LINE_MIN) return 0;
+    s->stray_line = 1;
     return 1;
 }

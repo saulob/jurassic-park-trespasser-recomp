@@ -81,10 +81,11 @@ int vl_play_uses_session(vl_play_mode_t mode);
 typedef enum { VL_SHOW_CLASSIC, VL_SHOW_BLACK, VL_SHOW_FRAME } vl_show_t;
 
 typedef struct {
-    int playing;  /* inside the game's player */
-    int overlay;  /* the HD picture covers the game's own */
-    int failed;   /* the HD picture failed: the game's own playback until the player returns */
-    int started;  /* the first HD frame was shown */
+    int playing;    /* inside the game's player */
+    int overlay;    /* the HD picture covers the game's own */
+    int failed;     /* the HD picture failed: the game's own playback until the player returns */
+    int started;    /* the first HD frame was shown */
+    int stray_line; /* the picture's last row carries a stray line */
     unsigned frames, dropped;
     int32_t last_frame;
     double max_ms;
@@ -97,8 +98,15 @@ vl_show_t vl_session_route(const vl_session_t* s, int hardware, int raster_ready
 void vl_session_shown(vl_session_t* s, vl_show_t what, int32_t frame_number, double ms);
 void vl_session_failed(vl_session_t* s);
 void vl_session_end(vl_session_t* s);
-/* After the game's own picture reached the screen: 1 when the overlay must go now (a software present while playing,
- * after F5, ends the HD picture too). */
-int vl_session_main_presented(vl_session_t* s, int hardware);
+/* After the game's own picture reached the screen: 1 when the overlay must go now. */
+int vl_session_main_presented(vl_session_t* s);
+
+/* Pixels of a decoded picture's last row (RGB565 or XRGB1555 codes) that are lit while the three rows above them, the
+ * rest of their 4x4 codec block, are black. */
+int vl_lone_bottom_pixels(const uint8_t* rows, long stride, int width, int height);
+/* credits.smk's stray line shows 359-365 lone pixels at full brightness; the other videos never more than 35. */
+#define VL_STRAY_LINE_MIN 128
+/* One frame's lone pixels: 1 when they mark the last row as a stray line for the rest of the playback (once). */
+int vl_session_stray_line(vl_session_t* s, int lone_pixels);
 
 #endif

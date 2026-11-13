@@ -116,8 +116,20 @@ static void test_keys(void) {
     CHECK(key_policy(0x101, 0x7A, 0, 0, 0) == KEY_DROP);
     CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x101, 0x7A, 0, 1, 0) == KEY_TO_GAME);
-    CHECK(key_policy(0x100, 0x74, 0, 0, 0) == KEY_HOST_RENDERER);
-    CHECK(key_policy(0x100, 0x74, 1, 0, 0) == KEY_DROP && key_policy(0x101, 0x74, 0, 0, 0) == KEY_DROP);
+    /* F5 is the host's in every state (gameplay, menus, dialogs): only the Video Test, which acts in the main menu. */
+    for (int mods = 0; mods < 4; mods++) {
+        CHECK(key_policy(0x100, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_VIDEO_TEST);
+        CHECK(key_policy(0x104, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_VIDEO_TEST);
+        CHECK(key_policy(0x100, 0x74, 1, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x101, 0x74, 0, mods & 1, mods >> 1) == KEY_DROP);
+    }
+    {
+        int others = 0;
+        for (unsigned vk = 0; vk < 256; vk++)
+            for (unsigned msg = 0x100; msg <= 0x105; msg++)
+                others += vk != 0x74 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_VIDEO_TEST;
+        CHECK(others == 0);
+    }
     CHECK(key_policy(0x104, 0x73, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(0x104, 0x73, 1, 0, 1) == KEY_DROP);
     CHECK(key_policy(0x100, 0x73, 0, 0, 0) == KEY_TO_GAME);
@@ -996,93 +1008,6 @@ static void test_resolution_and_msaa(void) {
     CHECK(d3dt_pick_msaa(1, 1u << 4) == 1);
     d3dt_matrix_multiply(a, b, m);
     CHECK(m[0] == 2 && m[12] == 10 && m[13] == 12 && m[14] == 14 && m[15] == 1);
-}
-
-static void test_renderer_switch(void) {
-    pending_switch_t p = { 0 };
-    CHECK(renderer_switch_decide(0, 1, 0, 0, 0, 0) == SWITCH_DEFER);
-    CHECK(renderer_switch_decide(0, 1, 2, 1, 1, 0) == SWITCH_DEFER);
-    CHECK(renderer_switch_decide(0, 0, 0, 0, 0, 0) == SWITCH_NOW);
-    CHECK(renderer_switch_decide(1, 1, 0, 0, 0, 0) == SWITCH_NOW);
-    CHECK(renderer_switch_decide(1, 1, 1, 0, 0, 0) == SWITCH_WAIT);
-    CHECK(renderer_switch_decide(1, 0, 0, 1, 0, 3) == SWITCH_WAIT);
-    CHECK(renderer_switch_decide(1, 0, 0, 0, 1, RENDERER_SWITCH_ATTEMPTS - 1) == SWITCH_GIVE_UP);
-    CHECK(!strcmp(renderer_switch_name(RENDERER_SWITCH_DEFERRED), "RENDERER_SWITCH_DEFERRED"));
-    CHECK(!strcmp(renderer_switch_name(RENDERER_DRAINING), "RENDERER_DRAINING"));
-    CHECK(pending_switch_peek(&p) == -1 && pending_switch_take(&p) == -1);
-    pending_switch_set(&p, 0);
-    CHECK(pending_switch_peek(&p) == 0 && pending_switch_take(&p) == 0 && pending_switch_peek(&p) == -1);
-    pending_switch_set(&p, 1);
-    pending_switch_cancel(&p);
-    CHECK(pending_switch_take(&p) == -1);
-}
-
-/* The F5 lifecycle as the host drives it, on a model of the objects the census counts: a live switch
- * only at a boundary with nothing open, the old device gone before the new display, and Direct3D to
- * software inside a level waiting for the next DirectDraw creation. */
-typedef struct {
-    int hardware, scene, pending_applied;
-    long locks, dcs, scenes, directdraws, devices, surfaces;
-    pending_switch_t pending;
-} f5_model_t;
-
-static void model_rebuild(f5_model_t* m, int hardware) {
-    m->hardware = hardware;
-    m->surfaces = 3;
-    m->devices = hardware ? 1 : 0;
-}
-
-static renderer_switch_t model_f5(f5_model_t* m, unsigned* boundaries) {
-    unsigned attempts = 0;
-    for (;;) {
-        switch_decision_t d = renderer_switch_decide(!m->hardware, m->scene, m->locks, m->dcs, m->scenes, attempts);
-        (*boundaries)++;
-        if (d == SWITCH_DEFER) {
-            pending_switch_set(&m->pending, !m->hardware);
-            return RENDERER_SWITCH_DEFERRED;
-        }
-        if (d == SWITCH_GIVE_UP) return RENDERER_SWITCH_FAILED;
-        if (d == SWITCH_NOW) {
-            model_rebuild(m, !m->hardware);
-            return RENDERER_ACTIVE_NEW;
-        }
-        attempts++;
-        if (attempts == 2) m->locks = m->dcs = m->scenes = 0;
-    }
-}
-
-static void model_directdraw_created(f5_model_t* m) {
-    int to = pending_switch_take(&m->pending);
-    m->directdraws++;
-    if (to >= 0) {
-        model_rebuild(m, to);
-        m->pending_applied = 1;
-    }
-}
-
-static void test_f5_lifecycle(void) {
-    f5_model_t m;
-    unsigned boundaries = 0;
-    memset(&m, 0, sizeof m);
-    m.hardware = 1, m.devices = 1, m.surfaces = 3, m.directdraws = 1;
-    /* Menu: D3D11 -> Software drains an open lock first, then rebuilds with no device left. */
-    m.locks = 1;
-    CHECK(model_f5(&m, &boundaries) == RENDERER_ACTIVE_NEW && boundaries == 3);
-    CHECK(!m.hardware && m.devices == 0 && m.locks == 0);
-    /* Software -> D3D11 in a level is live and leaves exactly one device. */
-    m.scene = 1;
-    boundaries = 0;
-    CHECK(model_f5(&m, &boundaries) == RENDERER_ACTIVE_NEW && m.hardware && m.devices == 1);
-    /* D3D11 -> Software in a level waits; nothing changes until the game creates DirectDraw again. */
-    boundaries = 0;
-    CHECK(model_f5(&m, &boundaries) == RENDERER_SWITCH_DEFERRED && m.hardware && m.devices == 1);
-    CHECK(pending_switch_peek(&m.pending) == 0);
-    model_directdraw_created(&m);
-    CHECK(m.pending_applied && !m.hardware && m.devices == 0 && pending_switch_peek(&m.pending) == -1);
-    /* A later DirectDraw creation with nothing pending changes nothing. */
-    m.pending_applied = 0;
-    model_directdraw_created(&m);
-    CHECK(!m.pending_applied && !m.hardware);
 }
 
 static void test_address_and_cull(void) {
@@ -2481,8 +2406,6 @@ int main(void) {
     test_gpu_lost_and_resized();
     test_clear_drops_pending();
     test_icall_ring();
-    test_renderer_switch();
-    test_f5_lifecycle();
     test_address_and_cull();
     test_readback_classes();
     test_primitives();

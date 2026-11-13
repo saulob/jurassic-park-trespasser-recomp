@@ -116,14 +116,6 @@ void dd_log(const char* fmt, ...);
 #define DD_UNSUPPORTED(label, reason, hr) do { static dd_method_t dd_method_ = { label, 0 }; dd_begin(&dd_method_); \
     return dd_unsupported(&dd_method_, reason, hr); } while (0)
 
-/* What is in use and alive right now, for the renderer switch's barrier and its lifetime check. */
-typedef struct {
-    LONG locks, dcs, scenes;
-    LONG directdraws, surfaces, devices, viewports;
-} dd_census_t;
-
-extern dd_census_t dd_census;
-
 void dd_format_rgb565(DDPIXELFORMAT* pf);
 int dd_format_supported(const DDPIXELFORMAT* pf);
 int dd_format_bytes(const DDPIXELFORMAT* pf);

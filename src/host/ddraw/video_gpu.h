@@ -22,6 +22,8 @@ typedef struct {
     int palette_changed;
     const uint16_t* gamma; /* DDGAMMARAMP (red, green, blue), or NULL */
     int smooth;            /* light smoothing of the palette's dither */
+    int deblock;           /* the codec's 4x4 block edges softened in smooth areas (progressive files) */
+    int stray_bottom_line; /* the last row's lit pixels over a black block rebuilt (progressive files) */
 } video_gpu_frame_t;
 
 /* Compiles the passes on a thread of their own, ahead of the first video. */

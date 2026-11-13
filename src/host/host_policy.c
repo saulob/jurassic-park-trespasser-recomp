@@ -80,7 +80,7 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
     case VK_F11_:
         if (ctrl) return KEY_TO_GAME;
         return down && !repeat ? KEY_HOST_FULLSCREEN : KEY_DROP;
-    case VK_F5_: return down && !repeat ? KEY_HOST_RENDERER : KEY_DROP;
+    case VK_F5_: return down && !repeat ? KEY_HOST_VIDEO_TEST : KEY_DROP;
     case VK_F4_:
         if (!alt) return KEY_TO_GAME;
         return down && !repeat ? KEY_HOST_CLOSE : KEY_DROP;
@@ -563,30 +563,4 @@ uint32_t icall_ring_caller(const uint32_t* targets, const uint32_t* from, uint32
             return from[k];
     }
     return 0;
-}
-
-switch_decision_t renderer_switch_decide(int to_hardware, int scene_loaded, long locks, long dcs, long scenes,
-                                         unsigned attempts) {
-    if (!to_hardware && scene_loaded) return SWITCH_DEFER;
-    if (locks || dcs || scenes) return attempts + 1 >= RENDERER_SWITCH_ATTEMPTS ? SWITCH_GIVE_UP : SWITCH_WAIT;
-    return SWITCH_NOW;
-}
-
-const char* renderer_switch_name(renderer_switch_t state) {
-    static const char* const names[] = { "RENDERER_ACTIVE",      "RENDERER_SWITCH_REQUESTED", "RENDERER_DRAINING",
-                                         "RENDERER_REBUILDING",  "RENDERER_ACTIVE_NEW",       "RENDERER_SWITCH_FAILED",
-                                         "RENDERER_SWITCH_DEFERRED" };
-    return state >= 0 && state <= RENDERER_SWITCH_DEFERRED ? names[state] : "?";
-}
-
-void pending_switch_set(pending_switch_t* p, int hardware) { p->value = hardware ? 2 : 1; }
-
-void pending_switch_cancel(pending_switch_t* p) { p->value = 0; }
-
-int pending_switch_peek(const pending_switch_t* p) { return p->value ? p->value - 1 : -1; }
-
-int pending_switch_take(pending_switch_t* p) {
-    int v = pending_switch_peek(p);
-    p->value = 0;
-    return v;
 }

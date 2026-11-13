@@ -165,11 +165,6 @@ int guest_ui_active(const guest_ui_view_t* v);
 /* The game's EndModal(code) on the window in front; quit_to_windows adds the flags its in-game Quit
  * sets. 1 done, -1 the window is already ending, 0 not possible. */
 int guest_ui_end_window(const guest_ui_view_t* v, int32_t code, int quit_to_windows);
-/* What the game's DirectDraw start-up sets up for Direct3D (its IDirectDraw4 and driver object),
- * redone before an F5 rebuild into D3D11. */
-int guest_restore_direct3d(void);
-/* Makes the game's next level load restart DirectDraw (its own renderer change point). */
-int guest_request_display_restart(void);
 
 /* d3d11_renderer.c: --renderer, --render-resolution, --texture-filter, --msaa */
 /* box 0x0: the original compatibility size; otherwise each target is the largest of its surface's shape inside it. */
@@ -177,16 +172,9 @@ void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, un
 /* d3d11_present.c: Off never waits for the vertical blank; On keeps the game's own Flip request. */
 void present_set_vsync(int on);
 int d3dr_startup(void);
+/* The renderer d3dr_startup chose; it stays for the whole run. */
 int d3dr_hardware(void);
-int d3dr_set_hardware(int hardware);
 const char* d3dr_name(void);
-/* Direct3D devices the game has created so far. */
-unsigned d3dr_device_count(void);
-/* Applied when the game next creates DirectDraw; -1 when nothing waits. */
-void d3dr_defer_switch(int hardware);
-void d3dr_defer_switch_cancel(void);
-int d3dr_pending_switch(void);
-unsigned d3dr_textures_alive(void);
 /* One polygon the game rasterises itself into the surface, inside this box of its raster, whose first pixel is
  * origin_bytes into the surface; about to Lock it or already holding the Lock; reads: its primitive is not known to
  * only store pixels. */
@@ -228,7 +216,6 @@ void ui_canvas_install(void);
 void engine_limits_keep_original(void);
 int engine_limits_original(void);
 void engine_limits_install(int hardware);
-void engine_limits_apply(int hardware);
 int engine_limits_modern(void);
 void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsync);
 void engine_limits_summary(unsigned long long hardware_draw_calls);
@@ -273,8 +260,8 @@ void video_hd_main_presented(void);
 void video_hd_release(void);
 /* The next Play only (vl_play_mode_t); it is AUTO again from the one after. */
 void video_hd_force(int mode);
-/* video_test.c: the Video Test panel of the main menu (F5). 1 when F5 was the panel's, 0 for the renderer switch. */
-int video_test_f5(void);
+/* video_test.c: F5 opens or closes the Video Test panel with the main menu alone in front; elsewhere nothing. */
+void video_test_f5(void);
 int video_test_visible(void);
 struct ID3D11Device;
 struct ID3D11DeviceContext;

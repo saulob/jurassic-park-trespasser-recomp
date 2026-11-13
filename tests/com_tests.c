@@ -87,7 +87,6 @@ int d3dr_surface_unlocked(dd_surface_t* s) {
 int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) { (void)s; (void)r; (void)color; return 0; }
 int d3dr_flip(dd_surface_t* front, int vsync) { (void)front; (void)vsync; return 0; }
 void d3dr_surface_freed(dd_surface_t* s) { (void)s; }
-void d3dr_directdraw_created(void) {}
 
 static int s_formats, s_zformats, s_devices;
 static DDPIXELFORMAT s_alpha_format;

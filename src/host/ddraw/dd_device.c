@@ -20,19 +20,16 @@ static const IDirectDraw4Vtbl s_dd4_vtbl;
 
 static void destroy_device_if_unused(dd_device_t* d) {
     if (d->released && d->surfaces == 0) {
-        InterlockedDecrement(&dd_census.directdraws);
         free(d);
     }
 }
 
 void dd_surface_added(dd_device_t* d) {
     d->surfaces++;
-    InterlockedIncrement(&dd_census.surfaces);
 }
 
 void dd_surface_removed(dd_device_t* d) {
     d->surfaces--;
-    InterlockedDecrement(&dd_census.surfaces);
     destroy_device_if_unused(d);
 }
 
@@ -572,10 +569,8 @@ HRESULT WINAPI compat_DirectDrawCreate(GUID* guid, LPDIRECTDRAW* out, IUnknown* 
     if (!out) DD_RETURN(DDERR_INVALIDPARAMS);
     *out = NULL;
     if (outer) DD_RETURN(CLASS_E_NOAGGREGATION);
-    d3dr_directdraw_created();
     d = (dd_device_t*)calloc(1, sizeof *d);
     if (!d) DD_RETURN(DDERR_OUTOFMEMORY);
-    InterlockedIncrement(&dd_census.directdraws);
     d->dd1.vtbl = &s_dd1_vtbl;
     d->dd2.vtbl = &s_dd2_vtbl;
     d->dd4.vtbl = &s_dd4_vtbl;

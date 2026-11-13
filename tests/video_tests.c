@@ -1,6 +1,6 @@
 /* Headless checks of the HD video presentation: the retail inventory (the four files and the five calls that play
- * them), what the original decoder writes (SMACKW32.DLL with no audio track and no window), the layout on every screen
- * shape, the session's routing, and the GPU passes on a WARP device (no window). */
+ * them), what the original decoder writes for every frame (SMACKW32.DLL with no audio track and no window), the layout
+ * on every screen shape, the session's routing, and the GPU passes on a WARP device (no window). */
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -263,40 +263,57 @@ static void test_session(void) {
     CHECK(vl_session_route(&s, 1, 1, 0, 1) == VL_SHOW_CLASSIC, "the decoder's window blit: the game's own playback");
     vl_session_shown(&s, VL_SHOW_BLACK, 0, 0.5);
     CHECK(s.overlay && !s.started && s.frames == 0, "a black clear puts the surface up without counting a frame");
-    CHECK(!vl_session_main_presented(&s, 1), "a present of the game's own surface while playing keeps the video up");
+    CHECK(!vl_session_main_presented(&s), "a present of the game's own surface while playing keeps the video up");
     for (int f = 0; f < 10; f++) vl_session_shown(&s, VL_SHOW_FRAME, f == 9 ? 11 : f, 1.0 + f);
     CHECK(s.frames == 10 && s.dropped == 2 && s.last_frame == 11 && s.max_ms == 10.0, "frames %u dropped %u max %.1f",
           s.frames, s.dropped, s.max_ms);
     vl_session_end(&s);
     CHECK(!s.playing && s.overlay, "the last frame stays up after the player returns (a skip ends it the same way)");
     CHECK(vl_session_route(&s, 1, 1, 0, 0) == VL_SHOW_CLASSIC, "after the player: the game's own presents");
-    CHECK(vl_session_main_presented(&s, 1) && !s.overlay, "the next picture of the game's own takes over");
-    CHECK(!vl_session_main_presented(&s, 1), "and only once");
+    CHECK(vl_session_main_presented(&s) && !s.overlay, "the next picture of the game's own takes over");
+    CHECK(!vl_session_main_presented(&s), "and only once");
 
     vl_session_begin(&s);
     vl_session_shown(&s, VL_SHOW_FRAME, 0, 1.0);
     vl_session_failed(&s);
     CHECK(vl_session_route(&s, 1, 1, 0, 0) == VL_SHOW_CLASSIC, "a failure: the game's own playback");
-    CHECK(vl_session_main_presented(&s, 1), "and its first present hides the video surface");
+    CHECK(vl_session_main_presented(&s), "and its first present hides the video surface");
     vl_session_end(&s);
 
     s.overlay = 1;
     vl_session_begin(&s);
     CHECK(s.overlay && s.playing && !s.failed && s.frames == 0, "a second video (credits after win) keeps the surface");
-    CHECK(vl_session_route(&s, 1, 0, 0, 0) == VL_SHOW_CLASSIC && !vl_session_main_presented(&s, 1),
+    CHECK(vl_session_route(&s, 1, 0, 0, 0) == VL_SHOW_CLASSIC && !vl_session_main_presented(&s),
           "its probe present stays under the surface");
     vl_session_end(&s);
-    vl_session_main_presented(&s, 1);
+    vl_session_main_presented(&s);
 
     vl_session_begin(&s);
-    vl_session_shown(&s, VL_SHOW_FRAME, 0, 1.0);
-    CHECK(vl_session_main_presented(&s, 0) && s.failed && !s.overlay,
-          "F5 to Software while playing: the first software present hides the HD surface");
-    CHECK(vl_session_route(&s, 1, 1, 0, 0) == VL_SHOW_CLASSIC, "and the rest of that video stays the game's own");
+    CHECK(!vl_session_stray_line(&s, VL_STRAY_LINE_MIN - 1) && !s.stray_line,
+          "picture content reaching the bottom edge is not a stray line");
+    CHECK(vl_session_stray_line(&s, 363) && s.stray_line, "credits' first card marks its last row as a stray line");
+    CHECK(!vl_session_stray_line(&s, 400) && !vl_session_stray_line(&s, 4) && s.stray_line,
+          "once, and it holds for the faded cards whose line is down to 4 pixels");
     vl_session_end(&s);
     vl_session_begin(&s);
-    CHECK(!s.failed && vl_session_route(&s, 1, 1, 0, 0) == VL_SHOW_FRAME, "the next video starts in HD again");
+    CHECK(!s.stray_line, "the next video starts without it");
     vl_session_end(&s);
+}
+
+static void test_lone_pixels(void) {
+    static uint16_t pic[8][16];
+    memset(pic, 0, sizeof pic);
+    for (int x = 4; x < 12; x++) pic[7][x] = vl_rgb565(32, 32, 32);
+    CHECK(vl_lone_bottom_pixels((const uint8_t*)pic, sizeof pic[0], 16, 8) == 8, "a grey line over black: 8 lone");
+    pic[5][6] = vl_rgb565(200, 200, 200);
+    pic[3][9] = vl_rgb565(200, 200, 200);
+    CHECK(vl_lone_bottom_pixels((const uint8_t*)pic, sizeof pic[0], 16, 8) == 7,
+          "a pixel with anything in its block above is not lone; above the block does not count");
+    pic[7][0] = vl_rgb565(0, 4, 0);
+    CHECK(vl_lone_bottom_pixels((const uint8_t*)pic, sizeof pic[0], 16, 8) == 8, "any non-black code is lit");
+    CHECK(vl_lone_bottom_pixels((const uint8_t*)pic, sizeof pic[0], 16, 3) == 0 &&
+          vl_lone_bottom_pixels(NULL, 32, 16, 8) == 0, "too short or no picture: none");
+    CHECK(vl_lone_bottom_pixels((const uint8_t*)pic, sizeof pic[0], 16, 7) == 0, "only the last row is looked at");
 }
 
 static void test_video_test_state(void) {
@@ -305,7 +322,9 @@ static void test_video_test_state(void) {
     vl_play_mode_t forced = VL_PLAY_HD, mode = VL_PLAY_AUTO;
     int video = -1;
     memset(&s, 0, sizeof s);
-    CHECK(!vt_f5(&s, 0) && !s.open, "F5 outside the main menu stays the renderer switch");
+    for (int other = 0; other < 3; other++)
+        CHECK(!vt_f5(&s, 0) && !s.open, "F5 in %s does nothing",
+              other == 0 ? "gameplay" : other == 1 ? "Options" : "another menu");
     CHECK(vt_f5(&s, 1) && s.open && vt_visible(&s), "F5 in the main menu opens the panel");
     CHECK(vt_f5(&s, 1) && !s.open && !vt_visible(&s), "F5 again closes it");
     CHECK(!vt_request(&s, 0, VL_PLAY_HD), "a closed panel asks for nothing");
@@ -325,7 +344,7 @@ static void test_video_test_state(void) {
     CHECK(vt_visible(&s), "the panel is back after the video");
     CHECK(vt_request(&s, 1, VL_PLAY_HD) && vt_f5(&s, 1) && !s.pending && !vt_start(&s, 1, &video, &mode),
           "closing the panel drops a waiting request");
-    CHECK(!vt_f5(&s, 0), "a closed panel leaves F5 outside the main menu alone");
+    CHECK(!vt_f5(&s, 0) && !s.open, "a closed panel leaves F5 outside the main menu alone");
 
     CHECK(vl_play_mode_take(&forced) == VL_PLAY_HD && forced == VL_PLAY_AUTO, "the player takes the forced mode once");
     CHECK(vl_play_mode_take(&forced) == VL_PLAY_AUTO, "the next video is AUTO again, whether the forced one ended, was "
@@ -432,6 +451,12 @@ static void test_inventory(const char* root) {
         }
     }
     CHECK(all_calls == 5, "CVideoWnd::Play has exactly five callers (%d)", all_calls);
+    {
+        const uint8_t* push = exe_at(0x00418B70u, 5);
+        CHECK(push && push[0] == 0xE8 && 0x00418B75u + *(const int32_t*)(push + 1) == 0x00417110u,
+              "Play puts its window on the game's stack before its first frame: F5 never finds the main menu alone in "
+              "front during a video");
+    }
     for (int i = 0; i < VT_VIDEO_COUNT; i++) {
         char want[32];
         const uint8_t* text = exe_at(vt_videos[i].name_va, 16);
@@ -454,78 +479,130 @@ typedef uint32_t(__stdcall* smack_rect_fn)(void*, uint32_t);
 typedef struct {
     uint16_t screen[SCREEN_H][SCREEN_W];
     uint8_t palette[768];
-    uint32_t shown, flags;
+    uint32_t shown, flags, frame;
     int loaded;
 } decoded_t;
 
-static decoded_t g_newgame, g_intro, g_win, g_credits;
+#define CAPTURES 4
 
-/* As CVideoWnd::Play decodes: RGB565 into a cleared 640x480 raster, the picture centred; no track is opened. */
-static int decode(HMODULE dll, const char* root, const char* file, uint32_t until, decoded_t* out, int* odd_black,
-                  int* even_black, int* frames_seen) {
+typedef struct {
+    const char* file;
+    int captures;
+    uint32_t capture[CAPTURES];
+    decoded_t* out;
+    uint32_t frames;
+    int odd_black, even_black, seen;
+    int lone_max, stray_first, stray_frames;
+    long lit_after, lone_after;
+} scan_t;
+
+static decoded_t g_newgame[1], g_intro[CAPTURES], g_win[1], g_credits[3];
+
+static scan_t g_scans[] = {
+    { "newgame", 1, { 540 }, g_newgame },
+    { "tpassintro", 4, { 150, 300, 600, 792 }, g_intro },
+    { "win", 1, { 303 }, g_win },
+    { "credits", 3, { 100, 500, 651 }, g_credits },
+};
+#define SCAN_COUNT (int)(sizeof g_scans / sizeof g_scans[0])
+
+/* As CVideoWnd::Play decodes: RGB565 into a cleared 640x480 raster, the picture centred; no track is opened. Every
+ * frame is decoded; the listed ones are kept. */
+static int decode(HMODULE dll, const char* root, scan_t* v) {
     smack_open_fn open = (smack_open_fn)GetProcAddress(dll, "_SmackOpen@12");
     smack_close_fn close = (smack_close_fn)GetProcAddress(dll, "_SmackClose@4");
     smack_do_fn decode_frame = (smack_do_fn)GetProcAddress(dll, "_SmackDoFrame@4");
     smack_next_fn next = (smack_next_fn)GetProcAddress(dll, "_SmackNextFrame@4");
     smack_to_buffer_fn to_buffer = (smack_to_buffer_fn)GetProcAddress(dll, "_SmackToBuffer@28");
     smack_rect_fn rect = (smack_rect_fn)GetProcAddress(dll, "_SmackToBufferRect@8");
+    static uint16_t screen[SCREEN_H][SCREEN_W];
     char path[MAX_PATH];
     uint8_t* smk;
-    uint32_t top;
-    *odd_black = *even_black = *frames_seen = 0;
+    uint32_t top, shown, flags;
+    int kept = 0;
     if (!open || !close || !decode_frame || !next || !to_buffer || !rect) return 0;
-    snprintf(path, sizeof path, "%s/game/data/menu/%s.smk", root, file);
+    snprintf(path, sizeof path, "%s/game/data/menu/%s.smk", root, v->file);
     smk = (uint8_t*)open(path, 0, 0xFFFFFFFFu);
     if (!smk) return 0;
-    memset(out->screen, 0, sizeof out->screen);
-    out->shown = *(uint32_t*)(smk + 8);
-    out->flags = *(uint32_t*)(smk + 0x14);
-    top = SCREEN_H / 2 - out->shown / 2;
-    to_buffer(smk, 0, top, SCREEN_W * 2, SCREEN_H, out->screen, 0xC0000000u);
-    for (uint32_t f = 0; f <= until && f < *(uint32_t*)(smk + 0x0C); f++) {
+    memset(screen, 0, sizeof screen);
+    shown = *(uint32_t*)(smk + 8);
+    flags = *(uint32_t*)(smk + 0x14);
+    v->frames = *(uint32_t*)(smk + 0x0C);
+    v->stray_first = -1;
+    top = SCREEN_H / 2 - shown / 2;
+    to_buffer(smk, 0, top, SCREEN_W * 2, SCREEN_H, screen, 0xC0000000u);
+    for (uint32_t f = 0; f < v->frames; f++) {
         int odd = 1, even = 1;
         decode_frame(smk);
         while (rect(smk, 1)) {}
-        for (uint32_t y = 0; y < out->shown; y++)
+        for (uint32_t y = 0; y < shown; y++)
             for (int x = 0; x < SCREEN_W; x++)
-                if (out->screen[top + y][x]) {
+                if (screen[top + y][x]) {
                     if (y & 1) odd = 0;
                     else even = 0;
                     break;
                 }
         if (!even) {
-            *odd_black += odd;
-            *even_black += even;
-            (*frames_seen)++;
+            v->odd_black += odd;
+            v->even_black += even;
+            v->seen++;
         }
-        if (f < until) next(smk);
+        if (vl_policy_for(flags, shown).rows == VL_ROWS_PROGRESSIVE) {
+            int lone = vl_lone_bottom_pixels((const uint8_t*)screen[top], SCREEN_W * 2, SCREEN_W, (int)shown);
+            if (lone > v->lone_max) v->lone_max = lone;
+            if (lone >= VL_STRAY_LINE_MIN && v->stray_first < 0) v->stray_first = (int)f;
+            if (lone >= VL_STRAY_LINE_MIN) v->stray_frames++;
+            if (v->stray_first >= 0) {
+                for (int x = 0; x < SCREEN_W; x++) v->lit_after += screen[top + shown - 1][x] != 0;
+                v->lone_after += lone;
+            }
+        }
+        if (kept < v->captures && f == v->capture[kept]) {
+            decoded_t* d = &v->out[kept++];
+            memcpy(d->screen, screen, sizeof screen);
+            memcpy(d->palette, smk + 0x6C, sizeof d->palette);
+            d->shown = shown;
+            d->flags = flags;
+            d->frame = f;
+            d->loaded = 1;
+        }
+        if (f + 1 < v->frames) next(smk);
     }
-    memcpy(out->palette, smk + 0x6C, sizeof out->palette);
-    out->loaded = 1;
     close(smk);
-    return 1;
+    return kept == v->captures;
 }
 
 static void test_decoder(const char* root, HMODULE dll) {
-    struct {
-        const char* file;
-        uint32_t until;
-        decoded_t* out;
-    } k[] = { { "newgame", 540, &g_newgame }, { "tpassintro", 792, &g_intro }, { "win", 303, &g_win },
-              { "credits", 651, &g_credits } };
-    for (int i = 0; i < 4; i++) {
-        int odd_black, even_black, seen;
-        if (!decode(dll, root, k[i].file, k[i].until, k[i].out, &odd_black, &even_black, &seen)) {
-            CHECK(0, "%s.smk decodes through SMACKW32.DLL", k[i].file);
+    for (int i = 0; i < SCAN_COUNT; i++) {
+        scan_t* v = &g_scans[i];
+        if (!decode(dll, root, v)) {
+            CHECK(0, "%s.smk decodes through SMACKW32.DLL", v->file);
             continue;
         }
-        if (k[i].out->flags & VL_SMK_Y_INTERLACED) {
-            CHECK(k[i].out->shown == 344, "the decoder shows newgame at %u rows (172 stored)", k[i].out->shown);
-            CHECK(seen > 100 && odd_black == seen,
-                  "newgame: every second row of the picture stays black in every frame (%d of %d)", odd_black, seen);
+        if (v->out[0].flags & VL_SMK_Y_INTERLACED) {
+            CHECK(v->out[0].shown == 344, "the decoder shows newgame at %u rows (172 stored)", v->out[0].shown);
+            CHECK(v->seen > 100 && v->odd_black == v->seen,
+                  "newgame: every second row of the picture stays black in every frame (%d of %d)", v->odd_black,
+                  v->seen);
+            continue;
+        }
+        CHECK(v->out[0].shown == 348, "%s: 348 rows", v->file);
+        CHECK(v->odd_black == 0, "%s: no frame with the odd rows black (%d of %d)", v->file, v->odd_black, v->seen);
+        printf("  %-10s last row: at most %d lone pixels in a frame; stray line %s", v->file, v->lone_max,
+               v->stray_first < 0 ? "never\n" : "");
+        if (v->stray_first >= 0)
+            printf("from frame %d (%d frames >= %d), %ld of %ld lit pixels lone after it\n", v->stray_first,
+                   v->stray_frames, VL_STRAY_LINE_MIN, v->lone_after, v->lit_after);
+        if (!strcmp(v->file, "credits")) {
+            CHECK(v->stray_first >= 0 && v->stray_first <= 20 && v->lone_max >= 360,
+                  "credits: its last row is a stray line from its first card (frame %d, %d pixels)", v->stray_first,
+                  v->lone_max);
+            CHECK(v->lit_after > 100000 && v->lone_after == v->lit_after,
+                  "credits: after that, every lit pixel of the last row stands alone over black (%ld of %ld)",
+                  v->lone_after, v->lit_after);
         } else {
-            CHECK(k[i].out->shown == 348, "%s: 348 rows", k[i].file);
-            CHECK(odd_black == 0, "%s: no frame with the odd rows black (%d of %d)", k[i].file, odd_black, seen);
+            CHECK(v->stray_first < 0 && v->lone_max * 3 < VL_STRAY_LINE_MIN,
+                  "%s: never taken for a stray line (at most %d lone pixels)", v->file, v->lone_max);
         }
     }
 }
@@ -594,11 +671,145 @@ static video_gpu_frame_t frame_of(const uint16_t* rows, int width, int stride_px
     return f;
 }
 
+#define TW 64
+#define TH 48
+
 static uint32_t g_lcg = 12345;
 static uint32_t next_random(void) { return g_lcg = g_lcg * 1103515245u + 12345u; }
 
-#define TW 64
-#define TH 48
+/* A decoded frame as video_hd.c hands it over, with the stages chosen. */
+static uint32_t* draw_decoded(video_gpu_t* g, const decoded_t* d, int smooth, int deblock, int stray, int out_w,
+                              int out_h) {
+    vl_policy_t policy = vl_policy_for(d->flags, d->shown);
+    uint32_t top = SCREEN_H / 2 - d->shown / 2;
+    int rebuild = policy.rows == VL_ROWS_REBUILD;
+    video_gpu_frame_t f = frame_of(&d->screen[top][0], SCREEN_W, rebuild ? SCREEN_W * 2 : SCREEN_W, policy);
+    memset(&g_map, 0, sizeof g_map);
+    vl_palette_map_update(&g_map, d->palette);
+    f.palette_map = g_map.map;
+    f.palette_changed = 1;
+    f.smooth = smooth;
+    f.deblock = deblock;
+    f.stray_bottom_line = stray;
+    return draw(g, &f, out_w, out_h, SCREEN_W, (int)d->shown);
+}
+
+/* Flat 4x4 blocks in a staircase of small steps along x and y: the edges spread into ramps, the mean stays. */
+static void test_gpu_deblock_ramp(video_gpu_t* g) {
+    static uint16_t pic[TH][TW];
+    video_gpu_frame_t f;
+    uint32_t *plain, *out;
+    double edge_before = 0.0, edge_after = 0.0, mean_before = 0.0, mean_after = 0.0, worst = 0.0, worst_before = 0.0;
+    for (int y = 0; y < TH; y++)
+        for (int x = 0; x < TW; x++) {
+            int v = 40 + 6 * (x / 4) + 4 * (y / 4);
+            pic[y][x] = vl_rgb565((uint8_t)v, (uint8_t)v, (uint8_t)v);
+        }
+    f = frame_of(&pic[0][0], TW, TW, vl_policy_for(0, TH));
+    plain = draw(g, &f, TW, TH, TW, TH);
+    f.deblock = 1;
+    out = draw(g, &f, TW, TH, TW, TH);
+    if (!plain || !out) {
+        CHECK(0, "a staircase draws");
+        free(plain);
+        free(out);
+        return;
+    }
+    for (int y = 4; y < TH - 4; y++)
+        for (int x = 4; x < TW - 5; x++) {
+            double b = fabs(luma(plain[y * TW + x + 1]) - luma(plain[y * TW + x]));
+            double a = fabs(luma(out[y * TW + x + 1]) - luma(out[y * TW + x]));
+            if ((x & 3) == 3) {
+                edge_before += b;
+                edge_after += a;
+            }
+            worst = fmax(worst, a);
+            worst_before = fmax(worst_before, b);
+        }
+    for (int i = 0; i < TW * TH; i++) {
+        mean_before += luma(plain[i]);
+        mean_after += luma(out[i]);
+    }
+    CHECK(edge_after < edge_before * 0.35, "a staircase of 6-level steps: block edges %.1f -> %.1f", edge_before,
+          edge_after);
+    CHECK(worst <= worst_before * 0.5, "every step of the ramp is at most half the staircase's (%.2f vs %.2f)", worst,
+          worst_before);
+    CHECK(fabs(mean_before - mean_after) / (TW * TH) < 0.3, "the mean level stays (%.2f -> %.2f)",
+          mean_before / (TW * TH), mean_after / (TW * TH));
+    free(plain);
+    free(out);
+}
+
+static int max_change(const uint32_t* a, const uint32_t* b, int n) {
+    int worst = 0;
+    for (int i = 0; i < n; i++)
+        for (int s = 0; s < 24; s += 8) {
+            int d = abs((int)((a[i] >> s) & 255) - (int)((b[i] >> s) & 255));
+            if (d > worst) worst = d;
+        }
+    return worst;
+}
+
+/* What deblocking must leave alone: a real edge on a block edge, texture, a lone star, text-like strokes. */
+static void test_gpu_deblock_keeps(video_gpu_t* g) {
+    static uint16_t pic[TH][TW];
+    static const char* const names[] = { "a 160-level edge on a block edge", "a fine 50-level texture",
+                                         "a star in a flat dark sky", "thin bright strokes on black" };
+    for (int k = 0; k < 4; k++) {
+        video_gpu_frame_t f;
+        uint32_t *plain, *out;
+        for (int y = 0; y < TH; y++)
+            for (int x = 0; x < TW; x++) {
+                int v = k == 0   ? (x < 32 ? 40 : 200)
+                        : k == 1 ? 100 + ((x + y) & 1 ? 25 : -25) + 2 * (x / 8)
+                        : k == 2 ? (x == 13 && y == 21 ? 230 : 18)
+                                 : ((x % 7 == 3 || y % 9 == 4) && x > 8 && x < 56 ? 220 : 0);
+                pic[y][x] = vl_rgb565((uint8_t)v, (uint8_t)v, (uint8_t)(v + (k == 2 ? 20 : 0)));
+            }
+        f = frame_of(&pic[0][0], TW, TW, vl_policy_for(0, TH));
+        plain = draw(g, &f, TW, TH, TW, TH);
+        f.deblock = 1;
+        out = draw(g, &f, TW, TH, TW, TH);
+        CHECK(plain && out && max_change(plain, out, TW * TH) <= 1, "%s: unchanged (%d)", names[k],
+              plain && out ? max_change(plain, out, TW * TH) : -1);
+        free(plain);
+        free(out);
+    }
+}
+
+/* The last row's stray line goes; picture content reaching the bottom edge stays, and nothing changes without the flag
+ * or on a half-height file. */
+static void test_gpu_stray_line(video_gpu_t* g) {
+    static uint16_t pic[TH][TW];
+    video_gpu_frame_t f;
+    uint32_t *off, *on;
+    int line_gone = 1, content_kept = 1, rest_same = 1;
+    memset(pic, 0, sizeof pic);
+    for (int x = 20; x < TW; x++) pic[TH - 1][x] = vl_rgb565(32, 32, 32);
+    for (int y = TH - 6; y < TH; y++)
+        for (int x = 4; x < 9; x++) pic[y][x] = vl_rgb565(180, 120, 60);
+    f = frame_of(&pic[0][0], TW, TW, vl_policy_for(0, TH));
+    off = draw(g, &f, TW, TH, TW, TH);
+    f.stray_bottom_line = 1;
+    on = draw(g, &f, TW, TH, TW, TH);
+    if (!off || !on) {
+        CHECK(0, "a stray-line frame draws");
+        free(off);
+        free(on);
+        return;
+    }
+    for (int x = 0; x < TW; x++) {
+        if (x >= 20 && (on[(TH - 1) * TW + x] & 0xFFFFFFu)) line_gone = 0;
+        if (x >= 4 && x < 9 && !rgb_close(on[(TH - 1) * TW + x], off[(TH - 1) * TW + x], 0)) content_kept = 0;
+    }
+    if (memcmp(off, on, (size_t)TW * (TH - 1) * 4)) rest_same = 0;
+    CHECK(off[(TH - 1) * TW + 40] & 0xFFFFFFu, "without the flag the line is drawn as decoded");
+    CHECK(line_gone, "with it, the line's pixels take the row above (black)");
+    CHECK(content_kept, "a picture reaching the bottom edge keeps its last row");
+    CHECK(rest_same, "every other row is untouched");
+    free(off);
+    free(on);
+}
 
 static void test_gpu_identity(video_gpu_t* g) {
     static uint16_t pic[TH][TW];
@@ -815,6 +1026,7 @@ static void test_gpu_determinism(video_gpu_t* g) {
         for (int x = 0; x < TW; x++) pic[y][x] = (uint16_t)(next_random() >> 9);
     f = frame_of(&pic[0][0], TW, TW, vl_policy_for(0, TH));
     f.smooth = 1;
+    f.deblock = 1;
     a = draw(g, &f, 400, 120, TW, TH);
     b = draw(g, &f, 400, 120, TW, TH);
     CHECK(a && b && !memcmp(a, b, 400 * 120 * 4), "the same frame draws the same pixels");
@@ -897,133 +1109,310 @@ static void dump_decoded(const char* name, const decoded_t* d) {
     free(p);
 }
 
-static void dump_hd(const char* name, video_gpu_t* g, const video_gpu_frame_t* f, int shown) {
+static void dump_hd(const char* name, video_gpu_t* g, const decoded_t* d, int stray) {
     static const int sizes[][2] = { { 1920, 1080 }, { 2560, 1920 }, { 5120, 1440 } };
     char file[64];
     if (!g_dump) return;
     for (int i = 0; i < 3; i++) {
-        uint32_t* out = draw(g, f, sizes[i][0], sizes[i][1], SCREEN_W, shown);
+        uint32_t* out = draw_decoded(g, d, 1, 1, stray, sizes[i][0], sizes[i][1]);
         snprintf(file, sizeof file, "%s_hd_%dx%d", name, sizes[i][0], sizes[i][1]);
         dump_ppm(file, out, sizes[i][0], sizes[i][1]);
         free(out);
     }
 }
 
-static void test_real_frames(video_gpu_t* g) {
-    decoded_t* d = &g_newgame;
-    if (d->loaded) {
-        vl_policy_t policy = vl_policy_for(d->flags, d->shown);
-        uint32_t top = SCREEN_H / 2 - d->shown / 2;
-        video_gpu_frame_t f = frame_of(&d->screen[top][0], SCREEN_W, SCREEN_W * 2, policy);
-        uint32_t* out;
-        int black_before = 0, black_after = 0, black_stored = 0;
-        double cross = 0.0, same = 0.0;
-        memset(&g_map, 0, sizeof g_map);
-        vl_palette_map_update(&g_map, d->palette);
-        f.palette_map = g_map.map;
-        f.palette_changed = 1;
-        out = draw(g, &f, SCREEN_W, (int)d->shown, SCREEN_W, (int)d->shown);
-        if (out) {
-            for (uint32_t y = 0; y < d->shown; y++) {
-                int was = 1, now = 1;
-                for (int x = 0; x < SCREEN_W; x++) {
-                    if (d->screen[top + y][x]) was = 0;
-                    if (out[y * SCREEN_W + x] & 0xFFFFFFu) now = 0;
-                }
-                black_before += was;
-                black_after += now;
-                if (!(y & 1)) black_stored += was;
-            }
-            for (uint32_t y = 0; y + 2 < d->shown; y++)
-                for (int x = 0; x < SCREEN_W; x++) {
-                    cross += fabs(luma(out[y * SCREEN_W + x]) - luma(out[(y + 1) * SCREEN_W + x]));
-                    same += fabs(luma(out[y * SCREEN_W + x]) - luma(out[(y + 2) * SCREEN_W + x]));
-                }
-            CHECK(black_before >= 172 && black_after <= 2 * black_stored,
-                  "newgame frame 540: black rows %d decoded (%d of them stored black), %d presented", black_before,
-                  black_stored, black_after);
-            CHECK(same > 0.0 && cross / same < 0.9, "newgame frame 540: no residual combing (adjacent/two-apart %.2f)",
-                  same > 0.0 ? cross / same : 0.0);
-            printf("  newgame frame 540: %d black rows decoded -> %d after the row rebuild; adjacent/two-apart row "
-                   "difference %.2f\n", black_before, black_after, same > 0.0 ? cross / same : 0.0);
-            dump_decoded("newgame_540_decoded", d);
-            dump_ppm("newgame_540_rebuilt", out, SCREEN_W, (int)d->shown);
-            free(out);
-            f.smooth = 1;
-            dump_hd("newgame_540", g, &f, (int)d->shown);
-        } else {
-            CHECK(0, "newgame frame draws");
-        }
-    }
-    {
-        decoded_t* frames[] = { &g_intro, &g_win, &g_credits };
-        const char* names[] = { "tpassintro 792", "win 303", "credits 651" };
-        for (int i = 0; i < 3; i++) {
-            decoded_t* r = frames[i];
-            uint32_t top;
-            video_gpu_frame_t f;
-            uint32_t *plain, *smooth, *quantised;
-            double before, after, rows_before, rows_after, kept, texture, change, err565 = 0.0, errmap = 0.0;
-            if (!r->loaded) continue;
-            top = SCREEN_H / 2 - r->shown / 2;
-            memset(&g_map, 0, sizeof g_map);
-            vl_palette_map_update(&g_map, r->palette);
-            f = frame_of(&r->screen[top][0], SCREEN_W, SCREEN_W, vl_policy_for(r->flags, r->shown));
-            quantised = draw(g, &f, SCREEN_W, (int)r->shown, SCREEN_W, (int)r->shown);
-            f.palette_map = g_map.map;
-            f.palette_changed = 1;
-            plain = draw(g, &f, SCREEN_W, (int)r->shown, SCREEN_W, (int)r->shown);
-            f.smooth = 1;
-            smooth = draw(g, &f, SCREEN_W, (int)r->shown, SCREEN_W, (int)r->shown);
-            if (!plain || !smooth || !quantised) {
-                CHECK(0, "%s draws", names[i]);
+/* Mean luma step across the codec's 4-pixel block edges over the mean step inside blocks, along x (axis 0) or y (1). */
+static double block_ratio(const uint32_t* p, int w, int h, int axis) {
+    double edge = 0.0, inner = 0.0;
+    long ne = 0, ni = 0;
+    for (int y = 0; y + axis < h; y++)
+        for (int x = 0; x + 1 - axis < w; x++) {
+            double d = fabs(luma(p[y * w + x]) - luma(p[(y + axis) * w + x + 1 - axis]));
+            if (((axis ? y : x) & 3) == 3) {
+                edge += d;
+                ne++;
             } else {
-                for (uint32_t y = 0; y < r->shown; y++)
-                    for (int x = 0; x < SCREEN_W; x++) {
-                        uint32_t want = g_map.map[r->screen[top + y][x]];
-                        if (!want) continue;
-                        for (int s = 0; s < 24; s += 8) {
-                            err565 += abs((int)((quantised[y * SCREEN_W + x] >> s) & 255) - (int)((want >> s) & 255));
-                            errmap += abs((int)((plain[y * SCREEN_W + x] >> s) & 255) - (int)((want >> s) & 255));
-                        }
-                    }
-                before = checker_energy(plain, SCREEN_W, 0, 0, SCREEN_W, (int)r->shown);
-                after = checker_energy(smooth, SCREEN_W, 0, 0, SCREEN_W, (int)r->shown);
-                rows_before = row_alternation(plain, SCREEN_W, 0, 0, SCREEN_W, (int)r->shown);
-                rows_after = row_alternation(smooth, SCREEN_W, 0, 0, SCREEN_W, (int)r->shown);
-                edge_kept(plain, smooth, SCREEN_W, (int)r->shown, &kept, &texture, &change);
-                printf("  %-14s colour error vs palette %.2f (RGB565) -> %.2f; dither checkerboard %.2f -> %.2f, "
-                       "row alternation %.2f -> %.2f, strong edges kept %.0f%%, texture kept %.0f%%, mean change %.2f\n",
-                       names[i], err565 / (SCREEN_W * r->shown * 3.0), errmap / (SCREEN_W * r->shown * 3.0), before,
-                       after, rows_before, rows_after, kept * 100.0, texture * 100.0, change);
-                CHECK(errmap < err565 * 0.25, "%s: palette colours restored (error %.0f vs %.0f)", names[i], errmap,
-                      err565);
-                CHECK(after <= before + 0.01 && rows_after <= rows_before + 0.01,
-                      "%s: smoothing never adds a pattern (%.2f -> %.2f, rows %.2f -> %.2f)", names[i], before, after,
-                      rows_before, rows_after);
-                if (r == &g_win)
-                    CHECK(after < before * 0.7 && rows_after < rows_before * 0.7,
-                          "win: its ordered dither is reduced (%.2f -> %.2f, rows %.2f -> %.2f)", before, after,
-                          rows_before, rows_after);
-                CHECK(kept > 0.95, "%s: strong edges kept (%.2f)", names[i], kept);
-                CHECK(texture > 0.8, "%s: mid-contrast texture kept (%.2f)", names[i], texture);
-                CHECK(change < 2.0, "%s: the picture is otherwise unchanged (mean %.2f)", names[i], change);
+                inner += d;
+                ni++;
             }
-            if (plain && smooth) {
-                char name[64];
-                int n = (int)strcspn(names[i], " ");
-                snprintf(name, sizeof name, "%.*s_plain", n, names[i]);
-                dump_ppm(name, plain, SCREEN_W, (int)r->shown);
-                snprintf(name, sizeof name, "%.*s_smooth", n, names[i]);
-                dump_ppm(name, smooth, SCREEN_W, (int)r->shown);
-                snprintf(name, sizeof name, "%.*s", n, names[i]);
-                dump_hd(name, g, &f, (int)r->shown);
+        }
+    return ne && ni && inner > 0.0 ? (edge / ne) / (inner / ni) : 1.0;
+}
+
+static int flat_block(const uint32_t* p, int w, int x0, int y0) {
+    uint32_t c = p[y0 * w + x0] & 0xFFFFFFu;
+    for (int y = y0; y < y0 + 4; y++)
+        for (int x = x0; x < x0 + 4; x++)
+            if ((p[y * w + x] & 0xFFFFFFu) != c) return 0;
+    return 1;
+}
+
+/* Smooth areas: the mean luma step across the edges between two one-colour blocks of ref that differ by less than 32
+ * levels, in ref and in p. */
+static void flat_steps(const uint32_t* ref, const uint32_t* p, int w, int h, double* before, double* after) {
+    double sb = 0.0, sa = 0.0;
+    long n = 0;
+    for (int by = 0; by + 4 <= h; by += 4)
+        for (int bx = 0; bx + 4 <= w; bx += 4)
+            for (int axis = 0; axis < 2; axis++) {
+                int px = axis ? bx : bx - 4, py = axis ? by - 4 : by;
+                double step;
+                if (px < 0 || py < 0 || !flat_block(ref, w, bx, by) || !flat_block(ref, w, px, py)) continue;
+                step = fabs(luma(ref[by * w + bx]) - luma(ref[py * w + px]));
+                if (step == 0.0 || step >= 32.0) continue;
+                for (int k = 0; k < 4; k++) {
+                    int x = axis ? bx + k : bx, y = axis ? by : by + k;
+                    int x0 = axis ? x : x - 1, y0 = axis ? y - 1 : y;
+                    sb += fabs(luma(ref[y * w + x]) - luma(ref[y0 * w + x0]));
+                    sa += fabs(luma(p[y * w + x]) - luma(p[y0 * w + x0]));
+                    n++;
+                }
             }
-            free(plain);
-            free(smooth);
-            free(quantised);
+    *before = n ? sb / n : 0.0;
+    *after = n ? sa / n : 0.0;
+}
+
+/* Pixels brighter than their eight neighbours by 24 levels or more (stars, specks): how many of ref's are within two
+ * levels in p. */
+static void stars_kept(const uint32_t* ref, const uint32_t* p, int w, int h, int* total, int* kept) {
+    *total = *kept = 0;
+    for (int y = 1; y + 1 < h; y++)
+        for (int x = 1; x + 1 < w; x++) {
+            double c = luma(ref[y * w + x]), around = 0.0;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (dx || dy) around = fmax(around, luma(ref[(y + dy) * w + x + dx]));
+            if (c < around + 24.0) continue;
+            (*total)++;
+            if (fabs(luma(p[y * w + x]) - c) <= 2.0) (*kept)++;
+        }
+}
+
+static void test_real_newgame(video_gpu_t* g) {
+    decoded_t* d = &g_newgame[0];
+    uint32_t top, *out, *deblocked;
+    int black_before = 0, black_after = 0, black_stored = 0;
+    double cross = 0.0, same = 0.0;
+    if (!d->loaded) return;
+    top = SCREEN_H / 2 - d->shown / 2;
+    out = draw_decoded(g, d, 0, 0, 0, SCREEN_W, (int)d->shown);
+    deblocked = draw_decoded(g, d, 1, 1, 1, SCREEN_W, (int)d->shown);
+    if (!out || !deblocked) {
+        CHECK(0, "newgame frame draws");
+        free(out);
+        free(deblocked);
+        return;
+    }
+    for (uint32_t y = 0; y < d->shown; y++) {
+        int was = 1, now = 1;
+        for (int x = 0; x < SCREEN_W; x++) {
+            if (d->screen[top + y][x]) was = 0;
+            if (out[y * SCREEN_W + x] & 0xFFFFFFu) now = 0;
+        }
+        black_before += was;
+        black_after += now;
+        if (!(y & 1)) black_stored += was;
+    }
+    for (uint32_t y = 0; y + 2 < d->shown; y++)
+        for (int x = 0; x < SCREEN_W; x++) {
+            cross += fabs(luma(out[y * SCREEN_W + x]) - luma(out[(y + 1) * SCREEN_W + x]));
+            same += fabs(luma(out[y * SCREEN_W + x]) - luma(out[(y + 2) * SCREEN_W + x]));
+        }
+    CHECK(black_before >= 172 && black_after <= 2 * black_stored,
+          "newgame frame 540: black rows %d decoded (%d of them stored black), %d presented", black_before,
+          black_stored, black_after);
+    CHECK(same > 0.0 && cross / same < 0.9, "newgame frame 540: no residual combing (adjacent/two-apart %.2f)",
+          same > 0.0 ? cross / same : 0.0);
+    free(deblocked);
+    deblocked = draw_decoded(g, d, 0, 1, 1, SCREEN_W, (int)d->shown);
+    CHECK(deblocked && !memcmp(out, deblocked, (size_t)SCREEN_W * d->shown * 4),
+          "newgame frame 540: the row rebuild is bit-identical with deblocking and the stray-line rule asked for");
+    printf("  newgame frame 540: %d black rows decoded -> %d after the row rebuild; adjacent/two-apart row "
+           "difference %.2f; deblocking and the stray-line rule leave it bit-identical\n", black_before, black_after,
+           same > 0.0 ? cross / same : 0.0);
+    dump_decoded("newgame_540_decoded", d);
+    dump_ppm("newgame_540_rebuilt", out, SCREEN_W, (int)d->shown);
+    dump_hd("newgame_540", g, d, 0);
+    free(out);
+    free(deblocked);
+}
+
+typedef struct {
+    double err565, errmap, checker[2], rows[2], kept, texture, change;
+    double ratio_x[2], ratio_y[2], flat[2], kept_db, texture_db, change_db;
+    int stars, stars_kept, text_change;
+} frame_metrics_t;
+
+/* plain: the palette's colours; smooth: the previous pipeline (dither smoothing); final: deblocking then smoothing.
+ * Stars, edges and text are compared between smooth and final, without the last row (credits' stray line). */
+static int measure(video_gpu_t* g, const decoded_t* r, int stray, frame_metrics_t* m) {
+    uint32_t top = SCREEN_H / 2 - r->shown / 2;
+    int w = SCREEN_W, h = (int)r->shown, ok;
+    video_gpu_frame_t f = frame_of(&r->screen[top][0], SCREEN_W, SCREEN_W, vl_policy_for(r->flags, r->shown));
+    uint32_t *quantised = draw(g, &f, w, h, w, h);
+    uint32_t *plain = draw_decoded(g, r, 0, 0, 0, w, h), *smooth = draw_decoded(g, r, 1, 0, 0, w, h);
+    uint32_t *final = draw_decoded(g, r, 1, 1, stray, w, h);
+    double unused;
+    memset(m, 0, sizeof *m);
+    ok = quantised && plain && smooth && final;
+    if (ok) {
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                uint32_t want = g_map.map[r->screen[top + y][x]];
+                if (!want) continue;
+                for (int s = 0; s < 24; s += 8) {
+                    m->err565 += abs((int)((quantised[y * w + x] >> s) & 255) - (int)((want >> s) & 255));
+                    m->errmap += abs((int)((plain[y * w + x] >> s) & 255) - (int)((want >> s) & 255));
+                }
+            }
+        m->err565 /= w * h * 3.0;
+        m->errmap /= w * h * 3.0;
+        m->checker[0] = checker_energy(plain, w, 0, 0, w, h);
+        m->checker[1] = checker_energy(smooth, w, 0, 0, w, h);
+        m->rows[0] = row_alternation(plain, w, 0, 0, w, h);
+        m->rows[1] = row_alternation(smooth, w, 0, 0, w, h);
+        edge_kept(plain, smooth, w, h, &m->kept, &m->texture, &m->change);
+        m->ratio_x[0] = block_ratio(smooth, w, h - 1, 0);
+        m->ratio_x[1] = block_ratio(final, w, h - 1, 0);
+        m->ratio_y[0] = block_ratio(smooth, w, h - 1, 1);
+        m->ratio_y[1] = block_ratio(final, w, h - 1, 1);
+        flat_steps(plain, smooth, w, h - 1, &unused, &m->flat[0]);
+        flat_steps(plain, final, w, h - 1, &unused, &m->flat[1]);
+        edge_kept(smooth, final, w, h - 1, &m->kept_db, &m->texture_db, &m->change_db);
+        stars_kept(smooth, final, w, h - 1, &m->stars, &m->stars_kept);
+        for (int i = 0; i < w * (h - 1); i++)
+            if (luma(smooth[i]) > 96.0 && max_change(&smooth[i], &final[i], 1) > m->text_change)
+                m->text_change = max_change(&smooth[i], &final[i], 1);
+    }
+    free(quantised);
+    free(plain);
+    free(smooth);
+    free(final);
+    return ok;
+}
+
+static void test_real_frames(video_gpu_t* g) {
+    double rx[2] = { 0.0, 0.0 }, ry[2] = { 0.0, 0.0 }, flat[2] = { 0.0, 0.0 }, kept = 1.0, texture = 1.0;
+    int stars = 0, stars_kept = 0, intro_frames = 0;
+    test_real_newgame(g);
+    for (int i = 1; i < SCAN_COUNT; i++) {
+        scan_t* v = &g_scans[i];
+        int credits = !strcmp(v->file, "credits"), intro = !strcmp(v->file, "tpassintro");
+        for (int k = 0; k < v->captures; k++) {
+            decoded_t* r = &v->out[k];
+            frame_metrics_t m;
+            char name[64];
+            if (!r->loaded) continue;
+            if (!measure(g, r, credits, &m)) {
+                CHECK(0, "%s %u draws", v->file, r->frame);
+                continue;
+            }
+            printf("  %-10s %4u  palette error %.2f -> %.2f; dither checkerboard %.2f -> %.2f, row alternation %.2f -> "
+                   "%.2f; block edge/inner x %.2f -> %.2f, y %.2f -> %.2f; smooth-area block step %.2f -> %.2f; strong "
+                   "edges kept %.1f%%, texture kept %.1f%%, mean change %.2f; stars %d/%d\n",
+                   v->file, r->frame, m.err565, m.errmap, m.checker[0], m.checker[1], m.rows[0], m.rows[1],
+                   m.ratio_x[0], m.ratio_x[1], m.ratio_y[0], m.ratio_y[1], m.flat[0], m.flat[1], m.kept_db * 100.0,
+                   m.texture_db * 100.0, m.change_db, m.stars_kept, m.stars);
+            CHECK(m.errmap < m.err565 * 0.25 + 0.01, "%s %u: palette colours restored (error %.2f vs %.2f)", v->file,
+                  r->frame, m.errmap, m.err565);
+            CHECK(m.checker[1] <= m.checker[0] + 0.01 && m.rows[1] <= m.rows[0] + 0.01,
+                  "%s %u: dither smoothing never adds a pattern", v->file, r->frame);
+            CHECK(m.kept > 0.95 && m.texture > 0.8 && m.change < 2.0, "%s %u: dither smoothing keeps the picture",
+                  v->file, r->frame);
+            CHECK(m.ratio_x[1] <= m.ratio_x[0] + 0.01 && m.ratio_y[1] <= m.ratio_y[0] + 0.01,
+                  "%s %u: deblocking never adds block edges (x %.2f -> %.2f, y %.2f -> %.2f)", v->file, r->frame,
+                  m.ratio_x[0], m.ratio_x[1], m.ratio_y[0], m.ratio_y[1]);
+            CHECK(m.kept_db > 0.97 && m.texture_db > 0.9 && m.change_db < 1.5,
+                  "%s %u: deblocking keeps edges (%.3f) and texture (%.3f), mean change %.2f", v->file, r->frame,
+                  m.kept_db, m.texture_db, m.change_db);
+            CHECK(m.stars_kept == m.stars, "%s %u: every star and speck kept (%d of %d)", v->file, r->frame,
+                  m.stars_kept, m.stars);
+            if (credits)
+                CHECK(m.text_change <= 2, "%s %u: its text unchanged (%d levels at most)", v->file, r->frame,
+                      m.text_change);
+            if (intro) {
+                rx[0] += m.ratio_x[0], rx[1] += m.ratio_x[1], ry[0] += m.ratio_y[0], ry[1] += m.ratio_y[1];
+                flat[0] += m.flat[0], flat[1] += m.flat[1];
+                kept = fmin(kept, m.kept_db), texture = fmin(texture, m.texture_db);
+                stars += m.stars, stars_kept += m.stars_kept;
+                intro_frames++;
+            }
+            if (!strcmp(v->file, "win"))
+                CHECK(m.checker[1] < m.checker[0] * 0.7 && m.rows[1] < m.rows[0] * 0.7,
+                      "win: its ordered dither is reduced (%.2f -> %.2f, rows %.2f -> %.2f)", m.checker[0],
+                      m.checker[1], m.rows[0], m.rows[1]);
+            snprintf(name, sizeof name, "%s_%u_decoded", v->file, r->frame);
+            dump_decoded(name, r);
+            snprintf(name, sizeof name, "%s_%u", v->file, r->frame);
+            dump_hd(name, g, r, credits);
         }
     }
+    if (intro_frames) {
+        double n = intro_frames;
+        printf("  tpassintro, %d frames: block edge/inner x %.2f -> %.2f, y %.2f -> %.2f; smooth-area block step %.2f "
+               "-> %.2f; strong edges kept >= %.1f%%, texture kept >= %.1f%%; stars %d/%d\n", intro_frames, rx[0] / n,
+               rx[1] / n, ry[0] / n, ry[1] / n, flat[0] / n, flat[1] / n, kept * 100.0, texture * 100.0, stars_kept,
+               stars);
+        CHECK(rx[1] < rx[0] * 0.8 && ry[1] < ry[0] * 0.8, "tpassintro: block edges reduced (x %.2f -> %.2f, y %.2f -> "
+              "%.2f)", rx[0] / n, rx[1] / n, ry[0] / n, ry[1] / n);
+        CHECK(flat[1] < flat[0] * 0.5, "tpassintro: steps between smooth blocks halved at least (%.2f -> %.2f)",
+              flat[0] / n, flat[1] / n);
+    }
+}
+
+/* The stray line of credits' last row: in the decoded frame, drawn without the rule, gone with it, and no line in HD. */
+static void test_credits_line(video_gpu_t* g) {
+    for (int k = 0; k < 2; k++) {
+        decoded_t* r = &g_credits[k];
+        uint32_t top = SCREEN_H / 2 - r->shown / 2, *off, *on, *hd;
+        int h = (int)r->shown, decoded_lit = 0, off_lit = 0, on_lit = 0, above_lit = 0, hd_lit = 0, last_text = -1;
+        vl_layout_t l = vl_layout(1920, 1080, SCREEN_W, h);
+        if (!r->loaded) continue;
+        for (int x = 0; x < SCREEN_W; x++) decoded_lit += r->screen[top + h - 1][x] != 0;
+        for (int y = 0; y < h - 4; y++)
+            for (int x = 0; x < SCREEN_W; x++)
+                if (r->screen[top + y][x]) last_text = y;
+        off = draw_decoded(g, r, 1, 1, 0, SCREEN_W, h);
+        on = draw_decoded(g, r, 1, 1, 1, SCREEN_W, h);
+        hd = draw_decoded(g, r, 1, 1, 1, 1920, 1080);
+        if (!off || !on || !hd) {
+            CHECK(0, "credits %u draws", r->frame);
+        } else {
+            for (int x = 0; x < SCREEN_W; x++) {
+                off_lit += luma(off[(h - 1) * SCREEN_W + x]) > 1.0;
+                on_lit += luma(on[(h - 1) * SCREEN_W + x]) > 1.0;
+                above_lit += luma(on[(h - 2) * SCREEN_W + x]) > 1.0;
+            }
+            for (int y = l.video.y + (last_text + 8) * l.video.h / h; y < 1080; y++)
+                for (int x = 0; x < 1920; x++) hd_lit += luma(hd[(size_t)y * 1920 + x]) > 1.0;
+            printf("  credits %4u: decoded row %d lit at %d pixels (last picture row above it: %d); drawn %d -> %d with "
+                   "the rule; HD 1920x1080 below the last text row: %d lit pixels\n", r->frame, h - 1, decoded_lit,
+                   last_text, off_lit, on_lit, hd_lit);
+            CHECK(decoded_lit >= 300 && last_text < h - 40, "credits %u: the decoded frame carries the line (%d pixels) "
+                  "far below its picture (row %d)", r->frame, decoded_lit, last_text);
+            CHECK(off_lit >= 300, "credits %u: without the rule it is drawn (%d)", r->frame, off_lit);
+            CHECK(on_lit == 0 && above_lit == 0, "credits %u: with it, no line (%d lit pixels)", r->frame, on_lit);
+            CHECK(hd_lit == 0, "credits %u: nothing below the text in HD (%d lit pixels)", r->frame, hd_lit);
+        }
+        free(off);
+        free(on);
+        free(hd);
+    }
+}
+
+/* WARP rasterises on the CPU: an upper bound of the passes' cost, with and without deblocking. */
+static void time_passes(video_gpu_t* g) {
+    LARGE_INTEGER freq, t0, t1;
+    double ms[2];
+    if (!g_intro[0].loaded) return;
+    QueryPerformanceFrequency(&freq);
+    for (int deblock = 0; deblock < 2; deblock++) {
+        QueryPerformanceCounter(&t0);
+        for (int i = 0; i < 4; i++) free(draw_decoded(g, &g_intro[0], 1, deblock, 0, 2560, 1440));
+        QueryPerformanceCounter(&t1);
+        ms[deblock] = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart / 4.0;
+    }
+    printf("  WARP (CPU) 2560x1440 frame incl. readback: %.1f ms without deblocking, %.1f ms with\n", ms[0], ms[1]);
 }
 
 /* The Video Test panel on WARP: it draws over the frame, and nothing is clicked without input. */
@@ -1115,7 +1504,12 @@ static void test_gpu(void) {
         test_gpu_shapes(g);
         test_gpu_determinism(g);
         test_gpu_refusals(g);
+        test_gpu_deblock_ramp(g);
+        test_gpu_deblock_keeps(g);
+        test_gpu_stray_line(g);
         test_real_frames(g);
+        test_credits_line(g);
+        time_passes(g);
         video_gpu_destroy(g);
     }
     CHECK(video_gpu_live_objects() == 0, "every object is released (%ld left)", video_gpu_live_objects());
@@ -1147,6 +1541,7 @@ int main(int argc, char** argv) {
     test_names();
     test_palette_map();
     test_session();
+    test_lone_pixels();
     test_video_test_state();
     printf("retail videos:\n");
     test_inventory(root);

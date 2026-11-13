@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "ddraw/ddraw_compat.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_monitors.h"
@@ -44,7 +43,6 @@
 #define SURFACE_CLASS "TrespasserPresentation"
 #define POLICY_TIMER_ID 0x5450
 #define POLICY_INTERVAL_MS 250
-#define WM_HOST_RENDERER (WM_APP + 0x54)
 #define INPUT_LOG_LIMIT 120
 #define KEY_LOG_LIMIT 60
 #define QUIT_LOG_LIMIT 24
@@ -109,8 +107,6 @@ static struct {
     fps_counter_t fps;
     int fps_ready;
     char title[160];
-    renderer_switch_t switch_state;
-    unsigned switch_attempts;
     struct {
         int borderless, monitor, window_w, window_h, stretch, show_fps;
         char settings_path[MAX_PATH];
@@ -124,7 +120,6 @@ enum {
 
 static int64_t qpc_now(void);
 static void update_input(const char* why);
-static void follow_deferred_switch(void);
 
 void window_host_init(void) {
     HMODULE user = GetModuleHandleA("user32.dll");
@@ -447,7 +442,6 @@ static void update_input(const char* why) {
             input_log("game window in front: %s, stack depth %u", ui_text(&guest), guest.depth);
         s.guest = guest;
     }
-    follow_deferred_switch();
     signals.shutdown = shutdown_active(&s.shutdown);
     signals.transition = s.transition;
     signals.size_move = s.size_move;
@@ -749,115 +743,6 @@ static void log_key(UINT msg, WPARAM vk, LPARAM lparam, const char* fate) {
              (lparam & 0x40000000) && (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) ? " (repeat)" : "", fate);
 }
 
-static void set_switch_state(renderer_switch_t state, const char* detail) {
-    if (state != s.switch_state)
-        host_log("renderer", "F5: %s -> %s%s%s", renderer_switch_name(s.switch_state), renderer_switch_name(state),
-                 detail ? ": " : "", detail ? detail : "");
-    s.switch_state = state;
-}
-
-/* Object census around a live switch: leaks and early releases show here. */
-static void log_census(const char* when) {
-    host_log("renderer", "F5 %s: DirectDraw objects %ld, surfaces %ld, Direct3D devices %ld, viewports %ld, GPU textures %u, "
-             "locks %ld, DCs %ld, scenes %ld", when, dd_census.directdraws, dd_census.surfaces, dd_census.devices,
-             dd_census.viewports, d3dr_textures_alive(), dd_census.locks, dd_census.dcs, dd_census.scenes);
-}
-
-static void request_renderer_switch(void) {
-    if (s.switch_state == RENDERER_SWITCH_DEFERRED) {
-        d3dr_defer_switch_cancel();
-        set_switch_state(RENDERER_ACTIVE, "the switch waiting for the next level load is cancelled");
-        return;
-    }
-    if (s.switch_state == RENDERER_SWITCH_REQUESTED || s.switch_state == RENDERER_DRAINING) return;
-    s.switch_attempts = 0;
-    set_switch_state(RENDERER_SWITCH_REQUESTED, d3dr_hardware() ? "D3D11 -> Software" : "Software -> D3D11");
-    PostMessageA(s.game, WM_HOST_RENDERER, 0, 0);
-}
-
-static int scene_loaded(void) {
-    guest_ui_view_t v;
-    guest_ui_probe(&v);
-    return v.ui == GUEST_UI_GAMEPLAY || v.ui == GUEST_UI_DIALOG;
-}
-
-/* Runs at a message boundary of the game's pump, between frames. The game's own deactivation
- * releases its display and its reactivation rebuilds it, asking "Use D3D" again. */
-static void switch_renderer(HWND window) {
-    int to_hardware = !d3dr_hardware();
-    unsigned devices;
-    char detail[160];
-    if (shutdown_active(&s.shutdown) || s.switch_state != RENDERER_SWITCH_REQUESTED && s.switch_state != RENDERER_DRAINING)
-        return;
-    if (GetForegroundWindow() != window || IsIconic(window) || !guest_display_built()) {
-        set_switch_state(RENDERER_SWITCH_FAILED, GetForegroundWindow() != window || IsIconic(window)
-                                                     ? "the window is not in the foreground"
-                                                     : "the game has no display right now (loading or between modes)");
-        return;
-    }
-    switch (renderer_switch_decide(to_hardware, scene_loaded(), dd_census.locks, dd_census.dcs, dd_census.scenes,
-                                   s.switch_attempts)) {
-    case SWITCH_WAIT:
-        s.switch_attempts++;
-        _snprintf(detail, sizeof detail - 1, "%ld locks, %ld DCs, %ld scenes still open; next frame boundary",
-                  dd_census.locks, dd_census.dcs, dd_census.scenes);
-        detail[sizeof detail - 1] = 0;
-        set_switch_state(RENDERER_DRAINING, detail);
-        PostMessageA(window, WM_HOST_RENDERER, 0, 0);
-        return;
-    case SWITCH_GIVE_UP:
-        set_switch_state(RENDERER_SWITCH_FAILED, "no frame boundary without open locks, DCs or scenes");
-        return;
-    case SWITCH_DEFER:
-        d3dr_defer_switch(0);
-        guest_request_display_restart();
-        set_switch_state(RENDERER_SWITCH_DEFERRED,
-                         "a level rendered with Direct3D cannot change renderer in place; Software applies when the game "
-                         "next restarts DirectDraw (the next level load: New Game, Load, a new level); F5 again cancels");
-        return;
-    default: break;
-    }
-    set_switch_state(RENDERER_REBUILDING, to_hardware ? "Software -> D3D11" : "D3D11 -> Software");
-    log_census("before");
-    CallWindowProcA(s.previous, window, WM_ACTIVATEAPP, FALSE, 0);
-    if (guest_display_built()) {
-        CallWindowProcA(s.previous, window, WM_ACTIVATEAPP, TRUE, 0);
-        set_switch_state(RENDERER_SWITCH_FAILED, "the game kept its display when deactivated");
-        return;
-    }
-    if (!d3dr_set_hardware(to_hardware))
-        host_log("renderer", "F5: %s is unavailable; the display is rebuilt with %s", to_hardware ? "D3D11" : "Software",
-                 d3dr_name());
-    if (d3dr_hardware() && !guest_restore_direct3d())
-        host_log("renderer", "F5: the game's DirectDraw4/Direct3D driver could not be set up again");
-    devices = d3dr_device_count();
-    CallWindowProcA(s.previous, window, WM_ACTIVATEAPP, TRUE, 0);
-    log_census("after");
-    s.title[0] = 0;
-    refresh_title();
-    update_input("renderer switch");
-    if (!guest_display_built())
-        set_switch_state(RENDERER_SWITCH_FAILED, "the game did not rebuild its display");
-    else if (d3dr_hardware() && d3dr_device_count() == devices)
-        set_switch_state(RENDERER_SWITCH_FAILED, "the game created no Direct3D device and draws in software");
-    else
-        set_switch_state(RENDERER_ACTIVE_NEW, d3dr_hardware() ? "D3D11, the game created its Direct3D device again"
-                                                              : "Software, display rebuilt by the game");
-}
-
-/* A switch waiting for the game's DirectDraw restart: keep the restart requested (the game clears the
- * request when it stops for a menu) and notice when it has happened. */
-static void follow_deferred_switch(void) {
-    if (s.switch_state != RENDERER_SWITCH_DEFERRED) return;
-    if (d3dr_pending_switch() < 0) {
-        set_switch_state(RENDERER_ACTIVE_NEW, "applied at the game's DirectDraw restart");
-        s.title[0] = 0;
-        refresh_title();
-        return;
-    }
-    guest_request_display_restart();
-}
-
 static void quit_log(const char* fmt, ...) {
     char line[256];
     va_list ap;
@@ -1010,9 +895,8 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         log_key(msg, wparam, lparam, "host full screen toggle");
         toggle_fullscreen();
         return 0;
-    case KEY_HOST_RENDERER:
-        if (video_test_f5()) return 0;
-        request_renderer_switch();
+    case KEY_HOST_VIDEO_TEST:
+        video_test_f5();
         return 0;
     case KEY_HOST_CLOSE:
         request_close(window, "Alt+F4");
@@ -1051,9 +935,6 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     case WM_DEADCHAR:
         if (video_test_visible()) return 0;
         break;
-    case WM_HOST_RENDERER:
-        switch_renderer(window);
-        return 0;
     case WM_INPUT:
         read_raw_input((HRAWINPUT)lparam);
         return DefWindowProcA(window, msg, wparam, lparam);
@@ -1220,7 +1101,8 @@ static void attach(HWND window) {
     layout_surface();
     host_log("window", "game window 0x%08X: resizable, centered, F11 toggles borderless full screen; "
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
-    host_log("hotkeys", "F1 Hint | F5 Renderer | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | Alt+F4 Exit");
+    host_log("hotkeys", "F1 Hint | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | "
+             "Alt+F4 Exit");
     register_raw_input(window);
     if (s.cfg.borderless) {
         enter_fullscreen();

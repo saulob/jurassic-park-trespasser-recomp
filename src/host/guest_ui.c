@@ -6,7 +6,6 @@
  */
 #include "host.h"
 
-#include <ddraw.h>
 #include <string.h>
 
 #define MAIN_WINDOW_OBJECT 0x0066E010u
@@ -219,49 +218,5 @@ int guest_ui_end_window(const guest_ui_view_t* v, int32_t code, int quit_to_wind
     }
     *(volatile int32_t*)(uintptr_t)(v->top + WND_RESULT_OFFSET) = code;
     *(volatile uint8_t*)(uintptr_t)(v->top + WND_DONE_OFFSET) = 1;
-    return 1;
-}
-
-/* The game's IDirectDraw2 and IDirectDraw4 (0x006D0E48 / 0x006D0E4C) and its Direct3D driver object
- * (0x006D0E98). Its software fallback (0x00503D8D) releases the IDirectDraw4 and shuts the driver
- * down, and only DirectDraw start-up (sub_00505480) sets them up again. */
-#define GAME_DDRAW2 0x006D0E48u
-#define GAME_DDRAW4 0x006D0E4Cu
-#define GAME_D3D_DRIVER 0x006D0E98u
-#define D3D_DRIVER_INIT 0x00505AF0u
-
-/* A lifted thiscall entered as Windows enters a window procedure: the execute fault on the guest
- * address takes it through pcrecomp's callback trampoline, which takes the machine lock. */
-static uint32_t call_guest_method(uint32_t va, uint32_t self) {
-    uint32_t result;
-    __asm {
-        mov ecx, self
-        mov eax, va
-        call eax
-        mov result, eax
-    }
-    return result;
-}
-
-int guest_restore_direct3d(void) {
-    uint32_t dd2, dd4;
-    if (!read32(GAME_DDRAW2, &dd2) || !dd2 || !read32(GAME_DDRAW4, &dd4) || !writable(GAME_DDRAW4, 4)) return 0;
-    if (!dd4) {
-        IDirectDraw2* dd = (IDirectDraw2*)(uintptr_t)dd2;
-        void* out = NULL;
-        if (FAILED(dd->lpVtbl->QueryInterface(dd, &IID_IDirectDraw4, &out)) || !out) return 0;
-        *(volatile uint32_t*)(uintptr_t)GAME_DDRAW4 = (uint32_t)(uintptr_t)out;
-    }
-    return (call_guest_method(D3D_DRIVER_INIT, GAME_D3D_DRIVER) & 0xFF) != 0;
-}
-
-/* Set by CGameWnd's constructor and read by the level loader (sub_004142C0 -> sub_00414200): the next
- * level load restarts DirectDraw, which reads "Use D3D" again. CGameWnd's stop clears it. */
-#define DISPLAY_RESTART_ON_LOAD 0x0066E341u
-
-int guest_request_display_restart(void) {
-    if (!writable(DISPLAY_RESTART_ON_LOAD, 1)) return 0;
-    if (*(volatile uint8_t*)(uintptr_t)DISPLAY_RESTART_ON_LOAD) return 1;
-    *(volatile uint8_t*)(uintptr_t)DISPLAY_RESTART_ON_LOAD = 1;
     return 1;
 }

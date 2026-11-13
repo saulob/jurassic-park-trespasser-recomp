@@ -1,8 +1,7 @@
 /*
  * The 1998 engine limits that Direct3D 11 lifts: how far objects stay drawn and stay 3D, the texture size Direct3D may
  * use (world textures and impostors) and the texture memory the game divides among them. Only guest data and
- * overridden functions change; the software renderer keeps the original values, and each value is written back
- * when F5 changes the renderer.
+ * overridden functions change; the software renderer keeps the original values.
  */
 #include "host.h"
 #include "host_policy.h"
@@ -357,7 +356,7 @@ static void should_cache(void) {
         engine_frame_set_add(s_kept_3d, OBJECT_SLOTS, partition, frame);
 }
 
-void engine_limits_apply(int hardware) {
+static void engine_limits_apply(int hardware) {
     s_modern = hardware && !s_keep_original && s_installed;
     apply_data();
 }

@@ -299,38 +299,10 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   the shader); frames drawn only by the CPU (menus, video) are presented from the DIB, scaled.
 - If the D3D11 device, feature level 10.0 or `d3dcompiler_47.dll` is missing, the host logs it and
   falls back to the software renderer before the game starts.
-- F5 switches between Software and D3D11 while the game runs. The game re-reads `Use D3D` from the
-  registry each time it builds its display (`sub_005F6D70`), and its own `WM_ACTIVATEAPP` handler
-  (`sub_0040EFE0`) releases the display when the window is deactivated and rebuilds it on
-  reactivation (`sub_00412A00`). The host posts itself a message, and at that message boundary
-  between frames it calls the game's handler with deactivate, switches the renderer, and calls it
-  with activate: the game rebuilds surfaces and device with the other renderer while scene,
-  player, physics, AI and sound stay as they are. If the game kept its display (not every screen
-  releases it) the switch is logged as not possible there and nothing changes.
-  Going to software, the game's display build (`0x00503D8D`) releases its IDirectDraw4 (`[0x006D0E4C]`)
-  and shuts its Direct3D driver object (`0x006D0E98`) down; only its DirectDraw start-up
-  (`sub_00505480`, reached in game through a driver change, `sub_00414200`) sets them up again. So
-  before reactivating into D3D11 the host queries IDirectDraw4 from the game's IDirectDraw2
-  (`[0x006D0E48]`) and runs the game's driver set-up `sub_00505AF0`; the log says whether the game
-  then created its Direct3D device again. (Without this, F5 back to D3D11 rebuilt a software
-  display: no `CreateDevice`, a flip chain without `DDSCAPS_3DDEVICE`, SelfMod rasterising.)
-- A switch is a state machine (`RENDERER_SWITCH_REQUESTED`, `_DRAINING`, `_REBUILDING`,
-  `_ACTIVE_NEW`, `_SWITCH_FAILED`, `_SWITCH_DEFERRED`). It runs only at a boundary of the game's pump
-  with no surface locked, no DC out and no scene open (`dd_census`, any thread); otherwise it retries at
-  the next boundary, up to 30. The census of DirectDraw objects, surfaces, devices, viewports and GPU
-  textures is logged before and after.
-- Direct3D to software is not done in place while a level is in memory (`CGameWnd` in the window
-  stack). In Direct3D the screen renderer (`CScreenRenderDWI`, slot 10 `0x0055F540`) sends every
-  polygon with a render type (`+0x74`) to the auxiliary Direct3D renderer at `0x00738290`
-  (`sub_00555BB0` -> `sub_00556CE0`), which uses the game's IDirect3DDevice3 at `[0x006D0E9C]`.
-  Polygon set-up (`sub_0053A680`) only types untyped polygons, so typed ones keep their type, and
-  the software fallback (`sub_00505D70`) releases and clears that device: the first software frame
-  after an in-place switch read a null device in `sub_00556CE0`. The game itself changes renderer
-  only when its level loader restarts DirectDraw (`sub_004142C0` -> `sub_00414200`, requested by
-  `[0x0066E341]`, set by `CGameWnd`'s constructor and cleared by its stop). So F5 there marks the
-  change pending, keeps that restart requested, and the host applies "Use D3D" = 0 when the game
-  next calls `DirectDrawCreate` (New Game, Load, a level change). F5 again cancels it. In menus and
-  from Software to D3D11 the switch is immediate.
+- The renderer is chosen once, before the game starts (`--renderer`, or the software fallback above), and stays
+  until the game closes; no key or call changes it later. The game re-reads `Use D3D` each time it builds its display
+  (`sub_005F6D70`, on every reactivation and level load); the registry shim always answers the renderer chosen at
+  start. The game's own software fallback (`0x00503D8D`) only runs when its Direct3D set-up fails.
 - `--debug-d3d-output texture|vertex-color|depth` makes every D3D11 draw return only its texture
   (magenta when untextured), its vertex colour or its depth, to see what reaches the pixel shader.
 - After a Flip the target still holds the last frame, as a flipped DirectDraw back buffer holds an
@@ -364,22 +336,29 @@ Space through the window's key handler (`0x00418F60`).
 `newgame.smk` is flagged Y-interlaced: it stores 172 rows and the decoder writes them to every second row of a 344-row
 band, leaving the rows between them as the cleared raster's black. Those black rows are the horizontal lines of that
 video. It is not interlaced (there is no second field). The other three are progressive; what remains in them is the
-palette's ordered dither.
+palette's ordered dither and Smacker's 4x4 blocks: in `tpassintro.smk` 77% of the blocks are one colour, and the mean
+luma step across block edges is 2.2-2.5 times the step inside blocks (sky, clouds, dark areas). `credits.smk` carries
+a stray line in its last row (row 347, x 274-639, grey 32 at full brightness, fading with each card) over a black band:
+it is in the bitstream (SMACKW32 and FFmpeg decode it), from frame 11 on every lit pixel of that row stands alone
+over the black rest of its block, and the other files never have more than 35 such pixels.
 
 With D3D11, `src/host/video_hd.c` wraps `Play` (an optional override). While it runs, each present of the screen is
 drawn on a child surface covering the whole client instead of the game's 4:3 surface (`src/host/ddraw/video_gpu.c`):
 the RGB565 codes mapped back to the frame's palette colours, a Y-interlaced file's missing rows rebuilt edge-directed
-from the rows above and below, a light smoothing of the dither (only pixels above or below both neighbours of a pair,
-up to the palette's step), then a Catmull-Rom scale (clamped to its four nearest texels) to the largest size of the
-picture's shape, black bars above and below, and on wider screens sides that extend the picture's edge colours,
-blurred and darkened. The surface renders at the client's shape inside the render box, never above the client's size.
+from the rows above and below, and in progressive files the stray line's pixels taking the row above once a frame shows
+128 or more of them (latched for that playback); then, at the picture's own size, the block edges softened (each edge
+judged over its four lines: a step below 32 levels, larger than every change inside both blocks and never against
+black, is spread over the two blocks as between their centres; newgame is left as it was), a light smoothing of the
+dither (only pixels above or below both neighbours of a pair, up to the palette's step), then a Catmull-Rom scale
+(clamped to its four nearest texels) to the largest size of the picture's shape, black bars above and below, and on
+wider screens sides that extend the picture's edge colours, blurred and darkened. No frame waits for another: every
+pass reads only the frame being shown, so timing, audio and skipping stay the game's own. The surface renders at the client's shape inside the render box, never above the client's size.
 The player's three black clears come before its first frame; after the last one the frame stays until the game's own
 surface has presented and the compositor has shown it (`DwmFlush`), then the surface is hidden and released. A failure
 logs one line and leaves the rest to the game's own playback, as does the software renderer.
 
 Video Test (development, `src/host/video_test.c`): F5 with the main menu alone in front opens an ImGui panel (drawn
-into the back buffer before Present; elsewhere F5 still switches the renderer) listing the four files with Original
-and HD. A click is a request; the main menu's next frame (`0x00417300`, before the game draws it) runs what the Options
+into the back buffer before Present; elsewhere F5 does nothing) listing the four files with Original and HD. A click is a request; the main menu's next frame (`0x00417300`, before the game draws it) runs what the Options
 window's Credits button runs (`0x004163D5`): menu music and its timer off, a `CVideoWnd` on the game's stack, `Play`
 with the game's own name string, music and timer back. The request forces that one `Play`: ORIGINAL starts no HD
 session (every present is the game's own), HD the normal one; the next `Play` is AUTO again.
@@ -422,7 +401,7 @@ window procedure still receives the messages it received before.
 
 ### Keys
 
-`F1 Hint | F5 Renderer | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | Alt+F4 Exit`
+`F1 Hint | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | Alt+F4 Exit`
 (logged once as `[hotkeys]`). F5, F11 without Ctrl and Alt+F4 belong to the host and never reach the
 game; Ctrl+F11 (the game's cheat box) and everything else go to the game unchanged. Esc, F1 and F12
 open a modal window of the game on key-down (`CGameWnd::OnKey`, `0x0040BE70`), but `CUIWnd::OnKey`

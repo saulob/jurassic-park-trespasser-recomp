@@ -259,9 +259,19 @@ static void log_start(const player_t* p, const vl_policy_t* policy, const vl_lay
         _snprintf(stored, sizeof stored - 1, " (%ux%d stored, Smacker %s)", p->width, policy->stored_rows,
                   (p->flags & VL_SMK_Y_INTERLACED) ? "Y-interlaced" : "Y-doubled");
     host_log("video", "%s: %ux%u%s @ %.3g fps -> HD presentation %dx%d (picture %dx%d%s), deinterlace=%s, "
-             "upscale=catmull-rom, colours=palette, dither=light", V.name, p->width, p->shown, stored,
+             "upscale=catmull-rom, colours=palette, dither=light, deblock=%s", V.name, p->width, p->shown, stored,
              1000.0 / vl_smk_ms_per_frame(p->rate), V.chain_w, V.chain_h, l->video.w, l->video.h,
-             l->side >= 2 ? ", sides extended" : "", vl_policy_text(policy));
+             l->side >= 2 ? ", sides extended" : "", vl_policy_text(policy),
+             policy->rows == VL_ROWS_PROGRESSIVE ? "adaptive 4x4" : "off");
+}
+
+static void check_stray_line(const video_gpu_frame_t* f, const player_t* p) {
+    int lone;
+    if (f->policy.rows != VL_ROWS_PROGRESSIVE || V.session.stray_line) return;
+    lone = vl_lone_bottom_pixels(f->rows, f->stride, f->width, f->policy.shown_rows);
+    if (vl_session_stray_line(&V.session, lone))
+        host_log("video", "%s: frame %u: the last row is a stray line over black (%d pixels); its lone pixels take the "
+                 "row above for the rest of the video", V.name, p->frame, lone);
 }
 
 static void log_finish(void) {
@@ -310,6 +320,9 @@ static int show_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
     }
     f.gamma = gamma;
     f.smooth = 1;
+    f.deblock = 1;
+    check_stray_line(&f, p);
+    f.stray_bottom_line = V.session.stray_line;
     layout = vl_layout(V.chain_w, V.chain_h, (int)p->width, (int)p->shown);
     if (!video_gpu_draw(V.gpu, &f, &layout, V.chain_w, V.chain_h, V.rtv)) {
         *why = video_gpu_error();
@@ -353,7 +366,7 @@ int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* sour
 void video_hd_main_presented(void) {
     static dwm_flush_fn flush;
     static int looked;
-    if (!V.session.overlay || !vl_session_main_presented(&V.session, d3dr_hardware())) return;
+    if (!V.session.overlay || !vl_session_main_presented(&V.session)) return;
     if (!looked) {
         HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
         flush = dwm ? (dwm_flush_fn)GetProcAddress(dwm, "DwmFlush") : NULL;

@@ -185,7 +185,7 @@ options list (`0x0066DCA0`, 20 sizes up to 800 wide) are unchecked arrays: the h
 
 The software renderer has its own limit: it keeps the Aspect Ratio's compatibility mode (4:3 800x600, 16:9 1024x576,
 16:10 960x600, 21:9 1280x540, 32:9 2048x576), because the CPU rasterises every pixel. The registry's `Width`/`Height`
-answer the current renderer's mode, so F5 rebuilds the display at the other renderer's size. Original keeps the
+answer the mode of the renderer chosen at start, which stays until the game closes. Original keeps the
 compatibility mode too, with the earlier automatic target (the smallest 4:3 size covering the presentation area).
 
 **Render resolution.** A preset names a 16:9 size; with the Aspect Ratio (Display page) it gives the render box: wider
@@ -271,7 +271,7 @@ is not part of this work.
 
 ## Graphics
 
-- **Renderer**: Direct3D 11 (default) or Software. F5 still switches while playing.
+- **Renderer**: Direct3D 11 (default) or Software, for the whole run (there is no switch while playing).
 - **Texture filtering**: Original (the filters the game asks for, its single texture level), Bilinear (every
   texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game filters, with generated
   mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where a card has less and
@@ -299,4 +299,5 @@ A dedicated ultrawide HUD, an adapter choice, an uncapped frame rate and the x64
 2. Graphics: the Render size row follows Display > Aspect ratio (16:9 1440p: 2560 × 1440; 21:9: 3440 × 1440).
 3. 4:3, 16:9, 21:9, 32:9 in turn: more world to the sides, the same height, no stretching, text readable.
 4. Render resolution 1440p, then 4K: the log's `3D render target WxH` lines show the real size.
-5. F11, Esc, F1, F12, F5, Alt+F4 as before; F11's choice is kept for the next start.
+5. F11, Esc, F1, F12, Alt+F4 as before (F5 only opens the Video Test in the main menu); F11's choice is kept for the
+   next start.

@@ -6,8 +6,6 @@
 
 #define FAILURE_LINE_LIMIT 200
 
-dd_census_t dd_census = { 0 };
-
 static CRITICAL_SECTION s_lock;
 static volatile LONG s_lock_state; /* 0 none, 1 being initialised, 2 ready */
 static dd_method_t* s_last;

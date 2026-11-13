@@ -63,7 +63,7 @@ constexpr char kPresentationHelp[] =
     "see Aspect ratio.";
 constexpr char kRendererHelp[] =
     "Direct3D 11 draws the game's 3D on the graphics card at the render resolution. Software is the game's own "
-    "rasteriser at its original size. F5 switches while playing.";
+    "rasteriser at its original size.";
 constexpr char kRenderResolutionHelp[] =
     "The size the 3D world is really drawn at, with its own depth buffer and anti-aliasing; it follows the Aspect ratio "
     "on the Display page. Native uses the monitor's size. Original keeps the earlier compatibility size.";
@@ -689,7 +689,6 @@ private:
         if (ui.Section("Port hotkeys", true)) {
             ui.Help("Rebinding the hotkeys is not available yet.");
             ui.Info("Hint", "F1");
-            ui.Info("Renderer: Direct3D 11 / Software", "F5");
             ui.Info("Windowed / Borderless Fullscreen", "F11");
             ui.Info("The game's original cheat input", "Ctrl+F11");
             ui.Info("Controls", "F12");

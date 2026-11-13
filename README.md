@@ -26,7 +26,7 @@ Jurassic Park: Trespasser Recompiled is a PC port powered by static recompilatio
 original game. These are part of the normal Direct3D 11 renderer; there is nothing to turn on:
 
 - **Direct3D 11 renderer**: the game's Direct3D 6 drawing on the graphics card, with the software renderer kept as a
-  compatibility fallback (F5 switches).
+  compatibility fallback (chosen in the launcher; it stays until the game closes).
 - **Native high resolutions**: the 3D world is drawn at the monitor's resolution (or 720p to 4K), not upscaled.
 - **True widescreen**: 16:9 to 32:9 show more of the world to the sides (Hor+), with no stretching and no holes.
 - **Scaled UI**: menus and dialogs keep their original 4:3 layout, scaled to the screen.

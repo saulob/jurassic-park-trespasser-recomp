@@ -1,7 +1,7 @@
 /*
  * The video passes, at the picture's own size then at the output's: the decoder's RGB565 codes back to the palette's
- * colours, the rows of half-height files rebuilt, a light smoothing of the palette dither, the side glow, and the
- * Catmull-Rom scale onto the target.
+ * colours, the rows of half-height files rebuilt, the codec's block edges softened where the picture is smooth, a
+ * light smoothing of the palette dither, the side glow, and the Catmull-Rom scale onto the target.
  */
 #define COBJMACROS
 #include "video_gpu.h"
@@ -17,18 +17,25 @@
 #define MAX_SIDE 4096
 #define SMOOTH_FULL (16.0f / 255.0f)
 #define SMOOTH_NONE (28.0f / 255.0f)
+#define DEBLOCK_STEP_FULL (12.0f / 255.0f)
+#define DEBLOCK_STEP_NONE (32.0f / 255.0f)
+#define DEBLOCK_FLAT_FULL (4.0f / 255.0f)
+#define DEBLOCK_FLAT_NONE (10.0f / 255.0f)
 #define GLOW_NEAR 0.5f
 #define GLOW_FAR 0.12f
 
 typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT,
                                     UINT, ID3DBlob**, ID3DBlob**);
 
-enum { PS_CONVERT, PS_SMOOTH, PS_GLOW, PS_FINAL, PS_COUNT };
+enum { PS_CONVERT, PS_SMOOTH, PS_DEBLOCK_X, PS_DEBLOCK_Y, PS_GLOW, PS_FINAL, PS_COUNT };
 
-static const char* const k_entries[1 + PS_COUNT] = { "vs_full", "ps_convert", "ps_smooth", "ps_glow", "ps_final" };
+static const char* const k_entries[1 + PS_COUNT] = { "vs_full",      "ps_convert", "ps_smooth", "ps_deblock_x",
+                                                     "ps_deblock_y", "ps_glow",    "ps_final" };
 
 static const char k_source[] =
-    "cbuffer Video : register(b0) { int4 src; int4 opt; float4 video; float4 outp; float4 tune; };\n"
+    "cbuffer Video : register(b0) {\n"
+    "  int4 src; int4 opt; float4 video; float4 outp; float4 tune; float4 deblock; int4 stray;\n"
+    "};\n"
     "Texture2D<uint> codes : register(t0);\n"
     "Texture2D<float4> palette_map : register(t1);\n"
     "Texture2D<float4> frame : register(t2);\n"
@@ -46,8 +53,9 @@ static const char k_source[] =
     "  if (opt.z) return float3((c >> 11) & 31, (c >> 5) & 63, c & 31) / float3(31.0, 63.0, 31.0);\n"
     "  return float3((c >> 10) & 31, (c >> 5) & 31, c & 31) / 31.0;\n"
     "}\n"
+    "uint code_at(int x, int y) { return codes.Load(int3(clamp(x, 0, src.x - 1), clamp(y, 0, src.y - 1), 0)); }\n"
     "float3 stored(int x, int y) {\n"
-    "  uint c = codes.Load(int3(clamp(x, 0, src.x - 1), clamp(y, 0, src.y - 1), 0));\n"
+    "  uint c = code_at(x, y);\n"
     "  if (opt.y) {\n"
     "    float4 m = palette_map.Load(int3((int)(c & 255), (int)(c >> 8), 0));\n"
     "    if (m.a > 0.5) return m.rgb;\n"
@@ -72,9 +80,15 @@ static const char k_source[] =
     "  if (vertical < 0.06 || best >= 0.5 * vertical) pick = 0;\n"
     "  return 0.5 * (stored(x + pick, s) + stored(x - pick, s + 1));\n"
     "}\n"
+    /* A stray line along the bottom edge: a lit pixel of the last row whose own codec block above it is black takes the
+     * row above. */
+    "int stray_row(int x, int y) {\n"
+    "  if (stray.x == 0 || y != src.y - 1 || y < 3 || code_at(x, y) == 0) return y;\n"
+    "  return (code_at(x, y - 1) | code_at(x, y - 2) | code_at(x, y - 3)) == 0 ? y - 1 : y;\n"
+    "}\n"
     "float4 ps_convert(float4 pos : SV_Position) : SV_Target {\n"
     "  int x = (int)pos.x, y = (int)pos.y;\n"
-    "  if (src.w == 0) return float4(stored(x, y), 1.0);\n"
+    "  if (src.w == 0) return float4(stored(x, stray_row(x, y)), 1.0);\n"
     "  int r = y - opt.x;\n"
     "  if (r < 0) return float4(stored(x, 0), 1.0);\n"
     "  if ((r & 1) == 0) return float4(stored(x, r >> 1), 1.0);\n"
@@ -103,6 +117,37 @@ static const char k_source[] =
     "  }\n"
     "  return float4(sum / total, 1.0);\n"
     "}\n"
+    "float3 px(int2 p) { return frame.Load(int3(clamp(p, int2(0, 0), int2(src.x - 1, src.z - 1)), 0)).rgb; }\n"
+    "float chmax(float3 v) { return max(v.r, max(v.g, v.b)); }\n"
+    "float calm(float3 a, float3 b, float3 c) { return max(chmax(abs(b - a)), chmax(abs(c - b))); }\n"
+    /* Smacker codes 4x4 blocks, mostly of one colour where the picture is smooth. An edge between two blocks is judged
+     * over its four lines: a small step, larger than every change inside both blocks and never against black (text and
+     * its background), is spread over them as between their centres; real edges and busy blocks keep theirs. */
+    "float3 block_step(int2 e, int2 d) {\n"
+    "  int2 along = d.yx, first = e - (dot(e, along) & 3) * along;\n"
+    "  float step = 0.0, inner = 0.0, darkest = 1.0;\n"
+    "  [unroll] for (int k = 0; k < 4; k++) {\n"
+    "    int2 l = first + k * along;\n"
+    "    float3 p0 = px(l - d), p1 = px(l - 2 * d), p2 = px(l - 3 * d);\n"
+    "    float3 q0 = px(l), q1 = px(l + d), q2 = px(l + 2 * d);\n"
+    "    step = max(step, chmax(abs(q0 - p0)));\n"
+    "    inner = max(inner, max(calm(p0, p1, p2), calm(q0, q1, q2)));\n"
+    "    darkest = min(darkest, min(chmax(p0), chmax(q0)));\n"
+    "  }\n"
+    "  if (darkest <= 0.0 || step <= inner) return 0.0;\n"
+    "  float w = (1.0 - smoothstep(deblock.x, deblock.y, step)) * (1.0 - smoothstep(deblock.z, deblock.w, inner));\n"
+    "  return (px(e) - px(e - d)) * w;\n"
+    "}\n"
+    "float4 deblock_along(int2 p, int2 d) {\n"
+    "  int i = dot(p, d) & 3, n = dot(int2(src.x, src.z), d);\n"
+    "  int2 first = p - i * d;\n"
+    "  float3 c = px(p);\n"
+    "  if (i < 2 && dot(first, d) > 0) c -= (i == 0 ? 0.375 : 0.125) * block_step(first, d);\n"
+    "  if (i >= 2 && dot(first, d) + 4 < n) c += (i == 3 ? 0.375 : 0.125) * block_step(first + 4 * d, d);\n"
+    "  return float4(c, 1.0);\n"
+    "}\n"
+    "float4 ps_deblock_x(float4 pos : SV_Position) : SV_Target { return deblock_along(int2(pos.xy), int2(1, 0)); }\n"
+    "float4 ps_deblock_y(float4 pos : SV_Position) : SV_Target { return deblock_along(int2(pos.xy), int2(0, 1)); }\n"
     "float3 band(float row, int right) {\n"
     "  float r = clamp(row, 0.0, (float)(src.z - 1));\n"
     "  int y0 = (int)r, y1 = min(y0 + 1, src.z - 1);\n"
@@ -177,7 +222,8 @@ static const char k_source[] =
 
 typedef struct {
     int32_t src[4], opt[4];
-    float video[4], outp[4], tune[4];
+    float video[4], outp[4], tune[4], deblock[4];
+    int32_t stray[4];
 } constants_t;
 
 typedef struct {
@@ -448,7 +494,7 @@ static void update_gamma(video_gpu_t* g, const uint16_t* ramp) {
 }
 
 static int set_constants(video_gpu_t* g, const video_gpu_frame_t* f, const vl_layout_t* l, int out_w, int out_h,
-                         int glow) {
+                         int glow, int progressive) {
     D3D11_MAPPED_SUBRESOURCE m;
     constants_t c;
     HRESULT hr = ID3D11DeviceContext_Map(g->ctx, (ID3D11Resource*)g->cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m);
@@ -474,6 +520,11 @@ static int set_constants(video_gpu_t* g, const video_gpu_frame_t* f, const vl_la
     c.tune[1] = GLOW_NEAR;
     c.tune[2] = GLOW_FAR;
     c.tune[3] = SMOOTH_NONE;
+    c.deblock[0] = DEBLOCK_STEP_FULL;
+    c.deblock[1] = DEBLOCK_STEP_NONE;
+    c.deblock[2] = DEBLOCK_FLAT_FULL;
+    c.deblock[3] = DEBLOCK_FLAT_NONE;
+    c.stray[0] = progressive && f->stray_bottom_line;
     memcpy(m.pData, &c, sizeof c);
     ID3D11DeviceContext_Unmap(g->ctx, (ID3D11Resource*)g->cb, 0);
     return 1;
@@ -505,24 +556,36 @@ static void pass(video_gpu_t* g, int ps, ID3D11RenderTargetView* target, int w, 
     ID3D11DeviceContext_Draw(g->ctx, 3, 0);
 }
 
+/* One pass at the picture's size from *picture into *spare, which becomes the picture. */
+static void picture_pass(video_gpu_t* g, int ps, target_t** picture, target_t** spare) {
+    ID3D11ShaderResourceView* views[5] = { NULL, NULL, (*picture)->srv, NULL, NULL };
+    target_t* out = *spare;
+    pass(g, ps, out->rtv, out->w, out->h, views);
+    *spare = *picture;
+    *picture = out;
+}
+
 int video_gpu_draw(video_gpu_t* g, const video_gpu_frame_t* f, const vl_layout_t* l, int out_w, int out_h,
                    ID3D11RenderTargetView* target) {
     float blend[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    int glow = l->side >= 2, shown = f->policy.shown_rows;
+    int glow = l->side >= 2, shown = f->policy.shown_rows, progressive = f->policy.rows == VL_ROWS_PROGRESSIVE;
+    int deblock = f->deblock && progressive;
     ID3D11ShaderResourceView* views[5];
-    target_t* picture;
+    target_t *picture, *spare;
     if (!g || !f->rows || f->width <= 0 || f->width > MAX_SIDE || shown <= 0 || shown > MAX_SIDE ||
         f->policy.stored_rows <= 0 || out_w <= 0 || out_h <= 0 || l->video.w <= 0 || l->video.h <= 0 || !target)
         return fail("video frame outside the supported sizes", E_INVALIDARG);
     if (!upload_codes(g, f) || !ensure_target(g, &g->frame, f->width, shown) ||
-        (f->smooth && !ensure_target(g, &g->smooth, f->width, shown)))
+        ((f->smooth || deblock) && !ensure_target(g, &g->smooth, f->width, shown)))
         return 0;
+    picture = &g->frame;
+    spare = &g->smooth;
     if (f->palette_map && (f->palette_changed || !g->map_loaded)) {
         ID3D11DeviceContext_UpdateSubresource(g->ctx, (ID3D11Resource*)g->map, 0, NULL, f->palette_map, 256 * 4, 0);
         g->map_loaded = 1;
     }
     update_gamma(g, f->gamma);
-    if (!set_constants(g, f, l, out_w, out_h, glow)) return 0;
+    if (!set_constants(g, f, l, out_w, out_h, glow, progressive)) return 0;
     ID3D11DeviceContext_IASetInputLayout(g->ctx, NULL);
     ID3D11DeviceContext_IASetPrimitiveTopology(g->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_VSSetShader(g->ctx, g->vs, NULL, 0);
@@ -535,13 +598,11 @@ int video_gpu_draw(video_gpu_t* g, const video_gpu_frame_t* f, const vl_layout_t
     views[0] = g->codes_srv;
     views[1] = g->map_srv;
     pass(g, PS_CONVERT, g->frame.rtv, f->width, shown, views);
-    picture = &g->frame;
-    if (f->smooth) {
-        memset(views, 0, sizeof views);
-        views[2] = g->frame.srv;
-        pass(g, PS_SMOOTH, g->smooth.rtv, f->width, shown, views);
-        picture = &g->smooth;
+    if (deblock) {
+        picture_pass(g, PS_DEBLOCK_X, &picture, &spare);
+        picture_pass(g, PS_DEBLOCK_Y, &picture, &spare);
     }
+    if (f->smooth) picture_pass(g, PS_SMOOTH, &picture, &spare);
     memset(views, 0, sizeof views);
     views[2] = picture->srv;
     if (glow) pass(g, PS_GLOW, g->glow.rtv, g->glow.w, g->glow.h, views);

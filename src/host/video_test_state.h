@@ -22,7 +22,7 @@ typedef struct {
     vl_play_mode_t mode;
 } vt_state_t;
 
-/* F5: 1 when the panel takes it, 0 when it stays the renderer switch. */
+/* F5: 1 when it opened or closed the panel; outside the main menu it does nothing. */
 int vt_f5(vt_state_t* s, int main_menu_front);
 /* A button of the panel; 0 while another playback waits or runs. */
 int vt_request(vt_state_t* s, int video, vl_play_mode_t mode);
