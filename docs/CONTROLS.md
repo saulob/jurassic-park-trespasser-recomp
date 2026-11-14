@@ -31,8 +31,14 @@ page lists the ones the game loads (its `KeyMap`), so a remapped key shows up th
 | Pause menu | Esc |
 
 Port hotkeys: F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
-bindings), F5 the Debug / Test Menu, F10 Cheats, F11 windowed / borderless full screen, Alt+F4 exit. The game's own:
-Esc menu, F1 hint, Ctrl+F11 cheat console. A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the
+bindings and the hotkeys below), F3 Objectives, F4 Show Objective, F5 the Debug / Test Menu, F10 Cheats, F11 windowed
+/ borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 Hint. The card lists F1 Hint, F2 Controls, F3
+Objectives, F4 Show Objective, F5 Debug Menu, F10 Cheats, F11 Fullscreen and Esc Menu. On a gamepad, D-pad Left opens the
+game's Hint (its own F1 path), D-pad Right Objectives and D-pad Down Show Objective, each only while no action is bound
+to that direction (the gamepad has no Replay voice over; R on the keyboard still replays it); B closes the first two. Only one of Controls, Objectives, the Debug Menu, Cheats and the game's Hint is ever up: opening one
+closes the other first, and while any is up Anne gets no input at all. Controls closes with F2, Esc, View, B or Menu
+(Esc and Menu then do not also open the pause menu). Whatever was held when one of them opened or closed (a key, a
+mouse button, a gamepad button, a trigger, a stick) does nothing until it is released. A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the
 start of a level.
 
 ### Debug / Test Menu
@@ -48,12 +54,33 @@ does not move or look and the game gets no keys; Esc (or B) closes it first, or 
 | X, Y, Z, Teleport | starts at Anne's position; type a value, or Left/Right (Shift 10, Ctrl 0.1; gamepad D-pad 1, LB/RB 10) |
 | Previous / Next Key Point | the level's teleport points, as the TNEXT cheat walks them |
 | Set / Return to Checkpoint | a position kept for this run only, in this level only |
+| Compass | the compass at the top of the picture (on at every start) |
 | Show Coordinates | level, X, Y, Z and yaw in the top-left corner (off at every start) |
 | Copy Coordinates | `Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570` to the clipboard |
 | Freeze AI | the DINOS cheat: dinosaurs sleep and stop updating until it is turned off |
 
 Keyboard: Up/Down, Enter. Gamepad: D-pad, A to use, B back, Menu to close. Yaw is in radians, counter-clockwise from
 +Y, the game's facing axis. Nothing here writes a save or the game's progress.
+
+### Compass and objectives
+
+The compass at the top of the picture shows where the camera faces (north is the world's +Y; Third Person and Free
+Camera turn it with the camera). On it is a diamond for where the current objective is, with Anne's distance in
+metres along the ground under it; past the strip's ends the diamond becomes an arrow at the end to turn
+towards. In the picture a smaller diamond sits over the objective (an arrow at the edge when it is off screen or
+behind), and where the level has real stepping stones on the way, chevrons mark the next ones ahead of Anne. The
+objective, its markers and the trail are amber and stay on the picture. The objective's title is not kept there: the
+gamepad's **D-pad down** or the keyboard's **F4** (Show Objective) shows it under the distance for 4 seconds, fading
+out at the end; pressing again, or a new objective, starts the 4 seconds over; with no objective it says "No objective"
+for 2 seconds. F4 never reaches the game (Alt+F4 still exits), and does nothing outside gameplay.
+
+Objectives are the game's own hints: whatever F1's Hint shows, the objective is the step it describes, and it moves
+on when the level's trigger sets the next hint, also after loading a save. F3 (or D-pad Right) lists the level's
+objectives: those done, the current one with the game's hint text under it, and `???` for the rest. Levels other than
+the eight of the campaign say "Objectives unavailable for this level"; the compass still works there. The HUD shows
+only in gameplay: F1, F2, F3, F5, F10, the pause menu, dialogs, videos and loading screens hide all of it, and so does
+a tutorial prompt or the port's own hint at the top of the picture. The voice subtitles at the bottom do not: the
+compass, the markers and the trail stay while Anne speaks.
 
 ### Cheats
 
@@ -62,7 +89,7 @@ console (Ctrl+F11) still works.
 
 | Cheat | What it does |
 |---|---|
-| Movement Speed | 0.5x to 5.0x of Anne's walking and running only (Left/Right or Enter) |
+| Movement Speed | 0.5x, 1x, 1.5x, 2x, 3x, 5x, 7.5x, 10x (the most) of Anne's walking and running only (Left/Right or Enter); her hand stays with her as at 1x |
 | Jump Height | 0.5x to 5.0x of how high Anne's own jumps go; gravity and falls are unchanged |
 | Invulnerability | the game's INVUL: no damage from hits, bites, shots or falls; level-scripted deaths still happen |
 | Infinite Ammo | the game's WOO: guns do not use up ammunition |
@@ -100,7 +127,7 @@ with several connected, the one used last is in use.
 | Rotate arm: hold with Move Hand, then use the right stick | RB + LT | R1 + L2 | R1 + L2 |
 | Straighten the hand | LB + RB + LT | L1 + R1 + L2 | L1 + R1 + L2 |
 | Stow / retrieve | D-pad up | D-pad up | D-pad up |
-| Replay voice over | D-pad down | D-pad down | D-pad down |
+| Show Objective (the objective's title for 4 seconds) | D-pad down | D-pad down | D-pad down |
 | Pause menu | Menu | Options | Menu |
 | Show the controls in the game | View | Create | View |
 

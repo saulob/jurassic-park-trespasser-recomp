@@ -13,6 +13,7 @@ typedef struct {
     float view_w, view_h; /* the presentation surface, in its own pixels */
     float dpi_scale;
     int menu;
+    int objectives; /* the menu is Objectives: larger text */
     const char* title;
     const dm_row_t* rows;
     int row_count;
@@ -20,6 +21,7 @@ typedef struct {
     const char* help;
     int coord_lines;
     char coords[DMP_COORD_LINES][DM_TEXT_MAX];
+    const cp_hud_t* hud; /* the compass and its notice; NULL when the HUD is not on screen */
 } dmp_frame_t;
 
 #ifdef __cplusplus

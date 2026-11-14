@@ -9,6 +9,7 @@ extern "C" {
 #endif
 
 #define CH_MULTIPLIER_COUNT 6
+#define CH_SPEED_COUNT 8
 #define CH_MULTIPLIER_DEFAULT 1
 #define CH_SUPER_HEALTH_FACTOR 4.0f
 #define CH_THIRD_PERSON_BACK 2.5f
@@ -22,6 +23,10 @@ typedef enum { CH_CAMERA_NORMAL, CH_CAMERA_THIRD, CH_CAMERA_FREE } ch_camera_t;
 float ch_multiplier(int index);
 const char* ch_multiplier_text(int index);
 int ch_multiplier_clamp(int index);
+/* Movement Speed has its own, longer table (to 10x); index CH_MULTIPLIER_DEFAULT is 1.0x in both. */
+float ch_speed(int index);
+const char* ch_speed_text(int index);
+int ch_speed_clamp(int index);
 /* A jump reaches the height of its starting speed squared: the speed takes the square root. */
 float ch_jump_speed_scale(int index);
 
@@ -48,6 +53,13 @@ void ch_super_off(float normal_max, float* hp, float* max);
 int ch_heal(float hp, float max, float* out);
 
 void ch_third_person_relative(dm_placement_t* out);
+
+/* "Movement Speed = 5.0x", "Invulnerability = On", "Camera = Free Camera": a cheat's name and its new value. on is a
+ * toggle's state, value a multiplier index or ch_camera_t. */
+int ch_format_change(char* out, size_t cap, dm_action_kind_t kind, int on, int value);
+/* "movement=5.0x jump=2.0x super health=Off camera=Normal invulnerability=On infinite ammo=Off" (-1: unknown). */
+int ch_format_active(char* out, size_t cap, const ch_state_t* s, int invulnerable, int ammo);
+const char* ch_camera_name(ch_camera_t camera);
 
 /* Free camera: yaw as dm_yaw, pitch up positive. */
 typedef struct {

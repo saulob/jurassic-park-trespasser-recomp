@@ -186,6 +186,8 @@ void d3dr_cpu_polygon_done(void);
 void cpu_polygons_install(void);
 /* widescreen.c: screen pixels per metre at unit distance for the main camera's view; 0 when there is none. */
 float widescreen_pixels_per_metre(void);
+/* tan of half the main camera's vertical view, as the picture shows it; 0 when there is none. */
+float widescreen_tan_half_height(void);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
@@ -281,6 +283,20 @@ void video_test_release(void);
 /* debug_menu.c: F5 Debug / Test Menu and F10 Cheats in a level or with the main menu alone in front, one at a time. */
 void debug_menu_f5(void);
 void debug_menu_f10(void);
+/* F3: the Objectives list in a level, a third panel of the Debug Menu's policy. */
+void debug_menu_f3(void);
+void debug_menu_show_objective(void);
+/* 0 closed, 1 Debug Menu, 2 Cheats, 3 Objectives. */
+int debug_menu_open_menu(void);
+void debug_menu_close(void);
+/* overlay.c: the one owner of the host's interfaces over gameplay (overlay_policy.h kinds). */
+void overlay_request(int kind, const char* source);
+void overlay_ui_loop(void);
+int overlay_blocks_gameplay(void);
+/* Every key message first: 1 when the game must not see it. */
+int overlay_key(UINT msg, WPARAM wparam, LPARAM lparam);
+/* gamepad.c: an interface opened or closed: buttons held now wait for their release. */
+void gamepad_overlay_changed(void);
 int debug_menu_visible(void);
 /* While open in a level the game's CInput result is emptied: Anne does not move or look. */
 int debug_menu_blocks_gameplay(void);

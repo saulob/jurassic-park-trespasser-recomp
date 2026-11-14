@@ -101,7 +101,6 @@ typedef enum {
     JPT_ACT_STOW,
     JPT_ACT_WRIST,
     JPT_ACT_ARM,
-    JPT_ACT_REPLAY,
     JPT_ACT_COUNT
 } jpt_pad_action_t;
 
@@ -160,6 +159,13 @@ typedef struct {
     int trigger_deadzone;      /* percent of the trigger's travel */
     int bind[JPT_ACT_COUNT];   /* a control, or JPT_PAD_NONE */
 } jpt_gamepad_settings_t;
+
+/* The port's gameplay shortcuts: Hint (the game's F1), Objectives (F3) and Show Objective (the current objective's
+ * title for a few seconds). Each works, and is shown, only while no action is bound to its control. */
+#define JPT_PAD_HINT_CONTROL JPT_PAD_DPAD_LEFT
+#define JPT_PAD_OBJECTIVES_CONTROL JPT_PAD_DPAD_RIGHT
+#define JPT_PAD_SHOW_OBJECTIVE_CONTROL JPT_PAD_DPAD_DOWN
+int jpt_pad_control_free(const jpt_gamepad_settings_t* s, int control);
 
 #define JPT_GAMEPAD_SETTING_COUNT (6 + JPT_ACT_COUNT)
 /* The setting keys and defaults in a fixed order; keys are static strings. */

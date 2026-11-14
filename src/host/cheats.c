@@ -12,6 +12,7 @@
 
 #include "cheats.h"
 #include "gamepad.h"
+#include "physics_watch.h"
 
 #define WORLD 0x0073F444u
 #define WORLD_CAMERA 0x14u
@@ -51,6 +52,8 @@ static struct {
     ch_freecam_input_t input;
     int64_t last;
     char level[DM_LEVEL_ID_MAX];
+    char reported[DM_LEVEL_ID_MAX];
+    char text[DM_TEXT_MAX];
 } C = { .super_hp = -1.0f };
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
@@ -187,7 +190,7 @@ static void apply(const char* level, uint32_t scratch) {
     C.info = speed_info(C.player);
     if (C.info && C.want.speed != CH_MULTIPLIER_DEFAULT) {
         C.speed_original = rdf(C.info + PHYSICS_SPEED);
-        wrf(C.info + PHYSICS_SPEED, C.speed_original * ch_multiplier(C.want.speed));
+        wrf(C.info + PHYSICS_SPEED, C.speed_original * ch_speed(C.want.speed));
     }
     if (C.want.super_health) {
         hp = rdf(C.player + ANIMATE_HP);
@@ -237,8 +240,18 @@ static void free_camera_step(uint32_t scratch) {
     move_camera(C.camera, &at, scratch);
 }
 
+/* Once per level, when Anne is first there to act on: what the session plays with. */
+static void report_active(const dm_world_t* w) {
+    char line[160];
+    if (w->place != DM_PLACE_LEVEL || !w->level[0] || !player() || !strcmp(C.reported, w->level)) return;
+    snprintf(C.reported, sizeof C.reported, "%s", w->level);
+    if (ch_format_active(line, sizeof line, &C.want, w->invulnerable, w->ammo))
+        host_log("cheats", "active in %s: %s", w->level, line);
+}
+
 void cheats_frame(const dm_world_t* w, uint32_t scratch) {
     int should;
+    report_active(w);
     if (ch_level_seen(&C.want, w->place, w->level)) {
         if (C.applied) drop("cheats dropped with their level");
         C.free_valid = 0;
@@ -288,6 +301,10 @@ int cheats_take_input(uint32_t sinput) {
     return 1;
 }
 
+float cheats_speed_factor(void) {
+    return C.applied && C.info && C.want.speed != CH_MULTIPLIER_DEFAULT ? ch_speed(C.want.speed) : 1.0f;
+}
+
 void cheats_before_pelvis(void) {
     int voluntary;
     if (!C.applied || C.want.jump == CH_MULTIPLIER_DEFAULT ||
@@ -296,8 +313,15 @@ void cheats_before_pelvis(void) {
     wrf(PELVIS_JUMP_Z, ch_jump_speed_scale(C.want.jump));
 }
 
-static const char* run_toggle(int ok, const char* on_text, const char* off_text, int on) {
-    return !ok ? "Not available" : on ? on_text : off_text;
+/* The menu's feedback and the log line for a change that happened. */
+static const char* changed(dm_action_kind_t kind, int on, int value) {
+    if (!ch_format_change(C.text, sizeof C.text, kind, on, value)) return NULL;
+    host_log("cheats", "%s", C.text);
+    return C.text;
+}
+
+static const char* run_toggle(int ok, dm_action_kind_t kind, int on) {
+    return ok ? changed(kind, on, 0) : "Not available";
 }
 
 const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch) {
@@ -305,19 +329,17 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
     float hp;
     switch (a->kind) {
     case DM_ACT_INVULNERABLE:
-        return run_toggle(p && write_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, a->on), "Invulnerability on",
-                          "Invulnerability off", a->on);
-    case DM_ACT_AMMO:
-        return run_toggle(write_byte(AMMO_FLAGS, AMMO_SHIFT, a->on), "Infinite Ammo on", "Infinite Ammo off", a->on);
+        return run_toggle(p && write_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, a->on), a->kind, a->on);
+    case DM_ACT_AMMO: return run_toggle(write_byte(AMMO_FLAGS, AMMO_SHIFT, a->on), a->kind, a->on);
     case DM_ACT_HEAL:
         if (!p || !ch_heal(rdf(p + ANIMATE_HP), rdf(p + ANIMATE_HP_MAX), &hp)) return "Anne cannot be healed now";
         wrf(p + ANIMATE_HP, hp);
-        return "Healed";
+        return changed(a->kind, 1, 0);
     default: break;
     }
     suspend();
     switch (a->kind) {
-    case DM_ACT_SPEED: C.want.speed = ch_multiplier_clamp(a->value); break;
+    case DM_ACT_SPEED: C.want.speed = ch_speed_clamp(a->value); break;
     case DM_ACT_JUMP: C.want.jump = ch_multiplier_clamp(a->value); break;
     case DM_ACT_SUPER_HEALTH:
         C.want.super_health = a->on;
@@ -325,18 +347,24 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
         break;
     case DM_ACT_CAMERA:
         if (a->value != CH_CAMERA_FREE) C.free_valid = 0;
+        physics_watch_camera(C.want.camera, (ch_camera_t)a->value);
         C.want.camera = (ch_camera_t)a->value;
         break;
     default: return NULL;
     }
     apply(level, scratch);
     switch (a->kind) {
-    case DM_ACT_SPEED: return ch_multiplier_text(C.want.speed);
-    case DM_ACT_JUMP: return ch_multiplier_text(C.want.jump);
-    case DM_ACT_SUPER_HEALTH: return C.want.super_health ? "Super Health on" : "Super Health off";
-    default:
-        return C.want.camera == CH_CAMERA_THIRD ? "Third Person on"
-               : C.want.camera == CH_CAMERA_FREE ? "Free Camera on"
-                                                 : "Camera back on Anne";
+    case DM_ACT_SPEED: return changed(a->kind, 1, C.want.speed);
+    case DM_ACT_JUMP: return changed(a->kind, 1, C.want.jump);
+    case DM_ACT_SUPER_HEALTH: return changed(a->kind, C.want.super_health, 0);
+    default: return changed(a->kind, 1, C.want.camera);
     }
+}
+
+
+void cheats_watch(ch_state_t* want, int* free_camera, float* speed_real) {
+    uint32_t p = player(), info = p ? speed_info(p) : 0;
+    *want = C.want;
+    *free_camera = C.applied && C.want.camera == CH_CAMERA_FREE;
+    *speed_real = info ? rdf(info + PHYSICS_SPEED) : -1.0f;
 }

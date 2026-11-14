@@ -247,6 +247,11 @@ int pad_bound(const jpt_gamepad_settings_t* cfg, int action, uint32_t buttons) {
     return control >= 0 && control < JPT_PAD_CONTROL_COUNT && (buttons & JPT_PAD_BIT(control));
 }
 
+static int stick_centred(float x, float y, const jpt_gamepad_settings_t* cfg) {
+    float dz = cfg->stick_deadzone / 100.0f;
+    return fabsf(x) < dz && fabsf(y) < dz;
+}
+
 void pad_play_before(pad_play_t* p, pad_read_t kind, const pad_state_t* s, uint32_t buttons,
                      const jpt_gamepad_settings_t* cfg, float dt, int invert_mouse, int* dx, int* dy) {
     uint32_t held;
@@ -262,12 +267,28 @@ void pad_play_before(pad_play_t* p, pad_read_t kind, const pad_state_t* s, uint3
                                pad_bound(cfg, JPT_ACT_CROUCH_TOGGLE, p->pressed),
                                pad_bound(cfg, JPT_ACT_CROUCH, p->pressed), pad_bound(cfg, JPT_ACT_JUMP, p->pressed));
     pad_gameplay_from(s, held, cfg, dt, crouch, &p->frame);
+    if (p->move_wait) {
+        if (stick_centred(s->lx, s->ly, cfg)) p->move_wait = 0;
+        else p->frame.move_x = p->frame.move_y = 0.0f;
+    }
+    if (p->look_wait) {
+        if (stick_centred(s->rx, s->ry, cfg)) p->look_wait = 0;
+        else p->frame.look_x = p->frame.look_y = 0.0f;
+    }
     pad_mouse_counts(&p->mouse, p->frame.look_x, p->frame.look_y, invert_mouse, dx, dy);
 }
 
 void pad_play_release(pad_play_t* p) {
     pad_crouch_stand(&p->crouch);
     memset(&p->mouse, 0, sizeof p->mouse);
+}
+
+void pad_play_neutral(pad_play_t* p, uint32_t held_now) {
+    pad_edges_reset(&p->edges, held_now);
+    pad_play_release(p);
+    memset(&p->frame, 0, sizeof p->frame);
+    p->pressed = 0;
+    p->move_wait = p->look_wait = 1;
 }
 
 int pad_play_after(const pad_play_t* p, const jpt_gamepad_settings_t* cfg, pad_sinput_t* in) {

@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "gamepad_policy.h"
+#include "overlay_policy.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_gamepad.h"
@@ -226,7 +227,9 @@ static void test_settings(void) {
     CHECK(s.bind[JPT_ACT_HAND] == JPT_PAD_LEFT_TRIGGER && s.bind[JPT_ACT_USE] == JPT_PAD_RIGHT_TRIGGER);
     CHECK(s.bind[JPT_ACT_GRAB] == JPT_PAD_WEST && s.bind[JPT_ACT_THROW] == JPT_PAD_NORTH);
     CHECK(s.bind[JPT_ACT_WRIST] == JPT_PAD_LEFT_SHOULDER && s.bind[JPT_ACT_ARM] == JPT_PAD_RIGHT_SHOULDER);
-    CHECK(s.bind[JPT_ACT_STOW] == JPT_PAD_DPAD_UP && s.bind[JPT_ACT_REPLAY] == JPT_PAD_DPAD_DOWN);
+    CHECK(s.bind[JPT_ACT_STOW] == JPT_PAD_DPAD_UP);
+    for (int a = 0; a < JPT_ACT_COUNT; a++) CHECK(s.bind[a] != JPT_PAD_DPAD_DOWN && s.bind[a] != JPT_PAD_DPAD_LEFT && s.bind[a] != JPT_PAD_DPAD_RIGHT);
+    CHECK(!jpt_gamepad_is_key("gamepad_bind_replay") && jpt_pad_control_free(&s, JPT_PAD_SHOW_OBJECTIVE_CONTROL));
     CHECK(s.bind[JPT_ACT_CROUCH_TOGGLE] == JPT_PAD_LEFT_STICK);
     CHECK(jpt_gamepad_apply(&s, JPT_KEY_GAMEPAD_GLYPHS, "PlayStation") && s.glyphs == JPT_GLYPHS_PLAYSTATION);
     CHECK(!jpt_gamepad_apply(&s, JPT_KEY_GAMEPAD_GLYPHS, "nintendo") && s.glyphs == JPT_GLYPHS_PLAYSTATION);
@@ -716,6 +719,210 @@ static l3_frame_t l3_step(l3_rig_t* r, uint32_t buttons) {
     return l3_step_kind(r, kind, buttons);
 }
 
+/* cinput_read around interfaces: blocked (a host interface is up) or resumed (a window of the game was up) makes the pad
+ * neutral; the pad merges into what the keyboard and mouse wrote, then the command mask applies and a blocked read is
+ * emptied. */
+typedef struct {
+    jpt_gamepad_settings_t cfg;
+    pad_play_t play;
+    ov_commands_t commands;
+    int started;
+} ov_rig_t;
+
+typedef struct {
+    uint32_t state, hit;
+    float move_x, move_y;
+    int look;
+} ov_frame_t;
+
+enum { PLAY, HOST_UI, AFTER_WINDOW };
+
+static void ov_rig_init(ov_rig_t* r) {
+    memset(r, 0, sizeof *r);
+    jpt_gamepad_defaults(&r->cfg);
+}
+
+static ov_frame_t ov_step(ov_rig_t* r, int when, uint32_t buttons, uint32_t keys, float stick_y, float look_x) {
+    pad_state_t s = idle();
+    pad_sinput_t in;
+    ov_frame_t f;
+    int dx, dy, blocked = when == HOST_UI, resumed = when == AFTER_WINDOW;
+    uint32_t pass;
+    s.buttons = buttons;
+    s.ly = stick_y;
+    s.rx = look_x;
+    if (blocked != r->commands.blocked || resumed) pad_play_neutral(&r->play, buttons);
+    pad_play_before(&r->play, !r->started ? PAD_READ_RESTART : resumed ? PAD_READ_RESUME : PAD_READ_NEXT, &s, buttons,
+                    &r->cfg, 0.016f, 0, &dx, &dy);
+    r->started = 1;
+    memset(&in, 0, sizeof in);
+    in.state = keys;
+    pad_play_after(&r->play, &r->cfg, &in);
+    ov_commands_block(&r->commands, blocked, in.state);
+    if (resumed) ov_commands_resume(&r->commands, in.state);
+    pass = ov_commands_pass(&r->commands, in.state);
+    if (blocked) {
+        memset(&in, 0, sizeof in);
+        dx = dy = 0;
+    }
+    f.state = pass & in.state;
+    f.hit = in.hit & pass;
+    f.move_x = in.move_x;
+    f.move_y = in.move_y;
+    f.look = dx || dy;
+    return f;
+}
+
+#define LB_BIT JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER)
+#define RB_BIT JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER)
+
+static void test_overlay_neutral(void) {
+    const uint32_t mouse = JPT_CMD_HAND;
+    ov_rig_t r;
+    ov_frame_t f;
+
+    /* A: LT, Controls opens (the game sees Move Hand let go), closes with LT held: off until released and pressed */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK((f.state & JPT_CMD_HAND) && (f.hit & JPT_CMD_HAND));
+    f = ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0);
+    CHECK(!f.state && !f.hit);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND) && !f.hit);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND));
+    f = ov_step(&r, PLAY, 0, 0, 0, 0);
+    CHECK(!f.state);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK((f.state & JPT_CMD_HAND) && (f.hit & JPT_CMD_HAND));
+    for (int i = 0; i < 30; i++) f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK(f.state & JPT_CMD_HAND);
+
+    /* B: LT + right stick, Objectives: no hand movement while up nor after while the stick is still pushed */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0.8f);
+    CHECK((f.state & JPT_CMD_HAND) && f.look);
+    f = ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0.8f);
+    CHECK(!f.look && !f.state);
+    f = ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0.0f);
+    f = ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0.9f);
+    CHECK(!f.look);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0.9f);
+    CHECK(!f.look && !(f.state & JPT_CMD_HAND));
+    f = ov_step(&r, PLAY, 0, 0, 0, 0.0f);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0.8f);
+    CHECK((f.state & JPT_CMD_HAND) && f.look);
+
+    /* each stick waits for its own centre: walking on does not hold the hand's stick back */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    ov_step(&r, HOST_UI, 0, 0, -1.0f, 0.0f);
+    f = ov_step(&r, PLAY, 0, 0, -1.0f, 0.0f);
+    CHECK(f.move_y == 0.0f);
+    f = ov_step(&r, PLAY, LT_BIT, 0, -1.0f, 0.8f);
+    CHECK(f.look && (f.state & JPT_CMD_HAND) && f.move_y == 0.0f);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0.0f, 0.8f);
+    f = ov_step(&r, PLAY, LT_BIT, 0, -1.0f, 0.8f);
+    CHECK(f.look && f.move_y > 0.0f);
+
+    /* C: the mouse's hand button held through the Hint (a window of the game): off until released and pressed */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, 0, mouse, 0, 0);
+    CHECK(f.state & JPT_CMD_HAND);
+    f = ov_step(&r, AFTER_WINDOW, 0, mouse, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND));
+    f = ov_step(&r, PLAY, 0, mouse, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND));
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, 0, mouse, 0, 0);
+    CHECK(f.state & JPT_CMD_HAND);
+    /* the same with LT through the Hint */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    f = ov_step(&r, AFTER_WINDOW, LT_BIT, 0, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND));
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK(f.state & JPT_CMD_HAND);
+
+    /* D, E: LT + LB or RB + right stick across an interface: no wrist or arm left on */
+    for (int arm = 0; arm < 2; arm++) {
+        const uint32_t mod = arm ? RB_BIT : LB_BIT, cmd = arm ? JPT_CMD_ARM : JPT_CMD_WRIST;
+        ov_rig_init(&r);
+        ov_step(&r, PLAY, 0, 0, 0, 0);
+        f = ov_step(&r, PLAY, LT_BIT | mod, 0, 0, 0.7f);
+        CHECK(f.state & cmd);
+        ov_step(&r, HOST_UI, LT_BIT | mod, 0, 0, 0.7f);
+        f = ov_step(&r, PLAY, LT_BIT | mod, 0, 0, 0.7f);
+        CHECK(!(f.state & (cmd | JPT_CMD_HAND)) && !f.look);
+        ov_step(&r, PLAY, 0, 0, 0, 0);
+        f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0.7f);
+        CHECK((f.state & JPT_CMD_HAND) && !(f.state & cmd) && f.look);
+    }
+
+    /* F: X held across an interface: no phantom Grab or Drop; a new press grabs */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    ov_step(&r, HOST_UI, X_BIT, 0, 0, 0);
+    f = ov_step(&r, PLAY, X_BIT, 0, 0, 0);
+    CHECK(!(f.state & JPT_CMD_GRAB) && !(f.hit & JPT_CMD_GRAB));
+    f = ov_step(&r, PLAY, 0, 0, 0, 0);
+    CHECK(!(f.hit & JPT_CMD_GRAB));
+    f = ov_step(&r, PLAY, X_BIT, 0, 0, 0);
+    CHECK(f.hit & JPT_CMD_GRAB);
+
+    /* G: Controls -> Hint -> Objectives -> Controls with LT held throughout, then a clean press */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0);
+    f = ov_step(&r, AFTER_WINDOW, LT_BIT, 0, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND));
+    ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0);
+    ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    ov_step(&r, HOST_UI, LT_BIT, 0, 0, 0);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    CHECK(!(f.state & JPT_CMD_HAND));
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, LT_BIT, 0, 0, 0.6f);
+    CHECK((f.state & JPT_CMD_HAND) && (f.hit & JPT_CMD_HAND) && f.look);
+
+    /* A and B that closed Objectives: no jump, no crouch while held */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    ov_step(&r, HOST_UI, A_BIT | B_BIT, 0, 0, 0);
+    f = ov_step(&r, PLAY, A_BIT | B_BIT, 0, 0, 0);
+    CHECK(!(f.state & (JPT_CMD_JUMP | JPT_CMD_CROUCH)) && !(f.hit & JPT_CMD_JUMP));
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, PLAY, A_BIT, 0, 0, 0);
+    CHECK(f.hit & JPT_CMD_JUMP);
+
+    /* a slow frame with no window keeps a held LT (the hand never drops on a long frame) */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    ov_step(&r, PLAY, LT_BIT, 0, 0, 0);
+    {
+        pad_state_t s = idle();
+        pad_sinput_t in;
+        int dx, dy;
+        s.buttons = LT_BIT;
+        pad_play_before(&r.play, PAD_READ_RESTART, &s, LT_BIT, &r.cfg, 0.4f, 0, &dx, &dy);
+        memset(&in, 0, sizeof in);
+        pad_play_after(&r.play, &r.cfg, &in);
+        CHECK(in.state & JPT_CMD_HAND);
+    }
+
+    /* while a host interface is up nothing at all reaches the game */
+    ov_rig_init(&r);
+    ov_step(&r, PLAY, 0, 0, 0, 0);
+    f = ov_step(&r, HOST_UI, A_BIT | B_BIT | LT_BIT | X_BIT, JPT_CMD_RUN | mouse, -1.0f, 1.0f);
+    CHECK(!f.state && !f.hit && f.move_y == 0.0f && !f.look);
+}
+
 static void test_grab_and_crouch_buttons(void) {
     l3_rig_t r;
     l3_frame_t f;
@@ -981,6 +1188,27 @@ static void test_tutorial_text(void) {
     CHECK(jpt_prompt_text_plain("Keyboards rattled into the early morning.", &xbox, out, sizeof out) < 0);
     /* the keyboard keeps a line with nothing bound to a key */
     CHECK(jpt_prompt_text_plain("You can look around by moving the mouse.", &kb, out, sizeof out) < 0);
+    /* BE's TrigTutorHint (TEXT action): the keyboard keeps the game's own line, a gamepad sees its Hint button */
+    {
+        const char* f1 = "You can always press F1 for a hint about what to do next.";
+        jpt_prompt_token_t tokens[JPT_PROMPT_MAX_TOKENS];
+        CHECK(jpt_prompt_text_has_prompts(f1));
+        CHECK(jpt_prompt_text_render(f1, &kb, out, sizeof out, tokens, JPT_PROMPT_MAX_TOKENS) < 0);
+        CHECK(plain_is(f1, &xbox, "You can always press [D-pad left] for a hint about what to do next."));
+        CHECK(plain_is(f1, &ps, "You can always press [D-pad left] for a hint about what to do next."));
+        CHECK(jpt_prompt_text_render(f1, &ps, out, sizeof out, tokens, JPT_PROMPT_MAX_TOKENS) == 1 &&
+              tokens[0].kind == JPT_TOKEN_HINT && tokens[0].prompt.control == JPT_PAD_HINT_CONTROL);
+        CHECK(jpt_prompt_text_plain(f1, &xbox, out, sizeof out) > 0 && !strstr(out, "F1"));
+        {
+            jpt_gamepad_settings_t taken = cfg;
+            jpt_prompt_context_t t;
+            taken.bind[JPT_ACT_JUMP] = JPT_PAD_HINT_CONTROL;
+            t = prompt_context(1, JPT_FAMILY_XBOX, &taken, map);
+            CHECK(plain_is(f1, &t, "You can always press [Unbound] for a hint about what to do next."));
+        }
+        CHECK(plain_is("<SHOW_OBJECTIVE> Show Objective", &kb, "[F4] Show Objective"));
+        CHECK(plain_is("<OBJECTIVES> Objectives", &kb, "[F3] Objectives"));
+    }
 }
 
 static void test_tutorial_bindings(void) {
@@ -1138,6 +1366,60 @@ static void test_controls_card(void) {
     jpt_keymap_default(map);
     CHECK(jpt_prompt_panel_kind("<CARD>") == JPT_PANEL_CARD);
     CHECK(jpt_prompt_panel_kind(jpt_prompt_controls_hint()) == JPT_PANEL_HINT);
+    {
+        /* the hotkeys on the cards: no waypoint any more; Hint and Objectives on their D-pad directions while free */
+        static const char* const keys[] = { "[F1] Hint",       "[F2] Controls", "[F3] Objectives",  "[F4] Show Objective",
+                                            "[F5] Debug Menu", "[F10] Cheats",  "[F11] Fullscreen", "[Esc] Menu" };
+        const int key_count = (int)(sizeof keys / sizeof keys[0]);
+        const jpt_card_t* kb = jpt_prompt_card(0);
+        const jpt_card_t* pad = jpt_prompt_card(1);
+        char line[160];
+        int found[8] = { 0 }, next_key = 0, hint = 0, objectives = 0, view = 0, waypoint = 0, show = 0, stow = 0,
+            replay = 0, keyboard_replay = 0;
+        c = prompt_context(0, JPT_FAMILY_XBOX, &cfg, map);
+        for (int i = 0; i < kb->count; i++) {
+            snprintf(line, sizeof line, "%s %s", kb->rows[i].binding, kb->rows[i].action);
+            waypoint |= strstr(line, "aypoint") != NULL || strstr(line, "F6") != NULL;
+            keyboard_replay |= strstr(line, "REPLAY") != NULL;
+            if (jpt_prompt_text_plain(line, &c, out, sizeof out) < 0) continue;
+            for (int k = 0; k < key_count; k++) found[k] |= !strcmp(out, keys[k]);
+            if (next_key < key_count && !strcmp(out, keys[next_key])) next_key++;
+        }
+        for (int k = 0; k < key_count; k++) CHECK(found[k]);
+        CHECK(next_key == key_count); /* in the public order, F1 to Esc */
+        CHECK(!waypoint && keyboard_replay && kb->count <= JPT_CARD_MAX_ROWS);
+        for (int i = 0; i < kb->count; i++) CHECK(!strstr(kb->rows[i].action, "Console") && !strstr(kb->rows[i].binding, "Ctrl"));
+        c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+        for (int i = 0; i < pad->count; i++) {
+            snprintf(line, sizeof line, "%s %s", pad->rows[i].binding, pad->rows[i].action);
+            if (jpt_prompt_text_plain(line, &c, out, sizeof out) < 0) continue;
+            hint |= !strcmp(out, "[D-pad left] Hint");
+            objectives |= !strcmp(out, "[D-pad right] Objectives");
+            view |= !strcmp(out, "[View] Controls");
+            show |= !strcmp(out, "[D-pad down] Show Objective");
+            stow |= !strcmp(out, "[D-pad up] Stow / retrieve");
+            replay |= strstr(out, "Replay") != NULL || strstr(line, "REPLAY") != NULL;
+        }
+        CHECK(hint && objectives && view && show && stow && !replay);
+        CHECK(jpt_pad_control_free(&cfg, JPT_PAD_HINT_CONTROL) && jpt_pad_control_free(&cfg, JPT_PAD_OBJECTIVES_CONTROL) &&
+                  jpt_pad_control_free(&cfg, JPT_PAD_SHOW_OBJECTIVE_CONTROL) && !jpt_pad_control_free(&cfg, JPT_PAD_DPAD_UP) &&
+                  JPT_PAD_SHOW_OBJECTIVE_CONTROL == JPT_PAD_DPAD_DOWN);
+        {
+            jpt_gamepad_settings_t taken = cfg;
+            taken.bind[JPT_ACT_JUMP] = JPT_PAD_SHOW_OBJECTIVE_CONTROL;
+            c = prompt_context(1, JPT_FAMILY_XBOX, &taken, map);
+            CHECK(!jpt_pad_control_free(&taken, JPT_PAD_SHOW_OBJECTIVE_CONTROL) &&
+                      plain_is("<SHOW_OBJECTIVE> Show Objective", &c, "[Unbound] Show Objective"));
+            c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+        }
+        {
+            jpt_gamepad_settings_t taken = cfg;
+            taken.bind[JPT_ACT_JUMP] = JPT_PAD_HINT_CONTROL;
+            c = prompt_context(1, JPT_FAMILY_XBOX, &taken, map);
+            CHECK(!jpt_pad_control_free(&taken, JPT_PAD_HINT_CONTROL) &&
+                      plain_is("<HINT> Hint", &c, "[Unbound] Hint"));
+        }
+    }
     CHECK(jpt_prompt_panel_kind("Press 'Q' to jump.") == JPT_PANEL_NONE && jpt_prompt_panel_kind(NULL) == JPT_PANEL_NONE);
     for (int gamepad = 0; gamepad < 2; gamepad++)
         CHECK(jpt_prompt_hint_card(gamepad)->count == 0 &&
@@ -1263,7 +1545,6 @@ static void test_controls_card(void) {
             "To fire a gun, pick it up, and press the space bar.",
             "To move forward, press and hold 'W'.",
             "Press 'S' to walk, 'X' to back up, 'E' to stow and 'F' to throw.",
-            "Press 'R' to hear it again.",
             "...hold the left mouse button and space bar,",
             "...press 'Z' to crouch, move your hand  towards the item,",
             " then press the right mouse button to pick it up.",
@@ -1281,6 +1562,11 @@ static void test_controls_card(void) {
             CHECK(!strstr(lower, "mouse") && !strstr(lower, "space bar") && !strstr(lower, "shift") &&
                   !strstr(lower, "ctrl") && !strchr(out, '\''));
         }
+        c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+        CHECK(jpt_prompt_text_has_prompts("Press 'R' to hear it again.") &&
+              jpt_prompt_text_plain("Press 'R' to hear it again.", &c, out, sizeof out) < 0);
+        c = prompt_context(0, JPT_FAMILY_XBOX, &cfg, map);
+        CHECK(plain_is("Press 'R' to hear it again.", &c, "Press [R] to hear it again."));
         c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
         CHECK(plain_is("To look around, move your mouse.", &c, "To look around, move [Right stick]."));
         CHECK(plain_is("To adjust your wrist, hold shift + left mouse button, and move the mouse.", &c,
@@ -1329,7 +1615,7 @@ static void test_controls_guide(void) {
     CHECK(guide_has(rows, n, "Stow / Retrieve", "D-pad up"));
     CHECK(guide_has(rows, n, "Rotate wrist", "Left bumper (LB) + Left trigger (LT) + Right stick"));
     CHECK(guide_has(rows, n, "Rotate arm", "Right bumper (RB) + Left trigger (LT) + Right stick"));
-    CHECK(guide_has(rows, n, "Replay voice over", "D-pad down"));
+    for (int i = 0; i < n; i++) CHECK(!strstr(rows[i].action, "Replay"));
     CHECK(guide_has(rows, n, "Pause menu", "Menu"));
     CHECK(guide_has(rows, n, "Show these controls in the game", "View"));
     c.family = JPT_FAMILY_PLAYSTATION;
@@ -1349,6 +1635,7 @@ static void test_controls_guide(void) {
     CHECK(guide_has(rows, n, "Jump", "Q"));
     CHECK(guide_has(rows, n, "Crouch (hold)", "Z"));
     CHECK(guide_has(rows, n, "Throw", "F"));
+    CHECK(guide_has(rows, n, "Replay voice over", "R"));
     CHECK(guide_has(rows, n, "Stow / Retrieve", "E"));
     CHECK(guide_has(rows, n, "Replay voice over", "R"));
     CHECK(guide_has(rows, n, "Fire / Use", "Space"));
@@ -1393,6 +1680,7 @@ int main(void) {
     test_crouch();
     test_stick_as_mouse();
     test_grab_and_crouch_buttons();
+    test_overlay_neutral();
     test_edges();
     test_navigation();
     test_hotplug_flow();

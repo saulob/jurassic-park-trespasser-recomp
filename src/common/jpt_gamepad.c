@@ -107,13 +107,19 @@ const jpt_pad_action_info_t jpt_pad_actions[JPT_ACT_COUNT] = {
     { "gamepad_bind_stow", "Stow/Retrieve", JPT_CMD_STOW, JPT_PAD_DPAD_UP },
     { "gamepad_bind_wrist", "Rotate Wrist", JPT_CMD_WRIST, JPT_PAD_LEFT_SHOULDER },
     { "gamepad_bind_arm", "Rotate Arm", JPT_CMD_ARM, JPT_PAD_RIGHT_SHOULDER },
-    { "gamepad_bind_replay", "Replay voice over", JPT_CMD_REPLAY, JPT_PAD_DPAD_DOWN },
 };
 
 static const char* const k_control_keys[JPT_PAD_CONTROL_COUNT] = {
     "south", "east", "west", "north", "back", "guide", "start", "leftstick", "rightstick", "leftshoulder",
     "rightshoulder", "dpup", "dpdown", "dpleft", "dpright", "lefttrigger", "righttrigger",
 };
+
+int jpt_pad_control_free(const jpt_gamepad_settings_t* s, int control) {
+    if (!s) return 0;
+    for (int a = 0; a < JPT_ACT_COUNT; a++)
+        if (s->bind[a] == control) return 0;
+    return 1;
+}
 
 int jpt_pad_bindable(int control) {
     return control >= 0 && control < JPT_PAD_CONTROL_COUNT && control != JPT_PAD_BACK && control != JPT_PAD_GUIDE &&

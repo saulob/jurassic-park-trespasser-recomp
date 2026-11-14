@@ -33,6 +33,24 @@ static void test_multipliers(void) {
     }
 }
 
+static void test_speed_table(void) {
+    static const float want[CH_SPEED_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
+    static const char* const text[CH_SPEED_COUNT] = { "0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x", "7.5x", "10.0x" };
+    CHECK(CH_SPEED_COUNT == 8 && ch_speed(CH_MULTIPLIER_DEFAULT) == 1.0f, "eight speeds, 1.0x the default");
+    for (int i = 0; i < CH_SPEED_COUNT; i++) {
+        CHECK(ch_speed(i) == want[i] && !strcmp(ch_speed_text(i), text[i]), "Movement Speed step %d is %s", i, text[i]);
+        CHECK(isfinite(ch_speed(i)) && ch_speed(i) > 0.0f && (i == 0 || ch_speed(i) > ch_speed(i - 1)), "increasing and finite");
+    }
+    CHECK(ch_speed(CH_SPEED_COUNT - 1) == 10.0f && ch_speed(CH_SPEED_COUNT + 5) == 10.0f && ch_speed(99) == 10.0f,
+          "10.0x is the most, whatever the index");
+    CHECK(ch_speed_clamp(-1) == 0 && ch_speed_clamp(99) == CH_SPEED_COUNT - 1, "speed indices clamp");
+    CHECK(CH_MULTIPLIER_COUNT == 6 && ch_multiplier(CH_MULTIPLIER_COUNT - 1) == 5.0f, "Jump Height keeps its 0.5x to 5.0x");
+    for (int i = 0; i < CH_SPEED_COUNT; i++) {
+        char line[64];
+        CHECK(ch_format_change(line, sizeof line, DM_ACT_SPEED, 0, i) && strstr(line, text[i]), "the change line names %s", text[i]);
+    }
+}
+
 static void test_state_and_reset(void) {
     ch_state_t s;
     ch_init(&s);
@@ -159,6 +177,7 @@ static void test_cameras(void) {
 
 void cheats_tests(int* checks, int* failures) {
     test_multipliers();
+    test_speed_table();
     test_state_and_reset();
     test_when_applied();
     test_health();

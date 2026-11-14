@@ -45,7 +45,6 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { "gamepad_bind_stow", "dpup" },
     { "gamepad_bind_wrist", "leftshoulder" },
     { "gamepad_bind_arm", "rightshoulder" },
-    { "gamepad_bind_replay", "dpdown" },
 };
 
 const char* jpt_default_value(const char* key) {

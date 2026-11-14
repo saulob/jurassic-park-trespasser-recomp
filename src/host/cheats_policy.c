@@ -7,6 +7,15 @@
 static const float k_multipliers[CH_MULTIPLIER_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f };
 static const char* const k_multiplier_text[CH_MULTIPLIER_COUNT] = { "0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x" };
 
+static const float k_speeds[CH_SPEED_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
+static const char* const k_speed_text[CH_SPEED_COUNT] = { "0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x", "7.5x", "10.0x" };
+
+int ch_speed_clamp(int index) { return index < 0 ? 0 : index >= CH_SPEED_COUNT ? CH_SPEED_COUNT - 1 : index; }
+
+float ch_speed(int index) { return k_speeds[ch_speed_clamp(index)]; }
+
+const char* ch_speed_text(int index) { return k_speed_text[ch_speed_clamp(index)]; }
+
 int ch_multiplier_clamp(int index) {
     return index < 0 ? 0 : index >= CH_MULTIPLIER_COUNT ? CH_MULTIPLIER_COUNT - 1 : index;
 }
@@ -97,4 +106,33 @@ void ch_freecam_placement(const ch_freecam_t* c, dm_placement_t* out) {
     out->rot[1] = cy * sp;
     out->rot[2] = sy * sp;
     out->rot[3] = sy * cp;
+}
+
+const char* ch_camera_name(ch_camera_t camera) {
+    return camera == CH_CAMERA_THIRD ? "Third Person" : camera == CH_CAMERA_FREE ? "Free Camera" : "Normal";
+}
+
+static const char* on_off(int v) { return v < 0 ? "?" : v ? "On" : "Off"; }
+
+int ch_format_change(char* out, size_t cap, dm_action_kind_t kind, int on, int value) {
+    int n;
+    switch (kind) {
+    case DM_ACT_SPEED: n = snprintf(out, cap, "Movement Speed = %s", ch_speed_text(value)); break;
+    case DM_ACT_JUMP: n = snprintf(out, cap, "Jump Height = %s", ch_multiplier_text(value)); break;
+    case DM_ACT_INVULNERABLE: n = snprintf(out, cap, "Invulnerability = %s", on_off(on)); break;
+    case DM_ACT_AMMO: n = snprintf(out, cap, "Infinite Ammo = %s", on_off(on)); break;
+    case DM_ACT_SUPER_HEALTH: n = snprintf(out, cap, "Super Health = %s", on_off(on)); break;
+    case DM_ACT_FREEZE_AI: n = snprintf(out, cap, "Freeze Dinosaurs = %s", on_off(on)); break;
+    case DM_ACT_CAMERA: n = snprintf(out, cap, "Camera = %s", ch_camera_name((ch_camera_t)value)); break;
+    case DM_ACT_HEAL: n = snprintf(out, cap, "Heal"); break;
+    default: return 0;
+    }
+    return n > 0 && (size_t)n < cap;
+}
+
+int ch_format_active(char* out, size_t cap, const ch_state_t* s, int invulnerable, int ammo) {
+    int n = snprintf(out, cap, "movement=%s jump=%s super health=%s camera=%s invulnerability=%s infinite ammo=%s",
+                     ch_speed_text(s->speed), ch_multiplier_text(s->jump), on_off(s->super_health),
+                     ch_camera_name(s->camera), on_off(invulnerable), on_off(ammo));
+    return n > 0 && (size_t)n < cap;
 }

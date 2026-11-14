@@ -14,6 +14,8 @@
 
 #include "cheats.h"
 #include "gamepad.h"
+#include "overlay_policy.h"
+#include "physics_watch.h"
 #include "tutorial_prompts.h"
 
 #define CINPUT_READ_VA 0x005F80B0u
@@ -26,6 +28,9 @@
 #define SAMPLE_INTERVAL_SECONDS 0.001
 #define SWITCH_LOG_LIMIT 16
 #define INVERT_MOUSE_VA 0x006603D8u
+#define MOVE_COMMANDS (JPT_CMD_RUN | JPT_CMD_WALK | JPT_CMD_BACKUP | JPT_CMD_LEFT | JPT_CMD_RIGHT)
+#define NEUTRAL_LOG_LIMIT 24
+#define HAND_LOG_LIMIT 40
 
 typedef enum { MODE_NONE, MODE_GAMEPLAY, MODE_MENU, MODE_VIDEO } ui_mode_t;
 
@@ -43,7 +48,11 @@ static struct {
     pad_edges_t ui_edges;
     pad_play_t play;
     int64_t last_play;
-    int left_gameplay, card_request;
+    int left_gameplay, neutral_logs, hand_logs;
+    ov_commands_t commands;
+    struct {
+        int lt, mouse, guest, masked, look_wait, blocked;
+    } hand;
     int frame_ready, frame_looked;
     int hint_shown;
     uint8_t triggers_held[2];
@@ -281,6 +290,17 @@ static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
 
 static int bound(int action, uint32_t buttons) { return pad_bound(&G.cfg, action, buttons); }
 
+static const char* button_name(uint32_t buttons) {
+    if (buttons & JPT_PAD_BIT(JPT_PAD_EAST)) return "B";
+    if (buttons & JPT_PAD_BIT(JPT_PAD_START)) return "Menu";
+    return "View";
+}
+
+/* Hint goes through the game's own F1 (CGameWnd::OnKey opens CHintWnd) once overlay.c has closed the host's. */
+static int shortcut(int control, uint32_t pressed) {
+    return (pressed & JPT_PAD_BIT(control)) && jpt_pad_control_free(&G.cfg, control);
+}
+
 /* Before CInput reads: this frame's pad, and the right stick as mouse motion in the cursor it is about to read. */
 static void gameplay_before_read(void) {
     int64_t now = now_qpc();
@@ -317,16 +337,115 @@ static void gameplay_after_read(uint32_t sinput) {
     }
 }
 
+static void log_neutral(const char* why, uint32_t held) {
+    char names[160];
+    size_t used = 0;
+    names[0] = 0;
+    for (int b = 0; b < JPT_PAD_CONTROL_COUNT && used < sizeof names; b++) {
+        int n;
+        if (!(held & JPT_PAD_BIT(b))) continue;
+        n = _snprintf(names + used, sizeof names - used, "%s%s", used ? " " : "", jpt_pad_control_key(b));
+        if (n < 0) break;
+        used += (size_t)n;
+    }
+    names[sizeof names - 1] = 0;
+    if (G.neutral_logs >= NEUTRAL_LOG_LIMIT) return;
+    if (++G.neutral_logs == NEUTRAL_LOG_LIMIT) host_log("input", "gameplay input neutral: line limit reached");
+    else if (held)
+        host_log("input", "gameplay input neutral (%s): suppressing %s until release", why, names);
+}
+
+/* An interface opened or closed over gameplay: nothing held across it reaches Anne until released and pressed again. */
+static void gameplay_neutral(const char* why) {
+    uint32_t held = buttons_now();
+    pad_play_neutral(&G.play, held);
+    log_neutral(why, held);
+}
+
+static void gameplay_mask(uint32_t sinput, int blocked, int resumed) {
+    uint32_t state = MEM32(sinput + SINPUT_STATE), pass;
+    ov_commands_block(&G.commands, blocked, state);
+    if (resumed) ov_commands_resume(&G.commands, state);
+    pass = ov_commands_pass(&G.commands, state);
+    if (blocked || pass == state) return;
+    MEM32(sinput + SINPUT_STATE) = pass;
+    MEM32(sinput + SINPUT_HIT) &= pass;
+    if (G.commands.masked & MOVE_COMMANDS) {
+        wrf(sinput + SINPUT_MOVE_X, 0.0f);
+        wrf(sinput + SINPUT_MOVE_Y, 0.0f);
+    }
+}
+
+/* The read's result only (look, move, held commands, new presses): what CInput itself keeps is left alone. */
+static void clear_result(uint32_t sinput) {
+    wrf(sinput + SINPUT_ROTATE_X, 0.0f);
+    wrf(sinput + SINPUT_ROTATE_X + 4, 0.0f);
+    wrf(sinput + SINPUT_MOVE_X, 0.0f);
+    wrf(sinput + SINPUT_MOVE_Y, 0.0f);
+    MEM32(sinput + SINPUT_STATE) = 0;
+    MEM32(sinput + SINPUT_HIT) = 0;
+}
+
+/* Move Hand as the game sees it, against the LT and mouse button behind it: one line per change. */
+static void note_hand(int mouse, uint32_t sinput, int blocked) {
+    int lt = (buttons_now() & JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER)) != 0;
+    int guest = (MEM32(sinput + SINPUT_STATE) & JPT_CMD_HAND) != 0, masked = (G.commands.masked & JPT_CMD_HAND) != 0;
+    int lt_waits = lt && (G.play.edges.blocked & JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER));
+    if (lt == G.hand.lt && mouse == G.hand.mouse && guest == G.hand.guest && masked == G.hand.masked &&
+        G.play.look_wait == G.hand.look_wait && blocked == G.hand.blocked)
+        return;
+    G.hand.lt = lt;
+    G.hand.mouse = mouse;
+    G.hand.guest = guest;
+    G.hand.masked = masked;
+    G.hand.look_wait = G.play.look_wait;
+    G.hand.blocked = blocked;
+    if (G.hand_logs >= HAND_LOG_LIMIT) return;
+    if (++G.hand_logs == HAND_LOG_LIMIT) host_log("input-hand", "line limit reached");
+    else
+        host_log("input-hand", "LT %s%s, mouse hand button %s%s, Move Hand %s, right stick %s%s", lt ? "held" : "up",
+                 lt_waits ? " (waits for its release)" : "", mouse ? "held" : "up",
+                 masked ? " (waits for its release)" : "", guest ? "on" : "off",
+                 G.play.look_wait ? "waits for its centre" : "live", blocked ? "; a host interface is up" : "");
+}
+
+static void watch(uint32_t sinput, int mouse, int blocked) {
+    pw_input_t in;
+    in.move_x = rdf(sinput + SINPUT_MOVE_X);
+    in.move_y = rdf(sinput + SINPUT_MOVE_Y);
+    in.state = MEM32(sinput + SINPUT_STATE);
+    in.hit = MEM32(sinput + SINPUT_HIT);
+    in.pad_buttons = buttons_now();
+    in.lt = (in.pad_buttons & JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER)) != 0;
+    in.mouse_hand = mouse;
+    in.stick_x = G.state.rx;
+    in.stick_y = G.state.ry;
+    in.interface_up = blocked;
+    physics_watch_read(&in);
+}
+
 /* CInput::tinReadDefaultControls(this): keys, mouse buttons and mouse look into this + 8, returned in eax. */
 static void cinput_read(void) {
-    uint32_t self = g_ecx;
-    int alias = g_alias_entry != 0;
-    if (!alias) gameplay_before_read();
+    uint32_t self = g_ecx, sinput = self + SINPUT_IN_CINPUT;
+    int blocked, resumed, mouse;
+    if (g_alias_entry) {
+        G.cinput_lifted();
+        return;
+    }
+    blocked = overlay_blocks_gameplay();
+    resumed = G.left_gameplay && !blocked;
+    if (blocked != G.commands.blocked)
+        gameplay_neutral(blocked ? "a host interface opened" : "a host interface closed");
+    else if (resumed)
+        gameplay_neutral("gameplay resumed after a window of the game");
+    gameplay_before_read();
     G.cinput_lifted();
-    if (alias) return;
-    gameplay_after_read(self + SINPUT_IN_CINPUT);
-    if (debug_menu_blocks_gameplay() || cheats_take_input(self + SINPUT_IN_CINPUT))
-        memset((void*)ADDR(self + SINPUT_IN_CINPUT + SINPUT_ROTATE_X), 0, SINPUT_HIT + 4 - SINPUT_ROTATE_X);
+    mouse = (MEM32(sinput + SINPUT_STATE) & JPT_CMD_HAND) != 0;
+    gameplay_after_read(sinput);
+    gameplay_mask(sinput, blocked, resumed);
+    if (blocked || cheats_take_input(sinput)) clear_result(sinput);
+    note_hand(mouse, sinput, blocked);
+    watch(sinput, mouse, blocked);
 }
 
 int gamepad_install(void) {
@@ -366,22 +485,31 @@ void gamepad_ui_loop(void) {
     released = before & ~held;
     if (debug_menu_visible() && mode != MODE_NONE) {
         if (mode == MODE_MENU) G.left_gameplay = 1;
-        debug_menu_pad(held, pressed);
+        if (debug_menu_open_menu() == 3 && shortcut(JPT_PAD_HINT_CONTROL, pressed))
+            overlay_request(OV_HINT, "D-pad Left");
+        else debug_menu_pad(held, pressed);
+    } else if (mode == MODE_GAMEPLAY && tutorial_prompts_card_shown()) {
+        const uint32_t close = JPT_PAD_BIT(JPT_PAD_BACK) | JPT_PAD_BIT(JPT_PAD_EAST) | JPT_PAD_BIT(JPT_PAD_START);
+        if (pressed & close) overlay_request(OV_NONE, button_name(pressed & close));
+        else if (shortcut(JPT_PAD_HINT_CONTROL, pressed)) overlay_request(OV_HINT, "D-pad Left");
+        else if (shortcut(JPT_PAD_OBJECTIVES_CONTROL, pressed)) overlay_request(OV_OBJECTIVES, "D-pad Right");
     } else if (mode == MODE_GAMEPLAY) {
         if (pressed & JPT_PAD_BIT(JPT_PAD_START)) window_host_post_key(VK_ESCAPE);
-        if ((pressed & JPT_PAD_BIT(JPT_PAD_BACK)) || G.card_request) tutorial_prompts_toggle_card();
+        if (pressed & JPT_PAD_BIT(JPT_PAD_BACK)) overlay_request(OV_CONTROLS, "View");
         else if (!G.hint_shown) G.hint_shown = tutorial_prompts_hint();
         if (bound(JPT_ACT_JUMP, pressed)) window_host_post_key(VK_SPACE);
+        if (shortcut(JPT_PAD_HINT_CONTROL, pressed)) overlay_request(OV_HINT, "D-pad Left");
+        else if (shortcut(JPT_PAD_OBJECTIVES_CONTROL, pressed)) overlay_request(OV_OBJECTIVES, "D-pad Right");
+        else if (shortcut(JPT_PAD_SHOW_OBJECTIVE_CONTROL, pressed)) debug_menu_show_objective();
     } else {
         G.left_gameplay = 1;
         if (mode == MODE_MENU)
             gamepad_menu_frame(&G.state, held, pressed, released, G.tracker.device == PAD_DEVICE_GAMEPAD,
                                GetTickCount(), (float)(dt > 0.1 ? 0.1 : dt), stick_deadzone());
     }
-    G.card_request = 0;
 }
 
-void gamepad_controls_key(void) { G.card_request = 1; }
+void gamepad_overlay_changed(void) { pad_edges_reset(&G.ui_edges, buttons_now()); }
 
 void gamepad_video_loop(void) {
     const uint32_t skip = JPT_PAD_BIT(JPT_PAD_SOUTH) | JPT_PAD_BIT(JPT_PAD_EAST) | JPT_PAD_BIT(JPT_PAD_START);

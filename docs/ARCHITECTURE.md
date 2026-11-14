@@ -405,10 +405,11 @@ window procedure still receives the messages it received before.
 
 ### Keys
 
-`F1 Hint | F2 Controls | F5 Debug Menu | F10 Cheats | F11 Fullscreen | Ctrl+F11 Cheat Console | Esc Menu | Alt+F4
-Exit` (logged once as `[hotkeys]`). F2, F5, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
+`F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Debug Menu | F10 Cheats | F11 Fullscreen | Esc Menu`
+(logged once as `[hotkeys]`). F2, F3, F4, F5, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
 game (F10's key-up included, which would open the window's menu bar); F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
-table at `0x0040C220` gives F2 no action). F12, which opened the game's `CControlsWnd` (still under Options >
+table at `0x0040C220` gives F2, F3 and F4 no action: only Esc, Space, F1, F11, F12, `=` and `-` have one). F4 alone is
+Show Objective in gameplay (`debug_menu_show_objective`, D-pad Down's own); with Alt it stays Exit. F12, which opened the game's `CControlsWnd` (still under Options >
 Controls), is not passed on. Ctrl+F11 (the game's cheat box) and everything else go to the game unchanged. Esc and F1
 open a modal window of the game on key-down (`CGameWnd::OnKey`, `0x0040BE70`), but `CUIWnd::OnKey`
 (`0x0040AF50`) cancels a window on Esc key-up. The key-up of the press that opened a window (the
@@ -437,6 +438,47 @@ level the `CInput` result is emptied after each read. Coordinates are the mover'
 `(0, 1, 0)` turned as LOC's `0x004CD090` turns it. The checkpoint holds a level id and a placement, never a guest
 pointer, and is dropped when another level or the main menu is seen.
 
+### One interface at a time
+
+`overlay.c` (policy in `overlay_policy.c`) owns the host's interfaces over gameplay: the controls card (an entry of the
+game's `CTextOverlay`, category `0x4A50`, so it stays on the frozen frame under any window unless it is expired
+first), Objectives, the Debug Menu and Cheats. F2, F3, F5, F10, View, D-pad Left/Right are requests, run in the UI
+loop: the interface up closes, then the next opens; the game's Hint (F1, or D-pad Left posting the game's own F1) is let
+through one pass after the card has left the overlay. Keys a host interface used are kept from the game until released.
+While any interface is up the CInput result (look, move, held commands, presses) is emptied, which the game reads as
+Move Hand let go. When gameplay blocks or unblocks, and when it resumes after a window of the game (Hint, pause menu,
+dialog), the pad's held buttons wait for their release (`pad_play_neutral`), each stick for its own centre, and the
+SInput command bits held at that moment stay masked until released (`ov_commands_*`): the A that closed Objectives does
+not jump, and a held LT or mouse button does not raise the hand again until it is pressed anew. A long frame with no
+window keeps a held LT, as before. `[input-hand]` lines record Move Hand against LT and the mouse on each change.
+
+### Compass and objectives
+
+`compass_policy.c` (angles, distance, layout, the camera projection, the trail's progress) and the Debug Menu's sample
+of the world drive the HUD: Anne is the camera's mover (the attached instance, or the one the Free Camera left), the
+heading is `dm_yaw` of the active camera's presence (`camera + 0x30`, as `CInstance::Move` reads it), the projection
+uses that presence and the main camera's vertical view (`widescreen.c`: stored tan(half width) over the 4:3 aspect).
+World units are metres.
+
+Objectives (`objective_policy.c`, `objectives.c`) follow `CSetHintAction::iCurrentHint` (`0x0066F01C`), the value
+`CHintWnd` (`0x00416BF0`, opened by `CGameWnd::OnKey`'s F1 case `0x0040C002`) shows as `LoadString(g_hInst
+[0x0066E05C], 18000 + hint)`. The levels' triggers set it (ActionType 28), every `CSetHintAction` saves and loads it,
+so a loaded game resumes its objective; the F3 list shows the same string resource F1 shows. Each objective's target
+is an instance named in the table and found after the level loads by the game's own `u4Hash` (`0x005F6100`) and
+`CWorld::pinsFindInstance` (`0x00607C10`), then its `p3Placement`; positions are kept, never pointers, and are found
+again after any window, load or level change (moving objects, such as the green keycard, every second). The table was
+built from the retail level data with `tools/scn_triggers.py` (a `.scn` names its SZDD-compressed `.GRF`, whose value
+table holds every trigger and action) and `tests/test_objectives_retail.py` checks every name, hint and route against
+it. Route anchors are the levels' own `Teleport` points, used only where they close in on the target (or climb, on the
+ascent levels). The objective's title is not drawn all the time: Show Objective (D-pad down, host side, edge press)
+runs `cp_reminder_*` (4 s, the last 400 ms fading; a press or a new objective restarts it; "No objective" for 2 s) and
+the title is drawn with a thin ring outline (`titled_text`, `cp_outline_px`). The game's text overlay (`[0x0066F03C]`)
+is read without calls and each entry classified by `cp_text_kind`: the add routine's category (voice subtitles from
+`0x004395A0` are category 2, laid out bottom-anchored, flags `0x11`; trigger texts from `0x00472B60` are category 3 with
+the scene's own flags), the port's own categories (`0x4A50` card, `0x4A51` hint) and where its first laid-out line
+landed in the raster (the top 30 %). Subtitles and small messages lower on the picture leave the HUD alone; the F2 card,
+the port's hint and any other top text hide it.
+
 ### Cheats
 
 F10 (`cheats.c`, policy in `cheats_policy.c`) is a second item list of the Debug Menu's policy: Teleport, Level Select,
@@ -453,6 +495,21 @@ attachment and moves the camera with `CInstance::Move` (`0x00614B10`) from the `
 host-side cheats are written into the game only in a running level with no pending load (`CWorld + 0x38`) or save
 (`+ 0x44`); otherwise the game's values are put back, so saves (which keep hit points and the camera's link) and
 loads never see them. They reset in another level or the main menu.
+
+Above 1x Movement Speed the right hand is carried with Anne. Pel (`0x6CF198 + 0x300 i`, 12 bytes per DOF: value,
+velocity, acceleration) is world space. For a human, `Pelvic_IDOF` rebuilds BODY (DOF 0-2) every step as the foot
+(DOF 7, the driven root) plus the crouch height along the body's up axis, with the foot's velocity, and sets BODY's
+acceleration to the foot's (`0x004F448D`..`0x004F4737`); Foot_IDOF also changes the foot's velocity directly (the part
+into the ground on contact, `0x004E2E6B`; the jump, `0x004E7903`). The hand (DOF 25-27) is the only world-space DOF that
+chases the body: `Update_Right_Arm` (`0x005001D0`) springs it towards body + R(q) rest pose through `Mass_Solution`
+(`0x004F94E0`, capped at 150 m/s^2), damping `v_hand - 1.25 v_body`; past 1.5 arm lengths from the shoulder it sets
+HandDrop (`0x6CDA70`). The left foot (DOF 14) does not move for a human. With k = 1 - 1/m, the `Pelvic_IDOF` override
+(`hand_carrier_step`) gives the hand, before the arm reads it, k times the body's measured velocity change and k times
+the displacement its carried velocity did not already give it, so the carrier has always moved the hand by exactly k
+times the body's displacement; the controller sees `v_hand - 1.25 v_body + 0.25 k v_body`, i.e. the 1x controller
+relative to the carrier. The earlier version fed k times BODY's acceleration instead, which misses every direct velocity
+change: on contact-bound ground the hand ran at the edge of the drop distance and was eventually let go (log 073: tens
+of metres behind, then the 60 m query-region check deactivated the pelvis). 1x and below run the game's arithmetic.
 
 ### Closing
 
@@ -636,7 +693,9 @@ buttons and axes are read directly once per frame.
   right corner. Glyphs are vector shapes with analytic anti-aliasing at the layer's resolution (`pad_glyphs.c`), their
   text in the menu font.
 - In-game prompts (`tutorial_prompts.c`, text rules in `src/common/jpt_prompt_text.c`): the beach tutorial's
-  subtitles (in `data\Stream.tpa`, not the executable) name keys and mouse buttons. The text overlay's draw
+  subtitles (in `data\Stream.tpa`, not the executable) name keys and mouse buttons, and so does BE's `TrigTutorHint`
+  TEXT action ("You can always press F1 for a hint..."): its F1 becomes the Hint button with a gamepad, the keyboard
+  keeps the line as it is. The text overlay's draw
   (0x0050EAF0) reads each laid-out text back, rewrites it for the device in use (each key or button an action
   resolved through the live key map at 0x0066AE78 or the gamepad bindings), and lays it out again with the game's
   own routine (0x0050E8C0) in a host buffer, each token a run of DEL characters whose advance width is set so the run

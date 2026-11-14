@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "compass_policy.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,11 +45,16 @@ typedef enum {
     DM_TELEPORT_PAGE,
     DM_THIRD_PERSON,
     DM_FREE_CAMERA,
+    DM_COMPASS,
     DM_CLOSE,
     DM_ITEM_COUNT
 } dm_item_t;
 
-typedef enum { DM_MENU_DEBUG, DM_MENU_CHEATS } dm_menu_t;
+typedef enum { DM_MENU_DEBUG, DM_MENU_CHEATS, DM_MENU_OBJECTIVES } dm_menu_t;
+typedef enum { DM_GOAL_DONE, DM_GOAL_CURRENT, DM_GOAL_UNKNOWN } dm_goal_status_t;
+
+#define DM_GOALS_MAX 12
+#define DM_LINE_MAX 160
 typedef enum { DM_PLACE_NONE, DM_PLACE_MAIN_MENU, DM_PLACE_LEVEL } dm_place_t;
 typedef enum { DM_PAGE_MAIN, DM_PAGE_LEVELS, DM_PAGE_TELEPORT } dm_page_t;
 
@@ -70,6 +77,18 @@ typedef struct {
     int invulnerable, ammo; /* -1 unknown, else the game's INVUL and WOO flags */
     float hp, hp_max;
     int camera_head; /* the active camera follows an animate's head (or is free of it by the Free Camera) */
+    int eye;         /* eye_at is the active camera's presence: where the picture is seen from */
+    dm_placement_t eye_at;
+    float tan_half_h; /* the active camera's vertical view; 0 unknown */
+    struct {
+        int available; /* the level has objectives the port knows */
+        int count;
+        struct {
+            dm_goal_status_t status;
+            char title[DM_LINE_MAX];
+            char hint[DM_LINE_MAX]; /* the game's own hint text, for the current one */
+        } item[DM_GOALS_MAX];
+    } goals;
     int speed, jump, super_health, camera; /* the host's cheats (cheats_policy.h) */
 } dm_world_t;
 
@@ -133,15 +152,18 @@ typedef struct {
     uint8_t taken[32];
     int char_pending;
     dm_repeat_t repeat;
+    int compass_off;
+    char notice[DM_TEXT_MAX]; /* the HUD's line under the compass */
+    uint32_t notice_until;
 } dm_state_t;
 
-typedef enum { DM_ROW_TITLE, DM_ROW_INFO, DM_ROW_SECTION, DM_ROW_ITEM } dm_row_kind_t;
+typedef enum { DM_ROW_TITLE, DM_ROW_INFO, DM_ROW_SECTION, DM_ROW_ITEM, DM_ROW_GOAL, DM_ROW_NOTE } dm_row_kind_t;
 
 typedef struct {
     dm_row_kind_t kind;
-    int item; /* dm_item_t, or a level's index on the levels page; -1 for other rows */
+    int item; /* dm_item_t, a level's index on the levels page, a dm_goal_status_t; -1 for other rows */
     int enabled, selected;
-    char text[DM_TEXT_MAX];
+    char text[DM_LINE_MAX];
     char value[DM_TEXT_MAX];
 } dm_row_t;
 
@@ -177,6 +199,13 @@ const char* dm_feedback_text(const dm_state_t* s, uint32_t now_ms);
 
 int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max);
 
+/* Each sample: what the HUD draws. Distance is Anne's; the compass, the markers' directions and the projection are the
+ * active camera's. */
+void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* scene, const cp_goal_t* goal,
+                 uint32_t now_ms, cp_hud_t* hud);
+void dm_notice(dm_state_t* s, const char* text, uint32_t now_ms);
+void dm_notice_for(dm_state_t* s, const char* text, uint32_t now_ms, uint32_t duration_ms);
+
 /* "be.scn" -> "BE"; 0 for a name that is not a scene file. */
 int dm_level_id(const char* scene, char* out, size_t cap);
 int dm_scene_valid(const char* scene);
@@ -207,6 +236,7 @@ typedef struct {
 int dm_keys_walk(dm_read32_t read32, uint32_t head, uint32_t iterator, dm_keys_t* out);
 /* Where Previous puts the iterator so that TNEXT itself answers the key point before the last one. */
 int dm_prev_key_index(int count, int index);
+
 
 #ifdef __cplusplus
 }

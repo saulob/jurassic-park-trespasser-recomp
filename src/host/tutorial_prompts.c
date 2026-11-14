@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "compass_policy.h"
 #include "gamepad.h"
 #include "jpt_prompt_text.h"
 #include "pad_glyphs.h"
@@ -785,14 +786,16 @@ static void overlay_add(uint32_t overlay, const char* text, float seconds, uint3
     call_guest(OVERLAY_ADD_VA, overlay, args, 6);
 }
 
-void tutorial_prompts_toggle_card(void) {
-    uint32_t overlay = MEM32(OVERLAY_PTR), shown, hint;
+void tutorial_prompts_hide_card(void) {
+    uint32_t overlay = MEM32(OVERLAY_PTR), shown;
     if (!overlay) return;
     shown = (uint32_t)overlay_entry(overlay, CARD_CATEGORY);
-    if (shown) {
-        *(float*)ADDR(shown) = *(float*)ADDR(GAME_SECONDS);
-        return;
-    }
+    if (shown) *(float*)ADDR(shown) = *(float*)ADDR(GAME_SECONDS);
+}
+
+void tutorial_prompts_show_card(void) {
+    uint32_t overlay = MEM32(OVERLAY_PTR), hint;
+    if (!overlay || overlay_entry(overlay, CARD_CATEGORY)) return;
     hint = (uint32_t)overlay_entry(overlay, HINT_CATEGORY);
     if (hint) *(float*)ADDR(hint) = *(float*)ADDR(GAME_SECONDS);
     P.band_hold = 0;
@@ -809,4 +812,53 @@ int tutorial_prompts_hint(void) {
     strncpy(P.hint, jpt_prompt_controls_hint(), sizeof P.hint - 1);
     overlay_add(overlay, P.hint, HINT_SECONDS, LAYOUT_CENTRE, HINT_CATEGORY);
     return 1;
+}
+
+static int blob_readable(uint32_t blob) {
+    uint32_t size;
+    return blob && guest_read32(blob, &size) && size <= SCRATCH_BYTES && guest_readable(blob, size);
+}
+
+int tutorial_prompts_card_shown(void) {
+    int card, text;
+    tutorial_prompts_overlay_state(&card, &text);
+    return card;
+}
+
+/* The picture's top and height in the raster the text is laid out in; a huge height (everything counts as top text)
+ * when the raster cannot be read. */
+static void text_raster(int* top, int* height) {
+    uint32_t raster = 0, t = 0, h = 0;
+    *top = 0;
+    *height = 1 << 30;
+    if (!guest_read32(RASTER_PTR, &raster) || !raster || !guest_read32(raster + RASTER_TOP, &t) ||
+        !guest_read32(raster + RASTER_HEIGHT, &h) || !h)
+        return;
+    *top = (int)t;
+    *height = (int)h;
+}
+
+void tutorial_prompts_overlay_state(int* card, int* game_text) {
+    uint32_t overlay = 0, head = 0, node = 0;
+    int n = 0, raster_top, raster_h;
+    *card = *game_text = 0;
+    text_raster(&raster_top, &raster_h);
+    if (!guest_read32(OVERLAY_PTR, &overlay) || !overlay || !guest_read32(overlay + OVERLAY_LIST, &head) || !head ||
+        !guest_read32(head, &node))
+        return;
+    for (; node && node != head && n < NODE_LIMIT; node = MEM32(node), n++) {
+        line_t lines[MAX_LINES];
+        uint32_t blob;
+        if (!guest_readable(node, NODE_CATEGORY + 4)) return;
+        if (MEM32(node + NODE_FLAGS) & NODE_WAITING) continue;
+        if (MEM32(node + NODE_CATEGORY) == CARD_CATEGORY) {
+            *card = 1;
+            continue;
+        }
+        blob = MEM32(node + NODE_BLOB);
+        if (!blob_readable(blob) || blob_lines(blob, lines, MAX_LINES) <= 0) continue;
+        if (cp_text_hides_hud(cp_text_kind(MEM32(node + NODE_CATEGORY), MEM32(node + NODE_CATEGORY) == HINT_CATEGORY,
+                                           lines[0].y - raster_top, raster_h)))
+            *game_text = 1;
+    }
 }

@@ -6,15 +6,21 @@
  */
 #include "host.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "cheats.h"
 #include "debug_menu_panel.h"
 #include "debug_menu_policy.h"
+#include "jpt_gamepad.h"
+#include "objectives.h"
+#include "tutorial_prompts.h"
 
 #define WORLD 0x0073F444u
 #define WORLD_CAMERA 0x14u
+#define WORLD_LOAD_PENDING 0x38u
+#define CAMERA_PRESENCE 0x30u
 #define CAMERA_ATTACHED 0x50u
 #define PLAYER 0x0066EF64u
 #define PLAYER_DEAD_SLOT 0x1FCu
@@ -43,6 +49,7 @@
 
 static const char k_help[] = "Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | "
                              "digits edit | Esc/B back | F5 close";
+static const char k_objectives_help[] = "Esc/B or F3 close";
 static const char k_cheats_help[] = "Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. "
                                     "Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, "
                                     "Ctrl/B down, Shift/LB fast";
@@ -53,6 +60,8 @@ static struct {
     dm_row_t rows[DM_ROWS_MAX];
     int was_open, had_checkpoint;
     dm_menu_t was_menu;
+    cp_hud_t hud;
+    cp_reminder_t reminder;
 } D = { .world = { .ai = -1, .key_index = -1 } };
 
 static uint32_t mover(void) {
@@ -65,7 +74,7 @@ static uint32_t mover(void) {
     return attached ? attached : camera;
 }
 
-static int read_placement(uint32_t instance, uint32_t buffer, dm_placement_t* out) {
+int debug_menu_placement(uint32_t instance, uint32_t buffer, dm_placement_t* out) {
     uint32_t at = 0;
     if (!guest_call_virtual(instance, PLACEMENT_SLOT, &buffer, 1, &at) || !guest_readable(at, PLACEMENT_BYTES))
         return 0;
@@ -90,13 +99,33 @@ static int read_ai(uint32_t* system, uint32_t* flags) {
     return guest_read32(AI_SYSTEM, system) && *system && guest_read32(*system + AI_FLAGS, flags);
 }
 
+static int read_eye(dm_placement_t* out) {
+    uint32_t world, camera;
+    if (!guest_read32(WORLD, &world) || !world || !guest_read32(world + WORLD_CAMERA, &camera) || !camera ||
+        !guest_readable(camera + CAMERA_PRESENCE, PLACEMENT_BYTES))
+        return 0;
+    memcpy(out, (const void*)ADDR(camera + CAMERA_PRESENCE), PLACEMENT_BYTES);
+    for (int i = 0; i < 3; i++)
+        if (!isfinite(out->pos[i])) return 0;
+    for (int i = 0; i < 4; i++)
+        if (!isfinite(out->rot[i])) return 0;
+    return 1;
+}
+
+static int load_pending(void) {
+    uint32_t world, v;
+    return guest_read32(WORLD, &world) && world && guest_read32(world + WORLD_LOAD_PENDING, &v) && (v & 0xFFu);
+}
+
 static int read_keys(dm_keys_t* keys) {
     uint32_t head, iterator;
     return guest_read32(TELEPORT_LIST_HEAD, &head) && guest_read32(TELEPORT_ITERATOR, &iterator) &&
            dm_keys_walk(guest_read32, head, iterator, keys);
 }
 
-static void sample(const guest_ui_view_t* v, int deep, uint32_t scratch) {
+enum { SAMPLE_PLAYER = 1, SAMPLE_KEYS };
+
+static void sample(const guest_ui_view_t* v, int depth, uint32_t scratch) {
     dm_world_t* w = &D.world;
     uint32_t system, flags, ins;
     dm_keys_t keys;
@@ -108,10 +137,12 @@ static void sample(const guest_ui_view_t* v, int deep, uint32_t scratch) {
     if (w->place != DM_PLACE_LEVEL) return;
     if (guest_read_string(APP_SCENE, w->scene, sizeof w->scene)) dm_level_id(w->scene, w->level, sizeof w->level);
     if (read_ai(&system, &flags)) w->ai = (int)((flags >> AI_BORING_SHIFT) & 0xFFu) != 0;
-    if (!deep) return;
+    if (depth < SAMPLE_PLAYER) return;
     ins = mover();
-    w->player = ins && read_placement(ins, scratch, &w->at) && player_alive();
-    if (read_keys(&keys)) {
+    w->player = ins && debug_menu_placement(ins, scratch, &w->at) && player_alive();
+    w->eye = read_eye(&w->eye_at);
+    w->tan_half_h = widescreen_tan_half_height();
+    if (depth >= SAMPLE_KEYS && read_keys(&keys)) {
         w->key_count = keys.count;
         w->key_index = keys.index;
     }
@@ -122,7 +153,7 @@ static void sample(const guest_ui_view_t* v, int deep, uint32_t scratch) {
 static int move_player(const dm_placement_t* to, int keep_rotation, uint32_t scratch) {
     uint32_t ins = mover(), args[2], frames = 2;
     dm_placement_t at;
-    if (!ins || !read_placement(ins, scratch, &at)) return 0;
+    if (!ins || !debug_menu_placement(ins, scratch, &at)) return 0;
     if (keep_rotation) memcpy(at.pos, to->pos, sizeof at.pos);
     else at = *to;
     memcpy((void*)ADDR(scratch), &at, PLACEMENT_BYTES);
@@ -283,11 +314,16 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
         }
         break;
     case DM_ACT_FREEZE_AI:
-        say(freeze_ai(a->on) ? (a->on ? "AI frozen" : "AI running") : "Freeze AI failed", now);
+        if (freeze_ai(a->on) && ch_format_change(line, sizeof line, a->kind, a->on, 0)) {
+            host_log("cheats", "%s", line);
+            dm_feedback(&D.state, line, now);
+        } else {
+            say("Freeze AI failed", now);
+        }
         break;
     default: {
         const char* result = cheats_run(a, D.world.level, scratch);
-        if (result) say(result, now);
+        if (result) dm_feedback(&D.state, result, now);
         break;
     }
     }
@@ -298,6 +334,26 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
         snprintf(line, sizeof line, "Key point %d / %d", D.world.key_index + 1, D.world.key_count);
         say(line, now);
     }
+}
+
+static void scene_of(cp_scene_t* scene) {
+    memset(scene, 0, sizeof *scene);
+    scene->level = D.world.place == DM_PLACE_LEVEL;
+    scene->menu = D.state.open;
+    scene->player = D.world.player;
+    if (!scene->level) return;
+    scene->loading = load_pending();
+    tutorial_prompts_overlay_state(&scene->card, &scene->game_text);
+}
+
+static void navigate(uint32_t scratch, uint32_t now) {
+    cp_scene_t scene;
+    const char* notice;
+    scene_of(&scene);
+    notice = objectives_frame(&D.world, D.state.open && D.state.menu == DM_MENU_OBJECTIVES, scratch);
+    if (notice) dm_notice(&D.state, notice, now);
+    dm_navigate(&D.state, &D.world, &scene, objectives_goal(), now, &D.hud);
+    cp_hud_reminder(&D.hud, objectives_goal(), cp_reminder_step(&D.reminder, now, objectives_goal()));
 }
 
 static void note_changes(void) {
@@ -317,16 +373,14 @@ void debug_menu_ui_loop(void) {
     guest_ui_view_t v;
     dm_action_t action;
     uint32_t esp = g_esp, scratch, now = GetTickCount();
-    if (!D.state.open && !D.state.show_coords && !D.state.checkpoint.set && D.state.pending.kind == DM_ACT_NONE &&
-        !cheats_busy())
-        return;
     guest_ui_probe(&v);
     g_esp -= SCRATCH_BYTES;
     scratch = g_esp;
-    sample(&v, D.state.open || D.state.show_coords, scratch);
+    sample(&v, D.state.open || D.state.show_coords ? SAMPLE_KEYS : SAMPLE_PLAYER, scratch);
     dm_world_seen(&D.state, &D.world);
     if (dm_take(&D.state, &action)) run(&action, &v, scratch, now);
     cheats_frame(&D.world, scratch);
+    navigate(scratch, now);
     g_esp = esp;
     note_changes();
 }
@@ -369,15 +423,54 @@ void debug_menu_f5(void) { toggle(DM_MENU_DEBUG, "F5"); }
 
 void debug_menu_f10(void) { toggle(DM_MENU_CHEATS, "F10"); }
 
+void debug_menu_f3(void) { toggle(DM_MENU_OBJECTIVES, "F3"); }
+
+void debug_menu_show_objective(void) {
+    uint32_t now = GetTickCount();
+    if (cp_reminder_press(&D.reminder, now, objectives_goal())) {
+        host_log("objectives", "Show Objective: %s", D.reminder.title);
+        return;
+    }
+    dm_notice_for(&D.state, "No objective", now, CP_NO_OBJECTIVE_MS);
+}
+
+int debug_menu_open_menu(void) {
+    if (!D.state.open) return 0;
+    return D.state.menu == DM_MENU_CHEATS ? 2 : D.state.menu == DM_MENU_OBJECTIVES ? 3 : 1;
+}
+
+void debug_menu_close(void) {
+    dm_close(&D.state);
+    note_changes();
+}
+
 int debug_menu_visible(void) { return D.state.open; }
 
 int debug_menu_blocks_gameplay(void) { return D.state.open && D.world.place == DM_PLACE_LEVEL; }
 
+static const char* pad_name(uint32_t pressed) {
+    static const struct {
+        int control;
+        const char* name;
+    } names[] = { { JPT_PAD_SOUTH, "A" }, { JPT_PAD_EAST, "B" }, { JPT_PAD_START, "Menu" },
+                  { JPT_PAD_OBJECTIVES_CONTROL, "D-pad Right" } };
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
+        if (pressed & JPT_PAD_BIT(names[i].control)) return names[i].name;
+    return "the gamepad";
+}
+
+static void note_closed_by(int was_open, dm_menu_t menu, const char* by) {
+    if (was_open && !D.state.open)
+        host_log("overlay", "%s closed by %s, held back from the game until released", dm_menu_title(menu), by);
+}
+
 int debug_menu_key(UINT msg, WPARAM wparam, LPARAM lparam) {
-    int down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN, r;
+    int down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN, r, was_open = D.state.open;
+    dm_menu_t menu = D.state.menu;
     if (msg != WM_KEYDOWN && msg != WM_KEYUP && msg != WM_SYSKEYDOWN && msg != WM_SYSKEYUP) return 0;
     r = dm_key(&D.state, &D.world, (unsigned)wparam, down, (lparam & 0x40000000) != 0, GetKeyState(VK_SHIFT) < 0,
                GetKeyState(VK_CONTROL) < 0, GetTickCount());
+    note_closed_by(was_open, menu, wparam == VK_ESCAPE ? "Esc" : wparam == VK_RETURN ? "Enter" : "a key");
     note_changes();
     return r;
 }
@@ -388,13 +481,24 @@ int debug_menu_mouse(void) { return D.state.open && D.world.place == DM_PLACE_MA
 
 void debug_menu_pad(uint32_t held, uint32_t pressed) {
     uint32_t now = GetTickCount();
+    int was_open = D.state.open;
+    dm_menu_t menu = D.state.menu;
     pressed |= dm_pad_repeat(&D.state.repeat, held, pressed, now);
     dm_pad(&D.state, &D.world, pressed, now);
+    note_closed_by(was_open, menu, pad_name(pressed));
     note_changes();
 }
 
+static int hud_wanted(void) { return D.hud.compass || D.hud.objective[0] || D.hud.notice[0]; }
+
 int debug_menu_overlay_wanted(void) {
-    return D.state.open || (D.state.show_coords && D.world.place == DM_PLACE_LEVEL);
+    return D.state.open || (D.state.show_coords && D.world.place == DM_PLACE_LEVEL) || hud_wanted();
+}
+
+/* The UI loop that refreshes the HUD does not run under videos or loads: the picture is checked as it is shown. */
+static int hud_on_screen(void) {
+    guest_ui_view_t v;
+    return hud_wanted() && guest_ui_probe(&v) && place_of(&v) == DM_PLACE_LEVEL;
 }
 
 static float dpi_scale(void) {
@@ -432,11 +536,15 @@ void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext*
     f.view_h = (float)(view.bottom - view.top);
     f.dpi_scale = dpi_scale();
     f.menu = D.state.open;
+    f.objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
+    if (hud_on_screen()) f.hud = &D.hud;
     if (f.menu) {
         f.rows = D.rows;
         f.row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);
         f.feedback = dm_feedback_text(&D.state, GetTickCount());
-        f.help = D.state.menu == DM_MENU_CHEATS ? k_cheats_help : k_help;
+        f.help = D.state.menu == DM_MENU_CHEATS        ? k_cheats_help
+                 : D.state.menu == DM_MENU_OBJECTIVES ? k_objectives_help
+                                                      : k_help;
         f.title = dm_menu_title(D.state.menu);
     }
     coordinate_lines(&f);

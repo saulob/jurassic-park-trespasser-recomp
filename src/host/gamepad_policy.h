@@ -174,9 +174,13 @@ typedef struct {
     pad_mouse_t mouse;
     pad_gameplay_t frame;
     uint32_t pressed;
+    int move_wait, look_wait; /* each stick waits for its own centre */
 } pad_play_t;
 
 void pad_play_release(pad_play_t* p);
+/* An interface opened or closed over gameplay: every held button waits for its release, each stick for its centre,
+ * the crouch latch and the look's fraction start again. */
+void pad_play_neutral(pad_play_t* p, uint32_t held_now);
 
 /* Before CInput reads: *dx, *dy are the counts to move the cursor CInput is about to read. */
 void pad_play_before(pad_play_t* p, pad_read_t kind, const pad_state_t* s, uint32_t buttons,

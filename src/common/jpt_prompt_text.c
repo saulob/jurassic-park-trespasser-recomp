@@ -21,7 +21,7 @@ static const token_def_t k_tokens[] = {
     { "STOW", JPT_TOKEN_COMMAND, JPT_CMD_STOW, JPT_ACT_STOW },
     { "WRIST", JPT_TOKEN_COMMAND, JPT_CMD_WRIST, JPT_ACT_WRIST },
     { "ARM", JPT_TOKEN_COMMAND, JPT_CMD_ARM, JPT_ACT_ARM },
-    { "REPLAY", JPT_TOKEN_COMMAND, JPT_CMD_REPLAY, JPT_ACT_REPLAY },
+    { "REPLAY", JPT_TOKEN_COMMAND, JPT_CMD_REPLAY, -1 },
     { "RUN", JPT_TOKEN_COMMAND, JPT_CMD_RUN, -1 },
     { "WALK", JPT_TOKEN_COMMAND, JPT_CMD_WALK, -1 },
     { "BACKUP", JPT_TOKEN_COMMAND, JPT_CMD_BACKUP, -1 },
@@ -31,9 +31,16 @@ static const token_def_t k_tokens[] = {
     { "MOVE", JPT_TOKEN_MOVE, 0, -1 },
     { "PAUSE", JPT_TOKEN_PAUSE, 0, -1 },
     { "CONTROLS", JPT_TOKEN_CONTROLS, 0, -1 },
+    { "HINT", JPT_TOKEN_HINT, 0, -1 },
+    { "OBJECTIVES", JPT_TOKEN_OBJECTIVES, 0, -1 },
+    { "SHOW_OBJECTIVE", JPT_TOKEN_SHOW_OBJECTIVE, 0, -1 },
+    { "KEY_F5", JPT_TOKEN_KEY, 0x74, -1 },
+    { "KEY_F10", JPT_TOKEN_KEY, 0x79, -1 },
+    { "KEY_F11", JPT_TOKEN_KEY, 0x7A, -1 },
 };
 
-/* The tutorial's subtitles (Stream.tpa) name keys in a few fixed phrases; NULL keeps the phrase for that device. */
+/* The tutorial's subtitles (Stream.tpa) and BE's TrigTutorHint text name keys in a few fixed phrases; NULL keeps the
+ * phrase for that device. */
 typedef struct {
     const char* phrase;
     const char* keyboard;
@@ -41,6 +48,7 @@ typedef struct {
 } phrase_rule_t;
 
 static const phrase_rule_t k_rules[] = {
+    { "press F1", NULL, "press <HINT>" },
     { "Press the 'S' key to walk slowly", "Press <WALK> to walk slowly", "Push <WALK> gently to walk slowly" },
     { "Press 'W' to run", "Press <RUN> to run", "Push <RUN> all the way to run" },
     { "To back up, press 'X'", "To back up, press <BACKUP>", "To back up, pull <BACKUP> back" },
@@ -65,7 +73,7 @@ static const phrase_rule_t k_rules[] = {
     { "'D'", "<RIGHT>", "<RIGHT>" },
     { "'E'", "<STOW>", "<STOW>" },
     { "'F'", "<THROW>", "<THROW>" },
-    { "'R'", "<REPLAY>", "<REPLAY>" },
+    { "'R'", "<REPLAY>", NULL },
     { "by moving the mouse", NULL, "with <LOOK>" },
     { "by moving your mouse", NULL, "with <LOOK>" },
     { "moving the mouse", NULL, "moving <LOOK>" },
@@ -92,7 +100,6 @@ static const jpt_card_row_t k_rows_gamepad[] = {
     { "<JUMP>", "Jump" },
     { "<CROUCH>", "Crouch (hold)" },
     { "<CROUCH_TOGGLE>", "Crouch on/off" },
-    { "<REPLAY>", "Replay voice" },
     { "<PAUSE>", "Menu" },
     { "<HAND> + <LOOK>", "Move hand" },
     { "<GRAB>", "Grab / drop" },
@@ -101,6 +108,10 @@ static const jpt_card_row_t k_rows_gamepad[] = {
     { "<HAND> + <WRIST> + <LOOK>", "Rotate wrist" },
     { "<HAND> + <ARM> + <LOOK>", "Rotate arm" },
     { "<STOW>", "Stow / retrieve" },
+    { "<CONTROLS>", "Controls" },
+    { "<HINT>", "Hint" },
+    { "<OBJECTIVES>", "Objectives" },
+    { "<SHOW_OBJECTIVE>", "Show Objective" },
 };
 
 static const jpt_card_row_t k_rows_keyboard[] = {
@@ -112,7 +123,6 @@ static const jpt_card_row_t k_rows_keyboard[] = {
     { "<CROUCH>", "Crouch (hold)" },
     { "<LOOK>", "Look" },
     { "<REPLAY>", "Replay voice" },
-    { "<PAUSE>", "Menu" },
     { "<HAND> + <LOOK>", "Raise and move the hand" },
     { "<HAND> + <GRAB>", "Grab" },
     { "<GRAB>", "Drop" },
@@ -121,11 +131,19 @@ static const jpt_card_row_t k_rows_keyboard[] = {
     { "<WRIST> + <HAND> + <LOOK>", "Rotate wrist" },
     { "<ARM> + <HAND> + <LOOK>", "Rotate arm" },
     { "<STOW>", "Stow / retrieve" },
+    { "<HINT>", "Hint" },
+    { "<CONTROLS>", "Controls" },
+    { "<OBJECTIVES>", "Objectives" },
+    { "<SHOW_OBJECTIVE>", "Show Objective" },
+    { "<KEY_F5>", "Debug Menu" },
+    { "<KEY_F10>", "Cheats" },
+    { "<KEY_F11>", "Fullscreen" },
+    { "<PAUSE>", "Menu" },
 };
 
 static const jpt_card_t k_cards[2] = {
-    { "Controls", k_rows_keyboard, (int)(sizeof k_rows_keyboard / sizeof k_rows_keyboard[0]), 9 },
-    { GAMEPAD_CARD_TITLE, k_rows_gamepad, (int)(sizeof k_rows_gamepad / sizeof k_rows_gamepad[0]), 7 },
+    { "Controls", k_rows_keyboard, (int)(sizeof k_rows_keyboard / sizeof k_rows_keyboard[0]), 12 },
+    { GAMEPAD_CARD_TITLE, k_rows_gamepad, (int)(sizeof k_rows_gamepad / sizeof k_rows_gamepad[0]), 9 },
 };
 
 static const jpt_card_t k_hints[2] = { { HINT_MARKUP, NULL, 0, 0 }, { HINT_MARKUP, NULL, 0, 0 } };
@@ -394,6 +412,18 @@ static void resolve(const token_def_t* def, const jpt_prompt_context_t* c, jpt_p
         if (c->gamepad) pad_token(c, JPT_PAD_BACK, JPT_DIR_NONE, 0, t);
         else key_token(0x71, t); /* F2 */
         break;
+    case JPT_TOKEN_HINT:
+    case JPT_TOKEN_OBJECTIVES:
+    case JPT_TOKEN_SHOW_OBJECTIVE: {
+        int control = def->kind == JPT_TOKEN_HINT         ? JPT_PAD_HINT_CONTROL
+                      : def->kind == JPT_TOKEN_OBJECTIVES ? JPT_PAD_OBJECTIVES_CONTROL
+                                                          : JPT_PAD_SHOW_OBJECTIVE_CONTROL;
+        if (c->gamepad)
+            pad_token(c, jpt_pad_control_free(c->settings, control) ? control : JPT_PAD_NONE, JPT_DIR_NONE, 0, t);
+        else key_token(def->kind == JPT_TOKEN_HINT ? 0x70 : def->kind == JPT_TOKEN_OBJECTIVES ? 0x72 : 0x73, t);
+        break;
+    }
+    case JPT_TOKEN_KEY: key_token(def->command, t); break;
     }
 }
 
@@ -522,7 +552,6 @@ static const guide_def_t k_guide_gamepad[] = {
     { "<WRIST> + <HAND> + <LOOK>", "Rotate wrist" },
     { "<ARM> + <HAND> + <LOOK>", "Rotate arm" },
     { "<WRIST> + <ARM> + <HAND>", "Straighten the hand" },
-    { "<REPLAY>", "Replay voice over" },
     { "<PAUSE>", "Pause menu" },
     { "<CONTROLS>", "Show these controls in the game" },
 };

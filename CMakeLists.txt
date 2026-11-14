@@ -95,6 +95,13 @@ set(HOST_SOURCES
   src/host/debug_menu.c
   src/host/debug_menu_policy.c
   src/host/debug_menu_panel.cpp
+  src/host/compass_policy.c
+  src/host/objective_policy.c
+  src/host/objectives.c
+  src/host/overlay_policy.c
+  src/host/overlay.c
+  src/host/physics_watch_policy.c
+  src/host/physics_watch.c
   src/host/cheats.c
   src/host/cheats_policy.c
   src/host/guest_call.c
@@ -353,15 +360,18 @@ target_compile_definitions(frontend_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP
 target_link_libraries(frontend_tests PRIVATE gdi32 user32 ole32 uuid windowscodecs)
 # The gamepad's decisions, bindings, glyphs and prompts (headless, no SDL device):
 #   ninja -C <build dir> gamepad_tests && gamepad_tests.exe
-add_executable(gamepad_tests EXCLUDE_FROM_ALL tests/gamepad_tests.c src/host/gamepad_policy.c src/host/pad_glyphs.c)
+add_executable(gamepad_tests EXCLUDE_FROM_ALL tests/gamepad_tests.c src/host/gamepad_policy.c src/host/pad_glyphs.c
+  src/host/overlay_policy.c)
 target_include_directories(gamepad_tests PRIVATE src/host)
 target_link_libraries(gamepad_tests PRIVATE jpt_common)
 target_compile_options(gamepad_tests PRIVATE /W3)
 target_compile_definitions(gamepad_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
-# The F5 Debug / Test Menu and F10 Cheats: their policies, the retail sites they use and the panel on a WARP device
-# (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
-add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c
-  src/host/debug_menu_policy.c src/host/cheats_policy.c src/host/debug_menu_panel.cpp)
+# The F5 Debug / Test Menu, F10 Cheats, F3 Objectives and the compass: their policies, the retail sites and level data
+# they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
+add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c
+  tests/objective_tests.c tests/overlay_tests.c src/host/debug_menu_policy.c src/host/cheats_policy.c
+  src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
+  tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)
 target_compile_options(debug_menu_tests PRIVATE /W3)
 target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")

@@ -162,10 +162,42 @@ static void test_keys(void) {
                 others += vk != 0x79 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_CHEATS;
         CHECK(others == 0);
     }
+    /* F3 opens and closes Objectives, once per press; the game's key table gives it no action. */
+    for (int mods = 0; mods < 4; mods++) {
+        CHECK(key_policy(0x100, 0x72, 0, mods & 1, mods >> 1) == KEY_HOST_OBJECTIVES);
+        CHECK(key_policy(0x104, 0x72, 0, mods & 1, mods >> 1) == KEY_HOST_OBJECTIVES);
+        CHECK(key_policy(0x100, 0x72, 1, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x101, 0x72, 0, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x100, 0x75, 0, mods & 1, mods >> 1) == KEY_TO_GAME);
+    }
+    {
+        int others = 0;
+        for (unsigned vk = 0; vk < 256; vk++)
+            for (unsigned msg = 0x100; msg <= 0x105; msg++)
+                others += vk != 0x72 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_OBJECTIVES;
+        CHECK(others == 0);
+    }
+    CHECK(key_policy(0x100, 0x78, 0, 0, 0) == KEY_HOST_SNAPSHOT && key_policy(0x100, 0x78, 1, 0, 0) == KEY_DROP &&
+          key_policy(0x101, 0x78, 0, 0, 0) == KEY_DROP);
     CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x104, 0x73, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(0x104, 0x73, 1, 0, 1) == KEY_DROP);
-    CHECK(key_policy(0x100, 0x73, 0, 0, 0) == KEY_TO_GAME);
+    CHECK(key_policy(0x105, 0x73, 0, 0, 1) == KEY_DROP);
+    /* F4 alone is Show Objective, once per press; nothing of it reaches the game (its key table gives F4 no action). */
+    for (int ctrl = 0; ctrl < 2; ctrl++) {
+        CHECK(key_policy(0x100, 0x73, 0, ctrl, 0) == KEY_HOST_SHOW_OBJECTIVE);
+        CHECK(key_policy(0x100, 0x73, 1, ctrl, 0) == KEY_DROP);
+        CHECK(key_policy(0x101, 0x73, 0, ctrl, 0) == KEY_DROP);
+        CHECK(key_policy(0x104, 0x73, 0, ctrl, 0) == KEY_DROP);
+        CHECK(key_policy(0x104, 0x73, 0, ctrl, 1) == KEY_HOST_CLOSE);
+    }
+    {
+        int others = 0;
+        for (unsigned vk = 0; vk < 256; vk++)
+            for (unsigned msg = 0x100; msg <= 0x105; msg++)
+                others += vk != 0x73 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_SHOW_OBJECTIVE;
+        CHECK(others == 0);
+    }
     CHECK(key_policy(0x100, 0x1B, 0, 0, 0) == KEY_TO_GAME && key_policy(0x101, 0x1B, 0, 0, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x100, 0x1B, 1, 0, 0) == KEY_DROP);
     CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x70, 1, 0, 0) == KEY_DROP);
@@ -2510,7 +2542,368 @@ static void test_page_arena(void) {
     CHECK(used == 0);
 }
 
+/* Anne's right hand at Movement Speed m, modelled on the retail step (MAX_TIMESTEP 0.01, Pelvis_integrate's forward
+ * Euler): Update_Right_Arm (0x005001D0) springs the hand towards body + rest pose through Mass_Solution (0x004F94E0:
+ * 450, damping sqrt(1350) / intensity along the target and 2.5 sqrt(1350) across it, capped at 150 m/s^2) with damping
+ * input hand velocity - 1.25 body velocity, then gravity. The body is the foot plus the crouch height: the walk drive
+ * 36.75 m - 10 v (stop -50 v) acts only in contact, and the foot's contact (Foot_IDOF, 0x004E2E6B) and the jump
+ * (0x004E7903) change its velocity directly, which on bumpy ground holds the 7.5x body near the 6-13 m/s of log 073.
+ * Past the drop distance the game lets the hand go: it falls and drags on the ground. */
+#define HAND_DT 0.01f
+#define HAND_DROP_M 1.644f /* pw_hand_limit for Anne */
+#define HAND_JUMP_SPEED (5.0f * 1.7320508f) /* Jump Height 3x */
+
+enum { HAND_RETAIL, HAND_PREVIOUS, HAND_CARRIER };
+enum { BAND_10, BAND_50, BAND_100, BAND_500, BANDS };
+
+typedef struct {
+    float ox, oy, oz, gx, gy, bump;
+} terrain_t;
+
+typedef struct {
+    float worst, band[BANDS], travelled, body_speed, hand_speed, final_distance;
+    int dropped, finite;
+} hand_run_t;
+
+typedef struct {
+    float m, intensity, seconds, metres, heading;
+    int fix, course_073, move_hand;
+    terrain_t ground;
+} hand_course_t;
+
+static float terrain_z(const terrain_t* g, float x, float y) {
+    float dx = x - g->ox, dy = y - g->oy;
+    return g->oz + g->gx * dx + g->gy * dy + 2.0f * sinf(dx / 15.0f) + 1.5f * cosf(dy / 20.0f) - 1.5f +
+           g->bump * sinf(3.1f * dx) * sinf(2.7f * dy);
+}
+
+static void terrain_normal(const terrain_t* g, float x, float y, float n[3]) {
+    float dx = x - g->ox, dy = y - g->oy;
+    float sx = g->gx + 2.0f / 15.0f * cosf(dx / 15.0f) + g->bump * 3.1f * cosf(3.1f * dx) * sinf(2.7f * dy);
+    float sy = g->gy - 1.5f / 20.0f * sinf(dy / 20.0f) + g->bump * 2.7f * sinf(3.1f * dx) * cosf(2.7f * dy);
+    float l = sqrtf(sx * sx + sy * sy + 1.0f);
+    n[0] = -sx / l;
+    n[1] = -sy / l;
+    n[2] = 1.0f / l;
+}
+
+static void mass_solution(const float t[3], const float vel[3], float intensity, float r[3]) {
+    const float kappa = 450.0f, root = sqrtf(3.0f * 450.0f), along = root / intensity, across = 2.5f * root;
+    float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]), th[3] = { 0, 0, 0 }, vmag = 0.0f, mag = 0.0f;
+    if (len > 0.001f)
+        for (int i = 0; i < 3; i++) th[i] = t[i] / len;
+    for (int i = 0; i < 3; i++) vmag += vel[i] * th[i];
+    for (int i = 0; i < 3; i++) {
+        float v = vmag * th[i];
+        r[i] = kappa * t[i] - along * v - across * (vel[i] - v);
+        mag += r[i] * r[i];
+    }
+    if (mag > 150.0f * 150.0f)
+        for (int i = 0; i < 3; i++) r[i] *= sqrtf(150.0f * 150.0f / mag);
+}
+
+static float length3(const float a[3], const float b[3]) {
+    float d[3] = { a[0] - b[0], a[1] - b[1], a[2] - b[2] };
+    return sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+}
+
+/* Runs, stops, curves, turns sharply, crouches and jumps (every 7 s) for at least c->seconds and c->metres. The 073
+ * course instead runs from log 073's last HAND FAR point towards where the pelvis was lost, weaving. */
+static hand_run_t hand_run(const hand_course_t* c) {
+    float foot[3], V[3] = { 0, 0, 0 }, B[3], H[3], HV[3] = { 0, 0, 0 }, yaw = c->heading, mouth = 0.9f;
+    float k = c->fix == HAND_CARRIER ? hand_frame_share(c->m) : c->fix == HAND_PREVIOUS && c->m > 1.0f ? 1.0f - 1.0f / c->m : 0.0f;
+    hand_carrier_t carrier = { 0 };
+    hand_run_t out;
+    int dropped = 0;
+    memset(&out, 0, sizeof out);
+    out.finite = 1;
+    foot[0] = c->ground.ox;
+    foot[1] = c->ground.oy;
+    foot[2] = terrain_z(&c->ground, foot[0], foot[1]);
+    B[0] = foot[0];
+    B[1] = foot[1];
+    B[2] = foot[2] + mouth;
+    H[0] = B[0] + 0.31f * cosf(yaw) - 0.15f * sinf(yaw);
+    H[1] = B[1] + 0.31f * sinf(yaw) + 0.15f * cosf(yaw);
+    H[2] = B[2] - 0.35f;
+    for (int step = 0; step < 200000; step++) {
+        float t = step * HAND_DT, phase = fmodf(t, 30.0f), in = 1.0f, turn = 0.0f, rest[3] = { 0.31f, 0.15f, -0.35f };
+        float a[3], ha[3], target[3], u[3], intensity = c->intensity, r;
+        int grounded, band;
+        if (t >= c->seconds && out.travelled >= c->metres) break;
+        if (c->course_073) {
+            turn = 0.3f * cosf(t * 1.1f);
+        } else {
+            if (phase > 12.0f && phase < 14.0f) in = 0.0f;
+            if (phase > 20.0f && phase < 23.0f) turn = 1.2f;
+            if (phase > 25.0f && phase < 25.5f) turn = 6.0f;
+            if (phase > 16.0f && phase < 18.0f) mouth += (0.5f - mouth) * 0.05f;
+            if (c->move_hand && phase > 5.0f && phase < 10.0f) {
+                rest[0] = 0.55f;
+                rest[1] = 0.05f;
+                rest[2] = 0.1f;
+                intensity = 0.75f;
+            }
+        }
+        yaw += turn * HAND_DT;
+        mouth += (0.9f + 0.04f * sinf(t * 9.0f) - mouth) * 0.05f;
+        grounded = foot[2] <= terrain_z(&c->ground, foot[0], foot[1]) + 1e-4f;
+        for (int i = 0; i < 2; i++) {
+            float dir = i == 0 ? cosf(yaw) : sinf(yaw);
+            a[i] = !grounded ? 0.0f : in > 0.0f ? 36.75f * c->m * dir - 10.0f * V[i] : -50.0f * V[i];
+        }
+        a[2] = -10.0f;
+        B[0] = foot[0];
+        B[1] = foot[1];
+        B[2] = foot[2] + mouth;
+        target[0] = B[0] + rest[0] * cosf(yaw) - rest[1] * sinf(yaw);
+        target[1] = B[1] + rest[0] * sinf(yaw) + rest[1] * cosf(yaw);
+        target[2] = B[2] + rest[2];
+        if (c->fix == HAND_CARRIER) {
+            hand_carrier_step(&carrier, k, HAND_DT, B, V, H, HV);
+            if (carrier.valid) hand_damping_shift(k, 1.0f, V, HV);
+        }
+        for (int i = 0; i < 3; i++) {
+            u[i] = HV[i] - 1.25f * V[i] + (c->fix == HAND_PREVIOUS && i < 2 ? 0.25f * k * V[i] : 0.0f);
+            target[i] -= H[i];
+        }
+        if (c->fix == HAND_CARRIER && carrier.valid) hand_damping_shift(k, -1.0f, V, HV);
+        if (!dropped && length3(H, B) > HAND_DROP_M) dropped = out.dropped = 1;
+        if (dropped)
+            ha[0] = ha[1] = ha[2] = 0.0f;
+        else
+            mass_solution(target, u, intensity, ha);
+        ha[2] -= 10.0f;
+        if (c->fix == HAND_PREVIOUS)
+            for (int i = 0; i < 2; i++) ha[i] += k * a[i];
+        if (H[2] <= terrain_z(&c->ground, H[0], H[1])) {
+            H[2] = terrain_z(&c->ground, H[0], H[1]);
+            if (HV[2] < 0.0f) HV[2] = 0.0f;
+            if (ha[2] < 0.0f) ha[2] = 0.0f;
+            for (int i = 0; i < 2; i++) ha[i] -= 8.0f * HV[i];
+        }
+        r = length3(H, B);
+        band = out.travelled < 10.0f ? BAND_10 : out.travelled < 50.0f ? BAND_50 : out.travelled < 100.0f ? BAND_100 : BAND_500;
+        out.band[band] = fmaxf(out.band[band], r);
+        out.worst = fmaxf(out.worst, r);
+        for (int i = 0; i < 3; i++) {
+            foot[i] += HAND_DT * V[i];
+            V[i] += HAND_DT * a[i];
+            H[i] += HAND_DT * HV[i];
+            HV[i] += HAND_DT * ha[i];
+            if (!isfinite(foot[i]) || !isfinite(V[i]) || !isfinite(H[i]) || !isfinite(HV[i])) out.finite = 0;
+        }
+        if (!out.finite) break;
+        out.travelled += HAND_DT * hypotf(V[0], V[1]);
+        out.body_speed = fmaxf(out.body_speed, sqrtf(V[0] * V[0] + V[1] * V[1] + V[2] * V[2]));
+        out.hand_speed = fmaxf(out.hand_speed, sqrtf(HV[0] * HV[0] + HV[1] * HV[1] + HV[2] * HV[2]));
+        if (foot[2] <= terrain_z(&c->ground, foot[0], foot[1])) {
+            float n[3], vn;
+            terrain_normal(&c->ground, foot[0], foot[1], n);
+            foot[2] = terrain_z(&c->ground, foot[0], foot[1]);
+            vn = V[0] * n[0] + V[1] * n[1] + V[2] * n[2];
+            if (vn < 0.0f)
+                for (int i = 0; i < 3; i++) V[i] -= vn * n[i];
+            if (t > 1.0f && fmodf(t, 7.0f) < HAND_DT * 0.5f) V[2] = HAND_JUMP_SPEED;
+        }
+    }
+    B[0] = foot[0];
+    B[1] = foot[1];
+    B[2] = foot[2] + mouth;
+    out.final_distance = length3(H, B);
+    return out;
+}
+
+static hand_course_t hand_course(float m, int fix, float bump) {
+    hand_course_t c;
+    memset(&c, 0, sizeof c);
+    c.m = m;
+    c.fix = fix;
+    c.intensity = 0.7f;
+    c.seconds = 60.0f;
+    c.metres = 500.0f;
+    c.ground.gy = 0.07f;
+    c.ground.bump = bump;
+    return c;
+}
+
+/* The carrier alone, against a body whose velocity is accelerated, set and removed and whose position is rebuilt with
+ * steps it did not integrate: after any number of steps the hand has been moved by k times the body's displacement.
+ * The previous fix's carrier (k times the integral of the body's acceleration) falls behind by more with every metre. */
+static void test_hand_carrier_exact(void) {
+    hand_carrier_t c = { 0 };
+    float body[3] = { 10.0f, -5.0f, 2.0f }, bv[3] = { 0, 0, 0 }, hand[3] = { 10.3f, -4.8f, 1.6f }, hv[3] = { 0, 0, 0 };
+    float start_body[3], start_hand[3], k = hand_frame_share(7.5f), err = 0.0f, half_err = 0.0f, half_moved = 0.0f;
+    float old_pos[3] = { 0, 0, 0 }, old_vel[3] = { 0, 0, 0 }, old_err = 0.0f, old_half = 0.0f, moved;
+    unsigned seed = 12345u;
+    memcpy(start_body, body, sizeof body);
+    memcpy(start_hand, hand, sizeof hand);
+    for (int step = 0; step <= 60000; step++) {
+        hand_carrier_step(&c, k, HAND_DT, body, bv, hand, hv);
+        if (step == 30000 || step == 60000) {
+            float e = 0.0f, o = 0.0f;
+            for (int i = 0; i < 3; i++) {
+                e = fmaxf(e, fabsf(hand[i] - start_hand[i] - k * (body[i] - start_body[i])));
+                o = fmaxf(o, fabsf(old_pos[i] - k * (body[i] - start_body[i])));
+            }
+            if (step == 30000) {
+                half_err = e;
+                old_half = o;
+                half_moved = length3(body, start_body);
+            } else {
+                err = e;
+                old_err = o;
+            }
+        }
+        if (step == 60000) break;
+        for (int i = 0; i < 3; i++) {
+            float kick, acc;
+            seed = seed * 1103515245u + 12345u;
+            kick = ((seed >> 16) & 1023u) / 1023.0f - 0.5f;
+            acc = 40.0f * kick + (i == 0 ? 2.0f : 0.0f);
+            body[i] += HAND_DT * bv[i];
+            hand[i] += HAND_DT * hv[i];
+            old_pos[i] += HAND_DT * old_vel[i];
+            bv[i] += HAND_DT * acc;
+            old_vel[i] += HAND_DT * k * acc;
+            if ((step % 97) == 0) bv[i] *= 0.6f;
+            if ((step % 211) == 0) body[i] += 0.05f * kick;
+        }
+    }
+    moved = length3(body, start_body);
+    printf("hand carrier: body moved %.0f m (%.0f m at half way); carried hand off k x that by %.4f m (%.4f), the "
+           "previous fix's carrier by %.1f m (%.1f)\n",
+           moved, half_moved, err, half_err, old_err, old_half);
+    CHECK(moved > 500.0f && half_moved > 100.0f);
+    CHECK(err < 5e-4f * moved && half_err < 5e-4f * half_moved); /* float rounding of km-sized coordinates */
+    CHECK(old_err > 60.0f && old_err > 1.5f * old_half);
+    /* 1x and below, NaN, a teleport: nothing is carried */
+    {
+        hand_carrier_t d = { 0 };
+        float p[3] = { 0, 0, 0 }, v[3] = { 1, 0, 0 }, h[3] = { 1, 2, 3 }, w[3] = { 4, 5, 6 };
+        hand_carrier_step(&d, hand_frame_share(1.0f), HAND_DT, p, v, h, w);
+        CHECK(!d.valid && h[0] == 1.0f && w[0] == 4.0f);
+        hand_carrier_step(&d, hand_frame_share(0.5f), HAND_DT, p, v, h, w);
+        CHECK(!d.valid);
+        hand_carrier_step(&d, 0.5f, HAND_DT, p, v, h, w);
+        p[0] = 500.0f;
+        v[0] = 3.0f;
+        hand_carrier_step(&d, 0.5f, HAND_DT, p, v, h, w);
+        CHECK(d.valid && h[0] == 1.0f && w[0] == 4.0f);
+        p[0] = NAN;
+        hand_carrier_step(&d, 0.5f, HAND_DT, p, v, h, w);
+        CHECK(!d.valid && h[0] == 1.0f);
+        w[0] = 4.0f;
+        hand_damping_shift(0.0f, 1.0f, v, w);
+        CHECK(w[0] == 4.0f);
+        hand_damping_shift(0.8f, 1.0f, v, w);
+        hand_damping_shift(0.8f, -1.0f, v, w);
+        CHECK(w[0] == 4.0f);
+    }
+    CHECK(hand_frame_share(1.0f) == 0.0f && hand_frame_share(0.5f) == 0.0f && fabsf(hand_frame_share(5.0f) - 0.8f) < 1e-6f);
+    CHECK(fabsf(hand_frame_share(10.0f) - 0.9f) < 1e-6f);
+}
+
+/* At least 60 s and 500 m at every multiplier, Move Hand off and on, on smooth and bumpy ground: never past the drop
+ * distance and, at 10, 50, 100 and 500 m alike, never farther from the pelvis than at 1x. 1x and 0.5x are the game's own
+ * arithmetic. */
+static void test_hand_long_run(void) {
+    static const float speeds[] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
+    static const float bumps[] = { 0.0f, 0.2f };
+    for (size_t b = 0; b < sizeof bumps / sizeof bumps[0]; b++) {
+        hand_course_t one_c = hand_course(1.0f, HAND_RETAIL, bumps[b]);
+        hand_run_t one = hand_run(&one_c);
+        CHECK(!one.dropped && one.worst < HAND_DROP_M);
+        for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
+            hand_course_t c = hand_course(speeds[i], HAND_CARRIER, bumps[b]), on_c = c, retail_c = c;
+            hand_run_t r, on, retail;
+            on_c.move_hand = 1;
+            retail_c.fix = HAND_RETAIL;
+            r = hand_run(&c);
+            on = hand_run(&on_c);
+            retail = hand_run(&retail_c);
+            printf("hand %.1fx bumps %.1f: %.0f m, pelvis->hand max %.3f (10 m %.3f, 50 m %.3f, 100 m %.3f, 500 m %.3f), "
+                   "Move Hand on %.3f; uncarried %.3f%s\n",
+                   speeds[i], bumps[b], r.travelled, r.worst, r.band[BAND_10], r.band[BAND_50], r.band[BAND_100],
+                   r.band[BAND_500], on.worst, retail.worst, retail.dropped ? " (dropped)" : "");
+            CHECK(r.finite && on.finite && r.travelled >= 500.0f && on.travelled >= 500.0f);
+            CHECK(!r.dropped && !on.dropped);
+            for (int band = 0; band < BANDS; band++) CHECK(r.band[band] <= one.worst + 0.05f);
+            CHECK(on.worst <= one.worst + 0.05f && r.final_distance < 1.0f);
+            if (speeds[i] <= 1.0f) CHECK(r.worst == retail.worst && r.travelled == retail.travelled);
+        }
+    }
+    /* uncarried, the hand is let go from 5x on */
+    {
+        hand_course_t u = hand_course(5.0f, HAND_RETAIL, 0.0f);
+        CHECK(hand_run(&u).dropped);
+    }
+}
+
+/* Log 073 at 7.5x, Jump Height 3x: from the second HAND FAR (pelvis -1657.4 -706.0 Z 40.1) uphill towards where the
+ * pelvis was lost (-1621.5 -640.5 Z 45.6), weaving, then on to 500 m; then the full course on that ground. The previous
+ * fix ran the hand at the edge of the drop distance (log 073's 1.645 and 1.650 m) and let it go on rougher ground or at
+ * 10x; carried, the hand stays where it is at rest. */
+static void test_hand_log_073(void) {
+    const float from[3] = { -1657.445f, -706.020f, 40.054f }, to[3] = { -1621.484f, -640.455f, 45.558f };
+    float run = hypotf(to[0] - from[0], to[1] - from[1]), grade = (to[2] - from[2]) / run;
+    static const float bumps[] = { 0.15f, 0.2f, 0.25f, 0.3f, 0.35f, 0.4f };
+    static const float speeds[] = { 7.5f, 10.0f };
+    float previous_worst = 0.0f;
+    int previous_drops = 0;
+    hand_course_t c;
+    memset(&c, 0, sizeof c);
+    c.intensity = 0.7f;
+    c.seconds = 60.0f;
+    c.metres = 500.0f;
+    c.heading = atan2f(to[1] - from[1], to[0] - from[0]);
+    c.ground.ox = from[0];
+    c.ground.oy = from[1];
+    c.ground.oz = from[2];
+    c.ground.gx = grade * (to[0] - from[0]) / run;
+    c.ground.gy = grade * (to[1] - from[1]) / run;
+    for (int course = 1; course >= 0; course--)
+        for (size_t s = 0; s < sizeof speeds / sizeof speeds[0]; s++)
+            for (size_t b = 0; b < sizeof bumps / sizeof bumps[0]; b++) {
+                hand_run_t previous, carried;
+                c.course_073 = course;
+                c.m = speeds[s];
+                c.ground.bump = bumps[b];
+                c.fix = HAND_PREVIOUS;
+                previous = hand_run(&c);
+                c.fix = HAND_CARRIER;
+                carried = hand_run(&c);
+                if (previous.dropped) previous_drops++;
+                else previous_worst = fmaxf(previous_worst, previous.worst);
+                CHECK(carried.finite && !carried.dropped && carried.worst < 0.7f && carried.final_distance < 1.0f);
+                for (int band = 0; band < BANDS; band++) CHECK(carried.band[band] < 0.7f);
+                if (course && s == 0 && b == 1)
+                    printf("log 073 course: carried pelvis->hand max %.3f m over %.0f m (end %.3f); previous fix max %.3f m%s\n",
+                           carried.worst, carried.travelled, carried.final_distance, previous.worst,
+                           previous.dropped ? ", hand let go" : "");
+            }
+    printf("log 073 ground, 7.5x and 10x: previous fix let the hand go in %d of 24 runs, the others reached %.3f m\n",
+           previous_drops, previous_worst);
+    CHECK(previous_drops >= 4 && previous_worst > 1.4f);
+}
+
+/* InfoBox discipline (0x004DCA47): a box at 100 m/s or more deactivates the pelvis. Body and hand stay well under it at
+ * every multiplier, carried, and nothing is NaN or infinite. */
+static void test_speed_sanity(void) {
+    static const float speeds[] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
+    for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
+        hand_course_t c = hand_course(speeds[i], HAND_CARRIER, 0.2f);
+        hand_run_t r = hand_run(&c);
+        printf("sanity at %.1fx: body %.2f m/s, hand %.2f m/s\n", speeds[i], r.body_speed, r.hand_speed);
+        CHECK(r.finite && r.body_speed < 50.0f && r.hand_speed < 50.0f);
+    }
+}
+
 int main(void) {
+    test_hand_carrier_exact();
+    test_hand_long_run();
+    test_hand_log_073();
+    test_speed_sanity();
     test_fps_counter();
     test_input_state();
     test_capture_policy();

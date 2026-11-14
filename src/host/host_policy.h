@@ -69,11 +69,15 @@ typedef enum {
     KEY_HOST_DEBUG_MENU,
     KEY_HOST_CHEATS,
     KEY_HOST_CLOSE,
-    KEY_HOST_CONTROLS
+    KEY_HOST_CONTROLS,
+    KEY_HOST_OBJECTIVES,
+    KEY_HOST_SNAPSHOT,
+    KEY_HOST_SHOW_OBJECTIVE
 } key_action_t;
 
 /* msg is WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP; repeat is lParam bit 30. F2 is the controls card (unused by
- * the game: CGameWnd's key table 0x0040C220 gives it no action); F12, the game's controls window, is not passed on. */
+ * the game: CGameWnd's key table 0x0040C220 gives it no action), as are F3, Objectives, and F4 without Alt, Show
+ * Objective; F12, the game's controls window, is not passed on. */
 key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt);
 /* Esc and F1 open a window of the game over gameplay: the cursor is freed before it opens. */
 int key_opens_game_window(unsigned msg, unsigned vk, int repeat);
@@ -251,6 +255,30 @@ typedef struct {
 } pelvis_mouth_t;
 pelvis_mouth_t pelvis_mouth_clamps(float pos, float vel, float height, float bio_body_z, double knee, double low,
                                    double high);
+
+/* Movement Speed m: the right hand (a world-space DOF chasing body + rest pose through Update_Right_Arm, capped at
+ * 150 m/s^2) is carried by k = 1 - 1/m of the body's own motion and its controller sees the rest, as at 1x. k is 0 at
+ * 1x and below: the game's own arithmetic. */
+float hand_frame_share(float multiplier);
+
+/* The body as the previous step left it. The body's velocity also changes outside its acceleration (Foot_IDOF's
+ * contact removes the part into the ground, a jump sets it) and its position is rebuilt from the foot every step, so
+ * the carrier follows the measured body, never an integral of its acceleration. */
+typedef struct {
+    int valid;
+    float body_pos[3], body_vel[3], dt;
+} hand_carrier_t;
+
+#define HAND_CARRIER_JUMP_M 1.0f /* a body displacement its velocity cannot explain (teleport, load): not carried */
+
+/* At Pelvic_IDOF's entry, before Update_Right_Arm reads the hand: the hand gets k times the body's velocity change
+ * and k times the displacement its carried velocity did not already give it, so after any number of steps the
+ * carrier has moved it by exactly k times the body's displacement. k <= 0 stops carrying. */
+void hand_carrier_step(hand_carrier_t* c, float k, float dt, const float body_pos[3], const float body_vel[3],
+                       float hand_pos[3], float hand_vel[3]);
+/* Update_Right_Arm damps hand velocity - 1.25 body velocity; relative to the carrier that is
+ * (hand - k body) - 1.25 (1 - k) body, i.e. the hand's velocity shifted by 0.25 k body. sign +1 before, -1 after. */
+void hand_damping_shift(float k, float sign, const float body_vel[3], float hand_vel[3]);
 
 int safemode_prompt_args(uint32_t func, uint32_t type, uint32_t title_id, uint32_t text_id);
 

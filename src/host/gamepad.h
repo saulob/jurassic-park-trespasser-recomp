@@ -22,8 +22,6 @@ void gamepad_note_mouse_button(void);
 void gamepad_note_mouse_motion(int dx, int dy);
 /* The game's modal UI loop, just before it reads its cursor each frame: menus, pause and restart. */
 void gamepad_ui_loop(void);
-/* F2: the controls card opens or closes on the next pass of that loop in a level, as with View/Back. */
-void gamepad_controls_key(void);
 /* The video player's message pump: a press skips the video as a key would. */
 void gamepad_video_loop(void);
 /* The host's policy timer: connections are noticed while no frame runs. */

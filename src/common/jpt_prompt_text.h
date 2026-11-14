@@ -22,7 +22,11 @@ typedef enum {
     JPT_TOKEN_LOOK,      /* the mouse, or the right stick */
     JPT_TOKEN_MOVE,      /* W/A/S/D, or the left stick */
     JPT_TOKEN_PAUSE,     /* Esc, or Start */
-    JPT_TOKEN_CONTROLS   /* the port's controls card: F2, or the gamepad's View/Back button */
+    JPT_TOKEN_CONTROLS,  /* the port's controls card: F2, or the gamepad's View/Back button */
+    JPT_TOKEN_HINT,      /* the game's Hint: F1, or the D-pad shortcut */
+    JPT_TOKEN_OBJECTIVES, /* the port's Objectives: F3, or the D-pad shortcut */
+    JPT_TOKEN_SHOW_OBJECTIVE, /* the port's Show Objective: F4, or the D-pad shortcut */
+    JPT_TOKEN_KEY        /* a fixed key of the port (F5, F10, F11) */
 } jpt_token_kind_t;
 
 typedef struct {

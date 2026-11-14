@@ -15,6 +15,9 @@
 #include "host.h"
 #include "gamepad.h"
 #include "host_policy.h"
+#include "overlay_policy.h"
+#include "physics_watch.h"
+#include "tutorial_prompts.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -993,10 +996,16 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     guest_ui_view_t g;
     *handled = 1;
     if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !repeat &&
-        (action == KEY_TO_GAME || action == KEY_HOST_CONTROLS) && ((lparam >> 16) & 0xFF) != PAD_SCAN_CODE)
+        (action == KEY_TO_GAME || action == KEY_HOST_CONTROLS || action == KEY_HOST_SHOW_OBJECTIVE) &&
+        ((lparam >> 16) & 0xFF) != PAD_SCAN_CODE)
         gamepad_note_keyboard();
-    if (action != KEY_HOST_DEBUG_MENU && action != KEY_HOST_CHEATS && action != KEY_HOST_FULLSCREEN &&
-        action != KEY_HOST_CLOSE &&
+    if (overlay_key(msg, wparam, lparam)) {
+        if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "host overlay");
+        return 0;
+    }
+    if (action != KEY_HOST_DEBUG_MENU && action != KEY_HOST_CHEATS && action != KEY_HOST_OBJECTIVES &&
+        action != KEY_HOST_CONTROLS && action != KEY_HOST_FULLSCREEN &&
+        action != KEY_HOST_CLOSE && action != KEY_HOST_SHOW_OBJECTIVE &&
         debug_menu_key(msg, wparam, lparam)) {
         if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "Debug Menu");
         return 0;
@@ -1018,23 +1027,36 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         toggle_fullscreen();
         return 0;
     case KEY_HOST_DEBUG_MENU:
-        debug_menu_f5();
+        overlay_request(OV_DEBUG, "F5");
         return 0;
     case KEY_HOST_CHEATS:
-        debug_menu_f10();
+        overlay_request(OV_CHEATS, "F10");
         return 0;
     case KEY_HOST_CLOSE:
         request_close(window, "Alt+F4");
         return 0;
     case KEY_HOST_CONTROLS:
         log_key(msg, wparam, lparam, "host controls card (in a level)");
-        gamepad_controls_key();
+        overlay_request(OV_CONTROLS, "F2");
+        return 0;
+    case KEY_HOST_OBJECTIVES:
+        overlay_request(OV_OBJECTIVES, "F3");
+        return 0;
+    case KEY_HOST_SNAPSHOT:
+        physics_watch_request();
+        return 0;
+    case KEY_HOST_SHOW_OBJECTIVE:
+        if (g.ui == GUEST_UI_GAMEPLAY && !debug_menu_open_menu() && !tutorial_prompts_card_shown())
+            debug_menu_show_objective();
+        else
+            log_key(msg, wparam, lparam, "Show Objective outside gameplay: consumed");
         return 0;
     case KEY_DROP:
         if (repeat) s.dropped_repeats++;
         if (wparam == VK_F12) {
             if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "dropped (Controls is F2)");
-        } else if (wparam != VK_F5 && wparam != VK_F10 && wparam != VK_F11 && wparam != VK_F2) {
+        } else if (wparam != VK_F3 && wparam != VK_F4 && wparam != VK_F5 && wparam != VK_F9 && wparam != VK_F10 &&
+                   wparam != VK_F11 && wparam != VK_F2) {
             log_key(msg, wparam, lparam, "auto-repeat dropped");
         }
         return 0;
@@ -1239,8 +1261,8 @@ static void attach(HWND window) {
     layout_surface();
     host_log("window", "game window 0x%08X: resizable, centered, F11 toggles borderless full screen; "
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
-    host_log("hotkeys", "F1 Hint | F2 Controls | F5 Debug Menu | F10 Cheats | F11 Fullscreen | "
-             "Ctrl+F11 Cheat Console | Esc Menu | Alt+F4 Exit");
+    host_log("hotkeys", "F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Debug Menu | F10 Cheats | "
+             "F11 Fullscreen | Esc Menu");
     register_raw_input(window);
     if (s.cfg.borderless) {
         enter_fullscreen();
@@ -1440,6 +1462,7 @@ void shim_GetCursorPos(void) {
         update_input("GetCursorPos");
         if (g_cur_func == UI_LOOP) {
             gamepad_ui_loop();
+            overlay_ui_loop();
             debug_menu_ui_loop();
         }
         *out = game_cursor();

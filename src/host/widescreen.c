@@ -6,6 +6,7 @@
 #include "host.h"
 #include "host_policy.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "jpt_display.h"
@@ -95,6 +96,15 @@ int widescreen_install(int aspect) {
 }
 
 int widescreen_active(void) { return s_wide; }
+
+float widescreen_tan_half_height(void) {
+    uint32_t cam = main_camera(), props = cam + PROPS_IN_CAMERA;
+    float aspect, tan_half;
+    if (!cam || !guest_readable(props, PROPS_SIZE) || !MEM8(props + PROP_PERSPECTIVE)) return 0.0f;
+    aspect = s_wide ? 4.0f / 3.0f : rdf(props + PROP_ASPECT);
+    tan_half = rdf(props + PROP_TAN_HALF_WIDTH);
+    return aspect > 0.0f && tan_half > 0.0f && isfinite(tan_half) ? tan_half / aspect : 0.0f;
+}
 
 /* The stored tan(half width) is the caller's 4:3 one; the projection keeps its vertical extent either way. */
 float widescreen_pixels_per_metre(void) {

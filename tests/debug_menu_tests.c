@@ -1,5 +1,5 @@
 /* Headless checks of the F5 Debug / Test Menu: its policy (input, items, checkpoint, formatting, key points), the
- * retail sites it reuses (game/trespass.exe 1.0.116) and its panel on a WARP device. */
+ * retail sites it reuses (game/trespass.exe 1.0.116) and its panel, compass included, on a WARP device. */
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -617,9 +617,16 @@ static void test_cheats_menu(void) {
     w.speed = 0;
     press(&s, &w, VK_LEFT);
     CHECK(!dm_take(&s, &a), "no slower than 0.5x");
-    w.speed = CH_MULTIPLIER_COUNT - 1;
+    w.speed = CH_SPEED_COUNT - 1;
     press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_SPEED && a.value == 0, "Enter cycles round");
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_SPEED && a.value == 0, "Enter cycles round from 10.0x to 0.5x");
+    press(&s, &w, VK_RIGHT);
+    CHECK(!dm_take(&s, &a), "Right stops at 10.0x");
+    for (int i = 0; i < CH_SPEED_COUNT; i++) {
+        w.speed = i;
+        press(&s, &w, VK_RETURN);
+        CHECK(dm_take(&s, &a) && a.kind == DM_ACT_SPEED && a.value == (i + 1) % CH_SPEED_COUNT, "Enter steps %d", i);
+    }
     w.speed = CH_MULTIPLIER_DEFAULT;
     press(&s, &w, VK_DOWN);
     dm_pad(&s, &w, PAD(DPAD_RIGHT), 0);
@@ -889,6 +896,18 @@ static void test_retail(const char* root) {
     CHECK(bytes_at(0x00608130u, "8A4144"), "CWorld's pending save flag + 0x44");
     CHECK(bytes_at(0x0041789Au, "8B3D60536400") && bytes_at(0x004178B5u, "FFD7"),
           "the modal UI loop reads its cursor (GetCursorPos) each pass: where the menu's actions run");
+    CHECK(bytes_at(0x0040BECDu, "8D41E53DA2000000") && bytes_at(0x0040C220u + 0x72u - 0x1Bu, "07") &&
+              u32_at(0x0040C200u + 7u * 4u) == 0x0040C1F6u && bytes_at(0x0040C220u + 0x70u - 0x1Bu, "02") &&
+              u32_at(0x0040C200u + 2u * 4u) == 0x0040C002u,
+          "CGameWnd::OnKey gives F3 no action (slot 7, its exit) and F1 the Hint (slot 2): F3 is free for Objectives");
+    CHECK(bytes_at(0x0040C220u + 0x78u - 0x1Bu, "07"), "F9 has no action in CGameWnd::OnKey either");
+    CHECK(calls(0x0040C00Au, 0x00416BF0u) && calls(0x0040C02Eu, 0x004175C0u) && bytes_at(0x00416C75u, "8B151CF06600") &&
+              bytes_at(0x00416C85u, "81C250460000") && bytes_at(0x00416C8Du, "A15CE06600"),
+          "F1: CHintWnd, DoModal; its text is LoadString(g_hInst, 18000 + iCurrentHint at 0x0066F01C)");
+    CHECK(bytes_at(0x00607C10u, "568BF18B4E148B01FF904C010000") && calls(0x00607C30u, 0x00607B50u) &&
+              bytes_at(0x005F6100u, "A1D8D77300"),
+          "CWorld::pinsFindInstance 0x00607C10 (active camera, then the handle map) and u4Hash 0x005F6100");
+    CHECK(bytes_at(0x00614B18u, "8D4630"), "CInstance::Move compares against the presence at + 0x30");
 }
 
 /* ---- the panel on WARP ---- */
@@ -907,7 +926,8 @@ static void test_panel(void) {
     dm_world_t w = level_world("be.scn");
     dm_row_t rows[DM_ROWS_MAX];
     dmp_frame_t f;
-    int lit[2] = { 0, 0 };
+    cp_hud_t hud;
+    int lit[3] = { 0, 0, 0 }, low[3] = { 0, 0, 0 }, amber = 0;
     if (FAILED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_WARP, NULL, 0, levels, 3, D3D11_SDK_VERSION, &dev, NULL,
                                  &ctx))) {
         printf("debug_menu_tests: no WARP device, panel skipped\n");
@@ -933,13 +953,28 @@ static void test_panel(void) {
     f.view_w = 960.0f;
     f.view_h = 720.0f;
     f.dpi_scale = 1.5f;
-    for (int pass = 0; pass < 2; pass++) {
+    memset(&hud, 0, sizeof hud);
+    hud.compass = hud.marker = hud.view = 1;
+    hud.alpha = 1.0f;
+    hud.heading = 30.0f;
+    hud.relative = -150.0f;
+    hud.camera.rot[0] = 1.0f;
+    hud.camera.tan_half_h = 0.5f;
+    hud.target[1] = 40.0f;
+    hud.trail_count = 1;
+    hud.trail[0][1] = 20.0f;
+    strcpy(hud.distance, "184 m");
+    strcpy(hud.objective, "Reach the monorail");
+    hud.objective_alpha = 1.0f;
+    strcpy(hud.notice, "Objective updated");
+    for (int pass = 0; pass < 3; pass++) {
         f.menu = pass == 0;
         f.rows = rows;
         f.row_count = f.menu ? dm_rows(&s, &w, rows, DM_ROWS_MAX) : 0;
         f.feedback = "Checkpoint set";
         f.help = "help";
-        f.coord_lines = 2;
+        f.coord_lines = pass < 2 ? 2 : 0;
+        f.hud = pass == 2 ? &hud : NULL;
         strcpy(f.coords[0], "Level BE");
         strcpy(f.coords[1], "X 10.000");
         for (int frame = 0; frame < 3; frame++) {
@@ -950,13 +985,80 @@ static void test_panel(void) {
         if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
             for (int y = 0; y < 960; y += 4)
                 for (int x = 0; x < 1280; x += 4)
-                    if (((const uint32_t*)((const uint8_t*)m.pData + (size_t)y * m.RowPitch))[x] & 0xFFFFFFu)
-                        lit[pass]++;
+                    {
+                        uint32_t px = ((const uint32_t*)((const uint8_t*)m.pData + (size_t)y * m.RowPitch))[x];
+                        uint32_t r = (px >> 16) & 0xFF, g = (px >> 8) & 0xFF, b = px & 0xFF;
+                        if (px & 0xFFFFFFu) {
+                            lit[pass]++;
+                            low[pass] += y > 960 / 5;
+                        }
+                        amber += pass == 2 && r > 200 && g > 150 && b < 110;
+                    }
             ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
         }
     }
     CHECK(lit[0] > 4 * lit[1] && lit[1] > 50, "the menu and the coordinates line are drawn (%d, %d samples)", lit[0],
           lit[1]);
+    CHECK(lit[2] > 100 && low[2] > 0 && low[2] < lit[2] / 2,
+          "the compass, objective line and notice along the top, the world marker and trail in the picture (%d, %d below)",
+          lit[2], low[2]);
+    CHECK(amber > 10, "objective text and markers are amber (%d samples)", amber);
+    {
+        /* the title alone over a bright sky: amber letters inside one thin dark outline, every pixel read */
+        static const float sky[4] = { 0.62f, 0.78f, 1.0f, 1.0f };
+        cp_hud_t title;
+        dmp_frame_t g;
+        static unsigned char amber_map[320][1280], dark_map[320][1280];
+        int amber_px = 0, dark_px = 0, reach = 0, distant = 0;
+        memset(&title, 0, sizeof title);
+        title.alpha = title.objective_alpha = 1.0f;
+        strcpy(title.objective, "Reach the monorail");
+        g = f;
+        g.menu = 0;
+        g.rows = NULL;
+        g.row_count = g.coord_lines = 0;
+        g.hud = &title;
+        for (int frame = 0; frame < 3; frame++) {
+            ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, sky);
+            dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+        }
+        ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource*)staging, (ID3D11Resource*)tex);
+        if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
+            for (int y = 0; y < 320; y++) {
+                const uint32_t* row = (const uint32_t*)((const uint8_t*)m.pData + (size_t)y * m.RowPitch);
+                for (int x = 0; x < 1280; x++) {
+                    uint32_t r = (row[x] >> 16) & 0xFF, gr = (row[x] >> 8) & 0xFF, b = row[x] & 0xFF;
+                    amber_map[y][x] = (unsigned char)(r > 110 && gr > 70 && r > b + 50);
+                    dark_map[y][x] = (unsigned char)(r < 80 && gr < 90 && b < 110);
+                    amber_px += r > 200 && gr > 150 && b < 110;
+                    dark_px += dark_map[y][x];
+                }
+            }
+            ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
+            /* how far the dark reaches from the letters: an outline hugs them, a shadow or a doubled copy does not */
+            for (int y = 0; y < 320; y++)
+                for (int x = 0; x < 1280; x++) {
+                    int d = 0;
+                    if (!dark_map[y][x]) continue;
+                    for (int k = 1; k <= 6 && !d; k++)
+                        for (int dy = -k; dy <= k && !d; dy++)
+                            for (int dx = -k; dx <= k; dx++) {
+                                int ax = x + dx, ay = y + dy;
+                                if ((dx > -k && dx < k && dy > -k && dy < k) || ax < 0 || ay < 0 || ax >= 1280 || ay >= 320)
+                                    continue;
+                                if (amber_map[ay][ax]) {
+                                    d = k;
+                                    break;
+                                }
+                            }
+                    if (!d) d = 7;
+                    distant += d > 3;
+                    if (d > reach) reach = d;
+                }
+        }
+        CHECK(amber_px > 80 && dark_px > 80, "the title is amber with a dark outline (%d, %d pixels)", amber_px, dark_px);
+        CHECK(reach >= 1 && distant * 50 <= dark_px, "the outline hugs the letters: %d of %d dark pixels are more than 3 px from them", distant, dark_px);
+    }
     dmp_release();
 done:
     if (staging) ID3D11Texture2D_Release(staging);
@@ -967,6 +1069,10 @@ done:
 }
 
 void cheats_tests(int* checks, int* failures);
+void compass_tests(int* checks, int* failures);
+void objective_tests(int* checks, int* failures);
+void overlay_tests(int* checks, int* failures);
+void physics_watch_tests(int* checks, int* failures);
 
 int main(void) {
     test_f5();
@@ -984,6 +1090,10 @@ int main(void) {
     test_stale_state();
     test_cheats_menu();
     cheats_tests(&g_checks, &g_failures);
+    compass_tests(&g_checks, &g_failures);
+    objective_tests(&g_checks, &g_failures);
+    overlay_tests(&g_checks, &g_failures);
+    physics_watch_tests(&g_checks, &g_failures);
     test_retail(JPT_SOURCE_DIR);
     test_panel();
     printf("debug_menu_tests: %d checks, %d failures\n", g_checks, g_failures);

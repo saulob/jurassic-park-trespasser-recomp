@@ -6,8 +6,8 @@
 #define FPS_STALL_WINDOWS 2
 
 enum { MSG_KEYDOWN = 0x100, MSG_KEYUP = 0x101, MSG_SYSKEYDOWN = 0x104, MSG_SYSKEYUP = 0x105 };
-enum { VK_ESC = 0x1B, VK_F1_ = 0x70, VK_F2_ = 0x71, VK_F4_ = 0x73, VK_F5_ = 0x74, VK_F10_ = 0x79, VK_F11_ = 0x7A,
-       VK_F12_ = 0x7B };
+enum { VK_ESC = 0x1B, VK_F1_ = 0x70, VK_F2_ = 0x71, VK_F3_ = 0x72, VK_F4_ = 0x73, VK_F5_ = 0x74, VK_F9_ = 0x78, VK_F10_ = 0x79,
+       VK_F11_ = 0x7A, VK_F12_ = 0x7B };
 
 void fps_counter_init(fps_counter_t* c, int64_t frequency, int64_t now) {
     memset(c, 0, sizeof *c);
@@ -97,9 +97,11 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
     /* F10 alone is Windows' menu-bar key: its key-up must never reach DefWindowProc either. */
     case VK_F10_: return down && !repeat ? KEY_HOST_CHEATS : KEY_DROP;
     case VK_F4_:
-        if (!alt) return KEY_TO_GAME;
-        return down && !repeat ? KEY_HOST_CLOSE : KEY_DROP;
+        if (alt) return down && !repeat ? KEY_HOST_CLOSE : KEY_DROP;
+        return msg == MSG_KEYDOWN && !repeat ? KEY_HOST_SHOW_OBJECTIVE : KEY_DROP;
     case VK_F2_: return down && !repeat ? KEY_HOST_CONTROLS : KEY_DROP;
+    case VK_F3_: return down && !repeat ? KEY_HOST_OBJECTIVES : KEY_DROP;
+    case VK_F9_: return down && !repeat ? KEY_HOST_SNAPSHOT : KEY_DROP; /* DEBUG_SAULO: physics snapshot */
     case VK_F12_: return KEY_DROP;
     case VK_ESC:
     case VK_F1_:
@@ -609,6 +611,40 @@ pelvis_mouth_t pelvis_mouth_clamps(float pos, float vel, float height, float bio
     }
     if (!(bio_body_z >= 0.0f) && m.vel > 0.0f) m.vel = 0.0f;
     return m;
+}
+
+float hand_frame_share(float multiplier) { return multiplier > 1.0f ? 1.0f - 1.0f / multiplier : 0.0f; }
+
+static int finite3(const float v[3]) { return isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]); }
+
+void hand_carrier_step(hand_carrier_t* c, float k, float dt, const float body_pos[3], const float body_vel[3],
+                       float hand_pos[3], float hand_vel[3]) {
+    float unexplained[3], miss = 0.0f;
+    if (!(k > 0.0f && k < 1.0f) || !(dt > 0.0f) || !finite3(body_pos) || !finite3(body_vel) || !finite3(hand_pos) ||
+        !finite3(hand_vel)) {
+        c->valid = 0;
+        return;
+    }
+    if (c->valid) {
+        for (int i = 0; i < 3; i++) {
+            unexplained[i] = body_pos[i] - c->body_pos[i] - c->body_vel[i] * c->dt;
+            miss += unexplained[i] * unexplained[i];
+        }
+        if (miss <= HAND_CARRIER_JUMP_M * HAND_CARRIER_JUMP_M)
+            for (int i = 0; i < 3; i++) {
+                hand_pos[i] += k * unexplained[i];
+                hand_vel[i] += k * (body_vel[i] - c->body_vel[i]);
+            }
+    }
+    memcpy(c->body_pos, body_pos, sizeof c->body_pos);
+    memcpy(c->body_vel, body_vel, sizeof c->body_vel);
+    c->dt = dt;
+    c->valid = 1;
+}
+
+void hand_damping_shift(float k, float sign, const float body_vel[3], float hand_vel[3]) {
+    if (!(k > 0.0f)) return;
+    for (int i = 0; i < 3; i++) hand_vel[i] += sign * 0.25f * k * body_vel[i];
 }
 
 int safemode_prompt_args(uint32_t func, uint32_t type, uint32_t title_id, uint32_t text_id) {

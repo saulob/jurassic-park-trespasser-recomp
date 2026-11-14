@@ -16,8 +16,12 @@ void cheats_world(dm_world_t* w);
 uint32_t cheats_detached_from(uint32_t camera);
 /* After CInput's read (sinput = its SInput): 1 when the free camera took it and Anne must not get it. */
 int cheats_take_input(uint32_t sinput);
+/* The Movement Speed multiplier written into the player's rSpeedMultiplier now; 1 when none is. */
+float cheats_speed_factor(void);
 /* Pelvic_IDOF of the human pelvis, before Foot_IDOF reads the jump. */
 void cheats_before_pelvis(void);
+/* What the cheats ask for, whether the free camera is in use, and the player's rSpeedMultiplier (-1 unknown). */
+void cheats_watch(ch_state_t* want, int* free_camera, float* speed_real);
 /* The menu's feedback for a cheat action; NULL for an action that is not a cheat's. */
 const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch);
 

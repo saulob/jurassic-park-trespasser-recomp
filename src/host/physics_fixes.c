@@ -1,7 +1,7 @@
 /*
  * Two places where the lifted physics must keep the retail arithmetic: the human pelvis's crouch-height clamps, which
  * the x87 evaluated at the 24-bit precision the game selects for its physics, and the wave model's step, which must
- * not shrink with the frame time.
+ * not shrink with the frame time. Above 1x Movement Speed the right hand follows Anne as at 1x (host_policy.h).
  */
 #include "host.h"
 
@@ -16,6 +16,10 @@
 #define PELVIS_STATE 0x006CF198u
 #define PELVIS_STATE_STRIDE 0x300u
 #define PELVIS_MOUTH (21u * 12u)
+#define PELVIS_BODY 0u
+#define PELVIS_RIGHT_HAND (25u * 12u)
+#define DOF_BYTES 12u
+#define DOF_VELOCITY 4u
 #define PELVIS_DATA 0x006CEAB8u
 #define PELVIS_DATA_STRIDE 0xDCu
 #define PELVIS_HEIGHT (14u * 4u)
@@ -34,8 +38,18 @@
 #define WAVE_STEP_MAX 0x1Cu
 
 static recomp_func_t s_idof_lifted, s_integrate_lifted;
+static hand_carrier_t s_carrier[PELVIS_COUNT];
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
+
+/* Three consecutive DOFs (x, y, z) of the pelvis state: value or velocity. */
+static void read3(uint32_t dof, uint32_t part, float out[3]) {
+    for (uint32_t i = 0; i < 3; i++) out[i] = rdf(dof + i * DOF_BYTES + part);
+}
+
+static void write3(uint32_t dof, uint32_t part, const float v[3]) {
+    for (uint32_t i = 0; i < 3; i++) *(float*)ADDR(dof + i * DOF_BYTES + part) = v[i];
+}
 static double rdd(uint32_t va) { return *(const double*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
 
@@ -43,19 +57,37 @@ static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
  * the control word, which leaves a height clamped to 0.09 * (h - 0.2) and stored as a float below that bound: the
  * clamp then fired on every 10 ms step and zeroed the rising speed, holding the player crouched. */
 static void pelvic_idof(void) {
-    uint32_t me = MEM32(g_esp + 4), mouth, data;
-    float pos, vel;
+    uint32_t me = MEM32(g_esp + 4), state, mouth, data;
+    float pos, vel, k, dt = *(const float*)ADDR(g_esp + 8), body_pos[3], body_vel[3], hand_pos[3], hand_vel[3];
     pelvis_mouth_t fixed;
     if (g_alias_entry || me >= PELVIS_COUNT || MEM32(PELVIS_USAGE + 4u * me) != PELVIS_HUMAN) {
+        if (!g_alias_entry && me < PELVIS_COUNT) s_carrier[me].valid = 0;
         s_idof_lifted();
         return;
     }
     cheats_before_pelvis();
-    mouth = PELVIS_STATE + PELVIS_STATE_STRIDE * me + PELVIS_MOUTH;
+    state = PELVIS_STATE + PELVIS_STATE_STRIDE * me;
+    mouth = state + PELVIS_MOUTH;
     data = PELVIS_DATA + PELVIS_DATA_STRIDE * me;
     pos = rdf(mouth);
     vel = rdf(mouth + 4);
+    k = rdf(data + PELVIS_ALIVE) > 0.0f ? hand_frame_share(cheats_speed_factor()) : 0.0f;
+    read3(state + PELVIS_BODY, 0, body_pos);
+    read3(state + PELVIS_BODY, DOF_VELOCITY, body_vel);
+    read3(state + PELVIS_RIGHT_HAND, 0, hand_pos);
+    read3(state + PELVIS_RIGHT_HAND, DOF_VELOCITY, hand_vel);
+    hand_carrier_step(&s_carrier[me], k, dt, body_pos, body_vel, hand_pos, hand_vel);
+    if (s_carrier[me].valid) {
+        write3(state + PELVIS_RIGHT_HAND, 0, hand_pos);
+        hand_damping_shift(k, 1.0f, body_vel, hand_vel);
+        write3(state + PELVIS_RIGHT_HAND, DOF_VELOCITY, hand_vel);
+    }
     s_idof_lifted();
+    if (s_carrier[me].valid) {
+        read3(state + PELVIS_RIGHT_HAND, DOF_VELOCITY, hand_vel);
+        hand_damping_shift(k, -1.0f, body_vel, hand_vel);
+        write3(state + PELVIS_RIGHT_HAND, DOF_VELOCITY, hand_vel);
+    }
     if ((g_fpu_cw & FPU_PRECISION_MASK) || !(rdf(data + PELVIS_ALIVE) > 0.0f)) return;
     fixed = pelvis_mouth_clamps(pos, vel, rdf(data + PELVIS_HEIGHT),
                                 rdf(PELVIS_BIOTAG + PELVIS_BIOTAG_STRIDE * me + BIOTAG_BODY_Z), rdd(KNEE_OFFSET_VA),
