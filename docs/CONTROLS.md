@@ -6,7 +6,7 @@ instructions and the other prompts show the buttons of the device you used last.
 
 ## Keyboard and mouse
 
-The game's own bindings, changed in its Controls screen (Options > Controls, or F12 in a level). The launcher's Controls
+The game's own bindings, changed in its Controls screen (Options > Controls). The launcher's Controls
 page lists the ones the game loads (its `KeyMap`), so a remapped key shows up there and in the tutorial.
 
 | Action | Default |
@@ -30,8 +30,9 @@ page lists the ones the game loads (its `KeyMap`), so a remapped key shows up th
 | Rotate wrist | Shift + mouse left + mouse movement |
 | Pause menu | Esc |
 
-Port hotkeys: F11 windowed / borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 hint, F12 Controls,
-Ctrl+F11 cheat input.
+Port hotkeys: F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
+bindings), F11 windowed / borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 hint, Ctrl+F11 cheat input.
+A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the start of a level.
 
 ## Gamepad
 
@@ -50,9 +51,9 @@ with several connected, the one used last is in use.
 | Raise and move the hand: hold, then use the right stick | LT | L2 | L2 |
 | Grab / drop | X | Square | X |
 | Throw | Y | Triangle | Y |
-| Rotate wrist: hold, then use the right stick | LB | L1 | L1 |
-| Rotate arm: hold, then use the right stick | RB | R1 | R1 |
-| Straighten the hand | LB + RB | L1 + R1 | L1 + R1 |
+| Rotate wrist: hold with Move Hand, then use the right stick | LB + LT | L1 + L2 | L1 + L2 |
+| Rotate arm: hold with Move Hand, then use the right stick | RB + LT | R1 + L2 | R1 + L2 |
+| Straighten the hand | LB + RB + LT | L1 + R1 + L2 | L1 + R1 + L2 |
 | Stow / retrieve | D-pad up | D-pad up | D-pad up |
 | Replay voice over | D-pad down | D-pad down | D-pad down |
 | Pause menu | Menu | Options | Menu |
@@ -63,21 +64,32 @@ Every action except the pause menu and the controls card can be given another bu
 
 ### Using the hand
 
-The arm works as the original's mouse did, with the right stick in the mouse's place:
+The right stick is the mouse: the game receives its motion exactly as mouse motion, so the hand, the wrist, the arm
+and the view do what the mouse would make them do, with the same limits and the same body turn at the edge.
 
-1. Hold **LT** (L2): Anne raises her hand. While it is held, the right stick moves the hand instead of the view.
-2. Move the hand onto an object and press **X** (Square) to grab it. Press **X** again to drop it; while X is held
-   after that press, the right stick gives the drop a throw direction, as the original's right mouse button did.
+1. Hold **LT** (L2), the left mouse button's Move Hand: Anne raises her hand, and the right stick moves it as the
+   mouse does; it stays where you leave it. LT stays held through anything that pauses the game's reading for a moment
+   (a long frame, a menu), as the mouse button does.
+2. Move the hand onto an object and press **X** (Square) to grab it, with LT held or not. Press **X** again to drop
+   it. While X is held after that press, the right stick gives the drop a throw direction, as the original's right mouse button did.
 3. **Y** (Triangle) throws what the hand holds; **RT** (R2) uses it (fires a gun, swings with the right stick).
-4. Hold **LB** (L1) to rotate the wrist, or **RB** (R1) to roll it, with the right stick. Both raise the hand by
-   themselves, because the game only turns the hand while it is up. Holding both straightens the hand.
+4. With LT held, hold **LB** (L1) to rotate the wrist, or **RB** (R1) to roll it, with the right stick: the mouse's
+   Shift and Ctrl with the left button. Holding both straightens the hand.
 5. **D-pad up** stows the held item or takes the stowed one back.
+
+The hand is the game's pointer in a level: no mouse cursor is ever shown over gameplay, whichever device moves the
+hand. LT is read with a little hysteresis, so a trigger resting near its threshold does not drop and raise the hand.
+
+While X is held with the hand out, the game reaches for the object under it and crouches by itself when the object is
+low; releasing X ends the reach and Anne stands up again.
 
 ### Crouching
 
-Hold **B** (Circle) to crouch and release it to stand, as the keyboard's Z does. **L3** switches crouching on and off
-instead. Pressing B or Jump while crouching through L3 hands control back to the button: release B and Anne stands up.
-Both drive the game's single crouch command, so the two can never disagree.
+Hold **B** (Circle) to crouch and release it to stand, exactly as the keyboard's Z does (the game itself only knows a
+held crouch). **L3** is the port's on/off switch for the same command: press it to stay crouched, press it again
+to stand, with LT held or not. Pressing B or Jump while crouched through L3 hands the posture back to B: release B and Anne stands up, so a
+press and release of B always ends up standing. Opening a menu, leaving the window or switching to the keyboard also
+ends an L3 crouch.
 
 ### Menus
 
@@ -90,8 +102,13 @@ Both drive the game's single crouch command, so the two can never disagree.
 | Scroll a list | D-pad up / down past its last row |
 | Move the pointer freely | Right stick |
 
-The focused control shows the game's own hover picture and the game's pointer sits on it. In Load, A on the selected
-save loads it. In Save, a new save gets the date and time as its name, which the keyboard can still change. Videos are
+The Controls screen is drawn 1.75 times as large as the original, with wider columns, so every action and binding
+reads whole on one line at full size; its buttons, check box and binding fields work as before with the mouse and the gamepad.
+
+The focused control shows the game's own hover picture, its letters lit a brighter red than the original's dark red
+(with the mouse too), and the game's pointer sits on it. While the gamepad moves the focus no pointer is drawn,
+neither the game's nor the system's; moving the mouse, clicking or pressing a key shows it again where the mouse is.
+The right stick's free pointer is shown, since it is then used as a pointer. In Load, A on the selected save loads it. In Save, a new save gets the date and time as its name, which the keyboard can still change. Videos are
 skipped with A, B or Menu.
 
 ### Settings
@@ -123,7 +140,11 @@ Touching the controller switches a line on screen to gamepad glyphs on the next 
 key switches it back. Nothing is restarted or reloaded.
 
 In a level, **View** (Create) shows a card with every control for the device in use, and hides it again; it follows
-device switches too. The first time a controller is used in a level, a short line names that button.
+device switches too. The card is two columns (moving and the body on the left, the arm on the right), each button
+next to what it does, in text smaller than the game's own and sized to the screen, so nothing wraps or overlaps at any
+resolution or aspect ratio. It and the first-time hint (a short line naming the View button, shown the first time a
+controller is used in a level) sit below whatever the game is showing at the top of the screen and clear of the
+subtitles at the bottom; opening the card ends the hint.
 
 ### Glyph styles
 
@@ -135,6 +156,9 @@ With a gamepad in use, the game's Controls screen shows the gamepad's buttons fo
 Select and Back buttons in the lower right corner. Using the keyboard or mouse puts the game's own key names back.
 
 ## Limitations
+
+- The Controls screen's rusted panel is the game's 318x198 picture scaled up about eight times; it stays soft until an
+  HD redraw of `Controls_bg.tga` exists. Its text, fields and frames are drawn at the screen's resolution.
 
 - In menus, gamepad glyphs are drawn by the Direct3D 11 HD menus; with a menu shown in its original 640x480 form the
   game's own key names stay and the gamepad still navigates. The in-game instructions and the controls card show

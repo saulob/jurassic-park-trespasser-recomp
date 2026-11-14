@@ -50,18 +50,34 @@ int input_captured(input_state_t state);
 /* In gameplay the game reads a cursor it re-centres itself; elsewhere it follows the real one. */
 int input_cursor_virtual(input_state_t state);
 int input_hide_pointer(input_state_t state, int game_cursor_hidden);
+/* RasterBlt's source rectangle (left, top, right, bottom) kept inside its source raster: the game sizes it from a
+ * control's rect, which the host's layouts may make larger than the control's picture. 0 when nothing is left. */
+int raster_source_clip(int32_t rect[4], int32_t source_w, int32_t source_h);
+/* Last input wins: no pointer in menus while the gamepad moves the focus. */
+int input_pad_hides_pointer(input_state_t state, int pad_focus);
 /* A capture waits while a button is held outside the picture (the click that activated the window
  * on its title bar), so that drag is not pulled into the view. */
 int input_should_clip(input_state_t state, int pointer_in_view, int button_held);
+/* The one place relative pointer motion lands, the mouse's (Raw Input) and the right stick's (whole counts) alike: the
+ * virtual cursor CInput reads and re-centres, moved only while gameplay holds the pointer. 1 when it moved. */
+int pointer_add_relative(input_state_t state, long* x, long* y, long dx, long dy);
 
-typedef enum { KEY_TO_GAME, KEY_DROP, KEY_HOST_FULLSCREEN, KEY_HOST_VIDEO_TEST, KEY_HOST_CLOSE } key_action_t;
+typedef enum {
+    KEY_TO_GAME,
+    KEY_DROP,
+    KEY_HOST_FULLSCREEN,
+    KEY_HOST_VIDEO_TEST,
+    KEY_HOST_CLOSE,
+    KEY_HOST_CONTROLS
+} key_action_t;
 
-/* msg is WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP; repeat is lParam bit 30. */
+/* msg is WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP; repeat is lParam bit 30. F2 is the controls card (unused by
+ * the game: CGameWnd's key table 0x0040C220 gives it no action); F12, the game's controls window, is not passed on. */
 key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt);
-/* Esc, F1 and F12 open a window of the game over gameplay: the cursor is freed before it opens. */
+/* Esc and F1 open a window of the game over gameplay: the cursor is freed before it opens. */
 int key_opens_game_window(unsigned msg, unsigned vk, int repeat);
 
-/* CGameWnd opens its window on Esc/F1/F12 key-down, but CUIWnd::OnKey (0x0040AF50) cancels a window
+/* CGameWnd opens its window on Esc/F1 key-down, but CUIWnd::OnKey (0x0040AF50) cancels a window
  * on Esc key-up: the key-up of the press that opened a window must not reach that window. */
 typedef struct {
     unsigned vk, depth;
@@ -216,6 +232,25 @@ int safemode_value_virtual(int legacy);
  * the texture formats: 1 makes water a CRasterD3D alpha texture drawn blended (render type 3); 0 keeps
  * the software water texture. Answers 1 or 0, or -1 to leave the stored value / game default. */
 int hardware_water_policy(int hardware_renderer, int value_stored, int software_water_requested);
+
+/* The two openings CVideoWnd::Play (0x00418AE0) shows: "menu\tpassintro" before the main menu (0x0040F2BC) and
+ * "menu\newgame" after New Game (0x00415687). The credits and the ending are never openings. */
+typedef enum { INTRO_NONE, INTRO_STARTUP, INTRO_NEW_GAME } intro_video_t;
+intro_video_t intro_video_of(const char* guest_name);
+const char* intro_video_name(intro_video_t video);
+/* Skip Intro answers the game's own "NoVideo" for an opening it plays itself; the Video Test's requests still play. */
+int skip_intro_applies(int enabled, intro_video_t video, int video_test_request);
+
+/* The human pelvis's crouch height (Pel[me][MOUTH]) after Pelvic_IDOF's clamps (0x004F441D, 0x004F4442) and its ceiling
+ * check (0x004F46F2), as the x87 computes them at the 24-bit precision CPhysicsSystem::Integrate (0x004CF8A0) selects:
+ * the bounds rounded to single, so a height clamped and stored as a float never reads below its own bound again.
+ * knee, low and high: the game's constants 0.2, 0.09 and 1.1. */
+typedef struct {
+    float pos, vel;
+} pelvis_mouth_t;
+pelvis_mouth_t pelvis_mouth_clamps(float pos, float vel, float height, float bio_body_z, double knee, double low,
+                                   double high);
+
 int safemode_prompt_args(uint32_t func, uint32_t type, uint32_t title_id, uint32_t text_id);
 
 /* Lifted calls push a dummy return address, so a caller is found in pcrecomp's indirect-call ring:

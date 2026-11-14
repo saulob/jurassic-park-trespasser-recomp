@@ -129,7 +129,7 @@ a table (`game_files.cpp`): another version is one more entry with its own hash 
 replaced in one step. Booleans are written `1`/`0` and read as `1`/`on`/`yes`/`true` and `0`/`off`/`no`/`false`. A
 missing or invalid value is the default, in the launcher and the game alike. The command line overrides a setting
 for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-filter`, `--msaa`, `--vsync`,
-`--display-mode`, `--monitor`, `--window-size`, `--presentation`, `--show-fps`).
+`--display-mode`, `--monitor`, `--window-size`, `--presentation`, `--show-fps`, `--skip-intro`).
 
 | Key | Values | Default |
 |---|---|---|
@@ -145,6 +145,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `msaa` | 0, 2, 4, 8 | 4 |
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
+| `skip_intro` | 1, 0 | 0 |
 | `launcher_x`, `_y`, `_width`, `_height`, `_maximized`, `_fullscreen` | the launcher window | |
 | `settings_version` | 3 | written with every change |
 
@@ -284,6 +285,11 @@ is not part of this work.
 - **Frame rate in title** (Gameplay, as in the other ports; key `show_fps`): the title shows the renderer, FPS and
   the selected resolution (the render size with D3D11, the gameplay mode with Software or Original), which menus and
   videos do not change; Off shows only the name.
+- **Skip Intro** (Gameplay, as in Dragon's Crown Pro PC; key `skip_intro`, Off by default): the opening video before
+  the main menu (`tpassintro.smk`) and the one after New Game (`newgame.smk`) are not shown. When the game is about to
+  play one of them, its own `NoVideo` value reads 1 for that call only, so `CVideoWnd::Play` takes the game's own
+  no-video branch and returns as after the video: the main menu, or the level load, follows. The credits, the ending
+  and the Video Test still play. Read when the game starts, so a change in the launcher applies to that run.
 - **Graphics card**: DXGI adapter 0, the one the game's device uses. No adapter choice yet.
 - Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
   Direct3D 11 renderer (see the README and `[graphics]` in the log).
@@ -299,5 +305,5 @@ A dedicated ultrawide HUD, an adapter choice, an uncapped frame rate and the x64
 2. Graphics: the Render size row follows Display > Aspect ratio (16:9 1440p: 2560 × 1440; 21:9: 3440 × 1440).
 3. 4:3, 16:9, 21:9, 32:9 in turn: more world to the sides, the same height, no stretching, text readable.
 4. Render resolution 1440p, then 4K: the log's `3D render target WxH` lines show the real size.
-5. F11, Esc, F1, F12, Alt+F4 as before (F5 only opens the Video Test in the main menu); F11's choice is kept for the
-   next start.
+5. F11, Esc, F1, F2 (controls card in a level), Alt+F4 as before (F5 only opens the Video Test in the main menu; F12
+   does nothing); F11's choice is kept for the next start.

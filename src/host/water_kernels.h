@@ -16,4 +16,15 @@ void water_wave_step(void);
 /* The lifted bodies, which run the entries inside them (alias entries) these kernels do not have. */
 extern recomp_func_t water_rows_lifted, water_wave_step_lifted;
 
+/* The wave model integrates in steps of its own maximum (CWaveData::sStepMax, CSimWave2D::SetMaxStep) whatever the
+ * frame rate: the time owed (sRequireStep) is paid in whole steps and the rest carried, so the physics' disturbances,
+ * which land between two steps, reach the water as they did at the frame times it was built for. steps < 0: nothing
+ * usable to pace, the game integrates as it always did. */
+#define WATER_CATCH_UP_STEPS 4
+typedef struct {
+    int steps;
+    float step, carry;
+} water_cadence_t;
+water_cadence_t water_cadence(float required, float step_max);
+
 #endif

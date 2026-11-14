@@ -32,6 +32,18 @@ uint32_t pad_buttons_with_triggers(const pad_state_t* s, float trigger_deadzone)
     return b;
 }
 
+uint32_t pad_buttons_with_trigger_hold(const pad_state_t* s, float trigger_deadzone, uint8_t held[2]) {
+    const float value[2] = { s->lt, s->rt };
+    const uint32_t bit[2] = { JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER), JPT_PAD_BIT(JPT_PAD_RIGHT_TRIGGER) };
+    uint32_t b = s->buttons & ~(bit[0] | bit[1]);
+    for (int i = 0; i < 2; i++) {
+        if (held[i] && value[i] <= trigger_deadzone) held[i] = 0;
+        else if (!held[i] && value[i] > trigger_deadzone + PAD_TRIGGER_HOLD_MARGIN) held[i] = 1;
+        if (held[i]) b |= bit[i];
+    }
+    return b;
+}
+
 void pad_activity_reset(pad_activity_t* a) { memset(a, 0, sizeof *a); }
 
 static int crossed(uint8_t* on, float value, float off_at, float on_at) {
@@ -152,9 +164,9 @@ uint32_t pad_commands_for(const jpt_gamepad_settings_t* cfg, uint32_t buttons) {
     return commands;
 }
 
-void pad_gameplay_from(const pad_state_t* s, uint32_t buttons, const jpt_gamepad_settings_t* cfg, float dt,
-                       int crouch_toggled, pad_gameplay_t* out) {
-    float deadzone = cfg->stick_deadzone / 100.0f, mx, my, rx, ry, m, forward;
+void pad_gameplay_from(const pad_state_t* s, uint32_t buttons, const jpt_gamepad_settings_t* cfg, float dt, int crouch,
+                       pad_gameplay_t* out) {
+    float deadzone = cfg->stick_deadzone / 100.0f, mx, my, rx, ry, m, forward, invert = cfg->invert_y ? -1.0f : 1.0f;
     memset(out, 0, sizeof *out);
     dt = clampf(dt, 0.0f, PAD_MAX_FRAME_SECONDS);
     pad_stick_shape(s->lx, s->ly, deadzone, &mx, &my);
@@ -169,22 +181,42 @@ void pad_gameplay_from(const pad_state_t* s, uint32_t buttons, const jpt_gamepad
         ry *= k;
     }
     out->look_x = rx * PAD_LOOK_YAW_RATE * (cfg->look_x / 100.0f) * dt;
-    out->look_y = -ry * PAD_LOOK_PITCH_RATE * (cfg->look_y / 100.0f) * dt * (cfg->invert_y ? -1.0f : 1.0f);
-    out->held = pad_commands_for(cfg, buttons) | (crouch_toggled ? JPT_CMD_CROUCH : 0u);
-    /* The game turns the wrist only while the hand is up (CPlayer: inside bPressed(uCMD_HAND)). */
-    if (out->held & (JPT_CMD_WRIST | JPT_CMD_ARM)) out->held |= JPT_CMD_HAND;
+    out->look_y = -ry * PAD_LOOK_PITCH_RATE * (cfg->look_y / 100.0f) * dt * invert;
+    out->held = pad_commands_for(cfg, buttons) | (crouch ? JPT_CMD_CROUCH : 0u);
 }
 
 void pad_merge_sinput(pad_sinput_t* in, const pad_gameplay_t* pad, uint32_t pad_hit) {
-    uint32_t state = in->state | pad->held;
-    float k = (state & JPT_CMD_HAND) ? PAD_HAND_LOOK_SCALE : 1.0f;
-    in->rotate_x += pad->look_x * k;
-    in->rotate_y += pad->look_y * k;
     in->move_x = clampf(in->move_x + pad->move_x, -PAD_MOVE_SIDE, PAD_MOVE_SIDE);
     in->move_y = clampf(in->move_y + pad->move_y, -PAD_MOVE_BACK, PAD_MOVE_FORWARD);
-    in->state = state;
+    in->state |= pad->held;
     in->hit |= pad_hit;
 }
+
+static int whole_counts(float* rest, float counts) {
+    int n;
+    if (counts == 0.0f) {
+        *rest = 0.0f;
+        return 0;
+    }
+    *rest += counts;
+    n = (int)*rest;
+    *rest -= (float)n;
+    return n;
+}
+
+void pad_mouse_counts(pad_mouse_t* m, float look_x, float look_y, int invert_mouse, int* dx, int* dy) {
+    float down = -look_y / PAD_RADIANS_PER_COUNT;
+    *dx = whole_counts(&m->rest_x, look_x / PAD_RADIANS_PER_COUNT);
+    *dy = whole_counts(&m->rest_y, invert_mouse ? -down : down);
+}
+
+int pad_crouch_update(pad_crouch_t* c, int hold_down, int toggle_pressed, int hold_pressed, int jump_pressed) {
+    if (hold_pressed || jump_pressed) c->latched = 0;
+    if (toggle_pressed) c->latched = !c->latched;
+    return hold_down || c->latched;
+}
+
+void pad_crouch_stand(pad_crouch_t* c) { c->latched = 0; }
 
 void pad_edges_reset(pad_edges_t* e, uint32_t held_now) {
     e->previous = 0;
@@ -198,6 +230,51 @@ uint32_t pad_edges_update(pad_edges_t* e, uint32_t held, uint32_t* pressed) {
     *pressed = effective & ~e->previous;
     e->previous = effective;
     return effective;
+}
+
+void pad_edges_resume(pad_edges_t* e, uint32_t held_now) {
+    e->previous &= held_now;
+    e->blocked = held_now & ~e->previous;
+}
+
+pad_read_t pad_read_kind(int first, int left_gameplay, int focused, double since_last) {
+    if (first || !focused || since_last > PAD_READ_GAP_SECONDS) return PAD_READ_RESTART;
+    return left_gameplay ? PAD_READ_RESUME : PAD_READ_NEXT;
+}
+
+int pad_bound(const jpt_gamepad_settings_t* cfg, int action, uint32_t buttons) {
+    int control = action >= 0 && action < JPT_ACT_COUNT ? cfg->bind[action] : -1;
+    return control >= 0 && control < JPT_PAD_CONTROL_COUNT && (buttons & JPT_PAD_BIT(control));
+}
+
+void pad_play_before(pad_play_t* p, pad_read_t kind, const pad_state_t* s, uint32_t buttons,
+                     const jpt_gamepad_settings_t* cfg, float dt, int invert_mouse, int* dx, int* dy) {
+    uint32_t held;
+    int crouch;
+    if (kind != PAD_READ_NEXT) pad_edges_resume(&p->edges, buttons);
+    if (kind == PAD_READ_RESTART) {
+        pad_crouch_stand(&p->crouch);
+        memset(&p->mouse, 0, sizeof p->mouse);
+        dt = 0.0f;
+    }
+    held = pad_edges_update(&p->edges, buttons, &p->pressed);
+    crouch = pad_crouch_update(&p->crouch, pad_bound(cfg, JPT_ACT_CROUCH, held),
+                               pad_bound(cfg, JPT_ACT_CROUCH_TOGGLE, p->pressed),
+                               pad_bound(cfg, JPT_ACT_CROUCH, p->pressed), pad_bound(cfg, JPT_ACT_JUMP, p->pressed));
+    pad_gameplay_from(s, held, cfg, dt, crouch, &p->frame);
+    pad_mouse_counts(&p->mouse, p->frame.look_x, p->frame.look_y, invert_mouse, dx, dy);
+}
+
+void pad_play_release(pad_play_t* p) {
+    pad_crouch_stand(&p->crouch);
+    memset(&p->mouse, 0, sizeof p->mouse);
+}
+
+int pad_play_after(const pad_play_t* p, const jpt_gamepad_settings_t* cfg, pad_sinput_t* in) {
+    const pad_gameplay_t* f = &p->frame;
+    if (!f->held && !p->pressed && f->move_x == 0.0f && f->move_y == 0.0f) return 0;
+    pad_merge_sinput(in, f, pad_commands_for(cfg, p->pressed));
+    return 1;
 }
 
 static int overlaps(int a0, int a1, int b0, int b1) { return a0 < b1 && b0 < a1; }

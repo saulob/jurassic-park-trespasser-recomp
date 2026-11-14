@@ -47,37 +47,253 @@ static const phrase_rule_t k_rules[] = {
     { "Press 'A' and 'D' to step left and right", "Press <LEFT> and <RIGHT> to step left and right",
       "Push <LEFT> or <RIGHT> to step left and right" },
     { "press 'Z' to crouch", "press <CROUCH> to crouch", "hold <CROUCH> to crouch" },
+    { "press and hold 'W'", "press and hold <RUN>", "push <RUN> forward" },
+    { "hold shift + left mouse button", "hold <WRIST> + <HAND>", "hold <HAND> + <WRIST>" },
+    { "hold Shift + left mouse button", "hold <WRIST> + <HAND>", "hold <HAND> + <WRIST>" },
+    { "hold ctrl + left mouse button", "hold <ARM> + <HAND>", "hold <HAND> + <ARM>" },
+    { "hold Ctrl + left mouse button", "hold <ARM> + <HAND>", "hold <HAND> + <ARM>" },
+    { "shift + left mouse button", "<WRIST> + <HAND>", "<HAND> + <WRIST>" },
+    { "Shift + left mouse button", "<WRIST> + <HAND>", "<HAND> + <WRIST>" },
+    { "ctrl + left mouse button", "<ARM> + <HAND>", "<HAND> + <ARM>" },
+    { "Ctrl + left mouse button", "<ARM> + <HAND>", "<HAND> + <ARM>" },
     { "'Q'", "<JUMP>", "<JUMP>" },
     { "'Z'", "<CROUCH>", "<CROUCH>" },
+    { "'W'", "<RUN>", "<RUN>" },
+    { "'S'", "<WALK>", "<WALK>" },
+    { "'X'", "<BACKUP>", "<BACKUP>" },
+    { "'A'", "<LEFT>", "<LEFT>" },
+    { "'D'", "<RIGHT>", "<RIGHT>" },
+    { "'E'", "<STOW>", "<STOW>" },
+    { "'F'", "<THROW>", "<THROW>" },
+    { "'R'", "<REPLAY>", "<REPLAY>" },
     { "by moving the mouse", NULL, "with <LOOK>" },
+    { "by moving your mouse", NULL, "with <LOOK>" },
+    { "moving the mouse", NULL, "moving <LOOK>" },
+    { "moving your mouse", NULL, "moving <LOOK>" },
     { "move the mouse", NULL, "move <LOOK>" },
+    { "move your mouse", NULL, "move <LOOK>" },
+    { "Move the mouse", NULL, "Move <LOOK>" },
+    { "Move your mouse", NULL, "Move <LOOK>" },
     { "the left mouse button", "<HAND>", "<HAND>" },
     { "the right mouse button", "<GRAB>", "<GRAB>" },
+    { "left mouse button", "<HAND>", "<HAND>" },
+    { "right mouse button", "<GRAB>", "<GRAB>" },
     { "the space bar", "<USE>", "<USE>" },
     { "space bar", "<USE>", "<USE>" },
 };
 
 #define CARD_MARKUP "<CARD>"
+#define HINT_MARKUP "<CONTROLS> View Controls"
+#define GAMEPAD_CARD_TITLE "<CONTROLS> Controls"
 
-static const char k_card_gamepad[] =
-    "<MOVE> Move     <LOOK> Look     <JUMP> Jump\r"
-    "<CROUCH> Crouch (hold)     <CROUCH_TOGGLE> Crouch on/off\r"
-    "<HAND> + <LOOK> Raise and move the hand\r"
-    "<GRAB> Grab / drop     <USE> Use / fire     <THROW> Throw\r"
-    "<WRIST> + <LOOK> Rotate wrist     <ARM> + <LOOK> Rotate arm\r"
-    "<STOW> Stow / retrieve     <REPLAY> Replay voice     <PAUSE> Menu";
+static const jpt_card_row_t k_rows_gamepad[] = {
+    { "<MOVE>", "Move" },
+    { "<LOOK>", "Look" },
+    { "<JUMP>", "Jump" },
+    { "<CROUCH>", "Crouch (hold)" },
+    { "<CROUCH_TOGGLE>", "Crouch on/off" },
+    { "<REPLAY>", "Replay voice" },
+    { "<PAUSE>", "Menu" },
+    { "<HAND> + <LOOK>", "Move hand" },
+    { "<GRAB>", "Grab / drop" },
+    { "<USE>", "Use / fire" },
+    { "<THROW>", "Throw" },
+    { "<HAND> + <WRIST> + <LOOK>", "Rotate wrist" },
+    { "<HAND> + <ARM> + <LOOK>", "Rotate arm" },
+    { "<STOW>", "Stow / retrieve" },
+};
 
-static const char k_card_keyboard[] =
-    "<RUN> Run     <WALK> Walk     <BACKUP> Back     <LEFT> <RIGHT> Step\r"
-    "<JUMP> Jump     <CROUCH> Crouch (hold)     <LOOK> Look\r"
-    "<HAND> + <LOOK> Raise and move the hand\r"
-    "<HAND> + <GRAB> Grab     <GRAB> Drop     <USE> Use / fire     <THROW> Throw\r"
-    "<WRIST> + <HAND> + <LOOK> Rotate wrist     <ARM> + <HAND> + <LOOK> Rotate arm\r"
-    "<STOW> Stow / retrieve     <REPLAY> Replay voice     <PAUSE> Menu";
+static const jpt_card_row_t k_rows_keyboard[] = {
+    { "<RUN>", "Run" },
+    { "<WALK>", "Walk" },
+    { "<BACKUP>", "Back up" },
+    { "<LEFT> <RIGHT>", "Step left / right" },
+    { "<JUMP>", "Jump" },
+    { "<CROUCH>", "Crouch (hold)" },
+    { "<LOOK>", "Look" },
+    { "<REPLAY>", "Replay voice" },
+    { "<PAUSE>", "Menu" },
+    { "<HAND> + <LOOK>", "Raise and move the hand" },
+    { "<HAND> + <GRAB>", "Grab" },
+    { "<GRAB>", "Drop" },
+    { "<USE>", "Use / fire" },
+    { "<THROW>", "Throw" },
+    { "<WRIST> + <HAND> + <LOOK>", "Rotate wrist" },
+    { "<ARM> + <HAND> + <LOOK>", "Rotate arm" },
+    { "<STOW>", "Stow / retrieve" },
+};
 
-const char* jpt_prompt_controls_card(int gamepad) { return gamepad ? k_card_gamepad : k_card_keyboard; }
+static const jpt_card_t k_cards[2] = {
+    { "Controls", k_rows_keyboard, (int)(sizeof k_rows_keyboard / sizeof k_rows_keyboard[0]), 9 },
+    { GAMEPAD_CARD_TITLE, k_rows_gamepad, (int)(sizeof k_rows_gamepad / sizeof k_rows_gamepad[0]), 7 },
+};
 
-const char* jpt_prompt_controls_hint(void) { return "<CONTROLS> Controls"; }
+static const jpt_card_t k_hints[2] = { { HINT_MARKUP, NULL, 0, 0 }, { HINT_MARKUP, NULL, 0, 0 } };
+
+const jpt_card_t* jpt_prompt_card(int gamepad) { return &k_cards[gamepad ? 1 : 0]; }
+
+const jpt_card_t* jpt_prompt_hint_card(int gamepad) { return &k_hints[gamepad ? 1 : 0]; }
+
+const char* jpt_prompt_controls_card(int gamepad) {
+    static char flat[2][1024];
+    const jpt_card_t* c = jpt_prompt_card(gamepad);
+    char* out = flat[gamepad ? 1 : 0];
+    size_t used;
+    if (out[0]) return out;
+    used = (size_t)snprintf(out, sizeof flat[0], "%s", c->title);
+    for (int i = 0; i < c->count && used < sizeof flat[0]; i++)
+        used += (size_t)snprintf(out + used, sizeof flat[0] - used, "\r%s %s", c->rows[i].binding, c->rows[i].action);
+    return out;
+}
+
+const char* jpt_prompt_controls_hint(void) { return HINT_MARKUP; }
+
+int jpt_prompt_panel_kind(const char* text) {
+    if (!text) return JPT_PANEL_NONE;
+    if (!strcmp(text, CARD_MARKUP)) return JPT_PANEL_CARD;
+    if (!strcmp(text, HINT_MARKUP)) return JPT_PANEL_HINT;
+    return JPT_PANEL_NONE;
+}
+
+int jpt_card_line_h(int h) { return h + (h * 3 / 10 > 2 ? h * 3 / 10 : 2); }
+static int card_pair_gap(int h) { return h / 2 > 4 ? h / 2 : 4; }
+static int card_column_gap(int h) { return h * 2 > 12 ? h * 2 : 12; }
+static int card_title_gap(int h) { return h * 6 / 10 > 4 ? h * 6 / 10 : 4; }
+
+typedef struct {
+    int binding, action, rows;
+} card_column_t;
+
+static int card_split(const jpt_card_metrics_t* m, int columns) {
+    return columns >= 2 && m->first_column > 0 && m->first_column < m->count ? m->first_column : m->count;
+}
+
+static void card_columns(const jpt_card_metrics_t* m, int columns, card_column_t col[2]) {
+    int split = card_split(m, columns);
+    memset(col, 0, sizeof(card_column_t) * 2);
+    for (int i = 0; i < m->count && i < JPT_CARD_MAX_ROWS; i++) {
+        card_column_t* c = &col[i < split ? 0 : 1];
+        if (m->binding_w[i] > c->binding) c->binding = m->binding_w[i];
+        if (m->action_w[i] > c->action) c->action = m->action_w[i];
+        c->rows++;
+    }
+}
+
+static int column_w(const card_column_t* c, int h) { return c->rows ? c->binding + card_pair_gap(h) + c->action : 0; }
+
+static int columns_w(const card_column_t col[2], int h) {
+    return column_w(&col[0], h) + (col[1].rows ? card_column_gap(h) + column_w(&col[1], h) : 0);
+}
+
+void jpt_card_size(const jpt_card_metrics_t* m, int text_h, int columns, int* w, int* h) {
+    card_column_t col[2];
+    int rows, width;
+    card_columns(m, columns, col);
+    width = columns_w(col, text_h);
+    if (m->title_w > width) width = m->title_w;
+    rows = col[0].rows > col[1].rows ? col[0].rows : col[1].rows;
+    *w = width;
+    *h = (m->title_w > 0 ? text_h : 0) + (m->title_w > 0 && rows ? card_title_gap(text_h) : 0) +
+         (rows ? (rows - 1) * jpt_card_line_h(text_h) + text_h : 0);
+}
+
+int jpt_card_place(const jpt_card_metrics_t* m, int text_h, int columns, jpt_box_t area, jpt_card_layout_t* out) {
+    card_column_t col[2];
+    int w, h, left, rows_top, split, column_left[2];
+    memset(out, 0, sizeof *out);
+    if (!m || text_h <= 0 || m->count < 0 || m->count > JPT_CARD_MAX_ROWS) return 0;
+    card_columns(m, columns, col);
+    jpt_card_size(m, text_h, columns, &w, &h);
+    left = area.left + (area.right - area.left - w) / 2;
+    out->text_h = text_h;
+    out->line_h = jpt_card_line_h(text_h);
+    out->columns = col[1].rows ? 2 : 1;
+    out->box.left = left;
+    out->box.top = area.top;
+    out->box.right = left + w;
+    out->box.bottom = area.top + h;
+    out->title_x = left + (w - m->title_w) / 2;
+    out->title_y = area.top;
+    rows_top = area.top + (m->title_w > 0 ? text_h + card_title_gap(text_h) : 0);
+    column_left[0] = left + (w - columns_w(col, text_h)) / 2;
+    column_left[1] = column_left[0] + column_w(&col[0], text_h) + card_column_gap(text_h);
+    split = card_split(m, columns);
+    for (int i = 0; i < m->count; i++) {
+        int c = i < split ? 0 : 1, row = c ? i - split : i;
+        out->binding_x[i] = column_left[c] + col[c].binding - m->binding_w[i];
+        out->action_x[i] = column_left[c] + col[c].binding + card_pair_gap(text_h);
+        out->row_y[i] = rows_top + row * out->line_h;
+    }
+    return w <= area.right - area.left && h <= area.bottom - area.top;
+}
+
+void jpt_card_area(int left, int top, int w, int h, int game_text_h, int band, jpt_box_t* area, int* max_h) {
+    int side = w * JPT_CARD_SIDE_PERCENT / 100 > JPT_CARD_MARGIN ? w * JPT_CARD_SIDE_PERCENT / 100 : JPT_CARD_MARGIN;
+    int text = h * JPT_CARD_TEXT_PERMILLE / 1000;
+    area->left = left + side;
+    area->right = left + w - side;
+    area->top = top + band;
+    area->bottom = top + h - (JPT_CARD_MARGIN + 2 * game_text_h);
+    if (area->bottom - area->top < h / 3) area->bottom = top + h - JPT_CARD_MARGIN;
+    if (text < JPT_CARD_MIN_TEXT) text = JPT_CARD_MIN_TEXT;
+    if (game_text_h > 0 && text > game_text_h) text = game_text_h;
+    if (text < JPT_CARD_FLOOR_TEXT) text = JPT_CARD_FLOOR_TEXT;
+    *max_h = text;
+}
+
+int jpt_card_band_floor(int game_text_h) { return JPT_CARD_MARGIN + game_text_h + game_text_h / 4; }
+
+int jpt_card_fit(jpt_card_measure_fn measure, void* ctx, int max_h, int min_h, jpt_box_t area, jpt_card_metrics_t* m,
+                 jpt_card_layout_t* out) {
+    int columns = 2, h, measured;
+    if (min_h < 1) min_h = 1;
+    if (max_h < min_h) max_h = min_h;
+    if (!measure(ctx, max_h, m)) return -1;
+    measured = max_h;
+    h = jpt_card_choose(m, max_h, max_h, area, &columns);
+    if (h < min_h) h = min_h;
+    for (;;) {
+        if (h != measured) {
+            if (!measure(ctx, h, m)) return -1;
+            measured = h;
+        }
+        if (jpt_card_place(m, h, columns, area, out)) break;
+        if (h > min_h) h--;
+        else if (columns == 2) columns = 1;
+        else return 0;
+    }
+    /* text widths do not scale linearly with the size */
+    while (h < max_h) {
+        jpt_card_layout_t larger;
+        if (!measure(ctx, h + 1, m)) return -1;
+        if (!jpt_card_place(m, h + 1, columns, area, &larger)) {
+            if (!measure(ctx, h, m)) return -1;
+            break;
+        }
+        *out = larger;
+        h++;
+    }
+    return 1;
+}
+
+int jpt_card_choose(const jpt_card_metrics_t* ref, int ref_h, int max_h, jpt_box_t area, int* columns) {
+    int best_h = 0, best_c = 1, aw = area.right - area.left, ah = area.bottom - area.top;
+    for (int c = 2; c >= 1; c--) {
+        int w, h, fit;
+        double k;
+        jpt_card_size(ref, ref_h, c, &w, &h);
+        if (w <= 0 || h <= 0 || aw <= 0 || ah <= 0) continue;
+        k = (double)aw / w < (double)ah / h ? (double)aw / w : (double)ah / h;
+        fit = (int)(ref_h * k);
+        if (fit > max_h) fit = max_h;
+        if (!best_h || fit > best_h * 23 / 20) {
+            best_h = fit;
+            best_c = c;
+        }
+    }
+    *columns = best_c;
+    return best_h;
+}
 
 static const token_def_t* token_at(const char* p, size_t* length) {
     if (*p != '<') return NULL;
@@ -174,7 +390,10 @@ static void resolve(const token_def_t* def, const jpt_prompt_context_t* c, jpt_p
         if (c->gamepad) pad_token(c, JPT_PAD_START, JPT_DIR_NONE, 0, t);
         else key_token(0x1B, t);
         break;
-    case JPT_TOKEN_CONTROLS: pad_token(c, JPT_PAD_BACK, JPT_DIR_NONE, 0, t); break;
+    case JPT_TOKEN_CONTROLS:
+        if (c->gamepad) pad_token(c, JPT_PAD_BACK, JPT_DIR_NONE, 0, t);
+        else key_token(0x71, t); /* F2 */
+        break;
     }
 }
 
@@ -297,12 +516,12 @@ static const guide_def_t k_guide_gamepad[] = {
     { "<CROUCH_TOGGLE>", "Crouch on/off" },
     { "<USE>", "Use / Fire" },
     { "<HAND> + <LOOK>", "Raise and move the hand" },
-    { "<GRAB>", "Grab / Drop (hand raised to grab)" },
+    { "<GRAB>", "Grab / Drop" },
     { "<THROW>", "Throw" },
     { "<STOW>", "Stow / Retrieve" },
-    { "<WRIST> + <LOOK>", "Rotate wrist" },
-    { "<ARM> + <LOOK>", "Rotate arm" },
-    { "<WRIST> + <ARM>", "Straighten the hand" },
+    { "<WRIST> + <HAND> + <LOOK>", "Rotate wrist" },
+    { "<ARM> + <HAND> + <LOOK>", "Rotate arm" },
+    { "<WRIST> + <ARM> + <HAND>", "Straighten the hand" },
     { "<REPLAY>", "Replay voice over" },
     { "<PAUSE>", "Pause menu" },
     { "<CONTROLS>", "Show these controls in the game" },
@@ -328,6 +547,7 @@ static const guide_def_t k_guide_keyboard[] = {
     { "<ARM> + <HAND> + <LOOK>", "Rotate arm" },
     { "<WRIST> + <HAND> + <LOOK>", "Rotate wrist" },
     { "<PAUSE>", "Pause menu" },
+    { "<CONTROLS>", "Show these controls in the game" },
 };
 
 int jpt_controls_guide(const jpt_prompt_context_t* c, jpt_guide_row_t* rows, int max_rows) {

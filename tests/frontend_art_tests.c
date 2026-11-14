@@ -199,6 +199,47 @@ static void test_cache(void) {
     fa_cache_destroy(c);
 }
 
+static uint16_t rgb565(int r, int g, int b) { return (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)); }
+
+/* A 40x24 plaque: grey plate, a 16x8 letter block (black normally, dark red on hover) and a rust speck in both. */
+static void test_hover_lift(void) {
+    enum { W = 40, H = 24 };
+    static uint16_t normal[W * H], hover[W * H];
+    fa_source_t s;
+    fa_bitmap_t plain, lifted;
+    fa_cache_t* c;
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            int letter = x >= 12 && x < 28 && y >= 8 && y < 16, rust = x >= 4 && x < 6 && y >= 10 && y < 12;
+            normal[y * W + x] = letter ? rgb565(16, 16, 16) : rust ? rgb565(130, 70, 30) : rgb565(128, 128, 128);
+            hover[y * W + x] = letter ? rgb565(80, 24, 12) : rust ? rgb565(130, 70, 30) : rgb565(128, 128, 128);
+        }
+    s = source(hover, W, H, 0, 77);
+    s.normal = normal;
+    s.normal_pitch = W;
+    CHECK(fa_resample16(&s, NULL, W, H, 0, &plain) && fa_resample16(&s, NULL, W, H, FA_HOVER_LIFT, &lifted), "resample");
+    if (plain.px && lifted.px) {
+        uint32_t centre = lifted.px[12 * W + 20], before = plain.px[12 * W + 20];
+        CHECK(channel(centre, 16) > 190 && channel(centre, 8) < 80 && channel(centre, 16) > channel(before, 16) + 80,
+              "the hover lettering is not bright red (%08X, was %08X)", centre, before);
+        CHECK(lifted.px[11 * W + 4] == plain.px[11 * W + 4], "rust the normal picture also has is changed");
+        CHECK(lifted.px[2 * W + 2] == plain.px[2 * W + 2] && lifted.px[20 * W + 36] == plain.px[20 * W + 36],
+              "the plate away from the letters is changed");
+    }
+    fa_bitmap_free(&plain);
+    fa_bitmap_free(&lifted);
+    s.normal = NULL;
+    CHECK(fa_resample16(&s, NULL, W, H, FA_HOVER_LIFT, &lifted), "no normal picture");
+    if (lifted.px) CHECK(channel(lifted.px[12 * W + 20], 16) < 100, "without its normal picture the hover is lifted");
+    fa_bitmap_free(&lifted);
+    c = fa_cache_create(1 << 20);
+    s.normal = normal;
+    fa_cache_begin(c);
+    CHECK(fa_cache_get16(c, &s, NULL, W, H, FA_DEDITHER) != fa_cache_get16(c, &s, NULL, W, H, FA_DEDITHER | FA_HOVER_LIFT),
+          "the lifted hover shares the plain one's cache entry");
+    fa_cache_destroy(c);
+}
+
 static void put16(uint8_t* p, unsigned v) {
     p[0] = (uint8_t)v;
     p[1] = (uint8_t)(v >> 8);
@@ -285,6 +326,7 @@ void frontend_art_tests(int* checks, int* failures) {
     test_shrink_and_part();
     test_blit();
     test_cache();
+    test_hover_lift();
     test_tga();
     test_layer_view();
     test_level_pictures();

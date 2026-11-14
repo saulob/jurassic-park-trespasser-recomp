@@ -101,7 +101,7 @@ static struct {
     int last_move_valid;
     POINT cursor;
     POINT pad_at;
-    int pad_cursor;
+    int pad_cursor, pad_focus;
     POINT menu_mouse;
     int menu_mouse_valid;
     HWND capture;
@@ -393,9 +393,13 @@ static void show_client_cursor(void) {
     SetCursor(cursor ? cursor : LoadCursorA(NULL, (LPCSTR)IDC_ARROW));
 }
 
+static int pointer_hidden(void) {
+    return input_hide_pointer(s.state, game_cursor_hidden()) || input_pad_hides_pointer(s.state, s.pad_focus);
+}
+
 static void refresh_pointer_shape(void) {
     if (!pointer_over_view()) return;
-    if (input_hide_pointer(s.state, game_cursor_hidden())) SetCursor(NULL);
+    if (pointer_hidden()) SetCursor(NULL);
     else show_client_cursor();
 }
 
@@ -487,6 +491,10 @@ static void update_input(const char* why) {
         s.menu_mouse_valid = 0;
         if (input_cursor_virtual(next)) s.pad_cursor = 0;
         s.state = next;
+        refresh_pointer_shape();
+    }
+    if (gamepad_menu_focus() != s.pad_focus) {
+        s.pad_focus = !s.pad_focus;
         refresh_pointer_shape();
     }
     apply_clip();
@@ -707,10 +715,7 @@ static POINT game_cursor(void) {
 }
 
 static void add_relative(LONG dx, LONG dy) {
-    if (!input_captured(s.state) || (!dx && !dy)) return;
-    s.cursor.x += dx;
-    s.cursor.y += dy;
-    s.relative_moves++;
+    if (pointer_add_relative(s.state, &s.cursor.x, &s.cursor.y, dx, dy)) s.relative_moves++;
 }
 
 int window_host_input_focused(void) {
@@ -727,6 +732,8 @@ void window_host_set_pad_cursor(int x, int y) {
 }
 
 void window_host_release_pad_cursor(void) { s.pad_cursor = 0; }
+
+void window_host_pad_relative(int dx, int dy) { add_relative(dx, dy); }
 
 int window_host_game_cursor(int* x, int* y) {
     POINT p;
@@ -834,7 +841,12 @@ static void read_raw_input(HRAWINPUT handle) {
 }
 
 static void log_key(UINT msg, WPARAM vk, LPARAM lparam, const char* fate) {
-    const char* name = vk == VK_ESCAPE ? "Esc" : vk == VK_F1 ? "F1" : vk == VK_F12 ? "F12" : vk == VK_F11 ? "F11" : NULL;
+    const char* name = vk == VK_ESCAPE ? "Esc"
+                       : vk == VK_F1   ? "F1"
+                       : vk == VK_F2   ? "F2"
+                       : vk == VK_F12  ? "F12"
+                       : vk == VK_F11  ? "F11"
+                                       : NULL;
     if (!name || s.key_lines >= KEY_LOG_LIMIT) return;
     if (++s.key_lines == KEY_LOG_LIMIT) {
         host_log("input", "key line limit reached");
@@ -980,14 +992,14 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     key_action_t action = key_policy(msg, (unsigned)wparam, repeat, ctrl, alt);
     guest_ui_view_t g;
     *handled = 1;
-    if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !repeat && action == KEY_TO_GAME &&
-        ((lparam >> 16) & 0xFF) != PAD_SCAN_CODE)
+    if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !repeat &&
+        (action == KEY_TO_GAME || action == KEY_HOST_CONTROLS) && ((lparam >> 16) & 0xFF) != PAD_SCAN_CODE)
         gamepad_note_keyboard();
     if (msg == WM_KEYDOWN || msg == WM_KEYUP) guest_ui_probe(&g);
     if (msg == WM_KEYDOWN) open_press_keydown(&s.open_press, (unsigned)wparam, repeat, g.ui == GUEST_UI_GAMEPLAY, g.depth);
     if (msg == WM_KEYUP && open_press_keyup(&s.open_press, (unsigned)wparam, g.depth)) {
         log_key(msg, wparam, lparam, "kept from the window its own key-down opened");
-        input_log("%s key-up of the press that opened %s consumed", wparam == VK_ESCAPE ? "Esc" : "F1/F12", ui_text(&g));
+        input_log("%s key-up of the press that opened %s consumed", wparam == VK_ESCAPE ? "Esc" : "F1", ui_text(&g));
         return 0;
     }
     if (input_captured(s.state) && key_opens_game_window(msg, (unsigned)wparam, repeat)) {
@@ -1005,9 +1017,17 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     case KEY_HOST_CLOSE:
         request_close(window, "Alt+F4");
         return 0;
+    case KEY_HOST_CONTROLS:
+        log_key(msg, wparam, lparam, "host controls card (in a level)");
+        gamepad_controls_key();
+        return 0;
     case KEY_DROP:
         if (repeat) s.dropped_repeats++;
-        if (wparam != VK_F5 && wparam != VK_F11) log_key(msg, wparam, lparam, "auto-repeat dropped");
+        if (wparam == VK_F12) {
+            if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "dropped (Controls is F2)");
+        } else if (wparam != VK_F5 && wparam != VK_F11 && wparam != VK_F2) {
+            log_key(msg, wparam, lparam, "auto-repeat dropped");
+        }
         return 0;
     default:
         log_key(msg, wparam, lparam, wparam == VK_F11 ? "game (Ctrl+F11)" : "game");
@@ -1087,7 +1107,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         break;
     case WM_SETCURSOR:
         if (LOWORD(lparam) == HTCLIENT && ((HWND)wparam == window || (HWND)wparam == s.surface)) {
-            if (pointer_over_view() && input_hide_pointer(s.state, game_cursor_hidden())) SetCursor(NULL);
+            if (pointer_over_view() && pointer_hidden()) SetCursor(NULL);
             else show_client_cursor();
             return TRUE;
         }
@@ -1208,8 +1228,8 @@ static void attach(HWND window) {
     layout_surface();
     host_log("window", "game window 0x%08X: resizable, centered, F11 toggles borderless full screen; "
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
-    host_log("hotkeys", "F1 Hint | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | "
-             "Alt+F4 Exit");
+    host_log("hotkeys", "F1 Hint | F2 Controls | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | "
+             "Esc Menu | Alt+F4 Exit");
     register_raw_input(window);
     if (s.cfg.borderless) {
         enter_fullscreen();
@@ -1516,6 +1536,6 @@ void shim_GetForegroundWindow(void) {
 
 void window_host_input_summary(void) {
     host_log("input", "summary: final state %s, %lu gameplay captures, %lu relative moves, %lu auto-repeated "
-             "Esc/F1/F12/F5/F11 key-downs dropped", input_state_name(s.state), s.captures, s.relative_moves,
+             "Esc/F1/F2/F5/F11 key-downs dropped", input_state_name(s.state), s.captures, s.relative_moves,
              s.dropped_repeats);
 }

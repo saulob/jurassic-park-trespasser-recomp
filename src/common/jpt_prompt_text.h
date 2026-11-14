@@ -22,7 +22,7 @@ typedef enum {
     JPT_TOKEN_LOOK,      /* the mouse, or the right stick */
     JPT_TOKEN_MOVE,      /* W/A/S/D, or the left stick */
     JPT_TOKEN_PAUSE,     /* Esc, or Start */
-    JPT_TOKEN_CONTROLS   /* the port's controls card: the gamepad's View/Back button */
+    JPT_TOKEN_CONTROLS   /* the port's controls card: F2, or the gamepad's View/Back button */
 } jpt_token_kind_t;
 
 typedef struct {
@@ -55,6 +55,67 @@ int jpt_prompt_text_plain(const char* text, const jpt_prompt_context_t* c, char*
  * button opening it. */
 const char* jpt_prompt_controls_card(int gamepad);
 const char* jpt_prompt_controls_hint(void);
+
+/* The controls card, laid out by the host rather than the game's word wrap. */
+typedef struct {
+    const char* binding; /* <TOKEN> text */
+    const char* action;
+} jpt_card_row_t;
+
+typedef struct {
+    const char* title;           /* <TOKEN> text; "" for none */
+    const jpt_card_row_t* rows;
+    int count;                   /* rows in all */
+    int first_column;            /* rows in the first column */
+} jpt_card_t;
+
+const jpt_card_t* jpt_prompt_card(int gamepad);
+const jpt_card_t* jpt_prompt_hint_card(int gamepad);
+
+enum { JPT_PANEL_NONE, JPT_PANEL_CARD, JPT_PANEL_HINT };
+int jpt_prompt_panel_kind(const char* text);
+
+#define JPT_CARD_MAX_ROWS 24
+
+typedef struct {
+    int count, first_column;
+    int title_w;
+    int binding_w[JPT_CARD_MAX_ROWS];
+    int action_w[JPT_CARD_MAX_ROWS];
+} jpt_card_metrics_t;
+
+typedef struct {
+    int left, top, right, bottom;
+} jpt_box_t;
+
+typedef struct {
+    int text_h, line_h, columns;
+    jpt_box_t box;
+    int title_x, title_y;
+    int binding_x[JPT_CARD_MAX_ROWS];
+    int action_x[JPT_CARD_MAX_ROWS];
+    int row_y[JPT_CARD_MAX_ROWS];
+} jpt_card_layout_t;
+
+/* The card stays below band (the game's top text) and clear of two subtitle lines; its text never exceeds the
+ * game's own. */
+#define JPT_CARD_MARGIN 8
+#define JPT_CARD_SIDE_PERCENT 4
+#define JPT_CARD_TEXT_PERMILLE 46
+#define JPT_CARD_MIN_TEXT 18
+#define JPT_CARD_FLOOR_TEXT 9
+void jpt_card_area(int left, int top, int w, int h, int game_text_h, int band, jpt_box_t* area, int* max_h);
+int jpt_card_band_floor(int game_text_h);
+
+int jpt_card_line_h(int text_h);
+void jpt_card_size(const jpt_card_metrics_t* m, int text_h, int columns, int* w, int* h);
+/* 1 when the card fits inside area. */
+int jpt_card_place(const jpt_card_metrics_t* m, int text_h, int columns, jpt_box_t area, jpt_card_layout_t* out);
+int jpt_card_choose(const jpt_card_metrics_t* ref, int ref_h, int max_h, jpt_box_t area, int* columns);
+/* 1 fits, 0 placed at min_h without fitting, -1 measure failed. The last measure call is at out->text_h. */
+typedef int (*jpt_card_measure_fn)(void* ctx, int text_h, jpt_card_metrics_t* m);
+int jpt_card_fit(jpt_card_measure_fn measure, void* ctx, int max_h, int min_h, jpt_box_t area, jpt_card_metrics_t* m,
+                 jpt_card_layout_t* out);
 
 /* A row of the controls reference: what to press and what it does. */
 typedef struct {

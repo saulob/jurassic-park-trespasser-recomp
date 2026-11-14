@@ -24,6 +24,9 @@ float pad_trigger_shape(float value, float deadzone);
 float pad_look_curve(float m);
 /* The buttons of a sample with the triggers added as buttons past their deadzone. */
 uint32_t pad_buttons_with_triggers(const pad_state_t* s, float trigger_deadzone);
+/* With hysteresis; held[2] (LT, RT) keeps the state between samples. */
+#define PAD_TRIGGER_HOLD_MARGIN 0.08f
+uint32_t pad_buttons_with_trigger_hold(const pad_state_t* s, float trigger_deadzone, uint8_t held[2]);
 
 /* Only the start of meaningful input counts: a new press, a stick or trigger crossing its threshold. Held buttons,
  * resting drift and trigger noise never do, so they cannot take the prompts back from the mouse. */
@@ -89,9 +92,8 @@ int pad_roster_count(const pad_roster_t* r);
 
 /* Gameplay: the game's CInput values (SInput at CInput + 8). */
 typedef struct {
-    float rotate_x, rotate_y; /* radians this frame, +x right, +y up */
-    float move_x, move_y;     /* sidestep right, forward */
-    uint32_t state, hit;      /* command bits held, and pressed since the last frame */
+    float move_x, move_y; /* sidestep right, forward */
+    uint32_t state, hit;  /* command bits held, and pressed since the last frame */
 } pad_sinput_t;
 
 /* The keyboard's limits (CInput::tinReadDefaultControls): run 1.0 forward, back 0.4, sidestep 0.6. */
@@ -101,21 +103,40 @@ typedef struct {
 /* Full stick at 100%: radians per second. */
 #define PAD_LOOK_YAW_RATE 2.6f
 #define PAD_LOOK_PITCH_RATE 1.8f
-/* While Move Hand is held the look moves the hand, which wants finer control. */
-#define PAD_HAND_LOOK_SCALE 0.6f
 #define PAD_MAX_FRAME_SECONDS 0.1f
 
 typedef struct {
-    float move_x, move_y, look_x, look_y;
-    uint32_t held;  /* command bits */
+    float move_x, move_y, look_x, look_y; /* look: radians this frame, +x right, +y up */
+    uint32_t held;                        /* command bits */
 } pad_gameplay_t;
 
-/* buttons: the controls held this frame after pad_edges (triggers included); crouch_toggled: the toggle's state.
- * Rotate Wrist and Rotate Arm also hold Move Hand. */
-void pad_gameplay_from(const pad_state_t* s, uint32_t buttons, const jpt_gamepad_settings_t* cfg, float dt,
-                       int crouch_toggled, pad_gameplay_t* out);
-/* Adds the gamepad to what the keyboard and mouse gave this frame. */
+/* Each bound control gives its action's command bit and nothing else, as the key map does for a key or mouse button:
+ * Rotate Wrist and Rotate Arm act only with Move Hand held, as Shift and Ctrl do with the left mouse button. */
+void pad_gameplay_from(const pad_state_t* s, uint32_t buttons, const jpt_gamepad_settings_t* cfg, float dt, int crouch,
+                       pad_gameplay_t* out);
 void pad_merge_sinput(pad_sinput_t* in, const pad_gameplay_t* pad, uint32_t pad_hit);
+
+/* CInput turns each count of mouse motion into this many radians (0x005F8130). */
+#define PAD_RADIANS_PER_COUNT 0.005f
+
+/* The right stick's look as mouse counts, moved into the cursor CInput reads, so the view, the hand, the wrist and the
+ * arm get exactly what the mouse gives them. The fraction of a count is kept for the next frame; a centred stick
+ * stops at once, as a mouse does. invert_mouse: the game's own InvertMouse, which it applies to these counts too. */
+typedef struct {
+    float rest_x, rest_y;
+} pad_mouse_t;
+
+void pad_mouse_counts(pad_mouse_t* m, float look_x, float look_y, int invert_mouse, int* dx, int* dy);
+
+/* CPlayer crouches while the command is held and has no toggle: B is the hold, L3 a latch on the same command that a
+ * B or Jump press clears, so releasing B always stands. */
+typedef struct {
+    uint8_t latched;
+} pad_crouch_t;
+
+int pad_crouch_update(pad_crouch_t* c, int hold_down, int toggle_pressed, int hold_pressed, int jump_pressed);
+void pad_crouch_stand(pad_crouch_t* c);
+
 /* The command bits of the actions bound to these controls (the crouch toggle left out). */
 uint32_t pad_commands_for(const jpt_gamepad_settings_t* cfg, uint32_t buttons);
 
@@ -128,6 +149,40 @@ typedef struct {
 void pad_edges_reset(pad_edges_t* e, uint32_t held_now);
 /* The held buttons that count; *pressed gets the ones pressed since the last update. */
 uint32_t pad_edges_update(pad_edges_t* e, uint32_t held, uint32_t* pressed);
+/* Gameplay reads again after a pause (a menu, a video, another window, a long frame): a button that counted at the last
+ * read and is still held keeps counting with no new press, as a held key or mouse button does for CInput; one pressed
+ * meanwhile waits for its release. */
+void pad_edges_resume(pad_edges_t* e, uint32_t held_now);
+
+/* What the previous gameplay read was to this one. */
+typedef enum {
+    PAD_READ_NEXT,    /* the last frame */
+    PAD_READ_RESUME,  /* before a menu, a video or another window, less than PAD_READ_GAP_SECONDS ago */
+    PAD_READ_RESTART  /* none yet, no focus, or PAD_READ_GAP_SECONDS or more: the crouch latch, the look's fraction
+                         and the frame time start again as well */
+} pad_read_t;
+
+#define PAD_READ_GAP_SECONDS 0.25
+pad_read_t pad_read_kind(int first, int left_gameplay, int focused, double since_last);
+
+int pad_bound(const jpt_gamepad_settings_t* cfg, int action, uint32_t buttons);
+
+/* The pad around one CInput read: its command bits, its move and the right stick as mouse counts. */
+typedef struct {
+    pad_edges_t edges;
+    pad_crouch_t crouch;
+    pad_mouse_t mouse;
+    pad_gameplay_t frame;
+    uint32_t pressed;
+} pad_play_t;
+
+void pad_play_release(pad_play_t* p);
+
+/* Before CInput reads: *dx, *dy are the counts to move the cursor CInput is about to read. */
+void pad_play_before(pad_play_t* p, pad_read_t kind, const pad_state_t* s, uint32_t buttons,
+                     const jpt_gamepad_settings_t* cfg, float dt, int invert_mouse, int* dx, int* dy);
+/* After: the pad's command bits, presses and move added to what CInput wrote; 0 when it had none. */
+int pad_play_after(const pad_play_t* p, const jpt_gamepad_settings_t* cfg, pad_sinput_t* in);
 
 /* Menus: focus moves between the game's controls (canvas rectangles) like the arrow keys of a modern menu. */
 typedef struct {

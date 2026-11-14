@@ -396,10 +396,27 @@ static void window_for(const scene_t* sc, fe_rect_t* r) {
                                            (480 + sc->height) / 2);
 }
 
+/* What frontend_hd does to the Controls window: every control moved into the host's layout, then the text fitted. */
+static void controls_layout(fe_scene_t* s) {
+    fe_window_t* w = &s->windows[s->window_count - 1];
+    fe_rect_t from = w->rect, to = fe_controls_window(from, FE_CANVAS_W, FE_CANVAS_H);
+    for (int i = w->first; i < w->first + w->count; i++) {
+        fe_widget_t* x = &s->widgets[i];
+        int picture = x->kind == FE_W_BUTTON || x->kind == FE_W_IMAGE || x->kind == FE_W_CHECK;
+        fe_rect_t r = fe_controls_rect(fe_rect_offset(x->rect, -from.left, -from.top), picture);
+        x->rect = fe_rect_offset(r, to.left, to.top);
+    }
+    w->rect = to;
+    fe_controls_polish(s, w, (double)(to.right - to.left) / FE_CONTROLS_W);
+    fe_scene_finish_window(s, w);
+}
+
 static int build_scene(fe_scene_t* s, const scene_t* sc, int guest_w, int guest_h, int layer_w, int layer_h) {
     fe_rect_t wr;
     look_t look = sc->look;
-    static const char* texts[][2] = { { "1030", "W" }, { "1031", "Shift+W" }, { "1032", "S" }, { "1033", "A" } };
+    static const char* texts[][2] = { { "1030", "W" },          { "1031", "Shift+W" }, { "1032", "S" },
+                                      { "1033", "A" },          { "1019", "" },        { "1039", "Left Mouse" },
+                                      { "1040", "Right Mouse" } };
     for (int i = 0; i < look.item_count; i++) look.items[i] = k_saves[i];
     fe_scene_reset_for(s, guest_w, guest_h, layer_w, layer_h);
     if (sc->under_game) fe_scene_window(s, FE_WND_GAME, fe_rect(0, 0, 640, 480));
@@ -413,7 +430,9 @@ static int build_scene(fe_scene_t* s, const scene_t* sc, int guest_w, int guest_
         fe_scene_finish_window(s, w);
     }
     window_for(sc, &wr);
-    return load_window(s, sc->ddf, sc->kind, wr, &look, texts, 4);
+    if (!load_window(s, sc->ddf, sc->kind, wr, &look, texts, 7)) return 0;
+    if (sc->kind == FE_WND_CONTROLS) controls_layout(s);
+    return 1;
 }
 
 static void write_ppm(const char* dir, const char* name, int w, int h, const uint32_t* px, int bg) {
@@ -541,6 +560,162 @@ static void test_cache_between_frames(void) {
     free(s);
 }
 
+/* The selected (hover) plaque: its dark red lettering becomes clearly red, and the rest of the original picture stays. */
+static void test_hover_lift(void) {
+    static const char* const names[] = { "ms_new",   "ms_load", "ms_options", "ms_credits", "ms_quit", "gm_resume",
+                                         "gm_controls", "gm_save", "gm_load", "qt_menu", "qt_game", "yes",
+                                         "no",       "ok" };
+    for (size_t n = 0; n < sizeof names / sizeof names[0]; n++) {
+        char file[64];
+        const picture_t *normal, *hover;
+        float *rgba;
+        uint8_t *solid, *letter;
+        double letter_before = 0, letter_after = 0, plate_change = 0;
+        int letters = 0, plate = 0, w, h;
+        snprintf(file, sizeof file, "%s_0.tga", names[n]);
+        normal = picture(file);
+        snprintf(file, sizeof file, "%s_1.tga", names[n]);
+        hover = picture(file);
+        if (!normal || !hover) continue;
+        CHECK(normal->w == hover->w && normal->h == hover->h, "%s: hover and normal pictures differ in size", names[n]);
+        if (normal->w != hover->w || normal->h != hover->h) continue;
+        w = hover->w;
+        h = hover->h;
+        rgba = (float*)malloc(sizeof(float) * 4 * (size_t)w * h);
+        solid = (uint8_t*)malloc((size_t)w * h);
+        letter = (uint8_t*)malloc((size_t)w * h);
+        if (!rgba || !solid || !letter) {
+            free(rgba);
+            free(solid);
+            free(letter);
+            return;
+        }
+        for (int i = 0; i < w * h; i++) {
+            uint16_t v = hover->bits[i];
+            solid[i] = v != hover->bits[0];
+            rgba[i * 4] = (float)((v >> 11) & 31) / 31.0f;
+            rgba[i * 4 + 1] = (float)((v >> 5) & 63) / 63.0f;
+            rgba[i * 4 + 2] = (float)(v & 31) / 31.0f;
+            rgba[i * 4 + 3] = solid[i] ? 1.0f : 0.0f;
+        }
+        fa_hover_lift(rgba, solid, w, h, normal->bits, w, hover->bits[0], 1);
+        /* lettering: deep red in the hover picture (its letters can sit a few pixels off the normal ones) */
+        for (int i = 0; i < w * h; i++) {
+            uint16_t v = hover->bits[i];
+            float r1 = (float)((v >> 11) & 31) / 31.0f, g1 = (float)((v >> 5) & 63) / 63.0f, b1 = (float)(v & 31) / 31.0f;
+            letter[i] = solid[i] && r1 - (g1 > b1 ? g1 : b1) > 0.10f && g1 < 0.36f * r1;
+        }
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                int i = y * w + x, close = 0;
+                uint16_t v = hover->bits[i];
+                float r1 = (float)((v >> 11) & 31) / 31.0f, g1 = (float)((v >> 5) & 63) / 63.0f;
+                if (!solid[i]) continue;
+                if (letter[i]) {
+                    letters++;
+                    letter_before += r1;
+                    letter_after += rgba[i * 4];
+                    continue;
+                }
+                for (int dy = -3; dy <= 3 && !close; dy++)
+                    for (int dx = -3; dx <= 3 && !close; dx++) {
+                        int nx = x + dx, ny = y + dy;
+                        close = nx >= 0 && ny >= 0 && nx < w && ny < h && letter[ny * w + nx];
+                    }
+                if (close) continue;
+                /* the plate away from the letters, rust included */
+                plate++;
+                plate_change += fabs(rgba[i * 4] - r1) + fabs(rgba[i * 4 + 1] - g1);
+            }
+        CHECK(letters > 40, "%s: no hover lettering found (%d pixels)", names[n], letters);
+        if (letters > 40)
+            CHECK(letter_after / letters > 0.62 && letter_after / letters > letter_before / letters + 0.25,
+                  "%s: the selected lettering is not lifted (red %.2f -> %.2f)", names[n], letter_before / letters,
+                  letter_after / letters);
+        CHECK(plate > 0 && plate_change / plate < 0.01, "%s: the plate around the letters changed (%.3f)", names[n],
+              plate > 0 ? plate_change / plate : 0.0);
+        free(rgba);
+        free(solid);
+        free(letter);
+    }
+}
+
+/* Controls in the host's layout: every label and binding whole on one line at the window's text size without
+ * shrinking, labels clear of their fields, the columns apart, everything inside the window. */
+static void test_controls_layout(void) {
+    static const int sizes[][2] = { { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 }, { 5120, 1440 } };
+    fe_scene_t* s = (fe_scene_t*)calloc(1, sizeof *s);
+    HDC dc = CreateCompatibleDC(NULL);
+    const scene_t* sc = NULL;
+    for (int i = 0; i < SCENE_COUNT; i++)
+        if (k_scenes[i].kind == FE_WND_CONTROLS) sc = &k_scenes[i];
+    if (!s || !dc || !sc) {
+        free(s);
+        if (dc) DeleteDC(dc);
+        return;
+    }
+    for (int k = 0; k < (int)(sizeof sizes / sizeof sizes[0]); k++) {
+        int w = sizes[k][0], h = sizes[k][1], labels = 0, merged = 0;
+        fe_view_t v = fe_view_make(w, h);
+        const fe_window_t* win;
+        if (!build_scene(s, sc, w, h, w, h)) continue;
+        win = &s->windows[s->window_count - 1];
+        CHECK(win->rect.right - win->rect.left == 560 && win->rect.bottom - win->rect.top == 350 && win->rect.left >= 0 &&
+                  win->rect.right <= FE_CANVAS_W && win->rect.top >= 0 && win->rect.bottom <= FE_CANVAS_H,
+              "controls %dx%d: the window is not the larger one inside the canvas", w, h);
+        for (int i = win->first; i < win->first + win->count; i++) {
+            const fe_widget_t* x = &s->widgets[i];
+            const char* text = fe_scene_str(s, x->text);
+            CHECK(x->rect.left >= win->rect.left && x->rect.right <= win->rect.right + 1 && x->rect.top >= win->rect.top &&
+                      x->rect.bottom <= win->rect.bottom + 1,
+                  "controls %dx%d: control %d leaves the window", w, h, x->id);
+            if ((x->kind == FE_W_LABEL || x->kind == FE_W_FIELD) && *text) {
+                int px = (int)floor(x->text_h * v.sy + 0.5);
+                double room = (x->rect.right - x->rect.left - 2 * 2.5 * x->image_zoom) * v.sx;
+                HFONT f = CreateFontA(-px, 0, 0, 0, x->weight ? x->weight : 500, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS,
+                                      CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, "Arial");
+                HGDIOBJ old = SelectObject(dc, f);
+                SIZE size;
+                int replay = !strcmp(text, "Replay voice over");
+                GetTextExtentPoint32A(dc, text, (int)strlen(text), &size);
+                SelectObject(dc, old);
+                DeleteObject(f);
+                labels++;
+                merged += replay;
+                CHECK((x->text_flags & FE_TEXT_FIT) && !(x->text_flags & FE_TEXT_WRAP), "controls: \"%s\" is not one fitted line",
+                      text);
+                CHECK(size.cx <= room, "controls %dx%d: \"%s\" needs %ld px in %.0f", w, h, text,
+                      (long)size.cx, room);
+                CHECK(x->text_h >= 17.4f, "controls: \"%s\" is not drawn larger (%.1f units)", text, x->text_h);
+            }
+            for (int j = win->first; j < win->first + win->count; j++) {
+                const fe_widget_t* y = &s->widgets[j];
+                if (j == i || (x->kind != FE_W_LABEL && x->kind != FE_W_FIELD) || (y->kind != FE_W_LABEL && y->kind != FE_W_FIELD))
+                    continue;
+                CHECK(fe_rect_empty(fe_rect_intersect(x->rect, y->rect)), "controls %dx%d: \"%s\" and \"%s\" overlap", w, h,
+                      fe_scene_str(s, x->text), fe_scene_str(s, y->text));
+            }
+        }
+        CHECK(labels >= 20 && merged == 1, "controls %dx%d: %d texts, \"Replay voice over\" %d times", w, h, labels, merged);
+    }
+    {
+        /* a picture keeps its proportions, the columns keep their order and gaps */
+        fe_rect_t b = fe_controls_rect(fe_rect(4, 157, 66, 199), 1), lf = fe_controls_rect(fe_rect(94, 46, 164, 60), 0);
+        fe_rect_t rf = fe_controls_rect(fe_rect(164, 46, 246, 60), 0), ll = fe_controls_rect(fe_rect(10, 46, 90, 60), 0);
+        fe_rect_t rl = fe_controls_rect(fe_rect(248, 46, 320, 60), 0);
+        CHECK(abs((b.right - b.left) * 42 - (b.bottom - b.top) * 62) <= 62 && b.right - b.left >= 108,
+              "a button keeps its proportions (%dx%d)", b.right - b.left, b.bottom - b.top);
+        CHECK(ll.right < lf.left && lf.right < rf.left && rf.right < rl.left && rl.right <= 560, "the columns overlap");
+        CHECK(ll.right - ll.left > 145 && rl.right - rl.left > 150 && lf.right - lf.left >= 110 && rf.right - rf.left >= 110,
+              "a column is too narrow");
+        /* the buttons keep their places: DEFAULTS still ends before CANCEL starts */
+        CHECK(fe_controls_rect(fe_rect(67, 157, 197, 199), 1).right <= fe_controls_rect(fe_rect(198, 158, 318, 200), 1).left,
+              "DEFAULTS and CANCEL overlap");
+    }
+    DeleteDC(dc);
+    free(s);
+}
+
 void frontend_retail_tests(int* checks, int* failures, const char* dump_dir) {
     g_checks = checks;
     g_failures = failures;
@@ -551,5 +726,7 @@ void frontend_retail_tests(int* checks, int* failures, const char* dump_dir) {
     paint_all(dump_dir);
     test_hit_boxes();
     test_cache_between_frames();
+    test_hover_lift();
+    test_controls_layout();
     fe_painter_destroy(g_painter);
 }

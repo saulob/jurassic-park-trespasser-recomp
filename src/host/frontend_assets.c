@@ -1281,12 +1281,17 @@ static op_t* add_bitmap(fe_painter_t* p, const fa_bitmap_t* bm, fe_rect_t dest) 
 static void add_picture(fe_painter_t* p, const fe_widget_t* w, int x, int y) {
     fa_source_t src;
     fe_rect_t d;
+    unsigned flags = FA_DEDITHER | (w->image_keyed ? FA_CRISP_EDGE : 0);
+    double zoom = w->image_zoom > 0 ? w->image_zoom : 1.0;
     if (!w->image || w->image_w <= 0 || w->image_h <= 0) return;
     picture_source(w, &src);
-    d = fe_view_rect(&p->view, fe_rect(x, y, x + w->image_w, y + w->image_h));
-    add_bitmap(p, fa_cache_get16(p->art, &src, NULL, d.right - d.left, d.bottom - d.top,
-                                 FA_DEDITHER | (w->image_keyed ? FA_CRISP_EDGE : 0)),
-               d);
+    if (w->normal_image && (w->state & FE_ST_HOVER) && !(w->state & (FE_ST_PRESSED | FE_ST_DISABLED))) {
+        src.normal = w->normal_image;
+        src.normal_pitch = w->normal_pitch;
+        flags |= FA_HOVER_LIFT;
+    }
+    d = fe_view_rect(&p->view, fe_rect(x, y, x + (int)floor(w->image_w * zoom + 0.5), y + (int)floor(w->image_h * zoom + 0.5)));
+    add_bitmap(p, fa_cache_get16(p->art, &src, NULL, d.right - d.left, d.bottom - d.top, flags), d);
 }
 
 static void game_text_style(const fe_painter_t* p, const fe_widget_t* w, text_style_t* st) {
@@ -1304,11 +1309,20 @@ static void game_text_style(const fe_painter_t* p, const fe_widget_t* w, text_st
     }
 }
 
+#define FIT_INSET 2.5
+
 static void add_label(fe_painter_t* p, const fe_scene_t* s, const fe_widget_t* w) {
     text_style_t st;
+    box_t b = box_rect(p, w->rect);
     if (w->filled) add_fill(p, w->rect, rgb_hex(w->fill_color), 1.0f);
     game_text_style(p, w, &st);
-    add_text(p, &st, fe_scene_str(s, w->text), box_rect(p, w->rect));
+    if (w->text_flags & FE_TEXT_FIT) {
+        double inset = FIT_INSET * (w->image_zoom > 0 ? w->image_zoom : 1.0) * p->view.sx;
+        st.fit = 1;
+        b.x0 += inset;
+        b.x1 -= inset;
+    }
+    add_text(p, &st, fe_scene_str(s, w->text), b);
 }
 
 /* DrawEdge(EDGE_SUNKEN) around a field: dark outside top and left, light bottom and right, a second softer ring inside. */

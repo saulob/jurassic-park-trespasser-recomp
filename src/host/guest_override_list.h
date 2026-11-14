@@ -20,6 +20,7 @@ GUEST_OVERRIDE(00477E00, REQUIRED) /* combined culling (engine_limits.c) */
 GUEST_OVERRIDE(00478A30, REQUIRED) /* CPartition::bFlagCacheable (engine_limits.c) */
 GUEST_OVERRIDE(00492200, REQUIRED) /* CTextureNode::SetTextureMemSize (engine_limits.c) */
 GUEST_OVERRIDE(0049E530, REQUIRED) /* CQuadRootTIN::Update (terrain_quality.c) */
+GUEST_OVERRIDE(004F3FB0, REQUIRED) /* Pelvic_IDOF (physics_fixes.c) */
 GUEST_OVERRIDE(00502970, REQUIRED) /* mode table (widescreen.c) */
 GUEST_OVERRIDE(00503400, REQUIRED) /* CRasterVid::Lock (cpu_polygons.c) */
 GUEST_OVERRIDE(00506270, OPTIONAL) /* CDirect3D::AllocateTextureMemory, logged (engine_limits.c) */
@@ -46,5 +47,6 @@ GUEST_OVERRIDE(005F80B0, OPTIONAL) /* CInput::tinReadDefaultControls (gamepad.c)
 GUEST_OVERRIDE(005F8A20, REQUIRED) /* pHeapAlloc (engine_heaps.c) */
 GUEST_OVERRIDE(005F8B10, REQUIRED) /* pvCommitMem (engine_heaps.c) */
 GUEST_OVERRIDE(0060E3F0, OPTIONAL) /* water texture rows (water_kernels.c) */
+GUEST_OVERRIDE(0060FC10, REQUIRED) /* CEntityWater::CPriv::Integrate (physics_fixes.c) */
 GUEST_OVERRIDE(00630D90, OPTIONAL) /* object occlusion test (occlusion_kernel.c) */
 GUEST_OVERRIDE(00638670, OPTIONAL) /* CSimWaveVar2D step (water_kernels.c) */

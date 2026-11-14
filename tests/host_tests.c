@@ -84,10 +84,11 @@ static int clips(guest_ui_t ui, int focused, int minimized, int transition, int 
 static void test_capture_policy(void) {
     CHECK(clips(GUEST_UI_GAMEPLAY, 1, 0, 0, 0, 0));
     CHECK(input_captured(INPUT_GAMEPLAY_CAPTURED) && input_hide_pointer(INPUT_GAMEPLAY_CAPTURED, 0));
-    /* Esc, F1 and F12 open CInGameOptionsWnd, CHintWnd and CControlsWnd over CGameWnd: a dialog. */
+    /* Esc and F1 open CInGameOptionsWnd and CHintWnd over CGameWnd: a dialog. F12 (CControlsWnd) is no longer passed
+     * on and F2 is the host's controls card, so neither opens a window of the game. */
     CHECK(!clips(GUEST_UI_DIALOG, 1, 0, 0, 0, 0));
-    CHECK(key_opens_game_window(0x100, 0x1B, 0) && key_opens_game_window(0x100, 0x70, 0) &&
-          key_opens_game_window(0x100, 0x7B, 0));
+    CHECK(key_opens_game_window(0x100, 0x1B, 0) && key_opens_game_window(0x100, 0x70, 0));
+    CHECK(!key_opens_game_window(0x100, 0x7B, 0) && !key_opens_game_window(0x100, 0x71, 0));
     CHECK(!key_opens_game_window(0x100, 0x1B, 1) && !key_opens_game_window(0x101, 0x1B, 0) &&
           !key_opens_game_window(0x100, 0x74, 0));
     /* Back in CGameWnd with focus: captured again. */
@@ -108,6 +109,21 @@ static void test_capture_policy(void) {
     CHECK(!input_cursor_virtual(INPUT_MENU) && !input_cursor_virtual(INPUT_DIALOG));
     CHECK(input_cursor_virtual(INPUT_GAMEPLAY_CAPTURED) && input_cursor_virtual(INPUT_GAMEPLAY_RELEASED));
     CHECK(input_hide_pointer(INPUT_MENU, 1) && !input_hide_pointer(INPUT_MENU, 0) && !input_hide_pointer(INPUT_GAMEPLAY_RELEASED, 1));
+    {
+        /* log 055: the Controls background (318x198) blitted through its 1.5x control rect after Alt+Tab redrew the
+         * whole window; the source rect stays inside the picture, an empty one draws nothing */
+        int32_t r[4] = { 0, 0, 480, 300 }, inside[4] = { 10, 20, 100, 120 }, outside[4] = { 400, 0, 480, 300 };
+        int32_t negative[4] = { -5, -5, 20, 20 };
+        CHECK(raster_source_clip(r, 318, 198) && r[0] == 0 && r[1] == 0 && r[2] == 318 && r[3] == 198);
+        CHECK(raster_source_clip(inside, 318, 198) && inside[2] == 100 && inside[3] == 120);
+        CHECK(!raster_source_clip(outside, 318, 198));
+        CHECK(raster_source_clip(negative, 318, 198) && negative[0] == 0 && negative[1] == 0 && negative[2] == 20);
+    }
+    /* Gamepad focus hides the pointer in menus and dialogs only; the mouse (pad_focus 0) brings it back. */
+    CHECK(input_pad_hides_pointer(INPUT_MENU, 1) && input_pad_hides_pointer(INPUT_DIALOG, 1));
+    CHECK(!input_pad_hides_pointer(INPUT_MENU, 0) && !input_pad_hides_pointer(INPUT_DIALOG, 0));
+    CHECK(!input_pad_hides_pointer(INPUT_GAMEPLAY_RELEASED, 1) && !input_pad_hides_pointer(INPUT_SHUTDOWN, 1) &&
+          !input_pad_hides_pointer(INPUT_MOVING_WINDOW, 1));
 }
 
 static void test_keys(void) {
@@ -136,9 +152,39 @@ static void test_keys(void) {
     CHECK(key_policy(0x100, 0x1B, 0, 0, 0) == KEY_TO_GAME && key_policy(0x101, 0x1B, 0, 0, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x100, 0x1B, 1, 0, 0) == KEY_DROP);
     CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x70, 1, 0, 0) == KEY_DROP);
-    CHECK(key_policy(0x100, 0x7B, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x7B, 1, 0, 0) == KEY_DROP);
+    /* F2 is the host's controls card: one toggle per press, nothing reaches the game (its key table gives F2 no
+     * action); F12 no longer reaches the game's controls window. */
+    for (int mods = 0; mods < 4; mods++) {
+        CHECK(key_policy(0x100, 0x71, 0, mods & 1, mods >> 1) == KEY_HOST_CONTROLS);
+        CHECK(key_policy(0x104, 0x71, 0, mods & 1, mods >> 1) == KEY_HOST_CONTROLS);
+        CHECK(key_policy(0x100, 0x71, 1, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x101, 0x71, 0, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x100, 0x7B, 0, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x101, 0x7B, 0, mods & 1, mods >> 1) == KEY_DROP);
+    }
+    {
+        int others = 0;
+        for (unsigned vk = 0; vk < 256; vk++)
+            for (unsigned msg = 0x100; msg <= 0x105; msg++)
+                others += vk != 0x71 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_CONTROLS;
+        CHECK(others == 0);
+    }
+    /* F1, F5, F11, Ctrl+F11, Esc and Alt+F4 keep what they did */
+    CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x74, 0, 0, 0) == KEY_HOST_VIDEO_TEST);
+    CHECK(key_policy(0x100, 0x7A, 0, 0, 0) == KEY_HOST_FULLSCREEN && key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
+    CHECK(key_policy(0x100, 0x1B, 0, 0, 0) == KEY_TO_GAME && key_policy(0x104, 0x73, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(0x100, 0x57, 1, 0, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x0102, 0x1B, 0, 0, 0) == KEY_TO_GAME);
+}
+
+/* The mouse's Raw Input and the right stick's counts land in the same cursor, only while gameplay holds it. */
+static void test_pointer_relative(void) {
+    long x = 400, y = 300;
+    CHECK(pointer_add_relative(INPUT_GAMEPLAY_CAPTURED, &x, &y, 20, -3) && x == 420 && y == 297);
+    CHECK(!pointer_add_relative(INPUT_GAMEPLAY_CAPTURED, &x, &y, 0, 0) && x == 420 && y == 297);
+    for (int st = 0; st < INPUT_STATE_COUNT; st++)
+        if (st != INPUT_GAMEPLAY_CAPTURED)
+            CHECK(!pointer_add_relative((input_state_t)st, &x, &y, 5, 5) && x == 420 && y == 297);
 }
 
 static void test_shutdown(void) {
@@ -259,12 +305,14 @@ static void test_open_press(void) {
     open_press_keydown(&p, 0x1B, 0, 1, 1);
     open_press_keydown(&p, 0x1B, 0, 0, 2);
     CHECK(!open_press_keyup(&p, 0x1B, 2));
-    /* F1 and F12 behave the same; other keys and other key-ups are untouched. */
+    /* F1 behaves the same; other keys (F2 and F12 among them) and other key-ups are untouched. */
     open_press_keydown(&p, 0x70, 0, 1, 1);
     CHECK(!open_press_keyup(&p, 0x1B, 2) && open_press_keyup(&p, 0x70, 2));
-    open_press_keydown(&p, 0x7B, 0, 1, 1);
+    open_press_keydown(&p, 0x70, 0, 1, 1);
     open_press_keydown(&p, 0x57, 0, 1, 1);
-    CHECK(open_press_keyup(&p, 0x7B, 2));
+    open_press_keydown(&p, 0x71, 0, 1, 1);
+    open_press_keydown(&p, 0x7B, 0, 1, 1);
+    CHECK(!open_press_keyup(&p, 0x71, 2) && !open_press_keyup(&p, 0x7B, 2) && open_press_keyup(&p, 0x70, 2));
     open_press_keydown(&p, 0x1B, 0, 1, 1);
     open_press_reset(&p);
     CHECK(!open_press_keyup(&p, 0x1B, 2));
@@ -1033,6 +1081,80 @@ static void test_hardware_water(void) {
     CHECK(hardware_water_policy(0, 0, 0) == -1);
     CHECK(hardware_water_policy(1, 1, 0) == -1);
     CHECK(hardware_water_policy(1, 0, 1) == -1);
+}
+
+static void test_skip_intro(void) {
+    CHECK(intro_video_of("menu\\tpassintro") == INTRO_STARTUP);
+    CHECK(intro_video_of("menu\\newgame") == INTRO_NEW_GAME);
+    CHECK(intro_video_of("data/menu/NEWGAME.SMK") == INTRO_NEW_GAME);
+    CHECK(intro_video_of("tpassintro.smk") == INTRO_STARTUP);
+    CHECK(intro_video_of("menu\\credits") == INTRO_NONE);
+    CHECK(intro_video_of("menu\\win") == INTRO_NONE);
+    CHECK(intro_video_of("menu\\newgame2") == INTRO_NONE);
+    CHECK(intro_video_of("menu\\tpassintro.bak") == INTRO_NONE);
+    CHECK(intro_video_of("") == INTRO_NONE && intro_video_of(NULL) == INTRO_NONE);
+    /* Off changes nothing. */
+    CHECK(!skip_intro_applies(0, INTRO_STARTUP, 0) && !skip_intro_applies(0, INTRO_NEW_GAME, 0));
+    CHECK(skip_intro_applies(1, INTRO_STARTUP, 0) && skip_intro_applies(1, INTRO_NEW_GAME, 0));
+    /* The credits, the ending and the Video Test's requests still play. */
+    CHECK(!skip_intro_applies(1, intro_video_of("menu\\credits"), 0));
+    CHECK(!skip_intro_applies(1, intro_video_of("menu\\win"), 0));
+    CHECK(!skip_intro_applies(1, INTRO_STARTUP, 1) && !skip_intro_applies(1, INTRO_NEW_GAME, 1));
+    CHECK(!strcmp(intro_video_name(INTRO_STARTUP), "tpassintro.smk"));
+    CHECK(!strcmp(intro_video_name(INTRO_NEW_GAME), "newgame.smk"));
+}
+
+/* The crouch held at 0.072 (log 057): the lower clamp, 0.09 * (h - 0.2), taken in double leaves the height stored as a
+ * float below its own bound, so it fires every 10 ms step and zeroes the speed that would lift the player. */
+static float crouch_then_stand(int at_24_bits) {
+    const float h = 1.0f, dt = 0.01f;
+    float pos = h - 0.2f, vel = 0.0f;
+    for (int step = 0; step < 350; step++) {
+        float knees = step < 150 ? 0.1f * (h - 0.2f) : h - 0.2f, acc = 50.0f * (knees - pos) - 10.0f * vel;
+        if (at_24_bits) {
+            pelvis_mouth_t m = pelvis_mouth_clamps(pos, vel, h, 0.0f, 0.2, 0.09, 1.1);
+            pos = m.pos;
+            vel = m.vel;
+        } else {
+            double lowest = ((double)h - 0.2) * 0.09, highest = ((double)h - 0.2) * 1.1;
+            if (!((double)pos >= lowest)) pos = (float)lowest, vel = 0.0f;
+            if ((double)pos > highest) pos = (float)highest, vel = 0.0f;
+        }
+        pos += dt * vel;
+        vel += dt * acc;
+    }
+    return pos;
+}
+
+static void test_pelvis_clamps(void) {
+    pelvis_mouth_t m;
+    float lowest = (float)((double)(float)(1.0 - 0.2) * 0.09);
+    CHECK(crouch_then_stand(0) == (float)(0.8 * 0.09)); /* the lifted double: held at the bound */
+    CHECK(fabsf(crouch_then_stand(1) - 0.8f) < 0.01f);  /* the game's single precision: back up */
+    /* a height already held there is clamped once more, to the single bound, and then rises */
+    m = pelvis_mouth_clamps((float)(0.8 * 0.09), 0.33f, 1.0f, 0.0f, 0.2, 0.09, 1.1);
+    CHECK(m.pos == lowest && m.vel == 0.0f && lowest > (float)(0.8 * 0.09));
+    m = pelvis_mouth_clamps(lowest, 0.33f, 1.0f, 0.0f, 0.2, 0.09, 1.1);
+    CHECK(m.pos == lowest && m.vel == 0.33f);
+    /* the top bound, NaN, and the ceiling check after them */
+    m = pelvis_mouth_clamps(0.95f, 0.5f, 1.0f, 0.0f, 0.2, 0.09, 1.1);
+    CHECK(m.pos == (float)(0.8f * 1.1) && m.vel == 0.0f);
+    m = pelvis_mouth_clamps(m.pos, 0.2f, 1.0f, 0.0f, 0.2, 0.09, 1.1);
+    CHECK(m.vel == 0.2f);
+    m = pelvis_mouth_clamps(sqrtf(-1.0f), 0.5f, 1.0f, 0.0f, 0.2, 0.09, 1.1);
+    CHECK(m.pos == lowest && m.vel == 0.0f);
+    m = pelvis_mouth_clamps(0.5f, 0.3f, 1.0f, -1.0f, 0.2, 0.09, 1.1);
+    CHECK(m.pos == 0.5f && m.vel == 0.0f);
+    m = pelvis_mouth_clamps(0.5f, -0.3f, 1.0f, -1.0f, 0.2, 0.09, 1.1);
+    CHECK(m.vel == -0.3f);
+    /* every human height in 0.8..3 m: a clamped height never clamps again at single precision */
+    for (int cm = 80; cm <= 300; cm++) {
+        float h = cm / 100.0f;
+        pelvis_mouth_t low = pelvis_mouth_clamps(-1.0f, 0.0f, h, 0.0f, 0.2, 0.09, 1.1);
+        pelvis_mouth_t high = pelvis_mouth_clamps(10.0f, 0.0f, h, 0.0f, 0.2, 0.09, 1.1);
+        CHECK(pelvis_mouth_clamps(low.pos, 1.0f, h, 0.0f, 0.2, 0.09, 1.1).vel == 1.0f);
+        CHECK(pelvis_mouth_clamps(high.pos, -1.0f, h, 0.0f, 0.2, 0.09, 1.1).vel == -1.0f);
+    }
 }
 
 static void test_terrain_blend(void) {
@@ -2376,6 +2498,7 @@ int main(void) {
     test_input_state();
     test_capture_policy();
     test_keys();
+    test_pointer_relative();
     test_shutdown();
     test_quit_steps();
     test_safemode();
@@ -2413,6 +2536,8 @@ int main(void) {
     test_texture_blend();
     test_terrain_blend();
     test_hardware_water();
+    test_skip_intro();
+    test_pelvis_clamps();
     test_fog_and_layout();
     test_depth_and_cull();
     test_coverage_and_uv();

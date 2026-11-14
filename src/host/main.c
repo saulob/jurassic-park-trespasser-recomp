@@ -114,6 +114,7 @@ static void usage(void) {
            "                  [--texture-filter original|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
            "                  [--msaa 0|2|4|8] [--vsync on|off] [--display-mode windowed|borderless] [--monitor N]\n"
            "                  [--window-size auto|WxH] [--presentation letterbox|stretch] [--show-fps on|off]\n"
+           "                  [--skip-intro on|off]\n"
            "                  [--original-engine-limits] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
            "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [--perf-log]\n"
            "                  [-- guest arguments]\n"
@@ -162,7 +163,7 @@ static int parse_options(int argc, char** argv, options_t* o) {
         { "--msaa", JPT_KEY_MSAA },                 { "--vsync", JPT_KEY_VSYNC },
         { "--display-mode", JPT_KEY_DISPLAY_MODE }, { "--monitor", JPT_KEY_MONITOR },
         { "--window-size", JPT_KEY_WINDOW_SIZE },   { "--presentation", JPT_KEY_PRESENTATION },
-        { "--show-fps", JPT_KEY_SHOW_FPS },
+        { "--show-fps", JPT_KEY_SHOW_FPS },         { "--skip-intro", JPT_KEY_SKIP_INTRO },
     };
     o->game_dir = getenv("TRESPASSER_GAME_DIR");
     if (!o->game_dir) o->game_dir = TRESPASSER_DEFAULT_GAME_DIR;
@@ -335,6 +336,8 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
     host_log("settings", "display %s on monitor %d (%dx%d), window %s, presentation %s, FPS in title %s",
              c->borderless ? "borderless" : "windowed", c->monitor, monitor_w, monitor_h,
              c->window_w ? "fixed" : "auto", c->stretch ? "stretch" : "letterbox", c->show_fps ? "on" : "off");
+    host_log("settings", "Skip Intro %s%s", c->skip_intro ? "on" : "off",
+             c->skip_intro ? ": the opening video before the main menu and the one after New Game are not shown" : "");
 }
 
 static const char* filter_label(const jpt_config_t* c) {
@@ -508,6 +511,8 @@ int main(int argc, char** argv) {
     ui_canvas_install();
     loading_hd_install();
     video_hd_install();
+    video_hd_skip_intro(cfg.skip_intro);
+    physics_fixes_install();
     engine_limits_install(d3dr_hardware());
     texture_streaming_install();
     engine_heaps_install();

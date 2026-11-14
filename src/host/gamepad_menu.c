@@ -472,6 +472,8 @@ void gamepad_menu_forget_focus(void) {
     M.pointer_free = 0;
 }
 
+int gamepad_menu_pointer_free(void) { return M.pointer_free; }
+
 void gamepad_menu_frame(const pad_state_t* pad, uint32_t held, uint32_t pressed, uint32_t released, int device_gamepad,
                         uint32_t now_ms, float dt, float stick_deadzone) {
     guest_ui_view_t v;

@@ -3,12 +3,15 @@
  * prompts and glyphs, gameplay input for the game's CInput and focus movement in menus. No SDL device, no window.
  * Build: CMake target gamepad_tests.
  */
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "gamepad_policy.h"
 #include "jpt_config.h"
+#include "jpt_display.h"
 #include "jpt_gamepad.h"
 #include "jpt_prompt_text.h"
 #include "pad_glyphs.h"
@@ -120,6 +123,30 @@ static void test_deadzones(void) {
         s.lt = 0.11f;
         s.rt = 0.13f;
         CHECK(pad_buttons_with_triggers(&s, 0.12f) == JPT_PAD_BIT(JPT_PAD_RIGHT_TRIGGER));
+    }
+    {
+        /* LT resting near its threshold: one press, one release, no chatter in between */
+        static const float lt[] = { 0.10f, 0.15f, 0.19f, 0.21f, 0.18f, 0.13f, 0.16f, 0.125f, 0.11f, 0.17f, 0.19f };
+        static const int down[] = { 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0 };
+        uint8_t held[2] = { 0, 0 };
+        pad_state_t s = idle();
+        int changes = 0, was = 0, ok = 1;
+        for (int i = 0; i < (int)(sizeof lt / sizeof lt[0]); i++) {
+            int now;
+            s.lt = lt[i];
+            now = (pad_buttons_with_trigger_hold(&s, 0.12f, held) & JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER)) != 0;
+            ok &= now == down[i];
+            CHECK(pad_buttons_with_trigger_hold(&s, 0.12f, held) == (now ? JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER) : 0u));
+            changes += now != was;
+            was = now;
+        }
+        CHECK(ok && changes == 2);
+        /* the other buttons pass through, RT keeps its own state */
+        s = idle();
+        s.buttons = JPT_PAD_BIT(JPT_PAD_SOUTH);
+        s.rt = 0.5f;
+        CHECK(pad_buttons_with_trigger_hold(&s, 0.12f, held) ==
+              (JPT_PAD_BIT(JPT_PAD_SOUTH) | JPT_PAD_BIT(JPT_PAD_RIGHT_TRIGGER)));
     }
 }
 
@@ -413,23 +440,24 @@ static void test_gameplay(void) {
                       0, &g);
     CHECK(g.held == (JPT_CMD_JUMP | JPT_CMD_HAND | JPT_CMD_GRAB));
     pad_gameplay_from(&s, JPT_PAD_BIT(JPT_PAD_LEFT_STICK), &cfg, 0.016f, 0, &g);
-    CHECK(g.held == 0); /* the toggle is the caller's state */
+    CHECK(g.held == 0); /* the latch is pad_crouch's */
     pad_gameplay_from(&s, 0, &cfg, 0.016f, 1, &g);
     CHECK(g.held == JPT_CMD_CROUCH);
     CHECK(pad_commands_for(&cfg, JPT_PAD_BIT(JPT_PAD_RIGHT_TRIGGER) | JPT_PAD_BIT(JPT_PAD_NORTH)) == (JPT_CMD_USE | JPT_CMD_THROW));
     CHECK(pad_commands_for(&cfg, JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER) | JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER)) ==
           (JPT_CMD_WRIST | JPT_CMD_ARM));
     CHECK(pad_commands_for(&cfg, JPT_PAD_BIT(JPT_PAD_START) | JPT_PAD_BIT(JPT_PAD_BACK)) == 0);
-    /* the game turns the wrist only with the hand up: LB/RB raise it */
+    /* LB/RB are Shift/Ctrl: their own bits only, Move Hand stays LT's (the left button's) */
     pad_gameplay_from(&s, JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER), &cfg, 0.016f, 0, &g);
-    CHECK(g.held == (JPT_CMD_WRIST | JPT_CMD_HAND));
+    CHECK(g.held == JPT_CMD_WRIST);
     pad_gameplay_from(&s, JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER), &cfg, 0.016f, 0, &g);
-    CHECK(g.held == (JPT_CMD_ARM | JPT_CMD_HAND));
+    CHECK(g.held == JPT_CMD_ARM);
+    pad_gameplay_from(&s, JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER) | JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER), &cfg, 0.016f, 0, &g);
+    CHECK(g.held == (JPT_CMD_WRIST | JPT_CMD_HAND));
     pad_gameplay_from(&s, JPT_PAD_BIT(JPT_PAD_EAST), &cfg, 0.016f, 1, &g);
     CHECK(g.held == JPT_CMD_CROUCH);
-    /* merged with the keyboard and mouse */
+    /* merged with the keyboard (the look goes through the mouse's cursor, never here) */
     memset(&in, 0, sizeof in);
-    in.rotate_x = 0.01f;
     in.move_y = 1.0f;
     in.state = JPT_CMD_USE;
     memset(&g, 0, sizeof g);
@@ -438,21 +466,166 @@ static void test_gameplay(void) {
     g.look_x = 0.02f;
     g.held = JPT_CMD_JUMP;
     pad_merge_sinput(&in, &g, JPT_CMD_JUMP);
-    CHECK(near(in.move_y, 1.0f, 1e-6f) && near(in.move_x, 0.5f, 1e-6f) && near(in.rotate_x, 0.03f, 1e-6f));
+    CHECK(near(in.move_y, 1.0f, 1e-6f) && near(in.move_x, 0.5f, 1e-6f));
     CHECK(in.state == (JPT_CMD_USE | JPT_CMD_JUMP) && in.hit == JPT_CMD_JUMP);
-    /* while Move Hand is held the stick moves the hand more finely; the mouse is untouched */
-    memset(&in, 0, sizeof in);
-    in.rotate_x = 0.01f;
-    g.held = JPT_CMD_HAND;
-    g.move_x = g.move_y = 0;
-    pad_merge_sinput(&in, &g, 0);
-    CHECK(near(in.rotate_x, 0.01f + 0.02f * PAD_HAND_LOOK_SCALE, 1e-6f));
     memset(&in, 0, sizeof in);
     in.move_y = -0.4f;
     g.held = 0;
     g.move_y = -0.4f;
     pad_merge_sinput(&in, &g, 0);
     CHECK(near(in.move_y, -0.4f, 1e-6f));
+}
+
+/* What reaches the game's crouch command after a sequence; B is the hold, L3 the latch, A jumps. */
+typedef struct {
+    int b_down, b_press, l3_press, jump_press, stand;
+} crouch_step_t;
+
+static int crouch_after(const crouch_step_t* steps, int n, int* latched) {
+    pad_crouch_t c;
+    int out = 0;
+    memset(&c, 0, sizeof c);
+    for (int i = 0; i < n; i++) {
+        if (steps[i].stand) pad_crouch_stand(&c);
+        out = pad_crouch_update(&c, steps[i].b_down, steps[i].l3_press, steps[i].b_press, steps[i].jump_press);
+    }
+    *latched = c.latched;
+    return out;
+}
+
+static void test_crouch(void) {
+    /* every sequence ends in a posture the player can predict, and one more B press and release always stands */
+    static const crouch_step_t b_tap[] = { { 1, 1, 0, 0, 0 }, { 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t l3_once[] = { { 0, 0, 1, 0, 0 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t l3_twice[] = { { 0, 0, 1, 0, 0 }, { 0, 0, 0, 0, 0 }, { 0, 0, 1, 0, 0 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t b_hold_l3[] = { { 1, 1, 0, 0, 0 }, { 1, 0, 1, 0, 0 }, { 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t l3_then_b[] = { { 0, 0, 1, 0, 0 }, { 1, 1, 0, 0, 0 }, { 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t l3_then_jump[] = { { 0, 0, 1, 0, 0 }, { 0, 0, 0, 1, 0 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t l3_menu[] = { { 0, 0, 1, 0, 0 }, { 0, 0, 0, 0, 1 }, { 0, 0, 0, 0, 0 } };
+    static const crouch_step_t b_held_menu[] = { { 1, 1, 0, 0, 0 }, { 1, 0, 0, 0, 1 }, { 0, 0, 0, 0, 0 } };
+    int latched, out;
+    out = crouch_after(b_tap, 3, &latched);
+    CHECK(!out && !latched);
+    {
+        pad_crouch_t c;
+        memset(&c, 0, sizeof c);
+        CHECK(pad_crouch_update(&c, 1, 0, 1, 0) == 1 && pad_crouch_update(&c, 1, 0, 0, 0) == 1); /* down while held */
+        CHECK(pad_crouch_update(&c, 0, 0, 0, 0) == 0 && !c.latched);                            /* up on release */
+    }
+    out = crouch_after(l3_once, 2, &latched);
+    CHECK(out && latched);
+    out = crouch_after(l3_twice, 4, &latched);
+    CHECK(!out && !latched);
+    /* L3 while B is held latches: releasing B keeps crouching, the next L3 or B press ends it */
+    out = crouch_after(b_hold_l3, 4, &latched);
+    CHECK(out && latched);
+    /* B takes the latched crouch over; releasing it stands */
+    out = crouch_after(l3_then_b, 4, &latched);
+    CHECK(!out && !latched);
+    out = crouch_after(l3_then_jump, 3, &latched);
+    CHECK(!out && !latched);
+    /* a menu, focus loss, a device switch or a gameplay gap stands the latch up; a held B still counts while held */
+    out = crouch_after(l3_menu, 3, &latched);
+    CHECK(!out && !latched);
+    out = crouch_after(b_held_menu, 3, &latched);
+    CHECK(!out && !latched);
+    {
+        /* B and L3 in the same frame: B's press releases, L3 latches */
+        pad_crouch_t c;
+        memset(&c, 0, sizeof c);
+        c.latched = 1;
+        CHECK(pad_crouch_update(&c, 1, 1, 1, 0) == 1 && c.latched == 1);
+        CHECK(pad_crouch_update(&c, 0, 0, 0, 0) == 1);
+        CHECK(pad_crouch_update(&c, 1, 0, 1, 0) == 1 && pad_crouch_update(&c, 0, 0, 0, 0) == 0);
+    }
+}
+
+/* One frame of the pad in gameplay as the game receives it: the command bits, and the mouse counts CInput reads. */
+typedef struct {
+    uint32_t held;
+    int dx, dy;
+} pad_frame_t;
+
+static pad_frame_t pad_frame(pad_mouse_t* m, const jpt_gamepad_settings_t* cfg, uint32_t buttons, float rx, float ry,
+                             int invert_mouse) {
+    pad_state_t s = idle();
+    pad_gameplay_t g;
+    pad_frame_t f;
+    s.rx = rx;
+    s.ry = ry;
+    pad_gameplay_from(&s, buttons, cfg, 1.0f / 60.0f, 0, &g);
+    pad_mouse_counts(m, g.look_x, g.look_y, invert_mouse, &f.dx, &f.dy);
+    f.held = g.held;
+    return f;
+}
+
+/* The mouse's reference: hand up (Move Hand held), right, stop, left, stop, up, stop. The pad gives the game the same
+ * kind of input at every step: the Move Hand bit, then counts in the mouse's directions, nothing once the stick stops. */
+static void test_stick_as_mouse(void) {
+    const uint32_t lt = JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER);
+    jpt_gamepad_settings_t cfg;
+    pad_mouse_t m;
+    pad_frame_t f;
+    long sum_x = 0, sum_y = 0;
+    jpt_gamepad_defaults(&cfg);
+    memset(&m, 0, sizeof m);
+    f = pad_frame(&m, &cfg, lt, 0.0f, 0.0f, 0);
+    CHECK(f.held == JPT_CMD_HAND && f.dx == 0 && f.dy == 0); /* as the left button: the hand bit, no motion */
+    for (int i = 0; i < 30; i++) {
+        f = pad_frame(&m, &cfg, lt, 1.0f, 0.0f, 0);
+        CHECK(f.held == JPT_CMD_HAND && f.dx > 0 && f.dy == 0);
+        sum_x += f.dx;
+    }
+    /* half a second of full stick: the look's radians, as counts of 0.005 rad, to within one count */
+    CHECK(labs(sum_x - (long)(0.5f * PAD_LOOK_YAW_RATE / PAD_RADIANS_PER_COUNT)) <= 1);
+    f = pad_frame(&m, &cfg, lt, 0.0f, 0.0f, 0);
+    CHECK(f.dx == 0 && f.dy == 0 && m.rest_x == 0.0f && m.rest_y == 0.0f); /* stops at once */
+    for (int i = 0; i < 10; i++) {
+        f = pad_frame(&m, &cfg, lt, -1.0f, 0.0f, 0);
+        CHECK(f.dx < 0 && f.dy == 0);
+    }
+    f = pad_frame(&m, &cfg, lt, 0.0f, 0.0f, 0);
+    CHECK(f.dx == 0 && f.dy == 0);
+    for (int i = 0; i < 10; i++) {
+        f = pad_frame(&m, &cfg, lt, 0.0f, -1.0f, 0);
+        CHECK(f.dx == 0 && f.dy < 0); /* stick up moves the cursor up, as the mouse pushed forward */
+        sum_y += f.dy;
+    }
+    f = pad_frame(&m, &cfg, lt, 0.0f, 0.0f, 0);
+    CHECK(f.dx == 0 && f.dy == 0 && sum_y < 0);
+    /* a slow push keeps its fractions: no motion is lost, it arrives a count at a time */
+    sum_x = 0;
+    for (int i = 0; i < 120; i++) {
+        f = pad_frame(&m, &cfg, 0, 0.3f, 0.0f, 0);
+        CHECK(f.dx >= 0 && f.dx <= 2);
+        sum_x += f.dx;
+    }
+    {
+        pad_state_t s = idle();
+        pad_gameplay_t g;
+        s.rx = 0.3f;
+        pad_gameplay_from(&s, 0, &cfg, 1.0f / 60.0f, 0, &g);
+        CHECK(labs(sum_x - (long)(120 * g.look_x / PAD_RADIANS_PER_COUNT)) <= 1);
+    }
+    /* the game's InvertMouse flips the counts it reads, so the pad's up stays up with it on */
+    memset(&m, 0, sizeof m);
+    f = pad_frame(&m, &cfg, 0, 0.0f, -1.0f, 1);
+    CHECK(f.dy > 0);
+    cfg.invert_y = 1;
+    f = pad_frame(&m, &cfg, 0, 0.0f, -1.0f, 0);
+    CHECK(f.dy > 0);
+    /* wrist and arm are the mouse's Shift and Ctrl: the same counts, those bits added, the hand LT's as the left
+     * button's */
+    jpt_gamepad_defaults(&cfg);
+    memset(&m, 0, sizeof m);
+    f = pad_frame(&m, &cfg, JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER), 1.0f, 0.0f, 0);
+    CHECK(f.held == JPT_CMD_WRIST && f.dx > 0);
+    f = pad_frame(&m, &cfg, lt | JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER), 1.0f, 0.0f, 0);
+    CHECK(f.held == (JPT_CMD_WRIST | JPT_CMD_HAND) && f.dx > 0);
+    f = pad_frame(&m, &cfg, lt | JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER), 1.0f, 0.0f, 0);
+    CHECK(f.held == (JPT_CMD_ARM | JPT_CMD_HAND) && f.dx > 0);
+    f = pad_frame(&m, &cfg, JPT_PAD_BIT(JPT_PAD_WEST), 0.0f, 0.0f, 0);
+    CHECK(f.held == JPT_CMD_GRAB);
 }
 
 static void test_edges(void) {
@@ -474,6 +647,188 @@ static void test_edges(void) {
     pad_edges_reset(&e, 0);
     pad_edges_update(&e, a, &pressed);
     CHECK(pressed == a);
+    /* a pause in gameplay's reads: what was held and still is keeps counting with no new press, as a held mouse button;
+     * a button pressed meanwhile (the menu's) waits for its release; one let go meanwhile is gone */
+    pad_edges_reset(&e, 0);
+    pad_edges_update(&e, a, &pressed);
+    pad_edges_resume(&e, a | b);
+    held = pad_edges_update(&e, a | b, &pressed);
+    CHECK(held == a && pressed == 0);
+    held = pad_edges_update(&e, a, &pressed);
+    CHECK(held == a && pressed == 0);
+    held = pad_edges_update(&e, a | b, &pressed);
+    CHECK(held == (a | b) && pressed == b);
+    pad_edges_resume(&e, b);
+    held = pad_edges_update(&e, a | b, &pressed);
+    CHECK(held == (a | b) && pressed == a);
+    /* nothing counted yet (the first read): all held buttons wait, as after a reset */
+    memset(&e, 0, sizeof e);
+    pad_edges_resume(&e, a);
+    held = pad_edges_update(&e, a, &pressed);
+    CHECK(held == 0 && pressed == 0);
+    /* which reads resume: a menu, a video or another window in between, the first, or a gap past 0.25 s */
+    CHECK(pad_read_kind(0, 0, 1, 0.016) == PAD_READ_NEXT);
+    CHECK(pad_read_kind(0, 0, 1, 0.24) == PAD_READ_NEXT);
+    CHECK(pad_read_kind(0, 1, 1, 0.05) == PAD_READ_RESUME);
+    CHECK(pad_read_kind(0, 0, 1, 0.30) == PAD_READ_RESTART && pad_read_kind(0, 1, 1, 3.0) == PAD_READ_RESTART);
+    CHECK(pad_read_kind(1, 0, 1, 0.0) == PAD_READ_RESTART && pad_read_kind(0, 0, 0, 0.016) == PAD_READ_RESTART);
+}
+
+#define L3_BIT JPT_PAD_BIT(JPT_PAD_LEFT_STICK)
+#define LT_BIT JPT_PAD_BIT(JPT_PAD_LEFT_TRIGGER)
+#define X_BIT JPT_PAD_BIT(JPT_PAD_WEST)
+#define B_BIT JPT_PAD_BIT(JPT_PAD_EAST)
+#define A_BIT JPT_PAD_BIT(JPT_PAD_SOUTH)
+
+typedef struct {
+    jpt_gamepad_settings_t cfg;
+    pad_play_t play;
+    int started;
+} l3_rig_t;
+
+typedef struct {
+    uint32_t held, hit;
+    int crouching;
+} l3_frame_t;
+
+static void l3_init(l3_rig_t* r) {
+    memset(r, 0, sizeof *r);
+    jpt_gamepad_defaults(&r->cfg);
+}
+
+static l3_frame_t l3_step_kind(l3_rig_t* r, pad_read_t kind, uint32_t buttons) {
+    pad_state_t s = idle();
+    pad_sinput_t in;
+    l3_frame_t f;
+    int dx, dy;
+    pad_play_before(&r->play, kind, &s, buttons, &r->cfg, 0.016f, 0, &dx, &dy);
+    memset(&in, 0, sizeof in);
+    pad_play_after(&r->play, &r->cfg, &in);
+    f.held = in.state & (JPT_CMD_GRAB | JPT_CMD_CROUCH | JPT_CMD_HAND);
+    f.hit = in.hit;
+    f.crouching = (in.state & JPT_CMD_CROUCH) != 0;
+    return f;
+}
+
+static l3_frame_t l3_step(l3_rig_t* r, uint32_t buttons) {
+    pad_read_t kind = r->started ? PAD_READ_NEXT : PAD_READ_RESTART;
+    r->started = 1;
+    return l3_step_kind(r, kind, buttons);
+}
+
+static void test_grab_and_crouch_buttons(void) {
+    l3_rig_t r;
+    l3_frame_t f;
+    const uint32_t grab_hand = JPT_CMD_HAND | JPT_CMD_GRAB;
+
+    /* L3 alone is only the crouch toggle */
+    l3_init(&r);
+    l3_step(&r, 0);
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.crouching && !(f.held & JPT_CMD_GRAB) && !(f.hit & JPT_CMD_GRAB));
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.crouching && !(f.held & JPT_CMD_GRAB));
+    f = l3_step(&r, 0);
+    CHECK(f.crouching);
+    f = l3_step(&r, L3_BIT);
+    CHECK(!f.crouching && !(f.held & JPT_CMD_GRAB));
+    l3_step(&r, 0);
+
+    /* with LT held L3 is still only the crouch toggle: no Grab bit and no Grab edge at any step */
+    l3_init(&r);
+    l3_step(&r, 0);
+    f = l3_step(&r, LT_BIT);
+    CHECK(f.held == JPT_CMD_HAND && f.hit == JPT_CMD_HAND);
+    f = l3_step(&r, LT_BIT | L3_BIT);
+    CHECK(f.held == (JPT_CMD_HAND | JPT_CMD_CROUCH) && !(f.hit & JPT_CMD_GRAB));
+    f = l3_step(&r, LT_BIT | L3_BIT);
+    CHECK(f.held == (JPT_CMD_HAND | JPT_CMD_CROUCH) && f.hit == 0);
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.held == JPT_CMD_CROUCH && f.hit == 0);
+    f = l3_step(&r, 0);
+    CHECK(f.held == JPT_CMD_CROUCH && f.hit == 0);
+    f = l3_step(&r, LT_BIT | L3_BIT);
+    CHECK(f.held == JPT_CMD_HAND && !(f.hit & (JPT_CMD_GRAB | JPT_CMD_CROUCH)));
+    l3_step(&r, 0);
+
+    /* L3 pressed for the crouch, LT pressed while it is held: the crouch stays, nothing is grabbed */
+    l3_init(&r);
+    l3_step(&r, 0);
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.crouching);
+    f = l3_step(&r, L3_BIT | LT_BIT);
+    CHECK(f.crouching && !(f.held & JPT_CMD_GRAB) && !(f.hit & JPT_CMD_GRAB));
+    l3_step(&r, 0);
+
+    /* X is Grab / Drop by touch: one edge per press, no hold needed, with or without LT or L3 */
+    l3_init(&r);
+    l3_step(&r, 0);
+    f = l3_step(&r, X_BIT);
+    CHECK(f.held == JPT_CMD_GRAB && f.hit == JPT_CMD_GRAB && !f.crouching);
+    f = l3_step(&r, X_BIT);
+    CHECK(f.held == JPT_CMD_GRAB && f.hit == 0);
+    f = l3_step(&r, 0);
+    CHECK(f.held == 0 && f.hit == 0);
+    f = l3_step(&r, X_BIT);
+    CHECK(f.hit == JPT_CMD_GRAB);
+    l3_step(&r, 0);
+    l3_step(&r, LT_BIT);
+    f = l3_step(&r, LT_BIT | X_BIT);
+    CHECK(f.held == grab_hand && f.hit == JPT_CMD_GRAB && !f.crouching);
+    f = l3_step(&r, LT_BIT);
+    CHECK(f.held == JPT_CMD_HAND && f.hit == 0);
+    l3_step(&r, 0);
+    f = l3_step(&r, X_BIT | L3_BIT);
+    CHECK((f.held & JPT_CMD_GRAB) && f.hit == JPT_CMD_GRAB && f.crouching);
+
+    /* B is the crouch hold, with or without LT; B or Jump end an L3 latch */
+    l3_init(&r);
+    l3_step(&r, 0);
+    f = l3_step(&r, B_BIT);
+    CHECK(f.crouching);
+    f = l3_step(&r, LT_BIT | B_BIT);
+    CHECK(f.held == (JPT_CMD_HAND | JPT_CMD_CROUCH));
+    f = l3_step(&r, LT_BIT);
+    CHECK(!f.crouching);
+    l3_step(&r, 0);
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.crouching);
+    l3_step(&r, 0);
+    f = l3_step(&r, B_BIT);
+    CHECK(f.crouching);
+    f = l3_step(&r, 0);
+    CHECK(!f.crouching);
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.crouching);
+    l3_step(&r, 0);
+    f = l3_step(&r, A_BIT);
+    CHECK(!f.crouching);
+
+    /* a restart read stands up; an L3 still down after a restart or a menu waits for its release */
+    l3_init(&r);
+    l3_step(&r, 0);
+    l3_step(&r, L3_BIT);
+    l3_step(&r, 0);
+    f = l3_step_kind(&r, PAD_READ_RESTART, L3_BIT);
+    CHECK(!f.crouching);
+    f = l3_step(&r, L3_BIT);
+    CHECK(!f.crouching);
+    l3_step(&r, 0);
+    f = l3_step(&r, L3_BIT);
+    CHECK(f.crouching);
+    f = l3_step_kind(&r, PAD_READ_RESUME, L3_BIT);
+    CHECK(f.crouching && f.hit == 0);
+    l3_step(&r, 0);
+    f = l3_step(&r, L3_BIT);
+    CHECK(!f.crouching);
+
+    /* a device switch stands the crouch up */
+    l3_init(&r);
+    l3_step(&r, 0);
+    l3_step(&r, L3_BIT);
+    pad_play_release(&r.play);
+    f = l3_step(&r, 0);
+    CHECK(!f.crouching);
 }
 
 static void test_navigation(void) {
@@ -701,9 +1056,248 @@ static void test_tutorial_composition(void) {
     CHECK(jpt_prompt_text_has_prompts("<CARD>"));
     n = jpt_prompt_text_render("<CARD>", &c, out, sizeof out, tokens, JPT_PROMPT_MAX_TOKENS);
     CHECK(n >= 14 && strchr(out, '\r') && strstr(out, "Rotate wrist"));
+    CHECK(plain_is(jpt_prompt_controls_hint(), &c, "[View] View Controls"));
     c.gamepad = 0;
     CHECK(jpt_prompt_text_render("<CARD>", &c, out, sizeof out, tokens, JPT_PROMPT_MAX_TOKENS) >= 14);
-    CHECK(plain_is(jpt_prompt_controls_hint(), &c, "[View] Controls"));
+    /* the same hint with the keyboard, the F2 keycap in the button's place */
+    CHECK(plain_is(jpt_prompt_controls_hint(), &c, "[F2] View Controls"));
+    CHECK(jpt_prompt_text_render(jpt_prompt_controls_hint(), &c, out, sizeof out, tokens, JPT_PROMPT_MAX_TOKENS) == 1 &&
+          !tokens[0].prompt.gamepad && tokens[0].prompt.vk == 0x71);
+    CHECK(pad_glyph_token(&tokens[0], c.family, &g) && g.shape == PAD_GLYPH_KEY && !strcmp(g.text, "F2"));
+}
+
+/* ---- the controls card, laid out by the host ---- */
+
+typedef struct {
+    const jpt_card_t* card;
+    const jpt_prompt_context_t* ctx;
+    double char_w; /* a character's width in units of the text height (bold Arial is about 0.55; this is wider) */
+    int calls, last_h;
+} card_measure_t;
+
+/* What the host's measure does, with a fixed character width: text runs, and each token's glyph at 92% of the text
+ * height with an eighth of it either side. */
+static int template_width(const char* source, const card_measure_t* cm, int h) {
+    char marked[256];
+    jpt_prompt_token_t tokens[JPT_PROMPT_MAX_TOKENS];
+    int n, next = 0, w = 0, glyph_h = (h * 92 + 50) / 100, margin = glyph_h / 8 > 1 ? glyph_h / 8 : 1;
+    if (!source || !*source) return 0;
+    n = jpt_prompt_text_render(source, cm->ctx, marked, sizeof marked, tokens, JPT_PROMPT_MAX_TOKENS);
+    if (n < 0) {
+        if (strchr(source, '<')) return -1;
+        return (int)ceil(strlen(source) * cm->char_w * h);
+    }
+    for (const char* s = marked; *s; s++) {
+        if (*s == JPT_PROMPT_MARK) {
+            pad_glyph_t g;
+            if (!pad_glyph_token(&tokens[next], cm->ctx->family, &g)) pad_glyph_key(0, tokens[next].label, &g);
+            w += (int)ceilf(g.width * (float)glyph_h) + 2 * margin;
+            next++;
+        } else {
+            w += (int)ceil(cm->char_w * h);
+        }
+    }
+    return next == n ? w : -1;
+}
+
+static int measure_card(void* context, int h, jpt_card_metrics_t* m) {
+    card_measure_t* cm = (card_measure_t*)context;
+    memset(m, 0, sizeof *m);
+    cm->calls++;
+    cm->last_h = h;
+    m->count = cm->card->count;
+    m->first_column = cm->card->first_column;
+    m->title_w = template_width(cm->card->title, cm, h);
+    for (int i = 0; i < m->count; i++) {
+        m->binding_w[i] = template_width(cm->card->rows[i].binding, cm, h);
+        m->action_w[i] = template_width(cm->card->rows[i].action, cm, h);
+        if (m->binding_w[i] <= 0 || m->action_w[i] <= 0) return 0;
+    }
+    return m->title_w >= 0;
+}
+
+static int boxes_meet(int l0, int t0, int r0, int b0, int l1, int t1, int r1, int b1) {
+    return l0 < r1 && l1 < r0 && t0 < b1 && t1 < b0;
+}
+
+/* Every resolution and aspect ratio the launcher offers (and the software renderer's), the game's text at the size the
+ * port gives it, a line of the game's own text at the top: the card fits, nothing in it overlaps, it stays inside the
+ * safe area below that text, and its text is smaller than the game's but readable. */
+static void test_controls_card(void) {
+    static const int screens[][2] = {
+        { 640, 480 },   { 800, 600 },   { 1024, 768 },  { 1440, 1080 }, { 1920, 1080 }, { 1920, 1200 },
+        { 2560, 1080 }, { 2560, 1440 }, { 2560, 1600 }, { 3440, 1440 }, { 3840, 1080 }, { 3320, 2488 },
+        { 3840, 2160 }, { 3840, 2400 }, { 5040, 2160 }, { 5120, 1440 }, { 5424, 1520 }, { 7680, 2160 },
+        { 2048, 576 },  { 1316, 986 },
+    };
+    jpt_gamepad_settings_t cfg;
+    jpt_key_binding_t map[JPT_KEYMAP_COUNT];
+    jpt_prompt_context_t c;
+    char out[2048];
+    jpt_gamepad_defaults(&cfg);
+    jpt_keymap_default(map);
+    CHECK(jpt_prompt_panel_kind("<CARD>") == JPT_PANEL_CARD);
+    CHECK(jpt_prompt_panel_kind(jpt_prompt_controls_hint()) == JPT_PANEL_HINT);
+    CHECK(jpt_prompt_panel_kind("Press 'Q' to jump.") == JPT_PANEL_NONE && jpt_prompt_panel_kind(NULL) == JPT_PANEL_NONE);
+    for (int gamepad = 0; gamepad < 2; gamepad++)
+        CHECK(jpt_prompt_hint_card(gamepad)->count == 0 &&
+              !strcmp(jpt_prompt_hint_card(gamepad)->title, jpt_prompt_controls_hint()));
+    for (int gamepad = 0; gamepad < 2; gamepad++) {
+        const jpt_card_t* card = jpt_prompt_card(gamepad);
+        int tokens = 0;
+        CHECK(card->count > 0 && card->count <= JPT_CARD_MAX_ROWS && card->first_column > 0 &&
+              card->first_column < card->count);
+        c = prompt_context(gamepad, JPT_FAMILY_XBOX, &cfg, map);
+        /* every row has a binding the device can show, and every action is plain text */
+        for (int i = 0; i < card->count; i++) {
+            jpt_prompt_token_t tk[JPT_PROMPT_MAX_TOKENS];
+            int n = jpt_prompt_text_render(card->rows[i].binding, &c, out, sizeof out, tk, JPT_PROMPT_MAX_TOKENS);
+            CHECK(n > 0);
+            for (int k = 0; k < n; k++) CHECK(strcmp(tk[k].label, "Unbound"));
+            tokens += n > 0 ? n : 0;
+            CHECK(!strchr(card->rows[i].action, '<') && strlen(card->rows[i].action) < 32);
+        }
+        if (gamepad) tokens++; /* the title's View button */
+        CHECK(tokens <= JPT_PROMPT_MAX_TOKENS);
+        for (size_t s = 0; s < sizeof screens / sizeof screens[0]; s++) {
+            for (int family = JPT_FAMILY_XBOX; family <= JPT_FAMILY_PLAYSTATION; family++) {
+                int w = screens[s][0], h = screens[s][1], game = jpt_ui_text_height(32, h), max_h, fit, rows_top = 1 << 30;
+                int band = jpt_card_band_floor(game);
+                card_measure_t cm;
+                jpt_card_metrics_t m;
+                jpt_card_layout_t lay;
+                jpt_box_t area;
+                c = prompt_context(gamepad, (jpt_pad_family_t)family, &cfg, map);
+                memset(&cm, 0, sizeof cm);
+                cm.card = card;
+                cm.ctx = &c;
+                cm.char_w = 0.62;
+                jpt_card_area(0, 0, w, h, game, band, &area, &max_h);
+                fit = jpt_card_fit(measure_card, &cm, max_h, JPT_CARD_FLOOR_TEXT, area, &m, &lay);
+                if (fit != 1) printf("  %dx%d %s: the card does not fit\n", w, h, gamepad ? "gamepad" : "keyboard");
+                CHECK(fit == 1);
+                CHECK(cm.last_h == lay.text_h);
+                /* smaller than the game's own text, and readable */
+                CHECK(lay.text_h <= game && lay.text_h <= max_h);
+                /* comfortable: the full size unless one pixel more would not fit, never under 3% of the height */
+                CHECK(lay.text_h >= (h >= 720 ? h * 30 / 1000 : JPT_CARD_FLOOR_TEXT));
+                if (lay.text_h < max_h) {
+                    jpt_card_metrics_t bigger;
+                    jpt_card_layout_t probe;
+                    measure_card(&cm, lay.text_h + 1, &bigger);
+                    CHECK(!jpt_card_place(&bigger, lay.text_h + 1, lay.columns, area, &probe));
+                } else {
+                    CHECK(lay.text_h == max_h);
+                }
+                CHECK(lay.line_h > lay.text_h);
+                /* inside the safe area: below the game's line at the top, clear of the sides and the subtitles */
+                CHECK(lay.box.left >= area.left && lay.box.right <= area.right && lay.box.top >= area.top &&
+                      lay.box.bottom <= area.bottom);
+                CHECK(area.top >= game + 8 && area.left >= w * 4 / 100 && area.bottom <= h - 8);
+                /* rows: the binding ends before its action begins, and no two rows touch */
+                for (int i = 0; i < m.count; i++) {
+                    CHECK(lay.binding_x[i] + m.binding_w[i] < lay.action_x[i]);
+                    CHECK(lay.binding_x[i] >= lay.box.left && lay.action_x[i] + m.action_w[i] <= lay.box.right);
+                    if (lay.row_y[i] < rows_top) rows_top = lay.row_y[i];
+                    for (int j = i + 1; j < m.count; j++)
+                        CHECK(!boxes_meet(lay.binding_x[i], lay.row_y[i], lay.action_x[i] + m.action_w[i],
+                                          lay.row_y[i] + lay.text_h, lay.binding_x[j], lay.row_y[j],
+                                          lay.action_x[j] + m.action_w[j], lay.row_y[j] + lay.text_h));
+                }
+                /* the title is above every row and centred over the card */
+                CHECK(m.title_w > 0 && lay.title_y + lay.text_h < rows_top);
+                CHECK(abs((lay.title_x + m.title_w / 2) - (lay.box.left + lay.box.right) / 2) <= 1);
+                /* wide screens keep two columns */
+                if (w * 3 >= h * 4) {
+                    if (lay.columns != 2)
+                        printf("  %dx%d %s family %d: %d column\n", w, h, gamepad ? "gamepad" : "keyboard", family,
+                               lay.columns);
+                    CHECK(lay.columns == 2);
+                }
+            }
+        }
+    }
+    {
+        /* a narrow area: the text steps down, then one column, and the result is still placed */
+        card_measure_t cm;
+        jpt_card_metrics_t m;
+        jpt_card_layout_t lay;
+        jpt_box_t tiny = { 0, 0, 120, 60 };
+        c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+        memset(&cm, 0, sizeof cm);
+        cm.card = jpt_prompt_card(1);
+        cm.ctx = &c;
+        cm.char_w = 0.62;
+        CHECK(jpt_card_fit(measure_card, &cm, 40, JPT_CARD_FLOOR_TEXT, tiny, &m, &lay) == 0);
+        CHECK(lay.text_h == JPT_CARD_FLOOR_TEXT && lay.columns == 1 && cm.last_h == JPT_CARD_FLOOR_TEXT);
+    }
+    {
+        /* the hint: a title only, centred at the top of the area, with either device */
+        card_measure_t cm;
+        jpt_card_metrics_t m;
+        jpt_card_layout_t lay;
+        jpt_box_t area;
+        int max_h;
+        c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+        memset(&cm, 0, sizeof cm);
+        cm.card = jpt_prompt_hint_card(1);
+        cm.ctx = &c;
+        cm.char_w = 0.62;
+        jpt_card_area(0, 0, 1920, 1080, 58, jpt_card_band_floor(58), &area, &max_h);
+        CHECK(jpt_card_fit(measure_card, &cm, max_h, JPT_CARD_FLOOR_TEXT, area, &m, &lay) == 1);
+        CHECK(lay.text_h == max_h && lay.title_y == area.top && m.count == 0 && lay.box.bottom == area.top + max_h);
+        c = prompt_context(0, JPT_FAMILY_XBOX, &cfg, map);
+        cm.card = jpt_prompt_hint_card(0);
+        CHECK(jpt_card_fit(measure_card, &cm, max_h, JPT_CARD_FLOOR_TEXT, area, &m, &lay) == 1);
+        CHECK(m.title_w > 0 && m.count == 0 && lay.title_y == area.top && lay.box.right > lay.box.left);
+    }
+    {
+        /* the beach level's own hints (compressed in be.GRF) and every Stream.tpa line: no mouse, key or bar left */
+        static const char* const hints[] = {
+            "To look around, move your mouse.",
+            "To look around, move the mouse.",
+            "You can look around by moving the mouse.",
+            "Move your mouse to look around.",
+            "To adjust your wrist, hold shift + left mouse button, and move the mouse.",
+            "To rotate your arm, hold ctrl + left mouse button, and move the mouse.",
+            "To fire a gun, pick it up, and press the space bar.",
+            "To move forward, press and hold 'W'.",
+            "Press 'S' to walk, 'X' to back up, 'E' to stow and 'F' to throw.",
+            "Press 'R' to hear it again.",
+            "...hold the left mouse button and space bar,",
+            "...press 'Z' to crouch, move your hand  towards the item,",
+            " then press the right mouse button to pick it up.",
+            "Press right mouse button to drop it.",
+        };
+        char lower[512];
+        for (size_t i = 0; i < sizeof hints / sizeof hints[0]; i++) {
+            c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+            CHECK(jpt_prompt_text_has_prompts(hints[i]));
+            CHECK(jpt_prompt_text_plain(hints[i], &c, out, sizeof out) > 0);
+            for (size_t k = 0; k <= strlen(out) && k < sizeof lower; k++) lower[k] = (char)tolower((unsigned char)out[k]);
+            if (strstr(lower, "mouse") || strstr(lower, "space bar") || strstr(lower, "shift") || strstr(lower, "ctrl") ||
+                strchr(out, '\''))
+                printf("  gamepad: \"%s\"\n", out);
+            CHECK(!strstr(lower, "mouse") && !strstr(lower, "space bar") && !strstr(lower, "shift") &&
+                  !strstr(lower, "ctrl") && !strchr(out, '\''));
+        }
+        c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+        CHECK(plain_is("To look around, move your mouse.", &c, "To look around, move [Right stick]."));
+        CHECK(plain_is("To adjust your wrist, hold shift + left mouse button, and move the mouse.", &c,
+                       "To adjust your wrist, hold [Left trigger (LT)] + [Left bumper (LB)], and move [Right stick]."));
+        CHECK(plain_is("To rotate your arm, hold ctrl + left mouse button, and move the mouse.", &c,
+                       "To rotate your arm, hold [Left trigger (LT)] + [Right bumper (RB)], and move [Right stick]."));
+        c = prompt_context(0, JPT_FAMILY_XBOX, &cfg, map);
+        CHECK(plain_is("To adjust your wrist, hold shift + left mouse button, and move the mouse.", &c,
+                       "To adjust your wrist, hold [Shift] + [Mouse Left], and move the mouse."));
+        CHECK(plain_is("Press 'S' to walk, 'X' to back up, 'E' to stow and 'F' to throw.", &c,
+                       "Press [S] to walk, [X] to back up, [E] to stow and [F] to throw."));
+    }
+    /* the game's own top line asks for the beach's forward key: it follows the device too */
+    c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
+    CHECK(plain_is("To move forward, press and hold 'W'.", &c, "To move forward, push [Left stick] forward."));
+    c = prompt_context(0, JPT_FAMILY_XBOX, &cfg, map);
+    CHECK(plain_is("To move forward, press and hold 'W'.", &c, "To move forward, press and hold [W]."));
 }
 
 static int guide_has(const jpt_guide_row_t* rows, int n, const char* action, const char* binding) {
@@ -730,13 +1324,14 @@ static void test_controls_guide(void) {
     CHECK(guide_has(rows, n, "Crouch on/off", "Left stick click (LS)"));
     CHECK(guide_has(rows, n, "Use / Fire", "Right trigger (RT)"));
     CHECK(guide_has(rows, n, "Raise and move the hand", "Left trigger (LT) + Right stick"));
-    CHECK(guide_has(rows, n, "Grab / Drop (hand raised to grab)", "X"));
+    CHECK(guide_has(rows, n, "Grab / Drop", "X"));
     CHECK(guide_has(rows, n, "Throw", "Y"));
     CHECK(guide_has(rows, n, "Stow / Retrieve", "D-pad up"));
-    CHECK(guide_has(rows, n, "Rotate wrist", "Left bumper (LB) + Right stick"));
-    CHECK(guide_has(rows, n, "Rotate arm", "Right bumper (RB) + Right stick"));
+    CHECK(guide_has(rows, n, "Rotate wrist", "Left bumper (LB) + Left trigger (LT) + Right stick"));
+    CHECK(guide_has(rows, n, "Rotate arm", "Right bumper (RB) + Left trigger (LT) + Right stick"));
     CHECK(guide_has(rows, n, "Replay voice over", "D-pad down"));
     CHECK(guide_has(rows, n, "Pause menu", "Menu"));
+    CHECK(guide_has(rows, n, "Show these controls in the game", "View"));
     c.family = JPT_FAMILY_PLAYSTATION;
     n = jpt_controls_guide(&c, rows, JPT_GUIDE_MAX_ROWS);
     CHECK(guide_has(rows, n, "Jump", "Cross"));
@@ -763,6 +1358,7 @@ static void test_controls_guide(void) {
     CHECK(guide_has(rows, n, "Drop the object", "Mouse Right"));
     CHECK(guide_has(rows, n, "Rotate arm", "Ctrl + Mouse Left + Mouse movement"));
     CHECK(guide_has(rows, n, "Rotate wrist", "Shift + Mouse Left + Mouse movement"));
+    CHECK(guide_has(rows, n, "Show these controls in the game", "F2"));
     for (int i = 0; i < JPT_KEYMAP_COUNT; i++)
         if (map[i].command == JPT_CMD_STOW) map[i].vk = 'G';
     n = jpt_controls_guide(&c, rows, JPT_GUIDE_MAX_ROWS);
@@ -794,12 +1390,16 @@ int main(void) {
     test_glyph_shapes();
     test_roster();
     test_gameplay();
+    test_crouch();
+    test_stick_as_mouse();
+    test_grab_and_crouch_buttons();
     test_edges();
     test_navigation();
     test_hotplug_flow();
     test_tutorial_text();
     test_tutorial_bindings();
     test_tutorial_composition();
+    test_controls_card();
     test_controls_guide();
     test_launcher_controller();
     printf("gamepad_tests: %d checks, %d failures\n", s_checks, s_failures);

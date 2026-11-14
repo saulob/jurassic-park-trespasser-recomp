@@ -77,9 +77,11 @@ constexpr char kTextureFilteringHelp[] =
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] =
     "Shows the renderer, the frame rate and the game's screen size in the window title.";
+constexpr char kSkipIntroHelp[] =
+    "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
 constexpr char kKeyboardHelp[] =
-    "The game's own bindings as it loads them, changed in its Controls screen (Options > Controls, or F12 in a "
-    "level). They keep working while a gamepad is connected.";
+    "The game's own bindings as it loads them, changed in its Controls screen (Options > Controls). They keep "
+    "working while a gamepad is connected.";
 constexpr char kGamepadHelp[] =
     "Xbox, PlayStation, Switch Pro, Steam Deck and other controllers SDL3 recognises work without setup, at the same "
     "time as the keyboard and mouse. The tutorial's instructions show the buttons of the device you used last. "
@@ -94,8 +96,8 @@ constexpr char kStickDeadzoneHelp[] =
     "How far a stick moves before it counts. Raise it if the view or Anne drifts with the stick at rest.";
 constexpr char kTriggerDeadzoneHelp[] = "How far a trigger is pressed before it counts.";
 constexpr char kGuideHelp[] =
-    "Hold Move Hand to raise Anne's hand; the right stick then moves it instead of the view. Rotate Wrist and Rotate "
-    "Arm raise the hand by themselves. In a level, View shows this list.";
+    "Hold Move Hand to raise Anne's hand; the right stick then moves it instead of the view, as the mouse does with "
+    "the left button. Rotate Wrist and Rotate Arm work with Move Hand held. In a level, View (F2 on the keyboard) shows this list.";
 constexpr char kBindingHelp[] =
     "Choosing a button another action uses gives that action this one's button. Start always opens the pause menu, "
     "and View/Back is kept free.";
@@ -440,8 +442,8 @@ private:
             return {name, "Renderer, resolution, anti-aliasing and texture filtering.",
                     [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr};
         case PageId::kGameplay:
-            return {name, "The game's own options and frame rate readouts.", [this](trg::Ui& ui) { PageGameplay(ui); },
-                    nullptr, nullptr};
+            return {name, "The game's own options, Skip Intro and frame rate readouts.",
+                    [this](trg::Ui& ui) { PageGameplay(ui); }, nullptr, nullptr};
         case PageId::kControls:
             return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
         case PageId::kCheats:
@@ -706,6 +708,7 @@ private:
             invert_ = invert == 1;
             invert_dirty_ = true;
         }
+        ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
         ui.EndRows();
     }
@@ -757,9 +760,9 @@ private:
         if (ui.Section("Port hotkeys", true)) {
             ui.Help("Rebinding the hotkeys is not available yet.");
             ui.Info("Hint", "F1");
+            ui.Info("Controls", "F2");
             ui.Info("Windowed / Borderless Fullscreen", "F11");
             ui.Info("The game's original cheat input", "Ctrl+F11");
-            ui.Info("Controls", "F12");
             ui.Info("Menu", "Esc");
             ui.Info("Exit", "Alt+F4");
             ui.EndRows();

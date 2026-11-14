@@ -197,6 +197,7 @@ int guest_display_built(void) { return 1; }
 
 static int g_pad_in_use;
 static jpt_gamepad_settings_t g_pad_settings;
+int gamepad_menu_focus(void) { return 0; }
 void gamepad_prompts(gamepad_prompts_t* out) {
     out->gamepad = g_pad_in_use;
     out->family = JPT_FAMILY_PLAYSTATION;
@@ -494,6 +495,19 @@ static void test_main_and_frame(void) {
               "the repaint of a hovered button is not just around it");
     }
     frontend_hd_frame_done();
+    {
+        /* the hovered plaque carries its normal picture, so the painter can lift its red lettering */
+        static fe_scene_t now;
+        const fe_widget_t *h, *other;
+        CHECK(frontend_hd_read_scene(&now, 1024, 768), "the hovered main screen is refused");
+        h = find(&now, FE_W_BUTTON, 1001);
+        other = find(&now, FE_W_BUTTON, 1000);
+        CHECK(h && (h->state & FE_ST_HOVER) && h->normal_image &&
+                  h->normal_image == (const uint16_t*)(uintptr_t)get32(get32(b1 + 0x2C) + 0x18) &&
+                  h->normal_pitch == h->image_w,
+              "a hovered plaque does not carry its normal picture for the red lift");
+        CHECK(other && !other->normal_image, "a plaque that is not hovered carries a normal picture");
+    }
     for (int i = 0; i < 200; i++) frontend_hd_idle();
     free_fakes();
 }

@@ -53,6 +53,7 @@
 #define VT_OPTIONS 0x00646A58u
 #define VT_AUDIO 0x00646C28u
 #define VT_DIRECT_LOAD 0x00646888u
+#define VT_CONTROLS_WND 0x00645F38u
 
 #define BUTTON_STATE 0x28u
 #define BUTTON_IMAGES 0x2Cu
@@ -289,6 +290,14 @@ static int add_button(reader_t* r, uint32_t c, uint32_t flags, int32_t id, fe_re
     else w->state = (uint16_t)(((state & BUTTON_HOVER) ? FE_ST_HOVER : 0) | ((state & BUTTON_PRESSED) ? FE_ST_PRESSED : 0));
     w->style = is_arrow(r, c, &down) ? (down ? FE_BUTTON_ARROW_DOWN : FE_BUTTON_ARROW_UP) : FE_BUTTON_PLAQUE;
     if (!set_picture(w, raster, state & 1)) w->image = NULL;
+    if (w->image && slot == 1 && w->style == FE_BUTTON_PLAQUE) {
+        const uint16_t* bits;
+        int iw, ih, pitch;
+        if (read_image(peek32(c + BUTTON_IMAGES), &bits, &iw, &ih, &pitch) && iw == w->image_w && ih == w->image_h) {
+            w->normal_image = bits;
+            w->normal_pitch = pitch;
+        }
+    }
     return 1;
 }
 
@@ -727,6 +736,8 @@ static int read_window(reader_t* r, uint32_t window, int top) {
         for (unsigned i = 0; i < count; i++)
             if (!add_control(r, controls[i])) return 0;
         if (r->wc->kind == FE_WND_DIRECT_LOAD && !add_level_photo(r, w)) return 0;
+        if (r->wc->kind == FE_WND_CONTROLS && rect.right - rect.left > FE_CONTROLS_W)
+            fe_controls_polish(r->s, w, (double)(rect.right - rect.left) / FE_CONTROLS_W);
     }
     fe_scene_finish_window(r->s, w);
     return 1;
@@ -902,7 +913,7 @@ static void update_pointer(const fe_scene_t* s) {
         F.cursor_raster = raster;
         F.cursor_generation++;
     }
-    if (!pointer_shown() || !window_host_pointer(&x, &y)) {
+    if (!pointer_shown() || gamepad_menu_focus() || !window_host_pointer(&x, &y)) {
         d3dr_set_frontend_pointer(NULL, 0, 0, 0, 0);
         return;
     }
@@ -1105,6 +1116,29 @@ static void edit_audio(uint32_t window) {
                              "the other rows are spread over its space");
 }
 
+/* Moving the game's own rects keeps its hit tests, the gamepad focus and the remap hotspots on what is drawn. */
+static void edit_controls(uint32_t window, fe_rect_t wr) {
+    static int logged;
+    uint32_t controls[MAX_CONTROLS];
+    unsigned count;
+    fe_rect_t to;
+    if (wr.right - wr.left != FE_CONTROLS_W || wr.bottom - wr.top != FE_CONTROLS_H || !read_controls(window, controls, &count))
+        return;
+    to = fe_controls_window(wr, FE_CANVAS_W, FE_CANVAS_H);
+    for (unsigned i = 0; i < count; i++) {
+        uint32_t vt = peek32(controls[i]);
+        int picture = vt == VT_BUTTON || vt == VT_STATIC || vt == VT_CHECKBOX;
+        fe_rect_t r;
+        if (!read_rect(controls[i] + CTRL_RECT, &r)) continue;
+        r = fe_controls_rect(fe_rect_offset(r, -wr.left, -wr.top), picture);
+        write_rect(controls[i], fe_rect_offset(r, to.left, to.top));
+    }
+    write_rect(window, to);
+    if (!logged++)
+        host_log("frontend", "Controls: laid out %.1fx larger with wider label columns, %u controls moved (%d,%d-%d,%d)",
+                 FE_CONTROLS_ZOOM, count, to.left, to.top, to.right, to.bottom);
+}
+
 /* Direct Load is a 320x240 list; its window and controls move left to leave room for the level's picture. */
 static void edit_direct_load(uint32_t window, fe_rect_t wr) {
     static int logged;
@@ -1127,4 +1161,5 @@ void frontend_hd_window_centred(uint32_t window) {
     if (vt == VT_OPTIONS) edit_options(window, wr);
     else if (vt == VT_AUDIO) edit_audio(window);
     else if (vt == VT_DIRECT_LOAD) edit_direct_load(window, wr);
+    else if (vt == VT_CONTROLS_WND) edit_controls(window, wr);
 }

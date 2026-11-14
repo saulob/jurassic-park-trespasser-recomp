@@ -1,8 +1,6 @@
 /*
- * Button and key glyphs inside the game's text overlay (the tutorial's subtitles, the controls card). Each laid-out
- * text is read back, rewritten for the device in use and laid out again by the game's own routine, with a run of
- * placeholder characters as wide as each glyph; the glyphs are painted where the runs land. A change of device or
- * binding lays the text out again on the next frame.
+ * Button and key glyphs inside the game's text overlay. Subtitles are laid out again by the game's own routine with a
+ * placeholder run as wide as each glyph; the controls card and its hint are panels laid out here.
  */
 #include "host.h"
 
@@ -24,10 +22,20 @@
 #define GAME_SECONDS 0x0073F350u
 #define RASTER_PTR 0x0073DC40u
 #define RASTER_WIDTH 0x08u
+#define RASTER_HEIGHT 0x0Cu
 #define RASTER_LEFT 0x88u
 #define RASTER_TOP 0x8Cu
 #define KEYMAP_VA 0x0066AE78u
+#define FONT_HFONT 0x00u
 #define FONT_TALLEST 0x0Cu
+/* CTextOverlay: its entries, a ring from the sentinel at +0x54; an entry's laid-out text, flags and category. */
+#define OVERLAY_LIST 0x54u
+#define NODE_BLOB 0x0Cu
+#define NODE_FLAGS 0x1Cu
+#define NODE_CATEGORY 0x24u
+#define NODE_SINGLE_LINE 0x100u
+#define NODE_WAITING 0x400u
+#define NODE_LIMIT 64
 #define FONT_WIDTH(c) (0x10u + 4u * (uint32_t)(c))
 
 #define LAYOUT_CENTRE 0x01u
@@ -52,6 +60,9 @@
 #define HINT_SECONDS 7.0f
 #define WHITE_TEXT 0x00FFFFFFu
 
+#define PANEL_PIECES 160
+#define PANEL_LOG_LIMIT 12
+
 typedef struct {
     uint32_t text;
     int x, y, count;
@@ -61,8 +72,20 @@ typedef struct {
     int gamepad, family;
     int bind[JPT_ACT_COUNT];
     jpt_key_binding_t keymap[JPT_KEYMAP_COUNT];
-    uint32_t font, tallest, raster_w, left, top, flags;
+    uint32_t font, tallest, raster_w, raster_h, left, top, flags;
+    int panel, band;
 } signature_t;
+
+typedef struct {
+    int line, dx, width;
+    int token; /* glyph index, -1 for text */
+    const char* text;
+    int len;
+} piece_t;
+
+typedef struct {
+    int first, count;
+} group_t;
 
 typedef struct {
     uint32_t blob, hash, used;
@@ -77,6 +100,9 @@ typedef struct {
     uint32_t unit;
     pad_glyph_t glyphs[JPT_PROMPT_MAX_TOKENS];
     char plain[MAX_TEXT];
+    int panel, text_h, shadow, glyph_margin, piece_count, arena_used;
+    int line_w[MAX_LINES];
+    piece_t pieces[PANEL_PIECES];
 } entry_t;
 
 typedef struct {
@@ -96,6 +122,13 @@ static struct {
     const char* last_text;
     int logged, last_logged_gamepad, last_logged_family;
     char card[16], hint[32];
+    struct {
+        HFONT font;
+        int h;
+        uint32_t game_font;
+    } fonts[2];
+    int next_font, band_hold, panel_logs;
+    HDC measure;
 } P = { .last_logged_gamepad = -1, .last_logged_family = -1 };
 
 static void call_guest(uint32_t va, uint32_t self, const uint32_t* args, int count) {
@@ -157,7 +190,28 @@ static uint32_t layout_flags(uint32_t font, const line_t* first) {
     return flags;
 }
 
-static void current_signature(uint32_t font, const line_t* first, signature_t* s, gamepad_prompts_t* g) {
+/* Below the game's top-anchored entries; it only grows while a panel is shown, so the card never jumps up. */
+static int panel_band(uint32_t tallest, int top) {
+    uint32_t overlay = MEM32(OVERLAY_PTR), head, node;
+    int band = jpt_card_band_floor((int)tallest), n = 0;
+    head = overlay ? MEM32(overlay + OVERLAY_LIST) : 0;
+    for (node = head ? MEM32(head) : 0; node && node != head && n < NODE_LIMIT; node = MEM32(node), n++) {
+        uint32_t category = MEM32(node + NODE_CATEGORY), flags = MEM32(node + NODE_FLAGS);
+        line_t lines[MAX_LINES];
+        int count, bottom;
+        if (category == CARD_CATEGORY || category == HINT_CATEGORY || (flags & (NODE_SINGLE_LINE | NODE_WAITING)))
+            continue;
+        count = blob_lines(MEM32(node + NODE_BLOB), lines, MAX_LINES);
+        if (count <= 0 || lines[0].y > top + LAYOUT_MARGIN) continue;
+        bottom = lines[count - 1].y - top + (int)tallest + (int)tallest / 4;
+        if (bottom > band) band = bottom;
+    }
+    if (P.band_hold > band) band = P.band_hold;
+    P.band_hold = band;
+    return band;
+}
+
+static void current_signature(uint32_t font, const line_t* first, int panel, signature_t* s, gamepad_prompts_t* g) {
     uint32_t raster = MEM32(RASTER_PTR);
     memset(s, 0, sizeof *s);
     gamepad_prompts(g);
@@ -171,9 +225,12 @@ static void current_signature(uint32_t font, const line_t* first, signature_t* s
     s->font = font;
     s->tallest = MEM32(font + FONT_TALLEST);
     s->raster_w = MEM32(raster + RASTER_WIDTH);
+    s->raster_h = MEM32(raster + RASTER_HEIGHT);
     s->left = MEM32(raster + RASTER_LEFT);
     s->top = MEM32(raster + RASTER_TOP);
     s->flags = layout_flags(font, first);
+    s->panel = panel;
+    s->band = panel ? panel_band(s->tallest, (int)s->top) : 0;
 }
 
 static int glyph_width(const pad_glyph_t* g, int h) { return (int)ceilf(g->width * (float)h); }
@@ -240,17 +297,238 @@ static int build(entry_t* e, uint32_t font, const char* original, const gamepad_
     return runs == e->token_count;
 }
 
+/* The panel font: the game's own face, aliased (the overlay's draw stays a pure write), at the panel's cell height. */
+static HFONT panel_font(uint32_t game_font, int h) {
+    HFONT base = (HFONT)(uintptr_t)MEM32(game_font + FONT_HFONT), made;
+    LOGFONTA lf;
+    int slot;
+    for (int i = 0; i < 2; i++)
+        if (P.fonts[i].font && P.fonts[i].h == h && P.fonts[i].game_font == game_font) return P.fonts[i].font;
+    if (!base || GetObjectA(base, sizeof lf, &lf) != sizeof lf) {
+        memset(&lf, 0, sizeof lf);
+        lf.lfWeight = FW_BOLD;
+        lf.lfCharSet = ANSI_CHARSET;
+        strcpy(lf.lfFaceName, "Arial");
+    }
+    lf.lfHeight = h;
+    lf.lfWidth = 0;
+    lf.lfEscapement = lf.lfOrientation = 0;
+    lf.lfQuality = NONANTIALIASED_QUALITY;
+    made = CreateFontIndirectA(&lf);
+    if (!made) return NULL;
+    slot = P.next_font;
+    P.next_font ^= 1;
+    if (P.fonts[slot].font) DeleteObject(P.fonts[slot].font);
+    P.fonts[slot].font = made;
+    P.fonts[slot].h = h;
+    P.fonts[slot].game_font = game_font;
+    return made;
+}
+
+static piece_t* add_piece(entry_t* e) {
+    piece_t* p;
+    if (e->piece_count >= PANEL_PIECES) return NULL;
+    p = &e->pieces[e->piece_count++];
+    memset(p, 0, sizeof *p);
+    p->token = -1;
+    return p;
+}
+
+static int panel_template(entry_t* e, const char* source, const jpt_prompt_context_t* ctx, HDC dc) {
+    char marked[256];
+    jpt_prompt_token_t tokens[JPT_PROMPT_MAX_TOKENS];
+    int count, next = 0, x = 0;
+    if (!source || !*source) return 0;
+    count = jpt_prompt_text_render(source, ctx, marked, sizeof marked, tokens, JPT_PROMPT_MAX_TOKENS);
+    if (count < 0) {
+        if (strlen(source) >= sizeof marked || strchr(source, '<')) return -1;
+        strcpy(marked, source);
+        count = 0;
+    }
+    for (const char* s = marked; *s;) {
+        piece_t* p = add_piece(e);
+        if (!p) return -1;
+        p->dx = x;
+        if (*s == JPT_PROMPT_MARK) {
+            pad_glyph_t* glyph;
+            if (next >= count || e->token_count >= JPT_PROMPT_MAX_TOKENS) return -1;
+            glyph = &e->glyphs[e->token_count];
+            if (!pad_glyph_token(&tokens[next], ctx->family, glyph)) pad_glyph_key(0, tokens[next].label, glyph);
+            p->token = e->token_count++;
+            p->width = glyph_width(glyph, e->glyph_h) + 2 * e->glyph_margin;
+            next++;
+            s++;
+        } else {
+            const char* end = s;
+            SIZE size;
+            while (*end && *end != JPT_PROMPT_MARK) end++;
+            p->len = (int)(end - s);
+            if (e->arena_used + p->len + 1 > EXPANDED_CAP) return -1;
+            p->text = e->text + e->arena_used;
+            memcpy(e->text + e->arena_used, s, (size_t)p->len);
+            e->arena_used += p->len;
+            e->text[e->arena_used++] = 0;
+            p->width = GetTextExtentPoint32A(dc, p->text, p->len, &size) ? (int)size.cx : 0;
+            s = end;
+        }
+        x += p->width;
+    }
+    return x;
+}
+
+static int panel_pass(entry_t* e, const jpt_card_t* card, const jpt_prompt_context_t* ctx, int h, jpt_card_metrics_t* m,
+                      group_t* title, group_t* binding, group_t* action) {
+    HFONT font = panel_font(e->sig.font, h);
+    HGDIOBJ old;
+    int ok = 1;
+    if (!P.measure) P.measure = CreateCompatibleDC(NULL);
+    if (!P.measure || !font) return 0;
+    old = SelectObject(P.measure, font);
+    e->piece_count = e->token_count = e->arena_used = 0;
+    e->text_h = h;
+    e->glyph_h = (h * 92 + 50) / 100;
+    e->glyph_margin = e->glyph_h / 8 > 1 ? e->glyph_h / 8 : 1;
+    e->shadow = h / 18 > 1 ? h / 18 : 1;
+    memset(m, 0, sizeof *m);
+    m->count = card->count;
+    m->first_column = card->first_column;
+    title->first = e->piece_count;
+    m->title_w = panel_template(e, card->title, ctx, P.measure);
+    title->count = e->piece_count - title->first;
+    ok &= m->title_w >= 0;
+    for (int i = 0; i < card->count && ok; i++) {
+        binding[i].first = e->piece_count;
+        m->binding_w[i] = panel_template(e, card->rows[i].binding, ctx, P.measure);
+        binding[i].count = e->piece_count - binding[i].first;
+        action[i].first = e->piece_count;
+        m->action_w[i] = panel_template(e, card->rows[i].action, ctx, P.measure);
+        action[i].count = e->piece_count - action[i].first;
+        ok &= m->binding_w[i] >= 0 && m->action_w[i] >= 0;
+    }
+    SelectObject(P.measure, old);
+    return ok;
+}
+
+static void place_group(entry_t* e, const group_t* g, int line, int shift) {
+    for (int i = g->first; i < g->first + g->count; i++) {
+        int right;
+        e->pieces[i].line = line;
+        e->pieces[i].dx += shift;
+        right = e->pieces[i].dx + e->pieces[i].width;
+        if (right > e->line_w[line]) e->line_w[line] = right;
+    }
+}
+
+/* A one-character line the TextOutA hook recognises by its address. */
+static int blob_line(entry_t* e, uint32_t* used, int x, int y) {
+    uint32_t at = (uint32_t)(uintptr_t)e->scratch + *used;
+    if (e->line_count >= MAX_LINES || *used + 14 > SCRATCH_BYTES) return -1;
+    MEM32(at) = (uint32_t)x;
+    MEM32(at + 4) = (uint32_t)y;
+    MEM32(at + 8) = 1;
+    MEM8(at + 12) = '#';
+    MEM8(at + 13) = 0;
+    e->line_text[e->line_count] = at + 12;
+    e->line_w[e->line_count] = 0;
+    *used += 14;
+    return e->line_count++;
+}
+
+static void log_panel(const entry_t* e, const jpt_card_t* card, const jpt_card_layout_t* lay, int fits) {
+    if (P.panel_logs >= PANEL_LOG_LIMIT) return;
+    if (++P.panel_logs == PANEL_LOG_LIMIT) {
+        host_log("prompts", "panel line limit reached");
+        return;
+    }
+    if (!e->line_count) {
+        host_log("prompts", "controls hint: nothing to show with the keyboard and mouse");
+        return;
+    }
+    host_log("prompts", "%s laid out for %s: %d rows in %d column%s, text %d px (the game's %u px) on a %ux%u screen, "
+             "%dx%d at %d,%d below a top band of %d px%s",
+             e->panel == JPT_PANEL_CARD ? "controls card" : "controls hint",
+             e->sig.gamepad ? "the gamepad" : "the keyboard", card->count, lay->columns, lay->columns == 1 ? "" : "s",
+             e->text_h, e->sig.tallest, e->sig.raster_w, e->sig.raster_h, lay->box.right - lay->box.left,
+             lay->box.bottom - lay->box.top, lay->box.left, lay->box.top, e->sig.band,
+             fits ? "" : " (did not fit at the smallest size)");
+}
+
+typedef struct {
+    entry_t* e;
+    const jpt_card_t* card;
+    const jpt_prompt_context_t* ctx;
+    group_t *title, *binding, *action;
+} panel_measure_t;
+
+static int measure_panel(void* context, int h, jpt_card_metrics_t* m) {
+    panel_measure_t* pm = (panel_measure_t*)context;
+    return panel_pass(pm->e, pm->card, pm->ctx, h, m, pm->title, pm->binding, pm->action);
+}
+
+static int build_panel(entry_t* e, const gamepad_prompts_t* g) {
+    const jpt_card_t* card =
+        e->panel == JPT_PANEL_CARD ? jpt_prompt_card(e->sig.gamepad) : jpt_prompt_hint_card(e->sig.gamepad);
+    jpt_prompt_context_t ctx;
+    jpt_card_metrics_t m;
+    jpt_card_layout_t lay;
+    jpt_box_t area;
+    group_t title, binding[JPT_CARD_MAX_ROWS], action[JPT_CARD_MAX_ROWS];
+    panel_measure_t pm = { e, card, NULL, &title, binding, action };
+    int rw = (int)e->sig.raster_w, rh = (int)e->sig.raster_h, left = (int)e->sig.left, top = (int)e->sig.top;
+    int max_h, fits, line;
+    uint32_t used = 8;
+    if (card->count > JPT_CARD_MAX_ROWS || rw <= 0 || rh <= 0) return 0;
+    if (!e->scratch) e->scratch = (uint8_t*)malloc(SCRATCH_BYTES);
+    if (!e->text) e->text = (char*)malloc(EXPANDED_CAP);
+    if (!e->scratch || !e->text) return 0;
+    memset(&ctx, 0, sizeof ctx);
+    memset(&lay, 0, sizeof lay);
+    ctx.gamepad = e->sig.gamepad;
+    ctx.family = (jpt_pad_family_t)e->sig.family;
+    ctx.settings = g->settings;
+    ctx.keymap = e->sig.keymap;
+    ctx.keymap_count = JPT_KEYMAP_COUNT;
+    jpt_card_area(left, top, rw, rh, (int)e->sig.tallest, e->sig.band, &area, &max_h);
+    pm.ctx = &ctx;
+    fits = jpt_card_fit(measure_panel, &pm, max_h, JPT_CARD_FLOOR_TEXT, area, &m, &lay);
+    if (fits < 0) return 0;
+    e->line_count = 0;
+    if (title.count) {
+        if ((line = blob_line(e, &used, lay.title_x, lay.title_y)) < 0) return 0;
+        place_group(e, &title, line, 0);
+    }
+    for (int i = 0; i < card->count; i++) {
+        if ((line = blob_line(e, &used, lay.binding_x[i], lay.row_y[i])) < 0) return 0;
+        place_group(e, &binding[i], line, 0);
+        place_group(e, &action[i], line, lay.action_x[i] - lay.binding_x[i]);
+    }
+    MEM32((uint32_t)(uintptr_t)e->scratch) = used;
+    MEM32((uint32_t)(uintptr_t)e->scratch + 4) = (uint32_t)e->line_count;
+    log_panel(e, card, &lay, fits);
+    return 1;
+}
+
+static int original_text(const line_t* lines, int n, char* out) {
+    int used = 0;
+    for (int i = 0; i < n; i++) {
+        if (used + lines[i].count + 1 > MAX_TEXT) return 0;
+        memcpy(out + used, (const void*)(uintptr_t)lines[i].text, (size_t)lines[i].count);
+        used += lines[i].count;
+    }
+    out[used] = 0;
+    return 1;
+}
+
 static entry_t* entry_for(uint32_t font, uint32_t blob) {
     line_t lines[MAX_LINES];
     char original[MAX_TEXT];
-    int n = blob_lines(blob, lines, MAX_LINES), used = 0;
+    int n = blob_lines(blob, lines, MAX_LINES), panel, have_original = 0;
     uint32_t hash;
     signature_t sig;
     gamepad_prompts_t g;
     entry_t* e = NULL;
     if (n <= 0) return NULL;
     hash = fnv(blob);
-    current_signature(font, &lines[0], &sig, &g);
     for (int i = 0; i < CACHE_ENTRIES; i++) {
         entry_t* c = &P.cache[i];
         if (c->valid && c->blob == blob && c->hash == hash) {
@@ -258,27 +536,32 @@ static entry_t* entry_for(uint32_t font, uint32_t blob) {
             break;
         }
     }
+    if (e) {
+        panel = e->panel;
+    } else {
+        if (!original_text(lines, n, original)) return NULL;
+        have_original = 1;
+        panel = jpt_prompt_panel_kind(original);
+    }
+    current_signature(font, &lines[0], panel, &sig, &g);
     if (e && !memcmp(&e->sig, &sig, sizeof sig)) {
         e->used = ++P.clock;
         return e->active ? e : NULL;
     }
+    if (!have_original && !original_text(lines, n, original)) return NULL;
     if (!e) {
         e = &P.cache[0];
         for (int i = 1; i < CACHE_ENTRIES; i++)
             if (!P.cache[i].valid || (e->valid && P.cache[i].used < e->used)) e = &P.cache[i];
     }
-    for (int i = 0; i < n; i++) {
-        if (used + lines[i].count + 1 > MAX_TEXT) return NULL;
-        memcpy(original + used, (const void*)(uintptr_t)lines[i].text, (size_t)lines[i].count);
-        used += lines[i].count;
-    }
-    original[used] = 0;
     e->valid = 1;
     e->blob = blob;
     e->hash = hash;
     e->sig = sig;
     e->used = ++P.clock;
-    e->active = jpt_prompt_text_has_prompts(original) && build(e, font, original, &g);
+    e->panel = panel;
+    if (panel) e->active = build_panel(e, &g);
+    else e->active = jpt_prompt_text_has_prompts(original) && build(e, font, original, &g);
     return e->active ? e : NULL;
 }
 
@@ -386,6 +669,52 @@ static void log_drawn(const entry_t* e) {
         host_log("prompts", "prompt renderer: keyboard and mouse keycaps drawn in the game's text: \"%s\"", e->plain);
 }
 
+/* Drawn on the colour pass only (the game's first pass is its 1-pixel shadow). */
+static int panel_textout(const entry_t* e, HDC dc, int x, int y, int line, int main_pass) {
+    HFONT font;
+    HGDIOBJ old = NULL;
+    COLORREF colour;
+    POINT corner[2];
+    RECT box;
+    int h = e->text_h, shadow = e->shadow;
+    if (!main_pass) return 1;
+    corner[0].x = x - 2;
+    corner[0].y = y - 2;
+    corner[1].x = x + e->line_w[line] + shadow + 2;
+    corner[1].y = y + h + shadow + 2;
+    if (LPtoDP(dc, corner, 2)) {
+        box.left = min(corner[0].x, corner[1].x);
+        box.right = max(corner[0].x, corner[1].x);
+        box.top = min(corner[0].y, corner[1].y);
+        box.bottom = max(corner[0].y, corner[1].y);
+        d3dr_text_box(dc, &box);
+    } else {
+        d3dr_text_box(dc, NULL);
+    }
+    font = panel_font(e->sig.font, h);
+    if (font) old = SelectObject(dc, font);
+    colour = GetTextColor(dc);
+    for (int i = 0; i < e->piece_count; i++) {
+        const piece_t* p = &e->pieces[i];
+        if (p->line != line) continue;
+        if (p->token < 0) {
+            SetTextColor(dc, RGB(0, 0, 0));
+            TextOutA(dc, x + p->dx + shadow, y + shadow, p->text, p->len);
+            TextOutA(dc, x + p->dx + shadow, y, p->text, p->len);
+            TextOutA(dc, x + p->dx, y + shadow, p->text, p->len);
+            SetTextColor(dc, colour);
+            TextOutA(dc, x + p->dx, y, p->text, p->len);
+        } else {
+            const glyph_bitmap_t* b = glyph_bitmap(&e->glyphs[p->token], e->glyph_h);
+            if (b)
+                TransparentBlt(dc, x + p->dx + e->glyph_margin, y + (h - b->h) / 2, b->w, b->h, b->dc, 0, 0, b->w, b->h,
+                               KEY_COLOR);
+        }
+    }
+    if (old) SelectObject(dc, old);
+    return 1;
+}
+
 int tutorial_prompts_textout(HDC dc, int x, int y, const char* text, int count) {
     const entry_t* e = P.drawing;
     uint32_t font;
@@ -398,6 +727,7 @@ int tutorial_prompts_textout(HDC dc, int x, int y, const char* text, int count) 
     if (line < 0) return 0;
     main_pass = text == P.last_text;
     P.last_text = text;
+    if (e->panel) return panel_textout(e, dc, x, y, line, main_pass);
     font = e->sig.font;
     for (int i = 0; i < count; i++) total += (int)MEM32(font + FONT_WIDTH((int8_t)text[i]));
     corner[0].x = x - (int)e->sig.tallest;
@@ -456,13 +786,16 @@ static void overlay_add(uint32_t overlay, const char* text, float seconds, uint3
 }
 
 void tutorial_prompts_toggle_card(void) {
-    uint32_t overlay = MEM32(OVERLAY_PTR), shown;
+    uint32_t overlay = MEM32(OVERLAY_PTR), shown, hint;
     if (!overlay) return;
     shown = (uint32_t)overlay_entry(overlay, CARD_CATEGORY);
     if (shown) {
         *(float*)ADDR(shown) = *(float*)ADDR(GAME_SECONDS);
         return;
     }
+    hint = (uint32_t)overlay_entry(overlay, HINT_CATEGORY);
+    if (hint) *(float*)ADDR(hint) = *(float*)ADDR(GAME_SECONDS);
+    P.band_hold = 0;
     memcpy(P.card, "<CARD>", sizeof "<CARD>");
     overlay_add(overlay, P.card, CARD_SECONDS, LAYOUT_CENTRE, CARD_CATEGORY);
     host_log("prompts", "controls card shown");
@@ -471,6 +804,8 @@ void tutorial_prompts_toggle_card(void) {
 int tutorial_prompts_hint(void) {
     uint32_t overlay = MEM32(OVERLAY_PTR);
     if (!overlay || overlay_entry(overlay, HINT_CATEGORY)) return 0;
+    if (overlay_entry(overlay, CARD_CATEGORY)) return 1;
+    P.band_hold = 0;
     strncpy(P.hint, jpt_prompt_controls_hint(), sizeof P.hint - 1);
     overlay_add(overlay, P.hint, HINT_SECONDS, LAYOUT_CENTRE, HINT_CATEGORY);
     return 1;

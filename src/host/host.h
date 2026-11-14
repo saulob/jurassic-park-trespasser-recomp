@@ -43,6 +43,8 @@ void shim_OutputDebugStringA(void);
 void guest_registry_init(const char* game_dir, const char* user_dir);
 void registry_show_ddraw_cert_dialog(void);
 void registry_software_water(void);
+/* While on, the game's "NoVideo" reads 1: CVideoWnd::Play returns at once, as it does with the value stored. */
+void registry_skip_video(int on);
 void shim_RegOpenKeyExA(void);
 void shim_RegCreateKeyA(void);
 void shim_RegQueryValueExA(void);
@@ -260,6 +262,8 @@ void video_hd_main_presented(void);
 void video_hd_release(void);
 /* The next Play only (vl_play_mode_t); it is AUTO again from the one after. */
 void video_hd_force(int mode);
+/* Skip Intro (key skip_intro): read at start-up, applied as each opening is about to play. */
+void video_hd_skip_intro(int enabled);
 /* video_test.c: F5 opens or closes the Video Test panel with the main menu alone in front; elsewhere nothing. */
 void video_test_f5(void);
 int video_test_visible(void);
@@ -289,6 +293,9 @@ void window_host_post_mouse(int kind);
 /* The game's pointer in menus, in its own coordinates, placed by the gamepad until the mouse is used. */
 void window_host_set_pad_cursor(int x, int y);
 void window_host_release_pad_cursor(void);
+/* Mouse counts from the right stick, into the same cursor the raw mouse moves in gameplay (the device stays the
+ * pad). */
+void window_host_pad_relative(int dx, int dy);
 int window_host_game_cursor(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */
 int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h);
@@ -318,6 +325,9 @@ void guest_threads_log(const char* when);
 /* registry.c / guest_env.c: the legacy "unstable last time, Safe Mode?" prompt. */
 void registry_legacy_safemode_dialog(void);
 int registry_legacy_safemode_enabled(void);
+
+/* physics_fixes.c: the pelvis height clamps at the game's x87 precision, the wave model's step pacing. */
+void physics_fixes_install(void);
 
 enum {
     HOST_EXIT_SETUP = 1,

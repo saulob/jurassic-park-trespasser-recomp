@@ -197,6 +197,77 @@ static void dedither(float* rgba, const uint8_t* solid, int w, int h) {
     free(out);
 }
 
+#define LIFT_GROW 1.6f
+#define LIFT_GLOW 0.35f
+
+static float lift_ramp(float lo, float hi, float x) { return smoothstep(lo, hi, x); }
+
+/* Hover letters can sit a few pixels off the normal ones (yes_1), so the normal picture only tells where red is new;
+ * the hue keeps the orange rust out. */
+static float lift_gain(const float* c, uint16_t normal, int normal_key, int x, int y, int w, int h) {
+    float r0 = normal_key ? 0.0f : (float)((normal >> 11) & 31) / 31.0f;
+    float g0 = normal_key ? 0.0f : (float)((normal >> 5) & 63) / 63.0f;
+    float b0 = normal_key ? 0.0f : (float)(normal & 31) / 31.0f;
+    float red1 = c[0] - (c[1] > c[2] ? c[1] : c[2]), red0 = r0 - (g0 > b0 ? g0 : b0);
+    float hue = c[0] > 0.0f ? c[1] / c[0] : 1.0f;
+    int edge = x < y ? x : y;
+    if (w - 1 - x < edge) edge = w - 1 - x;
+    if (h - 1 - y < edge) edge = h - 1 - y;
+    return lift_ramp(0.045f, 0.14f, red1 - red0) * lift_ramp(0.07f, 0.16f, red1) * (1.0f - lift_ramp(0.30f, 0.46f, hue)) *
+           lift_ramp(2.0f, 6.0f, (float)edge);
+}
+
+void fa_hover_lift(float* rgba, const uint8_t* solid, int w, int h, const uint16_t* normal, int normal_pitch,
+                   uint16_t key, int keyed) {
+    float* gain;
+    if (!rgba || !solid || !normal || w <= 0 || h <= 0 || normal_pitch < w) return;
+    gain = (float*)calloc((size_t)w * (size_t)h, sizeof(float));
+    if (!gain) return;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            uint16_t v = normal[(size_t)y * (size_t)normal_pitch + (size_t)x];
+            if (solid[(size_t)y * w + x])
+                gain[(size_t)y * w + x] = lift_gain(rgba + ((size_t)y * w + x) * 4, v, keyed && v == key, x, y, w, h);
+        }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float* c = rgba + ((size_t)y * w + x) * 4;
+            float near_sum = 0.0f, wide_sum = 0.0f, glow = 0.0f, m, density, t;
+            int near_n = 0, wide_n = 0;
+            if (!solid[(size_t)y * w + x]) continue;
+            for (int dy = -2; dy <= 2; dy++)
+                for (int dx = -2; dx <= 2; dx++) {
+                    int nx = x + dx, ny = y + dy, ring = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+                    float g;
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                    g = gain[(size_t)ny * w + nx];
+                    wide_sum += g;
+                    wide_n++;
+                    if (ring <= 1) {
+                        near_sum += g;
+                        near_n++;
+                    }
+                    if (g * (1.0f - 0.25f * (float)ring) > glow) glow = g * (1.0f - 0.25f * (float)ring);
+                }
+            density = lift_ramp(0.07f, 0.22f, wide_sum / (float)wide_n);
+            m = near_sum / (float)near_n * LIFT_GROW;
+            m = (m > 1.0f ? 1.0f : m) * density;
+            glow *= density;
+            t = (c[0] - 0.10f) / 0.45f;
+            t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+            c[0] += (0.80f + 0.20f * t - c[0]) * m;
+            c[1] += (0.10f + 0.16f * t - c[1]) * m;
+            c[2] += (0.06f + 0.08f * t - c[2]) * m;
+            if (glow > m) {
+                float k = LIFT_GLOW * (glow - m);
+                c[0] += (0.85f - c[0]) * k;
+                c[1] += (0.20f - c[1]) * k;
+                c[2] += (0.08f - c[2]) * k;
+            }
+        }
+    free(gain);
+}
+
 int fa_resample16(const fa_source_t* src, const double* part, int dst_w, int dst_h, unsigned flags, fa_bitmap_t* out) {
     float* rgba;
     uint8_t* solid;
@@ -221,6 +292,8 @@ int fa_resample16(const fa_source_t* src, const double* part, int dst_w, int dst
             o[2] = key ? 0.0f : (float)(v & 31) / 31.0f;
             o[3] = key ? 0.0f : 1.0f;
         }
+    if ((flags & FA_HOVER_LIFT) && src->normal)
+        fa_hover_lift(rgba, solid, src->w, src->h, src->normal, src->normal_pitch, src->key, src->keyed);
     if (flags & FA_DEDITHER) dedither(rgba, solid, src->w, src->h);
     ok = resample_float(rgba, src->w, src->h, part, dst_w, dst_h, src->keyed ? flags : (flags & ~(unsigned)FA_CRISP_EDGE), out);
     free(rgba);

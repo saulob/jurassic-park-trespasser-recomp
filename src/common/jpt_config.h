@@ -25,6 +25,7 @@ extern "C" {
 #define JPT_KEY_MSAA "msaa"
 #define JPT_KEY_VSYNC "vsync"
 #define JPT_KEY_SHOW_FPS "show_fps"
+#define JPT_KEY_SKIP_INTRO "skip_intro"
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
 #define JPT_SETTINGS_VERSION "3"
@@ -46,6 +47,7 @@ typedef struct {
     unsigned msaa;            /* 1, 2, 4 or 8 */
     int vsync;
     int show_fps;
+    int skip_intro;
     jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
 
@@ -54,7 +56,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (12 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (13 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

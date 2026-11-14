@@ -324,7 +324,10 @@ function), so the `ddraw` log lines are the only place they show.
 (`0x0040F2A0`), `newgame` from New Game before `BE.SCN` loads (`0x00415687`), `credits` from the main menu
 (`0x004163FA`), and `win` then `credits` when the game is finished (state -2 of `0x0040F2E0`). All are SMK2, 8-bit
 palette, 640 wide, 15 fps, 22050 Hz 16-bit stereo audio, on a 640x480 screen (`CGameWnd` slot 40, `0x0040BB50`,
-restores 640x480 before the ending plays). The registry value `NoVideo` skips them.
+restores 640x480 before the ending plays). The registry value `NoVideo` skips them: `Play` then pumps one message and
+returns 1 without opening the file. Skip Intro (`skip_intro`) answers `NoVideo` with 1 for the `tpassintro` and
+`newgame` calls only (`video_hd.c` wraps `Play`; `registry.c` answers), so their callers go on to the main menu and to
+the level load as after the video; the credits, the ending and the Video Test's requests are never skipped.
 
 The player opens the file with every audio track (`SMACKFILEHANDLE | SMACKNEEDVOLUME | SMACKTRACKS`), checks that the
 primary has an `lpSurface` (always, here), decodes each frame with `SmackToBuffer(..., SMACKBUFFER565)` into a cleared
@@ -401,9 +404,11 @@ window procedure still receives the messages it received before.
 
 ### Keys
 
-`F1 Hint | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | F12 Controls | Esc Menu | Alt+F4 Exit`
-(logged once as `[hotkeys]`). F5, F11 without Ctrl and Alt+F4 belong to the host and never reach the
-game; Ctrl+F11 (the game's cheat box) and everything else go to the game unchanged. Esc, F1 and F12
+`F1 Hint | F2 Controls | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | Esc Menu | Alt+F4 Exit`
+(logged once as `[hotkeys]`). F2, F5, F11 without Ctrl and Alt+F4 belong to the host and never reach the
+game; F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
+table at `0x0040C220` gives F2 no action). F12, which opened the game's `CControlsWnd` (still under Options >
+Controls), is not passed on. Ctrl+F11 (the game's cheat box) and everything else go to the game unchanged. Esc and F1
 open a modal window of the game on key-down (`CGameWnd::OnKey`, `0x0040BE70`), but `CUIWnd::OnKey`
 (`0x0040AF50`) cancels a window on Esc key-up. The key-up of the press that opened a window (the
 game's window stack grew between the key-down and it) is kept from the game, once per press; the
@@ -482,8 +487,8 @@ on it answer that way. The game's cursor is virtual and the real cursor is never
   `INPUT_GAMEPLAY_CAPTURED` (`CGameWnd` in front, not stopped, window focused and not minimised) is
   the only state with relative Raw Input (`WM_INPUT`; cursor deltas if Raw Input is unavailable), a
   hidden cursor and `ClipCursor` to the picture on the screen, windowed or full screen. The real
-  cursor is never moved. Every other state calls `ClipCursor(NULL)`: Esc, F1 and F12 free it on
-  their key-down (then `CInGameOptionsWnd`, `CHintWnd`, `CControlsWnd` make it `INPUT_DIALOG`), and
+  cursor is never moved. Every other state calls `ClipCursor(NULL)`: Esc and F1 free it on
+  their key-down (then `CInGameOptionsWnd`, `CHintWnd` make it `INPUT_DIALOG`), and
   so do Alt+Tab, focus loss, minimising, F11 (re-clipped to the new picture afterwards), a move or
   size loop and closing. Returning to `CGameWnd` recaptures. A capture that starts while a button
   is held outside the picture (the click on the title bar that activated the window) waits for the
@@ -526,6 +531,65 @@ buttons and axes are read directly once per frame.
   arrow buttons; A on the selected row is a double click (Load loads). In Save, a gamepad user's new save gets a name
   typed through the window's own `WM_CHAR` handling (the game saves only under a name). The right stick moves the
   pointer freely.
+- Pointer, last input wins: while the gamepad moves the focus in a menu or dialog (`gamepad_menu_focus`), no pointer is
+  shown: the system cursor is set to none over the picture (`input_pad_hides_pointer`, refreshed the frame the state
+  changes, not only on `WM_SETCURSOR`), the HD layer drops its copy of the game's pointer, and the classic canvas
+  draws `CUIManager`'s pointer (`0x00417410`) with its shown flag (`+0x20`) cleared for that call. The game's pointer
+  still sits on the focused control, so its hover picture stays. The mouse (24 counts within 250 ms, or a button) or
+  a key brings every pointer back at the real cursor; the right stick's free pointer is shown, as it is a pointer.
+- Hover pictures: a plaque's hover picture (slot 1) only turns its stencil letters a deep red (about 76, 26, 11). The
+  HD painter lifts them to a bright red before scaling (`FA_HOVER_LIFT`, `fa_hover_lift`): a pixel counts as
+  lettering when it is redder than the normal picture there, red itself, of the letters' hue (green under 0.3-0.46 of
+  red; the plates' rust is orange) and away from the rim, with a density test that drops lone specks; a 2-pixel red
+  glow follows the letters. Some hover pictures draw their letters a few pixels off the normal ones, so the normal
+  picture only tells where red is new. The plate, rust and pressed/disabled pictures are left as they are.
+- The player's input (CPlayer::Process(const CMessageControl&) at `0x0044CB80`, CPlayer vtable `0x0064A8F4` slot 123;
+  the message carries SInput at `+0x10`: rotate `+0x14/+0x18`, move `+0x1C/+0x20`, state `+0x24`, hit `+0x28`).
+  Crouch is `state & 2` read every frame (`0x00450196`, `0x00455ACC`), a plain hold with no toggle, or the game's own
+  reach crouch `[+0xE55]`, kept only while the pickup state `[+0xE30]` is 1 or 2, i.e. while Grab is held with the hand
+  out (`[+0xE28] >= 2`). The pad's B is that hold; L3 is a host latch (`pad_crouch_*`) cleared by B or Jump presses,
+  menus, focus loss and device switches. Rotation goes to exactly one consumer: the view only while the hand is down
+  (`[+0xE28] == 0`, `0x00454611`); with the hand up, Rotate Wrist/Arm turn it (`0x004519C7`), else it is added to the
+  hand's angle, clamped to the tuning at `0x0066ED7C/80` (65 and 75 degrees), and every frame the angle sits past
+  `0x0066ED84` (35 degrees) the excess turns the body (`0x00451CA6`). The right stick is mouse motion: before CInput
+  reads, its look becomes counts of 0.005 rad (`pad_mouse_counts`) moved into the same virtual cursor the raw mouse
+  moves (`pointer_add_relative`, the one place both land), and CInput turns them into SInput rotation as it does the
+  mouse's; the pad adds only command bits and the analog move after the read (`pad_play_before/after`). Move Hand is
+  the left mouse button's key-map bit (`0x40`); each pad action adds only its own bit, as its key does (LB/RB are
+  Shift/Ctrl, effective with Move Hand held). `CPlayer::Process` (`0x0044CB80`) reads nothing else: with `0x40` absent
+  for one read, `+0xE28` drops to 0 (test `0x004512CF`, store `0x004544C4`), the arm relaxes and the rotation goes to the view; the next read
+  with it starts the hand again from where it hangs, clamped into the reach box (`0x0066ED8C..98`). A held button
+  must therefore never lapse: a pause in gameplay's reads (a frame over 0.25 s, a menu, a video, focus) keeps every
+  button that counted before it and is still held, with no new press, as GetAsyncKeyState keeps the left button for
+  CInput (`pad_edges_resume`); only a button pressed during the pause waits for its release, so a menu's A or B does
+  not jump or crouch. Before JPT-HAND2F a frame over 0.25 s reset the edges and dropped a held LT until it was pressed
+  again. `input_tests` runs the lifted CInput read with both devices and compares every frame.
+- Crouch height: CPlayer's request reaches the pelvis as `bKontrol_Krouch[i]` (`0x67AE68`, handler `0x004F0960`);
+  `Pelvic_IDOF` (`0x004F3FB0`) springs `Pel[i][MOUTH]` (`0x6CF294 + 0x300 i`) towards `Pel_Data[i][14] - 0.2` (times 0.1
+  crouched) and clamps it to `0.09..1.1` times that, zeroing its speed; `Pelvis_integrate` then adds `dt * speed`.
+  `CPhysicsSystem::Integrate` (`0x004CF8A0`) runs the physics with the x87 at 24-bit precision, where the clamped height
+  stored as a float equals its bound. The lifted code computes in double whatever the control word, so the bound came
+  out above the stored height, the clamp fired on every 10 ms step and the player stayed crouched at 0.072 (log 057).
+  `physics_fixes.c` re-takes the two clamps at the game's precision (`pelvis_mouth_clamps`) when the control word asks
+  for 24 bits.
+- Water steps: `CEntityWater::CPriv::Integrate` (`0x0060FC10`) passes the time owed since the last render
+  (`sRequireStep`) to `CWaveData::Step` (`0x00636FB0`), which splits it into steps no longer than the model's
+  `sStepMax` (`sqrt(1.8 / (8 vmax / dx^2 + restoring))`, 0.05 s on the beach). The physics disturbs the water from its
+  10 ms steps (`CreateDisturbance`, `-0.015 *` a box's vertical speed); a disturbance only moves the current heights,
+  so each water step turns what landed since the previous one into speed over that step. Stepped once a frame, the
+  water got 3 times the energy at 60 fps that it got at the 20 fps the model was built for, and the pattern at the
+  grid's own scale, which does not travel, piled up. `water_cadence` pays the owed time in whole steps of just under
+  `sStepMax` and carries the rest, so the water is the same at any frame rate.
+- Controls (`controls.ddf`): when the game centres the window (`frontend_hd_window_centred`), the host moves it and
+  every control into a 1.75x layout with wider label columns (`fe_controls_rect`), writing the game's own rects, so hit
+  tests, gamepad focus and the remap hotspots follow; the HD painter scales its pictures and fits each label and field
+  on one inset line (`FE_TEXT_FIT`), and joins the ddf's two "Replay" / "voice over" boxes. The game still draws its
+  own copy into the canvas, sizing each picture's source rect from the control's rect; `RasterBlt` (`0x004128A0`,
+  ui_canvas.c) clips that source rect to its raster (`raster_source_clip`). Without it, the full redraw after Alt+Tab
+  read the 318x198 background through its larger rect past the end of the picture (log 055: fault in `sub_00412680`
+  under the static control draw `0x00403AE0`).
+- Triggers bound as buttons have hysteresis (`pad_buttons_with_trigger_hold`): down past the deadzone + 0.08, up only
+  under the deadzone, so LT resting near its threshold does not lower and raise the hand every frame.
 - The last device used decides the prompts: a new button press, a stick or trigger crossing its threshold (beyond the
   deadzone, with hysteresis) for the gamepad; a key, a mouse button or 24 counts of mouse motion within 250 ms for the
   keyboard and mouse. Using the mouse gives it the pointer back.
@@ -540,9 +604,21 @@ buttons and axes are read directly once per frame.
   own routine (0x0050E8C0) in a host buffer, each token a run of DEL characters whose advance width is set so the run
   is as wide as its glyph. `TextOutA` then draws the text pieces and paints opaque glyph pixels over the runs
   (`TransparentBlt` from a cached DIB), inside the box claimed for the text overlay. The rewrite is cached per text
-  and redone when the device, glyph family, bindings or font change, so prompts switch on the next frame. LB/RB also
-  hold Move Hand: the game turns the wrist only while the hand is up. View adds a controls card to the same overlay
-  (0x00468710, category 0x4A50) and removes it by setting its expiry to the game clock.
+  and redone when the device, glyph family, bindings or font change, so prompts switch on the next frame. View (F2 on
+  the keyboard) adds a controls card to the same overlay (0x00468710, category 0x4A50) and removes it by setting its
+  expiry to the game clock.
+- The controls card and the one-time "View Controls" hint (category 0x4A51; the View glyph or the F2 keycap, whichever
+  device was used last) are panels, not word-wrapped text: the
+  game's 133 px font at 4:3 4K wrapped the card's lines across the screen and drew them over the game's own text at the
+  top. `jpt_card_*` (in `jpt_prompt_text.c`) lays them out: a title, then two columns of rows (the body, then the arm),
+  each a binding right-aligned against its action; text at 4.6% of the screen's height (never above the game's font),
+  stepped down until the card fits the safe area, which is 4% in from the sides, two of the game's text lines clear at
+  the bottom (subtitles) and below a top band. The band is one game line under the margin, or more: the overlay's
+  entries (ring at `+0x54`: blob `+0x0C`, flags `+0x1C`, category `+0x24`) laid out at the top push it down, and it
+  only grows while a panel is up. The panel's blob holds one single-character line per row at the row's corner;
+  `TextOutA` recognises the line by its address and draws the row's pieces in a font of the game's face at the panel's
+  size (aliased, so the overlay's write stays pure) with a wider drop shadow, glyphs as for subtitles. Opening the card
+  ends the hint.
 - Hotplug: controllers can come and go at any time; the one used last is in use, the first connected until then. When
   the one in use goes, the last used of the others takes over; with none left, the keyboard and mouse do.
 

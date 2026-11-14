@@ -10,6 +10,7 @@
 
 #include "ddraw/target_sync.h"
 #include "frontend_hd.h"
+#include "gamepad.h"
 #include "jpt_display.h"
 #include "loading_hd.h"
 
@@ -31,6 +32,7 @@
 #define GAME_BACKGROUND_VA 0x0040C780u  /* CGameWnd::DrawBackground(raster, rect): the frozen picture */
 #define CENTRE_WINDOW_VA 0x00411EA0u    /* centres a window and its controls in the screen's display size */
 #define RASTER_BLT_VA 0x004128A0u       /* RasterBlt(source, rect, destination, ...): Locks both rasters */
+#define MGR_CURSOR_SHOWN 0x20u          /* CUIManager: the pointer is drawn while set */
 #define PIXEL_BITS 16
 #define LOG_LIMIT 6
 
@@ -167,7 +169,17 @@ static void with_raster(recomp_func_t lifted, uint32_t from, uint32_t to) {
 
 static void ui_draw_windows(void) { with_raster(s_windows_lifted, MEM32(SCREEN_RASTER), s_canvas); }
 
-static void ui_draw_cursor(void) { with_raster(s_cursor_lifted, MEM32(SCREEN_RASTER), s_canvas); }
+/* thiscall on the UI manager, which draws its pointer only while [this + 0x20] is set. */
+static void ui_draw_cursor(void) {
+    uint32_t manager = g_ecx, shown = 0;
+    if (g_alias_entry || !gamepad_menu_focus() || !guest_read32(manager + MGR_CURSOR_SHOWN, &shown) || !shown) {
+        with_raster(s_cursor_lifted, MEM32(SCREEN_RASTER), s_canvas);
+        return;
+    }
+    MEM32(manager + MGR_CURSOR_SHOWN) = 0;
+    with_raster(s_cursor_lifted, MEM32(SCREEN_RASTER), s_canvas);
+    MEM32(manager + MGR_CURSOR_SHOWN) = shown;
+}
 
 static int covers_raster(uint32_t rect, uint32_t raster) {
     return rect && (int32_t)MEM32(rect) <= 0 && (int32_t)MEM32(rect + 4) <= 0 &&
@@ -233,16 +245,30 @@ static void centre_window(void) {
 }
 
 /* A blit onto the screen from another raster overwrites the screen's pixels and never reads them. */
+/* Reads past a picture are cut off here: a control's rect can be larger than its picture (fe_controls_rect), and the
+ * game sizes the source rect from the control's rect. */
 static void raster_blt(void) {
-    uint32_t source = MEM32(g_esp + 4), destination = MEM32(g_esp + 12), screen = MEM32(SCREEN_RASTER);
+    uint32_t source = MEM32(g_esp + 4), rect_slot = g_esp + 8, rect = MEM32(g_esp + 8);
+    uint32_t destination = MEM32(g_esp + 12), screen = MEM32(SCREEN_RASTER);
+    int32_t clipped[4];
     int outer = s_screen_blt_write_only;
     if (g_alias_entry) {
         s_blt_lifted();
         return;
     }
+    if (source && rect) {
+        for (int i = 0; i < 4; i++) clipped[i] = (int32_t)MEM32(rect + 4u * (uint32_t)i);
+        if (!raster_source_clip(clipped, (int32_t)MEM32(source + RASTER_WIDTH), (int32_t)MEM32(source + RASTER_HEIGHT))) {
+            g_eax = 0;
+            g_esp += 4;
+            return;
+        }
+        MEM32(rect_slot) = (uint32_t)(uintptr_t)clipped;
+    }
     s_screen_blt_write_only = screen && destination == screen && source != screen;
     s_blt_lifted();
     s_screen_blt_write_only = outer;
+    MEM32(rect_slot) = rect;
 }
 
 int ui_screen_blt_writes_only(void) { return s_screen_blt_write_only; }

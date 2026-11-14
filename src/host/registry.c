@@ -29,6 +29,7 @@ static char s_store_path[MAX_PATH];
 static char s_game_key_token;
 static int s_show_ddraw_cert_dialog;
 static int s_software_water;
+static int s_skip_video;
 static int s_legacy_safemode;
 static int s_safemode_logged;
 static int s_gameplay_w[2], s_gameplay_h[2];
@@ -177,6 +178,8 @@ void registry_show_ddraw_cert_dialog(void) { s_show_ddraw_cert_dialog = 1; }
 
 void registry_software_water(void) { s_software_water = 1; }
 
+void registry_skip_video(int on) { s_skip_video = on; }
+
 void registry_legacy_safemode_dialog(void) { s_legacy_safemode = 1; }
 
 int registry_legacy_safemode_enabled(void) { return s_legacy_safemode; }
@@ -220,6 +223,11 @@ static int policy_value(const char* name, int stored, policy_t* p) {
         s_safemode_logged = 1;
         policy_dword(p, 0, "host policy: 0 (the last run is never reported unstable; --legacy-safemode-dialog keeps "
                            "the game's own crash flag)");
+        return 1;
+    }
+    if (s_skip_video && name && !_stricmp(name, "NoVideo")) {
+        policy_dword(p, 1, "host policy: 1 for this opening only (Skip Intro): CVideoWnd::Play takes its own no-video "
+                           "branch");
         return 1;
     }
     if (name && !_stricmp(name, "AudioEnable3D")) {

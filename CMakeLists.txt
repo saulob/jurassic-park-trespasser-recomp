@@ -100,6 +100,7 @@ set(HOST_SOURCES
   src/host/terrain_quality.c
   src/host/cpu_polygons.c
   src/host/diagnostics.c
+  src/host/physics_fixes.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
   src/host/ddraw/dd_device.c
@@ -420,3 +421,21 @@ target_compile_definitions(water_tests PRIVATE "WATER_ALT_OPT=\"${WATER_ALT_OPT}
   "WATER_GAME_EXE=\"${CMAKE_SOURCE_DIR}/game/trespass.exe\"")
 # The lifted code addresses guest memory directly: a fixed image puts tests/water_tests.c's window there.
 target_link_options(water_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
+
+# The mouse and the gamepad through the lifted CInput read with the host's per-frame steps around it, compared frame
+# by frame (headless): ninja -C <build dir> input_tests && input_tests.exe
+set(INPUT_LIFTED "${CMAKE_BINARY_DIR}/input_lifted.c")
+add_custom_command(OUTPUT ${INPUT_LIFTED}
+  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_005F80B0"
+    "-DPREFIX=lifted_" "-DOUT=${INPUT_LIFTED}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
+  DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
+  COMMENT "Copying the lifted CInput read for input_tests")
+add_executable(input_tests EXCLUDE_FROM_ALL tests/input_tests.c src/host/gamepad_policy.c src/host/host_policy.c
+  ${INPUT_LIFTED})
+target_include_directories(input_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(input_tests PRIVATE jpt_common)
+target_compile_definitions(input_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
+  ${TRESPASSER_X87_MODEL} "INPUT_GAME_EXE=\"${CMAKE_SOURCE_DIR}/game/trespass.exe\"")
+set_source_files_properties(tests/input_tests.c PROPERTIES COMPILE_OPTIONS "/W3")
+set_source_files_properties(${INPUT_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
+target_link_options(input_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)

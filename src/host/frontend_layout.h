@@ -98,7 +98,8 @@ enum {
     FE_TEXT_WRAP = 16,
     FE_TEXT_SHADOW = 32,
     FE_TEXT_ELLIPSIS = 64,
-    FE_TEXT_EXACT = 128 /* as the game draws it: left/top at the box, no fitting, the shadow its own offset copy */
+    FE_TEXT_EXACT = 128, /* as the game draws it: left/top at the box, no fitting, the shadow its own offset copy */
+    FE_TEXT_FIT = 256    /* one line inset from its box's sides, made smaller when it would not fit */
 };
 
 /* A button prompt: a gamepad control in a family's glyphs, or a key. */
@@ -131,7 +132,10 @@ typedef struct {
     uint16_t image_key;                     /* the transparent colour when image_keyed */
     uint8_t image_keyed;
     uint32_t image_hash;
-    uint32_t shadow_color;                  /* 0xRRGGBB, the text's offset copy (shadow_offset canvas units; 0: none) */
+    const uint16_t* normal_image;           /* hover picture: the normal one, for FA_HOVER_LIFT */
+    int normal_pitch;
+    float image_zoom;                       /* 0: native size */
+    uint32_t shadow_color;                 /* 0xRRGGBB, the text's offset copy (shadow_offset canvas units; 0: none) */
     uint8_t shadow_offset;
     uint8_t border;                         /* a field's sunken edge */
     uint8_t filled;                         /* a text box that paints its own background */
@@ -200,6 +204,14 @@ void fe_layout_options(const int32_t* ids, const int* widths, const int* heights
 
 /* Rows of the audio options spread evenly over the band [top, bottom): the new top of each row. */
 void fe_layout_rows(int count, int top, int bottom, int row_h, int* row_tops);
+
+/* Controls (controls.ddf, 320x200): the host's larger layout with wider label columns. */
+#define FE_CONTROLS_W 320
+#define FE_CONTROLS_H 200
+#define FE_CONTROLS_ZOOM 1.75
+fe_rect_t fe_controls_window(fe_rect_t window, int canvas_w, int canvas_h);
+fe_rect_t fe_controls_rect(fe_rect_t r, int picture);
+void fe_controls_polish(fe_scene_t* s, const fe_window_t* w, double zoom);
 
 /* The slider thumb's centre as the game places it: from the value at rest, under the pointer while dragged. */
 int fe_slider_thumb_x(fe_rect_t track, int thumb_w, int value, int range);

@@ -25,12 +25,18 @@ typedef struct {
     int keyed;
     uint16_t key;
     uint32_t hash;
+    const uint16_t* normal; /* FA_HOVER_LIFT: the same button's normal picture, same size (normal_pitch apart) */
+    int normal_pitch;
 } fa_source_t;
 
 enum {
-    FA_DEDITHER = 1,  /* smooths the 16-bit dither lattice before scaling, never across a real edge */
-    FA_CRISP_EDGE = 2 /* narrows the soft ramp a scaled colour key leaves at the outline */
+    FA_DEDITHER = 1,   /* smooths the 16-bit dither lattice before scaling, never across a real edge */
+    FA_CRISP_EDGE = 2, /* narrows the soft ramp a scaled colour key leaves at the outline */
+    FA_HOVER_LIFT = 4  /* a hover picture's dark red lettering made bright red */
 };
+
+void fa_hover_lift(float* rgba, const uint8_t* solid, int w, int h, const uint16_t* normal, int normal_pitch,
+                   uint16_t key, int keyed);
 
 /* The part of a source shown, in source pixels (x0, y0, x1, y1); NULL for all of it. */
 int fa_resample16(const fa_source_t* src, const double* part, int dst_w, int dst_h, unsigned flags, fa_bitmap_t* out);

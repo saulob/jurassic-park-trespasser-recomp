@@ -1,8 +1,8 @@
 /*
  * Gamepads through SDL3, always together with the keyboard and mouse. Gameplay gets the gamepad as the game's own
- * input values: CInput's SInput (move, rotate, command bits) after the keyboard and mouse have written theirs, so
- * movement is analog and every remapped key keeps working. Menus are driven through the game's own pointer and
- * clicks (gamepad_menu.c). Every SDL call happens on the guest thread.
+ * input: the right stick as mouse motion in the cursor CInput reads, then the buttons and the left stick into its
+ * SInput (command bits, analog move) after the keyboard has written them, so every remapped key keeps working. Menus
+ * are driven through the game's own pointer and clicks (gamepad_menu.c). Every SDL call happens on the guest thread.
  */
 #include "host.h"
 
@@ -17,15 +17,13 @@
 
 #define CINPUT_READ_VA 0x005F80B0u
 #define SINPUT_IN_CINPUT 0x08u
-#define SINPUT_ROTATE_X 0x04u
-#define SINPUT_ROTATE_Y 0x08u
 #define SINPUT_MOVE_X 0x0Cu
 #define SINPUT_MOVE_Y 0x10u
 #define SINPUT_STATE 0x14u
 #define SINPUT_HIT 0x18u
-#define GAMEPLAY_GAP_SECONDS 0.25
 #define SAMPLE_INTERVAL_SECONDS 0.001
 #define SWITCH_LOG_LIMIT 16
+#define INVERT_MOUSE_VA 0x006603D8u
 
 typedef enum { MODE_NONE, MODE_GAMEPLAY, MODE_MENU, MODE_VIDEO } ui_mode_t;
 
@@ -40,9 +38,13 @@ static struct {
     pad_state_t state;
     int64_t sampled, frequency;
     recomp_func_t cinput_lifted;
-    pad_edges_t play_edges, ui_edges;
+    pad_edges_t ui_edges;
+    pad_play_t play;
     int64_t last_play;
-    int crouch_toggled, hint_shown;
+    int left_gameplay, card_request;
+    int frame_ready, frame_looked;
+    int hint_shown;
+    uint8_t triggers_held[2];
     ui_mode_t ui_mode;
     uint32_t ui_top;
     int64_t last_ui;
@@ -101,10 +103,12 @@ static void log_device(void) {
         host_log("gamepad", "active input device: keyboard and mouse; keycaps selected");
 }
 
+/* Z is a plain hold: a latch left on would never end. */
 static void to_keyboard_mouse(int changed) {
     if (!changed) return;
     window_host_release_pad_cursor();
     gamepad_menu_forget_focus();
+    pad_play_release(&G.play);
     log_device();
 }
 
@@ -264,57 +268,58 @@ static void sample(int64_t now) {
 
 void gamepad_idle(void) { sample(now_qpc()); }
 
-static uint32_t buttons_now(void) { return pad_buttons_with_triggers(&G.state, trigger_deadzone()); }
+static uint32_t buttons_now(void) {
+    return pad_buttons_with_trigger_hold(&G.state, trigger_deadzone(), G.triggers_held);
+}
 
 static float rdf(uint32_t va) { return *(float*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
 
-static int bound(int action, uint32_t buttons) {
-    int control = G.cfg.bind[action];
-    return control >= 0 && control < JPT_PAD_CONTROL_COUNT && (buttons & JPT_PAD_BIT(control));
-}
+static int bound(int action, uint32_t buttons) { return pad_bound(&G.cfg, action, buttons); }
 
-static void merge_gameplay(uint32_t sinput) {
+/* Before CInput reads: this frame's pad, and the right stick as mouse motion in the cursor it is about to read. */
+static void gameplay_before_read(void) {
     int64_t now = now_qpc();
     double dt = G.last_play ? seconds_between(G.last_play, now) : 0.0;
-    uint32_t held, pressed;
-    pad_gameplay_t pad;
-    pad_sinput_t in;
+    pad_read_t kind;
+    int dx, dy;
     sample(now);
-    if (!G.last_play || dt > GAMEPLAY_GAP_SECONDS) {
-        pad_edges_reset(&G.play_edges, buttons_now());
-        G.crouch_toggled = 0;
-        dt = 0.0;
-    }
+    kind = pad_read_kind(!G.last_play, G.left_gameplay, window_host_input_focused(), dt);
+    G.left_gameplay = 0;
     G.last_play = now;
-    held = pad_edges_update(&G.play_edges, buttons_now(), &pressed);
-    if (bound(JPT_ACT_CROUCH_TOGGLE, pressed)) G.crouch_toggled = !G.crouch_toggled;
-    else if (G.crouch_toggled && (bound(JPT_ACT_CROUCH, pressed) || bound(JPT_ACT_JUMP, pressed))) G.crouch_toggled = 0;
-    pad_gameplay_from(&G.state, held, &G.cfg, (float)dt, G.crouch_toggled, &pad);
-    if (!pad.held && !pressed && pad.move_x == 0.0f && pad.move_y == 0.0f && pad.look_x == 0.0f && pad.look_y == 0.0f)
-        return;
-    in.rotate_x = rdf(sinput + SINPUT_ROTATE_X);
-    in.rotate_y = rdf(sinput + SINPUT_ROTATE_Y);
+    pad_play_before(&G.play, kind, &G.state, buttons_now(), &G.cfg, (float)dt, MEM8(INVERT_MOUSE_VA) != 0, &dx,
+                    &dy);
+    G.frame_looked = dx || dy;
+    if (G.frame_looked) window_host_pad_relative(dx, dy);
+    G.frame_ready = 1;
+}
+
+static void gameplay_after_read(uint32_t sinput) {
+    pad_sinput_t in;
+    if (!G.frame_ready) return;
+    G.frame_ready = 0;
     in.move_x = rdf(sinput + SINPUT_MOVE_X);
     in.move_y = rdf(sinput + SINPUT_MOVE_Y);
     in.state = MEM32(sinput + SINPUT_STATE);
     in.hit = MEM32(sinput + SINPUT_HIT);
-    pad_merge_sinput(&in, &pad, pad_commands_for(&G.cfg, pressed));
-    wrf(sinput + SINPUT_ROTATE_X, in.rotate_x);
-    wrf(sinput + SINPUT_ROTATE_Y, in.rotate_y);
-    wrf(sinput + SINPUT_MOVE_X, in.move_x);
-    wrf(sinput + SINPUT_MOVE_Y, in.move_y);
-    MEM32(sinput + SINPUT_STATE) = in.state;
-    MEM32(sinput + SINPUT_HIT) = in.hit;
-    G.play_frames++;
+    if (pad_play_after(&G.play, &G.cfg, &in)) {
+        wrf(sinput + SINPUT_MOVE_X, in.move_x);
+        wrf(sinput + SINPUT_MOVE_Y, in.move_y);
+        MEM32(sinput + SINPUT_STATE) = in.state;
+        MEM32(sinput + SINPUT_HIT) = in.hit;
+        G.play_frames++;
+    } else if (G.frame_looked) {
+        G.play_frames++;
+    }
 }
 
 /* CInput::tinReadDefaultControls(this): keys, mouse buttons and mouse look into this + 8, returned in eax. */
 static void cinput_read(void) {
     uint32_t self = g_ecx;
     int alias = g_alias_entry != 0;
+    if (!alias) gameplay_before_read();
     G.cinput_lifted();
-    if (!alias) merge_gameplay(self + SINPUT_IN_CINPUT);
+    if (!alias) gameplay_after_read(self + SINPUT_IN_CINPUT);
 }
 
 int gamepad_install(void) {
@@ -354,18 +359,24 @@ void gamepad_ui_loop(void) {
     released = before & ~held;
     if (mode == MODE_GAMEPLAY) {
         if (pressed & JPT_PAD_BIT(JPT_PAD_START)) window_host_post_key(VK_ESCAPE);
-        if (pressed & JPT_PAD_BIT(JPT_PAD_BACK)) tutorial_prompts_toggle_card();
-        else if (!G.hint_shown && G.tracker.device == PAD_DEVICE_GAMEPAD) G.hint_shown = tutorial_prompts_hint();
+        if ((pressed & JPT_PAD_BIT(JPT_PAD_BACK)) || G.card_request) tutorial_prompts_toggle_card();
+        else if (!G.hint_shown) G.hint_shown = tutorial_prompts_hint();
         if (bound(JPT_ACT_JUMP, pressed)) window_host_post_key(VK_SPACE);
-    } else if (mode == MODE_MENU) {
-        gamepad_menu_frame(&G.state, held, pressed, released, G.tracker.device == PAD_DEVICE_GAMEPAD,
-                           GetTickCount(), (float)(dt > 0.1 ? 0.1 : dt), stick_deadzone());
+    } else {
+        G.left_gameplay = 1;
+        if (mode == MODE_MENU)
+            gamepad_menu_frame(&G.state, held, pressed, released, G.tracker.device == PAD_DEVICE_GAMEPAD,
+                               GetTickCount(), (float)(dt > 0.1 ? 0.1 : dt), stick_deadzone());
     }
+    G.card_request = 0;
 }
+
+void gamepad_controls_key(void) { G.card_request = 1; }
 
 void gamepad_video_loop(void) {
     const uint32_t skip = JPT_PAD_BIT(JPT_PAD_SOUTH) | JPT_PAD_BIT(JPT_PAD_EAST) | JPT_PAD_BIT(JPT_PAD_START);
     uint32_t pressed;
+    G.left_gameplay = 1;
     sample(now_qpc());
     if (G.ui_mode != MODE_VIDEO) {
         pad_edges_reset(&G.ui_edges, buttons_now());
@@ -374,6 +385,10 @@ void gamepad_video_loop(void) {
     }
     pad_edges_update(&G.ui_edges, buttons_now(), &pressed);
     if (pressed & skip) window_host_post_key_up(VK_ESCAPE);
+}
+
+int gamepad_menu_focus(void) {
+    return G.tracker.device == PAD_DEVICE_GAMEPAD && G.ui_mode == MODE_MENU && !gamepad_menu_pointer_free();
 }
 
 void gamepad_prompts(gamepad_prompts_t* out) {

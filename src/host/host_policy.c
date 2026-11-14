@@ -6,7 +6,7 @@
 #define FPS_STALL_WINDOWS 2
 
 enum { MSG_KEYDOWN = 0x100, MSG_KEYUP = 0x101, MSG_SYSKEYDOWN = 0x104, MSG_SYSKEYUP = 0x105 };
-enum { VK_ESC = 0x1B, VK_F1_ = 0x70, VK_F4_ = 0x73, VK_F5_ = 0x74, VK_F11_ = 0x7A, VK_F12_ = 0x7B };
+enum { VK_ESC = 0x1B, VK_F1_ = 0x70, VK_F2_ = 0x71, VK_F4_ = 0x73, VK_F5_ = 0x74, VK_F11_ = 0x7A, VK_F12_ = 0x7B };
 
 void fps_counter_init(fps_counter_t* c, int64_t frequency, int64_t now) {
     memset(c, 0, sizeof *c);
@@ -69,6 +69,18 @@ int input_hide_pointer(input_state_t state, int game_cursor_hidden) {
     }
 }
 
+int raster_source_clip(int32_t rect[4], int32_t source_w, int32_t source_h) {
+    if (rect[0] < 0) rect[0] = 0;
+    if (rect[1] < 0) rect[1] = 0;
+    if (rect[2] > source_w) rect[2] = source_w;
+    if (rect[3] > source_h) rect[3] = source_h;
+    return rect[2] > rect[0] && rect[3] > rect[1];
+}
+
+int input_pad_hides_pointer(input_state_t state, int pad_focus) {
+    return pad_focus && (state == INPUT_MENU || state == INPUT_DIALOG);
+}
+
 int input_should_clip(input_state_t state, int pointer_in_view, int button_held) {
     return input_captured(state) && (pointer_in_view || !button_held);
 }
@@ -84,9 +96,10 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
     case VK_F4_:
         if (!alt) return KEY_TO_GAME;
         return down && !repeat ? KEY_HOST_CLOSE : KEY_DROP;
+    case VK_F2_: return down && !repeat ? KEY_HOST_CONTROLS : KEY_DROP;
+    case VK_F12_: return KEY_DROP;
     case VK_ESC:
     case VK_F1_:
-    case VK_F12_:
         /* Each opens a modal window of the game on key-down; auto-repeat would open it again. */
         return down && repeat ? KEY_DROP : KEY_TO_GAME;
     default: return KEY_TO_GAME;
@@ -94,13 +107,20 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
 }
 
 int key_opens_game_window(unsigned msg, unsigned vk, int repeat) {
-    return msg == MSG_KEYDOWN && !repeat && (vk == VK_ESC || vk == VK_F1_ || vk == VK_F12_);
+    return msg == MSG_KEYDOWN && !repeat && (vk == VK_ESC || vk == VK_F1_);
+}
+
+int pointer_add_relative(input_state_t state, long* x, long* y, long dx, long dy) {
+    if (!input_captured(state) || (!dx && !dy)) return 0;
+    *x += dx;
+    *y += dy;
+    return 1;
 }
 
 void open_press_reset(open_press_t* p) { memset(p, 0, sizeof *p); }
 
 void open_press_keydown(open_press_t* p, unsigned vk, int repeat, int gameplay, unsigned depth) {
-    if (repeat || (vk != VK_ESC && vk != VK_F1_ && vk != VK_F12_)) return;
+    if (repeat || (vk != VK_ESC && vk != VK_F1_)) return;
     p->armed = gameplay != 0;
     p->vk = vk;
     p->depth = depth;
@@ -542,6 +562,50 @@ terrain_settings_t terrain_modern_settings(terrain_settings_t level, float far_c
 int hardware_water_policy(int hardware_renderer, int value_stored, int software_water_requested) {
     if (!hardware_renderer || value_stored || software_water_requested) return -1;
     return 1;
+}
+
+static int base_name_is(const char* path, const char* name) {
+    const char *base = path, *p;
+    size_t n = strlen(name);
+    for (p = path; *p; p++)
+        if (*p == '\\' || *p == '/') base = p + 1;
+    if (_strnicmp(base, name, n)) return 0;
+    return !base[n] || !_stricmp(base + n, ".smk");
+}
+
+intro_video_t intro_video_of(const char* guest_name) {
+    if (!guest_name) return INTRO_NONE;
+    if (base_name_is(guest_name, "tpassintro")) return INTRO_STARTUP;
+    if (base_name_is(guest_name, "newgame")) return INTRO_NEW_GAME;
+    return INTRO_NONE;
+}
+
+const char* intro_video_name(intro_video_t video) {
+    return video == INTRO_STARTUP ? "tpassintro.smk" : video == INTRO_NEW_GAME ? "newgame.smk" : "";
+}
+
+int skip_intro_applies(int enabled, intro_video_t video, int video_test_request) {
+    return enabled && video != INTRO_NONE && !video_test_request;
+}
+
+static double single(double v) { return (double)(float)v; }
+
+pelvis_mouth_t pelvis_mouth_clamps(float pos, float vel, float height, float bio_body_z, double knee, double low,
+                                   double high) {
+    double knees = single((double)height - knee), lowest = single(knees * low), highest = single(knees * high);
+    pelvis_mouth_t m;
+    m.pos = pos;
+    m.vel = vel;
+    if (!((double)m.pos >= lowest)) {
+        m.pos = (float)lowest;
+        m.vel = 0.0f;
+    }
+    if ((double)m.pos > highest) {
+        m.pos = (float)highest;
+        m.vel = 0.0f;
+    }
+    if (!(bio_body_z >= 0.0f) && m.vel > 0.0f) m.vel = 0.0f;
+    return m;
 }
 
 int safemode_prompt_args(uint32_t func, uint32_t type, uint32_t title_id, uint32_t text_id) {

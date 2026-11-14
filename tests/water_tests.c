@@ -7,6 +7,7 @@
  */
 #include <windows.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -701,6 +702,264 @@ static double seconds(void) {
 
 /* Time with the game's water texture shape: a 256-texel row, and 256x256 cells of simulation (eight
  * 256x128 steps). */
+static float getf(uint32_t va) {
+    float v;
+    memcpy(&v, (const void*)(uintptr_t)va, 4);
+    return v;
+}
+
+/* The wave model over a minute of game time at several frame rates: the real kernel stepped as CWaveData::Step (0x00636FB0)
+ * steps it, with the physics' disturbances landing between water steps as in the game (10 ms steps plus the rest above
+ * 2.5 ms, CXob::PD_Integrate; -0.015 times a box's vertical speed under each submerged element,
+ * CSimWave2D::CreateDisturbance). Stepped once a frame its energy grows with the frame rate; paced by water_cadence it
+ * stays what the 20 Hz frames the model was built for give it, at any rate. */
+#define CAD_W 220
+#define CAD_H 144
+#define CAD_DX 0.184f
+#define CAD_SOURCES 6
+#define CAD_CHECKS 3
+
+typedef struct {
+    uint32_t sim;
+    float step_max, required, timestore;
+    uint64_t rng;
+} cad_water_t;
+
+typedef struct {
+    double rms, grid, turning;
+    float most;
+    unsigned nonfinite;
+} cad_stats_t;
+
+static uint32_t cad_amp(const cad_water_t* w) { return get32(w->sim + 0x44); }
+static uint32_t cad_vel(const cad_water_t* w) { return get32(w->sim + 0x7C); }
+static float cad_get(uint32_t a, int x, int y) { return getf(a + (uint32_t)(y * CAD_W + x) * 4); }
+
+static double cad_noise(cad_water_t* w) {
+    double sum = 0;
+    for (int i = 0; i < 12; i++) {
+        w->rng ^= w->rng << 13, w->rng ^= w->rng >> 7, w->rng ^= w->rng << 17;
+        sum += (double)(w->rng >> 11) / 9007199254740992.0;
+    }
+    return sum - 6.0;
+}
+
+static void cad_setup(cad_water_t* w) {
+    uint32_t a, b, v, spans;
+    float vmax = 0;
+    g_arena = ARENA;
+    a = alloc(CAD_W * CAD_H * 4);
+    b = alloc(CAD_W * CAD_H * 4);
+    v = alloc(CAD_W * CAD_H * 4);
+    spans = alloc(CAD_H * 8);
+    w->sim = alloc(0x100);
+    memset((void*)(uintptr_t)w->sim, 0, 0x100);
+    for (int y = 0; y < CAD_H; y++) {
+        put32(spans + (uint32_t)y * 8, 1);
+        put32(spans + (uint32_t)y * 8 + 4, CAD_W - 2);
+        for (int x = 0; x < CAD_W; x++) {
+            uint32_t i = (uint32_t)(y * CAD_W + x) * 4;
+            float depth = (x < 30 ? x / 30.0f : 1.0f) * 0.3f, speed = sqrtf(9.8f * depth) / CAD_DX;
+            float factor = x < 2 || y == 0 || x == CAD_W - 1 || y == CAD_H - 1 ? 0.0f : speed * speed;
+            putf(a + i, 0.0f);
+            putf(b + i, 0.0f);
+            putf(v + i, factor);
+            if (factor > vmax) vmax = factor;
+        }
+    }
+    w->step_max = sqrtf(1.8f / (8.0f * vmax + 25.0f));
+    putf(w->sim + 0x08, 0.1f);
+    putf(w->sim + 0x0C, 25.0f);
+    putf(w->sim + 0x1C, w->step_max);
+    putf(w->sim + 0x20, w->step_max);
+    put32(w->sim + 0x44, a);
+    put32(w->sim + 0x50, CAD_W);
+    put32(w->sim + 0x58, b);
+    put32(w->sim + 0x7C, v);
+    put32(w->sim + 0x8C, 1);
+    put32(w->sim + 0x90, CAD_H - 2);
+    put32(w->sim + 0x98, spans);
+    putf(DAMPING, 0.5f);
+    putf(NUMERATOR, 2.0f);
+    w->required = w->timestore = 0.0f;
+    w->rng = 0x9E3779B97F4A7C15ull;
+}
+
+/* CSimWaveVar2D::Iterate (the kernel), SwapPrev, sStepPrev. */
+static void cad_iterate(cad_water_t* w, float dt) {
+    uint32_t current = get32(w->sim + 0x44);
+    recomp_yield_hook = NULL;
+    put32(STACK_TOP, RECOMP_RETADDR);
+    putf(STACK_TOP + 4, dt);
+    g_esp = STACK_TOP;
+    g_ecx = w->sim;
+    water_wave_step();
+    put32(w->sim + 0x44, get32(w->sim + 0x58));
+    put32(w->sim + 0x58, current);
+    putf(w->sim + 0x20, dt);
+}
+
+static void cad_step(cad_water_t* w, float s) {
+    int n;
+    if (s <= w->step_max * 0.001f) return;
+    n = (int)(s / w->step_max) + 1;
+    for (int i = 0; i < n; i++) cad_iterate(w, s / (float)n);
+}
+
+static void cad_disturb(cad_water_t* w, float mx, float my, float height) {
+    const float radius = 0.25f, inc = CAD_DX / radius;
+    uint32_t a = cad_amp(w), v = cad_vel(w);
+    int x1 = (int)((mx - radius) / CAD_DX), x2 = (int)((mx + radius) / CAD_DX), y1 = (int)((my - radius) / CAD_DX),
+        y2 = (int)((my + radius) / CAD_DX);
+    float most = 0;
+    for (int y = y1; y <= y2; y++)
+        for (int x = x1; x <= x2; x++)
+            if (getf(v + (uint32_t)(y * CAD_W + x) * 4) != 0.0f) most = fmaxf(most, fabsf(cad_get(a, x, y)));
+    if (0.4f - most <= 0.0f) return;
+    if (height > 0.4f - most) height = 0.4f - most;
+    if (height < most - 0.4f) height = most - 0.4f;
+    for (int x = x1; x <= x2; x++) {
+        double rx = (x * CAD_DX - mx) / radius;
+        double vx = ((sin(3.14159265358979 * rx) - sin(3.14159265358979 * (rx + inc))) / 3.14159265358979 - inc) /
+                    (4.0 * inc * inc);
+        for (int y = y1; y <= y2; y++) {
+            double ry = (y * CAD_DX - my) / radius, val;
+            uint32_t at = a + (uint32_t)(y * CAD_W + x) * 4;
+            val = vx * ((sin(3.14159265358979 * ry) - sin(3.14159265358979 * (ry + inc))) / 3.14159265358979 - inc);
+            if (val <= 0 || getf(v + (uint32_t)(y * CAD_W + x) * 4) == 0.0f) continue;
+            putf(at, getf(at) + (float)(val * height));
+        }
+    }
+}
+
+static void cad_physics(cad_water_t* w, float dt) {
+    float t = dt + w->timestore;
+    int steps = 0;
+    w->timestore = 0.0f;
+    while (t > 0.01f) {
+        t -= 0.01f;
+        steps++;
+    }
+    if (t > 0.0025f) steps++;
+    else w->timestore = t;
+    while (steps--)
+        for (int s = 0; s < CAD_SOURCES; s++)
+            cad_disturb(w, (8 + s * 4) * CAD_DX * 2.2f, (40 + s * 11) * CAD_DX, (float)(-0.015 * 2.0 * cad_noise(w)));
+}
+
+static cad_stats_t cad_stats(const cad_water_t* w) {
+    cad_stats_t st = { 0, 0, 0, 0, 0 };
+    uint32_t a = cad_amp(w);
+    double sum2 = 0, lap2 = 0, turns = 0, inner = 0;
+    for (int y = 2; y < CAD_H - 2; y++)
+        for (int x = 32; x < CAD_W - 2; x++) {
+            float h = cad_get(a, x, y), l = cad_get(a, x - 1, y), r = cad_get(a, x + 1, y);
+            double lap = h - 0.25 * ((double)l + r + cad_get(a, x, y - 1) + cad_get(a, x, y + 1));
+            if (!isfinite(h)) {
+                st.nonfinite++;
+                continue;
+            }
+            inner++;
+            sum2 += (double)h * h;
+            lap2 += lap * lap;
+            if ((h - l) * (r - h) < 0) turns++;
+            if (fabsf(h) > st.most) st.most = fabsf(h);
+        }
+    st.rms = inner ? sqrt(sum2 / inner) : 0;
+    st.grid = inner ? sqrt(lap2 / inner) : 0;
+    st.turning = inner ? turns / inner : 0;
+    return st;
+}
+
+static uint32_t cad_hash(const cad_water_t* w) {
+    const uint8_t* p = (const uint8_t*)(uintptr_t)cad_amp(w);
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < (size_t)CAD_W * CAD_H * 4; i++) h = (h ^ p[i]) * 16777619u;
+    return h;
+}
+
+/* frames_ms: the frame times, repeated. paced: water_cadence decides the steps; else one Step per frame, as before. */
+static uint32_t cad_run(const int* frames_ms, int count, int paced, double seconds, cad_stats_t at[CAD_CHECKS]) {
+    cad_water_t w;
+    double now = 0;
+    int f = 0, check = 0;
+    cad_setup(&w);
+    while (check < CAD_CHECKS) {
+        float dt = (float)frames_ms[f++ % count] / 1000.0f;
+        cad_physics(&w, dt);
+        if (paced) {
+            water_cadence_t c;
+            w.required += dt;
+            c = water_cadence(w.required, getf(w.sim + 0x1C));
+            if (c.steps > 0) cad_step(&w, (float)c.steps * c.step);
+            w.required = c.carry;
+        } else {
+            cad_step(&w, dt);
+        }
+        now += dt;
+        if (now >= seconds * (check + 1) / CAD_CHECKS) at[check++] = cad_stats(&w);
+    }
+    return cad_hash(&w);
+}
+
+static int cad_report(const char* name, const cad_stats_t* s) {
+    printf("  %-24s rms %.5f, grid-scale %.5f, max |h| %.4f, turning %.2f, non-finite %u (at the end; grid-scale at "
+           "1/3 %.5f)\n", name, s[CAD_CHECKS - 1].rms, s[CAD_CHECKS - 1].grid, s[CAD_CHECKS - 1].most,
+           s[CAD_CHECKS - 1].turning, s[CAD_CHECKS - 1].nonfinite, s[0].grid);
+    for (int i = 0; i < CAD_CHECKS; i++)
+        if (s[i].nonfinite || !(s[i].most < 1.0f)) return 0;
+    return 1;
+}
+
+static int within(double a, double b, double ratio) { return a <= b * ratio && b <= a * ratio; }
+
+static int wave_cadence_cases(void) {
+    static const int f20[] = { 50 }, f30[] = { 33, 33, 34 }, f60[] = { 15, 16, 16, 15, 16, 16, 15, 16, 16, 16 },
+                     f120[] = { 8, 8, 9, 8, 8 }, f144[] = { 7, 7, 7, 6, 7, 7 };
+    const double seconds = 60.0;
+    cad_stats_t frame20[CAD_CHECKS], frame60[CAD_CHECKS], frame144[CAD_CHECKS], paced30[CAD_CHECKS],
+        paced60[CAD_CHECKS], paced120[CAD_CHECKS], paced144[CAD_CHECKS], again[CAD_CHECKS];
+    uint32_t h60, h60_again;
+    int ok = 1;
+    water_cadence_t c = water_cadence(0.016f, 0.05007f);
+    /* the policy: whole steps of just under sStepMax, the rest carried, a long stall capped */
+    ok &= c.steps == 0 && c.carry == 0.016f;
+    c = water_cadence(0.06f, 0.05007f);
+    ok &= c.steps == 1 && fabsf(c.step - 0.05007f * 0.999f) < 1e-7f && fabsf(c.carry - (0.06f - c.step)) < 1e-6f;
+    c = water_cadence(10.0f, 0.05007f);
+    ok &= c.steps == WATER_CATCH_UP_STEPS && c.carry == 0.0f;
+    ok &= water_cadence(0.0f, 0.05f).steps < 0 && water_cadence(0.05f, 0.0f).steps < 0;
+    printf("wave model, %.0f s of game time with the physics' disturbances (real kernel):\n", seconds);
+    cad_run(f20, 1, 0, seconds, frame20);
+    cad_run(f60, 10, 0, seconds, frame60);
+    cad_run(f144, 6, 0, seconds, frame144);
+    cad_run(f30, 3, 1, seconds, paced30);
+    h60 = cad_run(f60, 10, 1, seconds, paced60);
+    cad_run(f120, 5, 1, seconds, paced120);
+    cad_run(f144, 6, 1, seconds, paced144);
+    h60_again = cad_run(f60, 10, 1, seconds, again);
+    ok &= cad_report("a step per frame, 20 Hz", frame20);
+    ok &= cad_report("a step per frame, 60 Hz", frame60);
+    ok &= cad_report("a step per frame, 144 Hz", frame144);
+    ok &= cad_report("paced, 30 Hz", paced30);
+    ok &= cad_report("paced, 60 Hz", paced60);
+    ok &= cad_report("paced, 120 Hz", paced120);
+    ok &= cad_report("paced, 144 Hz", paced144);
+    /* the defect: per frame, the energy follows the frame rate */
+    ok &= frame60[CAD_CHECKS - 1].rms > 2.0 * frame20[CAD_CHECKS - 1].rms;
+    ok &= frame144[CAD_CHECKS - 1].rms > frame60[CAD_CHECKS - 1].rms;
+    /* paced: the same water at every rate, the 20 Hz frames' water, and no slow build-up at the grid's scale */
+    ok &= within(paced30[CAD_CHECKS - 1].rms, paced60[CAD_CHECKS - 1].rms, 1.3);
+    ok &= within(paced120[CAD_CHECKS - 1].rms, paced60[CAD_CHECKS - 1].rms, 1.3);
+    ok &= within(paced144[CAD_CHECKS - 1].rms, paced60[CAD_CHECKS - 1].rms, 1.3);
+    ok &= within(paced60[CAD_CHECKS - 1].rms, frame20[CAD_CHECKS - 1].rms, 1.5);
+    ok &= within(paced60[CAD_CHECKS - 1].grid, frame20[CAD_CHECKS - 1].grid, 1.5);
+    for (int i = 1; i < CAD_CHECKS; i++) ok &= paced60[i].grid <= paced60[0].grid * 1.3;
+    ok &= h60 == h60_again;
+    printf("wave model pacing: %s (paced 60 Hz twice: %08X %08X)\n", ok ? "ok" : "FAIL", h60, h60_again);
+    return ok;
+}
+
 static void benchmark(void) {
     double t0, lifted_rows, kernel_rows, lifted_wave, kernel_wave;
     start_t s;
@@ -1147,7 +1406,7 @@ static int alias_reaches_lifted(void) {
 }
 
 int main(int argc, char** argv) {
-    int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias, bump;
+    int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias, bump, paced;
     unsigned long per_kind = quick ? 300 : 3000;
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1193,5 +1452,6 @@ int main(int argc, char** argv) {
     polygon_benchmark();
     bump = bump_native_cases(quick ? 200 : 2000, 0);
     bump = bump_native_cases(quick ? 200 : 2000, 1) && bump;
-    return g_kernel[0].nan_payload || g_kernel[0].different || !alias || !bump ? 1 : 0;
+    paced = wave_cadence_cases();
+    return g_kernel[0].nan_payload || g_kernel[0].different || !alias || !bump || !paced ? 1 : 0;
 }

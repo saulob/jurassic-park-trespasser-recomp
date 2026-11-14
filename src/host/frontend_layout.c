@@ -385,3 +385,56 @@ fe_rect_t fe_layout_direct_photo(fe_rect_t window) {
     int left = window.right + FE_DIRECT_GAP, top = window.top + 10;
     return fe_rect(left, top, left + FE_DIRECT_PHOTO_W, top + FE_DIRECT_PHOTO_H);
 }
+
+fe_rect_t fe_controls_window(fe_rect_t window, int canvas_w, int canvas_h) {
+    int w = (int)floor(FE_CONTROLS_W * FE_CONTROLS_ZOOM + 0.5), h = (int)floor(FE_CONTROLS_H * FE_CONTROLS_ZOOM + 0.5);
+    int left = (window.left + window.right - w) / 2, top = (window.top + window.bottom - h) / 2;
+    if (left + w > canvas_w) left = canvas_w - w;
+    if (top + h > canvas_h) top = canvas_h - h;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    return fe_rect(left, top, left + w, top + h);
+}
+
+static double map_edge(const double (*points)[2], int count, double x) {
+    for (int i = 1; i < count; i++)
+        if (x <= points[i][0] || i == count - 1) {
+            double x0 = points[i - 1][0], x1 = points[i][0], y0 = points[i - 1][1], y1 = points[i][1];
+            return x1 > x0 ? y0 + (x - x0) * (y1 - y0) / (x1 - x0) : y1;
+        }
+    return x;
+}
+
+fe_rect_t fe_controls_rect(fe_rect_t r, int picture) {
+    static const double lefts[][2] = { { 0, 0 }, { 10, 4 }, { 94, 94 }, { 164, 162 }, { 248, 230 }, { 320, 318 } };
+    static const double rights[][2] = { { 0, 0 }, { 90, 90 }, { 164, 158 }, { 246, 226 }, { 320, 318 } };
+    double z = FE_CONTROLS_ZOOM, left = (picture ? r.left : map_edge(lefts, 6, r.left)) * z;
+    double right = picture ? left + (r.right - r.left) * z : map_edge(rights, 5, r.right) * z;
+    return fe_rect((int)floor(left + 0.5), (int)floor(r.top * z + 0.5), (int)floor(right + 0.5),
+                   (int)floor(r.bottom * z + 0.5));
+}
+
+static fe_widget_t* label_with(fe_scene_t* s, const fe_window_t* w, const char* text) {
+    for (int i = w->first; i < w->first + w->count; i++)
+        if (s->widgets[i].kind == FE_W_LABEL && !strcmp(fe_scene_str(s, s->widgets[i].text), text)) return &s->widgets[i];
+    return NULL;
+}
+
+void fe_controls_polish(fe_scene_t* s, const fe_window_t* w, double zoom) {
+    fe_widget_t *replay = label_with(s, w, "Replay"), *voice = label_with(s, w, "voice over");
+    for (int i = w->first; i < w->first + w->count; i++) {
+        fe_widget_t* x = &s->widgets[i];
+        x->text_h = (float)(x->text_h * zoom);
+        x->image_zoom = (float)zoom;
+        if (x->kind == FE_W_LABEL || x->kind == FE_W_FIELD)
+            x->text_flags = (uint16_t)((x->text_flags & ~FE_TEXT_WRAP) | FE_TEXT_FIT | FE_TEXT_VCENTER);
+    }
+    /* the ddf breaks "Replay voice over" over two text boxes; one line reads as the other rows do */
+    if (replay && voice) {
+        int text = fe_scene_text(s, "Replay voice over");
+        if (text >= 0) {
+            replay->text = text;
+            voice->text = -1;
+        }
+    }
+}

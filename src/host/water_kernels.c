@@ -1,5 +1,6 @@
 #include "water_kernels.h"
 
+#include <math.h>
 #include <string.h>
 
 #ifdef RECOMP_X87_LOCAL
@@ -16,6 +17,24 @@
 #define WAVE_NUMERATOR 0x00647B54u
 
 recomp_func_t water_rows_lifted, water_wave_step_lifted;
+
+/* CWaveData::Step (0x00636FB0) splits what it is given into int(s / sStepMax) + 1 equal steps: n steps of just under
+ * sStepMax arrive as exactly n. */
+#define WATER_STEP_SHARE 0.999f
+
+water_cadence_t water_cadence(float required, float step_max) {
+    water_cadence_t c = { -1, 0.0f, 0.0f };
+    if (!(required > 0.0f) || !isfinite(required) || !(step_max > 0.0f) || !isfinite(step_max)) return c;
+    c.step = step_max * WATER_STEP_SHARE;
+    if (required >= c.step * (WATER_CATCH_UP_STEPS + 1)) {
+        c.steps = WATER_CATCH_UP_STEPS;
+        return c;
+    }
+    c.steps = (int)(required / c.step);
+    c.carry = required - (float)c.steps * c.step;
+    if (c.carry < 0.0f) c.carry = 0.0f;
+    return c;
+}
 
 static uint32_t rd32(uint32_t va) { return *(const uint32_t*)ADDR(va); }
 static double rdf(uint32_t va) { return *(const float*)ADDR(va); }

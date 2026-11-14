@@ -345,7 +345,11 @@ static void TestSettings(const fs::path& dir) {
     CHECK(c.show_launcher && !c.borderless && c.monitor == 1 && c.window_w == 0 && !c.stretch && c.hardware);
     CHECK(c.render_preset == JPT_RENDER_NATIVE && c.aspect == JPT_ASPECT_16_9 && c.texture_filter == JPT_FILTER_ANISO16);
     CHECK(c.msaa == 4 && c.hardware && !c.stretch && !c.borderless);
-    CHECK(c.vsync && c.show_fps);
+    CHECK(c.vsync && c.show_fps && !c.skip_intro);
+    CHECK(std::string(jpt_default_value(JPT_KEY_SKIP_INTRO)) == "0");
+    CHECK(jpt_config_apply(&c, JPT_KEY_SKIP_INTRO, "on") && c.skip_intro);
+    CHECK(jpt_config_apply(&c, JPT_KEY_SKIP_INTRO, "0") && !c.skip_intro);
+    CHECK(!jpt_config_apply(&c, JPT_KEY_SKIP_INTRO, "maybe") && !c.skip_intro);
     const fs::path ini = dir / "trespasser.ini";
     WriteFile(ini, "# my notes\nrenderer = software\n# vsync = 1\naspect_ratio = 99:1\nmsaa = 8 # high\nunknown = x\n");
     CHECK(jpt_config_load(ini.string().c_str(), &c));
@@ -376,6 +380,15 @@ static void TestSettings(const fs::path& dir) {
     CHECK(s.Save() && !s.Dirty());
     LauncherSettings again(ini);
     CHECK(again.Get(JPT_KEY_ASPECT_RATIO) == "21:9" && !again.GetBool(JPT_KEY_SHOW_FPS, true));
+    CHECK(!again.GetBool(JPT_KEY_SKIP_INTRO, true));
+    again.SetBool(JPT_KEY_SKIP_INTRO, true);
+    CHECK(again.Save() && ReadFile(ini).find("skip_intro = 1") != std::string::npos);
+    jpt_config_load(ini.string().c_str(), &c);
+    CHECK(c.skip_intro);
+    again.SetBool(JPT_KEY_SKIP_INTRO, false);
+    CHECK(again.Save() && ReadFile(ini).find("skip_intro = 0") != std::string::npos);
+    jpt_config_load(ini.string().c_str(), &c);
+    CHECK(!c.skip_intro);
     again.ResetToDefaults();
     CHECK(again.Get(JPT_KEY_ASPECT_RATIO) == "16:9" && again.Dirty());
     CHECK(ReadFile(ini).find("# my notes") != std::string::npos);

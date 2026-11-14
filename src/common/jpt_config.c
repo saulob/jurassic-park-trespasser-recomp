@@ -28,6 +28,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_MSAA, "4" },
     { JPT_KEY_VSYNC, "1" },
     { JPT_KEY_SHOW_FPS, "1" },
+    { JPT_KEY_SKIP_INTRO, "0" },
     { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
     { JPT_KEY_GAMEPAD_LOOK_X, "100" },
     { JPT_KEY_GAMEPAD_LOOK_Y, "100" },
@@ -79,6 +80,7 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_SHOW_LAUNCHER)) return jpt_parse_bool(value, &c->show_launcher);
     if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);
     if (!strcmp(key, JPT_KEY_SHOW_FPS)) return jpt_parse_bool(value, &c->show_fps);
+    if (!strcmp(key, JPT_KEY_SKIP_INTRO)) return jpt_parse_bool(value, &c->skip_intro);
     if (!strcmp(key, JPT_KEY_DISPLAY_MODE)) return (n = parse_choice(value, modes, 2)) >= 0 ? (c->borderless = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_PRESENTATION))
         return (n = parse_choice(value, presentations, 2)) >= 0 ? (c->stretch = n, 1) : 0;
