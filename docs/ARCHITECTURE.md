@@ -327,7 +327,8 @@ palette, 640 wide, 15 fps, 22050 Hz 16-bit stereo audio, on a 640x480 screen (`C
 restores 640x480 before the ending plays). The registry value `NoVideo` skips them: `Play` then pumps one message and
 returns 1 without opening the file. Skip Intro (`skip_intro`) answers `NoVideo` with 1 for the `tpassintro` and
 `newgame` calls only (`video_hd.c` wraps `Play`; `registry.c` answers), so their callers go on to the main menu and to
-the level load as after the video; the credits, the ending and the Video Test's requests are never skipped.
+the level load as after the video; the credits, the ending and the Video Test's requests are never skipped (the Video
+Test panel has no key since F5 became the Debug Menu).
 
 The player opens the file with every audio track (`SMACKFILEHANDLE | SMACKNEEDVOLUME | SMACKTRACKS`), checks that the
 primary has an `lpSurface` (always, here), decodes each frame with `SmackToBuffer(..., SMACKBUFFER565)` into a cleared
@@ -404,9 +405,9 @@ window procedure still receives the messages it received before.
 
 ### Keys
 
-`F1 Hint | F2 Controls | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | Esc Menu | Alt+F4 Exit`
-(logged once as `[hotkeys]`). F2, F5, F11 without Ctrl and Alt+F4 belong to the host and never reach the
-game; F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
+`F1 Hint | F2 Controls | F5 Debug Menu | F10 Cheats | F11 Fullscreen | Ctrl+F11 Cheat Console | Esc Menu | Alt+F4
+Exit` (logged once as `[hotkeys]`). F2, F5, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
+game (F10's key-up included, which would open the window's menu bar); F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
 table at `0x0040C220` gives F2 no action). F12, which opened the game's `CControlsWnd` (still under Options >
 Controls), is not passed on. Ctrl+F11 (the game's cheat box) and everything else go to the game unchanged. Esc and F1
 open a modal window of the game on key-down (`CGameWnd::OnKey`, `0x0040BE70`), but `CUIWnd::OnKey`
@@ -415,6 +416,43 @@ game's window stack grew between the key-down and it) is kept from the game, onc
 next key-down decides again, so a second Esc closes the menu normally, and a key-up the game
 already flushed while opening (`sub_004131D0`) cannot make a later one disappear. Auto-repeated
 key-downs are dropped so a held key cannot open, close and reopen it. Key lines are capped.
+
+### Debug / Test Menu
+
+`debug_menu.c` (policy in `debug_menu_policy.c`, ImGui panel in `debug_menu_panel.cpp`) puts the game's own debug paths
+behind F5. The retail cheat table (`0x00660180`, dispatcher `0x0040B6A0`, jump table `0x0040B8DC`) keeps `LOC`
+(toggles `0x0066DE50`; `CGameWnd` then prints the active camera's presence, `CWorld + 0x14`, vtable `+ 0x10`), `TNEXT`
+(`PlayerTeleportToNextLocation`, `0x0060CB70`) and `DINOS` (`CAISystem::bBoring`, `[0x0066E77C] + 0x52`); `TELE`'s case
+returns without acting (its body is `#if 0` in the source). Teleport is that body built from TNEXT's own calls:
+`PurgeRenderCaches` `0x00548150`, `p3Placement` (vtable `+ 0x18`) and `Move` (`+ 0x38`) on the camera's attached mover
+(`camera + 0x50`), `SetNoPageFrames(2)` `0x006264D0`. Previous Key Point puts TNEXT's iterator (`0x0073F614`, list
+sentinel at `0x0073F600`, nodes `{next, prev, CTeleport*}`) on the node before the last one reached and runs TNEXT
+itself. Restart Level is the death and pause-menu sequence (`0x0040BCC0` pause, `0x00414480` on `0x0066E338`: scene
+reloaded in place by `bLoadScene`, `0x0040BD70(1)` resume). Reload and Level Select in a level are
+`CWorld::DeferredLoad` (`0x00607E90`), the game's own level change: `CGameWnd`'s frame (`0x0040C4AD`) shows "Loading
+Level" and runs the full load `0x00414100` (display reset, loading screen). From the main menu Level Select runs what
+Direct Load's OK and New Game run (`0x00414D80`, `0x00414100`, the main menu's EndModal(2)); its list is Direct Load's,
+`data\*.scn`. Requests run in the modal UI loop before it reads its cursor (`0x004178B5`); while the menu is open in a
+level the `CInput` result is emptied after each read. Coordinates are the mover's `CPlacement3`; yaw is the heading of
+`(0, 1, 0)` turned as LOC's `0x004CD090` turns it. The checkpoint holds a level id and a placement, never a guest
+pointer, and is dropped when another level or the main menu is seen.
+
+### Cheats
+
+F10 (`cheats.c`, policy in `cheats_policy.c`) is a second item list of the Debug Menu's policy: Teleport, Level Select,
+Show Coordinates and Freeze Dinosaurs are the Debug Menu's items and actions. The rest are the game's own state:
+`CPlayer::bInvulnerable` (`+ 0xDD`; retail still returns from `CPlayer::Process(CMessageCollision)` on it at
+`0x004569D7`, though the INVUL console case was compiled out), `g_bUnlimitedAmmo` (`0x0066ECC1`, WOO, read by `CGun` at
+`0x0043FA5B`), `CAnimate` hit points `+ 0x50` and maximum `+ 0x54`, the player's own `CPhysicsInfoPlayer`
+(`[[player + 0x28] + 0x0C]`, vtable `0x0064D644`) `rSpeedMultiplier` `+ 0x70`, which only the walk request multiplies
+(`0x004F0B27`), and the voluntary jump's `Pelvis_Jump.z` (`0x0067AFA8`, flag `0x0067AF5D`), scaled by the square root of
+the height multiplier in the existing `Pelvic_IDOF` override before `Foot_IDOF` turns it into the starting speed. The
+camera is a `CEntityAttached` (`+ 0x50` attached, `+ 0x54` animate, `+ 0x58` relative placement, followed by
+`UpdateFromAttached` `0x00617F20`): Third Person sets the relative placement behind the head; Free Camera clears the
+attachment and moves the camera with `CInstance::Move` (`0x00614B10`) from the `CInput` result it takes from Anne. The
+host-side cheats are written into the game only in a running level with no pending load (`CWorld + 0x38`) or save
+(`+ 0x44`); otherwise the game's values are put back, so saves (which keep hit points and the camera's link) and
+loads never see them. They reset in another level or the main menu.
 
 ### Closing
 

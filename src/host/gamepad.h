@@ -29,6 +29,9 @@ void gamepad_video_loop(void);
 /* The host's policy timer: connections are noticed while no frame runs. */
 void gamepad_idle(void);
 
+/* The controller in use's buttons (JPT_PAD_BIT) at the last sample; 0 without one. */
+uint32_t gamepad_buttons(void);
+
 /* 1 while gamepad focus drives a menu: every pointer is hidden. */
 int gamepad_menu_focus(void);
 

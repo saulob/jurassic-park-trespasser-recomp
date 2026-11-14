@@ -1,0 +1,72 @@
+/* The F10 cheats without windows or the guest: multipliers, health, camera modes, when values are in the game. */
+#ifndef CHEATS_POLICY_H
+#define CHEATS_POLICY_H
+
+#include "debug_menu_policy.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define CH_MULTIPLIER_COUNT 6
+#define CH_MULTIPLIER_DEFAULT 1
+#define CH_SUPER_HEALTH_FACTOR 4.0f
+#define CH_THIRD_PERSON_BACK 2.5f
+#define CH_THIRD_PERSON_UP 0.5f
+#define CH_FREE_CAMERA_SPEED 4.0f
+#define CH_FREE_CAMERA_FAST 4.0f
+#define CH_FREE_CAMERA_PITCH_MAX 1.5f
+
+typedef enum { CH_CAMERA_NORMAL, CH_CAMERA_THIRD, CH_CAMERA_FREE } ch_camera_t;
+
+float ch_multiplier(int index);
+const char* ch_multiplier_text(int index);
+int ch_multiplier_clamp(int index);
+/* A jump reaches the height of its starting speed squared: the speed takes the square root. */
+float ch_jump_speed_scale(int index);
+
+/* The host-side cheats: what was asked for, and in which level. */
+typedef struct {
+    int speed, jump, super_health;
+    ch_camera_t camera;
+    char level[DM_LEVEL_ID_MAX];
+} ch_state_t;
+
+void ch_init(ch_state_t* s);
+int ch_any(const ch_state_t* s);
+/* 1 when a level change or the main menu just cleared them. */
+int ch_level_seen(ch_state_t* s, dm_place_t place, const char* level);
+void ch_set_level(ch_state_t* s, const char* level);
+/* Cheat values sit in the game only in a running level with no load or save about to read it, so a save never
+ * keeps them and a load never finds them. */
+int ch_should_apply(dm_place_t place, int load_pending, int save_pending, int player);
+
+float ch_super_max(float normal_max);
+/* Back to the normal maximum without killing: health above it is clamped. */
+void ch_super_off(float normal_max, float* hp, float* max);
+/* A living player's health to its current maximum; 0 for a dead one, who stays dead. */
+int ch_heal(float hp, float max, float* out);
+
+void ch_third_person_relative(dm_placement_t* out);
+
+/* Free camera: yaw as dm_yaw, pitch up positive. */
+typedef struct {
+    float pos[3];
+    float yaw, pitch;
+} ch_freecam_t;
+
+typedef struct {
+    float rotate[2]; /* SInput v2Rotate: radians, x turns right, y looks up */
+    float move[2];   /* SInput v2Move: x right, y forward */
+    int up, down, fast;
+} ch_freecam_input_t;
+
+void ch_freecam_from(const dm_placement_t* at, ch_freecam_t* out);
+void ch_freecam_step(ch_freecam_t* c, const ch_freecam_input_t* in, float dt);
+void ch_freecam_placement(const ch_freecam_t* c, dm_placement_t* out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

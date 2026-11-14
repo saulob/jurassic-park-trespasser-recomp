@@ -264,7 +264,7 @@ void video_hd_release(void);
 void video_hd_force(int mode);
 /* Skip Intro (key skip_intro): read at start-up, applied as each opening is about to play. */
 void video_hd_skip_intro(int enabled);
-/* video_test.c: F5 opens or closes the Video Test panel with the main menu alone in front; elsewhere nothing. */
+/* video_test.c: the Video Test panel, with the main menu alone in front. No key opens it since F5 is the Debug Menu. */
 void video_test_f5(void);
 int video_test_visible(void);
 struct ID3D11Device;
@@ -278,6 +278,29 @@ int video_test_mouse(UINT msg, WPARAM wparam, LPARAM lparam);
 /* In the menu frame, before the game draws it: a requested playback runs here. */
 void video_test_ui_frame(void);
 void video_test_release(void);
+/* debug_menu.c: F5 Debug / Test Menu and F10 Cheats in a level or with the main menu alone in front, one at a time. */
+void debug_menu_f5(void);
+void debug_menu_f10(void);
+int debug_menu_visible(void);
+/* While open in a level the game's CInput result is emptied: Anne does not move or look. */
+int debug_menu_blocks_gameplay(void);
+/* 1 when the game must not see this key message or character. */
+int debug_menu_key(UINT msg, WPARAM wparam, LPARAM lparam);
+int debug_menu_char(WPARAM wparam);
+/* 1 while the menu is open over the main menu: its buttons must not take the mouse. */
+int debug_menu_mouse(void);
+/* Gamepad buttons (JPT_PAD_BIT) while the menu is open. */
+void debug_menu_pad(uint32_t held, uint32_t pressed);
+/* The game's modal UI loop, after gamepad_ui_loop: requested actions run here. */
+void debug_menu_ui_loop(void);
+int debug_menu_overlay_wanted(void);
+void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext* context,
+                        struct ID3D11RenderTargetView* target, int width, int height);
+void debug_menu_release(void);
+/* guest_call.c: a lifted function called from the host; 0 when it is missing or left the stack moved. */
+int guest_call(uint32_t va, uint32_t self, const uint32_t* args, int count, int caller_pops, uint32_t* result);
+int guest_call_virtual(uint32_t self, uint32_t slot, const uint32_t* args, int count, uint32_t* result);
+HWND window_host_game_window(void);
 /* window_host.c: the presentation surface inside the game window's client. */
 int window_host_view_rect(RECT* view);
 /* The real pointer in the game's screen pixels; 0 when it is outside the picture. */

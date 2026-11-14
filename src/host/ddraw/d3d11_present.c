@@ -86,6 +86,7 @@ static void release_back_view(void) {
 void present_release(void) {
     video_hd_release();
     video_test_release();
+    debug_menu_release();
     if (s_p.device) d3dr_device_lost();
     release_back_view();
     release_staging();
@@ -349,10 +350,11 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         return;
     }
     ID3D11DeviceContext_CopyResource(s_p.context, (ID3D11Resource*)back, (ID3D11Resource*)staging);
-    if (video_test_visible()) {
+    if (video_test_visible() || debug_menu_overlay_wanted()) {
         ID3D11RenderTargetView* view = NULL;
         if (SUCCEEDED(ID3D11Device_CreateRenderTargetView(s_p.device, (ID3D11Resource*)back, NULL, &view))) {
             video_test_overlay(s_p.device, s_p.context, view, (int)width, (int)height);
+            debug_menu_overlay(s_p.device, s_p.context, view, (int)width, (int)height);
             ID3D11RenderTargetView_Release(view);
         }
     }
@@ -389,7 +391,10 @@ int present_submit(int vsync) {
     HRESULT hr;
     LARGE_INTEGER start;
     if (!s_p.swapchain) return 0;
-    if (s_p.back_rtv) video_test_overlay(s_p.device, s_p.context, s_p.back_rtv, (int)s_p.width, (int)s_p.height);
+    if (s_p.back_rtv) {
+        video_test_overlay(s_p.device, s_p.context, s_p.back_rtv, (int)s_p.width, (int)s_p.height);
+        debug_menu_overlay(s_p.device, s_p.context, s_p.back_rtv, (int)s_p.width, (int)s_p.height);
+    }
     QueryPerformanceCounter(&start);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);

@@ -92,6 +92,12 @@ set(HOST_SOURCES
   src/host/video_test.c
   src/host/video_test_state.c
   src/host/video_test_panel.cpp
+  src/host/debug_menu.c
+  src/host/debug_menu_policy.c
+  src/host/debug_menu_panel.cpp
+  src/host/cheats.c
+  src/host/cheats_policy.c
+  src/host/guest_call.c
   src/host/save_preview.c
   src/host/engine_limits.c
   src/host/engine_heaps.c
@@ -352,6 +358,14 @@ target_include_directories(gamepad_tests PRIVATE src/host)
 target_link_libraries(gamepad_tests PRIVATE jpt_common)
 target_compile_options(gamepad_tests PRIVATE /W3)
 target_compile_definitions(gamepad_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The F5 Debug / Test Menu and F10 Cheats: their policies, the retail sites they use and the panel on a WARP device
+# (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
+add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c
+  src/host/debug_menu_policy.c src/host/cheats_policy.c src/host/debug_menu_panel.cpp)
+target_include_directories(debug_menu_tests PRIVATE src/host src/common)
+target_compile_options(debug_menu_tests PRIVATE /W3)
+target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(debug_menu_tests PRIVATE imgui_dx11 d3d11 dxguid)
 # The HD videos: the retail inventory, the original decoder (no audio track, no window), the layout and session, and the
 # GPU passes on a WARP device (headless): ninja -C <build dir> video_tests && video_tests.exe
 add_executable(video_tests EXCLUDE_FROM_ALL tests/video_tests.c src/host/video_layout.c src/host/ddraw/video_gpu.c

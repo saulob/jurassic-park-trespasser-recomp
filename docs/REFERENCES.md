@@ -21,6 +21,17 @@ licence allows and it says so in the file; everything else listed here was a ref
 | [TresCom](https://www.trescom.org/) | community documentation | the tutorial's voice-overs and subtitles, and how players describe using the arm |
 | Community DualSense layout (2026) | ergonomics evidence | a tested layout: left stick move, right stick look, L1 raise arm, R1 grab, L2 throw, R2 use/fire, Cross crouch toggle, Circle stow/retrieve, Square jump. Taken only as evidence that the triggers and shoulders suit the arm; this port keeps its own layout (LT/L2 raises the hand, RT/R2 uses) so that every action stays bound to the button the game's own Controls screen and tutorial name. Not copied; its link is not recorded here. |
 
+## Debug / Test Menu and Cheats
+
+| Reference | Kind | Used for |
+|---|---|---|
+| [OpenTrespasser/JurassicParkTrespasser](https://github.com/OpenTrespasser/JurassicParkTrespasser) | behaviour (reading only) | `ExecuteCheat` (`Trespass/gamewnd.cpp`: LOC, TELE compiled out, TNEXT, DINOS), `PlayerTeleportToNextLocation` and `PlayerTeleportToXYZ` (`EntityDBase/Teleport.cpp`), `CWorld::DeferredLoad` (`WorldDBase.cpp`), `CAISystem::bBoring` (`Game/AI/AIMain.cpp`), `CPlayer::bInvulnerable` and the player's jump and walk requests
+(`DesignDaemon/Player.cpp`), `g_bUnlimitedAmmo` (`Gun.cpp`), hit points (`Animate.cpp`), `rSpeedMultiplier`
+(`Physics/InfoSkeleton.cpp`), `Pelvis_Jump` (`Physics/foot.cpp`), `CEntityAttached` (`EntityDBase/Entity.cpp`), the
+`CPlacement3`/`CRotate3` layout; each confirmed in the retail 1.0.116 binary before use. No code from it is in this port. |
+| [TresCom: Level select and cheats](https://www.trescom.org/hosted/trespasser_nl/secrets.php) | community documentation | the original Level Select (Ctrl+Shift+Q+W in the main menu) and what LOC, TELE, TNEXT and DINOS do for players |
+| [ATX readme (TresCom)](https://www.trescom.org/articles/atx-readme/) | community documentation | the engine's two reload paths (ATX's "fast restart" against a full load); what INVUL, SUPERHP, NORMALHP, THIRDP and FLY do and where they break (scripted deaths, saves and loads, restarts); ATX patches its own executables, so none of its addresses or code apply |
+
 ## Tutorial text
 
 The beach tutorial's instructions are subtitles inside the voice-over samples of `data\Stream.tpa` (11 samples, 20

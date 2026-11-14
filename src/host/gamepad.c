@@ -12,11 +12,13 @@
 
 #include <SDL3/SDL.h>
 
+#include "cheats.h"
 #include "gamepad.h"
 #include "tutorial_prompts.h"
 
 #define CINPUT_READ_VA 0x005F80B0u
 #define SINPUT_IN_CINPUT 0x08u
+#define SINPUT_ROTATE_X 0x04u
 #define SINPUT_MOVE_X 0x0Cu
 #define SINPUT_MOVE_Y 0x10u
 #define SINPUT_STATE 0x14u
@@ -272,6 +274,8 @@ static uint32_t buttons_now(void) {
     return pad_buttons_with_trigger_hold(&G.state, trigger_deadzone(), G.triggers_held);
 }
 
+uint32_t gamepad_buttons(void) { return G.state.buttons; }
+
 static float rdf(uint32_t va) { return *(float*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
 
@@ -319,7 +323,10 @@ static void cinput_read(void) {
     int alias = g_alias_entry != 0;
     if (!alias) gameplay_before_read();
     G.cinput_lifted();
-    if (!alias) gameplay_after_read(self + SINPUT_IN_CINPUT);
+    if (alias) return;
+    gameplay_after_read(self + SINPUT_IN_CINPUT);
+    if (debug_menu_blocks_gameplay() || cheats_take_input(self + SINPUT_IN_CINPUT))
+        memset((void*)ADDR(self + SINPUT_IN_CINPUT + SINPUT_ROTATE_X), 0, SINPUT_HIT + 4 - SINPUT_ROTATE_X);
 }
 
 int gamepad_install(void) {
@@ -357,7 +364,10 @@ void gamepad_ui_loop(void) {
     before = G.ui_edges.previous;
     held = pad_edges_update(&G.ui_edges, buttons, &pressed);
     released = before & ~held;
-    if (mode == MODE_GAMEPLAY) {
+    if (debug_menu_visible() && mode != MODE_NONE) {
+        if (mode == MODE_MENU) G.left_gameplay = 1;
+        debug_menu_pad(held, pressed);
+    } else if (mode == MODE_GAMEPLAY) {
         if (pressed & JPT_PAD_BIT(JPT_PAD_START)) window_host_post_key(VK_ESCAPE);
         if ((pressed & JPT_PAD_BIT(JPT_PAD_BACK)) || G.card_request) tutorial_prompts_toggle_card();
         else if (!G.hint_shown) G.hint_shown = tutorial_prompts_hint();

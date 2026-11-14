@@ -5,6 +5,7 @@
  */
 #include "host.h"
 
+#include "cheats.h"
 #include "water_kernels.h"
 
 #define PELVIC_IDOF_VA 0x004F3FB0u
@@ -49,6 +50,7 @@ static void pelvic_idof(void) {
         s_idof_lifted();
         return;
     }
+    cheats_before_pelvis();
     mouth = PELVIS_STATE + PELVIS_STATE_STRIDE * me + PELVIS_MOUTH;
     data = PELVIS_DATA + PELVIS_DATA_STRIDE * me;
     pos = rdf(mouth);

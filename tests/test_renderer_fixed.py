@@ -34,12 +34,14 @@ class RendererFixed(unittest.TestCase):
             if path.name != "d3d11_renderer.c":
                 self.assertIsNone(HARDWARE_WRITE.search(other), str(path.relative_to(ROOT)))
 
-    def test_f5_is_only_the_video_test(self):
+    def test_f5_is_only_the_debug_menu(self):
         policy = (HOST / "host_policy.c").read_text(encoding="utf-8")
-        self.assertIn("case VK_F5_: return down && !repeat ? KEY_HOST_VIDEO_TEST : KEY_DROP;", policy)
+        self.assertIn("case VK_F5_: return down && !repeat ? KEY_HOST_DEBUG_MENU : KEY_DROP;", policy)
         window = (HOST / "window_host.c").read_text(encoding="utf-8")
-        self.assertRegex(window, r"case KEY_HOST_VIDEO_TEST:\s*video_test_f5\(\);\s*return 0;")
-        self.assertEqual(window.count("KEY_HOST_VIDEO_TEST"), 1)
+        self.assertRegex(window, r"case KEY_HOST_DEBUG_MENU:\s*debug_menu_f5\(\);\s*return 0;")
+        self.assertEqual(window.count("case KEY_HOST_DEBUG_MENU:"), 1)
+        for path, other in host_sources():
+            self.assertNotIn("KEY_HOST_VIDEO_TEST", other, str(path.relative_to(ROOT)))
 
     def test_use_d3d_answers_the_start_up_choice(self):
         registry = (HOST / "registry.c").read_text(encoding="utf-8")

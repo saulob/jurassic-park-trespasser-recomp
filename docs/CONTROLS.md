@@ -31,8 +31,53 @@ page lists the ones the game loads (its `KeyMap`), so a remapped key shows up th
 | Pause menu | Esc |
 
 Port hotkeys: F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
-bindings), F11 windowed / borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 hint, Ctrl+F11 cheat input.
-A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the start of a level.
+bindings), F5 the Debug / Test Menu, F10 Cheats, F11 windowed / borderless full screen, Alt+F4 exit. The game's own:
+Esc menu, F1 hint, Ctrl+F11 cheat console. A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the
+start of a level.
+
+### Debug / Test Menu
+
+F5 opens and closes it in a level or with the main menu in front (elsewhere F5 does nothing). While it is open Anne
+does not move or look and the game gets no keys; Esc (or B) closes it first, or goes back from Level Select.
+
+| Item | What it does |
+|---|---|
+| Level Select | the scene files of `data` (the game's own Level Select list) as `BE - Beach` ... `SUM - Summit`, the two test scenes, then any other scene by file name; loads one the way the game changes level |
+| Restart Level | the game's Restart Level (as after death or from the pause menu) |
+| Reload Current Level | loads the current level again from its files, with the loading screen |
+| X, Y, Z, Teleport | starts at Anne's position; type a value, or Left/Right (Shift 10, Ctrl 0.1; gamepad D-pad 1, LB/RB 10) |
+| Previous / Next Key Point | the level's teleport points, as the TNEXT cheat walks them |
+| Set / Return to Checkpoint | a position kept for this run only, in this level only |
+| Show Coordinates | level, X, Y, Z and yaw in the top-left corner (off at every start) |
+| Copy Coordinates | `Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570` to the clipboard |
+| Freeze AI | the DINOS cheat: dinosaurs sleep and stop updating until it is turned off |
+
+Keyboard: Up/Down, Enter. Gamepad: D-pad, A to use, B back, Menu to close. Yaw is in radians, counter-clockwise from
++Y, the game's facing axis. Nothing here writes a save or the game's progress.
+
+### Cheats
+
+F10 opens and closes it where F5 works; F5 and F10 replace each other, so only one is ever shown. The game's own
+console (Ctrl+F11) still works.
+
+| Cheat | What it does |
+|---|---|
+| Movement Speed | 0.5x to 5.0x of Anne's walking and running only (Left/Right or Enter) |
+| Jump Height | 0.5x to 5.0x of how high Anne's own jumps go; gravity and falls are unchanged |
+| Invulnerability | the game's INVUL: no damage from hits, bites, shots or falls; level-scripted deaths still happen |
+| Infinite Ammo | the game's WOO: guns do not use up ammunition |
+| Freeze Dinosaurs | the game's DINOS, the same switch as the Debug Menu's Freeze AI |
+| Heal | Anne's health back to her maximum (not after death) |
+| Super Health | four times the normal maximum, full; off brings the maximum back without taking health below it |
+| Teleport, Level Select, Show Coordinates | the Debug Menu's own |
+| Third Person | the camera behind and above Anne, following her head |
+| Fly / Free Camera | a camera that moves on its own while Anne stays where she is |
+
+Free Camera: WASD or the left stick moves, the mouse or the right stick looks, Space or A goes up, Ctrl or B goes
+down, Shift or LB is faster. Third Person and Free Camera exclude each other. Movement Speed, Jump Height, Super Health
+and the camera modes go back to normal in another level or in the main menu; while a menu of the game is open (and
+whenever it saves or loads) the game has its own values, so a save never keeps a cheat. Nothing is remembered between
+runs.
 
 ## Gamepad
 

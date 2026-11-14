@@ -995,6 +995,12 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !repeat &&
         (action == KEY_TO_GAME || action == KEY_HOST_CONTROLS) && ((lparam >> 16) & 0xFF) != PAD_SCAN_CODE)
         gamepad_note_keyboard();
+    if (action != KEY_HOST_DEBUG_MENU && action != KEY_HOST_CHEATS && action != KEY_HOST_FULLSCREEN &&
+        action != KEY_HOST_CLOSE &&
+        debug_menu_key(msg, wparam, lparam)) {
+        if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "Debug Menu");
+        return 0;
+    }
     if (msg == WM_KEYDOWN || msg == WM_KEYUP) guest_ui_probe(&g);
     if (msg == WM_KEYDOWN) open_press_keydown(&s.open_press, (unsigned)wparam, repeat, g.ui == GUEST_UI_GAMEPLAY, g.depth);
     if (msg == WM_KEYUP && open_press_keyup(&s.open_press, (unsigned)wparam, g.depth)) {
@@ -1011,8 +1017,11 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         log_key(msg, wparam, lparam, "host full screen toggle");
         toggle_fullscreen();
         return 0;
-    case KEY_HOST_VIDEO_TEST:
-        video_test_f5();
+    case KEY_HOST_DEBUG_MENU:
+        debug_menu_f5();
+        return 0;
+    case KEY_HOST_CHEATS:
+        debug_menu_f10();
         return 0;
     case KEY_HOST_CLOSE:
         request_close(window, "Alt+F4");
@@ -1025,7 +1034,7 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         if (repeat) s.dropped_repeats++;
         if (wparam == VK_F12) {
             if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "dropped (Controls is F2)");
-        } else if (wparam != VK_F5 && wparam != VK_F11 && wparam != VK_F2) {
+        } else if (wparam != VK_F5 && wparam != VK_F10 && wparam != VK_F11 && wparam != VK_F2) {
             log_key(msg, wparam, lparam, "auto-repeat dropped");
         }
         return 0;
@@ -1060,6 +1069,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     case WM_CHAR:
     case WM_DEADCHAR:
         if (video_test_visible()) return 0;
+        if (debug_menu_char(wparam)) return 0;
         break;
     case WM_INPUT:
         read_raw_input((HRAWINPUT)lparam);
@@ -1184,6 +1194,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL_:
         if (video_test_mouse(msg, wparam, lparam)) return 0;
+        if (debug_menu_mouse()) return 0;
         if (virtual_input_active() && !route_mouse(msg, &lparam)) return 0;
         break;
     }
@@ -1228,14 +1239,16 @@ static void attach(HWND window) {
     layout_surface();
     host_log("window", "game window 0x%08X: resizable, centered, F11 toggles borderless full screen; "
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
-    host_log("hotkeys", "F1 Hint | F2 Controls | F5 Video Test (main menu) | F11 Fullscreen | Ctrl+F11 Cheat | "
-             "Esc Menu | Alt+F4 Exit");
+    host_log("hotkeys", "F1 Hint | F2 Controls | F5 Debug Menu | F10 Cheats | F11 Fullscreen | "
+             "Ctrl+F11 Cheat Console | Esc Menu | Alt+F4 Exit");
     register_raw_input(window);
     if (s.cfg.borderless) {
         enter_fullscreen();
         layout_surface();
     }
 }
+
+HWND window_host_game_window(void) { return s.game; }
 
 HWND window_host_surface(HWND window) { return s.surface && window == s.game ? s.surface : window; }
 
@@ -1425,7 +1438,10 @@ void shim_GetCursorPos(void) {
     BOOL ok = TRUE;
     if (virtual_input_active()) {
         update_input("GetCursorPos");
-        if (g_cur_func == UI_LOOP) gamepad_ui_loop();
+        if (g_cur_func == UI_LOOP) {
+            gamepad_ui_loop();
+            debug_menu_ui_loop();
+        }
         *out = game_cursor();
     } else {
         ok = GetCursorPos(out);

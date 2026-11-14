@@ -66,7 +66,8 @@ typedef enum {
     KEY_TO_GAME,
     KEY_DROP,
     KEY_HOST_FULLSCREEN,
-    KEY_HOST_VIDEO_TEST,
+    KEY_HOST_DEBUG_MENU,
+    KEY_HOST_CHEATS,
     KEY_HOST_CLOSE,
     KEY_HOST_CONTROLS
 } key_action_t;
