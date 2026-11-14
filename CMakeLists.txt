@@ -123,6 +123,9 @@ set(HOST_SOURCES
   src/host/ddraw/d3d11_present.c
   src/host/ddraw/d3d11_renderer.c
   src/host/ddraw/d3d11_shaders.c
+  src/host/ddraw/assao_host.cpp
+  src/host/ddraw/assao_shader.cpp
+  src/host/ao_policy.c
   src/host/ddraw/d3d_objects.c
   src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c
@@ -210,7 +213,23 @@ set_target_properties(jpt_launcher_core jpt_launcher PROPERTIES CXX_STANDARD 20 
 # patches/pcrecomp), and g_fp_top keeps the depth native32 hands the stack over by.
 set(TRESPASSER_X87_MODEL RECOMP_X87_RING RECOMP_X87_RING_DEPTH)
 
-add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES})
+# Intel ASSAO (third_party/assao/README.md): the upstream DX11 effect, its shader compiled into the executable.
+set(JPT_ASSAO_DIR "${CMAKE_SOURCE_DIR}/third_party/assao")
+add_library(assao STATIC ${JPT_ASSAO_DIR}/ASSAODX11.cpp)
+target_include_directories(assao PUBLIC ${JPT_ASSAO_DIR})
+target_compile_definitions(assao PRIVATE NDEBUG ASSAO_SHADER_ERROR_HANDLER=assao_shader_error)
+target_compile_options(assao PRIVATE /W1)
+target_link_libraries(assao PUBLIC d3d11)
+set(JPT_ASSAO_SHADER_LIST ${CMAKE_BINARY_DIR}/generated/assao_shader.txt)
+file(CONFIGURE OUTPUT ${JPT_ASSAO_SHADER_LIST} CONTENT "${JPT_ASSAO_DIR}/ASSAO.hlsl")
+set(JPT_ASSAO_SHADER_SOURCE ${CMAKE_BINARY_DIR}/generated/assao_shader_data.cpp)
+add_custom_command(OUTPUT ${JPT_ASSAO_SHADER_SOURCE}
+  COMMAND ${CMAKE_COMMAND} -DINPUT_LIST=${JPT_ASSAO_SHADER_LIST} -DOUTPUT=${JPT_ASSAO_SHADER_SOURCE}
+          -DSYMBOL=kAssaoShaderFiles -P ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  DEPENDS ${JPT_ASSAO_SHADER_LIST} ${JPT_ASSAO_DIR}/ASSAO.hlsl ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  COMMENT "Embedding ASSAO.hlsl")
+
+add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE})
 target_include_directories(trespasser PRIVATE
   src/host
   src/recomp/gen
@@ -274,7 +293,7 @@ target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPA
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser PRIVATE jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
+target_link_libraries(trespasser PRIVATE assao jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
   dxgi dxguid ole32 uuid windowscodecs delayimp)
 # ImGui's D3D11 renderer imports D3DCompile; the renderer loads d3dcompiler_47.dll itself, so start-up does not need it.
 target_link_options(trespasser PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
@@ -384,6 +403,13 @@ target_include_directories(video_tests PRIVATE src/host)
 target_compile_options(video_tests PRIVATE /W3)
 target_compile_definitions(video_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 target_link_libraries(video_tests PRIVATE imgui_dx11 d3d11 dxguid)
+# Ambient occlusion: presets, projection and frame policy, then the ASSAO wrapper's lifecycle and passes on a WARP
+# device (headless): ninja -C <build dir> ao_tests && ao_tests.exe
+add_executable(ao_tests EXCLUDE_FROM_ALL tests/ao_tests.cpp src/host/ao_policy.c src/host/ddraw/assao_host.cpp)
+target_include_directories(ao_tests PRIVATE src/host src/host/ddraw)
+target_compile_options(ao_tests PRIVATE /W3)
+target_compile_definitions(ao_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(ao_tests PRIVATE assao jpt_common d3d11 dxguid)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c)

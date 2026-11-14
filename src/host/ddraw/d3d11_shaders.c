@@ -140,6 +140,12 @@ const char d3d11_shader_source[] =
     "}\n"
     "float4 ps_fill(QuadOut i) : SV_Target { return pass_color; }\n"
     "float4 ps_copy(QuadOut i) : SV_Target { return tex0.Sample(samp0, i.uv); }\n"
+    /* ps_copy for CPU pixels while ambient occlusion marks them in the stencil: unwritten texels leave no mark. */
+    "float4 ps_copy_cpu(QuadOut i) : SV_Target {\n"
+    "  float4 c = tex0.Sample(samp0, i.uv);\n"
+    "  if (c.a < 0.5) discard;\n"
+    "  return c;\n"
+    "}\n"
     /* Readback in the surface's own format, rounded as d3dt_bgra_to_rgb565 does. */
     "uint ps_pack565(QuadOut i) : SV_Target {\n"
     "  uint3 k = (uint3)(saturate(tex0.Sample(samp0, i.uv).rgb) * 255.0 + 0.5);\n"
@@ -156,7 +162,7 @@ const char d3d11_shader_source[] =
 const d3d11_shader_entry_t d3d11_shader_entries[D3D11_SHADER_COUNT] = {
     { "vs_tl", "vs_4_0" },     { "ps_fixed", "ps_4_0" }, { "vs_quad", "vs_4_0" },
     { "ps_fill", "ps_4_0" },   { "ps_copy", "ps_4_0" },  { "ps_present", "ps_4_0" },
-    { "ps_pack565", "ps_4_0" },
+    { "ps_pack565", "ps_4_0" }, { "ps_copy_cpu", "ps_4_0" },
 };
 
 /* Bump-mapped spans of the software renderer (bump_spans.c), one instance per span record: the texel index by the

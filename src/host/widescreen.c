@@ -20,6 +20,7 @@
 #define PROP_FAR 0x3Cu
 #define PROP_TAN_HALF_WIDTH 0x48u
 #define PROP_ASPECT 0x4Cu
+#define PROP_ZOOM 0x50u
 
 static recomp_func_t s_enum_modes_lifted, s_set_properties_lifted;
 static int s_wide;
@@ -104,6 +105,15 @@ float widescreen_tan_half_height(void) {
     aspect = s_wide ? 4.0f / 3.0f : rdf(props + PROP_ASPECT);
     tan_half = rdf(props + PROP_TAN_HALF_WIDTH);
     return aspect > 0.0f && tan_half > 0.0f && isfinite(tan_half) ? tan_half / aspect : 0.0f;
+}
+
+/* What the main camera projects with: SetProperties divides both tangents by fZoomFactor. */
+float widescreen_view_tan_half_height(void) {
+    uint32_t cam = main_camera(), props = cam + PROPS_IN_CAMERA;
+    float tan_half = widescreen_tan_half_height(), zoom;
+    if (!(tan_half > 0.0f)) return 0.0f;
+    zoom = rdf(props + PROP_ZOOM);
+    return zoom > 0.0f && isfinite(zoom) ? tan_half / zoom : tan_half;
 }
 
 /* The stored tan(half width) is the caller's 4:3 one; the projection keeps its vertical extent either way. */

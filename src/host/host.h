@@ -188,6 +188,13 @@ void cpu_polygons_install(void);
 float widescreen_pixels_per_metre(void);
 /* tan of half the main camera's vertical view, as the picture shows it; 0 when there is none. */
 float widescreen_tan_half_height(void);
+/* The same with the camera's zoom: the projection its Direct3D vertices were made with. */
+float widescreen_view_tan_half_height(void);
+/* Ambient occlusion (JPT_AO_*), from trespasser.ini before d3dr_startup; the Debug Menu changes it while running and
+ * saves it to settings_path. d3dr_ambient_occlusion: -1 when the renderer cannot draw it. */
+void d3dr_configure_ambient_occlusion(int level, const char* settings_path);
+int d3dr_ambient_occlusion(void);
+int d3dr_set_ambient_occlusion(int level);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);

@@ -297,6 +297,17 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   `unsupported_render_states`, `unsupported_texture_stage_states` and `failed_d3d_calls` close the log.
 - `Flip` of a chain whose back buffer the GPU drew presents the GPU target (gamma ramp applied in
   the shader); frames drawn only by the CPU (menus, video) are presented from the DIB, scaled.
+- Ambient occlusion (`ambient_occlusion`, Off by default; `third_party/assao`, `assao_host.cpp`, `ao_policy.c`):
+  Intel ASSAO, applied at `Flip` on the back buffer right after the 3D picture is copied there and before the game's
+  UI layer, the HD menus and the host's ImGui overlays (HUD, Debug Menu, Cheats), so none of those is darkened. With
+  feature level 11.0 the depth buffer is `R24G8_TYPELESS` (DSV `D24_UNORM_S8_UINT`, as before, plus depth and
+  stencil views). ASSAO gets the depth as the game wrote it (`sz` = 0.1 / metres, `CCamera::SetProperties`
+  `0x0051FF0B`) with the matching projection (the main camera's vertical tangent, Hor+, divided by its zoom; the
+  target's own aspect) and reconstructs normals itself. While AO is on, the stencil marks every pixel without a depth
+  of its own: CPU composites (game text, subtitles, CPU polygons), colour fills and draws without depth writes; only
+  pixels left by depth-writing draws are darkened, and only on gameplay frames that drew 3D. Off creates nothing and
+  draws nothing. The Debug Menu changes the level at run time; a failure (shaders, resources, device) logs and turns
+  it Off.
 - If the D3D11 device, feature level 10.0 or `d3dcompiler_47.dll` is missing, the host logs it and
   falls back to the software renderer before the game starts.
 - The renderer is chosen once, before the game starts (`--renderer`, or the software fallback above), and stays

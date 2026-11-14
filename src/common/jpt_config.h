@@ -24,6 +24,7 @@ extern "C" {
 #define JPT_KEY_TEXTURE_FILTER "texture_filter"
 #define JPT_KEY_MSAA "msaa"
 #define JPT_KEY_VSYNC "vsync"
+#define JPT_KEY_AMBIENT_OCCLUSION "ambient_occlusion"
 #define JPT_KEY_SHOW_FPS "show_fps"
 #define JPT_KEY_SKIP_INTRO "skip_intro"
 /* Written with every change; a file without it was written by the first, experimental launcher. */
@@ -32,6 +33,10 @@ extern "C" {
 
 enum { JPT_FILTER_ORIGINAL, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4, JPT_FILTER_ANISO8, JPT_FILTER_ANISO16, JPT_FILTER_COUNT };
 extern const char* const jpt_filter_keys[JPT_FILTER_COUNT];
+
+enum { JPT_AO_OFF, JPT_AO_LOW, JPT_AO_MEDIUM, JPT_AO_HIGH, JPT_AO_ULTRA, JPT_AO_COUNT };
+extern const char* const jpt_ao_keys[JPT_AO_COUNT];
+extern const char* const jpt_ao_names[JPT_AO_COUNT];
 
 typedef struct {
     int show_launcher;
@@ -46,6 +51,7 @@ typedef struct {
     int texture_filter;
     unsigned msaa;            /* 1, 2, 4 or 8 */
     int vsync;
+    int ambient_occlusion;    /* JPT_AO_* */
     int show_fps;
     int skip_intro;
     jpt_gamepad_settings_t gamepad;
@@ -56,7 +62,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (13 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (14 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

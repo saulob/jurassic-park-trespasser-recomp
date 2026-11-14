@@ -24,13 +24,15 @@ static const char* const k_labels[DM_ITEM_COUNT] = {
     "Level Select", "Restart Level", "Reload Current Level", "X", "Y", "Z", "Teleport", "Previous Key Point",
     "Next Key Point", "Set Checkpoint", "Return to Checkpoint", "Show Coordinates", "Copy Coordinates", "Freeze AI",
     "Movement Speed", "Jump Height", "Invulnerability", "Infinite Ammo", "Heal", "Super Health", "Teleport",
-    "Third Person", "Fly / Free Camera", "Compass", "Close",
+    "Third Person", "Fly / Free Camera", "Compass", "Ambient Occlusion", "Close",
 };
+
+static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "High", "Ultra" };
 
 static const dm_item_t k_debug_main[] = {
     DM_LEVEL_SELECT, DM_RESTART,  DM_RELOAD,   DM_FIELD_X,        DM_FIELD_Y,           DM_FIELD_Z, DM_TELEPORT,
     DM_PREV_KEY,     DM_NEXT_KEY, DM_SET_CHECKPOINT, DM_RETURN_CHECKPOINT, DM_COMPASS, DM_SHOW_COORDS, DM_COPY_COORDS,
-    DM_FREEZE_AI,    DM_CLOSE,
+    DM_FREEZE_AI,    DM_AMBIENT_OCCLUSION, DM_CLOSE,
 };
 static const dm_item_t k_cheats_main[] = {
     DM_MOVE_SPEED,    DM_JUMP_HEIGHT,  DM_INVULNERABLE, DM_INFINITE_AMMO, DM_FREEZE_AI,   DM_HEAL,  DM_SUPER_HEALTH,
@@ -106,6 +108,7 @@ int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     case DM_THIRD_PERSON:
     case DM_FREE_CAMERA: return player && w->camera_head;
     case DM_COMPASS: return level;
+    case DM_AMBIENT_OCCLUSION: return w->ambient_occlusion >= 0 && w->ambient_occlusion < DM_AO_LEVELS;
     case DM_SHOW_COORDS:
     case DM_CLOSE: return 1;
     default: return 0;
@@ -221,11 +224,20 @@ static void step_multiplier(dm_state_t* s, const dm_world_t* w, int step) {
     if (next != now) request_value(s, speed ? DM_ACT_SPEED : DM_ACT_JUMP, next);
 }
 
+static void step_ambient_occlusion(dm_state_t* s, const dm_world_t* w, int step) {
+    int next = w->ambient_occlusion + step;
+    if (next >= 0 && next < DM_AO_LEVELS) request_value(s, DM_ACT_AMBIENT_OCCLUSION, next);
+}
+
 static void adjust(dm_state_t* s, const dm_world_t* w, float step) {
     float* f;
     if (s->page == DM_PAGE_LEVELS || !dm_item_enabled(s, w, (dm_item_t)s->cursor)) return;
     if (is_multiplier(s->cursor)) {
         step_multiplier(s, w, step > 0.0f ? 1 : -1);
+        return;
+    }
+    if (s->cursor == DM_AMBIENT_OCCLUSION) {
+        step_ambient_occlusion(s, w, step > 0.0f ? 1 : -1);
         return;
     }
     if (!fields_shown(s) || !is_field(s->cursor)) return;
@@ -314,6 +326,9 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     case DM_COMPASS:
         s->compass_off = !s->compass_off;
         dm_feedback(s, s->compass_off ? "Compass off" : "Compass on", now_ms);
+        break;
+    case DM_AMBIENT_OCCLUSION:
+        request_value(s, DM_ACT_AMBIENT_OCCLUSION, (w->ambient_occlusion + 1) % DM_AO_LEVELS);
         break;
     case DM_CLOSE: dm_close(s); break;
     default: break;
@@ -624,6 +639,9 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
         break;
     case DM_TELEPORT_PAGE: snprintf(value, cap, ">"); break;
     case DM_COMPASS: snprintf(value, cap, "%s", on_off(!s->compass_off)); break;
+    case DM_AMBIENT_OCCLUSION:
+        snprintf(value, cap, "%s", enabled ? k_ao_levels[w->ambient_occlusion] : "Unavailable");
+        break;
     case DM_LEVEL_SELECT:
         if (s->menu == DM_MENU_CHEATS) snprintf(value, cap, ">");
         break;
@@ -761,6 +779,8 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
     items_rows(s, w, rows, max, &n, k_debug_main + 11, 1);
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Debug", NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 12, 3);
+    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Graphics", NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 15, 1);
+    items_rows(s, w, rows, max, &n, k_debug_main + 16, 1);
     return n;
 }

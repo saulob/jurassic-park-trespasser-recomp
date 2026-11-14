@@ -114,7 +114,7 @@ static void usage(void) {
            "                  [--texture-filter original|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
            "                  [--msaa 0|2|4|8] [--vsync on|off] [--display-mode windowed|borderless] [--monitor N]\n"
            "                  [--window-size auto|WxH] [--presentation letterbox|stretch] [--show-fps on|off]\n"
-           "                  [--skip-intro on|off]\n"
+           "                  [--skip-intro on|off] [--ambient-occlusion off|low|medium|high|ultra]\n"
            "                  [--original-engine-limits] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
            "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [--perf-log]\n"
            "                  [-- guest arguments]\n"
@@ -164,6 +164,7 @@ static int parse_options(int argc, char** argv, options_t* o) {
         { "--display-mode", JPT_KEY_DISPLAY_MODE }, { "--monitor", JPT_KEY_MONITOR },
         { "--window-size", JPT_KEY_WINDOW_SIZE },   { "--presentation", JPT_KEY_PRESENTATION },
         { "--show-fps", JPT_KEY_SHOW_FPS },         { "--skip-intro", JPT_KEY_SKIP_INTRO },
+        { "--ambient-occlusion", JPT_KEY_AMBIENT_OCCLUSION },
     };
     o->game_dir = getenv("TRESPASSER_GAME_DIR");
     if (!o->game_dir) o->game_dir = TRESPASSER_DEFAULT_GAME_DIR;
@@ -312,8 +313,9 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
     const jpt_size_t target = jpt_render_target(box, hardware.width, hardware.height);
     const jpt_size_t menus = jpt_render_target(box, 640, 480);
     const char* preset = c->render_preset >= 0 ? jpt_render_presets[c->render_preset].label : "custom";
-    host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s", c->hardware ? "d3d11" : "software",
-             jpt_filter_keys[c->texture_filter], c->msaa, c->vsync ? "on" : "off");
+    host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s, Ambient Occlusion %s",
+             c->hardware ? "d3d11" : "software", jpt_filter_keys[c->texture_filter], c->msaa, c->vsync ? "on" : "off",
+             jpt_ao_names[c->ambient_occlusion]);
     if (box.width > 0) {
         host_log("settings", "render resolution %s, aspect ratio %s: gameplay resolution %dx%d (the game's own screen "
                  "with D3D11, %.0f MB of host buffers), 3D render target %dx%d", preset, jpt_aspects[c->aspect].key,
@@ -489,6 +491,7 @@ int main(int argc, char** argv) {
     renderer_filter(&cfg, opt.dev_filter, &filter, &anisotropy);
     d3dr_configure(cfg.hardware && !opt.system_ddraw, (unsigned)box.width, (unsigned)box.height, filter, anisotropy,
                    cfg.msaa);
+    d3dr_configure_ambient_occlusion(cfg.ambient_occlusion, settings_file);
     if (!d3dr_startup()) return HOST_EXIT_SETUP;
 
     if (opt.dry_run) {

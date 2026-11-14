@@ -9,9 +9,12 @@
  * the immediate context.
  */
 #define COBJMACROS
+#include "ao_policy.h"
+#include "assao_host.h"
 #include "d3d_legacy.h"
 #include "d3d11_shaders.h"
 #include "host.h"
+#include "jpt_config.h"
 #include "jpt_display.h"
 #include "loading_hd.h"
 #include "page_arena.h"
@@ -121,6 +124,8 @@ struct d3dr_target {
     ID3D11ShaderResourceView* single_srv;
     ID3D11Texture2D* depth;
     ID3D11DepthStencilView* dsv;
+    ID3D11ShaderResourceView* depth_srv;
+    ID3D11ShaderResourceView* stencil_srv;
     ID3D11Texture2D* packed;
     ID3D11RenderTargetView* packed_rtv;
     ID3D11Texture2D* staging;
@@ -145,6 +150,7 @@ struct d3dr_target {
     int gpu_box_known;
     d3dt_rect_t gpu_box;
     uint16_t gpu_clear;
+    int ao_scene; /* a depth-writing draw since the last Flip */
 };
 
 typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT,
@@ -295,6 +301,15 @@ static struct {
     d3dr_target_t* deferred;
     int capture_text;
     d3dr_target_t* text_target;
+    /* Ambient occlusion: while marking, the stencil holds 0 where a depth-writing draw made the pixel and 1 where the
+     * CPU, a colour fill or a draw without depth writes did; the effect darkens only the 0s. */
+    struct {
+        int level, capable, marking;
+        ID3D11DepthStencilState* depth[2][2][9];
+        ID3D11DepthStencilState* cpu;
+        d3dr_target_t* frame;
+        char settings[MAX_PATH];
+    } ao;
 } R;
 
 static const char* const k_filter_names[] = { "original", "point", "bilinear", "trilinear", "anisotropic" };
@@ -355,6 +370,59 @@ int d3dr_set_debug_output(const char* mode) {
 }
 
 const char* d3dr_name(void) { return R.hardware ? "D3D11" : "Software"; }
+
+/* ---- ambient occlusion (Intel ASSAO, assao_host.cpp) ---- */
+
+static void ao_stop(void) {
+    assao_shutdown();
+    R.ao.marking = 0;
+    R.ao.frame = NULL;
+}
+
+/* A failure turns ambient occlusion off for this device; the renderer goes on without it. */
+static int ao_start(void) {
+    const char* hlsl;
+    size_t size = 0;
+    if (R.ao.level == JPT_AO_OFF || !R.dev) return 0;
+    if (!R.ao.capable) {
+        R.ao.level = JPT_AO_OFF;
+        host_log("graphics", "Ambient Occlusion -> Off: it needs Direct3D feature level 11.0");
+        return 0;
+    }
+    if (assao_ready()) return 1;
+    hlsl = assao_embedded_shader(&size);
+    if (assao_init(R.dev, hlsl, size)) return 1;
+    R.ao.level = JPT_AO_OFF;
+    R.ao.capable = 0;
+    assao_set_quality(JPT_AO_OFF);
+    host_log("graphics", "Ambient Occlusion -> Off: Intel ASSAO is unavailable; the D3D11 renderer continues without it");
+    return 0;
+}
+
+void d3dr_configure_ambient_occlusion(int level, const char* settings_path) {
+    R.ao.level = level > JPT_AO_OFF && level < JPT_AO_COUNT ? level : JPT_AO_OFF;
+    assao_set_quality(R.ao.level);
+    _snprintf(R.ao.settings, sizeof R.ao.settings - 1, "%s", settings_path ? settings_path : "");
+}
+
+int d3dr_ambient_occlusion(void) { return R.hardware && R.ao.capable ? R.ao.level : -1; }
+
+/* From the Debug Menu: takes effect at the next frame and is saved to trespasser.ini. */
+int d3dr_set_ambient_occlusion(int level) {
+    const char* key = JPT_KEY_AMBIENT_OCCLUSION;
+    const char* value;
+    if (d3dr_ambient_occlusion() < 0 || level < JPT_AO_OFF || level >= JPT_AO_COUNT) return 0;
+    if (level == R.ao.level) return 1;
+    R.ao.level = level;
+    assao_set_quality(level);
+    if (level == JPT_AO_OFF) ao_stop();
+    else if (!ao_start()) return 0;
+    host_log("graphics", "Ambient Occlusion %s (changed in game)", jpt_ao_names[level]);
+    value = jpt_ao_keys[level];
+    if (R.ao.settings[0] && !jpt_ini_set(R.ao.settings, &key, &value, 1))
+        host_log("graphics", "could not save %s to %s", key, R.ao.settings);
+    return 1;
+}
 
 static int compile_shaders(void) {
     HMODULE dll = LoadLibraryExA("d3dcompiler_47.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -423,6 +491,16 @@ static ID3D11SamplerState* make_sampler(D3D11_FILTER filter, int address_u, int 
     return state;
 }
 
+/* Every pixel a draw writes gets the stencil op; the depth test still decides which. */
+static void stencil_writes(D3D11_DEPTH_STENCIL_DESC* d, D3D11_STENCIL_OP pass) {
+    d->StencilEnable = TRUE;
+    d->StencilReadMask = d->StencilWriteMask = 0xFF;
+    d->FrontFace.StencilFailOp = d->FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+    d->FrontFace.StencilPassOp = pass;
+    d->FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+    d->BackFace = d->FrontFace;
+}
+
 static int create_static_objects(void) {
     static const D3D11_INPUT_ELEMENT_DESC elements[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -472,7 +550,11 @@ static int create_static_objects(void) {
     dd.DepthEnable = TRUE;
     dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
     dd.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    stencil_writes(&dd, D3D11_STENCIL_OP_ZERO);
     ID3D11Device_CreateDepthStencilState(R.dev, &dd, &R.depth_write_always);
+    memset(&dd, 0, sizeof dd);
+    stencil_writes(&dd, D3D11_STENCIL_OP_INCR_SAT);
+    ID3D11Device_CreateDepthStencilState(R.dev, &dd, &R.ao.cpu);
     memset(&rd, 0, sizeof rd);
     rd.FillMode = D3D11_FILL_SOLID;
     rd.CullMode = D3D11_CULL_NONE;
@@ -495,7 +577,7 @@ static int create_static_objects(void) {
     R.gamma_valid = 0;
     R.draw_cb_valid = R.frame_cb_valid = 0;
     if (!R.vb || !R.ib || !R.cb_frame || !R.cb_draw || !R.cb_pass || !R.blend_none || !R.blend_overlay || !R.blend_nowrite ||
-        !R.depth_write_always || !R.raster_pass || !R.point_clamp || !R.linear_clamp || !R.gamma_srv) {
+        !R.depth_write_always || !R.ao.cpu || !R.raster_pass || !R.point_clamp || !R.linear_clamp || !R.gamma_srv) {
         host_log("d3d11", "creating the renderer's buffers and states failed");
         return 0;
     }
@@ -528,8 +610,13 @@ static void release_static_objects(void) {
     R.still_bits = NULL;
     for (int a = 0; a < 2; a++)
         for (int b = 0; b < 2; b++)
-            for (int c = 0; c < 9; c++) SAFE_RELEASE(R.depth[a][b][c]);
+            for (int c = 0; c < 9; c++) {
+                SAFE_RELEASE(R.depth[a][b][c]);
+                SAFE_RELEASE(R.ao.depth[a][b][c]);
+            }
     SAFE_RELEASE(R.depth_write_always);
+    SAFE_RELEASE(R.ao.cpu);
+    ao_stop();
     for (int a = 0; a < 4; a++)
         for (int b = 0; b < 4; b++)
             for (int c = 0; c < 2; c++)
@@ -568,6 +655,8 @@ static int ensure_device(void) {
         release_static_objects();
         return 0;
     }
+    R.ao.capable = ID3D11Device_GetFeatureLevel(R.dev) >= D3D_FEATURE_LEVEL_11_0;
+    ao_start();
     return 1;
 }
 
@@ -630,6 +719,11 @@ int d3dr_startup(void) {
         if (!R.hardware) host_log("renderer", "the D3D11 hardware path could not start (see the lines above)");
     }
     log_renderer_line();
+    if (R.hardware)
+        host_log("graphics", "Ambient Occlusion %s%s", jpt_ao_names[R.ao.level],
+                 !R.ao.capable ? " (unavailable: it needs Direct3D feature level 11.0)"
+                 : R.ao.level != JPT_AO_OFF ? ": Intel ASSAO over the 3D scene, before the game's UI and the host's overlays"
+                                            : ": the effect is not created");
     return 1;
 }
 
@@ -896,6 +990,8 @@ static void release_target_resources(d3dr_target_t* t) {
     SAFE_RELEASE(t->color);
     SAFE_RELEASE(t->single_srv);
     SAFE_RELEASE(t->single);
+    SAFE_RELEASE(t->depth_srv);
+    SAFE_RELEASE(t->stencil_srv);
     SAFE_RELEASE(t->dsv);
     SAFE_RELEASE(t->depth);
     SAFE_RELEASE(t->packed_rtv);
@@ -972,6 +1068,42 @@ int d3dr_frame_size(int guest_w, int guest_h, int* w, int* h) {
 
 static int create_target_resources_with(d3dr_target_t* t, UINT samples);
 
+/* The DSV keeps D24_UNORM_S8_UINT; the typeless texture adds the depth and stencil views ambient occlusion reads. */
+static int readable_depth_views(d3dr_target_t* t, UINT samples) {
+    D3D11_DEPTH_STENCIL_VIEW_DESC dv;
+    D3D11_SHADER_RESOURCE_VIEW_DESC sv;
+    memset(&dv, 0, sizeof dv);
+    dv.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dv.ViewDimension = samples > 1 ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
+    memset(&sv, 0, sizeof sv);
+    sv.ViewDimension = samples > 1 ? D3D11_SRV_DIMENSION_TEXTURE2DMS : D3D11_SRV_DIMENSION_TEXTURE2D;
+    sv.Texture2D.MipLevels = 1;
+    if (FAILED(ID3D11Device_CreateDepthStencilView(R.dev, (ID3D11Resource*)t->depth, &dv, &t->dsv))) return 0;
+    sv.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    if (FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)t->depth, &sv, &t->depth_srv))) return 0;
+    sv.Format = DXGI_FORMAT_X24_TYPELESS_G8_UINT;
+    return SUCCEEDED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)t->depth, &sv, &t->stencil_srv));
+}
+
+static void create_depth(d3dr_target_t* t, UINT w, UINT h, UINT samples) {
+    static int s_logged;
+    if (R.ao.capable) {
+        t->depth = make_texture(w, h, DXGI_FORMAT_R24G8_TYPELESS, samples, D3D11_USAGE_DEFAULT,
+                                D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
+        if (t->depth && readable_depth_views(t, samples)) return;
+        SAFE_RELEASE(t->stencil_srv);
+        SAFE_RELEASE(t->depth_srv);
+        SAFE_RELEASE(t->dsv);
+        SAFE_RELEASE(t->depth);
+        if (!s_logged++)
+            host_log("d3d11", "a readable %ux%u depth buffer (%ux MSAA) could not be created: this target keeps the "
+                     "plain one and gets no ambient occlusion", w, h, samples);
+    }
+    t->depth = make_texture(w, h, DXGI_FORMAT_D24_UNORM_S8_UINT, samples, D3D11_USAGE_DEFAULT, D3D11_BIND_DEPTH_STENCIL, 0, 1, 0);
+    if (t->depth && FAILED(ID3D11Device_CreateDepthStencilView(R.dev, (ID3D11Resource*)t->depth, NULL, &t->dsv)))
+        SAFE_RELEASE(t->depth);
+}
+
 static int create_target_resources(d3dr_target_t* t) {
     UINT samples = supported_samples();
     if (samples < R.msaa_request && !R.msaa_logged) {
@@ -997,21 +1129,20 @@ static int create_target_resources_with(d3dr_target_t* t, UINT samples) {
     t->single = samples == 1 ? t->color : make_texture(w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
                                                         D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
     if (samples == 1 && t->single) ID3D11Texture2D_AddRef(t->single);
-    t->depth = make_texture(w, h, DXGI_FORMAT_D24_UNORM_S8_UINT, samples, D3D11_USAGE_DEFAULT, D3D11_BIND_DEPTH_STENCIL, 0, 1, 0);
+    create_depth(t, w, h, samples);
     t->packed = make_texture(t->legacy_w, t->legacy_h, DXGI_FORMAT_R16_UINT, 1, D3D11_USAGE_DEFAULT,
                              D3D11_BIND_RENDER_TARGET, 0, 1, 0);
     t->staging = make_texture(t->legacy_w, t->legacy_h, DXGI_FORMAT_R16_UINT, 1, D3D11_USAGE_STAGING, 0,
                               D3D11_CPU_ACCESS_READ, 1, 0);
     t->picture = make_texture(t->legacy_w, t->legacy_h, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
                               D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
-    if (!t->color || !t->single || !t->depth || !t->packed || !t->staging || !t->picture) {
+    if (!t->color || !t->single || !t->dsv || !t->packed || !t->staging || !t->picture) {
         host_log("d3d11", "render target %ux%u (%ux MSAA) could not be created", w, h, samples);
         release_target_resources(t);
         return 0;
     }
     hr = ID3D11Device_CreateRenderTargetView(R.dev, (ID3D11Resource*)t->color, NULL, &t->rtv);
     if (SUCCEEDED(hr)) hr = ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)t->single, NULL, &t->single_srv);
-    if (SUCCEEDED(hr)) hr = ID3D11Device_CreateDepthStencilView(R.dev, (ID3D11Resource*)t->depth, NULL, &t->dsv);
     if (SUCCEEDED(hr)) hr = ID3D11Device_CreateRenderTargetView(R.dev, (ID3D11Resource*)t->packed, NULL, &t->packed_rtv);
     if (SUCCEEDED(hr)) hr = ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)t->picture, NULL, &t->picture_srv);
     if (FAILED(hr)) {
@@ -1028,7 +1159,8 @@ static int create_target_resources_with(d3dr_target_t* t, UINT samples) {
     memset(&t->dirty, 0, sizeof t->dirty);
     host_log("d3d11", "3D render target %ux%u B8G8R8A8 (rasterised at this size) for the game's %ux%u screen, %ux MSAA%s", w, h, t->legacy_w,
              t->legacy_h, samples, samples < R.msaa_request ? " (requested level unsupported: reduced)" : "");
-    host_log("d3d11", "depth buffer %ux%u D24_UNORM_S8_UINT", w, h);
+    host_log("d3d11", "depth buffer %ux%u D24_UNORM_S8_UINT%s", w, h,
+             t->depth_srv ? " (R24G8_TYPELESS: also readable by ambient occlusion)" : "");
     return 1;
 }
 
@@ -1319,16 +1451,20 @@ static void copy_front(d3dr_target_t* t) {
     R.perf.front_copies++;
 }
 
+/* While ambient occlusion marks, the CPU's pixels are marked in the stencil, so text, subtitles and CPU-drawn polygons
+ * are never darkened by the depth behind them. */
 static void draw_picture_box(d3dr_target_t* t, const d3dt_rect_t* box, int opaque) {
     float w = (float)t->legacy_w, h = (float)t->legacy_h;
     float rect[4] = { box->left / w * 2.0f - 1.0f, 1.0f - box->top / h * 2.0f, box->right / w * 2.0f - 1.0f,
                       1.0f - box->bottom / h * 2.0f };
     float uv[4] = { box->left / w, box->top / h, box->right / w, box->bottom / h };
-    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, NULL);
+    int mark = R.ao.marking && t->stencil_srv;
+    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, mark ? t->dsv : NULL);
     R.bound.valid = 0;
     set_pass(rect, uv, NULL, 0.0f);
-    draw_pass(R.ps[D3D11_SHADER_PS_COPY], t->picture_srv, opaque ? R.linear_clamp : R.point_clamp,
-              opaque ? R.blend_none : R.blend_overlay, NULL, t->width, t->height, NULL);
+    draw_pass(R.ps[mark ? D3D11_SHADER_PS_COPY_CPU : D3D11_SHADER_PS_COPY], t->picture_srv,
+              opaque ? R.linear_clamp : R.point_clamp, opaque ? R.blend_none : R.blend_overlay, mark ? R.ao.cpu : NULL,
+              t->width, t->height, NULL);
     unbind_views();
 }
 
@@ -1490,13 +1626,14 @@ static ID3D11DepthStencilState* depth_for(const d3d_device_t* dev, int has_depth
     int enable = has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE;
     int write = dev->render[D3DRENDERSTATE_ZWRITEENABLE] != 0;
     int func = d3dt_compare(dev->render[D3DRENDERSTATE_ZFUNC]);
-    ID3D11DepthStencilState** slot = &R.depth[enable][write][func];
+    ID3D11DepthStencilState** slot = R.ao.marking ? &R.ao.depth[enable][write][func] : &R.depth[enable][write][func];
     if (!*slot) {
         D3D11_DEPTH_STENCIL_DESC d;
         memset(&d, 0, sizeof d);
         d.DepthEnable = enable;
         d.DepthWriteMask = write ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
         d.DepthFunc = func ? (D3D11_COMPARISON_FUNC)func : D3D11_COMPARISON_LESS_EQUAL;
+        if (R.ao.marking) stencil_writes(&d, enable && write ? D3D11_STENCIL_OP_ZERO : D3D11_STENCIL_OP_INCR_SAT);
         ID3D11Device_CreateDepthStencilState(R.dev, &d, slot);
     }
     return *slot;
@@ -1967,7 +2104,7 @@ static void count_state_class(uint32_t key, unsigned long long triangles) {
 /* The draw states flush() binds, each set only when it differs from what flush() last bound. */
 static void bind_draw_states(d3d_device_t* dev, d3dr_target_t* t, int has_depth, ID3D11SamplerState* const* samplers,
                              const D3D11_VIEWPORT* vp, const D3D11_RECT* scissor) {
-    ID3D11DepthStencilView* dsv = has_depth ? t->dsv : NULL;
+    ID3D11DepthStencilView* dsv = has_depth || R.ao.marking ? t->dsv : NULL;
     ID3D11RasterizerState* raster = raster_for(dev, t->samples > 1);
     ID3D11BlendState* blend = blend_for(dev);
     ID3D11DepthStencilState* depth = depth_for(dev, has_depth);
@@ -2099,6 +2236,8 @@ static void flush(void) {
     scissor = viewport_scissor(dev, t);
     bind_draw_states(dev, t, has_depth, sampled ? samplers : NULL, &vp, &scissor);
     ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, (INT)(vb_offset / stride));
+    if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && dev->render[D3DRENDERSTATE_ZWRITEENABLE])
+        t->ao_scene = 1;
     if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && !R.depth_active) {
         R.depth_active = 1;
         host_log("renderer", "depth_buffer_active = true (z-tested draws into the %ux%u depth buffer)", t->width, t->height);
@@ -2253,16 +2392,18 @@ static void clear_rect(d3dr_target_t* t, const d3dt_rect_t* r, DWORD flags, D3DC
     float rgba[4] = { ((color >> 16) & 0xFF) / 255.0f, ((color >> 8) & 0xFF) / 255.0f, (color & 0xFF) / 255.0f, 1.0f };
     int full = r->left <= 0 && r->top <= 0 && r->right >= (long)t->width && r->bottom >= (long)t->height;
     int target = (flags & D3DCLEAR_TARGET) != 0, depth = (flags & D3DCLEAR_ZBUFFER) != 0;
+    int mark = R.ao.marking && target && !depth; /* a colour fill over a scene keeps no depth of its own */
     if (full) {
         if (target) ID3D11DeviceContext_ClearRenderTargetView(R.ctx, t->rtv, rgba);
-        if (depth) ID3D11DeviceContext_ClearDepthStencilView(R.ctx, t->dsv, D3D11_CLEAR_DEPTH, z, 0);
+        if (depth) ID3D11DeviceContext_ClearDepthStencilView(R.ctx, t->dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, z, 0);
+        if (mark) ID3D11DeviceContext_ClearDepthStencilView(R.ctx, t->dsv, D3D11_CLEAR_STENCIL, 0.0f, 1);
         return;
     }
-    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, depth ? t->dsv : NULL);
+    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, depth || mark ? t->dsv : NULL);
     R.bound.valid = 0;
     set_pass(k_full_rect, NULL, rgba, z);
     draw_pass(R.ps[D3D11_SHADER_PS_FILL], NULL, NULL, target ? R.blend_none : R.blend_nowrite,
-              depth ? R.depth_write_always : NULL, t->width, t->height, &scissor);
+              depth ? R.depth_write_always : mark ? R.ao.cpu : NULL, t->width, t->height, &scissor);
 }
 
 static int covers_surface(const d3dr_target_t* t, long x, long y, long w, long h) {
@@ -2740,6 +2881,7 @@ int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int
     unbind_views();
     all = whole_target(t);
     gpu_box_add(t, &all);
+    t->ao_scene = 0;
     R.still_draws++;
     return 1;
 }
@@ -2888,6 +3030,41 @@ static int draw_frontend(UINT width, UINT height) {
     return 1;
 }
 
+/* The 3D picture is on the back buffer, the game's UI layer and the host's overlays are not yet: only the scene is
+ * darkened, and only where its stencil is open. */
+static void apply_ambient_occlusion(d3dr_target_t* t, ID3D11RenderTargetView* rtv) {
+    assao_scene_t scene;
+    memset(&scene, 0, sizeof scene);
+    scene.depth = t->depth_srv;
+    scene.stencil = t->stencil_srv;
+    scene.width = t->width;
+    scene.height = t->height;
+    scene.samples = t->samples;
+    if (!ao_view_tangents(widescreen_view_tan_half_height(), t->legacy_w, t->legacy_h, &scene.tan_half_x,
+                          &scene.tan_half_y))
+        return;
+    unbind_views();
+    if (!assao_render(R.ctx, &scene, rtv)) {
+        R.ao.level = JPT_AO_OFF;
+        assao_set_quality(JPT_AO_OFF);
+        ao_stop();
+        host_log("graphics", "Ambient Occlusion -> Off: Intel ASSAO could not draw; the D3D11 renderer continues without it");
+    }
+    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &rtv, NULL);
+    R.bound.valid = 0;
+}
+
+static int ao_frame_for(d3dr_target_t* t) {
+    ao_frame_t f;
+    f.level = R.ao.level;
+    f.ready = assao_ready() && t->depth_srv && t->stencil_srv;
+    f.masked = R.ao.marking;
+    f.scene = t->ao_scene;
+    f.gameplay = f.level != JPT_AO_OFF && f.scene && gameplay_now();
+    f.tan_half_h = f.gameplay ? widescreen_view_tan_half_height() : 0.0f;
+    return ao_frame_wanted(&f);
+}
+
 static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height, ID3D11SamplerState* sampler,
                         const DDGAMMARAMP* gamma, int vsync) {
     static int s_held_logged;
@@ -2906,6 +3083,7 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     R.bound.valid = 0;
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], srv, sampler, R.blend_none, NULL, width, height, NULL);
+    if (R.ao.frame) apply_ambient_occlusion(R.ao.frame, rtv);
     if (!draw_frontend(width, height)) draw_ui_layer(width, height);
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
@@ -3212,12 +3390,17 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
     if (!tsync_presents_gpu(&t->sync)) {
         /* The CPU copy is the picture: DirectDraw presents the buffer this Flip brings to the front. */
         front->front_from_gpu = 0;
+        t->ao_scene = 0;
         return 0;
     }
     apply_sync(t, acts, NULL, READBACK_OTHER, exact);
     resolved_view(t);
     keep_last_frame(t);
+    R.ao.frame = ao_frame_for(t) ? t : NULL;
     present_view(d->window, t->single_srv, t->width, t->height, R.point_clamp, &d->gamma, vsync);
+    R.ao.frame = NULL;
+    t->ao_scene = 0;
+    R.ao.marking = R.ao.level != JPT_AO_OFF && assao_ready();
     d->gamma_changed = 0;
     front->front_from_gpu = !(t->sync.valid & TSYNC_CPU);
     tsync_flipped(&t->sync);

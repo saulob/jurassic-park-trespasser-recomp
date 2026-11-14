@@ -43,3 +43,14 @@ category 2), `0x0050E8C0` lays it out with the font's advance widths, `0x0050EAF
 The player's use of the commands was read in OpenTrespasser's `CPlayer` (behaviour only): crouching follows the held
 crouch command, the wrist and arm turn only inside the held Move Hand command, Grab/Drop picks up while held with the
 hand raised and drops on the next press, Throw and Stow act on presses.
+
+## Ambient occlusion
+
+| Reference | Kind | Used for |
+|---|---|---|
+| [GameTechDev/ASSAO](https://github.com/GameTechDev/ASSAO) | code (MIT), `c21d57a` | the effect itself: `ASSAO.h`, `ASSAO.hlsl` and `ASSAODX11.cpp` in `third_party/assao` (one marked change, see its README); its quality levels, defaults and inputs (`ASSAO_Settings`, `ASSAO_InputsDX11`) |
+| [OpenTrespasser/JurassicParkTrespasser](https://github.com/OpenTrespasser/JurassicParkTrespasser) | behaviour (reading only) | what a Direct3D vertex's `sz`/`rhw` hold (`CCamera::fInvZAdjust`, `fGetScreenZ`): 0.1 / camera-space distance, clamped to 0.99. Confirmed in the retail binary (`CCamera::SetProperties` stores 0.1f / far at camera + 0x120, `0x0051FF0B`; 0.99 at `0x0064E708`) before use. No code from it is in this port. |
+
+[Kirides/GD3D11](https://github.com/Kirides/GD3D11) (GPLv3) and [AMD AOFX](https://github.com/shadercoder/AOFX) were
+named as possible architecture references; neither was consulted for this implementation and nothing from them is in
+this port. NVIDIA HBAO+, FidelityFX CACAO and XeGTAO are not used.

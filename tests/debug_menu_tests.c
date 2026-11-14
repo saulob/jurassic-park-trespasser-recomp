@@ -723,9 +723,57 @@ static void test_cheats_menu(void) {
     dm_toggle(&s, &menu, DM_MENU_CHEATS);
     CHECK(s.open && s.cursor == DM_LEVEL_SELECT, "in the main menu Cheats offers Level Select");
     for (int i = 0; i < DM_ITEM_COUNT; i++)
-        if (i != DM_LEVEL_SELECT && i != DM_SHOW_COORDS && i != DM_CLOSE)
+        if (i != DM_LEVEL_SELECT && i != DM_SHOW_COORDS && i != DM_AMBIENT_OCCLUSION && i != DM_CLOSE)
             CHECK(!dm_item_enabled(&s, &menu, (dm_item_t)i), "no level: %s disabled",
                   dm_item_label(DM_MENU_CHEATS, (dm_item_t)i));
+}
+
+static void test_ambient_occlusion(void) {
+    dm_state_t s;
+    dm_world_t w = level_world("be.scn"), menu = main_menu_world();
+    dm_action_t a;
+    dm_row_t rows[DM_ROWS_MAX];
+    int n, graphics = -1, at = -1;
+    dm_init(&s);
+    w.ambient_occlusion = 0;
+    dm_f5(&s, &w);
+    go_to(&s, &w, DM_AMBIENT_OCCLUSION);
+    CHECK(s.cursor == DM_AMBIENT_OCCLUSION, "the Debug Menu reaches Ambient Occlusion");
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    for (int i = 0; i < n; i++) {
+        if (rows[i].kind == DM_ROW_SECTION && !strcmp(rows[i].text, "Graphics")) graphics = i;
+        if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_AMBIENT_OCCLUSION) at = i;
+    }
+    CHECK(graphics >= 0 && at == graphics + 1 && row_says(rows, n, DM_AMBIENT_OCCLUSION, "Off") &&
+              rows[at].selected && !strcmp(rows[at].text, "Ambient Occlusion"),
+          "a Graphics section holds Ambient Occlusion: Off");
+    CHECK(rows[n - 1].item == DM_CLOSE, "Close stays last");
+    press(&s, &w, VK_RETURN);
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_AMBIENT_OCCLUSION && a.value == 1, "Enter: Off -> Low");
+    w.ambient_occlusion = 4;
+    press(&s, &w, VK_RETURN);
+    CHECK(dm_take(&s, &a) && a.value == 0, "Enter wraps Ultra -> Off");
+    press(&s, &w, VK_RIGHT);
+    CHECK(!dm_take(&s, &a), "Right stops at Ultra");
+    press(&s, &w, VK_LEFT);
+    CHECK(dm_take(&s, &a) && a.value == 3, "Left: Ultra -> High");
+    w.ambient_occlusion = 0;
+    press(&s, &w, VK_LEFT);
+    CHECK(!dm_take(&s, &a), "Left stops at Off");
+    dm_pad(&s, &w, JPT_PAD_BIT(JPT_PAD_DPAD_RIGHT), 1000);
+    CHECK(dm_take(&s, &a) && a.value == 1, "D-pad Right: Off -> Low");
+    w.ambient_occlusion = 3;
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    CHECK(row_says(rows, n, DM_AMBIENT_OCCLUSION, "High"), "the row shows the renderer's level");
+    w.ambient_occlusion = -1;
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    CHECK(!dm_item_enabled(&s, &w, DM_AMBIENT_OCCLUSION) && row_says(rows, n, DM_AMBIENT_OCCLUSION, "Unavailable"),
+          "software renderer or no feature level 11.0: Unavailable");
+    menu.ambient_occlusion = 2;
+    CHECK(dm_item_enabled(&s, &menu, DM_AMBIENT_OCCLUSION), "it can be changed from the main menu too");
+    dm_toggle(&s, &w, DM_MENU_CHEATS);
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    CHECK(!row_of(rows, n, DM_AMBIENT_OCCLUSION), "not in Cheats");
 }
 
 /* ---- retail sites (game/trespass.exe 1.0.116) ---- */
@@ -1089,6 +1137,7 @@ int main(void) {
     test_toggles();
     test_stale_state();
     test_cheats_menu();
+    test_ambient_occlusion();
     cheats_tests(&g_checks, &g_failures);
     compass_tests(&g_checks, &g_failures);
     objective_tests(&g_checks, &g_failures);

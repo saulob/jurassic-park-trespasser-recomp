@@ -20,6 +20,7 @@ extern "C" {
 #define DM_ROWS_MAX 48
 #define DM_COORD_LIMIT 100000.0f
 #define DM_FEEDBACK_MS 2500u
+#define DM_AO_LEVELS 5
 
 typedef enum {
     DM_LEVEL_SELECT,
@@ -46,6 +47,7 @@ typedef enum {
     DM_THIRD_PERSON,
     DM_FREE_CAMERA,
     DM_COMPASS,
+    DM_AMBIENT_OCCLUSION,
     DM_CLOSE,
     DM_ITEM_COUNT
 } dm_item_t;
@@ -90,6 +92,7 @@ typedef struct {
         } item[DM_GOALS_MAX];
     } goals;
     int speed, jump, super_health, camera; /* the host's cheats (cheats_policy.h) */
+    int ambient_occlusion; /* JPT_AO_* (DM_AO_LEVELS of them); -1 when the renderer cannot draw it */
 } dm_world_t;
 
 typedef enum {
@@ -109,7 +112,8 @@ typedef enum {
     DM_ACT_AMMO,
     DM_ACT_HEAL,
     DM_ACT_SUPER_HEALTH,
-    DM_ACT_CAMERA
+    DM_ACT_CAMERA,
+    DM_ACT_AMBIENT_OCCLUSION
 } dm_action_kind_t;
 
 typedef struct {
@@ -117,7 +121,7 @@ typedef struct {
     dm_placement_t to; /* TELEPORT: only pos is used; RETURN_CHECKPOINT: all of it */
     char scene[DM_SCENE_MAX];
     int on;    /* toggles: the state asked for */
-    int value; /* SPEED, JUMP: the multiplier index; CAMERA: ch_camera_t */
+    int value; /* SPEED, JUMP: the multiplier index; CAMERA: ch_camera_t; AMBIENT_OCCLUSION: the level */
 } dm_action_t;
 
 typedef struct {

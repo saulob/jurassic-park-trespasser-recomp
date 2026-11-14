@@ -74,6 +74,9 @@ constexpr char kAntiAliasingHelp[] =
 constexpr char kTextureFilteringHelp[] =
     "Sharper, steadier textures at a distance and on the ground seen at an angle, with mipmaps generated for the 3D "
     "world. Original uses the game's own filtering without them; Bilinear smooths every texture.";
+constexpr char kAmbientOcclusionHelp[] =
+    "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
+    "Higher levels look smoother and cost more. Direct3D 11 only; F5's Debug Menu changes it while playing.";
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] =
     "Shows the renderer, the frame rate and the game's screen size in the window title.";
@@ -640,6 +643,8 @@ private:
                                               monitor.height);
         ui.Info("Render size", RenderSizeText(box, aspect).c_str());
         AntiAliasingRow(ui);
+        ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "off",
+                 {{"off", "Off"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}, {"ultra", "Ultra"}});
         ui.Combo("Texture filtering", kTextureFilteringHelp, JPT_KEY_TEXTURE_FILTER, "anisotropic16",
                  {{"original", "Original"},
                   {"bilinear", "Bilinear"},

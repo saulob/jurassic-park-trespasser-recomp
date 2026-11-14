@@ -13,6 +13,7 @@
 #include "cheats.h"
 #include "debug_menu_panel.h"
 #include "debug_menu_policy.h"
+#include "jpt_config.h"
 #include "jpt_gamepad.h"
 #include "objectives.h"
 #include "tutorial_prompts.h"
@@ -133,6 +134,7 @@ static void sample(const guest_ui_view_t* v, int depth, uint32_t scratch) {
     w->ai = -1;
     w->key_index = -1;
     w->place = place_of(v);
+    w->ambient_occlusion = d3dr_ambient_occlusion();
     cheats_world(w);
     if (w->place != DM_PLACE_LEVEL) return;
     if (guest_read_string(APP_SCENE, w->scene, sizeof w->scene)) dm_level_id(w->scene, w->level, sizeof w->level);
@@ -249,6 +251,7 @@ static dm_item_t action_item(dm_action_kind_t kind) {
     case DM_ACT_HEAL: return DM_HEAL;
     case DM_ACT_SUPER_HEALTH: return DM_SUPER_HEALTH;
     case DM_ACT_CAMERA: return DM_FREE_CAMERA;
+    case DM_ACT_AMBIENT_OCCLUSION: return DM_AMBIENT_OCCLUSION;
     default: return DM_FREEZE_AI;
     }
 }
@@ -311,6 +314,16 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
             host_log("debug-menu", "copied: %s", line);
         } else {
             say("The clipboard could not be opened", now);
+        }
+        break;
+    case DM_ACT_AMBIENT_OCCLUSION:
+        if (d3dr_set_ambient_occlusion(a->value)) {
+            D.world.ambient_occlusion = d3dr_ambient_occlusion();
+            snprintf(line, sizeof line, "Ambient Occlusion %s", jpt_ao_names[a->value]);
+            dm_feedback(&D.state, line, now);
+        } else {
+            D.world.ambient_occlusion = d3dr_ambient_occlusion();
+            say("Ambient Occlusion is unavailable (see the log)", now);
         }
         break;
     case DM_ACT_FREEZE_AI:

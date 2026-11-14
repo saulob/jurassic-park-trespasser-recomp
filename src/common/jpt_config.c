@@ -14,6 +14,8 @@
 
 const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic4", "anisotropic8",
                                                         "anisotropic16" };
+const char* const jpt_ao_keys[JPT_AO_COUNT] = { "off", "low", "medium", "high", "ultra" };
+const char* const jpt_ao_names[JPT_AO_COUNT] = { "Off", "Low", "Medium", "High", "Ultra" };
 
 const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_SHOW_LAUNCHER, "1" },
@@ -27,6 +29,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_TEXTURE_FILTER, "anisotropic16" },
     { JPT_KEY_MSAA, "4" },
     { JPT_KEY_VSYNC, "1" },
+    { JPT_KEY_AMBIENT_OCCLUSION, "off" },
     { JPT_KEY_SHOW_FPS, "1" },
     { JPT_KEY_SKIP_INTRO, "0" },
     { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
@@ -86,6 +89,8 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_RENDERER)) return (n = parse_choice(value, renderers, 2)) >= 0 ? (c->hardware = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_TEXTURE_FILTER))
         return (n = parse_choice(value, jpt_filter_keys, JPT_FILTER_COUNT)) >= 0 ? (c->texture_filter = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_AMBIENT_OCCLUSION))
+        return (n = parse_choice(value, jpt_ao_keys, JPT_AO_COUNT)) >= 0 ? (c->ambient_occlusion = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_MONITOR)) {
         long v = strtol(value, &end, 10);
         if (*end || v < 1 || v > 16) return 0;

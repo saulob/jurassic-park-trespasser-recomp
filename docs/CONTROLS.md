@@ -58,6 +58,7 @@ does not move or look and the game gets no keys; Esc (or B) closes it first, or 
 | Show Coordinates | level, X, Y, Z and yaw in the top-left corner (off at every start) |
 | Copy Coordinates | `Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570` to the clipboard |
 | Freeze AI | the DINOS cheat: dinosaurs sleep and stop updating until it is turned off |
+| Ambient Occlusion | Graphics: Off, Low, Medium, High, Ultra (Enter cycles, Left/Right step); applies from the next frame and is saved to `trespasser.ini`. Unavailable with the Software renderer or without feature level 11.0 |
 
 Keyboard: Up/Down, Enter. Gamepad: D-pad, A to use, B back, Menu to close. Yaw is in radians, counter-clockwise from
 +Y, the game's facing axis. Nothing here writes a save or the game's progress.

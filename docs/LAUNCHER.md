@@ -75,7 +75,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 |---|---|
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Texture filtering, VSync, Graphics card |
+| Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Ambient occlusion, Texture filtering, VSync, Graphics card |
 | Gameplay | Gore (the game's 0-2), Invert mouse, Frame rate in title |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys ([CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
@@ -143,6 +143,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `aspect_ratio` | `4:3`, `16:9`, `16:10`, `21:9`, `32:9` | `16:9` |
 | `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
 | `msaa` | 0, 2, 4, 8 | 4 |
+| `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `off` |
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
 | `skip_intro` | 1, 0 | 0 |
@@ -281,6 +282,10 @@ is not part of this work.
   game's colour and depth formats (asked of a short-lived device); a saved level that is not supported is pointed
   out, the game falls back 8x, 4x, 2x, off and logs it once, and a multisampled target that cannot be created is
   created without MSAA instead of failing.
+- **Ambient occlusion**: Off, Low, Medium, High, Ultra (key `ambient_occlusion`, Off by default; `--ambient-occlusion`
+  for one run). Intel ASSAO over the D3D11 3D scene only: Low, Medium, High and Ultra are ASSAO's quality levels 0-3
+  (Ultra is its adaptive level). It needs feature level 11.0; without it, or if the effect cannot be created, it stays
+  Off and the log says why. F5's Debug Menu changes it while playing and saves the choice here.
 - **VSync**: On keeps the game's own Flip request (waits for the refresh); Off never waits.
 - **Frame rate in title** (Gameplay, as in the other ports; key `show_fps`): the title shows the renderer, FPS and
   the selected resolution (the render size with D3D11, the gameplay mode with Software or Original), which menus and
