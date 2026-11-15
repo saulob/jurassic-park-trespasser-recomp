@@ -1,5 +1,6 @@
 #include "jpt_l10n.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,6 +18,7 @@ const jpt_l10n_credit_t jpt_l10n_credits[JPT_L10N_CREDIT_COUNT] = {
     { "es", "game text", "DreamWorks Interactive", "Nick3069", "official" },
     { "ru", "game text and subtitles", "cynodesmus", NULL, "community" },
     { "it", "subtitles", "KeyofBlueS", NULL, "community" },
+    { "en", "caption timings, restored dialogue and its audio", "KeyofBlueS", NULL, "community" },
 };
 
 int jpt_l10n_id_fixed(unsigned id) { return id == 10; }

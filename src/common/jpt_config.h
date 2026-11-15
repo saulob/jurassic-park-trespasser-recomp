@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "jpt_gamepad.h"
+#include "jpt_gpu.h"
 #include "jpt_l10n.h"
 
 #ifdef __cplusplus
@@ -20,6 +21,8 @@ extern "C" {
 #define JPT_KEY_WINDOW_SIZE "window_size"
 #define JPT_KEY_PRESENTATION "presentation"
 #define JPT_KEY_RENDERER "renderer"
+/* An adapter label (jpt_gpu.h); empty or not found: the first usable adapter. */
+#define JPT_KEY_GRAPHICS_CARD "graphics_card"
 #define JPT_KEY_RENDER_RESOLUTION "render_resolution"
 #define JPT_KEY_ASPECT_RATIO "aspect_ratio"
 #define JPT_KEY_TEXTURE_FILTER "texture_filter"
@@ -52,6 +55,7 @@ typedef struct {
     int window_w, window_h;   /* 0 x 0: auto */
     int stretch;
     int hardware;
+    char graphics_card[JPT_GPU_LABEL_MAX];
     int render_preset;        /* jpt_render_presets index, -1 with render_w x render_h */
     int render_w, render_h;
     int aspect;               /* jpt_aspects index */
@@ -71,7 +75,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (16 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (17 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

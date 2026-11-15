@@ -30,7 +30,7 @@ online page.
 | `launcher/game_install.cpp` | Install game: identity, plan, staging, check, activation, rollback |
 | `launcher/settings.cpp` | the pending view of `trespasser.ini`; the game's registry value InvertMouse |
 | `launcher/user_data.cpp` | the portable `user_data` root, `PortFolder()`, the migration of the old `user` folder ([user-data](user-data.md)) |
-| `launcher/system_info.cpp` | the graphics card and its real MSAA levels |
+| `launcher/system_info.cpp` | the graphics cards (`src/common/jpt_gpu.c`) and their real MSAA levels |
 | `assets/launcher/` | header art, sponsor heart, page icons with `SOURCES.md` (README.md there) |
 | `src/common/` (C) | `trespasser.ini` parsing and writing, render sizes, presentation, monitors, user files: shared by host, launcher and tests |
 | `src/host/widescreen.c` | the gameplay mode and the Hor+ camera |
@@ -77,9 +77,9 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 |---|---|
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Ambient occlusion, Texture filtering, VSync, Graphics card |
-| Gameplay | Language, Language coverage, Skip Intro, Frame rate in title, Render resolution in title, Invert mouse |
-| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys ([CONTROLS](CONTROLS.md)) |
+| Graphics | Renderer, Graphics card, Render resolution, Anti-aliasing, Ambient occlusion, Texture filtering, VSync |
+| Gameplay | Language, Skip Intro, Frame rate in title, Render resolution in title |
+| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys ([CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
 | About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 
@@ -141,6 +141,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `window_size` | `auto`, `WxH` | `auto` |
 | `presentation` | `letterbox`, `stretch` | `letterbox` |
 | `renderer` | `d3d11`, `software` | `d3d11` |
+| `graphics_card` | the card's name as the launcher lists it | empty: the first usable card |
 | `render_resolution` | `original`, `720p`, `1080p`, `1440p`, `4k`, `native`, `WxH` | `native` |
 | `aspect_ratio` | `4:3`, `16:9`, `16:10`, `21:9`, `32:9` | `16:9` |
 | `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
@@ -156,7 +157,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 
 **Migration.** The first, experimental launcher (test 018) wrote no `settings_version`, and its file cannot tell a
 chosen value from one written while trying the page out. A file without `settings_version` therefore has its display
-and graphics keys (`display_mode` to `show_fps` above) removed once, at the next start, so the current defaults apply;
+and graphics keys (`display_mode` to `show_fps` above, `graphics_card` aside) removed once, at the next start, so the current defaults apply;
 `show_launcher` and the launcher placement are kept, and the log says `came from the experimental launcher`.
 
 Version 2 files were written by the launcher whose graphics defaults were Original filtering, MSAA off and VSync
@@ -165,7 +166,7 @@ off (log 023). Once, at the next start, exactly those values are removed (`textu
 three keys, is kept, and the log says `held the earlier launcher's graphics defaults`. Files written since carry
 version 3 and are never reset, so choosing Original, Off or Off again sticks.
 
-`recomp-registry.txt` stays the game's own registry; the Gameplay page edits its `InvertMouse` value, which the game's
+`recomp-registry.txt` stays the game's own registry; the Controls page edits its `InvertMouse` value, which the game's
 options menu also changes. The launcher does not touch the game's other options. The run log's `[settings]` lines show what a run uses.
 
 ## Language
@@ -187,9 +188,7 @@ and the port's own panels; voices, effects, music and videos always stay the Eng
 The combo lists English, Brazilian Portuguese, French, German, Spanish, Russian and Italian; with the launcher in
 Brazilian Portuguese the same labels read Inglês, Português Brasil, Francês, Alemão, Espanhol, Russo and Italiano.
 
-Under the combo, **Language coverage** shows what the choice gives ("Game text, menus and subtitles: French · Audio:
-English"; in the Brazilian Portuguese launcher "Texto do jogo, menus e legendas: Francês · Áudio: Inglês"). The game's
-own Show Subtitles option (Options > Audio) still turns subtitles on and off.
+The game's own Show Subtitles option (Options > Audio) turns subtitles on and off.
 
 **The launcher in Português Brasil.** Only Português Brasil translates the launcher; every other language leaves it in
 English. The launcher follows the setting every frame, so choosing Português Brasil changes the whole launcher at once
@@ -240,8 +239,7 @@ compatibility mode too, with the earlier automatic target (the smallest 4:3 size
 
 **Render resolution.** A preset names a 16:9 size; with the Aspect Ratio (Display page) it gives the render box: wider
 shapes keep the preset's height, narrower ones its width, and 21:9 takes the ultrawide monitor sizes. Native fits the
-Monitor setting's monitor. The Graphics page shows the result as **Render size**. 640x480 menus and videos get the
-largest 4:3 size inside it. The Aspect Ratio never changes by itself.
+Monitor setting's monitor. 640x480 menus and videos get the largest 4:3 size inside it. The Aspect Ratio never changes by itself.
 
 | Preset | 4:3 | 16:9 | 16:10 | 21:9 | 32:9 |
 |---|---|---|---|---|---|
@@ -322,6 +320,15 @@ is not part of this work.
 ## Graphics
 
 - **Renderer**: Direct3D 11 (default) or Software, for the whole run (there is no switch while playing).
+- **Graphics card** (key `graphics_card`, the name as listed): every adapter Direct3D 11 can create the game's
+  device on, in DXGI order (software adapters are left out). Two cards with the same name are both listed; the second is
+  shown and saved as `Name (2)`, the third `Name (3)`, and names that are unique get no suffix. A setting with a
+  plain duplicated name chooses the first of them. The game creates its device on the chosen card (its DXGI
+  adapter index, kept when an unusable adapter sits before it). A missing setting, or a card that is no longer installed, uses the first card in the list, never a vendor
+  preference; the launcher saves that card, and the log says `saved graphics card "..." not available; using ...`.
+  The `[d3d11]` lines `graphics card: ... (DXGI adapter N)` and `device created: ..., adapter "..."` show the choice and the device.
+  Software uses it too: its picture and the videos are shown through the same device. Anti-aliasing lists the
+  chosen card's levels. Without a usable card the page says No graphics card found and Direct3D picks the device.
 - **Texture filtering**: Original (the filters the game asks for, its single texture level), Bilinear (every
   texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game filters, with generated
   mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where a card has less and
@@ -347,19 +354,18 @@ is not part of this work.
   play one of them, its own `NoVideo` value reads 1 for that call only, so `CVideoWnd::Play` takes the game's own
   no-video branch and returns as after the video: the main menu, or the level load, follows. The credits, the ending
   and the Video Test still play. Read when the game starts, so a change in the launcher applies to that run.
-- **Graphics card**: DXGI adapter 0, the one the game's device uses. No adapter choice yet.
 - Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
   Direct3D 11 renderer (see the README and `[graphics]` in the log).
 
 ## Next targets (not in this work)
 
-A dedicated ultrawide HUD, an adapter choice, an uncapped frame rate and the x64 host (its own branch).
+A dedicated ultrawide HUD, an uncapped frame rate and the x64 host (its own branch).
 
 ## Manual test
 
 1. Start the game: the launcher opens on Play with "Ready to play · Trespasser UK 1.0.116", the header art, the sidebar
    icons and Sponsor on GitHub left of Quit; compare it with Dragon's Crown Pro PC and 13 Sentinels side by side.
-2. Graphics: the Render size row follows Display > Aspect ratio (16:9 1440p: 2560 × 1440; 21:9: 3440 × 1440).
+2. Graphics: Render resolution follows Display > Aspect ratio (16:9 1440p: 2560 × 1440; 21:9: 3440 × 1440).
 3. 4:3, 16:9, 21:9, 32:9 in turn: more world to the sides, the same height, no stretching, text readable.
 4. Render resolution 1440p, then 4K: the log's `3D render target WxH` lines show the real size.
 5. F11, Esc, F1, F2 (controls card in a level), Alt+F4 as before (F5 only opens the Video Test in the main menu; F12

@@ -25,16 +25,11 @@ bool PageComingLater(PageId page);
 
 // "1440p — 2560 × 1440", or "Original (compatibility size)".
 std::string ResolutionLabel(int preset, jpt_size_t box);
-// "Render size 2560 × 1440 · gameplay 1024 × 576 · menus 640 × 480".
-std::string RenderSizeText(jpt_size_t box, int aspect);
 
 // "1920 × 1080", or "Auto (the picture at the monitor's scale)".
 std::string WindowSizeLabel(const jpt_window_size_t& size);
 // Whether the window fits the monitor's work area as it is.
 bool WindowSizeFits(const jpt_window_size_t& size, const jpt_monitor_t& monitor);
-
-// "Game text: Brazilian Portuguese · Subtitles: English · Audio: English", in the launcher's language.
-std::string LanguageCoverage(const std::string& language);
 
 // "Display 2 (primary)   2560 × 1440   Name". Monitor settings are 1-based.
 std::string MonitorLabel(int monitor, const std::vector<jpt_monitor_t>& monitors);

@@ -148,7 +148,8 @@ subtitles on and off.
 | Spanish | game text, menu wording | official | DreamWorks Interactive | Nick3069 |
 | Russian | game text and subtitles | community | cynodesmus | |
 | Italian | subtitles (v1.0.0, timings adjusted by hand) | community | KeyofBlueS | |
-| All | subtitles of Brazilian Portuguese, French, German and Spanish; Italian game text; missing German and Russian strings; the menus' words where a release had none; the port's own interface | PC port completion | Trespasser Recompiled | |
+| English | caption timings, restored dialogue and its audio ([below](#subtitle-timing-and-restored-dialogue)) | community | KeyofBlueS | |
+| All | subtitles of Brazilian Portuguese, French, German and Spanish; Italian game text; missing German and Russian strings; the menus' words where a release had none; the translations of the restored dialogue; the port's own interface | PC port completion | Trespasser Recompiled | |
 
 The port's own translations are not attributed to DreamWorks Interactive, cynodesmus or KeyofBlueS. Where an official
 text had an evident defect it was corrected: the French strings have every "è" and "ê" swapped in the converted file,
@@ -165,6 +166,42 @@ come ([Brazilian Portuguese](https://www.trescom.org/download/brazilian-portugue
 packages is used: no audio, menu picture, video or program. The About page lists the same credits. Czech subtitles, the
 Fargus and Lost Jungle Russian translations and the Italian cutscene packages are not included. The licence of these
 downloads is not stated ([LEGAL](docs/LEGAL.md)).
+
+## Subtitle timing and restored dialogue
+
+The data in this section comes from the *English Stream TPA Fix (Subtitle Timing Fix)* by KeyofBlueS, preserved and hosted
+by [TresCom](https://www.trescom.org/download/10423/) (March 14, 2026). Its author's description: a `Stream.tpa` with
+adjusted caption timing, which also restores previously cut dialogue lines.
+
+What the port took from it:
+
+- **Corrected caption timings.** Of the 402 voice captions of the retail `Stream.tpa`, 328 are corrected (303 only in
+  timing, 25 also in line breaks, pauses or text); the port applies the corrected captions to the English game
+  and gives every other language the same temporal events, so a caption appears and ends at the same moment in English,
+  Brazilian Portuguese, French, German, Spanish, Russian and Italian. Where the fix splits, merges or adds a caption
+  line, the translations were split, merged or given the same pause. The timings of the Russian release, which used
+  placeholder durations, were replaced.
+- **Restored English dialogue audio.** The retail files lack the audio of four voice lines that the retail levels call
+  (`VA24` and `VA34` in the `jr` level, `VA208` in `as2`, the tour guide in `be`) and hold only a short
+  version of the Ray computer voice (`VCRAYCOMPUTER`, 10.4 s against 33.8 s with its dialogue). These five records, 4,159,690
+  bytes of uncompressed PCM exactly as the fix stores them, are compiled into the executable and presented to the game
+  as part of `Stream.tpa` in memory. The player's own file is only read; the audio the retail file has is never replaced
+  except `VCRAYCOMPUTER`, and only when its bytes are the known retail ones.
+- **Captions the retail file lacked for audio it has** (the phone operator, a diary line, "At center court...").
+- The restored lines stay English; only their subtitles are translated. All restored dialogue is translated in every
+  supported language (the translations of the restored lines are the port's own, marked as PC port completion).
+
+What it did not take: the modified `Stream.tpa` itself is not distributed and nothing is copied at start-up. No external
+translation or audio package is needed, and nothing is downloaded. The fix holds 69 more samples the retail file lacks
+(14.5 MB) that no level of the retail game triggers; they are not included because nothing can play them. A restored caption is shown only when
+its audio exists, in the player's file or in the embedded records.
+
+Size: restored audio 4,159,690 bytes, its manifest 1,272 bytes, caption and timing text 119,189 bytes (the canonical
+English captions 43,827 bytes, the Russian completion 69,780 bytes, the other completions 5,582 bytes); about 4.28 MB in
+the executable (about 3.5 MB more in a release archive).
+
+The developer tool `tools/stream_fix_pack.cpp` made `assets/restored_audio` and `assets/translations/en.subtitles.txt`
+from the fix and the retail file; it is not part of the build, and a clean clone builds without the fix.
 
 ## Credits
 

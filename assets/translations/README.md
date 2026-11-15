@@ -14,6 +14,7 @@ picture, video or program of the packages.
 | `ru.strings.txt` | Russian GameStrings | TresCom, Russian Unofficial Translation (Game Strings) | cynodesmus |
 | `ru.subtitles.txt` | Russian voice captions (`Stream.tpa`, `Effects.tpa`) | TresCom, Russian Fan Translation (Subtitles) | cynodesmus |
 | `it.subtitles.txt` | Italian voice captions (`Stream.tpa`), timings adjusted by hand | TresCom, Italian Fan Translation (Subtitles) v1.0.0 | KeyofBlueS |
+| `en.subtitles.txt` | the canonical English captions and timings of every sample the retail or the restored audio plays (made by `tools/stream_fix_pack.cpp`) | TresCom, English Stream TPA Fix (Subtitle Timing Fix), March 14, 2026 | KeyofBlueS |
 
 The downloads are hosted and preserved by the TresCom community and state no licence (`docs/LEGAL.md`).
 
@@ -21,7 +22,8 @@ The downloads are hosted and preserved by the TresCom community and state no lic
 
 | File | Content |
 |---|---|
-| `pt-BR`, `fr`, `de`, `es` `.subtitles.port.txt` | every voice caption of the English game (478 samples), with the English sample's times |
+| `pt-BR`, `fr`, `de`, `es` `.subtitles.port.txt` | every voice caption of the English game (486 samples, the restored dialogue included), with `en.subtitles.txt`'s lines and times |
+| `ru.subtitles.port.txt` | the Russian captions with the canonical lines and times, and the restored lines; it replaces the release's lines of the same sample |
 | `it.subtitles.port.txt` | the 76 `Effects.tpa` captions the Italian release does not have |
 | `it.strings.port.txt` | the whole Italian game text |
 | `de.strings.port.txt` | the developer hint placeholders 18000 and 18002-18010 the German release lacks |
@@ -35,7 +37,8 @@ button of the device in use is drawn. The loading screen's two labels (World Ini
 Options labels are GameStrings 10010-10055: the game's own text boxes are translated where the frontend and the loading
 screen read them, as well as in the translated copies of the menu `.ddf` files.
 
-A release's text is used first; a completion file only adds what it lacks. String 10 (the saves' file name) is never
+A release's text is used first; a completion file only adds what it lacks, except captions: a caption completion replaces the
+release's lines of the same sample because it carries the corrected timing. String 10 (the saves' file name) is never
 translated. The tutorial's captions write controls as tokens (`<JUMP>`, `<HAND>`, `<LOOK>`...) that the game shows as the
 key or button of the device in use.
 

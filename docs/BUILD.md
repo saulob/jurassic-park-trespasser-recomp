@@ -169,6 +169,10 @@ ninja -C build\cmake\msvc-x86 user_data_tests
 .\build\cmake\msvc-x86\user_data_tests.exe  # the portable user_data root, --user_data_root, an unwritable root (an error, no fallback), migration of the old user folder
 ninja -C build\cmake\msvc-x86 l10n_tests
 .\build\cmake\msvc-x86\l10n_tests.exe         # the language choice, `language` and the migration of the old settings, GameStrings, code pages 1252/1251, captions, DDF labels, the overlay's word wrap, and every language's coverage: GameStrings, captions and interface keys complete, placeholders and tokens kept, no English left, code page and Arial glyphs (--inventory lists the game's menu files)
+ninja -C build\cmake\msvc-x86 stream_tests
+.\build\cmake\msvc-x86\stream_tests.exe    # the embedded restored audio (manifest, sizes, SHA-256, durations), the virtual Stream.tpa over a made-up file and the player's own, the captions' timings in every language, and the lint that keeps development paths out of the project (the retail checks skip themselves without game\data\Stream.tpa)
+ninja -C build\cmake\msvc-x86 stream_fix_pack
+.\build\cmake\msvc-x86\stream_fix_pack.exe report|generate <retail Stream.tpa> <English Stream TPA fix> assets   # developer tool: the delta report, and assets\restored_audio and en.subtitles.txt (never run by the build)
 ninja -C build\cmake\msvc-x86 translation_pack
 .\build\cmake\msvc-x86\translation_pack.exe 'D:\downloads\translations' assets\translations  # developer tool: makes assets\translations from the extracted TresCom downloads (never run by the build)
 .\tools\test-release-check.ps1              # tools\verify-release.ps1 refuses user data, downloaded archives and game files in a release

@@ -244,6 +244,25 @@ static int english_samples(samples_t* out) {
     return out->count > 0;
 }
 
+/* The corrected English captions (en.subtitles.txt) replace the retail lines and times of the samples they hold and add the
+ * samples the restored audio brings. */
+static void merge_canonical_captions(samples_t* english) {
+    samples_t canonical = { 0 };
+    canonical.items = (sample_t*)calloc(MAX_SAMPLES, sizeof(sample_t));
+    read_asset_samples(JPT_L10N_ENGLISH, JPT_L10N_SUBTITLES_ASSET, &canonical);
+    for (int i = 0; i < canonical.count; i++) {
+        const sample_t* c = &canonical.items[i];
+        sample_t* e = (sample_t*)find_sample(english, c->pack, c->sample);
+        if (e) {
+            e->lines = c->lines;
+            memcpy(e->units, c->units, sizeof e->units);
+        } else if (english->count < MAX_SAMPLES) {
+            english->items[english->count++] = *c;
+        }
+    }
+    free(canonical.items);
+}
+
 static void test_subtitles(void) {
     samples_t english = { 0 }, port[LANGUAGES], release = { 0 };
     int have_english;
@@ -255,13 +274,14 @@ static void test_subtitles(void) {
         read_asset_samples(k_languages[l], JPT_L10N_SUBTITLES_PORT_ASSET, &port[l]);
     }
     have_english = english_samples(&english);
+    if (have_english) merge_canonical_captions(&english);
     if (!have_english) {
         for (int i = 0; i < port[0].count; i++) english.items[english.count++] = port[0].items[i];
         printf("captions: the game's TPAs are not in game\\data; the Brazilian Portuguese set stands for English\n");
     }
-    CHECK(english.count == 478, "English captioned samples: %d", english.count);
+    CHECK(english.count == 486, "English captioned samples: %d", english.count);
     for (int l = 0; l < LANGUAGES; l++) {
-        int from_release = 0, from_port = 0, missing = 0;
+        int from_release = 0, from_port = 0, missing = 0, no_english = 0;
         release.count = 0;
         read_asset_samples(k_languages[l], JPT_L10N_SUBTITLES_ASSET, &release);
         for (int i = 0; i < english.count; i++) {
@@ -281,9 +301,16 @@ static void test_subtitles(void) {
                 CHECK(0, "%s %s %08x: no caption", k_languages[l], e->pack, e->sample);
             }
         }
-        printf("captions %-5s: %d of %d samples (%s %d, port %d), missing %d\n", k_languages[l], from_release + from_port,
-               english.count, !strcmp(k_languages[l], "ru") || !strcmp(k_languages[l], "it") ? "community" : "release",
-               from_release, from_port, missing);
+        for (int i = 0; i < release.count; i++)
+            no_english += !find_sample(&english, release.items[i].pack, release.items[i].sample);
+        for (int i = 0; i < port[l].count; i++) {
+            const sample_t* p = &port[l].items[i];
+            no_english += !find_sample(&english, p->pack, p->sample) && !find_sample(&release, p->pack, p->sample);
+        }
+        printf("captions %-5s: %d of %d samples (%s %d, port %d), missing %d, %d with no English caption\n",
+               k_languages[l], from_release + from_port, english.count,
+               !strcmp(k_languages[l], "ru") || !strcmp(k_languages[l], "it") ? "community" : "release", from_release,
+               from_port, missing, no_english);
     }
     {
         int with_tokens = 0;

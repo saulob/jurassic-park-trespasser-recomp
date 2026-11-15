@@ -3,6 +3,8 @@
 // synthetic and built in a temporary folder; TRESPASSER_TEST_ISO=<image> also identifies a real disc (read only).
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <d3d11.h>
+#include <dxgi.h>
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +34,7 @@
 #include "page_icons.h"
 #include "play_gate.h"
 #include "settings.h"
+#include "system_info.h"
 
 namespace fs = std::filesystem;
 using namespace jpt;
@@ -480,10 +483,6 @@ static void TestPages() {
     CHECK(std::string(kSponsorUrl) == "https://github.com/sponsors/saulob");
     CHECK(std::string(kGameTitle) == "Jurassic Park: Trespasser Recompiled");
     CHECK(ResolutionLabel(jpt_render_preset_index("1440p"), {2560, 1440}) == "1440p \xE2\x80\x94 2560 \xC3\x97 1440");
-    const std::string size_text =
-        RenderSizeText(jpt_render_box(jpt_render_preset_index("1440p"), JPT_ASPECT_16_9, 0, 0), JPT_ASPECT_16_9);
-    CHECK(size_text.find("2560 \xC3\x97 1440") != std::string::npos);
-    CHECK(size_text.find("1024") == std::string::npos);
 }
 
 static uint32_t Be32(const std::string& bytes, size_t at) {
@@ -872,19 +871,10 @@ static void TestUiCoverage() {
     CHECK(missing == 0);
 }
 
-static void TestLanguageNamesAndCoverage() {
+static void TestLanguageNames() {
     const char* english_names[] = {"English", "Brazilian Portuguese", "French", "German", "Spanish", "Russian", "Italian"};
     const char* portuguese_names[] = {"Inglês", "Português Brasil", "Francês", "Alemão", "Espanhol", "Russo", "Italiano"};
     const char* codes[] = {"en", "pt-BR", "fr", "de", "es", "ru", "it"};
-    const char* english_coverage[std::size(codes)];
-    const char* portuguese_coverage[std::size(codes)];
-    std::string english_rows[std::size(codes)], portuguese_rows[std::size(codes)];
-    for (size_t i = 0; i < std::size(codes); ++i) {
-        english_rows[i] = std::string("Game text, menus and subtitles: ") + english_names[i] + "  \xC2\xB7  Audio: English";
-        portuguese_rows[i] = std::string("Texto do jogo, menus e legendas: ") + portuguese_names[i] + "  \xC2\xB7  \xC3\x81udio: Ingl\xC3\xAAs";
-        english_coverage[i] = english_rows[i].c_str();
-        portuguese_coverage[i] = portuguese_rows[i].c_str();
-    }
     CHECK(std::size(jpt_l10n_languages) == std::size(codes));
     for (size_t i = 0; i < std::size(codes); ++i) {
         CHECK(std::string(jpt_l10n_languages[i].code) == codes[i] && std::string(jpt_l10n_languages[i].name) == english_names[i]);
@@ -892,13 +882,12 @@ static void TestLanguageNamesAndCoverage() {
             SetLauncherLanguage(launcher);
             const bool portuguese = std::string(launcher) == "pt-BR";
             CHECK(std::string(Tr(jpt_l10n_languages[i].name)) == (portuguese ? portuguese_names[i] : english_names[i]));
-            CHECK(LanguageCoverage(codes[i]) == (portuguese ? portuguese_coverage[i] : english_coverage[i]));
         }
     }
     SetLauncherLanguage("en");
-    CHECK(std::string(Tr("Language coverage")) == "Language coverage" && std::string(Tr("Language")) == "Language");
+    CHECK(std::string(Tr("Language")) == "Language");
     SetLauncherLanguage("pt-BR");
-    CHECK(std::string(Tr("Language coverage")) == "Cobertura do idioma" && std::string(Tr("Language")) == "Idioma");
+    CHECK(std::string(Tr("Language")) == "Idioma");
     CHECK(std::string(Tr("Changes the game text, menus and subtitles. Voices, effects and music remain in English.")) ==
           "Altera os textos, menus e legendas do jogo. Vozes, efeitos e música permanecem em inglês.");
     CHECK(std::string(Tr("PC port completion")) == "Complemento do port para PC" && std::string(Tr("official")) == "oficial" &&
@@ -929,11 +918,10 @@ static void TestGoreAndTitleOptions() {
     const size_t gameplay = launcher.find("void PageGameplay(");
     const size_t controls = launcher.find("// ---- Controls");
     const std::string body = launcher.substr(gameplay, controls - gameplay);
-    const size_t language = body.find("ui.Combo(\"Language\""), coverage = body.find("\"Language coverage\""),
-                 skip = body.find("\"Skip Intro\""), fps = body.find("\"Frame rate in title\""),
-                 resolution = body.find("\"Render resolution in title\"");
-    CHECK(language < coverage && coverage < skip && skip < fps && fps < resolution && resolution != std::string::npos);
-    CHECK(body.find("\"Coverage\"") == std::string::npos && body.find("Frame counter") == std::string::npos);
+    const size_t language = body.find("ui.Combo(\"Language\""), skip = body.find("\"Skip Intro\""),
+                 fps = body.find("\"Frame rate in title\""), resolution = body.find("\"Render resolution in title\"");
+    CHECK(language < skip && skip < fps && fps < resolution && resolution != std::string::npos);
+    CHECK(body.find("overage") == std::string::npos && body.find("Frame counter") == std::string::npos);
     CHECK(body.find("JPT_KEY_SHOW_RESOLUTION_TITLE") != std::string::npos && body.find("JPT_KEY_SHOW_FPS") != std::string::npos);
     for (int i = 0; i < JPT_SETTING_COUNT; ++i) CHECK(std::string(jpt_settings[i].key).find("gore") == std::string::npos);
     CHECK(std::string(jpt_default_value(JPT_KEY_SHOW_FPS)) == "1" && std::string(jpt_default_value(JPT_KEY_SHOW_RESOLUTION_TITLE)) == "0");
@@ -960,6 +948,192 @@ static void TestNoLanguagePage() {
     std::size_t sections = 0;
     for (const PageId page : kPageOrder) sections += std::string(PageName(page)) == "Language";
     CHECK(sections == 0 && std::size(kPageOrder) == 8);
+}
+
+static std::vector<jpt_gpu_t> Gpus(std::initializer_list<const char*> names) {
+    std::vector<jpt_gpu_t> gpus;
+    for (const char* name : names) {
+        jpt_gpu_t gpu{};
+        std::snprintf(gpu.name, sizeof gpu.name, "%s", name);
+        gpus.push_back(gpu);
+    }
+    jpt_gpu_assign_labels(gpus.data(), static_cast<int>(gpus.size()));
+    return gpus;
+}
+
+static int ResolveGpu(const std::vector<jpt_gpu_t>& gpus, const char* request) {
+    return jpt_gpu_resolve(gpus.data(), static_cast<int>(gpus.size()), request);
+}
+
+// The name of the adapter a device created on DXGI adapter `index` really runs on, as d3d11_present.c creates it.
+static std::string DeviceAdapterName(int index) {
+    std::string name;
+    IDXGIFactory1* factory = nullptr;
+    IDXGIAdapter1* adapter = nullptr;
+    if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory)))) return name;
+    if (SUCCEEDED(factory->EnumAdapters1(static_cast<UINT>(index), &adapter))) {
+        ID3D11Device* device = nullptr;
+        if (SUCCEEDED(D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0,
+                                        reinterpret_cast<const D3D_FEATURE_LEVEL*>(jpt_gpu_feature_levels),
+                                        JPT_GPU_FEATURE_LEVEL_COUNT, D3D11_SDK_VERSION, &device, nullptr, nullptr))) {
+            IDXGIDevice* dxgi = nullptr;
+            IDXGIAdapter* used = nullptr;
+            DXGI_ADAPTER_DESC desc{};
+            if (SUCCEEDED(device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgi))) &&
+                SUCCEEDED(dxgi->GetAdapter(&used)) && SUCCEEDED(used->GetDesc(&desc))) {
+                char text[JPT_GPU_NAME_MAX] = {};
+                WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, text, sizeof text, nullptr, nullptr);
+                name = text;
+                while (!name.empty() && name.back() == ' ') name.pop_back();
+            }
+            if (used) used->Release();
+            if (dxgi) dxgi->Release();
+            device->Release();
+        }
+        adapter->Release();
+    }
+    factory->Release();
+    return name;
+}
+
+static void TestGraphicsCard(const fs::path& dir) {
+    const char* intel = "Intel(R) UHD Graphics";
+    const char* nvidia = "NVIDIA GeForce RTX 4070";
+    const std::vector<jpt_gpu_t> two = Gpus({intel, nvidia});
+    CHECK(ResolveGpu(two, "") == 0);       // no saved card: the first usable one, whatever its vendor
+    CHECK(ResolveGpu(two, nullptr) == 0);
+    CHECK(ResolveGpu(two, nvidia) == 1);
+    CHECK(ResolveGpu(two, intel) == 0);
+    CHECK(ResolveGpu(two, "AMD Radeon RX 7800 XT") == 0);  // a card no longer installed
+    CHECK(ResolveGpu(two, "NVIDIA GeForce RTX 407") == 0);  // exact labels only
+    CHECK(ResolveGpu(Gpus({nvidia, intel}), "") == 0);       // enumeration order, never a vendor preference
+    CHECK(GpuChoices(two) == (std::vector<std::string>{intel, nvidia}));
+    CHECK(std::string(two[0].label) == intel && std::string(two[1].label) == nvidia);  // unique names: no suffix
+
+    // An unusable entry keeps its DXGI position: the choice that follows it is its own adapter, not index - 1.
+    const std::vector<jpt_gpu_t> gaps = Gpus({nvidia, "", intel});
+    CHECK(ResolveGpu(gaps, nvidia) == 0 && ResolveGpu(gaps, intel) == 2 && ResolveGpu(gaps, "") == 0);
+    CHECK(GpuChoices(gaps) == (std::vector<std::string>{nvidia, intel}));
+    CHECK(jpt_gpu_find(gaps.data(), 3, "") == -1 && jpt_gpu_find(gaps.data(), 3, "gone") == -1);
+    const std::vector<jpt_gpu_t> first_bad = Gpus({"", intel, "", nvidia});
+    CHECK(ResolveGpu(first_bad, "") == 1 && ResolveGpu(first_bad, nvidia) == 3 && ResolveGpu(first_bad, "gone") == 1);
+    CHECK(ResolveGpu(Gpus({"", ""}), nvidia) == -1 && ResolveGpu(Gpus({}), "") == -1);
+    CHECK(jpt_gpu_resolve(nullptr, 0, "") == -1);
+    CHECK(GpuChoices({}).empty() && GpuChoices(Gpus({"", ""})).empty());
+
+    // Two adapters of the same name stay two choices; only the repeat is suffixed.
+    const std::string second = std::string(nvidia) + " (2)";
+    const std::vector<jpt_gpu_t> twins = Gpus({nvidia, nvidia});
+    CHECK(GpuChoices(twins) == (std::vector<std::string>{nvidia, second}));
+    CHECK(ResolveGpu(twins, nvidia) == 0 && ResolveGpu(twins, second.c_str()) == 1);  // a saved old name = the first match
+    CHECK(ResolveGpu(twins, "") == 0 && ResolveGpu(twins, (std::string(nvidia) + " (3)").c_str()) == 0);
+    const std::vector<jpt_gpu_t> mixed = Gpus({nvidia, intel, "", nvidia, nvidia});
+    CHECK(GpuChoices(mixed) == (std::vector<std::string>{nvidia, intel, second, std::string(nvidia) + " (3)"}));
+    CHECK(ResolveGpu(mixed, second.c_str()) == 3 && ResolveGpu(mixed, (std::string(nvidia) + " (3)").c_str()) == 4 &&
+          ResolveGpu(mixed, intel) == 1);
+
+    // The setting has no fixed default; any name is kept as it is.
+    CHECK(jpt_default_value(JPT_KEY_GRAPHICS_CARD) && !*jpt_default_value(JPT_KEY_GRAPHICS_CARD));
+    jpt_config_t c;
+    jpt_config_defaults(&c);
+    CHECK(c.graphics_card[0] == 0);
+    CHECK(jpt_config_apply(&c, JPT_KEY_GRAPHICS_CARD, nvidia) && std::string(c.graphics_card) == nvidia);
+    CHECK(!jpt_config_apply(&c, JPT_KEY_GRAPHICS_CARD, std::string(JPT_GPU_LABEL_MAX, 'x').c_str()) &&
+          std::string(c.graphics_card) == nvidia);
+
+    // The launcher writes the resolved card; the game reads it back and resolves the same adapter.
+    const fs::path ini = dir / "graphics_card.ini";
+    const auto launcher_then_game = [&](const std::string& stored) {
+        WriteFile(ini, stored.empty() ? "renderer = d3d11\n" : "graphics_card = " + stored + "\n");
+        LauncherSettings settings(ini);
+        const int found = ResolveGpu(two, settings.Get(JPT_KEY_GRAPHICS_CARD).c_str());
+        CHECK(found >= 0);
+        if (settings.Get(JPT_KEY_GRAPHICS_CARD) != two[size_t(found)].label) settings.Set(JPT_KEY_GRAPHICS_CARD, two[size_t(found)].label);
+        CHECK(settings.Save());
+        jpt_config_t game;
+        CHECK(jpt_config_load(ini.string().c_str(), &game));
+        CHECK(ResolveGpu(two, game.graphics_card) == found);
+        return std::string(game.graphics_card);
+    };
+    CHECK(launcher_then_game("") == intel);
+    CHECK(launcher_then_game(nvidia) == nvidia);
+    CHECK(launcher_then_game(intel) == intel);
+    CHECK(launcher_then_game("AMD Radeon RX 7800 XT") == intel);
+    CHECK(ReadFile(ini).find("AMD") == std::string::npos);
+
+    // A setting saved before duplicates were told apart keeps choosing the first match; the second is saved by its label.
+    const auto saved_choice = [&](const std::string& stored) {
+        WriteFile(ini, "graphics_card = " + stored + "\n");
+        jpt_config_t game;
+        CHECK(jpt_config_load(ini.string().c_str(), &game));
+        return ResolveGpu(twins, game.graphics_card);
+    };
+    CHECK(saved_choice(nvidia) == 0 && saved_choice(second) == 1 && saved_choice("gone") == 0);
+
+    // This PC (DXGI only, no window): entry i of the list is the adapter a device created on index i runs on.
+    const std::vector<jpt_gpu_t> real = ListGpus();
+    for (size_t i = 0; i < real.size(); ++i) {
+        if (!real[i].name[0]) continue;
+        std::printf("graphics card %zu: %s\n", i, real[i].label);
+        CHECK(DeviceAdapterName(static_cast<int>(i)) == real[i].name);
+        CHECK(ResolveGpu(real, real[i].label) == static_cast<int>(i));
+    }
+    if (GpuChoices(real).empty()) std::printf("graphics cards: none usable on this PC\n");
+
+    // The page offers the real cards next to the renderer, and no Render size row.
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t renderer = launcher.find("ui.Combo(\"Renderer\"");
+    const size_t card = launcher.find("ui.Row(\"Graphics card\", kGraphicsCardHelp)");
+    const size_t resolution = launcher.find("ui.Combo(\"Render resolution\"");
+    CHECK(renderer != std::string::npos && renderer < card && card < resolution && resolution != std::string::npos);
+    CHECK(launcher.find("ui.Info(\"Graphics card\"") == std::string::npos);
+    CHECK(launcher.find("BeginCombo(\"##graphics_card\"") != std::string::npos);
+    CHECK(launcher.find("\"No graphics card found\"") != std::string::npos);
+    CHECK(launcher.find("NormalizeGraphicsCard();") != std::string::npos);
+    for (const char* gone : {"Render size", "RenderSizeText", "Not detected", "QueryGpu", "\"Automatic\", \"Auto\""})
+        CHECK(launcher.find(gone) == std::string::npos && ReadSource("launcher/options.cpp").find(gone) == std::string::npos);
+    CHECK(!HasRow("Render size") && !HasRow("Not detected") && HasRow("No graphics card found") && HasRow("Graphics card"));
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr("Selects which graphics card renders the game. If the selected card is no longer available, the "
+                         "first available card is used.")) ==
+          "Seleciona qual placa de vídeo renderiza o jogo. Se a placa selecionada não estiver mais disponível, a primeira "
+          "placa disponível será usada.");
+    SetLauncherLanguage("en");
+
+    // The renderer creates its device on the adapter the saved name resolves to.
+    const std::string main_c = ReadSource("src/host/main.c");
+    CHECK(main_c.find("present_set_graphics_card(cfg.graphics_card);") != std::string::npos);
+    const std::string present = ReadSource("src/host/ddraw/d3d11_present.c");
+    const size_t resolved = present.find("index = jpt_gpu_resolve(gpus, count, s_graphics_card);");
+    const size_t opened = present.find("IDXGIAdapter* chosen = open_adapter(chosen_adapter_index());");
+    const size_t created = present.find("hr = create_on(chosen, D3D_DRIVER_TYPE_UNKNOWN, &level);");
+    const size_t fallback = present.find("hr = create_on(NULL, D3D_DRIVER_TYPE_HARDWARE, &level);");
+    const size_t warp = present.find("hr = create_on(NULL, D3D_DRIVER_TYPE_WARP, &level);");
+    CHECK(resolved != std::string::npos && opened != std::string::npos && opened < created && created < fallback &&
+          fallback < warp && warp != std::string::npos);
+    CHECK(present.find("D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE") == std::string::npos);
+    CHECK(present.find("EnumAdapters1(factory, (UINT)index, &adapter)") != std::string::npos);
+    CHECK(present.find("saved graphics card \\\"%s\\\" not available; using %s") != std::string::npos);
+}
+
+// Invert mouse is an input setting: the Controls page, next to the keyboard and mouse bindings, as the game's own value.
+static void TestInvertMouseInControls() {
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t gameplay = launcher.find("void PageGameplay(");
+    const size_t controls = launcher.find("// ---- Controls");
+    const size_t page = launcher.find("void PageControls(");
+    const size_t keyboard = launcher.find("ui.Section(\"Keyboard & Mouse\"");
+    const size_t row = launcher.find("InvertMouseRow(ui);");
+    const size_t bindings = launcher.find("GuideRows(ui, 0, family, pad);");
+    CHECK(gameplay < controls && controls < page && page < keyboard && keyboard < row && row < bindings);
+    CHECK(launcher.substr(gameplay, controls - gameplay).find("nvert") == std::string::npos);
+    size_t rows = 0;
+    for (size_t at = launcher.find("\"Invert mouse\""); at != std::string::npos; at = launcher.find("\"Invert mouse\"", at + 1))
+        ++rows;
+    CHECK(rows == 1);
+    CHECK(launcher.find("registry_.GetDword(\"InvertMouse\", value)") != std::string::npos &&
+          launcher.find("registry_.SetDword(\"InvertMouse\", invert_ ? 1 : 0)") != std::string::npos);
+    for (int i = 0; i < JPT_SETTING_COUNT; ++i) CHECK(std::string(jpt_settings[i].key).find("invert_mouse") == std::string::npos);
 }
 
 // The translations are part of the program: no installation, download or folder of the player's.
@@ -1002,8 +1176,10 @@ int main() {
     TestLauncherLanguage(dir);
     TestUiCoverage();
     TestNoLanguagePage();
-    TestLanguageNamesAndCoverage();
+    TestLanguageNames();
     TestGoreAndTitleOptions();
+    TestGraphicsCard(dir);
+    TestInvertMouseInControls();
     TestEmbeddedOnly();
     TestRealDisc();
     std::error_code ec;

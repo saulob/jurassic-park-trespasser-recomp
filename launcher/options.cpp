@@ -1,6 +1,5 @@
 #include "options.h"
 
-#include "jpt_l10n.h"
 #include "localization/ui_text.h"
 
 namespace jpt {
@@ -8,7 +7,6 @@ namespace {
 
 constexpr char kTimes[] = " \xC3\x97 ";
 constexpr char kDash[] = " \xE2\x80\x94 ";
-constexpr char kDot[] = "  \xC2\xB7  ";
 
 std::string Dimensions(int width, int height) { return std::to_string(width) + kTimes + std::to_string(height); }
 
@@ -37,15 +35,6 @@ std::string ResolutionLabel(int preset, jpt_size_t box) {
     return label;
 }
 
-std::string RenderSizeText(jpt_size_t box, int aspect) {
-    const jpt_size_t screen = jpt_gameplay_mode(box, aspect, 1);
-    const jpt_size_t gameplay = jpt_render_target(box, screen.width, screen.height);
-    const jpt_size_t menus = jpt_render_target(box, 640, 480);
-    if (box.width <= 0) return Tr("The original compatibility size, chosen from the window.");
-    return Tr("Gameplay ") + Dimensions(gameplay.width, gameplay.height) + kDot + Tr("menus and videos 4:3 at ") +
-           Dimensions(menus.width, menus.height);
-}
-
 std::string WindowSizeLabel(const jpt_window_size_t& size) {
     if (size.width <= 0) return Tr("Auto (the picture at the monitor's scale)");
     return Dimensions(size.width, size.height);
@@ -57,13 +46,6 @@ bool WindowSizeFits(const jpt_window_size_t& size, const jpt_monitor_t& monitor)
     const jpt_size_t fitted = jpt_fit_window(requested, 0, 0, monitor.work.right - monitor.work.left,
                                              monitor.work.bottom - monitor.work.top);
     return fitted.width == requested.width && fitted.height == requested.height;
-}
-
-std::string LanguageCoverage(const std::string& language) {
-    const jpt_l10n_language_t* chosen = jpt_l10n_language(language.c_str());
-    if (!chosen) chosen = &jpt_l10n_languages[0];
-    return TrFormat("Game text, menus and subtitles: %s  \xC2\xB7  Audio: %s", Tr(chosen->name),
-                    Tr(jpt_l10n_languages[0].name));
 }
 
 std::string MonitorLabel(int monitor, const std::vector<jpt_monitor_t>& monitors) {

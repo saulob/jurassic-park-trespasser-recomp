@@ -39,6 +39,18 @@ player's own menu pictures at run time; no picture of the game or of the package
 the extracted downloads and recognises each source by name, size and SHA-256; the downloads themselves are not in the
 repository. The tests use the embedded text and made-up fixtures.
 
+## Subtitle timing and restored dialogue
+
+The corrected caption timings and the restored English dialogue (five audio records, 4,159,690 bytes of PCM) come from
+the *English Stream TPA Fix (Subtitle Timing Fix)* by KeyofBlueS, preserved and hosted by the TresCom community
+(https://www.trescom.org/download/10423/, March 14, 2026). The download states no licence and the repository holds no
+permission from its author; including this data is the repository owner's decision and responsibility, as for the
+translations above. Only the captions and the five records the port needs were extracted: the modified `Stream.tpa`
+is not in the repository, in a release or on a player's disk, and the game's audio the retail file already has is
+not copied. The records are the voice lines of the game's own English cast. `tools/stream_fix_pack.cpp` made them from
+the download and the retail file; the download is not needed to build or run the port. The translations of the restored
+lines were written for the port (PC port completion).
+
 ## Third-party code## Third-party code
 
 | Project | Licence | How it is used |

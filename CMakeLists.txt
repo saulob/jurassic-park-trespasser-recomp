@@ -83,6 +83,8 @@ set(HOST_SOURCES
   src/host/text_layout.c
   src/host/l10n.c
   src/host/l10n_assets.cpp
+  src/host/stream_pack.c
+  src/host/stream_audio.c
   src/host/tutorial_prompts.c
   src/host/ui_canvas.c
   src/host/frontend_hd.c
@@ -145,9 +147,10 @@ set(PCRECOMP_SOURCES
 )
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
-add_library(jpt_common STATIC src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c
+add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_restored_audio.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c)
 target_include_directories(jpt_common PUBLIC src/common)
+target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
 target_compile_options(jpt_common PRIVATE /W4)
 target_compile_definitions(jpt_common PRIVATE _CRT_SECURE_NO_WARNINGS)
 
@@ -247,7 +250,19 @@ add_custom_command(OUTPUT ${JPT_TRANSLATION_SOURCE}
   DEPENDS ${JPT_TRANSLATION_LIST} ${JPT_TRANSLATIONS} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
   COMMENT "Embedding the translated text")
 
-add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE})
+# The restored audio (assets/restored_audio, made by tools/stream_fix_pack.cpp) is part of the executable too.
+file(GLOB JPT_RESTORED_AUDIO CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/restored_audio/*)
+list(SORT JPT_RESTORED_AUDIO)
+set(JPT_RESTORED_AUDIO_LIST ${CMAKE_BINARY_DIR}/generated/restored_audio.txt)
+file(CONFIGURE OUTPUT ${JPT_RESTORED_AUDIO_LIST} CONTENT "${JPT_RESTORED_AUDIO}")
+set(JPT_RESTORED_AUDIO_SOURCE ${CMAKE_BINARY_DIR}/generated/restored_audio_data.cpp)
+add_custom_command(OUTPUT ${JPT_RESTORED_AUDIO_SOURCE}
+  COMMAND ${CMAKE_COMMAND} -DINPUT_LIST=${JPT_RESTORED_AUDIO_LIST} -DOUTPUT=${JPT_RESTORED_AUDIO_SOURCE}
+          -DSYMBOL=kRestoredAudioFiles -P ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  DEPENDS ${JPT_RESTORED_AUDIO_LIST} ${JPT_RESTORED_AUDIO} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  COMMENT "Embedding the restored audio")
+
+add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
 target_include_directories(trespasser PRIVATE
   src/host
   src/recomp/gen
@@ -364,12 +379,21 @@ set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQ
 # Text translations: the language choice, GameStrings, code pages, captions, DDF labels, the overlay's word wrap and the
 # embedded text itself (headless): ninja -C <build dir> l10n_tests && l10n_tests.exe
 add_executable(l10n_tests EXCLUDE_FROM_ALL tests/l10n_tests.c tests/l10n_coverage_tests.c src/host/text_layout.c src/host/l10n_assets.cpp
-  ${JPT_TRANSLATION_SOURCE})
+  ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
 target_include_directories(l10n_tests PRIVATE src/host launcher)
 target_link_libraries(l10n_tests PRIVATE jpt_common)
 target_compile_options(l10n_tests PRIVATE /W3)
 target_compile_definitions(l10n_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 set_target_properties(l10n_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+# The restored audio and the corrected English captions: the embedded records, the virtual Stream.tpa, the captions' timings in
+# every language and the lint that keeps development paths out (headless): ninja -C <build dir> stream_tests && stream_tests.exe
+add_executable(stream_tests EXCLUDE_FROM_ALL tests/stream_tests.c src/host/stream_pack.c src/host/l10n_assets.cpp
+  ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
+target_include_directories(stream_tests PRIVATE src/host launcher)
+target_link_libraries(stream_tests PRIVATE jpt_common)
+target_compile_options(stream_tests PRIVATE /W3)
+target_compile_definitions(stream_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+set_target_properties(stream_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 # Developer tool: converts the extracted TresCom downloads into assets/translations (never run by the build):
 #   ninja -C <build dir> translation_pack && translation_pack.exe <downloads folder> assets\translations
 add_executable(translation_pack EXCLUDE_FROM_ALL tools/translation_pack.cpp)
@@ -377,6 +401,14 @@ target_link_libraries(translation_pack PRIVATE jpt_launcher_core)
 target_compile_definitions(translation_pack PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 target_compile_options(translation_pack PRIVATE /W4 /utf-8)
 set_target_properties(translation_pack PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+# Developer tool: derives the English caption timings and the restored audio from the English Stream.tpa fix (never run by
+# the build; the fix is not needed afterwards):
+#   ninja -C <build dir> stream_fix_pack && stream_fix_pack.exe generate <retail Stream.tpa> <fixed Stream.tpa> assets
+add_executable(stream_fix_pack EXCLUDE_FROM_ALL tools/stream_fix_pack.cpp)
+target_link_libraries(stream_fix_pack PRIVATE jpt_common)
+target_compile_definitions(stream_fix_pack PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_compile_options(stream_fix_pack PRIVATE /W4 /utf-8)
+set_target_properties(stream_fix_pack PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # The portable user data root and its migration, in scratch folders only (headless):
 #   ninja -C <build dir> user_data_tests && user_data_tests.exe

@@ -41,15 +41,16 @@ typedef struct {
     const char* source;       /* "official" or "community" */
 } jpt_l10n_credit_t;
 
-#define JPT_L10N_CREDIT_COUNT 6
+#define JPT_L10N_CREDIT_COUNT 7
 extern const jpt_l10n_credit_t jpt_l10n_credits[JPT_L10N_CREDIT_COUNT];
 #define JPT_L10N_PRESERVATION "TresCom community"
 /* Everything the releases above do not cover was written for the port, never attributed to them. */
 #define JPT_L10N_PORT_COMPLETION "Trespasser Recompiled"
-#define JPT_L10N_PORT_CONTENT "subtitles, menus and interface in every language, Italian game text, missing German and Russian strings"
+#define JPT_L10N_PORT_CONTENT "subtitles, menus and interface in every language, Italian game text, missing German and Russian strings, translated restored dialogue"
 
-/* The embedded files: <code>.<kind>.txt. The port's own completions are separate files, loaded after the release's
- * text and only for what it lacks. */
+/* The embedded files: <code>.<kind>.txt. The port's own completions are separate files, loaded after the release's:
+ * game text only for what the release lacks, captions also in place of the release's where they carry the corrected
+ * timing (en.subtitles.txt holds the canonical timings). */
 #define JPT_L10N_STRINGS_PORT_ASSET "strings.port"
 #define JPT_L10N_SUBTITLES_PORT_ASSET "subtitles.port"
 /* String IDs that are never translated: 10 is the save files' name, which must not change with the language. */

@@ -68,6 +68,9 @@ constexpr char kPresentationHelp[] =
 constexpr char kRendererHelp[] =
     "Direct3D 11 draws the game's 3D on the graphics card at the render resolution. Software is the game's own "
     "rasteriser at its original size.";
+constexpr char kGraphicsCardHelp[] =
+    "Selects which graphics card renders the game. If the selected card is no longer available, the first available "
+    "card is used.";
 constexpr char kRenderResolutionHelp[] =
     "The size the 3D world is really drawn at, with its own depth buffer and anti-aliasing; it follows the Aspect ratio "
     "on the Display page. Native uses the monitor's size. Original keeps the earlier compatibility size.";
@@ -84,6 +87,7 @@ constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title."
 constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution in the window title.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
+constexpr char kInvertMouseHelp[] = "Mouse look up and down inverted, the game's own option.";
 constexpr char kKeyboardHelp[] =
     "The game's own bindings as it loads them, changed in its Controls screen (Options > Controls). They keep "
     "working while a gamepad is connected.";
@@ -234,11 +238,9 @@ public:
             return false;
         }
         monitors_ = ListMonitors();
-        gpu_ = QueryGpu();
-        Log("graphics card \"%s\", MSAA %s%s%s, %zu monitor(s)", gpu_.name.empty() ? "unknown" : gpu_.name.c_str(),
-            gpu_.msaa_mask & 4 ? "2x " : "", gpu_.msaa_mask & 16 ? "4x " : "", gpu_.msaa_mask & 256 ? "8x" : "",
-            monitors_.size());
-        ReadGameplay();
+        ListGraphicsCards();
+        Log("%zu monitor(s)", monitors_.size());
+        ReadGameRegistry();
         SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
         placement_ = PlacementTracker(host_.Restored());
         fonts_ = trg::LoadSystemFonts(trg::layout::kTextBody);
@@ -284,6 +286,7 @@ private:
 
     Outcome Frame() {
         SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
+        NormalizeGraphicsCard();
         TrackPlacement();
         PollInstall();
         if (play_.starting() && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds) {
@@ -447,7 +450,7 @@ private:
             return {name, "Window, monitor, aspect ratio and presentation.", [this](trg::Ui& ui) { PageDisplay(ui); },
                     nullptr, nullptr};
         case PageId::kGraphics:
-            return {name, "Renderer, resolution, anti-aliasing and texture filtering.",
+            return {name, "Renderer, graphics card, resolution, anti-aliasing and texture filtering.",
                     [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr};
         case PageId::kGameplay:
             return {name, "Language, Skip Intro and what the window title shows.",
@@ -632,9 +635,57 @@ private:
         return {monitor->bounds.right - monitor->bounds.left, monitor->bounds.bottom - monitor->bounds.top};
     }
 
+    void ListGraphicsCards() {
+        gpus_ = ListGpus();
+        gpu_names_ = GpuChoices(gpus_);
+        gpu_msaa_.assign(gpus_.size(), 0);
+        for (size_t i = 0; i < gpus_.size(); ++i) {
+            if (!gpus_[i].name[0]) {
+                continue;
+            }
+            gpu_msaa_[i] = GpuMsaaMask(static_cast<int>(i));
+            Log("graphics card %zu \"%s\", MSAA %s%s%s", i, gpus_[i].label, gpu_msaa_[i] & 4 ? "2x " : "",
+                gpu_msaa_[i] & 16 ? "4x " : "", gpu_msaa_[i] & 256 ? "8x" : "");
+        }
+        if (gpu_names_.empty()) {
+            Log("no graphics card found");
+        }
+    }
+
+    // The adapter the game will use for the saved choice (the renderer resolves it the same way).
+    int ChosenGpu() const {
+        return jpt_gpu_resolve(gpus_.data(), static_cast<int>(gpus_.size()), settings_.Get(JPT_KEY_GRAPHICS_CARD).c_str());
+    }
+
+    void NormalizeGraphicsCard() {
+        const int found = ChosenGpu();
+        if (found >= 0 && settings_.Get(JPT_KEY_GRAPHICS_CARD) != gpus_[size_t(found)].label) {
+            settings_.Set(JPT_KEY_GRAPHICS_CARD, gpus_[size_t(found)].label);
+        }
+    }
+
+    void GraphicsCardCombo() {
+        if (gpu_names_.empty()) {
+            ImGui::TextUnformatted(Tr("No graphics card found"));
+            return;
+        }
+        const std::string current = settings_.Get(JPT_KEY_GRAPHICS_CARD);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::BeginCombo("##graphics_card", current.c_str())) {
+            for (const std::string& name : gpu_names_) {
+                if (ImGui::Selectable(name.c_str(), name == current) && name != current) {
+                    settings_.Set(JPT_KEY_GRAPHICS_CARD, name);
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
     void PageGraphics(trg::Ui& ui) {
         ui.Combo("Renderer", kRendererHelp, JPT_KEY_RENDERER, "d3d11",
                  {{"d3d11", "Direct3D 11"}, {"software", "Software"}});
+        ui.Row("Graphics card", kGraphicsCardHelp);
+        GraphicsCardCombo();
         const int aspect = jpt_aspect_index(settings_.Get(JPT_KEY_ASPECT_RATIO).c_str());
         const jpt_size_t monitor = MonitorSize();
         std::vector<trg::Option> resolutions;
@@ -643,10 +694,6 @@ private:
             resolutions.push_back({jpt_render_presets[preset].key, ResolutionLabel(preset, box)});
         }
         ui.Combo("Render resolution", kRenderResolutionHelp, JPT_KEY_RENDER_RESOLUTION, "native", resolutions);
-        const int preset = jpt_render_preset_index(settings_.Get(JPT_KEY_RENDER_RESOLUTION).c_str());
-        const jpt_size_t box = jpt_render_box(preset < 0 ? JPT_RENDER_NATIVE : preset, aspect, monitor.width,
-                                              monitor.height);
-        ui.Info("Render size", RenderSizeText(box, aspect).c_str());
         AntiAliasingRow(ui);
         ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "off",
                  {{"off", "Off"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}, {"ultra", "Ultra"}});
@@ -657,14 +704,15 @@ private:
                   {"anisotropic8", "Anisotropic 8x"},
                   {"anisotropic16", "Anisotropic 16x"}});
         ui.Toggle("VSync", kVSyncHelp, JPT_KEY_VSYNC, true, "Off", "On");
-        ui.Info("Graphics card", gpu_.name.empty() ? Tr("Not detected") : gpu_.name.c_str());
         ui.EndRows();
     }
 
     void AntiAliasingRow(trg::Ui& ui) {
+        const int gpu = ChosenGpu();
+        const unsigned msaa = gpu >= 0 ? gpu_msaa_[size_t(gpu)] : 0;
         std::vector<trg::Option> options{{"0", "Off"}};
         for (unsigned samples = 2; samples <= 8; samples *= 2) {
-            if (gpu_.msaa_mask & (1u << samples)) {
+            if (msaa & (1u << samples)) {
                 options.push_back({std::to_string(samples), std::to_string(samples) + "x MSAA"});
             }
         }
@@ -680,7 +728,21 @@ private:
 
     // ---- Gameplay
 
-    void ReadGameplay() {
+    void PageGameplay(trg::Ui& ui) {
+        std::vector<trg::Option> languages;
+        for (const jpt_l10n_language_t& language : jpt_l10n_languages) {
+            languages.push_back({language.code, language.name});
+        }
+        ui.Combo("Language", kLanguageHelp, JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH, languages);
+        ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
+        ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
+        ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
+        ui.EndRows();
+    }
+
+    // ---- Controls
+
+    void ReadGameRegistry() {
         unsigned long value = 0;
         invert_ = registry_.GetDword("InvertMouse", value) && value != 0;
         std::vector<uint8_t> keymap;
@@ -696,26 +758,14 @@ private:
         return !invert_dirty_;
     }
 
-    void PageGameplay(trg::Ui& ui) {
-        std::vector<trg::Option> languages;
-        for (const jpt_l10n_language_t& language : jpt_l10n_languages) {
-            languages.push_back({language.code, language.name});
-        }
-        ui.Combo("Language", kLanguageHelp, JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH, languages);
-        ui.Info("Language coverage", LanguageCoverage(settings_.Get(JPT_KEY_LANGUAGE)).c_str());
-        ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
-        ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
-        ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
-        ui.Row("Invert mouse", "Mouse look up and down inverted, the game's own option.");
+    void InvertMouseRow(trg::Ui& ui) {
+        ui.Row("Invert mouse", kInvertMouseHelp);
         const int invert = ui.Segmented("##invert_mouse", {"Off", "On"}, invert_ ? 1 : 0);
         if (invert >= 0 && (invert == 1) != invert_) {
             invert_ = invert == 1;
             invert_dirty_ = true;
         }
-        ui.EndRows();
     }
-
-    // ---- Controls
 
     void PageControls(trg::Ui& ui) {
         const std::vector<ConnectedGamepad> pads = host_.Gamepads();
@@ -755,6 +805,7 @@ private:
             ui.EndRows();
         }
         if (ui.Section("Keyboard & Mouse", true)) {
+            InvertMouseRow(ui);
             ui.Help(kKeyboardHelp);
             GuideRows(ui, 0, family, pad);
             ui.EndRows();
@@ -965,7 +1016,9 @@ private:
     std::shared_ptr<InstallResult> outcome_;
     std::string install_failure_, install_failure_text_;
     std::vector<jpt_monitor_t> monitors_;
-    GpuInfo gpu_;
+    std::vector<jpt_gpu_t> gpus_;
+    std::vector<std::string> gpu_names_;
+    std::vector<unsigned> gpu_msaa_;
     PlayGate play_;
     double play_started_ = 0.0;
     bool invert_ = false, invert_dirty_ = false;

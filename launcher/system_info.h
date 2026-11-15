@@ -4,18 +4,17 @@
 #include <string>
 #include <vector>
 
+#include "jpt_gpu.h"
 #include "jpt_monitors.h"
 
 namespace jpt {
 
-struct GpuInfo {
-    std::string name;            // the adapter the game's Direct3D 11 device uses (DXGI adapter 0); empty when none
-    unsigned long long vram = 0; // dedicated video memory, bytes
-    unsigned msaa_mask = 0;      // bit n: n samples work for the game's colour and depth formats
-};
-
-// Creates a short-lived device on the adapter to ask for its MSAA levels, then releases it.
-GpuInfo QueryGpu();
+// The adapters as the game's renderer enumerates them (jpt_gpu_list): entry i is DXGI adapter i.
+std::vector<jpt_gpu_t> ListGpus();
+// The labels of the usable adapters in enumeration order: the Graphics card choices.
+std::vector<std::string> GpuChoices(const std::vector<jpt_gpu_t>& gpus);
+// Bit n: n samples work for the game's colour and depth formats on adapter `index`. Creates a short-lived device.
+unsigned GpuMsaaMask(int index);
 
 std::vector<jpt_monitor_t> ListMonitors();
 

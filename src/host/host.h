@@ -174,6 +174,8 @@ int guest_ui_end_window(const guest_ui_view_t* v, int32_t code, int quit_to_wind
 void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, unsigned anisotropy, unsigned msaa);
 /* d3d11_present.c: Off never waits for the vertical blank; On keeps the game's own Flip request. */
 void present_set_vsync(int on);
+/* An adapter label (jpt_gpu.h); empty or not found: the first usable adapter. */
+void present_set_graphics_card(const char* name);
 int d3dr_startup(void);
 /* The renderer d3dr_startup chose; it stays for the whole run. */
 int d3dr_hardware(void);

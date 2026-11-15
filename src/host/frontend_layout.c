@@ -419,6 +419,20 @@ fe_rect_t fe_controls_rect(fe_rect_t r, int picture) {
                    (int)floor(r.bottom * z + 0.5));
 }
 
+static fe_rect_t zoom_about(fe_rect_t r, fe_rect_t origin, double zoom) {
+    return fe_rect((int)floor(origin.left + (r.left - origin.left) * zoom + 0.5), (int)floor(origin.top + (r.top - origin.top) * zoom + 0.5),
+                   (int)floor(origin.left + (r.right - origin.left) * zoom + 0.5), (int)floor(origin.top + (r.bottom - origin.top) * zoom + 0.5));
+}
+
+/* The picture is drawn zoomed from the widget's corner: its label is zoomed with it and centred on the plaque as drawn. */
+static void center_label(fe_widget_t* x, double zoom) {
+    fe_rect_t box = zoom_about(x->label_box, x->rect, zoom), room = zoom_about(x->label_room, x->rect, zoom);
+    int dx = (int)floor(x->rect.left + x->image_w * zoom * 0.5 - (box.left + box.right) * 0.5 + 0.5);
+    int dy = (int)floor(x->rect.top + x->image_h * zoom * 0.5 - (box.top + box.bottom) * 0.5 + 0.5);
+    x->label_box = fe_rect_offset(box, dx, dy);
+    x->label_room = fe_rect_offset(room, dx, dy);
+}
+
 static fe_widget_t* label_with(fe_scene_t* s, const fe_window_t* w, const char* text) {
     for (int i = w->first; i < w->first + w->count; i++)
         if (s->widgets[i].kind == FE_W_LABEL && !strcmp(fe_scene_str(s, s->widgets[i].text), text)) return &s->widgets[i];
@@ -432,6 +446,7 @@ void fe_controls_polish(fe_scene_t* s, const fe_window_t* w, double zoom) {
         fe_widget_t* x = &s->widgets[i];
         x->text_h = (float)(x->text_h * zoom);
         x->image_zoom = (float)zoom;
+        if (x->label) center_label(x, zoom);
         if (x->kind == FE_W_LABEL || x->kind == FE_W_FIELD)
             x->text_flags = (uint16_t)((x->text_flags & ~FE_TEXT_WRAP) | FE_TEXT_FIT | FE_TEXT_VCENTER);
     }

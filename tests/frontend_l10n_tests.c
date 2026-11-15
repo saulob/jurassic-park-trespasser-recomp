@@ -13,6 +13,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +41,13 @@ static int* g_failures;
 #define TRANSLATIONS ROOT "assets/translations/"
 #define VIEW_SCALE 4.0
 #define MIN_LABEL_SCALE 0.62
+#define MAX_STRIPE 9.0         /* the largest jump of row brightness across a cleaned band (the old fill left 12 to 124) */
+#define MAX_RIDGED_STRIPE 20.0 /* the Desktop plate is ridged by itself */
+#define MAX_TITLE_STRIPE 12.0
+#define MAX_GHOST 8.0
+#define MAX_INK_LEFT 8
+#define MAX_NEIGHBOUR_INK 24
+#define MAX_MAIN_NEIGHBOUR_INK 60 /* the main plaques' torn corners are black */
 
 typedef struct {
     const char* picture;
@@ -70,12 +78,17 @@ typedef struct {
     int w, h;
     uint16_t* normal;
     uint16_t* hover;
+    uint16_t* pressed;  /* the retail pictures of the pressed and disabled states, when the button has them */
+    uint16_t* disabled;
+    uint16_t* tone[4];  /* the clean picture in the tones of each state's picture (tone[0] is plaque.clean) */
     fp_plaque_t plaque;
     int ok;
 } retail_button_t;
 
 static retail_button_t g_buttons[BUTTON_COUNT];
 static fp_plaque_t g_titles[2], g_footer;
+static uint16_t* g_title_picture[2];
+static int g_title_w[2], g_title_h[2];
 static uint16_t *g_backdrop, *g_ingame;
 
 static uint8_t* read_file(const char* path, size_t* n) {
@@ -129,6 +142,52 @@ static int near_black(const uint16_t* bits, int w, fe_rect_t r) {
     return n;
 }
 
+static double luma565(uint16_t v) {
+    return (((v >> 11) & 31) * 255.0 / 31.0 + ((v >> 5) & 63) * 255.0 / 63.0 + (v & 31) * 255.0 / 31.0) / 3.0;
+}
+
+/* How well a plate was cleaned inside box (the words' band): stripe is the largest jump between the mean brightness of
+ * neighbouring rows, ghost the brightness difference between the pixels the normal picture's letters covered and the
+ * plate between them; dark counts the pixels of the letters that are still ink black. */
+static void plate_quality(const uint16_t* clean, const uint16_t* normal, int w, fe_rect_t box, double* stripe, double* ghost, int* dark) {
+    double rows[64], ink = 0.0, rest = 0.0;
+    int count = 0, ink_n = 0, rest_n = 0;
+    fe_rect_t in = fe_rect_inflate(box, -2, -1);
+    *stripe = *ghost = 0.0;
+    *dark = 0;
+    for (int y = in.top; y < in.bottom && count < 64; y++) {
+        double sum = 0.0;
+        for (int x = in.left; x < in.right; x++) {
+            double v = luma565(clean[y * w + x]);
+            sum += v;
+            if (luma565(normal[y * w + x]) < 64.0) ink += v, ink_n++, *dark += v < 40.0;
+            else rest += v, rest_n++;
+        }
+        rows[count++] = sum / (double)(in.right - in.left);
+    }
+    for (int i = 1; i < count; i++)
+        if (fabs(rows[i] - rows[i - 1]) > *stripe) *stripe = fabs(rows[i] - rows[i - 1]);
+    if (ink_n >= 30 && rest_n >= 30) *ghost = fabs(ink / ink_n - rest / rest_n);
+}
+
+static void make_tones(retail_button_t* r, const char* picture) {
+    char name[64];
+    int w, h;
+    snprintf(name, sizeof name, "%s_2.tga", picture);
+    r->pressed = load565(name, &w, &h);
+    snprintf(name, sizeof name, "%s_3.tga", picture);
+    r->disabled = load565(name, &w, &h);
+    r->tone[0] = r->plaque.clean;
+    for (int k = 1; k < 4; k++) {
+        const uint16_t* bits = k == 1 ? r->hover : k == 2 ? r->pressed : r->disabled;
+        fa_source_t a;
+        if (!bits) continue;
+        source(&a, bits, r->w, r->h, 1);
+        r->tone[k] = (uint16_t*)malloc(sizeof(uint16_t) * (size_t)r->w * r->h);
+        if (r->tone[k] && !fp_tone(&r->plaque, &a, r->tone[k])) free(r->tone[k]), r->tone[k] = NULL;
+    }
+}
+
 /* Every retail button's lettering is found and taken out: hardly any of its black is left in its box. */
 static void test_lettering_removed(void) {
     for (int i = 0; i < BUTTON_COUNT; i++) {
@@ -147,6 +206,7 @@ static void test_lettering_removed(void) {
         r->ok = fp_button(&a, &b, &r->plaque);
         CHECK(r->ok, "%s: lettering found", k_buttons[i].picture);
         if (!r->ok) continue;
+        make_tones(r, k_buttons[i].picture);
         before = near_black(r->normal, r->w, r->plaque.letters);
         after = near_black(r->plaque.clean, r->w, r->plaque.letters);
         CHECK(before > 40 && after * 10 < before, "%s: %d of %d black pixels left", k_buttons[i].picture, after, before);
@@ -168,7 +228,15 @@ static void test_lettering_removed(void) {
             if (!bits) continue;
             source(&a, bits, w, h, 1);
             CHECK(fp_engraved(&a, zones[i], rooms[i], &g_titles[i]), "%s: title found", names[i]);
-            free(bits);
+            if (g_titles[i].clean) {
+                double stripe, ghost;
+                int dark;
+                plate_quality(g_titles[i].clean, bits, w, zones[i], &stripe, &ghost, &dark);
+                CHECK(stripe <= MAX_TITLE_STRIPE, "%s: a stripe of %.1f levels across the cleaned title", names[i], stripe);
+            }
+            g_title_picture[i] = bits;
+            g_title_w[i] = w;
+            g_title_h[i] = h;
         }
     }
     {
@@ -182,6 +250,76 @@ static void test_lettering_removed(void) {
         }
         g_ingame = load565("InGameOpt.tga", &w, &h);
     }
+}
+
+/* No ghost of the lettering is left in any state's picture: no letter-shaped outline, no ink, no stripes across the
+ * words' band. */
+static void test_clean_plates(void) {
+    for (int i = 0; i < BUTTON_COUNT; i++) {
+        const retail_button_t* r = &g_buttons[i];
+        const uint16_t* state[4] = { r->normal, r->hover, r->pressed, r->disabled };
+        if (!r->ok) continue;
+        for (int k = 0; k < 4; k++) {
+            double stripe, ghost;
+            int dark, left = 0;
+            fe_rect_t side;
+            if (!state[k] || !r->tone[k]) continue;
+            plate_quality(r->tone[k], r->normal, r->w, r->plaque.letters, &stripe, &ghost, &dark);
+            side = fe_rect_intersect(fe_rect_inflate(r->plaque.letters, r->plaque.letters.bottom - r->plaque.letters.top, 0), r->plaque.room);
+            for (int y = side.top; y < side.bottom; y++)
+                for (int x = side.left; x < side.right; x++)
+                    left += luma565(r->normal[y * r->w + x]) < 20.0 && luma565(r->tone[k][y * r->w + x]) < 24.0;
+            CHECK(stripe <= (strcmp(k_buttons[i].picture, "desktop") ? MAX_STRIPE : MAX_RIDGED_STRIPE),
+                  "%s state %d: a stripe of %.1f levels across the cleaned band", k_buttons[i].picture, k, stripe);
+            CHECK(ghost <= MAX_GHOST, "%s state %d: the old letters outline themselves by %.1f levels", k_buttons[i].picture, k, ghost);
+            CHECK(dark <= MAX_INK_LEFT, "%s state %d: %d ink-black pixels left under the old letters", k_buttons[i].picture, k, dark);
+            CHECK(left <= (k_buttons[i].window == FE_WND_MAIN ? MAX_MAIN_NEIGHBOUR_INK : MAX_NEIGHBOUR_INK),
+                  "%s state %d: %d pixels of a letter the search missed are left", k_buttons[i].picture, k, left);
+        }
+    }
+}
+
+/* A plate with a bright and a dark edge above and below the hole: the fill has no edge in it, keeps the plate's grain
+ * and leaves everything outside the hole as it was. */
+static void test_fill_edges(void) {
+    enum { W = 64, H = 40 };
+    static float rgb[W * H * 3], before[W * H * 3];
+    static uint8_t valid[W * H], hole[W * H];
+    uint32_t seed = 7;
+    double rows[H], mean = 0.0, sq = 0.0, jump = 0.0;
+    int n = 0, changed = 0;
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float v = 110.0f + (float)y * 0.8f;
+            seed = seed * 1664525u + 1013904223u;
+            v += (float)((seed >> 16) & 15) - 7.5f;
+            if (y == 2 || y == 36) v += 70.0f;
+            if (y == 4 || y == 34) v -= 50.0f;
+            for (int c = 0; c < 3; c++) rgb[(y * W + x) * 3 + c] = v + (float)c * 6.0f;
+            valid[y * W + x] = 1;
+            hole[y * W + x] = y >= 14 && y < 27 && x >= 14 && x < 50;
+        }
+    memcpy(before, rgb, sizeof rgb);
+    fp_fill(rgb, valid, hole, W, H);
+    for (int y = 0; y < H; y++) {
+        double sum = 0.0;
+        int cnt = 0;
+        for (int x = 0; x < W; x++) {
+            int i = y * W + x;
+            for (int c = 0; c < 3; c++) changed += !hole[i] && rgb[i * 3 + c] != before[i * 3 + c];
+            if (!hole[i]) continue;
+            sum += rgb[i * 3];
+            mean += rgb[i * 3];
+            sq += rgb[i * 3] * rgb[i * 3];
+            n++, cnt++;
+        }
+        rows[y] = cnt ? sum / cnt : 0.0;
+    }
+    for (int y = 15; y < 27; y++) jump = fmax(jump, fabs(rows[y] - rows[y - 1]));
+    mean /= n;
+    CHECK(changed == 0, "the fill changed %d values outside the hole", changed);
+    CHECK(jump < 6.0, "an edge of %.1f levels was copied into the hole", jump);
+    CHECK(sqrt(sq / n - mean * mean) > 2.0, "the filled hole is flat (spread %.1f)", sqrt(sq / n - mean * mean));
 }
 
 static int load_language(const char* code) {
@@ -290,17 +428,20 @@ static void test_labels_fit(fe_painter_t* p) {
 }
 
 static void put_button(fe_scene_t* s, const button_t* b, const retail_button_t* r, int dx, int dy, uint16_t state) {
+    int slot;
     fe_widget_t* w = fe_scene_widget(s, FE_W_BUTTON, 1000, fe_rect(b->x + dx, b->y + dy, b->x + dx + r->w, b->y + dy + r->h));
     if (!w) return;
     w->style = FE_BUTTON_PLAQUE;
     w->state = state;
-    w->image = r->plaque.clean;
+    slot = (state & FE_ST_DISABLED) ? 3 : (state & FE_ST_PRESSED) ? 2 : (state & FE_ST_HOVER) ? 1 : 0;
+    if (!r->tone[slot]) return;
+    w->image = r->tone[slot];
     w->image_w = r->w;
     w->image_h = r->h;
     w->image_pitch = r->w;
     w->image_key = r->plaque.clean[0];
     w->image_keyed = 1;
-    w->image_hash = fe_hash(0, r->plaque.clean, sizeof(uint16_t) * (size_t)r->w * r->h);
+    w->image_hash = fe_hash(slot, r->tone[slot], sizeof(uint16_t) * (size_t)r->w * r->h);
     w->label = FE_LABEL_STENCIL;
     w->text = fe_scene_text(s, jpt_tr_cp(b->key));
     w->label_box = fe_rect_offset(r->plaque.letters, w->rect.left, w->rect.top);
@@ -380,29 +521,191 @@ static void dump_menus(fe_painter_t* p, const char* dir) {
     jpt_l10n_set_display_codepage(0);
 }
 
+/* Every button in every language with its label, in every state it has pictures for: a row per button, a column per
+ * state (normal, hover, pressed, disabled). */
+static void dump_labelled(fe_painter_t* p, const char* dir) {
+    static fe_scene_t s;
+    const int sw = 2560, sh = 1920;
+    uint32_t* px = (uint32_t*)malloc(sizeof(uint32_t) * sw * sh);
+    if (!px) return;
+    for (size_t l = 0; l < sizeof k_languages / sizeof k_languages[0]; l++) {
+        int sheet = 0, next = 0;
+        if (!load_language(k_languages[l])) continue;
+        while (next < BUTTON_COUNT) {
+            int row = 0, y = 4, big = 0;
+            char name[64];
+            fe_scene_reset(&s, sw, sh);
+            fe_scene_window(&s, FE_WND_MAIN, fe_rect(0, 0, 640, 480));
+            for (; next < BUTTON_COUNT; next++) {
+                const retail_button_t* r = &g_buttons[next];
+                button_t b = k_buttons[next];
+                if (!r->ok) continue;
+                if (row && (big != (r->w > 150) || y + r->h + 4 > 480)) break;
+                big = r->w > 150;
+                for (int k = 0; k < 4; k++) {
+                    static const uint16_t states[4] = { 0, FE_ST_HOVER, FE_ST_PRESSED, FE_ST_DISABLED };
+                    if (!r->tone[k]) continue;
+                    b.x = 4 + k * (big ? 212 : 156);
+                    b.y = y;
+                    put_button(&s, &b, r, 0, 0, states[k]);
+                }
+                y += r->h + 4;
+                row++;
+            }
+            if (!row) break;
+            memset(px, 0x50, sizeof(uint32_t) * sw * sh);
+            if (fe_paint(p, &s, px, sw, fe_rect(0, 0, sw, sh), 4)) {
+                snprintf(name, sizeof name, "buttons_%s_%d", k_languages[l], sheet);
+                write_ppm(dir, name, sw, sh, px);
+            }
+            sheet++;
+        }
+    }
+    free(px);
+    jpt_tr_reset();
+    jpt_l10n_set_display_codepage(0);
+}
+
+/* The Controls window draws its plaques 1.75 times larger: the label must stay centred in the plaque as drawn. */
+static void test_controls_buttons(fe_painter_t* p) {
+    static const char* const names[] = { "ok", "defaults", "cancel" };
+    static fe_scene_t s;
+    const double tolerance = 2.5, margin = 3.0;
+    for (size_t l = 0; l < sizeof k_languages / sizeof k_languages[0]; l++) {
+        if (!load_language(k_languages[l])) continue;
+        for (size_t k = 0; k < 3; k++) {
+            const retail_button_t* r = NULL;
+            const button_t* b = NULL;
+            fe_window_t* w;
+            const fe_widget_t* x;
+            fe_rect_t plaque;
+            double scale;
+            int lines = 0;
+            for (int i = 0; i < BUTTON_COUNT; i++)
+                if (!strcmp(k_buttons[i].picture, names[k])) r = &g_buttons[i], b = &k_buttons[i];
+            if (!r || !r->ok) continue;
+            fe_scene_reset(&s, 1280, 960);
+            w = fe_scene_window(&s, FE_WND_CONTROLS, fe_rect(0, 0, 640, 480));
+            put_button(&s, b, r, 200, 300, 0);
+            fe_scene_finish_window(&s, w);
+            fe_controls_polish(&s, w, FE_CONTROLS_ZOOM);
+            x = &s.widgets[w->first];
+            plaque = fe_rect(x->rect.left, x->rect.top, x->rect.left + (int)floor(r->w * FE_CONTROLS_ZOOM + 0.5),
+                             x->rect.top + (int)floor(r->h * FE_CONTROLS_ZOOM + 0.5));
+            CHECK(fabs((x->label_box.left + x->label_box.right) - (plaque.left + plaque.right)) / 2.0 <= tolerance,
+                  "%s %s: label centre %.1f px off horizontally", k_languages[l], names[k],
+                  ((x->label_box.left + x->label_box.right) - (plaque.left + plaque.right)) / 2.0);
+            CHECK(fabs((x->label_box.top + x->label_box.bottom) - (plaque.top + plaque.bottom)) / 2.0 <= tolerance,
+                  "%s %s: label centre %.1f px off vertically", k_languages[l], names[k],
+                  ((x->label_box.top + x->label_box.bottom) - (plaque.top + plaque.bottom)) / 2.0);
+            CHECK(x->label_room.left >= plaque.left + margin && x->label_room.right <= plaque.right - margin &&
+                      x->label_room.top >= plaque.top + margin && x->label_room.bottom <= plaque.bottom - margin,
+                  "%s %s: room %d,%d-%d,%d outside plaque %d,%d-%d,%d", k_languages[l], names[k], x->label_room.left, x->label_room.top,
+                  x->label_room.right, x->label_room.bottom, plaque.left, plaque.top, plaque.right, plaque.bottom);
+            scale = fe_painter_label_fit(p, FE_LABEL_STENCIL, jpt_tr_cp(b->key), (x->label_box.bottom - x->label_box.top) * VIEW_SCALE,
+                                         (x->label_room.right - x->label_room.left) * VIEW_SCALE,
+                                         (x->label_room.bottom - x->label_room.top) * VIEW_SCALE, &lines);
+            CHECK(scale >= MIN_LABEL_SCALE, "%s %s: fits at %.2f in %d lines", k_languages[l], names[k], scale, lines);
+        }
+    }
+    jpt_tr_reset();
+    jpt_l10n_set_display_codepage(0);
+}
+
+/* Each button's pictures beside the same pictures without their lettering: every state's, at four times their size. */
+static void dump_plaques(const char* dir) {
+    for (int i = 0; i < BUTTON_COUNT; i++) {
+        const retail_button_t* r = &g_buttons[i];
+        const uint16_t* state[4] = { r->normal, r->hover, r->pressed, r->disabled };
+        int rows = 0, sw, sh;
+        uint32_t* px;
+        char name[64];
+        if (!r->ok) continue;
+        for (int k = 0; k < 4; k++) rows += state[k] != NULL;
+        sw = (r->w * 2 + 3) * 4;
+        sh = (r->h + 2) * rows * 4;
+        px = (uint32_t*)malloc(sizeof(uint32_t) * (size_t)sw * sh);
+        if (!px) continue;
+        for (int j = 0; j < sw * sh; j++) px[j] = 0x00805090;
+        for (int k = 0, row = 0; k < 4; k++) {
+            if (!state[k]) continue;
+            for (int side = 0; side < 2; side++) {
+                const uint16_t* bits = side ? r->tone[k] : state[k];
+                if (!bits) continue;
+                for (int y = 0; y < r->h * 4; y++)
+                    for (int x = 0; x < r->w * 4; x++) {
+                        uint16_t v = bits[(y / 4) * r->w + x / 4];
+                        if (v == r->normal[0]) continue;
+                        px[(size_t)(row * (r->h + 2) * 4 + y) * sw + side * (r->w + 1) * 4 + x] =
+                            (uint32_t)(((v >> 11) & 31) * 255 / 31) << 16 | (uint32_t)(((v >> 5) & 63) * 255 / 63) << 8 |
+                            (uint32_t)((v & 31) * 255 / 31);
+                    }
+            }
+            row++;
+        }
+        snprintf(name, sizeof name, "plaque_%s", k_buttons[i].picture);
+        write_ppm(dir, name, sw, sh, px);
+        free(px);
+    }
+}
+
+/* The engraved titles and the main screen's legal lines beside the same pictures without their lettering, at four times
+ * their size. */
+static void dump_titles(const char* dir) {
+    for (int i = 0; i < 3; i++) {
+        const uint16_t* before = i < 2 ? g_title_picture[i] : g_backdrop;
+        const fp_plaque_t* p = i < 2 ? &g_titles[i] : &g_footer;
+        fe_rect_t area = i < 2 ? p->room : fe_rect(0, 440, 640, 480);
+        int w = i < 2 ? g_title_w[i] : 640, aw = area.right - area.left, ah = area.bottom - area.top, sw = aw * 4, sh = (ah * 2 + 1) * 4;
+        uint32_t* px;
+        char name[64];
+        if (!before || !p->clean) continue;
+        px = (uint32_t*)calloc((size_t)sw * sh, sizeof(uint32_t));
+        if (!px) continue;
+        for (int row = 0; row < 2; row++)
+            for (int y = 0; y < ah * 4; y++)
+                for (int x = 0; x < aw * 4; x++) {
+                    uint16_t v = (row ? p->clean : before)[(area.top + y / 4) * w + area.left + x / 4];
+                    px[(size_t)(row * (ah + 1) * 4 + y) * sw + x] = (uint32_t)(((v >> 11) & 31) * 255 / 31) << 16 |
+                                                                    (uint32_t)(((v >> 5) & 63) * 255 / 63) << 8 | (uint32_t)((v & 31) * 255 / 31);
+                }
+        snprintf(name, sizeof name, "title_%d", i);
+        write_ppm(dir, name, sw, sh, px);
+        free(px);
+    }
+}
+
 void frontend_l10n_tests(int* checks, int* failures, const char* dump_dir) {
     char probe[MAX_PATH];
     fe_painter_t* p;
     g_checks = checks;
     g_failures = failures;
+    test_fill_edges();
     snprintf(probe, sizeof probe, MENU_DIR "ms_new_1.tga");
     if (GetFileAttributesA(probe) == INVALID_FILE_ATTRIBUTES) {
         printf("translated labels: game files not found, skipped\n");
         return;
     }
     test_lettering_removed();
+    test_clean_plates();
     p = fe_painter_create();
     CHECK(p != NULL, "painter");
     if (!p) return;
     test_labels_fit(p);
     test_loading_fit(p);
-    if (dump_dir) dump_menus(p, dump_dir);
+    test_controls_buttons(p);
+    if (dump_dir) dump_menus(p, dump_dir), dump_plaques(dump_dir), dump_labelled(p, dump_dir), dump_titles(dump_dir);
     fe_painter_destroy(p);
     for (int i = 0; i < BUTTON_COUNT; i++) {
         free(g_buttons[i].normal);
         free(g_buttons[i].hover);
+        free(g_buttons[i].pressed);
+        free(g_buttons[i].disabled);
+        for (int k = 1; k < 4; k++) free(g_buttons[i].tone[k]);
         fp_free(&g_buttons[i].plaque);
     }
+    free(g_title_picture[0]);
+    free(g_title_picture[1]);
     fp_free(&g_titles[0]);
     fp_free(&g_titles[1]);
     fp_free(&g_footer);

@@ -3,7 +3,8 @@
  * voice captions are swapped where 0x004395A0 hands a sample's caption block to the text overlay, the block being
  * recognised by its English captions (read from the game's own TPAs); menu labels come from translated copies of the
  * DDF files; the port's own text comes from the interface table (jpt_tr.h). A release's text is loaded first and the
- * port's completion files only add what it lacks. Audio is never touched: the English TPAs keep playing.
+ * port's completion files only add what it lacks (captions: they replace the release's lines with the corrected timing).
+ * Audio is never translated: the English voices keep playing, and stream_audio.c serves the TPA they come from.
  */
 #include "l10n.h"
 
@@ -16,6 +17,7 @@
 #include "jpt_tr.h"
 #include "jpt_user_data.h"
 #include "l10n_assets.h"
+#include "stream_audio.h"
 
 #define CAPTIONS_VA 0x004395A0u
 #define TEXT_ACTION_VA 0x00472B60u
@@ -137,18 +139,27 @@ static entry_t* find_entry(unsigned id) {
 
 static int find_caption(const char* pack, uint32_t sample);
 
-/* ctx is non-NULL for the port's completion: a sample the release already captions keeps the release's text. */
+/* ctx is non-NULL for the port's completion: a sample the release already captions takes the completion's lines, which
+ * carry the corrected timing. */
 static void add_caption(void* ctx, const char* pack, uint32_t sample, int count, const uint32_t* units,
                         const char* const* lines) {
     char* converted[JPT_CAPTION_MAX_LINES];
     uint8_t block[0x2000];
     size_t size;
-    int ok = 1;
-    if (ctx && find_caption(pack, sample) >= 0) return;
+    int ok = 1, existing = ctx ? find_caption(pack, sample) : -1;
     for (int i = 0; i < count; i++) ok = (converted[i] = ok ? to_display(lines[i]) : NULL) != NULL && ok;
     size = ok ? jpt_caption_build(count, units, (const char* const*)converted, block, sizeof block) : 0;
     for (int i = 0; i < count; i++) free(converted[i]);
     if (!size) return;
+    if (existing >= 0) {
+        uint8_t* replaced = (uint8_t*)malloc(size);
+        if (!replaced) return;
+        memcpy(replaced, block, size);
+        free(L.captions[existing].block);
+        L.captions[existing].block = replaced;
+        L.captions[existing].size = size;
+        return;
+    }
     if (L.caption_count == L.caption_cap) {
         int cap = L.caption_cap ? L.caption_cap * 2 : 256;
         caption_t* grown = (caption_t*)realloc(L.captions, (size_t)cap * sizeof *grown);
@@ -179,8 +190,7 @@ static int fp_slot(uint64_t fp) {
 
 typedef struct {
     const char* pack;
-    int matched, english_only, ambiguous;
-    unsigned char* used;
+    int matched, english_only;
 } scan_t;
 
 static void on_english_caption(void* ctx, uint32_t sample, const uint8_t* block, size_t n) {
@@ -191,13 +201,7 @@ static void on_english_caption(void* ctx, uint32_t sample, const uint8_t* block,
         s->english_only++;
         return;
     }
-    s->used[index] = 1;
-    if ((slot = fp_slot(fp)) < 0) return;
-    if (L.fp_value[slot] >= 0) {
-        const caption_t *a = &L.captions[L.fp_value[slot]], *b = &L.captions[index];
-        if (a->size != b->size || memcmp(a->block, b->block, a->size)) s->ambiguous++;
-        return;
-    }
+    if ((slot = fp_slot(fp)) < 0 || L.fp_value[slot] >= 0) return;
     L.fp_key[slot] = fp;
     L.fp_value[slot] = index;
     s->matched++;
@@ -209,6 +213,10 @@ static int read_handle(void* ctx, uint64_t offset, void* buf, size_t n) {
     at.QuadPart = (LONGLONG)offset;
     return SetFilePointerEx((HANDLE)ctx, at, NULL, FILE_BEGIN) && ReadFile((HANDLE)ctx, buf, (DWORD)n, &got, NULL) &&
            got == n;
+}
+
+static int read_pack(void* ctx, uint64_t offset, void* buf, size_t n) {
+    return stream_pack_read((const stream_pack_t*)ctx, offset, buf, n) == (long)n;
 }
 
 /* The game looks for <game>\X before <game>\data\X. */
@@ -228,31 +236,29 @@ static DWORD WINAPI scan_english_captions(LPVOID unused) {
         { "Stream.tpa", "stream" }, { "Effects.tpa", "effects" }, { "Ambient.tpa", "ambient" }, { "Menu.tpa", "menu" },
     };
     scan_t s;
-    int unused_samples = 0;
     (void)unused;
     memset(&s, 0, sizeof s);
-    s.used = (unsigned char*)calloc((size_t)L.caption_count + 1, 1);
-    if (!s.used) return 0;
     for (int i = 0; i < 4; i++) {
         char path[MAX_PATH];
         LARGE_INTEGER size;
         jpt_tpa_stats_t st;
+        stream_pack_t* view;
         HANDLE h = open_game_file(files[i][0], path, sizeof path);
         if (h == INVALID_HANDLE_VALUE) continue;
         s.pack = files[i][1];
+        view = i == 0 && GetFileSizeEx(h, &size) ? stream_audio_open_view(h, (uint64_t)size.QuadPart) : NULL;
         if (!GetFileSizeEx(h, &size) ||
-            !jpt_tpa_captions(read_handle, h, (uint64_t)size.QuadPart, on_english_caption, &s, &st))
+            !(view ? jpt_tpa_captions(read_pack, view, stream_pack_size(view), on_english_caption, &s, &st)
+                   : jpt_tpa_captions(read_handle, h, (uint64_t)size.QuadPart, on_english_caption, &s, &st)))
             host_log("l10n", "%s is not a readable TPA: its captions stay English", path);
         else if (st.captioned)
             host_log("l10n", "%s: %d captioned samples of %d%s", path, st.captioned, st.samples,
                      st.malformed ? " (some malformed)" : "");
+        stream_pack_close(view);
         CloseHandle(h);
     }
-    for (int i = 0; i < L.caption_count; i++) unused_samples += !s.used[i];
-    free(s.used);
-    host_log("l10n", "subtitles: %d English caption blocks translated, %d without a translation (English kept), %d "
-                     "translated samples the English TPAs do not caption (never played)%s",
-             s.matched, s.english_only, unused_samples, s.ambiguous ? ", some identical English blocks differ" : "");
+    host_log("l10n", "subtitles: %d English caption blocks translated, %d without a translation (English kept)",
+             s.matched, s.english_only);
     InterlockedExchange(&L.captions_ready, 1);
     return 0;
 }

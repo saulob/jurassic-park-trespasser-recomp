@@ -10,6 +10,7 @@
 #define COBJMACROS
 #include "d3d_legacy.h"
 #include "host.h"
+#include "jpt_gpu.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -36,38 +37,80 @@ typedef struct {
 
 static presenter_t s_p;
 static int s_vsync = 1;
+static char s_graphics_card[JPT_GPU_LABEL_MAX];
+static dd_adapter_t s_adapter;
+static int s_adapter_state;
 
 void present_set_vsync(int on) { s_vsync = on; }
 
+void present_set_graphics_card(const char* name) { snprintf(s_graphics_card, sizeof s_graphics_card, "%s", name ? name : ""); }
+
 static void log_hr(const char* what, HRESULT hr) { host_log("d3d11", "%s failed, HRESULT 0x%08lX", what, (unsigned long)hr); }
 
-int present_adapter(dd_adapter_t* out) {
-    static dd_adapter_t cached;
-    static int state;
+/* The jpt_gpu_list index of the Graphics card setting's adapter, resolved once; -1 when no adapter is usable. */
+static int chosen_adapter_index(void) {
+    static int index = -2;
+    jpt_gpu_t gpus[JPT_GPU_MAX];
+    int count;
+    if (index != -2) return index;
+    count = jpt_gpu_list(gpus, JPT_GPU_MAX);
+    index = jpt_gpu_resolve(gpus, count, s_graphics_card);
+    if (index < 0) {
+        host_log("d3d11", "no graphics card found: Direct3D 11 chooses the device");
+        return index;
+    }
+    if (s_graphics_card[0] && strcmp(gpus[index].label, s_graphics_card))
+        host_log("d3d11", "saved graphics card \"%s\" not available; using %s", s_graphics_card, gpus[index].label);
+    host_log("d3d11", "graphics card: %s (DXGI adapter %d)", gpus[index].label, index);
+    return index;
+}
+
+static IDXGIAdapter* open_adapter(int index) {
     IDXGIFactory1* factory = NULL;
     IDXGIAdapter1* adapter = NULL;
-    memset(out, 0, sizeof *out);
-    if (state == 0) {
-        DXGI_ADAPTER_DESC1 desc;
-        state = -1;
-        if (SUCCEEDED(CreateDXGIFactory1(&IID_IDXGIFactory1, (void**)&factory)) &&
-            SUCCEEDED(IDXGIFactory1_EnumAdapters1(factory, 0, &adapter)) &&
-            SUCCEEDED(IDXGIAdapter1_GetDesc1(adapter, &desc))) {
-            WideCharToMultiByte(CP_ACP, 0, desc.Description, -1, cached.description, sizeof cached.description - 1, NULL, NULL);
-            cached.vendor = desc.VendorId;
-            cached.device = desc.DeviceId;
-            cached.subsystem = desc.SubSysId;
-            cached.revision = desc.Revision;
-            cached.dedicated_video_memory = desc.DedicatedVideoMemory;
-            IDXGIAdapter1_CheckInterfaceSupport(adapter, &IID_IDXGIDevice, &cached.driver_version);
-            state = 1;
-        }
-        if (adapter) IDXGIAdapter1_Release(adapter);
-        if (factory) IDXGIFactory1_Release(factory);
-    }
-    if (state != 1) return 0;
-    *out = cached;
+    if (index < 0 || FAILED(CreateDXGIFactory1(&IID_IDXGIFactory1, (void**)&factory))) return NULL;
+    if (FAILED(IDXGIFactory1_EnumAdapters1(factory, (UINT)index, &adapter))) adapter = NULL;
+    IDXGIFactory1_Release(factory);
+    return (IDXGIAdapter*)adapter;
+}
+
+static int describe_adapter(IDXGIAdapter* adapter) {
+    DXGI_ADAPTER_DESC desc;
+    if (!adapter || FAILED(IDXGIAdapter_GetDesc(adapter, &desc))) return 0;
+    memset(&s_adapter, 0, sizeof s_adapter);
+    WideCharToMultiByte(CP_ACP, 0, desc.Description, -1, s_adapter.description, sizeof s_adapter.description - 1, NULL, NULL);
+    s_adapter.vendor = desc.VendorId;
+    s_adapter.device = desc.DeviceId;
+    s_adapter.subsystem = desc.SubSysId;
+    s_adapter.revision = desc.Revision;
+    s_adapter.dedicated_video_memory = desc.DedicatedVideoMemory;
+    IDXGIAdapter_CheckInterfaceSupport(adapter, &IID_IDXGIDevice, &s_adapter.driver_version);
+    s_adapter_state = 1;
     return 1;
+}
+
+/* The device's adapter once it exists; before that, the one it will be created on. */
+int present_adapter(dd_adapter_t* out) {
+    memset(out, 0, sizeof *out);
+    if (!s_adapter_state) {
+        IDXGIAdapter* adapter = open_adapter(chosen_adapter_index());
+        if (!adapter) adapter = open_adapter(0);
+        if (!describe_adapter(adapter)) s_adapter_state = -1;
+        if (adapter) IDXGIAdapter_Release(adapter);
+    }
+    if (s_adapter_state != 1) return 0;
+    *out = s_adapter;
+    return 1;
+}
+
+static void describe_device_adapter(void) {
+    IDXGIDevice* dxgi_device = NULL;
+    IDXGIAdapter* adapter = NULL;
+    if (SUCCEEDED(ID3D11Device_QueryInterface(s_p.device, &IID_IDXGIDevice, (void**)&dxgi_device)) &&
+        SUCCEEDED(IDXGIDevice_GetAdapter(dxgi_device, &adapter)))
+        describe_adapter(adapter);
+    if (adapter) IDXGIAdapter_Release(adapter);
+    if (dxgi_device) IDXGIDevice_Release(dxgi_device);
 }
 
 static void release_staging(void) {
@@ -100,29 +143,38 @@ void present_release(void) {
     s_p.width = s_p.height = 0;
 }
 
+static HRESULT create_on(IDXGIAdapter* adapter, D3D_DRIVER_TYPE type, D3D_FEATURE_LEVEL* level) {
+    return D3D11CreateDevice(adapter, type, NULL, 0, (const D3D_FEATURE_LEVEL*)jpt_gpu_feature_levels,
+                             JPT_GPU_FEATURE_LEVEL_COUNT, D3D11_SDK_VERSION, &s_p.device, level, &s_p.context);
+}
+
 static int create_device(void) {
-    static const D3D_FEATURE_LEVEL levels[] = {
-        D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_9_3, D3D_FEATURE_LEVEL_9_1,
-    };
     D3D_FEATURE_LEVEL level;
-    dd_adapter_t adapter;
-    HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION,
-                                   &s_p.device, &level, &s_p.context);
+    IDXGIAdapter* chosen = open_adapter(chosen_adapter_index());
     const char* kind = "hardware";
+    HRESULT hr = E_FAIL;
+    if (chosen) {
+        /* An explicit adapter takes D3D_DRIVER_TYPE_UNKNOWN; HARDWARE is only valid with a NULL adapter. */
+        hr = create_on(chosen, D3D_DRIVER_TYPE_UNKNOWN, &level);
+        IDXGIAdapter_Release(chosen);
+        if (FAILED(hr)) log_hr("D3D11CreateDevice (graphics card)", hr);
+    }
     if (FAILED(hr)) {
-        log_hr("D3D11CreateDevice (hardware)", hr);
-        hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_WARP, NULL, 0, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION,
-                               &s_p.device, &level, &s_p.context);
+        hr = create_on(NULL, D3D_DRIVER_TYPE_HARDWARE, &level);
+        if (FAILED(hr)) log_hr("D3D11CreateDevice (hardware)", hr);
+    }
+    if (FAILED(hr)) {
+        hr = create_on(NULL, D3D_DRIVER_TYPE_WARP, &level);
         kind = "WARP";
     }
     if (FAILED(hr)) {
         log_hr("D3D11CreateDevice (WARP)", hr);
         return 0;
     }
-    present_adapter(&adapter);
+    describe_device_adapter();
     s_p.generation++;
     host_log("d3d11", "device created: %s, feature level %u.%u, adapter \"%s\"", kind, ((unsigned)level >> 12) & 0xF,
-             ((unsigned)level >> 8) & 0xF, adapter.description);
+             ((unsigned)level >> 8) & 0xF, s_adapter.description);
     return 1;
 }
 

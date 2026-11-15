@@ -14,6 +14,7 @@
 
 #include "frontend_hd.h"
 #include "l10n.h"
+#include "stream_audio.h"
 
 #define SUCCESS_LINE_LIMIT 300
 #define FAILURE_LINE_LIMIT 1000
@@ -150,6 +151,7 @@ void shim_CloseHandle(void) {
     HANDLE h = (HANDLE)GUEST_PTR(0);
     for (int i = 0; i < MAX_SWAP_FILES; i++)
         if (s_swap[i].handle == h) s_swap[i].handle = NULL;
+    stream_audio_detach(h);
     g_eax = (uint32_t)CloseHandle(h);
     GUEST_RETURN_STDCALL(1);
 }
@@ -163,6 +165,7 @@ void shim_CreateFileA(void) {
                            GUEST_ARG(4), GUEST_ARG(5), (HANDLE)GUEST_PTR(6));
     DWORD error = GetLastError();
     if (h != INVALID_HANDLE_VALUE && is_swap_file(path)) note_swap_file(path, h);
+    if (h != INVALID_HANDLE_VALUE && GUEST_ARG(4) == OPEN_EXISTING) stream_audio_attach(h, path, GUEST_ARG(1), GUEST_ARG(5));
     SetLastError(error);
     report("CreateFileA", path, h != INVALID_HANDLE_VALUE, GetLastError());
     g_eax = (uint32_t)(uintptr_t)h;

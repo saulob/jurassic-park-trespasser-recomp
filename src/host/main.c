@@ -17,6 +17,7 @@
 #include "jpt_user_data.h"
 #include "l10n.h"
 #include "loading_hd.h"
+#include "stream_audio.h"
 #include "recomp_trace.h"
 
 #ifndef TRESPASSER_DEFAULT_GAME_DIR
@@ -70,6 +71,9 @@ static native32_shim_t s_shims[] = {
     { "RegCloseKey", shim_RegCloseKey },
     { "CreateFileA", shim_CreateFileA },
     { "CloseHandle", shim_CloseHandle },
+    { "ReadFile", shim_ReadFile },
+    { "SetFilePointer", shim_SetFilePointer },
+    { "GetFileSize", shim_GetFileSize },
     { "GetFileAttributesA", shim_GetFileAttributesA },
     { "FindFirstFileA", shim_FindFirstFileA },
     { "LZOpenFileA", shim_LZOpenFileA },
@@ -468,6 +472,7 @@ int main(int argc, char** argv) {
         box = jpt_render_box(cfg.render_preset, cfg.aspect, monitor_w, monitor_h);
     }
     log_settings(&cfg, box, monitor_w, monitor_h);
+    stream_audio_init();
     l10n_init(user.cache_dir, game_dir, cfg.language);
     gamepad_configure(&cfg.gamepad);
     if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
@@ -476,6 +481,7 @@ int main(int argc, char** argv) {
                           cfg.show_resolution_title,
                           settings_file);
     present_set_vsync(cfg.vsync);
+    present_set_graphics_card(cfg.graphics_card);
     native32_init();
     /* Lifted .text always resolves to the same function (an override switches inside its stable entry), so call sites
      * keep it. */

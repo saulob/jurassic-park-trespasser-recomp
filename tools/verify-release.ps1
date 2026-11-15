@@ -30,6 +30,10 @@ $LocalPaths = foreach ($local in @($Root, $env:USERPROFILE) | Where-Object { $_ 
     }
 }
 
+# Folders the translation and audio sources were read from during development: never part of a release.
+$DevelopmentSources = @(('Decomp_' + 'Downloads'), ('Trespasser_English_' + 'captions'))
+$LocalPaths = @($LocalPaths) + $DevelopmentSources + @($DevelopmentSources | ForEach-Object { $Latin1.GetString([Text.Encoding]::Unicode.GetBytes($_)) })
+
 function Test-ReleaseFolder([string]$Dir) {
     $problems = New-Object System.Collections.Generic.List[string]
     $base = (Resolve-Path -LiteralPath $Dir).Path.TrimEnd('\')

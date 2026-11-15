@@ -1,0 +1,6 @@
+# Trespasser Recompiled restored audio 1
+sample	e381cd87	name=VA208	file=e381cd87.sample	record=143634	payload=143548	sha256=91b85465b71f7175c6fe0f66a5fa6cd0ef44936fd852097aa4ffa4b398209d5d	format=0x110	codec=pcm	channels=1	bits=16	rate=22050	duration_ms=3255	replaces=-
+sample	f3da10ce	name=VA34	file=f3da10ce.sample	record=82009	payload=81922	sha256=14a47db8b2f9921eddfa65998159934f37ef5ba61bc4b6adae90a765bfa22299	format=0x110	codec=pcm	channels=1	bits=16	rate=22050	duration_ms=1858	replaces=-
+sample	eac1218f	name=VA24	file=eac1218f.sample	record=250015	payload=249858	sha256=618c16a0157a8e21eb158997f5d078b2c48f2e967346276b390a378616eb857b	format=0x110	codec=pcm	channels=1	bits=16	rate=22050	duration_ms=5666	replaces=-
+sample	c3aa156d	name=SPEC-TOUR GUIDE	file=c3aa156d.sample	record=704774	payload=704514	sha256=65b25d2394f5f59053c9e74742651bb914d09a6b9465e85e5ede43aba2af3646	format=0x110	codec=pcm	channels=1	bits=16	rate=22050	duration_ms=15975	replaces=-
+sample	4978d21e	name=VCRAYCOMPUTER	file=4978d21e.sample	record=2979258	payload=2978820	sha256=8aaaf911cef4ce2d7042e806bcb275de519263b943e7dae482246f7e746b3372	format=0x210	codec=pcm	channels=2	bits=16	rate=22050	duration_ms=33773	replaces=c9e9fb49243210734abb7ba4fc5cc5b3f8590c31d195ebd2daa250a522e47e94

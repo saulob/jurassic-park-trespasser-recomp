@@ -325,7 +325,7 @@ static void test_language_mapping(void) {
         for (int i = 0; i < JPT_L10N_LANGUAGE_COUNT; i++) CHECK(!strcmp(jpt_l10n_languages[i].name, names[i]));
     }
     CHECK(jpt_l10n_language("ru")->codepage == 1251 && jpt_l10n_language("de")->codepage == 1252);
-    CHECK(JPT_L10N_CREDIT_COUNT == 6 && !strcmp(jpt_l10n_credits[0].language, "pt-BR") &&
+    CHECK(JPT_L10N_CREDIT_COUNT == 7 && !strcmp(jpt_l10n_credits[0].language, "pt-BR") &&
           !strcmp(jpt_l10n_credits[0].converter, "Nick3069") && !strcmp(jpt_l10n_credits[4].author, "cynodesmus") &&
           !strcmp(jpt_l10n_credits[5].author, "KeyofBlueS") && !strcmp(JPT_L10N_PRESERVATION, "TresCom community"));
     for (int i = 0; i < JPT_L10N_CREDIT_COUNT; i++)
@@ -522,12 +522,12 @@ static void test_embedded_text(void) {
             s.codepage = 1252;
             CHECK(!l10n_asset(port[i], JPT_L10N_SUBTITLES_ASSET, &data, &n));
             CHECK(l10n_asset(port[i], JPT_L10N_SUBTITLES_PORT_ASSET, &data, &n));
-            CHECK(jpt_l10n_read_subtitles(data, n, check_embedded_sample, &s) == 478 && s.effects == 76 && !s.bad && !s.lost);
+            CHECK(jpt_l10n_read_subtitles(data, n, check_embedded_sample, &s) == 486 && s.effects == 76 && !s.bad && !s.lost);
         }
     }
     CHECK(!l10n_asset("it", JPT_L10N_STRINGS_ASSET, &data, &n) && !l10n_asset("en", JPT_L10N_STRINGS_ASSET, &data, &n));
-    CHECK(!l10n_asset("en", JPT_L10N_SUBTITLES_ASSET, &data, &n) && !l10n_asset("xx", JPT_L10N_STRINGS_ASSET, &data, &n));
-    CHECK(!l10n_asset("ru", JPT_L10N_SUBTITLES_PORT_ASSET, &data, &n) && l10n_asset("it", JPT_L10N_SUBTITLES_PORT_ASSET, &data, &n));
+    CHECK(l10n_asset("en", JPT_L10N_SUBTITLES_ASSET, &data, &n) && !l10n_asset("xx", JPT_L10N_STRINGS_ASSET, &data, &n));
+    CHECK(l10n_asset("ru", JPT_L10N_SUBTITLES_PORT_ASSET, &data, &n) && l10n_asset("it", JPT_L10N_SUBTITLES_PORT_ASSET, &data, &n));
 }
 
 typedef struct {

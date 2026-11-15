@@ -7,6 +7,8 @@
 #define ALIGN_RANGE 5
 #define FILL_SWEEPS 400
 #define FILL_SOR 1.85f
+#define NEAR_GAP 3
+#define LETTER_GAP 8
 #define WIDE_PLATE 150 /* the main screen's torn plaques: their edges and rivets reach further in */
 
 typedef struct {
@@ -183,7 +185,6 @@ static int keep_on_black(void* ctx, const component_t* c, const int* pixels) {
             }
             if (n > best) best = n, bx = dx, by = dy;
         }
-    if (best * 100 < c->size * 35) return 0;
     if (best * 100 >= c->size * 60 && (c->box.bottom - c->box.top) * 10 >= k->band * 6 && k->strong_count < 64)
         k->strong[k->strong_count++] = fe_rect_offset(c->box, bx, by);
     for (int i = 0; i < c->size; i++) {
@@ -193,89 +194,198 @@ static int keep_on_black(void* ctx, const component_t* c, const int* pixels) {
     return 1;
 }
 
-/* The offset up (sign -1) or down whose rows cover most of the hole with usable pixels and the fewest horizontal
- * edges (a plate's bevel copied into the middle would show); the nearer of equals. */
-static int best_offset(const float* rgb, const uint8_t* good, const int* holes, int count, int w, int h, int span,
-                       int sign) {
-    int best = sign;
-    float best_score = -1e9f;
-    for (int d = span * 6 / 10 > 3 ? span * 6 / 10 : 3; d <= span + 10; d++) {
-        int ok = 0;
-        float score, edges = 0.0f;
-        for (int i = 0; i < count; i++) {
-            int y = holes[i] / w + sign * d, q = y * w + holes[i] % w;
-            if (y < 1 || y >= h || !good[q] || !good[q - w]) continue;
-            ok++;
-            edges += fabsf(mean3(rgb + (size_t)q * 3) - mean3(rgb + (size_t)(q - w) * 3));
-        }
-        score = (float)ok / (float)count - 0.004f * (float)d - (ok ? 0.012f * edges / (float)ok : 0.0f);
-        if (score > best_score) best_score = score, best = sign * d;
-    }
-    return best;
+#define BLOCK_R 3
+#define BLOCK_STEP 3
+#define DETAIL_FINE 1
+#define DETAIL_COARSE 4
+#define CALM_PERCENT 50
+#define WINDOW_MARGIN 40
+
+static uint32_t next_random(uint32_t* state) {
+    *state = *state * 1664525u + 1013904223u;
+    return *state >> 8;
 }
 
-/* The guide at a pixel: the average of the picture above and below the hole where usable. */
-static int guide(const float* rgb, const uint8_t* good, int w, int h, int p, const int* dy, float* out) {
-    int n = 0;
-    out[0] = out[1] = out[2] = 0.0f;
-    for (int k = 0; k < 2; k++) {
-        int y = p / w + dy[k];
-        if (y < 0 || y >= h || !good[p + dy[k] * w]) continue;
-        for (int c = 0; c < 3; c++) out[c] += rgb[((size_t)p + (size_t)(dy[k] * w)) * 3 + c];
-        n++;
-    }
-    for (int c = 0; n && c < 3; c++) out[c] /= (float)n;
-    return n;
+static int compare_floats(const void* a, const void* b) {
+    float x = *(const float*)a, y = *(const float*)b;
+    return x < y ? -1 : x > y;
 }
 
-void fp_fill(float* rgb, const uint8_t* valid, const uint8_t* hole, int w, int h) {
+/* The harmonic fill of the hole from the pixels around it: smooth, and free of anything the hole's neighbours lack. */
+static void smooth_fill(float* rgb, const uint8_t* valid, const int* holes, int count, int w, int h) {
     static const int d[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
-    int count = 0, top = h, bottom = -1, dy[2];
-    int* holes;
-    uint8_t *good, *around, *sources = NULL;
-    float* guides = NULL;
-    for (int i = 0; i < w * h; i++)
-        if (hole[i]) {
-            count++;
-            if (i / w < top) top = i / w;
-            if (i / w > bottom) bottom = i / w;
-        }
-    if (!count) return;
-    holes = (int*)malloc(sizeof(int) * (size_t)count);
-    good = mask_new(w, h);
-    around = dilated(hole, w, h, 2);
-    if (!holes || !good || !around) {
-        free(holes), free(good), free(around);
-        return;
-    }
-    count = 0;
-    for (int i = 0; i < w * h; i++) {
-        if (hole[i]) holes[count++] = i;
-        good[i] = valid[i] && !around[i];
-    }
-    dy[0] = best_offset(rgb, good, holes, count, w, h, bottom - top + 1, -1);
-    dy[1] = best_offset(rgb, good, holes, count, w, h, bottom - top + 1, 1);
-    /* The guide's gradients are kept, its level is set by the hole's edge. */
-    guides = (float*)malloc(sizeof(float) * 3 * (size_t)w * (size_t)h);
-    sources = mask_new(w, h);
-    if (!guides || !sources) {
-        free(holes), free(good), free(around), free(guides), free(sources);
-        return;
-    }
-    for (int p = 0; p < w * h; p++) sources[p] = (uint8_t)guide(rgb, good, w, h, p, dy, guides + (size_t)p * 3);
-    for (int i = 0; i < count; i++)
-        if (sources[holes[i]]) memcpy(rgb + (size_t)holes[i] * 3, guides + (size_t)holes[i] * 3, sizeof(float) * 3);
     for (int sweep = 0; sweep < FILL_SWEEPS; sweep++)
         for (int i = 0; i < count; i++) {
             int p = holes[i], x = p % w, y = p / w, n = 0;
             float sum[3] = { 0, 0, 0 };
             for (int k = 0; k < 4; k++) {
-                int nx = x + d[k][0], ny = y + d[k][1], q = ny * w + nx, guided;
+                int nx = x + d[k][0], ny = y + d[k][1], q = ny * w + nx;
                 if (nx < 0 || ny < 0 || nx >= w || ny >= h || !valid[q]) continue;
-                guided = sources[p] && sources[q] == sources[p];
+                for (int c = 0; c < 3; c++) sum[c] += rgb[(size_t)q * 3 + c];
+                n++;
+            }
+            if (!n) continue;
+            for (int c = 0; c < 3; c++) {
+                float* v = rgb + (size_t)p * 3 + c;
+                *v += FILL_SOR * (sum[c] / (float)n - *v);
+            }
+        }
+}
+
+/* The brightness spread of the block around centre; detail is the picture without its blur. */
+static float block_contrast(const float* detail, int w, int centre) {
+    float sq = 0.0f;
+    for (int dy = -BLOCK_R; dy <= BLOCK_R; dy++)
+        for (int dx = -BLOCK_R; dx <= BLOCK_R; dx++) {
+            float v = mean3(detail + ((size_t)centre + (size_t)(dy * w + dx)) * 3);
+            sq += v * v;
+        }
+    return sq;
+}
+
+static float hann(int k) { return 0.5f + 0.5f * cosf(3.14159265f * (float)k / (float)(BLOCK_R + 1)); }
+
+/* The grain the smooth fill lacks: blocks of the picture's own fine detail (its pixels less their blur), taken from
+ * the calmer parts of the picture near the hole (no rivets, edges or glints), set down in random places overlapping and
+ * faded into each other, so that no stripe or edge of the plate is repeated. */
+static void grain_fill(float* rgb, const uint8_t* hole, const uint8_t* good, const float* original, int w, int h) {
+    fe_rect_t box = fe_rect(w, h, 0, 0), win;
+    float *detail, *sum, *weight, *spread;
+    int *pool, pool_count = 0;
+    uint32_t seed = 987654321u;
+    float level = 0.0f, result = 0.0f;
+    size_t n = (size_t)w * (size_t)h;
+    int hole_count = 0;
+    for (int i = 0; i < w * h; i++)
+        if (hole[i]) {
+            if (i % w < box.left) box.left = i % w;
+            if (i / w < box.top) box.top = i / w;
+            if (i % w + 1 > box.right) box.right = i % w + 1;
+            if (i / w + 1 > box.bottom) box.bottom = i / w + 1;
+        }
+    win = fe_rect_intersect(fe_rect_inflate(box, WINDOW_MARGIN, WINDOW_MARGIN), fe_rect(0, 0, w, h));
+    detail = (float*)calloc(n * 3, sizeof(float));
+    sum = (float*)calloc(n * 3, sizeof(float));
+    weight = (float*)calloc(n, sizeof(float));
+    spread = (float*)malloc(sizeof(float) * n);
+    pool = (int*)malloc(sizeof(int) * n);
+    if (!detail || !sum || !weight || !spread || !pool) goto done;
+    for (int y = win.top; y < win.bottom; y++)
+        for (int x = win.left; x < win.right; x++) {
+            float mean[2][3] = { { 0, 0, 0 }, { 0, 0, 0 } };
+            int m[2] = { 0, 0 };
+            if (!good[y * w + x]) continue;
+            for (int dy = -DETAIL_COARSE; dy <= DETAIL_COARSE; dy++)
+                for (int dx = -DETAIL_COARSE; dx <= DETAIL_COARSE; dx++) {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h || !good[ny * w + nx]) continue;
+                    for (int k = 0; k < 2; k++) {
+                        int reach = k ? DETAIL_COARSE : DETAIL_FINE;
+                        if (abs(dx) > reach || abs(dy) > reach) continue;
+                        for (int c = 0; c < 3; c++) mean[k][c] += original[((size_t)ny * w + nx) * 3 + c];
+                        m[k]++;
+                    }
+                }
+            for (int c = 0; c < 3; c++) detail[((size_t)y * w + x) * 3 + c] = mean[0][c] / (float)m[0] - mean[1][c] / (float)m[1];
+        }
+    for (int y = win.top + BLOCK_R; y < win.bottom - BLOCK_R; y++)
+        for (int x = win.left + BLOCK_R; x < win.right - BLOCK_R; x++) {
+            int ok = 1;
+            for (int dy = -BLOCK_R; ok && dy <= BLOCK_R; dy++)
+                for (int dx = -BLOCK_R; dx <= BLOCK_R; dx++)
+                    if (!good[(y + dy) * w + x + dx]) {
+                        ok = 0;
+                        break;
+                    }
+            if (ok) pool[pool_count++] = y * w + x;
+        }
+    if (pool_count < 8) goto done;
+    for (int k = 0; k < pool_count; k++) spread[k] = block_contrast(detail, w, pool[k]);
+    {
+        float* sorted = (float*)malloc(sizeof(float) * (size_t)pool_count);
+        float limit;
+        int kept = 0;
+        if (!sorted) goto done;
+        memcpy(sorted, spread, sizeof(float) * (size_t)pool_count);
+        qsort(sorted, (size_t)pool_count, sizeof(float), compare_floats);
+        limit = sorted[(pool_count - 1) * CALM_PERCENT / 100];
+        free(sorted);
+        for (int k = 0; k < pool_count; k++) {
+            if (spread[k] > limit) continue;
+            pool[kept++] = pool[k];
+            level += spread[k];
+        }
+        pool_count = kept;
+        level = sqrtf(level / (float)(pool_count * (2 * BLOCK_R + 1) * (2 * BLOCK_R + 1)));
+    }
+    for (int by = box.top - BLOCK_R; by < box.bottom + BLOCK_R; by += BLOCK_STEP)
+        for (int bx = box.left - BLOCK_R; bx < box.right + BLOCK_R; bx += BLOCK_STEP) {
+            int s = pool[next_random(&seed) % (unsigned)pool_count];
+            for (int dy = -BLOCK_R; dy <= BLOCK_R; dy++)
+                for (int dx = -BLOCK_R; dx <= BLOCK_R; dx++) {
+                    int x = bx + dx, y = by + dy;
+                    float k;
+                    if (x < 0 || y < 0 || x >= w || y >= h || !hole[y * w + x]) continue;
+                    k = hann(dx) * hann(dy);
+                    for (int c = 0; c < 3; c++) sum[((size_t)y * w + x) * 3 + c] += k * detail[((size_t)s + (size_t)(dy * w + dx)) * 3 + c];
+                    weight[y * w + x] += k;
+                }
+        }
+    for (int i = 0; i < w * h; i++)
+        if (hole[i] && weight[i] > 0.0f) {
+            float v;
+            for (int c = 0; c < 3; c++) sum[(size_t)i * 3 + c] /= weight[i];
+            v = mean3(sum + (size_t)i * 3);
+            result += v * v;
+            hole_count++;
+        }
+    if (!hole_count) goto done;
+    result = sqrtf(result / (float)hole_count);
+    {
+        /* Averaged blocks are calmer than the blocks themselves. */
+        float gain = result > 0.01f ? level / result : 1.0f;
+        gain = gain < 0.6f ? 0.6f : gain > 1.2f ? 1.2f : gain;
+        for (int i = 0; i < w * h; i++)
+            if (hole[i] && weight[i] > 0.0f)
+                for (int c = 0; c < 3; c++) rgb[(size_t)i * 3 + c] += gain * sum[(size_t)i * 3 + c];
+    }
+done:
+    free(detail), free(sum), free(weight), free(spread), free(pool);
+}
+
+void fp_fill(float* rgb, const uint8_t* valid, const uint8_t* hole, int w, int h) {
+    static const int d[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+    int count = 0;
+    int* holes;
+    uint8_t *good, *around;
+    float *original, *texture;
+    for (int i = 0; i < w * h; i++) count += hole[i] != 0;
+    if (!count) return;
+    holes = (int*)malloc(sizeof(int) * (size_t)count);
+    good = mask_new(w, h);
+    around = dilated(hole, w, h, 2);
+    original = (float*)malloc(sizeof(float) * 3 * (size_t)w * (size_t)h);
+    texture = (float*)malloc(sizeof(float) * 3 * (size_t)w * (size_t)h);
+    if (!holes || !good || !around || !original || !texture) goto done;
+    memcpy(original, rgb, sizeof(float) * 3 * (size_t)w * (size_t)h);
+    count = 0;
+    for (int i = 0; i < w * h; i++) {
+        if (hole[i]) holes[count++] = i;
+        good[i] = valid[i] && !around[i];
+    }
+    smooth_fill(rgb, valid, holes, count, w, h);
+    grain_fill(rgb, hole, good, original, w, h);
+    memcpy(texture, rgb, sizeof(float) * 3 * (size_t)w * (size_t)h);
+    /* The grain's gradients are kept, its level is set by the hole's edge. */
+    for (int sweep = 0; sweep < FILL_SWEEPS; sweep++)
+        for (int i = 0; i < count; i++) {
+            int p = holes[i], x = p % w, y = p / w, n = 0;
+            float sum[3] = { 0, 0, 0 };
+            for (int k = 0; k < 4; k++) {
+                int nx = x + d[k][0], ny = y + d[k][1], q = ny * w + nx;
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h || !valid[q]) continue;
                 for (int c = 0; c < 3; c++)
-                    sum[c] += rgb[(size_t)q * 3 + c] +
-                              (guided ? guides[(size_t)p * 3 + c] - guides[(size_t)q * 3 + c] : 0.0f);
+                    sum[c] += rgb[(size_t)q * 3 + c] + (hole[q] ? texture[(size_t)p * 3 + c] - texture[(size_t)q * 3 + c] : 0.0f);
                 n++;
             }
             if (!n) continue;
@@ -289,7 +399,8 @@ void fp_fill(float* rgb, const uint8_t* valid, const uint8_t* hole, int w, int h
             float* v = rgb + (size_t)holes[i] * 3 + c;
             *v = *v < 0.0f ? 0.0f : *v > 255.0f ? 255.0f : *v;
         }
-    free(holes), free(good), free(around), free(guides), free(sources);
+done:
+    free(holes), free(good), free(around), free(original), free(texture);
 }
 
 /* The letters grown by grow, and footprint when given, are filled from the picture around them. */
@@ -373,14 +484,33 @@ static int dark_in_column(const image_t* im, int x, int top, int bottom) {
 }
 
 /* The box grown sideways over letters next to it (a first or last letter the hover picture lacks): through columns
- * with dark pixels, a gap of a few columns allowed, by a letter's width at most. */
+ * with dark pixels, a gap of a few columns allowed, by a letter's width at most. The hover picture's spacing is wider
+ * than the normal one's, so its last letters are the ones displaced out of reach: at the right end a wider gap is
+ * crossed to a separate run of columns that holds as much dark as a letter does and ends within a letter's width. */
 static fe_rect_t widen_to_letters(const image_t* im, fe_rect_t box) {
-    int band = box.bottom - box.top, gap;
+    int band = box.bottom - box.top;
     for (int side = -1; side <= 1; side += 2) {
-        int start = side < 0 ? box.left - 1 : box.right, x = start, last = x - side;
-        for (gap = 0; x >= 0 && x < im->w && abs(x - start) < band * 9 / 10 && gap < 3; x += side) {
-            if (dark_in_column(im, x, box.top, box.bottom) * 4 >= band) gap = 0, last = x;
-            else gap++;
+        int start = side < 0 ? box.left - 1 : box.right, last = start - side, gap = 0, mass = 0, run = -1, run_last = 0;
+        for (int x = start; x >= 0 && x < im->w && abs(x - start) < band * 9 / 10 && gap < (side < 0 ? NEAR_GAP : LETTER_GAP); x += side) {
+            int dark = dark_in_column(im, x, box.top, box.bottom), strong = dark * 3 >= band && dark * 10 < band * 8;
+            if (run >= 0) {
+                if (strong) mass += dark, run_last = x, gap = 0;
+                else gap++;
+                if (gap >= 2 && mass >= band * 2) {
+                    last = run_last;
+                    break;
+                }
+                if (abs(x - run) >= band * 3 / 4) break;
+            } else if (dark * 4 >= band && gap < NEAR_GAP) {
+                gap = 0;
+                last = x;
+            } else if (side > 0 && strong && gap >= NEAR_GAP) {
+                run = x;
+                run_last = x;
+                mass = dark;
+                gap = 0;
+            } else
+                gap++;
         }
         if (side < 0) box.left = last;
         else box.right = last + 1;
@@ -483,6 +613,11 @@ int fp_button(const fa_source_t* normal, const fa_source_t* hover, fp_plaque_t* 
                     int i = y * w + x;
                     letters[i] = a.solid[i] && mean3(a.rgb + (size_t)i * 3) < 64.0f;
                 }
+            /* The whole band of the words is filled, not just the letters' shapes: left alone, the plate between the
+             * letters would outline them. */
+            box = fe_rect_intersect(fe_rect_inflate(box, 1, 2), fe_rect(0, 0, w, h));
+            for (int y = box.top; y < box.bottom; y++)
+                for (int x = box.left; x < box.right; x++) near[y * w + x] = 1;
         }
         out->lines = 1;
         ok = finish(normal, &a, letters, near, 2, out);
@@ -520,7 +655,7 @@ static int median_of(const image_t* im, fe_rect_t area) {
 
 int fp_engraved(const fa_source_t* picture, fe_rect_t zone, fe_rect_t room, fp_plaque_t* out) {
     image_t a;
-    uint8_t* letters;
+    uint8_t *letters, *band = NULL;
     int ok = 0, median, n = 0;
     memset(out, 0, sizeof *out);
     if (!image_load(picture, &a)) return 0;
@@ -537,10 +672,16 @@ int fp_engraved(const fa_source_t* picture, fe_rect_t zone, fe_rect_t room, fp_p
     for (int i = 0; i < a.w * a.h; i++) n += letters[i];
     if (n < 40) goto done;
     out->lines = 1;
-    ok = finish(picture, &a, letters, NULL, 2, out);
+    band = mask_new(a.w, a.h);
+    if (!band) goto done;
+    /* The engraving's lit and shaded edges reach past the dark of the letters: the whole zone is filled. */
+    for (int y = zone.top; y < zone.bottom; y++)
+        for (int x = zone.left; x < zone.right; x++) band[(size_t)y * a.w + x] = 1;
+    ok = finish(picture, &a, letters, band, 2, out);
     if (ok) out->room = room;
 done:
     free(letters);
+    free(band);
     image_free(&a);
     if (!ok) fp_free(out);
     return ok;

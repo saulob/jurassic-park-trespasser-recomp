@@ -24,6 +24,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_WINDOW_SIZE, "auto" },
     { JPT_KEY_PRESENTATION, "letterbox" },
     { JPT_KEY_RENDERER, "d3d11" },
+    { JPT_KEY_GRAPHICS_CARD, "" },
     { JPT_KEY_RENDER_RESOLUTION, "native" },
     { JPT_KEY_ASPECT_RATIO, "16:9" },
     { JPT_KEY_TEXTURE_FILTER, "anisotropic16" },
@@ -94,6 +95,11 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
         return (n = parse_choice(value, jpt_filter_keys, JPT_FILTER_COUNT)) >= 0 ? (c->texture_filter = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_AMBIENT_OCCLUSION))
         return (n = parse_choice(value, jpt_ao_keys, JPT_AO_COUNT)) >= 0 ? (c->ambient_occlusion = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_GRAPHICS_CARD)) {
+        if (strlen(value) >= sizeof c->graphics_card) return 0;
+        strcpy(c->graphics_card, value);
+        return 1;
+    }
     if (!strcmp(key, JPT_KEY_LANGUAGE)) {
         if (!jpt_l10n_language(value)) return 0;
         strcpy(c->language, value);
