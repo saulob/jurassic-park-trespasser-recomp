@@ -53,6 +53,9 @@ int input_hide_pointer(input_state_t state, int game_cursor_hidden);
 /* RasterBlt's source rectangle (left, top, right, bottom) kept inside its source raster: the game sizes it from a
  * control's rect, which the host's layouts may make larger than the control's picture. 0 when nothing is left. */
 int raster_source_clip(int32_t rect[4], int32_t source_w, int32_t source_h);
+/* A point inside a button's rect, scaled onto its picture along each axis where the rect is larger (the picture is
+ * drawn zoomed to fill it), so the game's mask hit test samples inside the picture. 1 when the point changed. */
+int button_picture_point(const int32_t rect[4], int32_t picture_w, int32_t picture_h, int32_t point[2]);
 /* Last input wins: no pointer in menus while the gamepad moves the focus. */
 int input_pad_hides_pointer(input_state_t state, int pad_focus);
 /* A capture waits while a button is held outside the picture (the click that activated the window

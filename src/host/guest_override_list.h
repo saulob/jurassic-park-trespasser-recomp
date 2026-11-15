@@ -5,6 +5,7 @@
  * REQUIRED: the port's behaviour depends on it. OPTIONAL: without it the game runs as retail (a host kernel the lifted
  * body replaces exactly, or a presentation layer).
  */
+GUEST_OVERRIDE(00403520, REQUIRED) /* CUIButton hit test (ui_canvas.c) */
 GUEST_OVERRIDE(0040C780, REQUIRED) /* CGameWnd::DrawBackground (ui_canvas.c) */
 GUEST_OVERRIDE(00411EA0, REQUIRED) /* window centring (ui_canvas.c) */
 GUEST_OVERRIDE(004128A0, REQUIRED) /* RasterBlt (ui_canvas.c) */

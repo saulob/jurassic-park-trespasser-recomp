@@ -120,6 +120,27 @@ static void test_capture_policy(void) {
         CHECK(!raster_source_clip(outside, 318, 198));
         CHECK(raster_source_clip(negative, 318, 198) && negative[0] == 0 && negative[1] == 0 && negative[2] == 20);
     }
+    {
+        /* log 103: Controls' Cancel (cancel_0.tga, 118x42) in its 1.75x rect; the hover at (515,392) sampled column
+         * 128, row 50 of the picture */
+        const int32_t cancel[4] = { 387, 342, 593, 415 }, same[4] = { 10, 20, 128, 62 }, narrow[4] = { 0, 0, 60, 20 };
+        int32_t p[2] = { 515, 392 }, out[2] = { 600, 392 }, q[2] = { 50, 30 }, s[2] = { 59, 19 }, edge[2];
+        int all_inside = 1;
+        CHECK(button_picture_point(cancel, 118, 42, p) && p[0] == 387 + 128 * 118 / 206 && p[1] == 342 + 50 * 42 / 73);
+        CHECK(!button_picture_point(cancel, 118, 42, out) && out[0] == 600 && out[1] == 392);
+        CHECK(!button_picture_point(same, 118, 42, q) && q[0] == 50 && q[1] == 30);
+        CHECK(!button_picture_point(narrow, 118, 42, s) && s[0] == 59 && s[1] == 19);
+        CHECK(!button_picture_point(cancel, 0, 42, p));
+        for (int32_t y = cancel[1]; y < cancel[3]; y++)
+            for (int32_t x = cancel[0]; x < cancel[2]; x++) {
+                edge[0] = x;
+                edge[1] = y;
+                button_picture_point(cancel, 118, 42, edge);
+                if (edge[0] - cancel[0] >= 118 || edge[1] - cancel[1] >= 42 || edge[0] < cancel[0] || edge[1] < cancel[1])
+                    all_inside = 0;
+            }
+        CHECK(all_inside);
+    }
     /* Gamepad focus hides the pointer in menus and dialogs only; the mouse (pad_focus 0) brings it back. */
     CHECK(input_pad_hides_pointer(INPUT_MENU, 1) && input_pad_hides_pointer(INPUT_DIALOG, 1));
     CHECK(!input_pad_hides_pointer(INPUT_MENU, 0) && !input_pad_hides_pointer(INPUT_DIALOG, 0));

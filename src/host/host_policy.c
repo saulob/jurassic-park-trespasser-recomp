@@ -94,6 +94,15 @@ int raster_source_clip(int32_t rect[4], int32_t source_w, int32_t source_h) {
     return rect[2] > rect[0] && rect[3] > rect[1];
 }
 
+int button_picture_point(const int32_t rect[4], int32_t picture_w, int32_t picture_h, int32_t point[2]) {
+    int32_t w = rect[2] - rect[0], h = rect[3] - rect[1], dx = point[0] - rect[0], dy = point[1] - rect[1];
+    if (picture_w <= 0 || picture_h <= 0 || dx < 0 || dy < 0 || dx >= w || dy >= h) return 0;
+    if (w <= picture_w && h <= picture_h) return 0;
+    if (w > picture_w) point[0] = rect[0] + (int32_t)((int64_t)dx * picture_w / w);
+    if (h > picture_h) point[1] = rect[1] + (int32_t)((int64_t)dy * picture_h / h);
+    return 1;
+}
+
 int input_pad_hides_pointer(input_state_t state, int pad_focus) {
     return pad_focus && (state == INPUT_MENU || state == INPUT_DIALOG);
 }

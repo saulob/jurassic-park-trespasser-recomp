@@ -32,12 +32,17 @@
 #define GAME_BACKGROUND_VA 0x0040C780u  /* CGameWnd::DrawBackground(raster, rect): the frozen picture */
 #define CENTRE_WINDOW_VA 0x00411EA0u    /* centres a window and its controls in the screen's display size */
 #define RASTER_BLT_VA 0x004128A0u       /* RasterBlt(source, rect, destination, ...): Locks both rasters */
+#define BUTTON_HIT_TEST_VA 0x00403520u  /* CUIButton hit test (x, y), thiscall: samples its picture under a masked rect */
+#define CTRL_RECT 0x10u
+#define BUTTON_STYLE 0x28u
+#define BUTTON_MASKED 1u
+#define BUTTON_PICTURE 0x2Cu
 #define MGR_CURSOR_SHOWN 0x20u          /* CUIManager: the pointer is drawn while set */
 #define PIXEL_BITS 16
 #define LOG_LIMIT 6
 
 static recomp_func_t s_frame_lifted, s_windows_lifted, s_cursor_lifted, s_background_lifted, s_centre_lifted,
-    s_blt_lifted;
+    s_blt_lifted, s_button_hit_lifted;
 static int s_enabled, s_in_frame, s_logged, s_screen_blt_write_only;
 static uint32_t s_canvas;
 
@@ -273,6 +278,21 @@ static void raster_blt(void) {
 
 int ui_screen_blt_writes_only(void) { return s_screen_blt_write_only; }
 
+/* The game indexes the picture from the rect's corner without bounds, assuming the rect is the picture's size. */
+static void button_hit_test(void) {
+    uint32_t button = g_ecx, picture = MEM32(button + BUTTON_PICTURE);
+    if ((MEM8(button + BUTTON_STYLE) & BUTTON_MASKED) && picture) {
+        int32_t rect[4], point[2] = { (int32_t)MEM32(g_esp + 4), (int32_t)MEM32(g_esp + 8) };
+        for (int i = 0; i < 4; i++) rect[i] = (int32_t)MEM32(button + CTRL_RECT + 4u * (uint32_t)i);
+        if (button_picture_point(rect, (int32_t)MEM32(picture + RASTER_WIDTH), (int32_t)MEM32(picture + RASTER_HEIGHT),
+                                 point)) {
+            MEM32(g_esp + 4) = (uint32_t)point[0];
+            MEM32(g_esp + 8) = (uint32_t)point[1];
+        }
+    }
+    s_button_hit_lifted();
+}
+
 void ui_canvas_install(void) {
     static const struct {
         uint32_t va;
@@ -286,6 +306,7 @@ void ui_canvas_install(void) {
         { CENTRE_WINDOW_VA, centre_window, &s_centre_lifted },
     };
     guest_override_install(RASTER_BLT_VA, raster_blt, &s_blt_lifted);
+    guest_override_install(BUTTON_HIT_TEST_VA, button_hit_test, &s_button_hit_lifted);
     s_enabled = 1;
     for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
         if (!guest_override_install(k[i].va, k[i].replacement, k[i].lifted)) s_enabled = 0;
