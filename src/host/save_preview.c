@@ -57,6 +57,7 @@ int save_preview_is_save(const char* path, const char* user_dir, const char* bas
     }
     if (_strnicmp(name, base, b) || name[b] != '.') return 0;
     name += b + 1;
+    if (!_stricmp(name, "QCK")) return 1;
     return isdigit((unsigned char)name[0]) && isdigit((unsigned char)name[1]) && isdigit((unsigned char)name[2]) && !name[3];
 }
 

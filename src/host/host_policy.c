@@ -111,9 +111,18 @@ int input_should_clip(input_state_t state, int pointer_in_view, int button_held)
     return input_captured(state) && (pointer_in_view || !button_held);
 }
 
+static unsigned s_quick_save_vk = 0x76, s_quick_load_vk = 0x77;
+
+void key_policy_set_quick_keys(unsigned save_vk, unsigned load_vk) {
+    s_quick_save_vk = save_vk;
+    s_quick_load_vk = load_vk != save_vk ? load_vk : 0;
+}
+
 key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt) {
     int down = msg == MSG_KEYDOWN || msg == MSG_SYSKEYDOWN;
     if (msg != MSG_KEYDOWN && msg != MSG_KEYUP && msg != MSG_SYSKEYDOWN && msg != MSG_SYSKEYUP) return KEY_TO_GAME;
+    if (vk && vk == s_quick_save_vk) return msg == MSG_KEYDOWN && !repeat ? KEY_HOST_QUICK_SAVE : KEY_DROP;
+    if (vk && vk == s_quick_load_vk) return msg == MSG_KEYDOWN && !repeat ? KEY_HOST_QUICK_LOAD : KEY_DROP;
     switch (vk) {
     case VK_F11_:
         if (ctrl) return KEY_TO_GAME;
@@ -144,6 +153,13 @@ int pointer_add_relative(input_state_t state, long* x, long* y, long dx, long dy
     if (!input_captured(state) || (!dx && !dy)) return 0;
     *x += dx;
     *y += dy;
+    return 1;
+}
+
+int pointer_recapture(input_state_t before, input_state_t after, long* x, long* y, long width, long height) {
+    if (!input_captured(after) || input_cursor_virtual(before) || width <= 0 || height <= 0) return 0;
+    *x = width / 2;
+    *y = height / 2;
     return 1;
 }
 

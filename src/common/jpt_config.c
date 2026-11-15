@@ -14,8 +14,26 @@
 
 const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic4", "anisotropic8",
                                                         "anisotropic16" };
+const char* const jpt_active_ai_keys[JPT_ACTIVE_AI_COUNT] = { "original", "enhanced" };
+const int jpt_active_ai_limits[JPT_ACTIVE_AI_COUNT] = { 3, 6 };
 const char* const jpt_ao_keys[JPT_AO_COUNT] = { "off", "low", "medium", "high", "ultra" };
 const char* const jpt_ao_names[JPT_AO_COUNT] = { "Off", "Low", "Medium", "High", "Ultra" };
+
+const jpt_hotkey_t jpt_hotkeys[JPT_HOTKEY_COUNT] = {
+    { JPT_KEY_QUICK_SAVE, "Quick Save", "F7" },
+    { JPT_KEY_QUICK_LOAD, "Quick Load", "F8" },
+};
+
+const jpt_hotkey_choice_t jpt_hotkey_choices[JPT_HOTKEY_CHOICE_COUNT] = {
+    { "F6", 0x75 },     { "F7", 0x76 },  { "F8", 0x77 },   { "F9", 0x78 },     { "Insert", 0x2D },
+    { "Delete", 0x2E }, { "Home", 0x24 }, { "End", 0x23 }, { "PageUp", 0x21 }, { "PageDown", 0x22 },
+};
+
+uint32_t jpt_hotkey_vk(const char* key) {
+    for (int i = 0; key && i < JPT_HOTKEY_CHOICE_COUNT; i++)
+        if (!_stricmp(key, jpt_hotkey_choices[i].key)) return jpt_hotkey_choices[i].vk;
+    return 0;
+}
 
 const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_SHOW_LAUNCHER, "1" },
@@ -30,11 +48,18 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_TEXTURE_FILTER, "anisotropic16" },
     { JPT_KEY_MSAA, "4" },
     { JPT_KEY_VSYNC, "1" },
-    { JPT_KEY_AMBIENT_OCCLUSION, "off" },
+    { JPT_KEY_AMBIENT_OCCLUSION, "medium" },
     { JPT_KEY_SHOW_FPS, "1" },
     { JPT_KEY_SKIP_INTRO, "0" },
     { JPT_KEY_SHOW_RESOLUTION_TITLE, "0" },
     { JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH },
+    { JPT_KEY_DUAL_STOW, "1" },
+    { JPT_KEY_MAX_OBJECT_DETAIL, "1" },
+    { JPT_KEY_ACTIVE_AI, "enhanced" },
+    { JPT_KEY_WATER_REFRACTION, "1" },
+    { JPT_KEY_ENHANCED_SKY, "1" },
+    { JPT_KEY_QUICK_SAVE, "F7" },
+    { JPT_KEY_QUICK_LOAD, "F8" },
     { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
     { JPT_KEY_GAMEPAD_LOOK_X, "100" },
     { JPT_KEY_GAMEPAD_LOOK_Y, "100" },
@@ -82,11 +107,22 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     int n, w, h;
     char* end;
     if (jpt_gamepad_is_key(key)) return jpt_gamepad_apply(&c->gamepad, key, value);
+    for (n = 0; n < JPT_HOTKEY_COUNT; n++)
+        if (!strcmp(key, jpt_hotkeys[n].setting)) {
+            uint32_t vk = jpt_hotkey_vk(value);
+            return vk ? (c->hotkey_vk[n] = vk, 1) : 0;
+        }
     if (!strcmp(key, JPT_KEY_SHOW_LAUNCHER)) return jpt_parse_bool(value, &c->show_launcher);
     if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);
     if (!strcmp(key, JPT_KEY_SHOW_FPS)) return jpt_parse_bool(value, &c->show_fps);
     if (!strcmp(key, JPT_KEY_SKIP_INTRO)) return jpt_parse_bool(value, &c->skip_intro);
     if (!strcmp(key, JPT_KEY_SHOW_RESOLUTION_TITLE)) return jpt_parse_bool(value, &c->show_resolution_title);
+    if (!strcmp(key, JPT_KEY_DUAL_STOW)) return jpt_parse_bool(value, &c->dual_stow);
+    if (!strcmp(key, JPT_KEY_MAX_OBJECT_DETAIL)) return jpt_parse_bool(value, &c->max_object_detail);
+    if (!strcmp(key, JPT_KEY_WATER_REFRACTION)) return jpt_parse_bool(value, &c->water_refraction);
+    if (!strcmp(key, JPT_KEY_ENHANCED_SKY)) return jpt_parse_bool(value, &c->enhanced_sky);
+    if (!strcmp(key, JPT_KEY_ACTIVE_AI))
+        return (n = parse_choice(value, jpt_active_ai_keys, JPT_ACTIVE_AI_COUNT)) >= 0 ? (c->active_ai_enhanced = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_DISPLAY_MODE)) return (n = parse_choice(value, modes, 2)) >= 0 ? (c->borderless = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_PRESENTATION))
         return (n = parse_choice(value, presentations, 2)) >= 0 ? (c->stretch = n, 1) : 0;

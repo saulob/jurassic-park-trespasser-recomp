@@ -99,8 +99,33 @@ static void putf(uint32_t va, float v) { memcpy((void*)(uintptr_t)va, &v, 4); }
 static struct {
     input_state_t state;
     long cursor_x, cursor_y, read_x, read_y;
+    long real_x, real_y; /* the operating system's cursor, in display pixels */
+    int host_flips;      /* the state follows the game's stoppage, as update_input does */
+    int stopped;
+    int recapture, update_after_hooks; /* the host's two guards against a stale state */
     uint8_t down[256], since[256];
 } H;
+
+/* update_input: the state from what the game shows, the virtual cursor re-set when the game takes its pointer back. */
+static void host_update(void) {
+    input_signals_t signals;
+    input_state_t next;
+    if (!H.host_flips) return;
+    memset(&signals, 0, sizeof signals);
+    signals.focused = 1;
+    signals.ui = H.stopped ? GUEST_UI_DIALOG : GUEST_UI_GAMEPLAY;
+    next = input_state_from(&signals);
+    if (next == H.state) return;
+    if (H.recapture) pointer_recapture(H.state, next, &H.cursor_x, &H.cursor_y, CLIENT_W, CLIENT_H);
+    H.state = next;
+}
+
+/* game_cursor(): while the cursor is not virtual the game reads the real one, and the virtual cursor takes it. */
+static void host_read_cursor(void) {
+    if (input_cursor_virtual(H.state)) return;
+    H.cursor_x = H.real_x;
+    H.cursor_y = H.real_y;
+}
 
 static void stdcall_return(uint32_t value, int args) {
     g_eax = value;
@@ -110,6 +135,8 @@ static void stdcall_return(uint32_t value, int args) {
 /* shim_GetCursorPos in gameplay: the virtual cursor. */
 static void stub_get_cursor_pos(void) {
     uint32_t out = get32(g_esp + 4);
+    host_update();
+    host_read_cursor();
     H.read_x = H.cursor_x;
     H.read_y = H.cursor_y;
     put32(out, (uint32_t)H.cursor_x);
@@ -483,6 +510,90 @@ static void test_pauses(void) {
     }
 }
 
+/* F7 in gameplay, as window_host.c and the game run it: the UI loop's GetCursorPos calls the hooks, which pause the game
+ * (SetCursorPos to the centre), save, and resume it; resume sends CInput the esStart message, whose handler reads once
+ * while the game is still stopped, then recentres twice and clears the stoppage. The loop's GetCursorPos then returns
+ * the cursor, and the policy timer follows. */
+static void quick_save_in_ui_loop(void) {
+    H.stopped = 1;
+    H.cursor_x = CLIENT_W / 2;
+    H.cursor_y = CLIENT_H / 2;
+    lifted_read();
+    H.cursor_x = CLIENT_W / 2;
+    H.cursor_y = CLIENT_H / 2;
+    H.stopped = 0;
+    if (H.update_after_hooks) host_update();
+    host_read_cursor();
+    host_update();
+}
+
+static frame_t quick_save_between(rig_t* r, int recapture, int update_after_hooks, const step_t* before, const step_t* after) {
+    H.host_flips = 1;
+    H.recapture = recapture;
+    H.update_after_hooks = update_after_hooks;
+    H.real_x = CLIENT_W / 2 + 100;
+    H.real_y = 10;
+    if (before) run_step(r, before);
+    quick_save_in_ui_loop();
+    return run_step(r, after);
+}
+
+static int no_rotation(const frame_t* f) { return f->rotate_x == 0 && f->rotate_y == 0; }
+
+static void test_quick_save_recapture(void) {
+    static const step_t idle = { 0, 0, 0, 0.0f, 0.0f, 0.0f, DT_FRAME, 0 };
+    static const step_t moving = { 0, 30, -40, 0.0f, 0.0f, 0.0f, DT_FRAME, 0 };
+    static const step_t drift = { 0, 10, 0, 0.0f, 0.0f, 0.0f, DT_FRAME, 0 };
+    static const step_t stick_before = { 0, 20, 0, 1.0f, 0.0f, 0.0f, DT_X20, 0 };
+    static const step_t stick_held = { 0, 20, 0, 1.0f, 0.0f, 0.0f, DT_X20, 0 };
+    rig_t r;
+    frame_t f;
+    for (int pads = 0; pads < 2; pads++) {
+        /* the host as it was: the real cursor, read in the stale state after the resume, is the next frame's delta */
+        rig_init(&r, pads, 0);
+        f = quick_save_between(&r, 0, 0, NULL, &idle);
+        CHECK(f.read_x == CLIENT_W / 2 + 100 && f.read_y == 10);
+        CHECK(fabsf(rot(f.rotate_x) - 0.5f) < 1e-5f && fabsf(rot(f.rotate_y) - 1.87f) < 1e-5f); /* looks up */
+        /* either guard alone, and both: no delta, with the mouse still, moving before, and the stick neutral or used */
+        for (int guards = 1; guards < 4; guards++) {
+            int recapture = guards & 1, after_hooks = (guards & 2) != 0;
+            rig_init(&r, pads, 0);
+            f = quick_save_between(&r, recapture, after_hooks, NULL, &idle);
+            CHECK(no_rotation(&f) && f.read_x == CLIENT_W / 2 && f.read_y == CLIENT_H / 2);
+            CHECK(f.after_x == CLIENT_W / 2 && f.after_y == CLIENT_H / 2);
+            rig_init(&r, pads, 0);
+            f = quick_save_between(&r, recapture, after_hooks, pads ? &stick_before : &moving, &idle);
+            CHECK(no_rotation(&f));
+            rig_init(&r, pads, 0);
+            f = quick_save_between(&r, recapture, after_hooks, NULL, &drift);
+            CHECK(f.read_x == CLIENT_W / 2 + (pads ? 0 : 10)); /* motion after the save is not lost (the stick carries its own) */
+            if (!pads) CHECK(fabsf(rot(f.rotate_x) - 0.05f) < 1e-6f && f.rotate_y == 0);
+            if (pads) {
+                rig_init(&r, pads, 0);
+                f = quick_save_between(&r, recapture, after_hooks, &stick_before, &stick_held);
+                CHECK(fabsf(rot(f.rotate_x) - 0.1f) < 1e-6f && f.rotate_y == 0); /* the held stick goes on, once */
+            }
+        }
+    }
+    /* repeated saves leave no trace: every frame in between is still */
+    rig_init(&r, 0, 0);
+    for (int i = 0; i < 5; i++) {
+        f = quick_save_between(&r, 1, 1, i ? NULL : &moving, &idle);
+        CHECK(no_rotation(&f));
+    }
+    /* the recapture is only for a cursor that was the real one: a released pointer keeps its own */
+    {
+        long x = 7, y = 9;
+        CHECK(!pointer_recapture(INPUT_GAMEPLAY_RELEASED, INPUT_GAMEPLAY_CAPTURED, &x, &y, CLIENT_W, CLIENT_H) && x == 7 && y == 9);
+        CHECK(!pointer_recapture(INPUT_DIALOG, INPUT_DIALOG, &x, &y, CLIENT_W, CLIENT_H) && x == 7);
+        CHECK(!pointer_recapture(INPUT_DIALOG, INPUT_GAMEPLAY_CAPTURED, &x, &y, 0, 0) && x == 7);
+        CHECK(pointer_recapture(INPUT_DIALOG, INPUT_GAMEPLAY_CAPTURED, &x, &y, CLIENT_W, CLIENT_H) && x == CLIENT_W / 2 &&
+              y == CLIENT_H / 2);
+        x = 1;
+        CHECK(pointer_recapture(INPUT_MENU, INPUT_GAMEPLAY_CAPTURED, &x, &y, 641, 481) && x == 320 && y == 240);
+    }
+}
+
 int main(void) {
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
     int from_exe;
@@ -496,6 +607,7 @@ int main(void) {
     printf("key map and CInput constants %s\n", from_exe ? "read from trespass.exe" : "built in (trespass.exe not found)");
     test_sequences();
     test_pauses();
+    test_quick_save_recapture();
     printf("input tests: %lu checks, %lu failed\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

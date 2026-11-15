@@ -136,6 +136,8 @@ static void sample(const guest_ui_view_t* v, int depth, uint32_t scratch) {
     w->key_index = -1;
     w->place = place_of(v);
     w->ambient_occlusion = d3dr_ambient_occlusion();
+    w->water_refraction = d3dr_water_refraction();
+    w->enhanced_sky = d3dr_enhanced_sky();
     cheats_world(w);
     if (w->place != DM_PLACE_LEVEL) return;
     if (guest_read_string(APP_SCENE, w->scene, sizeof w->scene)) dm_level_id(w->scene, w->level, sizeof w->level);
@@ -253,6 +255,8 @@ static dm_item_t action_item(dm_action_kind_t kind) {
     case DM_ACT_SUPER_HEALTH: return DM_SUPER_HEALTH;
     case DM_ACT_CAMERA: return DM_FREE_CAMERA;
     case DM_ACT_AMBIENT_OCCLUSION: return DM_AMBIENT_OCCLUSION;
+    case DM_ACT_WATER_REFRACTION: return DM_WATER_REFRACTION;
+    case DM_ACT_ENHANCED_SKY: return DM_ENHANCED_SKY;
     default: return DM_FREEZE_AI;
     }
 }
@@ -327,6 +331,18 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
             say("Ambient Occlusion is unavailable (see the log)", now);
         }
         break;
+    case DM_ACT_WATER_REFRACTION:
+    case DM_ACT_ENHANCED_SKY: {
+        int water = a->kind == DM_ACT_WATER_REFRACTION;
+        const char* name = water ? "Water Refraction" : "Enhanced Sky";
+        if (water ? d3dr_set_water_refraction(a->on) : d3dr_set_enhanced_sky(a->on))
+            host_log("debug", "%s: %s", water ? "water refraction" : "enhanced sky", a->on ? "on" : "off");
+        D.world.water_refraction = d3dr_water_refraction();
+        D.world.enhanced_sky = d3dr_enhanced_sky();
+        snprintf(line, sizeof line, "%s %s", jpt_tr(name), jpt_tr(a->on ? "On" : "Off"));
+        dm_feedback(&D.state, line, now);
+        break;
+    }
     case DM_ACT_FREEZE_AI:
         if (freeze_ai(a->on) && ch_format_change(line, sizeof line, a->kind, a->on, 0)) {
             host_log("cheats", "%s", line);
@@ -447,6 +463,8 @@ void debug_menu_show_objective(void) {
     }
     dm_notice_for(&D.state, jpt_tr("No objective"), now, CP_NO_OBJECTIVE_MS);
 }
+
+void debug_menu_notice(const char* text) { dm_notice(&D.state, text, GetTickCount()); }
 
 int debug_menu_open_menu(void) {
     if (!D.state.open) return 0;

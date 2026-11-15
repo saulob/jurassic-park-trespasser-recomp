@@ -198,6 +198,16 @@ float widescreen_view_tan_half_height(void);
 void d3dr_configure_ambient_occlusion(int level, const char* settings_path);
 int d3dr_ambient_occlusion(void);
 int d3dr_set_ambient_occlusion(int level);
+/* Water refraction and Enhanced sky: the settings start them; the F5 menu changes only the running state (never the
+ * settings). The getters give the running state, -1 when the renderer is not Direct3D 11. */
+void d3dr_configure_effects(int water_refraction, int enhanced_sky);
+int d3dr_water_refraction(void);
+int d3dr_enhanced_sky(void);
+int d3dr_set_water_refraction(int on);
+int d3dr_set_enhanced_sky(int on);
+/* sky: camera u, camera v, plane height above the camera (texture units), fog low, fog high. */
+void d3dr_sky_begin(const float sky[5]);
+void d3dr_sky_end(void);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
@@ -300,6 +310,8 @@ void debug_menu_f10(void);
 /* F3: the Objectives list in a level, a third panel of the Debug Menu's policy. */
 void debug_menu_f3(void);
 void debug_menu_show_objective(void);
+/* A short line on the HUD under the compass, in a level. */
+void debug_menu_notice(const char* text);
 /* 0 closed, 1 Debug Menu, 2 Cheats, 3 Objectives. */
 int debug_menu_open_menu(void);
 void debug_menu_close(void);
@@ -307,6 +319,19 @@ void debug_menu_close(void);
 void overlay_request(int kind, const char* source);
 void overlay_ui_loop(void);
 int overlay_blocks_gameplay(void);
+
+/* ce_gameplay.c: Quick Save / Quick Load, Dual stow and Maximum object detail. Requests run in the game's UI loop. */
+void ce_gameplay_configure(int dual_stow, int max_object_detail);
+void ce_gameplay_install(void);
+void ce_gameplay_ui_loop(void);
+void quick_save_request(void);
+void quick_load_request(void);
+/* active_ai.c: Active AI (CE's MaxActiveAi), 6 animals active instead of 3; Original installs nothing. */
+void active_ai_configure(int enhanced);
+void active_ai_install(void);
+int active_ai_installed(void);
+/* ce_graphics.c: the sky draw hook and the water rows' observer (Direct3D 11 only). */
+void ce_graphics_install(int hardware);
 /* Every key message first: 1 when the game must not see it. */
 int overlay_key(UINT msg, WPARAM wparam, LPARAM lparam);
 /* gamepad.c: an interface opened or closed: buttons held now wait for their release. */

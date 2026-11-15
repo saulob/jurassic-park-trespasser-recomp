@@ -77,9 +77,9 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 |---|---|
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Graphics card, Render resolution, Anti-aliasing, Ambient occlusion, Texture filtering, VSync |
-| Gameplay | Language, Skip Intro, Frame rate in title, Render resolution in title |
-| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys ([CONTROLS](CONTROLS.md)) |
+| Graphics | Renderer, Graphics card, Render resolution, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
+| Gameplay | Language, Skip Intro, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
+| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
 | About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 
@@ -146,7 +146,13 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `aspect_ratio` | `4:3`, `16:9`, `16:10`, `21:9`, `32:9` | `16:9` |
 | `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
 | `msaa` | 0, 2, 4, 8 | 4 |
-| `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `off` |
+| `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `medium` |
+| `water_refraction` | 1, 0 | 1 |
+| `enhanced_sky` | 1, 0 | 1 |
+| `max_object_detail` | 1, 0 | 1 |
+| `dual_stow` | 1, 0 | 1 |
+| `active_ai` | `original`, `enhanced` | `enhanced` |
+| `quick_save_key`, `quick_load_key` | `F6`, `F7`, `F8`, `F9`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown` | `F7`, `F8` |
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
 | `show_resolution_title` | 1, 0 | 0 |
@@ -337,10 +343,49 @@ is not part of this work.
   game's colour and depth formats (asked of a short-lived device); a saved level that is not supported is pointed
   out, the game falls back 8x, 4x, 2x, off and logs it once, and a multisampled target that cannot be created is
   created without MSAA instead of failing.
-- **Ambient occlusion**: Off, Low, Medium, High, Ultra (key `ambient_occlusion`, Off by default; `--ambient-occlusion`
+- **Ambient occlusion**: Off, Low, Medium, High, Ultra (key `ambient_occlusion`, Medium by default; `--ambient-occlusion`
   for one run). Intel ASSAO over the D3D11 3D scene only: Low, Medium, High and Ultra are ASSAO's quality levels 0-3
   (Ultra is its adaptive level). It needs feature level 11.0; without it, or if the effect cannot be created, it stays
   Off and the log says why. F5's Debug Menu changes it while playing and saves the choice here.
+- **Water refraction** (key `water_refraction`, On by default; Direct3D 11 only, greyed out with Software and kept):
+  after Trespasser CE's refractive water. The game writes CEntityWater's rows (`water_rows`, 0x0060E3F0, from
+  `FillWaterTexture`, 0x0060E590) into the system-memory source surface of its water raster (the pointer
+  `CRasterD3D::Lock` got), then `CRasterD3D` vtbl+0x1C (0x00510240) copies that surface into the Direct3D texture the
+  draws bind with `IDirect3DTexture::Load`. The host keeps, by texel address, the wave height's differences to the next
+  column and row of every texel a row writes (exact floats; CE keeps them as bytes, trunc(x * 127.5 + 127.5)), and a
+  Load whose source holds such texels links the texture it fills to that source: that texture is the water, whatever
+  else it looks like. A draw of it with alpha blending gets its own shader: the scene behind is sampled at the pixel's
+  own screen position (`SV_Position`) shifted by those differences, 0.35 of the target height per unit, faded as CE fades it by 1 / max(distance, 1 m). A vertex's
+  rhw is 0.1 / its distance in metres (`CCamera::fInvZAdjust`), so the fade is saturate(10 x rhw): Beach water 6 to 33 m
+  away fades to 0.155 to 0.03 of the full shift. The shader returns lerp(shifted scene, water colour, water alpha)
+  with alpha 1, so the game's SRCALPHA / INVSRCALPHA blend keeps it as is (no second blend), as CE's own water shader
+  (the shifted position is kept inside the game's 3D viewport, at texel centres: the shift is shortened along its own
+  direction at the picture's edge, so the black outside the viewport is never sampled, filtered or smeared)
+  does: still water draws exactly what Off draws, the refracted scene's share is 1 - alpha (the retail water palette's
+  alpha runs from 0.25 to 1.0 with the light, 0x006F24E8 filled by 0x0051DBD0), and the water's colour, fog and alpha
+  are the original's. The scene is copied once a frame before the first water batch (`CopyResource`, or
+  `ResolveSubresource` with MSAA): one copy and one shader per frame, GPU only. Off, and any texture that is not linked,
+  take the original path untouched. If its resources cannot be created, refraction is off for the session and the log
+  says so once. The log says `water refraction: the 256x256 water texture is loaded from the surface its wave rows
+  write` when the link is first made, `first water batch` with the texture's and vertices' alpha, the texture blend and
+  the batch's distances and fade at the first refracted draw, and at exit the water batches, scene copies, the largest
+  wave difference and the shift in pixels of the water's pixels (average, p95, p99, largest, with the wave and distance
+  of the largest), sampled per triangle and weighted by area. F5's Debug Menu switches it while playing for that session only; the
+  next start uses the setting again. With Software, the launcher greys it out ("Available with the Direct3D 11
+  renderer") and keeps its value, and F5 shows it as Unavailable.
+- **Enhanced sky** (key `enhanced_sky`, On by default; Direct3D 11 only): the retail hardware sky (`CSkyRender::DrawD3D`,
+  0x005242C0) is one textured plane fogged per vertex by depth, so its horizon haze ignores the level's sky fog band.
+  CE's enhanced sky fogs by view direction instead: with v the horizontal length of the unit view direction (0 straight
+  up, 1 at the horizon), none up to the band's low edge (CSkyRender +0x30), all of it from the high edge (+0x2C),
+  linear between; equal or inverted edges give a step and never a division, and unusable values (NaN, infinite, far
+  out of range) keep the retail sky. The port draws the same retail plane and texture and takes v per pixel from the
+  plane point the texture coordinates give (u = x · 1e-4 + 1.5 + scroll, v = y · 1e-4 + scroll) against the camera.
+  Object, terrain and water fog are unchanged. F5 switches it like Water refraction.
+- **Maximum object detail** (key `max_object_detail`, On by default): as Trespasser CE's `ForceMaxObjectDetail`, the
+  renderer's `bDetailReduce` (render settings `[[0x006D2224]]+0x33`) is cleared, so the object pipeline (0x00519B20)
+  and the terrain shadow pass always take an object's top mesh instead of the lower-detail one 0x004A7F10 would pick
+  for its screen size. Impostor images and terrain shadows keep their own settings, as in CE. Off is the retail
+  choice. The log says `Maximum object detail: every object keeps its most detailed model` once.
 - **VSync**: On keeps the game's own Flip request (waits for the refresh); Off never waits.
 - **Frame rate in title** and **Render resolution in title** (Gameplay, as in the other ports; keys `show_fps`, On by
   default, and `show_resolution_title`, Off by default): the title is always `Jurassic Park: Trespasser Recompiled | x86 |
@@ -356,6 +401,47 @@ is not part of this work.
   and the Video Test still play. Read when the game starts, so a change in the launcher applies to that run.
 - Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
   Direct3D 11 renderer (see the README and `[graphics]` in the log).
+
+## Gameplay > Trespasser CE
+
+A section of the Gameplay page: "Gameplay enhancements reimplemented natively from Trespasser CE." Nothing of Trespasser
+CE is needed or read; the options are the port's own code over the retail game.
+
+- **Dual stow** (key `dual_stow`, On by default): one item on the belt and one on the back while the hand stays free.
+  Retail already has the two slots (CPlayer +0xE38 belt, +0xE3C back) and saves both; what it lacks is a way to end
+  with both stowed and the hand empty. The port wraps the retail stow handler (0x004610D0) as CE does it:
+  - holding **Rotate Arm** or **Rotate Wrist** (by default Ctrl or Shift; LB/RB on a gamepad) while pressing
+    **Stow/Retrieve** stows the held item into the slot it fits and does not fetch the other slot's item;
+  - with both slots full and the hand empty, Stow/Retrieve with Rotate Arm or Rotate Wrist held takes the back's
+    item, without them the belt's;
+  - everything else is retail (a full slot swaps with the held item, an item that fits nowhere is dropped);
+  - CE's per-slot retrieve pose is kept on the host side, seeded from the save's.
+  No save format change: a save with both slots full is an ordinary retail save. Off is the retail handler. Turning it
+  Off with two items stowed loses nothing: the next Stow/Retrieve takes the belt's item, as retail would.
+
+Quick Save and Quick Load are not options: they are always available, with their keys on the Controls page
+(F7 / F8 by default; [CONTROLS](CONTROLS.md)).
+
+- **Active AI** (key `active_ai`, `enhanced` by default; `original` or `enhanced`): how many creatures can be active
+  (thinking, moving, with physics) at once. Original is the retail limit of 3 and installs nothing: the game runs its
+  own code. Enhanced is 6, as Trespasser CE's `MaxActiveAi` (CE accepts up to 7; the port offers 6). Retail compiles
+  the limit into the `CAISystem` code, so Enhanced replaces the 12 functions that use it (constructor and destructor,
+  Activate, Deactivate, the radius release and the two radius queries, the think scheduler, Process, save, load, and the
+  brain's influence loop through its tail call) with the same logic over 6 entries; entries 1 to 3 stay in the game's
+  object and 4 to 6 live beside it. Activation keeps the retail rule (the nearest animal displaces the farthest one) and
+  adds CE's physics guard: retail's physics holds 50 boxes (0x00699D40) and its allocator silently gives an object no
+  physics when they run out, so an animal whose boxes do not fit (in use, less the one it replaces) stays inactive; the
+  log says so once. Saves keep the retail layout: the active list is a fixed block of 10 handles, which already holds 6,
+  so a save is byte-identical to retail's while 3 or fewer are active, and retail saves load unchanged. Read when the
+  game starts: a change applies at the next start. Not in F5.
+
+Not listed: **Experimental AI behaviours** (CE's `EnableAiActivityEx`) are not applicable to the retail executable: the
+14 activity classes it enables do not exist in it at all, so there is nothing to switch on. There is no **Bump mapping**
+option: the original bump maps are already drawn by the game's own bump spans into the Direct3D 11 frame, exactly as
+retail.
+
+Vanilla (closest to retail): Dual stow Off, Active AI Original, Water refraction Off, Enhanced sky Off, Maximum object
+detail Off, Ambient occlusion Off. Quick Save / Quick Load and the bug fixes stay.
 
 ## Next targets (not in this work)
 

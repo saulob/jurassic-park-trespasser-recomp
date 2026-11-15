@@ -11,6 +11,7 @@
 #define COBJMACROS
 #include "ao_policy.h"
 #include "assao_host.h"
+#include "ce_effects.h"
 #include "d3d_legacy.h"
 #include "d3d11_shaders.h"
 #include "host.h"
@@ -31,6 +32,7 @@
 #define PERF_INTERVAL 5.0
 #define MAX_BIAS_STEPS 17
 #define MAX_STATE_CLASSES 48
+#define FX_WAVE_TEXTURES 4
 #define MAX_READBACK_CALLERS 24
 #define MAX_UNKNOWN_FORMATS 16
 /* CRasterVid::Lock and CRasterWin::Lock (RTTI vtables 0x0064DAE4 / 0x0064DB54): every CPU access to
@@ -235,6 +237,8 @@ static struct {
     unsigned batch_arrays;
     d3dr_texture_t* batch_tex;
     int batch_has_texture;
+    int batch_effect;            /* EFFECT_* */
+    dd_surface_t* batch_water;   /* the water texture of an EFFECT_WATER batch */
     /* What flush() last bound; any other binding clears valid. */
     struct {
         int valid;
@@ -303,6 +307,30 @@ static struct {
     d3dr_target_t* text_target;
     /* Ambient occlusion: while marking, the stencil holds 0 where a depth-writing draw made the pixel and 1 where the
      * CPU, a colour fill or a draw without depth writes did; the effect darkens only the 0s. */
+    /* Water refraction and Enhanced sky (ce_effects.h). Their resources live from first use to the device's end. */
+    struct {
+        fx_switch_t water, sky;
+        int water_failed, sky_drawing, sky_usable;
+        unsigned water_linked, water_reported;
+        float sky_constants[5];
+        ID3D11Buffer* cb;
+        ID3D11Texture2D* scene;
+        ID3D11ShaderResourceView* scene_srv;
+        UINT scene_w, scene_h;
+        unsigned long long copied_frame;
+        int copied_valid;
+        struct {
+            dd_surface_t* surface;
+            ID3D11Texture2D* tex;
+            ID3D11ShaderResourceView* srv;
+            UINT w, h;
+            unsigned serial;
+        } waves[FX_WAVE_TEXTURES];
+        const dd_surface_t* values_of;
+        float* wave_values;
+        size_t wave_capacity;
+        unsigned long long copies, resolves, water_batches, sky_batches;
+    } fx;
     struct {
         int level, capable, marking;
         ID3D11DepthStencilState* depth[2][2][9];
@@ -311,6 +339,12 @@ static struct {
         char settings[MAX_PATH];
     } ao;
 } R;
+
+enum { EFFECT_NONE, EFFECT_WATER, EFFECT_SKY };
+
+static void flush(void);
+static void fx_release(void);
+static void fx_release_wave(int i);
 
 static const char* const k_filter_names[] = { "original", "point", "bilinear", "trilinear", "anisotropic" };
 
@@ -408,6 +442,45 @@ void d3dr_configure_ambient_occlusion(int level, const char* settings_path) {
 int d3dr_ambient_occlusion(void) { return R.hardware && R.ao.capable ? R.ao.level : -1; }
 
 /* From the Debug Menu: takes effect at the next frame and is saved to trespasser.ini. */
+void d3dr_configure_effects(int water_refraction, int enhanced_sky) {
+    const char* scope = R.hardware ? "" : " (Direct3D 11 only: the Software renderer draws water and sky as the original)";
+    fx_switch_start(&R.fx.water, water_refraction);
+    fx_switch_start(&R.fx.sky, enhanced_sky);
+    host_log("video", "water refraction: %s%s", R.fx.water.setting ? "on" : "off", scope);
+    host_log("video", "enhanced sky: %s%s", R.fx.sky.setting ? "on" : "off", scope);
+}
+
+int d3dr_water_refraction(void) { return R.hardware && !R.fx.water_failed ? R.fx.water.running : -1; }
+
+int d3dr_enhanced_sky(void) { return R.hardware ? R.fx.sky.running : -1; }
+
+int d3dr_set_water_refraction(int on) {
+    if (!R.hardware) return 0;
+    if (R.nindices) flush();
+    return fx_switch_set(&R.fx.water, on);
+}
+
+int d3dr_set_enhanced_sky(int on) {
+    if (!R.hardware) return 0;
+    if (R.nindices) flush();
+    return fx_switch_set(&R.fx.sky, on);
+}
+
+/* CSkyRender::DrawD3D's draws, between these two: the sky's own batch. */
+void d3dr_sky_begin(const float sky[5]) {
+    if (!R.hardware) return;
+    if (R.nindices) flush();
+    memcpy(R.fx.sky_constants, sky, sizeof R.fx.sky_constants);
+    R.fx.sky_usable = fx_sky_usable(sky[3], sky[4], sky[2]);
+    R.fx.sky_drawing = 1;
+}
+
+void d3dr_sky_end(void) {
+    if (!R.hardware) return;
+    if (R.nindices) flush();
+    R.fx.sky_drawing = 0;
+}
+
 int d3dr_set_ambient_occlusion(int level) {
     const char* key = JPT_KEY_AMBIENT_OCCLUSION;
     const char* value;
@@ -640,6 +713,7 @@ static void release_static_objects(void) {
     SAFE_RELEASE(R.front_down);
     SAFE_RELEASE(R.front_staging);
     R.front_w = R.front_h = 0;
+    fx_release();
 }
 
 static int ensure_device(void) {
@@ -1234,6 +1308,10 @@ void d3dr_detach(d3d_device_t* dev) {
 }
 
 void d3dr_surface_freed(dd_surface_t* s) {
+    if (R.batch_water == s) flush();
+    fx_water_surface_freed(s, (uintptr_t)s->bits, s->bits ? (uintptr_t)s->bits + (uintptr_t)s->pitch * s->height : 0);
+    for (int i = 0; i < FX_WAVE_TEXTURES; i++)
+        if (R.fx.waves[i].surface == s) fx_release_wave(i);
     if (s->gpu_texture && !park_texture(s)) release_texture(s);
     if (s->target) {
         drop_deferred(s->target);
@@ -2170,7 +2248,232 @@ static void bind_draw_states(d3d_device_t* dev, d3dr_target_t* t, int has_depth,
     }
 }
 
+static void fx_release_wave(int i) {
+    SAFE_RELEASE(R.fx.waves[i].srv);
+    SAFE_RELEASE(R.fx.waves[i].tex);
+    memset(&R.fx.waves[i], 0, sizeof R.fx.waves[i]);
+}
+
+static void fx_release(void) {
+    SAFE_RELEASE(R.fx.cb);
+    SAFE_RELEASE(R.fx.scene_srv);
+    SAFE_RELEASE(R.fx.scene);
+    R.fx.scene_w = R.fx.scene_h = 0;
+    R.fx.copied_valid = 0;
+    for (int i = 0; i < FX_WAVE_TEXTURES; i++) fx_release_wave(i);
+}
+
+static int water_unavailable(const char* why) {
+    if (!R.fx.water_failed)
+        host_log("video", "water refraction unavailable (%s): water is drawn as before for this session", why);
+    R.fx.water_failed = 1;
+    return 0;
+}
+
+/* The water is drawn from the texture the game's Load fills from the surface the water rows wrote. */
+static int draw_effect(const d3d_device_t* dev) {
+    const DWORD* r = dev->render;
+    if (R.fx.sky_drawing) return R.fx.sky.running && R.fx.sky_usable ? EFFECT_SKY : EFFECT_NONE;
+    if (!R.fx.water.running || R.fx.water_failed || !dev->texture || !r[D3DRENDERSTATE_ALPHABLENDENABLE] ||
+        r[D3DRENDERSTATE_SRCBLEND] != D3DBLEND_SRCALPHA || r[D3DRENDERSTATE_DESTBLEND] != D3DBLEND_INVSRCALPHA)
+        return EFFECT_NONE;
+    return fx_water_link(dev->texture) ? EFFECT_WATER : EFFECT_NONE;
+}
+
+void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
+    int water;
+    if (!R.hardware) return;
+    water = fx_water_loaded(dst, src, (uintptr_t)src->bits, src->pitch, (int)src->width, (int)src->height,
+                            dd_format_bytes(&src->format));
+    if (water && !R.fx.water_linked++)
+        host_log("video", "water refraction: the %lux%lu water texture is loaded from the surface its wave rows write", dst->width,
+                 dst->height);
+}
+
+static int fx_constants_ready(void) {
+    if (!R.fx.cb) R.fx.cb = make_buffer(20 * sizeof(float), D3D11_BIND_CONSTANT_BUFFER);
+    return R.fx.cb != NULL;
+}
+
+static int scene_copy_ready(const d3dr_target_t* t) {
+    if (R.fx.scene && R.fx.scene_w == t->width && R.fx.scene_h == t->height) return 1;
+    SAFE_RELEASE(R.fx.scene_srv);
+    SAFE_RELEASE(R.fx.scene);
+    R.fx.copied_valid = 0;
+    R.fx.scene = make_texture(t->width, t->height, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
+                              D3D11_BIND_SHADER_RESOURCE, 0, 1, 0);
+    if (!R.fx.scene ||
+        FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)R.fx.scene, NULL, &R.fx.scene_srv))) {
+        SAFE_RELEASE(R.fx.scene);
+        return 0;
+    }
+    R.fx.scene_w = t->width;
+    R.fx.scene_h = t->height;
+    return 1;
+}
+
+/* The wave differences of one water texture, refreshed when water_rows ran since. */
+static ID3D11ShaderResourceView* wave_view(dd_surface_t* s) {
+    int at = -1, free_at = -1;
+    size_t bytes = (size_t)s->width * s->height * 8;
+    unsigned serial = fx_water_serial();
+    const fx_water_link_t* link = fx_water_link(s);
+    fx_water_stats_t stats;
+    D3D11_MAPPED_SUBRESOURCE m;
+    if (!link) return NULL;
+    for (int i = 0; i < FX_WAVE_TEXTURES; i++) {
+        if (R.fx.waves[i].surface == s) at = i;
+        else if (!R.fx.waves[i].surface && free_at < 0) free_at = i;
+    }
+    if (at < 0) {
+        at = free_at >= 0 ? free_at : 0;
+        fx_release_wave(at);
+        R.fx.waves[at].surface = s;
+    }
+    if (!R.fx.waves[at].tex || R.fx.waves[at].w != s->width || R.fx.waves[at].h != s->height) {
+        SAFE_RELEASE(R.fx.waves[at].srv);
+        SAFE_RELEASE(R.fx.waves[at].tex);
+        R.fx.waves[at].tex = make_texture(s->width, s->height, DXGI_FORMAT_R32G32_FLOAT, 1, D3D11_USAGE_DYNAMIC,
+                                          D3D11_BIND_SHADER_RESOURCE, D3D11_CPU_ACCESS_WRITE, 1, 0);
+        if (!R.fx.waves[at].tex || FAILED(ID3D11Device_CreateShaderResourceView(R.dev, (ID3D11Resource*)R.fx.waves[at].tex,
+                                                                                 NULL, &R.fx.waves[at].srv))) {
+            fx_release_wave(at);
+            return NULL;
+        }
+        R.fx.waves[at].w = s->width;
+        R.fx.waves[at].h = s->height;
+        R.fx.waves[at].serial = serial - 1;
+    }
+    if (R.fx.waves[at].serial == serial) return R.fx.waves[at].srv;
+    if (R.fx.wave_capacity < bytes) {
+        float* grown = (float*)realloc(R.fx.wave_values, bytes);
+        if (!grown) return NULL;
+        R.fx.wave_values = grown;
+        R.fx.wave_capacity = bytes;
+    }
+    fx_water_fill(link->bits, link->pitch, link->width, link->height, R.fx.wave_values, &stats);
+    R.fx.values_of = s;
+    if (FAILED(ID3D11DeviceContext_Map(R.ctx, (ID3D11Resource*)R.fx.waves[at].tex, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)))
+        return NULL;
+    for (UINT y = 0; y < s->height; y++)
+        memcpy((BYTE*)m.pData + (size_t)y * m.RowPitch, R.fx.wave_values + (size_t)y * s->width * 2, (size_t)s->width * 8);
+    ID3D11DeviceContext_Unmap(R.ctx, (ID3D11Resource*)R.fx.waves[at].tex, 0);
+    R.fx.waves[at].serial = serial;
+    return R.fx.waves[at].srv;
+}
+
+static void sample_shifts(const d3dr_target_t* t, const fx_water_link_t* link) {
+    const double scale = t->legacy_w ? (double)t->width / t->legacy_w : 1.0;
+    static const double bary[3][3] = { { 2.0 / 3, 1.0 / 6, 1.0 / 6 }, { 1.0 / 6, 2.0 / 3, 1.0 / 6 }, { 1.0 / 6, 1.0 / 6, 2.0 / 3 } };
+    UINT triangles, step;
+    if (R.batch_topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST || R.fx.values_of != R.batch_water) return;
+    triangles = R.nindices / 3;
+    step = triangles > 2048 ? triangles / 2048 : 1;
+    for (UINT i = 0; i < triangles; i += step) {
+        const tl_vertex_t* v[3] = { &R.verts[R.indices[i * 3]], &R.verts[R.indices[i * 3 + 1]], &R.verts[R.indices[i * 3 + 2]] };
+        double area = fabs((v[1]->x - v[0]->x) * (v[2]->y - v[0]->y) - (v[2]->x - v[0]->x) * (v[1]->y - v[0]->y)) * 0.5 * scale * scale;
+        for (int k = 0; k < 3; k++) {
+            double u = 0, w = 0, rhw = 0, wave[2], dx, dy;
+            for (int c = 0; c < 3; c++) {
+                u += v[c]->u * bary[k][c];
+                w += v[c]->v * bary[k][c];
+                rhw += v[c]->rhw * bary[k][c];
+            }
+            fx_water_wave_at(R.fx.wave_values, link->width, link->height, u, w, wave);
+            fx_water_offset_px(wave[0], wave[1], FX_WATER_STRENGTH, rhw, t->height, &dx, &dy);
+            fx_shift_add(fx_water_shifts(), sqrt(dx * dx + dy * dy), area / 3.0, sqrt(wave[0] * wave[0] + wave[1] * wave[1]), rhw);
+        }
+    }
+}
+
+static void water_numbers(const d3dr_target_t* t, const fx_water_link_t* link) {
+    float lo = 1e30f, hi = 0.0f;
+    unsigned alpha_lo = 255, alpha_hi = 0;
+    for (UINT i = 0; i < R.nverts; i++) {
+        float w = R.verts[i].rhw;
+        unsigned a = R.verts[i].diffuse >> 24;
+        if (w < lo) lo = w;
+        if (w > hi) hi = w;
+        if (a < alpha_lo) alpha_lo = a;
+        if (a > alpha_hi) alpha_hi = a;
+    }
+    if (!R.nverts) lo = 0.0f, alpha_lo = 0;
+    sample_shifts(t, link);
+    if (!R.fx.water_reported++) {
+        int tex_lo, tex_hi;
+        fx_water_alpha_range(link->bits, link->pitch, link->width, link->height, &tex_lo, &tex_hi);
+        host_log("video", "water refraction: first water batch, %dx%d texture (alpha %d..%d of 15), vertex alpha %u..%u, "
+                 "texture blend %lu, distance %.1f..%.1f m (shift scale %.3f..%.3f), strength %.2f", link->width,
+                 link->height, tex_lo, tex_hi, alpha_lo, alpha_hi, (unsigned long)R.batch_dev->render[D3DRENDERSTATE_TEXTUREMAPBLEND],
+                 hi > 0.0f ? FX_WATER_RHW_METRE / hi : 0.0, lo > 0.0f ? FX_WATER_RHW_METRE / lo : 0.0,
+                 fx_water_attenuation(lo), fx_water_attenuation(hi), FX_WATER_STRENGTH);
+    }
+}
+
+/* The scene behind the water is copied (resolved under MSAA) at the frame's first water batch, as CE does. */
+static int water_ready(d3dr_target_t* t, dd_surface_t* s, const D3D11_RECT* viewport, ID3D11ShaderResourceView** views) {
+    fx_water_plan_t plan = fx_water_plan(R.fx.water.running, !R.fx.water_failed, 1, R.frames_hw, R.fx.copied_frame,
+                                         R.fx.copied_valid, t->samples);
+    float constants[20] = { 0 };
+    if (!plan.refract) return 0;
+    if (!fx_constants_ready()) return water_unavailable("its constant buffer could not be created");
+    if (!scene_copy_ready(t)) return water_unavailable("the scene copy could not be created");
+    views[0] = wave_view(s);
+    if (!views[0]) return 0;
+    water_numbers(t, fx_water_link(s));
+    plan = fx_water_plan(1, 1, 1, R.frames_hw, R.fx.copied_frame, R.fx.copied_valid, t->samples);
+    if (plan.copy_scene) {
+        if (plan.resolve) {
+            ID3D11DeviceContext_ResolveSubresource(R.ctx, (ID3D11Resource*)R.fx.scene, 0, (ID3D11Resource*)t->color, 0,
+                                                   DXGI_FORMAT_B8G8R8A8_UNORM);
+            R.fx.resolves++;
+        } else {
+            ID3D11DeviceContext_CopyResource(R.ctx, (ID3D11Resource*)R.fx.scene, (ID3D11Resource*)t->color);
+        }
+        R.fx.copies++;
+        R.fx.copied_frame = R.frames_hw;
+        R.fx.copied_valid = 1;
+    }
+    views[1] = R.fx.scene_srv;
+    constants[0] = 1.0f / (float)t->width;
+    constants[1] = 1.0f / (float)t->height;
+    constants[2] = FX_WATER_STRENGTH;
+    constants[3] = (float)t->height / (float)t->width;
+    constants[12] = 1.0f / FX_WATER_RHW_METRE;
+    fx_water_scene_bounds(viewport->left, viewport->top, viewport->right, viewport->bottom, (int)t->width, (int)t->height,
+                          constants + 16);
+    update_constants(R.fx.cb, constants, sizeof constants);
+    R.fx.water_batches++;
+    return 1;
+}
+
+static int sky_ready(void) {
+    float constants[20] = { 0 };
+    if (!fx_constants_ready()) return 0;
+    memcpy(constants + 4, R.fx.sky_constants, sizeof R.fx.sky_constants);
+    update_constants(R.fx.cb, constants, sizeof constants);
+    R.fx.sky_batches++;
+    return 1;
+}
+
+static void effect_bind(int effect, ID3D11ShaderResourceView* const* views) {
+    ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[effect == EFFECT_WATER ? D3D11_SHADER_PS_WATER : D3D11_SHADER_PS_SKY],
+                                    NULL, 0);
+    ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 3, 1, &R.fx.cb);
+    if (effect != EFFECT_WATER) return;
+    ID3D11DeviceContext_PSSetShaderResources(R.ctx, 18, 2, views);
+    ID3D11DeviceContext_PSSetSamplers(R.ctx, 5, 1, &R.linear_clamp);
+}
+
+static void effect_unbind(int effect) {
+    ID3D11ShaderResourceView* none[2] = { NULL, NULL };
+    ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[D3D11_SHADER_PS_FIXED], NULL, 0);
+    if (effect == EFFECT_WATER) ID3D11DeviceContext_PSSetShaderResources(R.ctx, 18, 2, none);
+}
+
 static void end_batch(void) {
+    R.batch_effect = EFFECT_NONE;
+    R.batch_water = NULL;
     R.nverts = R.nindices = 0;
     R.batch_arrays = 0;
     R.batch_has_texture = 0;
@@ -2186,7 +2489,8 @@ static void flush(void) {
     D3D11_VIEWPORT vp;
     D3D11_RECT scissor;
     ID3D11SamplerState* samplers[D3D11_DEVICE_SAMPLER + 1];
-    int has_depth, sampled = 0;
+    ID3D11ShaderResourceView* effect_views[2] = { NULL, NULL };
+    int has_depth, sampled = 0, effect = R.batch_effect;
     int64_t start;
     if (!R.nindices || !t || !t->surface || !target_ready(t)) {
         end_batch();
@@ -2234,8 +2538,12 @@ static void flush(void) {
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     scissor = viewport_scissor(dev, t);
+    if (effect == EFFECT_WATER && !water_ready(t, R.batch_water, &scissor, effect_views)) effect = EFFECT_NONE;
+    if (effect == EFFECT_SKY && !sky_ready()) effect = EFFECT_NONE;
     bind_draw_states(dev, t, has_depth, sampled ? samplers : NULL, &vp, &scissor);
+    if (effect) effect_bind(effect, effect_views);
     ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, (INT)(vb_offset / stride));
+    if (effect) effect_unbind(effect);
     if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && dev->render[D3DRENDERSTATE_ZWRITEENABLE])
         t->ao_scene = 1;
     if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && !R.depth_active) {
@@ -2293,7 +2601,8 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     d3dr_texture_t* tex;
     ID3D11ShaderResourceView* srv;
     uint32_t tex_flags;
-    int slot = 0;
+    int slot = 0, effect;
+    dd_surface_t* water;
     const BYTE* src = (const BYTE*)vertices;
     int64_t start = (++R.translate_calls & (TRANSLATE_SAMPLE - 1u)) ? 0 : ticks();
     if (!d3dt_fvf_layout(fvf, &stride, &diffuse, &specular, &uv)) {
@@ -2325,7 +2634,10 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     tex = dev->texture ? texture_for(dev->texture) : NULL;
     srv = tex ? texture_view(tex) : NULL;
     tex_flags = texture_flags(dev, tex);
-    if (R.batch_dev != dev || R.batch_topology != topology) {
+    effect = draw_effect(dev);
+    water = effect == EFFECT_WATER ? dev->texture : NULL;
+    if (R.batch_dev != dev || R.batch_topology != topology ||
+        (R.nindices && (R.batch_effect != effect || R.batch_water != water))) {
         flush();
         R.batch_dev = dev;
         R.batch_topology = topology;
@@ -2339,6 +2651,8 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
         R.texture_joins++;
     }
     gpu_write(t);
+    R.batch_effect = effect;
+    R.batch_water = water;
     R.batch_tex = tex;
     if (dev->texture) R.batch_has_texture = 1;
     if (tex) tex->batch = R.batch_serial;
@@ -3358,6 +3672,15 @@ void d3dr_summary(void) {
                              readback_reason_name(R.total.callers[i].reason), R.total.callers[i].count,
                              R.total.callers[i].bytes / (1024.0 * 1024.0), R.total.callers[i].ms);
             log_state_classes();
+        }
+        host_log("video", "water refraction: %llu water batches, %llu scene copies (%llu of them MSAA resolves); "
+                 "enhanced sky: %llu sky batches", R.fx.water_batches, R.fx.copies, R.fx.resolves, R.fx.sky_batches);
+        if (fx_water_raw()->written) {
+            const fx_shift_t* sh = fx_water_shifts();
+            host_log("video", "water refraction: largest wave difference %.4f (%llu of %llu texels moving); shift in pixels: average %.2f, "
+                     "p95 %.2f, p99 %.2f, largest %.1f (wave %.3f at %.1f m)", fx_water_abs_max(), fx_water_raw()->nonzero,
+                     fx_water_raw()->written, fx_shift_mean(sh), fx_shift_percentile(sh, 0.95), fx_shift_percentile(sh, 0.99), sh->max,
+                     sh->max_wave, sh->max_rhw > 0.0 ? FX_WATER_RHW_METRE / sh->max_rhw : 0.0);
         }
         if (R.unknown_count) host_log("d3d", "unknown texture formats: %u (listed above when first drawn)", R.unknown_count);
         host_log("d3d", "textures changed without Lock/Unlock: %llu", R.untracked_writes);

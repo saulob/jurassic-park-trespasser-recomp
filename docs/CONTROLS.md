@@ -30,7 +30,13 @@ page lists the ones the game loads (its `KeyMap`), so a remapped key shows up th
 | Rotate wrist | Shift + mouse left + mouse movement |
 | Pause menu | Esc |
 
-Port hotkeys: F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
+Port hotkeys: **F7 Quick Save** and **F8 Quick Load** (changed on the launcher's Controls page; Insert, Delete, Home,
+End, Page Up, Page Down, F6 and F9 are the other keys they can take, and a key taken by one of them never reaches the
+game). Quick Save writes the level in progress to its own slot, `SAVEGAME.QCK` beside the numbered saves, with the
+game's own save writer: a normal retail save that the Load screen lists as "Quick Save" (the Save screen leaves it
+out, so a normal save can never overwrite it by accident). It works in a level with Anne alive and no host panel open;
+a line under the compass says "Quick saved". Quick Load loads that file only, in a level (also after death) or from
+the main menu; without a Quick Save it says "No Quick Save yet" and loads nothing. F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
 bindings and the hotkeys below), F3 Objectives, F4 Show Objective, F5 the Debug / Test Menu, F10 Cheats, F11 windowed
 / borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 Hint. The card lists F1 Hint, F2 Controls, F3
 Objectives, F4 Show Objective, F5 Debug Menu, F10 Cheats, F11 Fullscreen and Esc Menu. On a gamepad, D-pad Left opens the
@@ -59,6 +65,7 @@ does not move or look and the game gets no keys; Esc (or B) closes it first, or 
 | Copy Coordinates | `Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570` to the clipboard |
 | Freeze AI | the DINOS cheat: dinosaurs sleep and stop updating until it is turned off |
 | Ambient Occlusion | Graphics: Off, Low, Medium, High, Ultra (Enter cycles, Left/Right step); applies from the next frame and is saved to `trespasser.ini`. Unavailable with the Software renderer or without feature level 11.0 |
+| Water Refraction, Enhanced Sky | Graphics: On / Off (Enter switches, Right On, Left Off), the state in use, from the next draw: for A/B comparison of the same view. For this session only: `trespasser.ini` keeps the launcher's choice, and the next start uses it. The log says `[debug] water refraction: on` / `off` (and `enhanced sky`) when it changes. Unavailable with the Software renderer |
 
 Keyboard: Up/Down, Enter. Gamepad: D-pad, A to use, B back, Menu to close. Yaw is in radians, counter-clockwise from
 +Y, the game's facing axis. Nothing here writes a save or the game's progress.

@@ -31,6 +31,11 @@ std::string WindowSizeLabel(const jpt_window_size_t& size);
 // Whether the window fits the monitor's work area as it is.
 bool WindowSizeFits(const jpt_window_size_t& size, const jpt_monitor_t& monitor);
 
+// Water refraction and Enhanced sky: the Software renderer draws water and sky as the original, so they are greyed out
+// there and keep their stored values for Direct3D 11.
+inline constexpr char kDirect3DOnlyHelp[] = "Available with the Direct3D 11 renderer.";
+bool Direct3DEffectsAvailable(const std::string& renderer);
+
 // "Display 2 (primary)   2560 × 1440   Name". Monitor settings are 1-based.
 std::string MonitorLabel(int monitor, const std::vector<jpt_monitor_t>& monitors);
 

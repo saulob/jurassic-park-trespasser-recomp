@@ -258,6 +258,32 @@ static void test_pointer_relative(void) {
             CHECK(!pointer_add_relative((input_state_t)st, &x, &y, 5, 5) && x == 420 && y == 297);
 }
 
+/* The game takes its pointer back from a dialog or menu: the virtual cursor is the centre CInput recentres to. */
+static void test_pointer_recapture(void) {
+    static const input_state_t real[] = { INPUT_MENU, INPUT_DIALOG };
+    static const input_state_t virtual_states[] = { INPUT_GAMEPLAY_CAPTURED, INPUT_GAMEPLAY_RELEASED, INPUT_MOVING_WINDOW,
+                                                     INPUT_FULLSCREEN_TRANSITION, INPUT_SHUTDOWN };
+    for (size_t i = 0; i < sizeof real / sizeof real[0]; i++) {
+        long x = 11, y = 22;
+        CHECK(pointer_recapture(real[i], INPUT_GAMEPLAY_CAPTURED, &x, &y, 2560, 1920) && x == 1280 && y == 960);
+        x = 11;
+        y = 22;
+        for (size_t j = 0; j < sizeof virtual_states / sizeof virtual_states[0]; j++)
+            if (virtual_states[j] != INPUT_GAMEPLAY_CAPTURED)
+                CHECK(!pointer_recapture(real[i], virtual_states[j], &x, &y, 2560, 1920) && x == 11 && y == 22);
+        CHECK(!pointer_recapture(real[i], INPUT_DIALOG, &x, &y, 2560, 1920) && !pointer_recapture(real[i], INPUT_MENU, &x, &y, 2560, 1920));
+    }
+    for (size_t j = 0; j < sizeof virtual_states / sizeof virtual_states[0]; j++) {
+        long x = 11, y = 22;
+        CHECK(!pointer_recapture(virtual_states[j], INPUT_GAMEPLAY_CAPTURED, &x, &y, 2560, 1920) && x == 11 && y == 22);
+    }
+    {
+        long x = 11, y = 22;
+        CHECK(!pointer_recapture(INPUT_DIALOG, INPUT_GAMEPLAY_CAPTURED, &x, &y, 0, 1920) && !pointer_recapture(INPUT_DIALOG, INPUT_GAMEPLAY_CAPTURED, &x, &y, 2560, -1));
+        CHECK(pointer_recapture(INPUT_DIALOG, INPUT_GAMEPLAY_CAPTURED, &x, &y, 1, 1) && x == 0 && y == 0);
+    }
+}
+
 static void test_shutdown(void) {
     shutdown_state_t s;
     static const shutdown_phase_t gameplay_path[] = {
@@ -2997,6 +3023,7 @@ int main(void) {
     test_capture_policy();
     test_keys();
     test_pointer_relative();
+    test_pointer_recapture();
     test_shutdown();
     test_quit_steps();
     test_safemode();

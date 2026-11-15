@@ -1152,6 +1152,25 @@ static void TestEmbeddedOnly() {
     CHECK(ReadSource("CMakeLists.txt").find("assets/translations/*.txt") != std::string::npos);
 }
 
+static void TestDirect3DEffectsPolicy() {
+    CHECK(Direct3DEffectsAvailable("d3d11") && Direct3DEffectsAvailable("") && !Direct3DEffectsAvailable("software"));
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr(kDirect3DOnlyHelp)) == "Disponível com o renderizador Direct3D 11.");
+    SetLauncherLanguage("en");
+    CHECK(std::string(Tr(kDirect3DOnlyHelp)) == "Available with the Direct3D 11 renderer.");
+    // Greyed out (not hidden, not rewritten) under Software, both effects, with the D3D11-only help.
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t gate = launcher.find("Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER))");
+    const size_t disabled = launcher.find("ImGui::BeginDisabled(!available);", gate);
+    const size_t water = launcher.find("ui.Toggle(\"Water refraction\", available ? kWaterRefractionHelp : kDirect3DOnlyHelp", disabled);
+    const size_t sky = launcher.find("ui.Toggle(\"Enhanced sky\", available ? kEnhancedSkyHelp : kDirect3DOnlyHelp", water);
+    const size_t end = launcher.find("ImGui::EndDisabled();", sky);
+    CHECK(gate != std::string::npos && disabled != std::string::npos && water != std::string::npos && sky != std::string::npos &&
+          end != std::string::npos);
+    CHECK(launcher.find("Set(JPT_KEY_WATER_REFRACTION") == std::string::npos &&
+          launcher.find("Set(JPT_KEY_ENHANCED_SKY") == std::string::npos);
+}
+
 int main() {
     wchar_t temp[MAX_PATH];
     GetTempPathW(MAX_PATH, temp);
@@ -1176,6 +1195,7 @@ int main() {
     TestLauncherLanguage(dir);
     TestUiCoverage();
     TestNoLanguagePage();
+    TestDirect3DEffectsPolicy();
     TestLanguageNames();
     TestGoreAndTitleOptions();
     TestGraphicsCard(dir);

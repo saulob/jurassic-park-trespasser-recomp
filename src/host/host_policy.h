@@ -64,6 +64,9 @@ int input_should_clip(input_state_t state, int pointer_in_view, int button_held)
 /* The one place relative pointer motion lands, the mouse's (Raw Input) and the right stick's (whole counts) alike: the
  * virtual cursor CInput reads and re-centres, moved only while gameplay holds the pointer. 1 when it moved. */
 int pointer_add_relative(input_state_t state, long* x, long* y, long dx, long dy);
+/* The game takes its pointer back from a state where its cursor was the real one: the virtual cursor starts at the
+ * centre CInput recentres to, not where the real cursor was left. 1 when it was set. */
+int pointer_recapture(input_state_t before, input_state_t after, long* x, long* y, long width, long height);
 
 typedef enum {
     KEY_TO_GAME,
@@ -75,13 +78,17 @@ typedef enum {
     KEY_HOST_CONTROLS,
     KEY_HOST_OBJECTIVES,
     KEY_HOST_SNAPSHOT,
-    KEY_HOST_SHOW_OBJECTIVE
+    KEY_HOST_SHOW_OBJECTIVE,
+    KEY_HOST_QUICK_SAVE,
+    KEY_HOST_QUICK_LOAD
 } key_action_t;
 
 /* msg is WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP; repeat is lParam bit 30. F2 is the controls card (unused by
  * the game: CGameWnd's key table 0x0040C220 gives it no action), as are F3, Objectives, and F4 without Alt, Show
  * Objective; F12, the game's controls window, is not passed on. */
 key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt);
+/* The Quick Save and Quick Load keys (trespasser.ini); they win over the port's other uses of the same key. */
+void key_policy_set_quick_keys(unsigned save_vk, unsigned load_vk);
 /* Esc and F1 open a window of the game over gameplay: the cursor is freed before it opens. */
 int key_opens_game_window(unsigned msg, unsigned vk, int repeat);
 

@@ -1405,8 +1405,102 @@ static int alias_reaches_lifted(void) {
     return called;
 }
 
+/* The numbers the real kernel produces for a known wave field: what changes in the texture, and what the observer is given
+ * (the wave heights' differences), so the refraction's input can be read off exactly. */
+static struct {
+    unsigned long n;
+    double a_min, a_max, b_min, b_max;
+} g_dump;
+
+static void dump_observer(uintptr_t texel, double a, double b) {
+    (void)texel;
+    if (!g_dump.n || a < g_dump.a_min) g_dump.a_min = a;
+    if (!g_dump.n || a > g_dump.a_max) g_dump.a_max = a;
+    if (!g_dump.n || b < g_dump.b_min) g_dump.b_min = b;
+    if (!g_dump.n || b > g_dump.b_max) g_dump.b_max = b;
+    g_dump.n++;
+}
+
+static int water_dump(void) {
+    enum { W = 256, H = 256, STRIDE = 260, FIRST = 4, LAST = W - 6 };
+    const float amplitude = 0.05f, wavelength = 24.0f;
+    uint32_t heights, spans, sim, node, dest;
+    double want_a_min = 1e30, want_a_max = -1e30, want_b_min = 1e30, want_b_max = -1e30;
+    unsigned long changed = 0, distinct = 0, hist[65536 / 64] = { 0 };
+    int ok = 1;
+    start_t st;
+    g_arena = ARENA;
+    heights = alloc(STRIDE * STRIDE * 4);
+    for (int y = 0; y < STRIDE; y++)
+        for (int x = 0; x < STRIDE; x++)
+            putf(heights + (uint32_t)(y * STRIDE + x) * 4,
+                 amplitude * sinf(6.2831853f * (float)x / wavelength) * cosf(6.2831853f * (float)y / (wavelength * 1.5f)));
+    spans = alloc(H * 8);
+    for (uint32_t r = 0; r < H; r++) {
+        put32(spans + r * 8, FIRST);
+        put32(spans + r * 8 + 4, LAST);
+    }
+    sim = alloc(0x100);
+    putf(sim + 0x18, 0.5f);
+    putf(sim + 0x2C, 0.5f);
+    put32(sim + 0x38, W);
+    put32(sim + 0x3C, STRIDE);
+    put32(sim + 0x44, heights);
+    put32(sim + 0x50, STRIDE);
+    put32(sim + 0x98, spans);
+    node = alloc(16);
+    put32(node, sim);
+    dest = alloc(H * W * 2 + 64);
+    memset((void*)(uintptr_t)dest, 0xFF, H * W * 2);
+    putf(ALPHA_OFFSET, 1.0f);
+    putf(ALPHA_SCALE, 7.5f);
+    putf(STACK_TOP + 0x10, 10.0f);
+    memcpy(g_initial, (void*)(uintptr_t)REGION_LO, sizeof g_initial);
+    random_start(&st, 0);
+    st.regs[1] = node;
+    st.cw = 0x0F7F;
+    enter(&st);
+    water_rows_observer = dump_observer;
+    memset(&g_dump, 0, sizeof g_dump);
+    for (uint32_t row = 0; row < H - 6; row++) {
+        g_esp = STACK_TOP;
+        g_ecx = node;
+        put32(STACK_TOP + 8, dest + row * W * 2 + 2);
+        put32(STACK_TOP + 0xC, row);
+        putf(STACK_TOP + 0x10, 10.0f);
+        putf(STACK_TOP + 0x14, 0.3f);
+        putf(STACK_TOP + 0x18, -0.2f);
+        water_rows();
+        for (int x = FIRST; x < LAST; x++) {
+            double h = *(const float*)(uintptr_t)(heights + ((uint32_t)row * STRIDE + (uint32_t)x) * 4);
+            double ha = *(const float*)(uintptr_t)(heights + ((uint32_t)row * STRIDE + (uint32_t)x + 1) * 4);
+            double hb = *(const float*)(uintptr_t)(heights + ((uint32_t)(row + 1) * STRIDE + (uint32_t)x) * 4);
+            if (h - ha < want_a_min) want_a_min = h - ha;
+            if (h - ha > want_a_max) want_a_max = h - ha;
+            if (h - hb < want_b_min) want_b_min = h - hb;
+            if (h - hb > want_b_max) want_b_max = h - hb;
+        }
+    }
+    water_rows_observer = NULL;
+    for (unsigned long i = 0; i < (unsigned long)H * W; i++) {
+        uint16_t word = *(const uint16_t*)(uintptr_t)(dest + i * 2);
+        if (word != 0xFFFF) {
+            changed++;
+            if (!hist[word / 64]++) distinct++;
+        }
+    }
+    printf("water_rows on a known wave field (%.2f amplitude, %.0f cells): %lu texels changed, %lu distinct 64-code buckets, "
+           "observer %lu texels\n  a %.9g..%.9g (expected %.9g..%.9g)\n  b %.9g..%.9g (expected %.9g..%.9g)\n", amplitude,
+           wavelength, changed, distinct, g_dump.n, g_dump.a_min, g_dump.a_max, want_a_min, want_a_max, g_dump.b_min,
+           g_dump.b_max, want_b_min, want_b_max);
+    ok = changed > 0 && g_dump.n > 0 && fabs(g_dump.a_min - want_a_min) < 1e-9 && fabs(g_dump.a_max - want_a_max) < 1e-9 &&
+         fabs(g_dump.b_min - want_b_min) < 1e-9 && fabs(g_dump.b_max - want_b_max) < 1e-9 && want_a_max > 0.0;
+    if (!ok) printf("water_rows numeric dump: FAILED\n");
+    return ok;
+}
+
 int main(int argc, char** argv) {
-    int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias, bump, paced;
+    int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias, bump, paced, dump;
     unsigned long per_kind = quick ? 300 : 3000;
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1453,5 +1547,6 @@ int main(int argc, char** argv) {
     bump = bump_native_cases(quick ? 200 : 2000, 0);
     bump = bump_native_cases(quick ? 200 : 2000, 1) && bump;
     paced = wave_cadence_cases();
-    return g_kernel[0].nan_payload || g_kernel[0].different || !alias || !bump || !paced ? 1 : 0;
+    dump = water_dump();
+    return g_kernel[0].nan_payload || g_kernel[0].different || !alias || !bump || !paced || !dump ? 1 : 0;
 }

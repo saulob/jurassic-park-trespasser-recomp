@@ -81,6 +81,13 @@ repository. Every offset, address and behaviour this port relies on was verified
 executable and the code lifted from it, and `docs/ANALYSIS.md` and the addresses in the code rest on that verification.
 The port's code is its own implementation. This is not a clean-room reimplementation.
 
+## Trespasser CE
+
+Trespasser CE and the CE Patcher were studied statically, as references for behaviour (`docs/REFERENCES.md`); neither
+was run. No part of them (executable, DLL, shader, data, menu picture or configuration file) is included, required or
+read by the port, and nothing is downloaded. The features the port took as ideas are its own implementation over the
+retail executable.
+
 ## This repository's own code
 
 No licence file has been added yet; that choice belongs to the repository owner.

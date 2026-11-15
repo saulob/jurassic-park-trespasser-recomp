@@ -491,6 +491,7 @@ static void update_input(const char* why) {
             s.captures++;
             s.clip_hold_until = 0;
         }
+        pointer_recapture(s.state, next, &s.cursor.x, &s.cursor.y, s.fbw, s.fbh);
         s.last_move_valid = 0;
         s.raw_abs_valid = 0;
         s.menu_mouse_valid = 0;
@@ -1045,6 +1046,14 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     case KEY_HOST_SNAPSHOT:
         physics_watch_request();
         return 0;
+    case KEY_HOST_QUICK_SAVE:
+        log_key(msg, wparam, lparam, "Quick Save");
+        quick_save_request();
+        return 0;
+    case KEY_HOST_QUICK_LOAD:
+        log_key(msg, wparam, lparam, "Quick Load");
+        quick_load_request();
+        return 0;
     case KEY_HOST_SHOW_OBJECTIVE:
         if (g.ui == GUEST_UI_GAMEPLAY && !debug_menu_open_menu() && !tutorial_prompts_card_shown())
             debug_menu_show_objective();
@@ -1055,8 +1064,8 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         if (repeat) s.dropped_repeats++;
         if (wparam == VK_F12) {
             if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "dropped (Controls is F2)");
-        } else if (wparam != VK_F3 && wparam != VK_F4 && wparam != VK_F5 && wparam != VK_F9 && wparam != VK_F10 &&
-                   wparam != VK_F11 && wparam != VK_F2) {
+        } else if (repeat && wparam != VK_F3 && wparam != VK_F4 && wparam != VK_F5 && wparam != VK_F9 &&
+                   wparam != VK_F10 && wparam != VK_F11 && wparam != VK_F2) {
             log_key(msg, wparam, lparam, "auto-repeat dropped");
         }
         return 0;
@@ -1464,6 +1473,8 @@ void shim_GetCursorPos(void) {
             gamepad_ui_loop();
             overlay_ui_loop();
             debug_menu_ui_loop();
+            ce_gameplay_ui_loop();
+            update_input("GetCursorPos");
         }
         *out = game_cursor();
     } else {

@@ -81,6 +81,8 @@ Third Person	Dritte Person
 Fly / Free Camera	Flug / freie Kamera
 Compass	Kompass
 Ambient Occlusion	Umgebungsverdeckung
+Water Refraction	Wasserbrechung
+Enhanced Sky	Verbesserter Himmel
 Close	Schließen
 Off	Aus
 On	An
@@ -124,6 +126,14 @@ Freeze AI failed	KI einfrieren fehlgeschlagen
 Key point %d / %d	Wegpunkt %d / %d
 No objective	Kein Ziel
 Objective updated	Ziel aktualisiert
+Quick Save	Schnellspeichern
+Quick saved	Schnell gespeichert
+Quick Save failed	Schnellspeichern fehlgeschlagen
+Quick Load failed	Schnellladen fehlgeschlagen
+No Quick Save yet	Noch kein Schnellspeicherstand
+Quick Save works in a level	Schnellspeichern nur in einem Level
+Quick Save is not available now	Schnellspeichern ist gerade nicht möglich
+Quick Load is not available now	Schnellladen ist gerade nicht möglich
 Anne cannot be healed now	Anne kann jetzt nicht geheilt werden
 Camera	Kamera
 Normal	Normal

@@ -81,6 +81,8 @@ Third Person	Третье лицо
 Fly / Free Camera	Полёт / свободная камера
 Compass	Компас
 Ambient Occlusion	Фоновое затенение
+Water Refraction	Преломление воды
+Enhanced Sky	Улучшенное небо
 Close	Закрыть
 Off	Выкл.
 On	Вкл.
@@ -124,6 +126,14 @@ Freeze AI failed	Не удалось заморозить ИИ
 Key point %d / %d	Точка %d / %d
 No objective	Нет задачи
 Objective updated	Задача обновлена
+Quick Save	Быстрое сохранение
+Quick saved	Игра сохранена
+Quick Save failed	Ошибка быстрого сохранения
+Quick Load failed	Ошибка быстрой загрузки
+No Quick Save yet	Быстрого сохранения ещё нет
+Quick Save works in a level	Быстрое сохранение работает только на уровне
+Quick Save is not available now	Быстрое сохранение сейчас недоступно
+Quick Load is not available now	Быстрая загрузка сейчас недоступна
 Anne cannot be healed now	Сейчас Анну нельзя вылечить
 Camera	Камера
 Normal	Обычная

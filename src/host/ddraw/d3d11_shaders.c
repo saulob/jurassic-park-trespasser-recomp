@@ -26,6 +26,13 @@ const char d3d11_shader_source[] =
     "SamplerState samp_clamp_v : register(s2);\n"
     "SamplerState samp_clamp_uv : register(s3);\n"
     "SamplerState samp_device : register(s4);\n"
+    /* Water refraction and Enhanced sky (ce_effects.h): fx_water = (1/width, 1/height, strength, height/width),
+     * fx_sky = (camera u, camera v, plane height, fog low), fx_sky2.x = fog high, fx_water2.x = 1 / FX_WATER_RHW_METRE, fx_water3 = the uv
+     * rectangle of the 3D viewport the shifted sample may not leave (fx_water_scene_bounds). */
+    "cbuffer Effects : register(b3) { float4 fx_water; float4 fx_sky; float4 fx_sky2; float4 fx_water2; float4 fx_water3; };\n"
+    "Texture2D water_waves : register(t18);\n"
+    "Texture2D scene_behind : register(t19);\n"
+    "SamplerState samp_linear : register(s5);\n"
     "#define F_TEXTURED 1u\n"
     "#define F_TEX_ALPHA 2u\n"
     "#define F_KEY_TEST 4u\n"
@@ -46,6 +53,7 @@ const char d3d11_shader_source[] =
     "  nointerpolation float4 flat_specular : COLOR3;\n"
     "  float2 uv : TEXCOORD0;\n"
     "  nointerpolation uint layer : TEXCOORD1;\n"
+    "  noperspective float rhw : TEXCOORD2;\n"
     "};\n"
     /* Pre-transformed vertices: Direct3D 6 pixel centres are integers, D3D11's are at +0.5. */
     "PSIn vs_tl(VSIn v) {\n"
@@ -57,6 +65,7 @@ const char d3d11_shader_source[] =
     "  o.specular = v.specular; o.flat_specular = v.specular;\n"
     "  o.uv = v.uv;\n"
     "  o.layer = v.layer;\n"
+    "  o.rhw = v.pos.w;\n"
     "  return o;\n"
     "}\n"
     "float4 sample_array(uint slot, float3 c, float2 gx, float2 gy, SamplerState s) {\n"
@@ -101,7 +110,7 @@ const char d3d11_shader_source[] =
     "  if (alpha_func == 7) return a >= r;\n"
     "  return true;\n"
     "}\n"
-    "float4 ps_fixed(PSIn i) : SV_Target {\n"
+    "float4 fixed_color(PSIn i, float fog) {\n"
     "  float4 d = (flags & F_FLAT) ? i.flat_diffuse : i.diffuse;\n"
     "  float3 s = (flags & F_FLAT) ? i.flat_specular.rgb : i.specular.rgb;\n"
     "  float4 c = d;\n"
@@ -126,8 +135,29 @@ const char d3d11_shader_source[] =
     "  }\n"
     "  if (flags & F_SPECULAR) c.rgb += s;\n"
     "  if ((flags & F_ALPHA_TEST) && !alpha_pass(c.a)) discard;\n"
-    "  if (flags & F_FOG) c.rgb = lerp(fog_color.rgb, c.rgb, saturate(i.specular.a));\n"
+    "  if (flags & F_FOG) c.rgb = lerp(fog_color.rgb, c.rgb, saturate(fog));\n"
     "  return saturate(c);\n"
+    "}\n"
+    "float4 ps_fixed(PSIn i) : SV_Target { return fixed_color(i, i.specular.a); }\n"
+    /* The scene behind the water, displaced by the wave heights' differences under this texel, under the water's own
+     * colour at its own alpha. */
+    "float4 ps_water(PSIn i) : SV_Target {\n"
+    "  float4 c = fixed_color(i, i.specular.a);\n"
+    "  float2 waves = water_waves.Sample(samp_linear, i.uv).rg;\n"
+    "  float2 shift = waves * fx_water.z * saturate(i.rhw * fx_water2.x) * float2(fx_water.w, 1.0);\n"
+    "  float2 base = i.pos.xy * fx_water.xy;\n"
+    "  float2 room = float2(shift.x > 0.0 ? (fx_water3.z - base.x) / shift.x : shift.x < 0.0 ? (fx_water3.x - base.x) / shift.x : 1.0,\n"
+    "                       shift.y > 0.0 ? (fx_water3.w - base.y) / shift.y : shift.y < 0.0 ? (fx_water3.y - base.y) / shift.y : 1.0);\n"
+    "  float3 behind = scene_behind.Sample(samp_linear, base + shift * saturate(min(room.x, room.y))).rgb;\n"
+    "  return float4(lerp(behind, c.rgb, c.a), 1.0);\n"
+    "}\n"
+    /* The sky's fog from the view direction (fx_sky_fog), in place of the retail per-vertex depth fog. */
+    "float4 ps_sky(PSIn i) : SV_Target {\n"
+    "  float2 d = i.uv - fx_sky.xy;\n"
+    "  float all = sqrt(dot(d, d) + fx_sky.z * fx_sky.z);\n"
+    "  float v = all > 0.0 ? sqrt(dot(d, d)) / all : 0.0;\n"
+    "  float f = v <= fx_sky.w ? 0.0 : v >= fx_sky2.x ? 1.0 : (v - fx_sky.w) / (fx_sky2.x - fx_sky.w);\n"
+    "  return fixed_color(i, 1.0 - f);\n"
     "}\n"
     /* Rectangle passes: clears, the legacy picture, overlays and presentation, from pass_rect in NDC. */
     "struct QuadOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
@@ -162,7 +192,8 @@ const char d3d11_shader_source[] =
 const d3d11_shader_entry_t d3d11_shader_entries[D3D11_SHADER_COUNT] = {
     { "vs_tl", "vs_4_0" },     { "ps_fixed", "ps_4_0" }, { "vs_quad", "vs_4_0" },
     { "ps_fill", "ps_4_0" },   { "ps_copy", "ps_4_0" },  { "ps_present", "ps_4_0" },
-    { "ps_pack565", "ps_4_0" }, { "ps_copy_cpu", "ps_4_0" },
+    { "ps_pack565", "ps_4_0" }, { "ps_copy_cpu", "ps_4_0" }, { "ps_water", "ps_4_0" },
+    { "ps_sky", "ps_4_0" },
 };
 
 /* Bump-mapped spans of the software renderer (bump_spans.c), one instance per span record: the texel index by the

@@ -28,7 +28,7 @@ The downloads are hosted and preserved by the TresCom community and state no lic
 | `it.strings.port.txt` | the whole Italian game text |
 | `de.strings.port.txt` | the developer hint placeholders 18000 and 18002-18010 the German release lacks |
 | `ru.strings.port.txt` | the strings the Russian release lacks, and the mouse, space and arrow key names it left in English |
-| `<language>.interface.txt` | the words on the menu pictures (official wording where a release has it), the legal lines, the controls card, the objectives, the Debug, Cheats and Video Test panels, the compass, and the 29 lines of the beach tutorial (`Tutorial::` keys) |
+| `<language>.interface.txt` | the words on the menu pictures (official wording where a release has it), the legal lines, the controls card, the objectives, the Debug, Cheats and Video Test panels, the compass, the Quick Save name and notices, and the 29 lines of the beach tutorial (`Tutorial::` keys) |
 | `en.interface.txt` | the English key of every interface text; `keep=` names the languages that write a text as English does |
 
 The beach tutorial's lines are the English text of the level's own TEXT actions (inside `be.GRF`), not string IDs; the

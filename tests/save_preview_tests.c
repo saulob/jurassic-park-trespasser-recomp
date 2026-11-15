@@ -48,6 +48,10 @@ static void test_names(void) {
     CHECK(save_preview_is_save("c:\\GAME\\user\\savegame.010", "C:\\game\\user\\", "SAVEGAME"), "case or trailing slash");
     CHECK(!save_preview_is_save("C:\\game\\user\\SAVEGAME.03", "C:\\game\\user", "SAVEGAME"), "two digits taken as a save");
     CHECK(!save_preview_is_save("C:\\game\\user\\SAVEGAME.0034", "C:\\game\\user", "SAVEGAME"), "four digits taken as a save");
+    CHECK(save_preview_is_save("C:\\game\\user\\SAVEGAME.QCK", "C:\\game\\user", "SAVEGAME") &&
+              save_preview_is_save("C:\\game\\user\\savegame.qck", "C:\\game\\user", "SAVEGAME"),
+          "the Quick Save not recognised");
+    CHECK(!save_preview_is_save("C:\\game\\user\\SAVEGAME.QC", "C:\\game\\user", "SAVEGAME"), "QC taken as the Quick Save");
     CHECK(!save_preview_is_save("C:\\game\\user\\previews\\SAVEGAME.003.jpg", "C:\\game\\user", "SAVEGAME"),
           "a picture taken as a save");
     CHECK(!save_preview_is_save("C:\\game\\user\\temp.scx", "C:\\game\\user", "SAVEGAME"), "a level file taken as a save");

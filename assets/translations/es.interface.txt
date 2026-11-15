@@ -81,6 +81,8 @@ Third Person	Tercera persona
 Fly / Free Camera	Vuelo / cámara libre
 Compass	Brújula
 Ambient Occlusion	Oclusión ambiental
+Water Refraction	Refracción del agua
+Enhanced Sky	Cielo mejorado
 Close	Cerrar
 Off	Desactivado
 On	Activado
@@ -124,6 +126,14 @@ Freeze AI failed	Error al congelar la IA
 Key point %d / %d	Punto clave %d / %d
 No objective	Ningún objetivo
 Objective updated	Objetivo actualizado
+Quick Save	Guardado rápido
+Quick saved	Guardado rápido realizado
+Quick Save failed	Error en el guardado rápido
+Quick Load failed	Error en la carga rápida
+No Quick Save yet	Aún no hay guardado rápido
+Quick Save works in a level	El guardado rápido funciona en un nivel
+Quick Save is not available now	Guardado rápido no disponible ahora
+Quick Load is not available now	Carga rápida no disponible ahora
 Anne cannot be healed now	Anne no puede curarse ahora
 Camera	Cámara
 Normal	Normal

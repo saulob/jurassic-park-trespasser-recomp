@@ -324,6 +324,7 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
     const jpt_size_t target = jpt_render_target(box, hardware.width, hardware.height);
     const jpt_size_t menus = jpt_render_target(box, 640, 480);
     const char* preset = c->render_preset >= 0 ? jpt_render_presets[c->render_preset].label : "custom";
+    char save[16], load[16];
     host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s, Ambient Occlusion %s",
              c->hardware ? "d3d11" : "software", jpt_filter_keys[c->texture_filter], c->msaa, c->vsync ? "on" : "off",
              jpt_ao_names[c->ambient_occlusion]);
@@ -351,6 +352,10 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
              c->window_w ? "fixed" : "auto", c->stretch ? "stretch" : "letterbox", c->show_fps ? "on" : "off");
     host_log("settings", "Skip Intro %s%s", c->skip_intro ? "on" : "off",
              c->skip_intro ? ": the opening video before the main menu and the one after New Game are not shown" : "");
+    host_log("settings", "Trespasser CE: Dual stow %s, Maximum object detail %s; Quick Save %s, Quick Load %s",
+             c->dual_stow ? "on" : "off", c->max_object_detail ? "on" : "off",
+             jpt_key_label(c->hotkey_vk[JPT_HOTKEY_QUICK_SAVE], save, sizeof save),
+             jpt_key_label(c->hotkey_vk[JPT_HOTKEY_QUICK_LOAD], load, sizeof load));
 }
 
 static const char* filter_label(const jpt_config_t* c) {
@@ -475,6 +480,9 @@ int main(int argc, char** argv) {
     stream_audio_init();
     l10n_init(user.cache_dir, game_dir, cfg.language);
     gamepad_configure(&cfg.gamepad);
+    key_policy_set_quick_keys(cfg.hotkey_vk[JPT_HOTKEY_QUICK_SAVE], cfg.hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
+    ce_gameplay_configure(cfg.dual_stow, cfg.max_object_detail);
+    active_ai_configure(cfg.active_ai_enhanced);
     if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
@@ -522,6 +530,7 @@ int main(int argc, char** argv) {
     d3dr_configure(cfg.hardware && !opt.system_ddraw, (unsigned)box.width, (unsigned)box.height, filter, anisotropy,
                    cfg.msaa);
     d3dr_configure_ambient_occlusion(cfg.ambient_occlusion, settings_file);
+    d3dr_configure_effects(cfg.water_refraction, cfg.enhanced_sky);
     if (!d3dr_startup()) return HOST_EXIT_SETUP;
 
     if (opt.dry_run) {
@@ -546,6 +555,10 @@ int main(int argc, char** argv) {
     video_hd_install();
     video_hd_skip_intro(cfg.skip_intro);
     physics_fixes_install();
+    ce_gameplay_install();
+    active_ai_install();
+    host_log("ce", "active AI: %s", active_ai_installed() ? "enhanced (6)" : "original (3)");
+    ce_graphics_install(d3dr_hardware());
     engine_limits_install(d3dr_hardware());
     texture_streaming_install();
     engine_heaps_install();

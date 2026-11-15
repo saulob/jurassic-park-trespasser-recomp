@@ -3,6 +3,7 @@
  * them. The window host, the presenter and the D3D11 renderer are replaced by the stubs below,
  * so no window, device or game is involved. Build: CMake target com_tests (docs/BUILD.md, "Headless tests").
  */
+#include "ce_effects.h"
 #include "ddraw/d3d_legacy.h"
 #include "ddraw/page_guard.h"
 #include "host.h"
@@ -87,6 +88,9 @@ int d3dr_surface_unlocked(dd_surface_t* s) {
 int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) { (void)s; (void)r; (void)color; return 0; }
 int d3dr_flip(dd_surface_t* front, int vsync) { (void)front; (void)vsync; return 0; }
 void d3dr_surface_freed(dd_surface_t* s) { (void)s; }
+void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
+    fx_water_loaded(dst, src, (uintptr_t)src->bits, src->pitch, (int)src->width, (int)src->height, dd_format_bytes(&src->format));
+}
 
 static int s_formats, s_zformats, s_devices;
 static DDPIXELFORMAT s_alpha_format;
@@ -321,6 +325,42 @@ int main(void) {
     CHECK(SUCCEEDED(vid->lpVtbl->Lock(vid, NULL, &lock, DDLOCK_WAIT | DDLOCK_READONLY, NULL)));
     CHECK(((WORD*)lock.lpSurface)[0] == 0xF123);
     CHECK(SUCCEEDED(vid->lpVtbl->Unlock(vid, NULL)));
+    /* An ordinary alpha texture is not the water; the water's rows are written through the source's Lock pointer, and the
+     * texture the draws bind (the Load's destination) is the water's, though none of its own memory was written. */
+    CHECK(!fx_water_link(dd_surface_from(vid)));
+    CHECK(SUCCEEDED(sys->lpVtbl->Lock(sys, NULL, &lock, DDLOCK_WAIT, NULL)));
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++) {
+            WORD* texel = (WORD*)((BYTE*)lock.lpSurface + (size_t)y * lock.lPitch) + x;
+            *texel = 0x4321;
+            fx_water_store((uintptr_t)texel, 0.25, -0.5);
+        }
+    CHECK(SUCCEEDED(sys->lpVtbl->Unlock(sys, NULL)));
+    CHECK(!fx_water_link(dd_surface_from(vid)));
+    CHECK(SUCCEEDED(vid_tex->lpVtbl->Load(vid_tex, sys_tex)));
+    {
+        const fx_water_link_t* water = fx_water_link(dd_surface_from(vid));
+        CHECK(water && water->source == dd_surface_from(sys) && water->width == 64 && water->height == 64 &&
+              water->bits == (uintptr_t)dd_surface_from(sys)->bits);
+        CHECK(!fx_water_written((uintptr_t)dd_surface_from(vid)->bits,
+                                (uintptr_t)dd_surface_from(vid)->bits + (size_t)dd_surface_from(vid)->pitch * 64));
+    }
+    {
+        IDirectDrawSurface4 *other_sys = make_surface(dd4, DDSCAPS_TEXTURE | DDSCAPS_SYSTEMMEMORY, 64, 64, &s_alpha_format),
+                            *other_vid = make_surface(dd4, DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY, 64, 64, &s_alpha_format);
+        IDirect3DTexture2 *other_sys_tex, *other_vid_tex;
+        CHECK(SUCCEEDED(other_sys->lpVtbl->QueryInterface(other_sys, &IID_IDirect3DTexture2, (void**)&other_sys_tex)));
+        CHECK(SUCCEEDED(other_vid->lpVtbl->QueryInterface(other_vid, &IID_IDirect3DTexture2, (void**)&other_vid_tex)));
+        CHECK(SUCCEEDED(other_sys->lpVtbl->Lock(other_sys, NULL, &lock, DDLOCK_WAIT, NULL)));
+        memset(lock.lpSurface, 0x5A, (size_t)lock.lPitch * 64);
+        CHECK(SUCCEEDED(other_sys->lpVtbl->Unlock(other_sys, NULL)));
+        CHECK(SUCCEEDED(other_vid_tex->lpVtbl->Load(other_vid_tex, other_sys_tex)));
+        CHECK(!fx_water_link(dd_surface_from(other_vid)) && fx_water_link(dd_surface_from(vid)));
+        other_vid_tex->lpVtbl->Release(other_vid_tex);
+        other_sys_tex->lpVtbl->Release(other_sys_tex);
+        other_vid->lpVtbl->Release(other_vid);
+        other_sys->lpVtbl->Release(other_sys);
+    }
 
     CHECK(SUCCEEDED(dev->lpVtbl->SetTexture(dev, 0, vid_tex)));
     CHECK(SUCCEEDED(dev->lpVtbl->GetTexture(dev, 0, &got)) && got == vid_tex);

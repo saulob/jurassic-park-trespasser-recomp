@@ -60,8 +60,8 @@ template <class T> static void release(T*& p) {
 static void test_setting() {
     jpt_config_t c;
     jpt_config_defaults(&c);
-    CHECK(c.ambient_occlusion == JPT_AO_OFF, "Ambient Occlusion defaults to Off");
-    CHECK(!strcmp(jpt_default_value(JPT_KEY_AMBIENT_OCCLUSION), "off"), "the settings table says off");
+    CHECK(c.ambient_occlusion == JPT_AO_MEDIUM, "Ambient Occlusion defaults to Medium");
+    CHECK(!strcmp(jpt_default_value(JPT_KEY_AMBIENT_OCCLUSION), "medium"), "the settings table says medium");
     for (int i = 0; i < JPT_AO_COUNT; i++) {
         CHECK(jpt_config_apply(&c, JPT_KEY_AMBIENT_OCCLUSION, jpt_ao_keys[i]) && c.ambient_occlusion == i, "%s parses",
               jpt_ao_keys[i]);

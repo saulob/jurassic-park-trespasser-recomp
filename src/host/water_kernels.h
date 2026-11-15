@@ -15,6 +15,8 @@ void water_wave_step(void);
 
 /* The lifted bodies, which run the entries inside them (alias entries) these kernels do not have. */
 extern recomp_func_t water_rows_lifted, water_wave_step_lifted;
+/* Each texel water_rows writes, with the wave height's differences to the next column and row (refraction). */
+extern void (*water_rows_observer)(uintptr_t texel, double right, double below);
 
 /* The wave model integrates in steps of its own maximum (CWaveData::sStepMax, CSimWave2D::SetMaxStep) whatever the
  * frame rate: the time owed (sRequireStep) is paid in whole steps and the rest carried, so the physics' disturbances,

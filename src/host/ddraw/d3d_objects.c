@@ -1073,6 +1073,7 @@ static HRESULT STDMETHODCALLTYPE tx_Load(IDirect3DTexture2* This, LPDIRECT3DTEXT
         D3D_RETURN(DDERR_INVALIDPARAMS);
     if (dst->locked || dst->dc_out || src->locked || src->dc_out) D3D_RETURN(DDERR_SURFACEBUSY);
     note_texture_load(src, dst);
+    d3dr_texture_loaded(dst, src);
     d3dr_surface_cpu_access(src, 0, CPU_ACCESS_BLT_SOURCE);
     d3dr_surface_cpu_access(dst, 1, CPU_ACCESS_BLT_DEST);
     key_changed = src->has_src_key && (!dst->has_src_key || memcmp(&dst->src_key, &src->src_key, sizeof src->src_key));

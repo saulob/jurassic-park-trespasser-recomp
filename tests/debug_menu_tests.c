@@ -723,7 +723,8 @@ static void test_cheats_menu(void) {
     dm_toggle(&s, &menu, DM_MENU_CHEATS);
     CHECK(s.open && s.cursor == DM_LEVEL_SELECT, "in the main menu Cheats offers Level Select");
     for (int i = 0; i < DM_ITEM_COUNT; i++)
-        if (i != DM_LEVEL_SELECT && i != DM_SHOW_COORDS && i != DM_AMBIENT_OCCLUSION && i != DM_CLOSE)
+        if (i != DM_LEVEL_SELECT && i != DM_SHOW_COORDS && i != DM_AMBIENT_OCCLUSION && i != DM_WATER_REFRACTION &&
+            i != DM_ENHANCED_SKY && i != DM_CLOSE)
             CHECK(!dm_item_enabled(&s, &menu, (dm_item_t)i), "no level: %s disabled",
                   dm_item_label(DM_MENU_CHEATS, (dm_item_t)i));
 }
@@ -774,6 +775,71 @@ static void test_ambient_occlusion(void) {
     dm_toggle(&s, &w, DM_MENU_CHEATS);
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     CHECK(!row_of(rows, n, DM_AMBIENT_OCCLUSION), "not in Cheats");
+}
+
+/* Water Refraction and Enhanced Sky: the running state, switched for the session only (the renderer keeps the setting). */
+static void test_effect_switches(void) {
+    static const struct {
+        dm_item_t item;
+        dm_action_kind_t kind;
+        const char* label;
+    } k[] = { { DM_WATER_REFRACTION, DM_ACT_WATER_REFRACTION, "Water Refraction" },
+              { DM_ENHANCED_SKY, DM_ACT_ENHANCED_SKY, "Enhanced Sky" } };
+    for (int e = 0; e < 2; e++) {
+        dm_state_t s;
+        dm_world_t w = level_world("be.scn"), menu = main_menu_world();
+        dm_action_t a;
+        dm_row_t rows[DM_ROWS_MAX];
+        int n, graphics = -1, ao = -1, at = -1, close = -1;
+        int* state = e ? &w.enhanced_sky : &w.water_refraction;
+        dm_init(&s);
+        w.ambient_occlusion = 2;
+        w.water_refraction = w.enhanced_sky = 1;
+        dm_f5(&s, &w);
+        go_to(&s, &w, k[e].item);
+        CHECK(s.cursor == (int)k[e].item, "the Debug Menu reaches %s", k[e].label);
+        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+        for (int i = 0; i < n; i++) {
+            if (rows[i].kind == DM_ROW_SECTION && !strcmp(rows[i].text, "Graphics")) graphics = i;
+            if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_AMBIENT_OCCLUSION) ao = i;
+            if (rows[i].kind == DM_ROW_ITEM && rows[i].item == (int)k[e].item) at = i;
+            if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_CLOSE) close = i;
+        }
+        CHECK(graphics >= 0 && ao == graphics + 1 && at == ao + 1 + e && close == n - 1 && close > at,
+              "Graphics: Ambient Occlusion, Water Refraction, Enhanced Sky, then Close");
+        CHECK(!strcmp(rows[at].text, k[e].label) && row_says(rows, n, k[e].item, "On") && rows[at].selected,
+              "%s shows the state in use: On", k[e].label);
+        press(&s, &w, VK_RETURN);
+        CHECK(dm_take(&s, &a) && a.kind == k[e].kind && a.on == 0, "Enter: On -> Off");
+        *state = 0;
+        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+        CHECK(row_says(rows, n, k[e].item, "Off"), "the row follows the running state: Off");
+        press(&s, &w, VK_RETURN);
+        CHECK(dm_take(&s, &a) && a.kind == k[e].kind && a.on == 1, "Enter: Off -> On");
+        press(&s, &w, VK_LEFT);
+        CHECK(!dm_take(&s, &a), "Left on Off: nothing");
+        press(&s, &w, VK_RIGHT);
+        CHECK(dm_take(&s, &a) && a.on == 1, "Right: On");
+        *state = 1;
+        press(&s, &w, VK_RIGHT);
+        CHECK(!dm_take(&s, &a), "Right on On: nothing");
+        press(&s, &w, VK_LEFT);
+        CHECK(dm_take(&s, &a) && a.on == 0, "Left: Off");
+        for (int i = 0; i < 6; i++) {
+            *state = i & 1;
+            press(&s, &w, VK_RETURN);
+            CHECK(dm_take(&s, &a) && a.kind == k[e].kind && a.on == !(i & 1), "repeated switches alternate");
+        }
+        *state = -1;
+        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+        CHECK(!dm_item_enabled(&s, &w, k[e].item) && row_says(rows, n, k[e].item, "Unavailable"),
+              "the Software renderer: Unavailable");
+        menu.water_refraction = menu.enhanced_sky = 0;
+        CHECK(dm_item_enabled(&s, &menu, k[e].item), "available from the main menu too");
+        dm_toggle(&s, &w, DM_MENU_CHEATS);
+        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+        CHECK(!row_of(rows, n, k[e].item), "not in Cheats");
+    }
 }
 
 /* ---- retail sites (game/trespass.exe 1.0.116) ---- */
@@ -1139,6 +1205,7 @@ int main(void) {
     test_stale_state();
     test_cheats_menu();
     test_ambient_occlusion();
+    test_effect_switches();
     cheats_tests(&g_checks, &g_failures);
     compass_tests(&g_checks, &g_failures);
     objective_tests(&g_checks, &g_failures);

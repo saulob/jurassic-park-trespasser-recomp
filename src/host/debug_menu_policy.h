@@ -48,6 +48,8 @@ typedef enum {
     DM_FREE_CAMERA,
     DM_COMPASS,
     DM_AMBIENT_OCCLUSION,
+    DM_WATER_REFRACTION,
+    DM_ENHANCED_SKY,
     DM_CLOSE,
     DM_ITEM_COUNT
 } dm_item_t;
@@ -93,6 +95,7 @@ typedef struct {
     } goals;
     int speed, jump, super_health, camera; /* the host's cheats (cheats_policy.h) */
     int ambient_occlusion; /* JPT_AO_* (DM_AO_LEVELS of them); -1 when the renderer cannot draw it */
+    int water_refraction, enhanced_sky; /* the running state; -1 when the renderer cannot draw it */
 } dm_world_t;
 
 typedef enum {
@@ -113,7 +116,9 @@ typedef enum {
     DM_ACT_HEAL,
     DM_ACT_SUPER_HEALTH,
     DM_ACT_CAMERA,
-    DM_ACT_AMBIENT_OCCLUSION
+    DM_ACT_AMBIENT_OCCLUSION,
+    DM_ACT_WATER_REFRACTION,
+    DM_ACT_ENHANCED_SKY
 } dm_action_kind_t;
 
 typedef struct {

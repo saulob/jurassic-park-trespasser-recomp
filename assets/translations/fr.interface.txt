@@ -81,6 +81,8 @@ Third Person	Troisième personne
 Fly / Free Camera	Vol / caméra libre
 Compass	Boussole
 Ambient Occlusion	Occlusion ambiante
+Water Refraction	Réfraction de l'eau
+Enhanced Sky	Ciel amélioré
 Close	Fermer
 Off	Désactivé
 On	Activé
@@ -124,6 +126,14 @@ Freeze AI failed	Échec du gel de l'IA
 Key point %d / %d	Point clé %d / %d
 No objective	Aucun objectif
 Objective updated	Objectif mis à jour
+Quick Save	Sauvegarde rapide
+Quick saved	Sauvegarde rapide effectuée
+Quick Save failed	Échec de la sauvegarde rapide
+Quick Load failed	Échec du chargement rapide
+No Quick Save yet	Aucune sauvegarde rapide
+Quick Save works in a level	La sauvegarde rapide fonctionne dans un niveau
+Quick Save is not available now	Sauvegarde rapide indisponible pour le moment
+Quick Load is not available now	Chargement rapide indisponible pour le moment
 Anne cannot be healed now	Anne ne peut pas être soignée maintenant
 Camera	Caméra
 Normal	Normale

@@ -82,6 +82,8 @@ int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color);
 int d3dr_flip(dd_surface_t* front, int vsync);
 void d3dr_frame_presented(double present_ms);
 void d3dr_surface_freed(dd_surface_t* s);
+/* IDirect3DTexture::Load, before it copies src into dst. */
+void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src);
 /* The game's UI canvas (RGB565, TSYNC_UNWRITTEN texels transparent) drawn over every presented frame; NULL ends it. */
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
 void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,

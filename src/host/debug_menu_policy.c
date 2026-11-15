@@ -25,7 +25,7 @@ static const char* const k_labels[DM_ITEM_COUNT] = {
     "Level Select", "Restart Level", "Reload Current Level", "X", "Y", "Z", "Teleport", "Previous Key Point",
     "Next Key Point", "Set Checkpoint", "Return to Checkpoint", "Show Coordinates", "Copy Coordinates", "Freeze AI",
     "Movement Speed", "Jump Height", "Invulnerability", "Infinite Ammo", "Heal", "Super Health", "Teleport",
-    "Third Person", "Fly / Free Camera", "Compass", "Ambient Occlusion", "Close",
+    "Third Person", "Fly / Free Camera", "Compass", "Ambient Occlusion", "Water Refraction", "Enhanced Sky", "Close",
 };
 
 static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "High", "Ultra" };
@@ -33,7 +33,7 @@ static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "
 static const dm_item_t k_debug_main[] = {
     DM_LEVEL_SELECT, DM_RESTART,  DM_RELOAD,   DM_FIELD_X,        DM_FIELD_Y,           DM_FIELD_Z, DM_TELEPORT,
     DM_PREV_KEY,     DM_NEXT_KEY, DM_SET_CHECKPOINT, DM_RETURN_CHECKPOINT, DM_COMPASS, DM_SHOW_COORDS, DM_COPY_COORDS,
-    DM_FREEZE_AI,    DM_AMBIENT_OCCLUSION, DM_CLOSE,
+    DM_FREEZE_AI,    DM_AMBIENT_OCCLUSION, DM_WATER_REFRACTION, DM_ENHANCED_SKY, DM_CLOSE,
 };
 static const dm_item_t k_cheats_main[] = {
     DM_MOVE_SPEED,    DM_JUMP_HEIGHT,  DM_INVULNERABLE, DM_INFINITE_AMMO, DM_FREEZE_AI,   DM_HEAL,  DM_SUPER_HEALTH,
@@ -110,6 +110,8 @@ int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     case DM_FREE_CAMERA: return player && w->camera_head;
     case DM_COMPASS: return level;
     case DM_AMBIENT_OCCLUSION: return w->ambient_occlusion >= 0 && w->ambient_occlusion < DM_AO_LEVELS;
+    case DM_WATER_REFRACTION: return w->water_refraction >= 0;
+    case DM_ENHANCED_SKY: return w->enhanced_sky >= 0;
     case DM_SHOW_COORDS:
     case DM_CLOSE: return 1;
     default: return 0;
@@ -225,6 +227,8 @@ static void step_multiplier(dm_state_t* s, const dm_world_t* w, int step) {
     if (next != now) request_value(s, speed ? DM_ACT_SPEED : DM_ACT_JUMP, next);
 }
 
+static void toggle(dm_state_t* s, dm_action_kind_t kind, int on);
+
 static void step_ambient_occlusion(dm_state_t* s, const dm_world_t* w, int step) {
     int next = w->ambient_occlusion + step;
     if (next >= 0 && next < DM_AO_LEVELS) request_value(s, DM_ACT_AMBIENT_OCCLUSION, next);
@@ -239,6 +243,11 @@ static void adjust(dm_state_t* s, const dm_world_t* w, float step) {
     }
     if (s->cursor == DM_AMBIENT_OCCLUSION) {
         step_ambient_occlusion(s, w, step > 0.0f ? 1 : -1);
+        return;
+    }
+    if (s->cursor == DM_WATER_REFRACTION || s->cursor == DM_ENHANCED_SKY) {
+        int on = step > 0.0f, now = s->cursor == DM_WATER_REFRACTION ? w->water_refraction : w->enhanced_sky;
+        if (on != now) toggle(s, s->cursor == DM_WATER_REFRACTION ? DM_ACT_WATER_REFRACTION : DM_ACT_ENHANCED_SKY, on);
         return;
     }
     if (!fields_shown(s) || !is_field(s->cursor)) return;
@@ -331,6 +340,8 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     case DM_AMBIENT_OCCLUSION:
         request_value(s, DM_ACT_AMBIENT_OCCLUSION, (w->ambient_occlusion + 1) % DM_AO_LEVELS);
         break;
+    case DM_WATER_REFRACTION: toggle(s, DM_ACT_WATER_REFRACTION, !w->water_refraction); break;
+    case DM_ENHANCED_SKY: toggle(s, DM_ACT_ENHANCED_SKY, !w->enhanced_sky); break;
     case DM_CLOSE: dm_close(s); break;
     default: break;
     }
@@ -643,6 +654,8 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
     case DM_AMBIENT_OCCLUSION:
         snprintf(value, cap, "%s", jpt_tr(enabled ? k_ao_levels[w->ambient_occlusion] : "Unavailable"));
         break;
+    case DM_WATER_REFRACTION: snprintf(value, cap, "%s", enabled ? on_off(w->water_refraction) : jpt_tr("Unavailable")); break;
+    case DM_ENHANCED_SKY: snprintf(value, cap, "%s", enabled ? on_off(w->enhanced_sky) : jpt_tr("Unavailable")); break;
     case DM_LEVEL_SELECT:
         if (s->menu == DM_MENU_CHEATS) snprintf(value, cap, ">");
         break;
@@ -782,7 +795,7 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Debug"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 12, 3);
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Graphics"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main + 15, 1);
-    items_rows(s, w, rows, max, &n, k_debug_main + 16, 1);
+    items_rows(s, w, rows, max, &n, k_debug_main + 15, 3);
+    items_rows(s, w, rows, max, &n, k_debug_main + 18, 1);
     return n;
 }

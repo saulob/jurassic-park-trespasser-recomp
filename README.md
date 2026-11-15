@@ -64,6 +64,32 @@ originals. Brazilian Portuguese also translates the launcher, at once; the other
 
 Not yet: uncapped frame rate, vibration, mods, x64.
 
+## Trespasser CE-inspired improvements
+
+Selected improvements were reimplemented natively in this port after studying Trespasser CE. The port does not include
+Trespasser CE, does not need it, and does not read its executable, DLLs or `tp_mod.ini`: everything below is the port's
+own code over the retail game (the graphics ones are Direct3D 11 passes; no DirectX 9 code). Every option has an Off
+or Original choice that keeps the retail behaviour.
+
+- **Quick Save / Quick Load**, always available: F7 saves the level in progress to its own slot (`SAVEGAME.QCK`, a
+  normal retail save, listed as "Quick Save" in the Load screen), F8 loads it, in a level or from the main menu. Both
+  keys can be changed in the launcher's Controls page.
+- **Dual stow** (Gameplay > Trespasser CE): one item on the belt and one on the back with the hand free. Saves stay
+  retail saves.
+- **Active AI** (Gameplay > Trespasser CE): Enhanced lets 6 creatures be active at once instead of the retail 3, as
+  CE's `MaxActiveAi`; Original keeps the retail limit. Saves stay retail saves.
+- **Water refraction** (Graphics): the scene behind water is distorted by the game's own wave heights, after CE's
+  refractive water, as a Direct3D 11 pass (a GPU copy or MSAA resolve of the scene and one shader; no CPU readback).
+- **Enhanced sky** (Graphics): the sky fades into the level's fog colour towards the horizon by view direction with the
+  level's own sky fog band, as CE's enhanced sky, in Direct3D 11 over the retail sky plane and texture.
+- **Maximum object detail** (Graphics): every object keeps its most detailed model, as CE's `ForceMaxObjectDetail`.
+- **Footstep and collision sounds** no longer go silent after loading a save or restarting a level (always on).
+
+Credits: [Trespasser CE](https://www.trescomforum.org/viewtopic.php?t=10674) by Lee Arbuco;
+[CE Patcher Large Version](https://www.trescom.org/download/ce-patcher-large-version/) by yochenhsieh, hosted by
+TresCom; [Trespasser Mod Manager](https://github.com/miketheraptor/Trespasser-Mod-Manager) by MikeTheRaptor, used as a
+reference for CE's configuration options.
+
 ## How it works
 
 - The target is `setup\tpassp6.exe` from the disc: retail 1.0.116, Pentium Pro build,

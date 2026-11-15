@@ -54,3 +54,11 @@ hand raised and drops on the next press, Throw and Stow act on presses.
 [Kirides/GD3D11](https://github.com/Kirides/GD3D11) (GPLv3) and [AMD AOFX](https://github.com/shadercoder/AOFX) were
 named as possible architecture references; neither was consulted for this implementation and nothing from them is in
 this port. NVIDIA HBAO+, FidelityFX CACAO and XeGTAO are not used.
+
+## Trespasser CE
+
+| Reference | Kind | Used for |
+|---|---|---|
+| [Trespasser CE](https://www.trescomforum.org/viewtopic.php?t=10674) by Lee Arbuco (1.0.135, as installed by the CE Patcher) | behaviour (static analysis only, never run) | which improvements exist and how they behave: the quicksave (`EnableQuickSaveKey`: F9, slot `SAVEGAME.qck`, name "Quicksave"), Dual stow (`EnableDualStow`: stow-only and back retrieval with Rotate Arm/Wrist held, a retrieve pose per slot), `ForceMaxObjectDetail` (the renderer's `bDetailReduce` cleared), `MaxActiveAi` (the active-animal limit and its physics-box guard), `EnableAiActivityEx` (studied: not applicable to the retail executable), the DX9 water refraction and enhanced sky (what they sample and how they blend, reimplemented as Direct3D 11 shaders of the port's own; no shader bytecode copied) and the bump shader (studied: the port already draws the original bump maps). Each behaviour was matched to the retail code it changes and reimplemented over that; no CE code, data, shader or file is in this port. |
+| [CE Patcher Large Version](https://www.trescom.org/download/ce-patcher-large-version/) by yochenhsieh (TresCom) | behaviour (static comparison of its installed files) | its main menu Quick Load button: a second `UICTRL` with id 1004 in `menu\mainscreen.ddf`, which both executables route to the Direct Load window (it loads no quicksave). Not used by the port. |
+| [Trespasser Mod Manager](https://github.com/miketheraptor/Trespasser-Mod-Manager) by MikeTheRaptor | configuration reference | the list of CE's options (`EnableQuickSaveKey`, `EnableDualStow`, `EnableAiActivityEx`, `MaxActiveAi`, `WaterRefraction`, `EnhancedSky`, `ForceMaxObjectDetail`). Its code and architecture are not used. |

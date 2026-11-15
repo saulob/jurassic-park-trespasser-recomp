@@ -17,6 +17,7 @@
 #define WAVE_NUMERATOR 0x00647B54u
 
 recomp_func_t water_rows_lifted, water_wave_step_lifted;
+void (*water_rows_observer)(uintptr_t texel, double right, double below);
 
 /* CWaveData::Step (0x00636FB0) splits what it is given into int(s / sStepMax) + 1 equal steps: n steps of just under
  * sStepMax arrive as exactly n. */
@@ -184,6 +185,7 @@ void water_rows(void) {
             eax = (index & 0xFFFF0000u) | texel;
             k++;
             *(uint16_t*)ADDR(texel_at + k * 2 - 2) = texel;
+            if (water_rows_observer) water_rows_observer((uintptr_t)ADDR(texel_at + k * 2 - 2), a, b);
             z = z - (double)d;
             flags_cmp(k, end);
             backedge(eax, k, below, ALPHA_TABLE, ebp - 0x4C, ebp, heights, texel_at);

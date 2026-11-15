@@ -37,6 +37,14 @@ extern "C" {
 /* The two settings it replaced: read to choose the language, then removed. */
 #define JPT_KEY_LEGACY_GAME_TEXT_LANGUAGE "game_text_language"
 #define JPT_KEY_LEGACY_SUBTITLE_LANGUAGE "subtitle_language"
+/* Trespasser CE features reimplemented natively; Off is the retail behaviour. */
+#define JPT_KEY_DUAL_STOW "dual_stow"
+#define JPT_KEY_MAX_OBJECT_DETAIL "max_object_detail"
+#define JPT_KEY_ACTIVE_AI "active_ai"
+#define JPT_KEY_WATER_REFRACTION "water_refraction"
+#define JPT_KEY_ENHANCED_SKY "enhanced_sky"
+#define JPT_KEY_QUICK_SAVE "quick_save_key"
+#define JPT_KEY_QUICK_LOAD "quick_load_key"
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
 #define JPT_SETTINGS_VERSION "3"
@@ -44,9 +52,33 @@ extern "C" {
 enum { JPT_FILTER_ORIGINAL, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4, JPT_FILTER_ANISO8, JPT_FILTER_ANISO16, JPT_FILTER_COUNT };
 extern const char* const jpt_filter_keys[JPT_FILTER_COUNT];
 
+enum { JPT_ACTIVE_AI_ORIGINAL, JPT_ACTIVE_AI_ENHANCED, JPT_ACTIVE_AI_COUNT };
+extern const char* const jpt_active_ai_keys[JPT_ACTIVE_AI_COUNT];
+/* Active animals at once for each choice. */
+extern const int jpt_active_ai_limits[JPT_ACTIVE_AI_COUNT];
+
 enum { JPT_AO_OFF, JPT_AO_LOW, JPT_AO_MEDIUM, JPT_AO_HIGH, JPT_AO_ULTRA, JPT_AO_COUNT };
 extern const char* const jpt_ao_keys[JPT_AO_COUNT];
 extern const char* const jpt_ao_names[JPT_AO_COUNT];
+
+/* The port's rebindable hotkeys. They never reach the game, so they are limited to keys the game itself leaves unused
+ * and that never type text. */
+enum { JPT_HOTKEY_QUICK_SAVE, JPT_HOTKEY_QUICK_LOAD, JPT_HOTKEY_COUNT };
+typedef struct {
+    const char* setting;
+    const char* name;
+    const char* default_key;
+} jpt_hotkey_t;
+extern const jpt_hotkey_t jpt_hotkeys[JPT_HOTKEY_COUNT];
+
+typedef struct {
+    const char* key;
+    uint32_t vk;
+} jpt_hotkey_choice_t;
+#define JPT_HOTKEY_CHOICE_COUNT 10
+extern const jpt_hotkey_choice_t jpt_hotkey_choices[JPT_HOTKEY_CHOICE_COUNT];
+/* 0 when the name is not one of the choices. */
+uint32_t jpt_hotkey_vk(const char* key);
 
 typedef struct {
     int show_launcher;
@@ -66,7 +98,13 @@ typedef struct {
     int show_fps;
     int show_resolution_title;
     int skip_intro;
+    int dual_stow;
+    int max_object_detail;
+    int active_ai_enhanced; /* 0: the retail 3 active animals, 1: 6 */
+    int water_refraction;
+    int enhanced_sky;
     char language[JPT_L10N_CODE_MAX];
+    uint32_t hotkey_vk[JPT_HOTKEY_COUNT];
     jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
 
@@ -75,7 +113,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (17 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (24 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

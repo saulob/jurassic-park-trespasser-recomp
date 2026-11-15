@@ -81,6 +81,8 @@ Third Person	Third Person
 Fly / Free Camera	Fly / Free Camera
 Compass	Compass
 Ambient Occlusion	Ambient Occlusion
+Water Refraction	Water Refraction
+Enhanced Sky	Enhanced Sky
 Close	Close
 Off	Off
 On	On
@@ -124,6 +126,14 @@ Freeze AI failed	Freeze AI failed
 Key point %d / %d	Key point %d / %d
 No objective	No objective
 Objective updated	Objective updated
+Quick Save	Quick Save
+Quick saved	Quick saved
+Quick Save failed	Quick Save failed
+Quick Load failed	Quick Load failed
+No Quick Save yet	No Quick Save yet
+Quick Save works in a level	Quick Save works in a level
+Quick Save is not available now	Quick Save is not available now
+Quick Load is not available now	Quick Load is not available now
 Anne cannot be healed now	Anne cannot be healed now
 Camera	Camera	keep=it
 Normal	Normal	keep=pt-BR,de,es

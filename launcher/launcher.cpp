@@ -87,6 +87,24 @@ constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title."
 constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution in the window title.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
+constexpr char kMaxObjectDetailHelp[] =
+    "Every object keeps its most detailed model at any distance, as Trespasser CE's ForceMaxObjectDetail. Off lets the "
+    "game swap distant objects for simpler models, as the original did.";
+constexpr char kWaterRefractionHelp[] =
+    "Distorts the scene behind water using the game's wave data, based on the refractive water effect from Trespasser "
+    "CE. Off draws water as the original. F5's Debug Menu switches it while playing, for this session only.";
+constexpr char kEnhancedSkyHelp[] =
+    "Fades the sky into the level's fog colour towards the horizon by view direction, with the level's own sky fog "
+    "band, as Trespasser CE's enhanced sky. Off keeps the original sky fog. F5's Debug Menu switches it while playing, "
+    "for this session only.";
+constexpr char kActiveAiHelp[] =
+    "Controls how many AI creatures can be active at once. Original uses the retail limit of 3; Enhanced uses 6, as "
+    "supported by Trespasser CE. Applies the next time the game starts.";
+constexpr char kTrespasserCeHelp[] = "Gameplay enhancements reimplemented natively from Trespasser CE.";
+constexpr char kDualStowHelp[] =
+    "Allows one item on the belt and one on the back while keeping the hand free. Hold Rotate Arm or Rotate Wrist "
+    "while pressing Stow/Retrieve to stow without taking the other item out, or to take the item from the back. Off is "
+    "the original behaviour.";
 constexpr char kInvertMouseHelp[] = "Mouse look up and down inverted, the game's own option.";
 constexpr char kKeyboardHelp[] =
     "The game's own bindings as it loads them, changed in its Controls screen (Options > Controls). They keep "
@@ -108,6 +126,12 @@ constexpr char kGuideHelp[] =
     "Hold Move Hand to raise Anne's hand; the right stick then moves it instead of the view, as the mouse does with "
     "the left button. Rotate Wrist and Rotate Arm work with Move Hand held. In a level, View (F2 on the keyboard) shows this list.";
 constexpr char kLanguageHelp[] = "Changes the game text, menus and subtitles. Voices, effects and music remain in English.";
+constexpr char kHotkeysHelp[] =
+    "Quick Save and Quick Load can be changed: choosing the other one's key swaps them. The other hotkeys are fixed.";
+constexpr const char* kHotkeyHelp[JPT_HOTKEY_COUNT] = {
+    "Saves the game at once in its own Quick Save slot, without touching your other saves. Works while playing a "
+    "level.",
+    "Loads the Quick Save. Nothing happens when there is none yet."};
 constexpr char kBindingHelp[] =
     "Choosing a button another action uses gives that action this one's button. Start always opens the pause menu, "
     "and View/Back is kept free.";
@@ -695,8 +719,17 @@ private:
         }
         ui.Combo("Render resolution", kRenderResolutionHelp, JPT_KEY_RENDER_RESOLUTION, "native", resolutions);
         AntiAliasingRow(ui);
-        ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "off",
+        ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "medium",
                  {{"off", "Off"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}, {"ultra", "Ultra"}});
+        {
+            const bool available = Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER));
+            ImGui::BeginDisabled(!available);
+            ui.Toggle("Water refraction", available ? kWaterRefractionHelp : kDirect3DOnlyHelp, JPT_KEY_WATER_REFRACTION, true,
+                      "Off", "On");
+            ui.Toggle("Enhanced sky", available ? kEnhancedSkyHelp : kDirect3DOnlyHelp, JPT_KEY_ENHANCED_SKY, true, "Off", "On");
+            ImGui::EndDisabled();
+        }
+        ui.Toggle("Maximum object detail", kMaxObjectDetailHelp, JPT_KEY_MAX_OBJECT_DETAIL, true, "Off", "On");
         ui.Combo("Texture filtering", kTextureFilteringHelp, JPT_KEY_TEXTURE_FILTER, "anisotropic16",
                  {{"original", "Original"},
                   {"bilinear", "Bilinear"},
@@ -737,6 +770,11 @@ private:
         ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
         ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
+        ui.EndRows();
+        ui.Heading("Trespasser CE");
+        ui.Help(kTrespasserCeHelp);
+        ui.Toggle("Dual stow", kDualStowHelp, JPT_KEY_DUAL_STOW, true, "Off", "On");
+        ui.Combo("Active AI", kActiveAiHelp, JPT_KEY_ACTIVE_AI, "enhanced", {{"original", "Original"}, {"enhanced", "Enhanced"}});
         ui.EndRows();
     }
 
@@ -811,7 +849,10 @@ private:
             ui.EndRows();
         }
         if (ui.Section("Port hotkeys", true)) {
-            ui.Help("Rebinding the hotkeys is not available yet.");
+            ui.Help(kHotkeysHelp);
+            for (int hotkey = 0; hotkey < JPT_HOTKEY_COUNT; ++hotkey) {
+                HotkeyRow(ui, hotkey);
+            }
             ui.Info("Hint", "F1");
             ui.Info("Controls", "F2");
             ui.Info("Windowed / Borderless Fullscreen", "F11");
@@ -819,6 +860,25 @@ private:
             ui.Info("Menu", "Esc");
             ui.Info("Exit", "Alt+F4");
             ui.EndRows();
+        }
+    }
+
+    void HotkeyRow(trg::Ui& ui, int hotkey) {
+        const char* key = jpt_hotkeys[hotkey].setting;
+        const std::string before = settings_.Get(key);
+        std::vector<trg::Option> options;
+        char label[16];
+        for (const jpt_hotkey_choice_t& choice : jpt_hotkey_choices) {
+            options.push_back({choice.key, jpt_key_label(choice.vk, label, sizeof label)});
+        }
+        if (!ui.Combo(jpt_hotkeys[hotkey].name, kHotkeyHelp[hotkey], key, jpt_hotkeys[hotkey].default_key, options)) {
+            return;
+        }
+        const std::string chosen = settings_.Get(key);
+        for (int other = 0; other < JPT_HOTKEY_COUNT; ++other) {
+            if (other != hotkey && _stricmp(settings_.Get(jpt_hotkeys[other].setting).c_str(), chosen.c_str()) == 0) {
+                settings_.Set(jpt_hotkeys[other].setting, before);
+            }
         }
     }
 

@@ -28,6 +28,8 @@ const char* PageName(PageId page) {
 
 bool PageComingLater(PageId page) { return page == PageId::kCheats || page == PageId::kBugReport; }
 
+bool Direct3DEffectsAvailable(const std::string& renderer) { return renderer != "software"; }
+
 std::string ResolutionLabel(int preset, jpt_size_t box) {
     std::string label = Tr(jpt_render_presets[preset].label);
     if (preset == JPT_RENDER_ORIGINAL) return label + "   " + Tr("(compatibility size)");

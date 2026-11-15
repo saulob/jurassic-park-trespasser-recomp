@@ -121,6 +121,12 @@ set(HOST_SOURCES
   src/host/cpu_polygons.c
   src/host/diagnostics.c
   src/host/physics_fixes.c
+  src/host/ce_policy.c
+  src/host/ce_gameplay.c
+  src/host/active_ai_policy.c
+  src/host/active_ai.c
+  src/host/ce_effects.c
+  src/host/ce_graphics.c
   src/host/ddraw_trace.c
   src/host/ddraw/dd_common.c
   src/host/ddraw/dd_device.c
@@ -460,6 +466,26 @@ target_include_directories(gamepad_tests PRIVATE src/host)
 target_link_libraries(gamepad_tests PRIVATE jpt_common)
 target_compile_options(gamepad_tests PRIVATE /W3)
 target_compile_definitions(gamepad_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# Quick Save / Quick Load, Dual stow, Water refraction and Enhanced sky's arithmetic and switches, their settings and
+# keys (headless): ninja -C <build dir> ce_tests && ce_tests.exe
+add_executable(ce_tests EXCLUDE_FROM_ALL tests/ce_tests.c src/host/ce_policy.c src/host/ce_effects.c src/host/host_policy.c)
+target_include_directories(ce_tests PRIVATE src/host)
+target_link_libraries(ce_tests PRIVATE jpt_common)
+target_compile_options(ce_tests PRIVATE /W3)
+target_compile_definitions(ce_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+# Active AI: limits, loop orders, the physics box guard, the save block and the retail lint (headless):
+#   ninja -C <build dir> active_ai_tests && active_ai_tests.exe
+add_executable(active_ai_tests EXCLUDE_FROM_ALL tests/active_ai_tests.c src/host/active_ai_policy.c)
+target_include_directories(active_ai_tests PRIVATE src/host)
+target_compile_options(active_ai_tests PRIVATE /W3)
+target_compile_definitions(active_ai_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+# ps_water and ps_sky drawn offscreen on a WARP device, and the MSAA scene copy (headless, no window):
+#   ninja -C <build dir> ce_gpu_tests && ce_gpu_tests.exe
+add_executable(ce_gpu_tests EXCLUDE_FROM_ALL tests/ce_gpu_tests.c src/host/ddraw/d3d11_shaders.c src/host/ce_effects.c)
+target_include_directories(ce_gpu_tests PRIVATE src/host src/host/ddraw)
+target_compile_options(ce_gpu_tests PRIVATE /W3)
+target_compile_definitions(ce_gpu_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_link_libraries(ce_gpu_tests PRIVATE d3d11 dxguid)
 # The F5 Debug / Test Menu, F10 Cheats, F3 Objectives and the compass: their policies, the retail sites and level data
 # they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
 add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c
@@ -485,7 +511,7 @@ target_include_directories(ao_tests PRIVATE src/host src/host/ddraw)
 target_compile_options(ao_tests PRIVATE /W3)
 target_compile_definitions(ao_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 target_link_libraries(ao_tests PRIVATE assao jpt_common d3d11 dxguid)
-add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
+add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ce_effects.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c)
 target_include_directories(com_tests PRIVATE src/host src/host/ddraw src/recomp/gen ${PCRECOMP}/runtime/native32
