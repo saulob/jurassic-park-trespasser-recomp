@@ -15,7 +15,7 @@ like any 32-bit program. It is not an emulator and it does not start the origina
 | `DDRAW` (DirectDraw) | a virtual 16 bpp display in the host, presented with D3D11 (`src/host/ddraw/`); the system `ddraw.dll` is loaded but its exports are routed away | **host implementation** |
 | `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` | the original DLLs from the disc, loaded by the Windows loader | **original binaries** |
 | `DSound.dll`, `A3d.dll` | whatever `LoadLibrary` finds on the machine (A3D normally absent) | Windows, optional |
-| Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `user\recomp-registry.txt`; `Installed Directory` (saves, level swap files) is `user\`, `Data Drive` is `game\` | **host implementation** |
+| Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `user_data\saves\recomp-registry.txt`; `Installed Directory` (saves, level swap files) is `user_data\saves\`, `Data Drive` is `game\` | **host implementation** |
 | The original installer | the launcher reads the player's disc image itself (docs/LAUNCHER.md) | **host implementation** |
 | Image loading, import binding, calls between lifted and native code, threads | pcrecomp `native32` | host runtime |
 

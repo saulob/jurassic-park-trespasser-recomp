@@ -1,4 +1,4 @@
-// The launcher's view of user\trespasser.ini (src/common/jpt_config.h): edits stay pending until Save or Play.
+// The launcher's view of user_data\launcher\trespasser.ini (src/common/jpt_config.h): edits stay pending until Save or Play.
 #pragma once
 
 #include <cstdint>
@@ -47,7 +47,7 @@ private:
     Values pending_;
 };
 
-// The game's own settings in its registry store (user\recomp-registry.txt): REG_DWORD values only.
+// The game's own settings in its registry store (user_data\saves\recomp-registry.txt): REG_DWORD values only.
 class GameRegistry {
 public:
     explicit GameRegistry(std::filesystem::path file) : file_(std::move(file)) {}

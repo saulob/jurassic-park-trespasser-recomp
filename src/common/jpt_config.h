@@ -1,4 +1,4 @@
-/* user\trespasser.ini: the port's own settings, read by the host and written by the launcher and F11.
+/* user_data\launcher\trespasser.ini: the port's own settings, read by the host and written by the launcher and F11.
  * `key = value` lines; lines a writer does not change (comments, other keys) are kept. */
 #ifndef JPT_CONFIG_H
 #define JPT_CONFIG_H

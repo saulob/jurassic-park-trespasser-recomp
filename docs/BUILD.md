@@ -118,7 +118,7 @@ the game.
 | `--dry-run` | fingerprint, map and bind, then stop |
 | `--launcher` / `--skip-launcher` | show the launcher even when it is turned off / skip it once (it still opens when the game files are not ready); holding Shift while starting also shows it |
 | `--game DIR` | game directory (default `game\`, or `TRESPASSER_GAME_DIR`) |
-| `--user DIR` | user directory: `trespasser.ini`, the game's registry store, saves (default `user\`, or `TRESPASSER_USER_DIR`) |
+| `--user_data_root DIR` | user data root: `launcher\trespasser.ini`, `saves\` (the game's registry store and saves) (default `user_data\` next to the program, or `TRESPASSER_USER_DATA_ROOT`; `build.ps1 -Run` passes `build\user_data`; see `docs\user-data.md`) |
 | `--log-file FILE` | append to FILE (what `build.ps1 -Run` passes) |
 | `--log-dir DIR` | without `--log-file`, create the next `trespasser_NNN.log` in DIR (default `build\logs\`) |
 | `--ddraw system` | call the system `ddraw.dll` instead of the compatibility layer, observing it (diagnostics only) |
@@ -165,6 +165,9 @@ $env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86
 .\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
 .\build\cmake\msvc-x86\water_tests.exe  # host kernels (water, occlusion, polygon submission) against the lifted functions, byte for byte; bump scanlines against the game's own routine (needs game\trespass.exe)
 .\build\cmake\msvc-x86\x87_tests.exe    # the patched runtime: x87 ring, inline rounding against the C library, per-site call cache
+ninja -C build\cmake\msvc-x86 user_data_tests
+.\build\cmake\msvc-x86\user_data_tests.exe  # the portable user_data root, --user_data_root, an unwritable root (an error, no fallback), migration of the old user folder
+.\tools\test-release-check.ps1              # tools\verify-release.ps1 refuses user data, downloaded archives and game files in a release
 ```
 
 The x64 groundwork has its own, from an x64 developer prompt (or after `build.ps1 -Arch x64`):
@@ -174,9 +177,9 @@ ninja -C build\cmake\msvc-x64 x64_tests
 .\build\cmake\msvc-x64\x64_tests.exe     # guest address space, pointer marshalling, leak detection, guest COM handles
 ```
 
-Settings the game would keep in the registry are in `user\recomp-registry.txt` (copied once from
+Settings the game would keep in the registry are in `user_data\saves\recomp-registry.txt` (copied once from
 `game\` when an older layout had it there). Deleting the file resets them. The port's own settings
-are in `user\trespasser.ini`.
+are in `user_data\launcher\trespasser.ini`. Development runs (`build.ps1 -Run`, `run.ps1`) use `build\user_data`.
 
 ## When the run stops
 

@@ -34,7 +34,9 @@ game/
 *.ddf
 *.tga
 
-# The port's user data and interrupted installs
+# The port's user data (docs/user-data.md) and interrupted installs
 user/
+user_data/
+user_data.migrating/
 game.install-temp/
 game.install-backup/

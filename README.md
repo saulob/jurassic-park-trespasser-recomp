@@ -54,7 +54,7 @@ and View shows every control in a level ([CONTROLS](docs/CONTROLS.md) explains t
 
 The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
 anti-aliasing, texture filtering, VSync and renderer, and the gamepad's layout and feel ([LAUNCHER](docs/LAUNCHER.md)).
-Not yet: uncapped frame rate, vibration, translations, mods, x64.
+It is portable: saves and settings stay in `user_data` next to the program ([user data](docs/user-data.md)). Not yet: uncapped frame rate, vibration, translations, mods, x64.
 
 ## How it works
 
@@ -94,10 +94,11 @@ launcher/      the launcher: pages, disc image reader, installer (C++)
 assets/        launcher header art, sponsor heart and page icons
 packaging/     third-party licence notices
 src/common/    settings file and display arithmetic shared by host, launcher and tests
-docs/          ANALYSIS, ARCHITECTURE, BUILD, CONTROLS, LAUNCHER, LEGAL, REFERENCES
+docs/          ANALYSIS, ARCHITECTURE, BUILD, CONTROLS, LAUNCHER, LEGAL, REFERENCES, user-data
 external/      pcrecomp checkout (fetched, ignored by Git)
 game/          your installed game files (ignored by Git)
-user/          trespasser.ini, the game's registry store, saves (ignored by Git)
+user_data/     next to the program: settings and saves (never in a release; build\user_data for
+               tools\build.ps1 -Run)
 analysis/      regenerated analysis output (ignored by Git)
 logs/          one log per run (ignored by Git)
 ```

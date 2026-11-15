@@ -193,7 +193,7 @@ add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
 # the tests link only it.
 add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/game_files.cpp launcher/game_install.cpp
   launcher/settings.cpp launcher/system_info.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
-  launcher/launcher_log.cpp ${JPT_PAGE_ICON_SOURCE})
+  launcher/launcher_log.cpp launcher/user_data.cpp ${JPT_PAGE_ICON_SOURCE})
 target_include_directories(jpt_launcher_core PUBLIC launcher)
 target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 dxgi)
 add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/host.cpp)
@@ -242,7 +242,7 @@ target_compile_definitions(trespasser PRIVATE
   RECOMP_ICALL_SITE_RANGE
   ${TRESPASSER_X87_MODEL}
   TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game"
-  TRESPASSER_DEFAULT_USER_DIR="${CMAKE_SOURCE_DIR}/user"
+  TRESPASSER_LEGACY_USER_DIR="${CMAKE_SOURCE_DIR}/user"
   TRESPASSER_DEFAULT_LOG_DIR="${CMAKE_SOURCE_DIR}/logs"
 )
 if(TRESPASSER_TRACE)
@@ -342,6 +342,14 @@ target_link_libraries(launcher_tests PRIVATE jpt_launcher_core)
 target_compile_definitions(launcher_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# The portable user data root and its migration, in scratch folders only (headless):
+#   ninja -C <build dir> user_data_tests && user_data_tests.exe
+add_executable(user_data_tests EXCLUDE_FROM_ALL tests/user_data_tests.cpp)
+target_link_libraries(user_data_tests PRIVATE jpt_launcher_core)
+target_compile_definitions(user_data_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_options(user_data_tests PRIVATE /W4 /utf-8)
+set_target_properties(user_data_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # The override registry and stable entries against a lifted fixture, linked both ways (headless):
 #   ninja -C <build dir> override_tests_incremental override_tests_non_incremental, then run both

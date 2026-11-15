@@ -29,6 +29,7 @@ online page.
 | `launcher/game_files.cpp`, `game_manifest_uk_116.inc` | supported builds, the readiness check, SHA-256 (CNG) |
 | `launcher/game_install.cpp` | Install game: identity, plan, staging, check, activation, rollback |
 | `launcher/settings.cpp` | the pending view of `trespasser.ini`; the game's registry values Gore and InvertMouse |
+| `launcher/user_data.cpp` | the portable `user_data` root, `PortFolder()`, the migration of the old `user` folder ([user-data](user-data.md)) |
 | `launcher/system_info.cpp` | the graphics card and its real MSAA levels |
 | `assets/launcher/` | header art, sponsor heart, page icons with `SOURCES.md` (README.md there) |
 | `src/common/` (C) | `trespasser.ini` parsing and writing, render sizes, presentation, monitors, user files: shared by host, launcher and tests |
@@ -40,13 +41,14 @@ online page.
 | Folder | Holds | Default |
 |---|---|---|
 | game | the installed game, never written by the port at run time | `game\` (`--game`, `TRESPASSER_GAME_DIR`) |
-| user | `trespasser.ini`, `recomp-registry.txt` (the game's registry), `SAVEGAME.*`, level swap files | `user\` (`--user`, `TRESPASSER_USER_DIR`) |
+| user data | `launcher\trespasser.ini`; `saves\`: `recomp-registry.txt` (the game's registry), `SAVEGAME.*`, level swap files ([user-data](user-data.md)) | `user_data\` next to the program (`--user_data_root`, `TRESPASSER_USER_DATA_ROOT`; `build\user_data` with `tools\build.ps1 -Run`) |
 | logs | one `trespasser_NNN.log` per run | `build\logs\` (`--log-dir`, `--log-file`) |
 
 The game builds its save and swap paths from the registry value `Installed Directory` and reads its data from
-`Data Drive`\data. The host answers `Installed Directory` with the user folder and `Data Drive` with the game folder,
-so saves never land in the installed game. At start, `recomp-registry.txt` and `SAVEGAME.*` of an older layout are
-copied (not moved) from `game\` to `user\` when `user\` has no file of that name.
+`Data Drive`\data. The host answers `Installed Directory` with `user_data\saves` and `Data Drive` with the game folder,
+so saves never land in the installed game. At start, the old flat `user\` folder is moved into `user_data`
+([user-data](user-data.md)), and `recomp-registry.txt` and `SAVEGAME.*` of an even older layout are copied (not moved)
+from `game\` to `user_data\saves` when it has no file of that name.
 
 ## Start-up
 
@@ -116,7 +118,7 @@ image: `Trespasser_EN.iso`, 652,992,512 bytes, volume `Trespass_UK_116`.
 4. Check the staging folder like an installed game: `trespass.exe` SHA-256
    `d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed`, then every file of the profile's manifest
    present with its size. An unknown executable is refused.
-5. Activate: copy the old folder's saves and registry store to `user\` (when missing there), rename `game` to
+5. Activate: copy the old folder's saves and registry store to `user_data\saves` (when missing there), rename `game` to
    `game.install-backup`, rename the staging folder to `game`, delete the backup.
 
 Any failure or Cancel before step 5 deletes the staging folder and leaves the current installation as it was. If

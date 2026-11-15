@@ -1,4 +1,5 @@
-/* What the player owns, kept out of the installed game folder: saves and the game's own registry store. */
+/* The player's files of an older layout, kept in the installed game folder, and folder creation. The user data root
+ * itself is chosen in launcher/user_data.cpp. */
 #ifndef JPT_USER_DATA_H
 #define JPT_USER_DATA_H
 

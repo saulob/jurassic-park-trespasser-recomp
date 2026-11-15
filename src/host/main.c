@@ -21,8 +21,9 @@
 #ifndef TRESPASSER_DEFAULT_GAME_DIR
 #define TRESPASSER_DEFAULT_GAME_DIR "game"
 #endif
-#ifndef TRESPASSER_DEFAULT_USER_DIR
-#define TRESPASSER_DEFAULT_USER_DIR "user"
+/* The flat user folder of earlier development builds, migrated into the user data root. */
+#ifndef TRESPASSER_LEGACY_USER_DIR
+#define TRESPASSER_LEGACY_USER_DIR NULL
 #endif
 #ifndef TRESPASSER_LOG_DIR
 #define TRESPASSER_LOG_DIR "build\\logs"
@@ -40,7 +41,7 @@ typedef struct {
 
 typedef struct {
     const char* game_dir;
-    const char* user_dir;
+    const char* user_data_root;
     const char* log_dir;
     const char* log_file;
     char guest_args[MAX_PATH];
@@ -106,7 +107,7 @@ static native32_shim_t s_shims[] = {
 
 
 static void usage(void) {
-    printf("usage: trespasser [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user DIR]\n"
+    printf("usage: trespasser [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user_data_root DIR]\n"
            "                  [--log-file FILE | --log-dir DIR] [--watchdog SECONDS] [--ddraw compat|system]\n"
            "                  [--native-trace] [--callbacks] [--renderer software|d3d11]\n"
            "                  [--render-resolution original|720p|1080p|1440p|4k|native|WxH]\n"
@@ -118,10 +119,12 @@ static void usage(void) {
            "                  [--original-engine-limits] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
            "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [--perf-log]\n"
            "                  [-- guest arguments]\n"
-           "  settings come from <user>\\trespasser.ini (the launcher writes it); these options override them\n"
+           "  settings come from <user_data>\\launcher\\trespasser.ini (the launcher writes it); these options override them\n"
            "    for this run only\n"
            "  --launcher shows the launcher even when it is turned off; --skip-launcher skips it once (unless\n"
            "    the game files are not ready); --run is still accepted and changes nothing\n"
+           "  --user_data_root keeps saves and settings in DIR instead of user_data next to the\n"
+           "    program\n"
            "  --dry-run maps, fingerprints and binds the image, and nothing executes\n"
            "  --log-file appends to FILE; otherwise a new trespasser_NNN.log is created in the log directory\n"
            "  --ddraw system calls the system ddraw.dll instead of the compatibility layer (diagnostics only)\n"
@@ -168,8 +171,6 @@ static int parse_options(int argc, char** argv, options_t* o) {
     };
     o->game_dir = getenv("TRESPASSER_GAME_DIR");
     if (!o->game_dir) o->game_dir = TRESPASSER_DEFAULT_GAME_DIR;
-    o->user_dir = getenv("TRESPASSER_USER_DIR");
-    if (!o->user_dir) o->user_dir = TRESPASSER_DEFAULT_USER_DIR;
     o->log_dir = TRESPASSER_LOG_DIR;
     o->dev_filter = -1;
     for (int i = 1; i < argc; i++) {
@@ -194,8 +195,10 @@ static int parse_options(int argc, char** argv, options_t* o) {
             o->skip_launcher = 1;
         } else if (!strcmp(argv[i], "--game") && i + 1 < argc) {
             o->game_dir = argv[++i];
-        } else if (!strcmp(argv[i], "--user") && i + 1 < argc) {
-            o->user_dir = argv[++i];
+        } else if (!strcmp(argv[i], "--user_data_root") && i + 1 < argc) {
+            o->user_data_root = argv[++i];
+        } else if (!strncmp(argv[i], "--user_data_root=", 17)) {
+            o->user_data_root = argv[i] + 17;
         } else if (!strcmp(argv[i], "--log-dir") && i + 1 < argc) {
             o->log_dir = argv[++i];
         } else if (!strcmp(argv[i], "--log-file") && i + 1 < argc) {
@@ -359,7 +362,9 @@ static void renderer_filter(const jpt_config_t* c, int dev_filter, int* filter, 
 
 int main(int argc, char** argv) {
     options_t opt = { 0 };
-    char game_dir[MAX_PATH], user_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH], settings_file[MAX_PATH];
+    char game_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH];
+    const char* settings_file;
+    jpt_user_data_t user;
     jpt_config_t cfg;
     jpt_size_t box = { 0, 0 };
     int monitor_w = 0, monitor_h = 0, filter, held;
@@ -371,14 +376,11 @@ int main(int argc, char** argv) {
         return HOST_EXIT_SETUP;
     }
     if (!GetFullPathNameA(opt.game_dir, MAX_PATH, game_dir, NULL) ||
-        !GetFullPathNameA(opt.user_dir, MAX_PATH, user_dir, NULL) ||
         !GetFullPathNameA(opt.log_dir, MAX_PATH, log_dir, NULL) ||
         (opt.log_file && !GetFullPathNameA(opt.log_file, MAX_PATH, log_file, NULL))) {
-        fprintf(stderr, "invalid --game, --user, --log-dir or --log-file path\n");
+        fprintf(stderr, "invalid --game, --log-dir or --log-file path\n");
         return HOST_EXIT_SETUP;
     }
-    _snprintf(settings_file, sizeof settings_file - 1, "%s\\" JPT_SETTINGS_FILE, user_dir);
-    settings_file[sizeof settings_file - 1] = 0;
     guest_env_init(game_dir, opt.guest_args);
 
     /* Restarts this process with the guest's address range reserved before anything else
@@ -393,12 +395,24 @@ int main(int argc, char** argv) {
              recomp_dispatch_count);
     host_log("host", "log file %s", host_log_path());
     host_log("host", "game directory %s", game_dir);
-    host_log("host", "user directory %s (settings %s)", user_dir, settings_file);
     host_log("host", "guest address range %s", held ? "reserved at process start" : "NOT reserved in advance");
+    if (!jpt_user_data_select(opt.user_data_root, TRESPASSER_LEGACY_USER_DIR, &user)) {
+        host_log("host", "the user data folder's path is too long for the game (%u characters at most)",
+                 JPT_USER_PATH_CAP - 1);
+        return HOST_EXIT_SETUP;
+    }
+    host_log("host", "%s%s", user.warning ? "WARNING: " : "", user.message);
+    if (!user.writable) {
+        fprintf(stderr, "%s\n", user.message);
+        MessageBoxA(NULL, user.message, "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR);
+        return HOST_EXIT_SETUP;
+    }
+    host_log("host", "user data %s: settings %s, saves %s", user.root, user.settings_file, user.saves_dir);
+    settings_file = user.settings_file;
 
     window_host_init();
-    if (!jpt_make_dirs(user_dir)) host_log("host", "cannot create the user directory %s", user_dir);
-    jpt_carry_user_files(game_dir, user_dir, log_line);
+    if (!jpt_make_dirs(user.saves_dir)) host_log("host", "cannot create the saves folder %s", user.saves_dir);
+    jpt_carry_user_files(game_dir, user.saves_dir, log_line);
     switch (jpt_config_migrate(settings_file)) {
     case JPT_MIGRATED_EXPERIMENTAL:
         host_log("settings", "%s came from the experimental launcher: its display and graphics choices were reset "
@@ -419,7 +433,9 @@ int main(int argc, char** argv) {
         SetEnvironmentVariableA(RESTARTED_ENV, NULL);
         memset(&launcher, 0, sizeof launcher);
         launcher.game_dir = game_dir;
-        launcher.user_dir = user_dir;
+        launcher.user_dir = user.root;
+        launcher.saves_dir = user.saves_dir;
+        launcher.user_data_outcome = user.outcome;
         launcher.logs_dir = log_dir;
         launcher.settings_file = settings_file;
         launcher.force_show = opt.force_launcher && !opt.skip_launcher;
@@ -474,8 +490,8 @@ int main(int argc, char** argv) {
              trespasser_text_start, trespasser_text_end);
     if (!selfmod_init()) return HOST_EXIT_SETUP;
 
-    guest_registry_init(game_dir, user_dir);
-    io_trace_user_dir(user_dir);
+    guest_registry_init(game_dir, user.saves_dir);
+    io_trace_user_dir(user.saves_dir);
     if (native32_bind(trespasser_image_base, s_shims, (int)(sizeof s_shims / sizeof s_shims[0]))) {
         host_log("imports", "unresolved imports (listed above as [bind] lines); refusing to run");
         return HOST_EXIT_SETUP;

@@ -4,7 +4,8 @@
 .DESCRIPTION
   Runs build\cmake\msvc-x86\trespasser.exe (RelWithDebInfo, the development configuration of tools\build.ps1) from the
   repository root. It does not lift, configure, compile or clean, and it never starts a build: when the executable is
-  missing it says so. The executable numbers its own log, build\logs\trespasser_NNN.log.
+  missing it says so. The executable numbers its own log, build\logs\trespasser_NNN.log. Saves, settings, downloads
+  and mods are kept in build\user_data, as with tools\build.ps1 -Run.
   Arguments are passed to trespasser.exe as they are.
 .EXAMPLE
   .\tools\run.ps1
@@ -31,6 +32,10 @@ $running = @(Get-Process -Name trespasser -ErrorAction SilentlyContinue | Where-
 if ($running.Count -gt 0) {
     Write-Host "error: trespasser.exe is already running (PID $($running.Id -join ', ')). Close it first." -ForegroundColor Red
     exit 1
+}
+
+if ($GameArgs -notcontains '--user_data_root' -and -not ($GameArgs | Where-Object { $_ -like '--user_data_root=*' })) {
+    $GameArgs = @('--user_data_root', (Join-Path $root 'build\user_data')) + $GameArgs
 }
 
 Push-Location $root

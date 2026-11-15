@@ -33,6 +33,7 @@
 #include "play_gate.h"
 #include "settings.h"
 #include "system_info.h"
+#include "user_data.h"
 #include "utf8.h"
 
 #ifndef JPT_PORT_VERSION
@@ -215,7 +216,8 @@ public:
           settings_(settings),
           game_dir_(PathFromUtf8(config.game_dir)),
           user_dir_(PathFromUtf8(config.user_dir)),
-          registry_(user_dir_ / JPT_REGISTRY_FILE),
+          saves_dir_(PathFromUtf8(config.saves_dir)),
+          registry_(saves_dir_ / JPT_REGISTRY_FILE),
           check_(std::move(check)) {}
 
     // Runs the launcher window until Play or Quit. False when no window could be opened.
@@ -507,7 +509,7 @@ private:
         outcome_ = std::make_shared<InstallResult>();
         const bool started = install_.Start(
             "Reading the disc image...",
-            [outcome = outcome_, iso = PathFromUtf8(picked), game = game_dir_, user = user_dir_](trg::Task& task) {
+            [outcome = outcome_, iso = PathFromUtf8(picked), game = game_dir_, user = saves_dir_](trg::Task& task) {
                 InstallHooks hooks;
                 hooks.phase = [&task](const char* text) {
                     task.SetLabel(text);
@@ -895,8 +897,8 @@ private:
             ui.FolderRow("Game files", "Where the installed game is read from.", "Open game folder", Utf8(game_dir_));
         }
         std::filesystem::create_directories(user_dir_, ec);
-        ui.FolderRow("Saves and settings", "Settings, saves and the game's own options.", "Open user folder",
-                     Utf8(user_dir_));
+        ui.FolderRow("User data", UserDataFolderHelp(static_cast<UserDataOutcome>(config_.user_data_outcome)),
+                     "Open user data folder", Utf8(user_dir_));
         if (ui.ButtonRow("Settings file", "Launcher choices stored as plain text.", "Show settings file") &&
             launcher_->Save()) {
             trg::OpenInFileManager(Utf8(std::filesystem::exists(settings_.file(), ec) ? settings_.file() : user_dir_));
@@ -938,7 +940,7 @@ private:
 
     const jpt_launcher_config_t& config_;
     LauncherSettings& settings_;
-    std::filesystem::path game_dir_, user_dir_;
+    std::filesystem::path game_dir_, user_dir_, saves_dir_;
     GameRegistry registry_;
     GameCheck check_;
     LauncherHost host_;

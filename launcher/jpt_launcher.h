@@ -10,11 +10,35 @@ extern "C" {
 
 typedef enum { JPT_LAUNCHER_PLAY = 0, JPT_LAUNCHER_QUIT = 1 } jpt_launcher_result_t;
 
+#define JPT_USER_PATH_CAP 260
+
+/* The user data root in use and its folders (docs/user-data.md). */
+typedef struct {
+    char root[JPT_USER_PATH_CAP];
+    char launcher_dir[JPT_USER_PATH_CAP];
+    char saves_dir[JPT_USER_PATH_CAP]; /* the game's Installed Directory */
+    char cache_dir[JPT_USER_PATH_CAP];
+    char settings_file[JPT_USER_PATH_CAP];
+    int outcome; /* jpt::UserDataOutcome */
+    int flat;    /* the earlier layout is still in use for this run */
+    int warning;
+    int writable; /* 0: nothing may be written; the host stops */
+    char message[4 * JPT_USER_PATH_CAP];
+} jpt_user_data_t;
+
+/* Chooses and prepares the root: explicit_root (--user_data_root, else TRESPASSER_USER_DATA_ROOT) when given, else
+ * <port folder>\user_data, and never anywhere else. Folders of the earlier flat layout (<port folder>\user, then
+ * legacy_dir) are migrated into it first. out->writable is 0 when the root cannot be written. 0 when a path does not
+ * fit. */
+int jpt_user_data_select(const char* explicit_root, const char* legacy_dir, jpt_user_data_t* out);
+
 typedef struct {
     const char* game_dir;      /* the installed game (trespass.exe, its DLLs, data\) */
-    const char* user_dir;      /* settings, the game's registry store, saves */
+    const char* user_dir;      /* the user data root */
+    const char* saves_dir;     /* saves and the game's registry store */
     const char* logs_dir;
-    const char* settings_file; /* <user_dir>\trespasser.ini */
+    const char* settings_file; /* <user_dir>\launcher\trespasser.ini */
+    int user_data_outcome;
     int force_show;            /* --launcher */
     int skip_once;             /* --skip-launcher: not shown unless the game files are not ready */
     jpt_log_fn log;

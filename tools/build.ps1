@@ -14,12 +14,14 @@
   game's own output after it and its exit code. The terminal shows progress and problems only.
 .PARAMETER Run
   After a successful build, starts trespasser.exe --run and stays attached until it exits. Not started when the
-  build fails or when an instance is already running. The game appends to the run's log (--log-file); the
+  build fails or when an instance is already running. Saves, settings, downloads and mods of development runs are
+  kept in build\user_data (--user_data_root), never in the repository root. The game appends to the run's log (--log-file); the
   terminal stays concise, and an abnormal exit prints the log's path and its last lines.
 .PARAMETER VerboseRuntime
   With -Run, shows the runtime output in the terminal as well (it is always in the log).
 .PARAMETER Clean
-  Deletes the configuration's build folder first. The game, the disc image, analysis, lifted C and logs are kept.
+  Deletes the configuration's build folder first. The game, the disc image, analysis, lifted C, logs and
+  build\user_data are kept.
 .PARAMETER Arch
   x86 (default): the playable 32-bit host. x64: the 64-bit host groundwork and its headless tests, never run.
 .PARAMETER Config
@@ -387,6 +389,9 @@ for ($i = 0; $i -lt $LoaderArgs.Count; $i++) {
         continue
     }
     $forwarded += $LoaderArgs[$i]
+}
+if ($forwarded -notcontains '--user_data_root' -and -not ($forwarded | Where-Object { $_ -like '--user_data_root=*' })) {
+    $forwarded = @('--user_data_root', (Join-Path $root 'build\user_data')) + $forwarded
 }
 $runArguments = @('--run', '--log-file', $script:RunLogPath) + $forwarded
 $quiet = -not $VerboseRuntime

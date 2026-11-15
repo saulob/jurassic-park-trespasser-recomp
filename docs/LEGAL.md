@@ -42,9 +42,13 @@ MIT requires the copyright notice to accompany substantial copies: "Copyright (c
 
 The original development source circulates publicly and
 [OpenTrespasser](https://github.com/OpenTrespasser/JurassicParkTrespasser) builds from it. No
-licence was ever granted for that source. It was not read, consulted or copied for anything in
-this repository: every fact in `docs/ANALYSIS.md` and every address in the code comes from the
-retail binary.
+licence was ever granted for that source, and none is claimed here.
+
+OpenTrespasser was consulted as a high-level reference, to learn the engine's names and to find which functions and
+paths are relevant (`docs/REFERENCES.md` lists what was read and for what). No code from it was copied into this
+repository. Every offset, address and behaviour this port relies on was verified independently against the retail
+executable and the code lifted from it, and `docs/ANALYSIS.md` and the addresses in the code rest on that verification.
+The port's code is its own implementation. This is not a clean-room reimplementation.
 
 ## This repository's own code
 
