@@ -4,11 +4,14 @@
 #include <windows.h>
 
 #include <d3d11.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "backends/imgui_impl_dx11.h"
 #include "imgui.h"
 
 extern "C" {
+#include "jpt_tr.h"
 #include "video_layout.h"
 #include "video_test_panel.h"
 }
@@ -37,6 +40,19 @@ void shut_down() {
     g_panel = Panel();
 }
 
+// The default font has no accents or Cyrillic: Arial is merged in for the translated text.
+void add_fonts(ImGuiIO& io) {
+    char path[MAX_PATH];
+    const UINT n = GetWindowsDirectoryA(path, MAX_PATH);
+    io.Fonts->AddFontDefault();
+    if (!n || n >= MAX_PATH - 20) return;
+    strcat_s(path, "\\Fonts\\arial.ttf");
+    if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return;
+    ImFontConfig merge;
+    merge.MergeMode = true;
+    io.Fonts->AddFontFromFileTTF(path, 0.0f, &merge);
+}
+
 bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
     if (g_panel.context && g_panel.device == device) return current();
     shut_down();
@@ -53,6 +69,7 @@ bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
         return false;
     }
     g_panel.device = device;
+    add_fonts(io);
     QueryPerformanceFrequency(&g_panel.frequency);
     QueryPerformanceCounter(&g_panel.last);
     return true;
@@ -90,7 +107,7 @@ bool rows(const vt_panel_frame_t* f, int* video, int* mode) {
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(r.length);
         ImGui::TableNextColumn();
-        if (ImGui::Button("Original")) {
+        if (ImGui::Button(jpt_tr("Original"))) {
             *video = i;
             *mode = VL_PLAY_ORIGINAL;
             clicked = true;
@@ -126,12 +143,14 @@ extern "C" int vt_panel_draw(ID3D11Device* device, ID3D11DeviceContext* context,
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(f->view_w * 0.5f, f->view_h * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::Begin("Video Test", nullptr,
+    char title[128];
+    snprintf(title, sizeof title, "%s###video_test", jpt_tr("Video Test"));
+    if (ImGui::Begin(title, nullptr,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
-        ImGui::TextUnformatted("The game's own player, audio and timing: only the presentation differs.");
+        ImGui::TextUnformatted(jpt_tr("The game's own player, audio and timing: only the presentation differs."));
         clicked = rows(f, video, mode);
-        if (!f->hd_available) ImGui::TextUnformatted("HD needs the D3D11 renderer.");
-        ImGui::TextUnformatted("F5 closes the panel. Esc, a key or a click skips a video, as in the game.");
+        if (!f->hd_available) ImGui::TextUnformatted(jpt_tr("HD needs the D3D11 renderer."));
+        ImGui::TextUnformatted(jpt_tr("F5 closes the panel. Esc, a key or a click skips a video, as in the game."));
     }
     ImGui::End();
     ImGui::Render();

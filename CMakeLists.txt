@@ -63,6 +63,7 @@ set(HOST_SOURCES
   src/host/registry.c
   src/host/io_trace.c
   src/host/window_host.c
+  src/host/window_title.c
   src/host/gamepad.c
   src/host/gamepad_menu.c
   src/host/gamepad_policy.c
@@ -79,12 +80,16 @@ set(HOST_SOURCES
   src/host/polygon_submit.c
   src/host/widescreen.c
   src/host/game_text.c
+  src/host/text_layout.c
+  src/host/l10n.c
+  src/host/l10n_assets.cpp
   src/host/tutorial_prompts.c
   src/host/ui_canvas.c
   src/host/frontend_hd.c
   src/host/frontend_layout.c
   src/host/frontend_assets.c
   src/host/frontend_art.c
+  src/host/frontend_plaque.c
   src/host/loading_hd.c
   src/host/loading_layout.c
   src/host/video_hd.c
@@ -141,7 +146,7 @@ set(PCRECOMP_SOURCES
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c
-  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c)
+  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_compile_options(jpt_common PRIVATE /W4)
 target_compile_definitions(jpt_common PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -193,7 +198,8 @@ add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
 # the tests link only it.
 add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/game_files.cpp launcher/game_install.cpp
   launcher/settings.cpp launcher/system_info.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
-  launcher/launcher_log.cpp launcher/user_data.cpp ${JPT_PAGE_ICON_SOURCE})
+  launcher/launcher_log.cpp launcher/user_data.cpp launcher/localization/ui_text.cpp
+  launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
 target_include_directories(jpt_launcher_core PUBLIC launcher)
 target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 dxgi)
 add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/host.cpp)
@@ -229,7 +235,19 @@ add_custom_command(OUTPUT ${JPT_ASSAO_SHADER_SOURCE}
   DEPENDS ${JPT_ASSAO_SHADER_LIST} ${JPT_ASSAO_DIR}/ASSAO.hlsl ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
   COMMENT "Embedding ASSAO.hlsl")
 
-add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE})
+# The translated text (assets/translations, made by tools/translation_pack.cpp) is part of the executable.
+file(GLOB JPT_TRANSLATIONS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/translations/*.txt)
+list(SORT JPT_TRANSLATIONS)
+set(JPT_TRANSLATION_LIST ${CMAKE_BINARY_DIR}/generated/translations.txt)
+file(CONFIGURE OUTPUT ${JPT_TRANSLATION_LIST} CONTENT "${JPT_TRANSLATIONS}")
+set(JPT_TRANSLATION_SOURCE ${CMAKE_BINARY_DIR}/generated/translation_data.cpp)
+add_custom_command(OUTPUT ${JPT_TRANSLATION_SOURCE}
+  COMMAND ${CMAKE_COMMAND} -DINPUT_LIST=${JPT_TRANSLATION_LIST} -DOUTPUT=${JPT_TRANSLATION_SOURCE}
+          -DSYMBOL=kTranslationFiles -P ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  DEPENDS ${JPT_TRANSLATION_LIST} ${JPT_TRANSLATIONS} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+  COMMENT "Embedding the translated text")
+
+add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE})
 target_include_directories(trespasser PRIVATE
   src/host
   src/recomp/gen
@@ -343,6 +361,23 @@ target_compile_definitions(launcher_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINM
 target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
+# Text translations: the language choice, GameStrings, code pages, captions, DDF labels, the overlay's word wrap and the
+# embedded text itself (headless): ninja -C <build dir> l10n_tests && l10n_tests.exe
+add_executable(l10n_tests EXCLUDE_FROM_ALL tests/l10n_tests.c tests/l10n_coverage_tests.c src/host/text_layout.c src/host/l10n_assets.cpp
+  ${JPT_TRANSLATION_SOURCE})
+target_include_directories(l10n_tests PRIVATE src/host launcher)
+target_link_libraries(l10n_tests PRIVATE jpt_common)
+target_compile_options(l10n_tests PRIVATE /W3)
+target_compile_definitions(l10n_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+set_target_properties(l10n_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+# Developer tool: converts the extracted TresCom downloads into assets/translations (never run by the build):
+#   ninja -C <build dir> translation_pack && translation_pack.exe <downloads folder> assets\translations
+add_executable(translation_pack EXCLUDE_FROM_ALL tools/translation_pack.cpp)
+target_link_libraries(translation_pack PRIVATE jpt_launcher_core)
+target_compile_definitions(translation_pack PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_compile_options(translation_pack PRIVATE /W4 /utf-8)
+set_target_properties(translation_pack PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
 # The portable user data root and its migration, in scratch folders only (headless):
 #   ninja -C <build dir> user_data_tests && user_data_tests.exe
 add_executable(user_data_tests EXCLUDE_FROM_ALL tests/user_data_tests.cpp)
@@ -367,7 +402,7 @@ target_link_options(override_tests_non_incremental PRIVATE /INCREMENTAL:NO /OPT:
 set_source_files_properties(tests/override_fixture.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob1")
 set_source_files_properties(tests/override_tests.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob2")
 
-add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/bump_spans.c src/host/ddraw/d3d_translate.c
+add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/window_title.c src/host/bump_spans.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/host/ddraw/page_arena.c src/common/jpt_display.c)
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
@@ -375,10 +410,10 @@ target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The HD frontend's and loading screen's layout, pointer mapping and painter (headless: GDI draws into memory only):
 #   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
-  tests/save_preview_tests.c tests/frontend_art_tests.c tests/frontend_retail_tests.c tests/loading_tests.c src/host/frontend_art.c src/host/frontend_hd.c src/host/frontend_layout.c
+  tests/save_preview_tests.c tests/frontend_art_tests.c tests/frontend_retail_tests.c tests/frontend_l10n_tests.c tests/loading_tests.c src/host/frontend_art.c src/host/frontend_plaque.c src/host/frontend_hd.c src/host/frontend_layout.c
   src/host/frontend_assets.c src/host/loading_hd.c src/host/loading_layout.c src/host/save_preview.c
   src/host/host_policy.c src/host/pad_glyphs.c src/common/jpt_display.c src/common/jpt_gamepad.c
-  src/common/jpt_prompt_text.c)
+  src/common/jpt_prompt_text.c src/common/jpt_l10n.c src/common/jpt_tr.c)
 target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(frontend_tests PRIVATE /W3)
@@ -396,21 +431,21 @@ target_compile_definitions(gamepad_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The F5 Debug / Test Menu, F10 Cheats, F3 Objectives and the compass: their policies, the retail sites and level data
 # they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
 add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c
-  tests/objective_tests.c tests/overlay_tests.c src/host/debug_menu_policy.c src/host/cheats_policy.c
+  tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c src/host/debug_menu_policy.c src/host/cheats_policy.c
   src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
   tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)
 target_compile_options(debug_menu_tests PRIVATE /W3)
 target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-target_link_libraries(debug_menu_tests PRIVATE imgui_dx11 d3d11 dxguid)
+target_link_libraries(debug_menu_tests PRIVATE jpt_common imgui_dx11 d3d11 dxguid)
 # The HD videos: the retail inventory, the original decoder (no audio track, no window), the layout and session, and the
 # GPU passes on a WARP device (headless): ninja -C <build dir> video_tests && video_tests.exe
 add_executable(video_tests EXCLUDE_FROM_ALL tests/video_tests.c src/host/video_layout.c src/host/ddraw/video_gpu.c
   src/host/video_test_state.c src/host/video_test_panel.cpp)
-target_include_directories(video_tests PRIVATE src/host)
+target_include_directories(video_tests PRIVATE src/host src/common)
 target_compile_options(video_tests PRIVATE /W3)
 target_compile_definitions(video_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-target_link_libraries(video_tests PRIVATE imgui_dx11 d3d11 dxguid)
+target_link_libraries(video_tests PRIVATE jpt_common imgui_dx11 d3d11 dxguid)
 # Ambient occlusion: presets, projection and frame policy, then the ASSAO wrapper's lifecycle and passes on a WARP
 # device (headless): ninja -C <build dir> ao_tests && ao_tests.exe
 add_executable(ao_tests EXCLUDE_FROM_ALL tests/ao_tests.cpp src/host/ao_policy.c src/host/ddraw/assao_host.cpp)

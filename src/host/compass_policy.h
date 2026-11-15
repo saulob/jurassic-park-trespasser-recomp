@@ -134,8 +134,9 @@ float cp_edge_fade(float relative);
 
 typedef struct {
     float relative;
-    const char* name; /* N, NE, ...; NULL for a plain tick */
+    const char* name; /* N, NE, ... in the language in use; NULL for a plain tick */
     int cardinal;
+    int north;
 } cp_tick_t;
 
 int cp_ticks(float heading, cp_tick_t* out, int max);

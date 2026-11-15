@@ -1,0 +1,1454 @@
+# Trespasser Recompiled subtitles 1
+S	stream	2fe21360
+C	12	Bienvenue dans la Cité de demain.
+S	stream	58e523f6
+C	9	C'était donc ici.
+C	13	Avant, ce n'était qu'une légende urbaine.
+S	stream	bf5d0ef1
+C	11	Je me demande ce qu'ils ont laissé ici ?
+S	stream	9aabd500
+C	18	J'étais en première année quand les premières rumeurs ont couru.
+C	13	On regardait les infos à la télé dans la salle commune,
+C	11	en buvant du chocolat de la cuisine.
+C	11	J'ai dit que ce ne serait rien...
+C	13	...juste une autre fusion froide.
+S	stream	03a284ba
+C	11	Ça doit bien mener quelque part...
+S	stream	04cf40a3
+C	11	Un téléphone. Oh, merci mon Dieu.
+S	stream	94705d32
+C	15	C'est comme randonner dans les bois derrière chez moi.
+C	12	On faisait semblant d'être en mission d'espionnage.
+S	stream	f4b7d4d7
+C	8	Trois orteils.
+S	stream	83b0e441
+C	14	On dirait qu'il a quitté le sentier pour une raison ou une autre.
+S	stream	1ab9b5fb
+C	10	Qu'est-ce qui s'est passé ici ?
+S	stream	1dd471e2
+C	12	Ah ! Ça craint !
+S	stream	8d6b6c73
+C	6	Ohé ?
+C	6	Marquez?
+C	14	Vous êtes là ? Estas alli ?
+S	stream	bbf64210
+C	7	Des orchidées !
+S	stream	baa48950
+C	16	Une forêt aussi sauvage, aussi inconnue,
+C	23	qu'aucun humain n'a vue depuis les grands chasseurs du début du Pliocène.
+S	stream	5d1ca457
+C	31	Le mystérieux John Hammond -- investisseur douteux, multimillionnaire...
+C	15	...savant fou jovial.
+S	stream	c9508dda
+C	23	La technologie, le vrai secret, est toujours là-dedans.
+C	25	Dans une pièce obscure, un bâtiment vide au sol crasseux, elle attend.
+C	23	Le point d'ignition, l'origine de Jurassic Park.
+S	stream	275eecf6
+C	15	Une idée me réveilla un matin, à New York.
+C	13	J'ai failli ne pas la noter.
+S	stream	5059dc60
+C	21	Le soleil traversait en biais l'air poussiéreux du bureau de Norman...
+C	14	...et, adossé à une solide table de chêne,
+C	20	j'exposai mes projets pour International Genetic Technologies.
+S	stream	ce3d49c3
+C	18	C'était l'épanouissement d'une ambition née 50 ans plus tôt.
+C	15	50 ans de lutte pour en arriver là.
+S	stream	b93a7955
+C	10	Voici Isla Sorna.
+C	16	À l'est s'étendait le Costa Rica, un voisin paisible.
+C	22	À l'ouest, la haute mer et les routes maritimes du Pacifique.
+S	stream	203328ef
+C	15	La plage du sud donnait sur un océan sans fin.
+C	17	Jusqu'au Pérou, et jusqu'à l'Antarctique.
+S	stream	3358dd7d
+C	21	
+C	12	En mai vinrent les pluies.
+C	12	L'odeur de la jungle était partout.
+S	stream	d4e0f07a
+C	10	1981.
+C	15	Je sortis de l'hélicoptère en titubant, déjà en sueur...
+C	11	...et je contemplai la forêt luxuriante...
+C	10	...les feuilles mouillées.
+S	stream	681f7a31
+C	4	En hiver...
+C	26	...nous commençâmes à bâtir les piliers du monorail qui devait relier toute l'île.
+C	17	Des tours de béton s'élevèrent au-dessus de la jungle.
+S	stream	06e4c3cb
+C	14	Véhicule de safari InGen standard.
+C	9	Dernier cri.
+S	stream	0b1de5dc
+C	10	Remontant du bassin sud,
+C	21	la chaussée Atherton devait amener les scientifiques en visite depuis la plage du sud.
+S	stream	eca6562b
+C	19	En 1983, nous détenions 13 nouveaux brevets.
+S	stream	fb66ef58
+C	10	Novembre 1983.
+C	18	Essai de fécondation d'un ovule artificiel.
+C	19	Mes mains tremblaient en tenant la minuscule pipette.
+C	17	Une goutte, deux gouttes...
+C	8	...Voilà !
+C	12	Le génie était sorti de sa lampe.
+S	stream	8c61dfce
+C	22	Le raptor prenait forme dans son œuf, et je l'observais sur l'écran de l'échographe.
+C	15	On aurait dit un fantôme, ou une volute de fumée.
+S	stream	f1162b8b
+C	15	La voûte de la jungle nous surplombait.
+C	19	Il régnait un silence absolu...
+C	14	Au loin, j'entendais tourner le moteur d'une jeep.
+S	stream	e7dc2145
+C	9	J'ai descendu la côte vers le sud.
+C	11	Les gares routières au petit matin...
+C	15	...à manger des trucs de distributeur sous les néons.
+S	stream	7ed570ff
+C	14	En descendant du bus à Mexico,
+C	10	j'ai mis mon sac à dos sur l'épaule,
+C	11	et j'ai senti la chaleur m'envahir.
+S	stream	09d24069
+C	10	C'était bon d'être seule.
+C	10	De n'être personne, un temps.
+S	stream	e0b1e55c
+C	16	Ça, c'est vraiment répugnant.
+S	stream	79b8b4e6
+C	18	Ils sont sûrement en train de boire un verre.
+C	6	Anne?
+C	9	Anne qui ?
+S	stream	0ebf8470
+C	6	Des lignes électriques !
+C	10	C'est ce que je cherche.
+S	stream	9e0099e1
+C	21	Des douches. Du café. La clim.
+C	21	J'y suis presque.
+S	stream	e907a977
+C	12	Qu'est-ce qui a fait tomber ça ?
+S	stream	17430d1c
+C	12	Allez, Anne ! Tu peux le faire.
+S	stream	60443d8a
+C	7	Le bon côté des choses...
+C	10	...plus de prêt étudiant !
+S	stream	f94d6c30
+C	14	Ça ne peut pas continuer plus de huit cents mètres.
+S	stream	cace7ddf
+C	30	Je m'appelle John Parker Hammond. Je suis né le 14 mars 1928.
+S	stream	bdc94d49
+C	20	Ce qui suit est le récit de certains événements auxquels j'ai pris part,
+C	30	entre 1980 et 1997, sur une île que j'appellerai le Site B.
+S	stream	23add8ea
+C	22	Le Site B ne devait pas être un parc à thème, mais une station de recherche.
+C	15	C'est là que se faisait le vrai travail.
+S	stream	54aae87c
+C	16	...la plus grande découverte du XXe siècle...
+S	stream	cda3b9c6
+C	23	Un prix Nobel, ou un empire financier, attend quelque part dans une pièce obscure,
+C	20	dans un bâtiment délabré et crasseux, quelque part dans le Pacifique.
+S	stream	2a1b94c1
+C	30	Je les imagine avançant prudemment dans les salles poussiéreuses, en combinaison étanche,
+C	28	le fusil à la main, épluchant nos archives, lisant nos dossiers.
+S	stream	be57bd4c
+C	14	Le laboratoire principal et les bâtiments administratifs.
+C	27	C'est là que nous avons fait notre découverte, là qu'eut lieu le vrai tour de magie.
+C	27	Quand ils viendront déterrer nos secrets, c'est ici qu'ils viendront.
+S	stream	57341879
+C	10	Quelques semaines après notre arrivée,
+C	17	nous montâmes au sommet installer une liaison satellite rudimentaire.
+S	stream	c78b05e8
+C	9	Nous y allâmes en hélicoptère.
+C	23	De jeunes techniciens s'affairaient à monter l'antenne dans le vent hurlant.
+C	14	Liaison montante à haut débit...
+C	11	...le dernier cri.
+S	stream	b08c357e
+C	9	Si nous réussissions...
+C	14	...la technologie InGen entrerait dans l'histoire.
+C	15	Nous projetions de vaincre le pouvoir du temps sur la vie,
+C	16	son pouvoir d'éteindre et d'effacer.
+C	10	Cela changerait toutes nos vies,
+C	19	aussi profondément, aussi irrévocablement que la bombe atomique.
+S	stream	e27dde19
+C	10	1982.
+C	13	Robert Muldoon, je le connaissais déjà.
+C	14	Dennis Nedry, je l'ai trouvé à Cambridge,
+C	21	et malgré ses excentricités, il avait des années d'avance sur ses concurrents.
+S	stream	957aee8f
+C	16	Dennis se prenait pour un sacré pirate informatique.
+C	12	Il avait ses propres serrures à ses portes.
+C	19	La décoration de son bureau dérogeait largement au règlement.
+S	stream	0c73bf35
+C	15	Henry Wu était fils unique, originaire de l'Ohio.
+C	5	Un prodige.
+C	24	Sa thèse de premier cycle au MIT l'avait fait remarquer très tôt.
+S	stream	7b748fa3
+C	30	Trois Cray X-MP brassaient plus de données, plus vite, que n'importe quel centre informatique des Amériques.
+S	stream	e5101a00
+C	8	En 11 mois...
+C	21	...le Site B devint le centre génétique le plus puissant du monde.
+S	stream	92172a96
+C	11	Dans une pièce calme et verrouillée...
+C	18	...l'extinction des espèces, l'histoire de la vie sur Terre...
+C	12	...est méthodiquement inversée.
+S	stream	0b1e7b2c
+C	14	La première tâche fut la récupération génétique :
+C	14	se procurer de l'ambre du Jurassique ou du Crétacé,
+C	25	extraire l'ADN conservé et reconstituer les séquences complètes.
+C	15	"Remonter le puits", comme nous disions.
+S	stream	7c194bba
+C	16	Je n'ai regardé à aucune dépense, je n'ai toléré aucun échec.
+S	stream	15688e74
+C	27	Nous avons relâché le premier raptor le 22 avril 1985.
+C	22	Il erra de long en large près du mur pendant quatre minutes et vingt-deux secondes...
+C	24	...avant qu'un bruit ne l'attire plus loin dans les broussailles.
+S	stream	626fbee2
+C	13	Dans la jungle, la forêt et la montagne...
+C	15	...trois tribus de raptors délimitèrent leur territoire.
+C	25	Les Albertosaures et les sept T. rex choisirent leurs domaines.
+C	21	Des frontières précaires tracées autour des forêts, des crêtes et des étangs.
+S	stream	fc0b2b41
+C	27	Toutes les espèces d'origine n'ont pas survécu. Au final, rares sont celles qui s'adaptèrent au nouveau monde.
+C	11	Celles-là devinrent dominantes.
+S	stream	8b0c1bd7
+C	17	Une troisième tribu de raptors fit de la montagne son territoire.
+C	10	Une race plus sèche, plus coriace...
+C	19	...rapide, se nourrissant d'oiseaux et de petits lézards.
+S	stream	12054a6d
+C	27	Nous avons équipé les animaux les plus dangereux de colliers émetteurs d'un signal d'alerte.
+C	24	Les ouvriers portaient de petits boîtiers qui sonnaient à l'approche d'un animal marqué...
+C	10	...sur quoi ils paniquaient...
+C	10	...et s'enfuyaient, terrifiés.
+S	stream	65027afb
+C	20	En 1987, les premiers avaient atteint leur taille adulte.
+C	21	L'écosystème d'une autre ère commençait à reprendre ses droits.
+S	stream	f5bd676a
+C	17	Au crépuscule, le raptor s'approcha à pas feutrés.
+C	22	Il but nerveusement, attentif aux dangers du point d'eau jurassique.
+S	stream	b427799f
+C	26	Pendant quatre mois, nous l'avions observé chasser les troupeaux de la forêt du sud.
+C	16	Nous n'avons jamais su pourquoi il était devenu si grand.
+C	20	À l'été 1988, il commença à remonter vers le nord.
+S	stream	c3204909
+C	10	1988.
+C	20	Des ouvriers du continent coulaient les piliers de béton d'une voie ferrée...
+C	12	...qui remontait au nord jusqu'au village.
+S	stream	5a2918b3
+C	12	Mai 1989.
+C	13	Nous commençâmes les fondations sur la plage du sud...
+C	15	...d'un hôtel pour scientifiques et hommes d'affaires en visite.
+C	18	D'ici un an, pensais-je, l'île serait célèbre.
+S	stream	2d2e2825
+C	7	La faillite !
+C	19	Je m'adossai au mur. Tout mon corps tremblait.
+S	stream	b34abd86
+C	12	Je lâchai la tasse. Elle vola en éclats.
+C	16	Je la laissai là. Nous allions bientôt partir.
+S	stream	c44d8d10
+C	10	Quand on apprit que j'étais ruiné,
+C	17	les ouvriers lâchèrent simplement leurs outils et s'en allèrent.
+S	stream	5d44dcaa
+C	14	Les bâtiments furent dépouillés de tout objet de valeur.
+S	stream	2a43ec3c
+C	19	Nous bouclâmes la ville, hormis quelques portails essentiels...
+C	22	...au sud vers les basses terres, à l'est vers la centrale et le laboratoire.
+S	stream	bafcf1ad
+C	16	Nous scellâmes la porte Est pour la dernière fois.
+C	30	En regardant par la fenêtre de mon bureau, je trouvai un moyen simple de retenir le code.
+C	20	Comme Nedry, je sentais qu'il me fallait garder une porte dérobée.
+S	stream	cdfbc13b
+C	18	En partant, nous avons saboté nos propres mécanismes de verrouillage.
+C	15	InGen ne tolère aucun intrus.
+S	stream	ad3c48de
+C	13	Techniciens et ouvriers se pressaient sur les quais...
+C	17	...craignant d'être abandonnés quand le cordon de sécurité céderait.
+C	12	Des gardes armés montaient la garde.
+S	stream	da3b7848
+C	13	Deux techniciens allemands furent accusés...
+C	18	...d'avoir comploté pour emporter des données de recherche cruciales.
+S	stream	433229f2
+C	22	Ils avaient prévu de forcer la chambre forte informatique et d'en emporter des données.
+C	10	Aucune preuve ne fut jamais trouvée.
+S	stream	34351964
+C	11	Octobre 1996.
+C	23	La société InGen m'est retirée par un vote du conseil d'administration.
+C	13	Mon neveu envoie son équipe.
+S	stream	aa518cc7
+C	12	
+C	22	Les chasseurs débarquèrent le 13 mai 1997, au fin fond du sud-ouest de l'île.
+C	17	La plupart avaient travaillé des années dans mes parcs africains.
+C	9	...ils n'avaient aucune chance...
+S	stream	dd56bc51
+C	20	L'équipe de chasse d'InGen avait les codes d'accès de nos clôtures.
+S	stream	445fedeb
+C	8	
+C	7	Les chasseurs se dispersèrent...
+C	12	...oubliant leurs itinéraires de chasse prévus.
+C	11	Un tiers d'entre eux seulement se présenta au rendez-vous.
+S	stream	a3e7c0ec
+C	12	Tandis que je longeais la côte vers le sud...
+C	10	...l'air devenait humide et lourd.
+C	19	Le métal et le béton pourrissaient au soleil et sous la pluie.
+S	stream	86111b1d
+C	10	Je me tenais au bord de la falaise,
+C	9	le vent dans les cheveux.
+C	12	On aurait dit un matin du début du Jurassique.
+S	stream	1f184aa7
+C	18	Le ciel de midi ne ressemblait à rien de ce qu'on voit en Europe.
+C	6	Chaud...
+C	4	...sous les tropiques...
+C	7	...un nouveau monde.
+S	stream	817cdf04
+C	21	La forêt sentait les feuilles mouillées, la terre humide, le bois pourri.
+S	stream	f67bef92
+C	11	L'eau s'infiltrait partout.
+S	stream	6f72be28
+C	10	À l'heure où j'écris ces lignes,
+C	22	les dalles se fendent, couvertes de poussière et de traces d'animaux.
+C	20	D'épaisses racines soulèvent l'asphalte.
+C	32	L'île reprend ses droits, commence à effacer toute trace de nous...
+S	stream	18758ebe
+C	14	Dans la plaine, la chaleur était extraordinaire...
+C	9	...comme un mur.
+S	stream	88ca932f
+C	25	Enfant, je rêvais d'une époque où le monde entier était couvert d'une forêt ancienne.
+C	19	De grands chasseurs rôdaient dans la fraîche obscurité...
+C	30	...parmi d'immenses arbres silencieux comme des colonnes, chênes et séquoias.
+S	stream	ffcda3b9
+C	19	Je descendis de la jeep et me dégourdis les jambes.
+C	25	Les deux gardes s'occupaient de la roue, et l'espace d'un instant je fus seul...
+C	19	...sans protection dans la nature sauvage du Jurassique.
+C	25	Je sentis l'air remuer autour de moi, j'entendis bruisser un arbre, un seul.
+S	stream	9f0a2a5c
+C	24	...des caméras et des instruments sismiques dans des caisses jaunes.
+C	15	Ils les posèrent dans la poussière tandis que l'hélicoptère s'élevait.
+S	stream	e80d1aca
+C	17	Les conduites de vapeur sifflaient et crachaient.
+C	17	L'eau pompée au fond de la terre remontait surchauffée.
+S	stream	71044b70
+C	12	
+C	20	Des marins chinois chantaient d'un étrange fausset plaintif...
+C	17	...en déchargeant les œufs en polymère synthétique.
+S	stream	06037be6
+C	17	...les odeurs d'eau salée et d'essence.
+S	stream	9867ee45
+C	5	Au large...
+C	26	...nous apercevions parfois les garde-côtes américains chargés de surveiller nos activités.
+S	stream	ef60ded3
+C	11	Il était étrange de passer du terrain,
+C	14	du soleil brûlant, de la terre sur les revers du pantalon,
+C	18	à l'obscurité fraîche et stérile du laboratoire.
+S	stream	76698f69
+C	15	L'odeur âcre des produits de conservation.
+C	13	La fraîcheur et le silence de la chambre stérile.
+C	13	Le rituel quotidien de la décontamination.
+S	stream	016ebfff
+C	18	La centrifugeuse ronronnait jour et nuit.
+C	15	La lente alchimie de la réplication génétique.
+S	stream	91d1a26e
+C	21	Le liquide clair contenait une couche trouble de brins d'ADN.
+S	stream	e6d692f8
+C	10	
+C	11	Les claviers crépitaient jusqu'au petit matin.
+C	23	Des rangées d'écrans verts affichaient les données génétiques compilées.
+S	stream	18923693
+C	25	Nous travaillions tard dans la nuit.
+C	24	Avec parfois l'impression que la Terre entière avait disparu au-dehors,
+C	32	ne laissant que l'obscurité, le travail, l'interminable quête du passé.
+S	stream	6f950605
+C	20	Une plantation de café des années 1860, qui fit faillite.
+C	16	Des murets de pierre délimitaient les champs.
+C	20	Et à l'ouest, les ruines de la maison de maître sont toujours debout.
+S	stream	68f8c21c
+C	25	Certains de mes papiers personnels ont été transférés sur disquette.
+S	stream	f1f193a6
+C	24	Les Albertosaures prirent possession des champs comme des lions du Serengeti.
+S	stream	1649bea1
+C	25	Les pylônes s'étendent sur des kilomètres, un tous les cent mètres environ.
+C	10	Je les ai bâtis pour durer.
+C	7	Partant de la centrale vers l'est,
+C	19	ils remontaient la vallée avant de redescendre au sud vers les plaines.
+S	stream	018907d2
+C	13	Le port principal du Site B.
+S	stream	768e3744
+C	13	Les quais étaient le poumon du Site B.
+C	21	Ambre, coquilles synthétiques et bétail venaient de tout le Pacifique.
+S	stream	ef8766fe
+C	22	L'"Emily" était un remorqueur qui guidait les plus gros cargos.
+C	19	Nous le sortions parfois pour observer des spécimens depuis le large...
+C	15	...ou pour balayer les flots à la recherche de traces de nos activités.
+S	stream	98805668
+C	18	Il fut sabordé en 1989, par mesure de quarantaine...
+C	15	...peu après mon témoignage devant le gouvernement.
+S	stream	71e3f35d
+C	9	Les fusils Lindstradt, au passage...
+C	18	...de fabrication suédoise, imbattables en précision et en cadence de tir.
+S	stream	e8eaa2e7
+C	8	Accueil InGen.
+C	22	J'avais prévu qu'un jour, visiteurs, scientifiques et politiciens seraient reçus ici.
+S	stream	9fed9271
+C	21	Le Site B était entièrement centralisé et contrôlé par ordinateur.
+C	19	Cette même conception fut le talon d'Achille de Jurassic Park.
+S	stream	0f528fe0
+C	28	Diagnostics, communications, sécurité : tout passait par l'ordinateur.
+C	20	La sécurité informatique était donc primordiale, la plus stricte de l'île.
+S	stream	7855bf76
+C	6	Livrée à elle-même,
+C	10	l'installation repasse en alimentation minimale...
+C	15	...surtout des systèmes de sécurité sur batterie.
+C	15	Elle peut tenir presque indéfiniment.
+S	stream	9214b466
+C	15	Bâtir la ville fut difficile.
+C	10	Les entrepreneurs costaricains étaient compétents,
+C	19	mais il fallait les transporter, les nourrir, les loger...
+C	12	...et ensuite leur imposer le silence.
+S	stream	e51384f0
+C	22	Les biotechniciens étaient dédommagés de leur vie en exil.
+C	17	Gros salaires, logements de luxe.
+C	15	Dennis voulait du temps machine, et de l'argent.
+C	19	Henry voulait des divertissements dernier cri. C'était l'élite...
+C	18	...qui aurait pu travailler n'importe où. Je devais les garder ici.
+S	stream	7c1ad54a
+C	30	Un code d'accès nous permettait de contrôler l'accès à la vallée et à la centrale au-delà.
+S	stream	9579707f
+C	20	Les bâtiments suivaient un plan que je ne comprenais que vaguement,
+C	23	marquant les saisons, l'année lunaire et le mouvement des étoiles...
+S	stream	e27e40e9
+C	17	Un ex-policier sud-africain, une sorte de...
+C	10	...soldat de fortune.
+S	stream	7b771153
+C	19	Surnommé "le Maharadjah" par ses compagnons, très doué...
+C	9	...mais ne travaille que seul.
+C	17	Il devait appeler par radio depuis le poste de transmission pour qu'on vienne le chercher.
+S	stream	0c7021c5
+C	17	Je n'ai trouvé absolument aucune trace de Michael Sullivan,
+C	26	hormis le fait que son vol pour le rendez-vous partait de Port-au-Prince, en Haïti.
+S	stream	9ccf3c54
+C	26	LaSalle était un disciple de Roland. Un braconnier à ses heures...
+C	13	...qui se prenait pour un maître chasseur.
+S	stream	ebc80cc2
+C	13	Marden, A. S.
+C	7	...toujours porté disparu...
+S	stream	8b0f8527
+C	12	Karamcheti, V.
+C	8	...toujours porté disparu...
+S	stream	fc08b5b1
+C	12	Sullivan, R.M.
+C	6	...toujours porté disparu...
+S	stream	6501e40b
+C	13	LaSalle, P.
+C	8	...toujours porté disparu...
+C	8	...
+S	stream	1206d49d
+C	15	Van Horn, S.T.
+C	8	...également...
+C	8	...toujours porté disparu...
+S	stream	8c62413e
+C	12	Lystrata, A.L.
+C	8	...décédé.
+S	stream	fb6571a8
+C	9	Albertosaure.
+C	13	Un solitaire, rapide et fort,
+C	29	survivant tant bien que mal entre les sept Tyrannosaures et les trois tribus de raptors.
+S	stream	626c2012
+C	10	Vélociraptor.
+C	21	Un petit théropode originaire de Chine et de Mongolie.
+C	21	Chasseur en meute, très féroce et très intelligent.
+S	stream	156b1084
+C	9	Brachiosaure.
+C	21	La plus ancienne de nos recréations, de 50 millions d'années.
+C	13	Le seul véritable natif du Jurassique.
+S	stream	85d40d15
+C	17	L'une des plus grandes créatures ayant jamais vécu,
+C	18	le Brachiosaure évoluait comme une planète parmi les espèces plus petites.
+S	stream	f2d33d83
+C	11	Tyrannosaurus Rex.
+C	9	Le lézard tyran,
+C	14	qui a régné pendant 25 millions d'années.
+C	9	Nous en avons élevé 7...
+C	14	...les 7 souverains de l'île.
+S	stream	a022d6e4
+C	10	Contrairement à ce qu'on nous avait laissé croire,
+C	14	le T. rex n'était pas du tout un charognard.
+C	16	Nous en avons chronométré un à 50 kilomètres à l'heure.
+S	stream	d725e672
+C	9	Tricératops.
+C	8	Avec le Tyrannosaure,
+C	16	l'un des derniers dinosaures à avoir vécu naturellement sur notre planète.
+S	stream	4e2cb7c8
+C	18	C'était dans les derniers jours de la récupération génétique,
+C	16	et à ce stade, rien n'était certain.
+C	14	L'ADN était-il là ?
+C	10	Pourrions-nous le faire remonter...
+C	10	...du fond du puits ?
+S	stream	392b875e
+C	11	Il était 3 heures du matin.
+C	19	La pièce était jonchée de canettes de soda et pour la centième fois...
+C	11	...nous lancions la séquence d'extraction.
+S	stream	a74f12fd
+C	21	
+C	11	Dennis?
+C	12	Qu'est-ce que nous avons là ?
+S	stream	d048226b
+C	25	Toute ma vie, j'avais attendu quelque chose de grand...
+C	12	...quelque chose d'extraordinaire.
+S	stream	494173d1
+C	11	Et puis...
+C	24	...tout s'ouvrit. Le code était juste.
+C	24	La barrière du temps, l'espace d'un instant,
+C	10	...s'ouvrit.
+C	19	Nedry et moi fixions l'écran,
+C	22	plongeant droit dans le passé, 65 000 siècles en arrière.
+S	stream	3e464347
+C	10	Tandis que Nedry tapait,
+C	13	le monde sembla retenir son souffle.
+C	38	Un instant, nous nous tînmes au tournant entre deux grandes ères planétaires...
+C	33	le règne millénaire de l'homme, et l'âge des dinosaures.
+S	stream	d9fe6e40
+C	27	Le déjeuner de charité de Lord Darley, un événement mondain, 200 livres le billet.
+C	14	Une belle ascension sociale pour moi.
+C	22	On m'avait placé à côté d'une jeune femme fort charmante.
+S	stream	b939e7a5
+C	16	Je la contemplais, lors des dîners,
+C	12	quand elle avait l'esprit ailleurs.
+S	stream	ce3ed733
+C	10	Le duvet sur sa lèvre supérieure.
+C	18	Sa façon d'exhaler la fumée de sa cigarette.
+S	stream	57378689
+C	16	Je bredouillai,
+C	12	ne sachant trop que dire.
+C	19	Elle rit pourtant, et parut charmée.
+C	11	Elle me pria de rappeler le lendemain.
+S	stream	2030b61f
+C	23	À deux heures du matin, j'appelai encore une fois.
+C	11	Elle n'était toujours pas rentrée,
+C	12	et nul ne savait où elle était.
+C	11	Je ne laissai pas mon nom.
+S	stream	be5423bc
+C	16	Elle refusa d'abord de me répondre.
+C	14	Je lui reposai la question.
+C	12	Les invités me jetaient des regards curieux.
+C	12	La lueur des bougies se brouillait devant mes yeux.
+S	stream	c953132a
+C	13	Je n'oublierai jamais cela,
+C	23	et je ne pardonnerai jamais, je le jure.
+C	20	C'est la dernière fois.
+S	stream	505a4290
+C	14	Vous connaissez sans doute la suite de l'histoire...
+C	12	...par les journaux télévisés ou la presse à scandale.
+S	stream	275d7206
+C	11	En 1989...
+C	8	...le parc était presque achevé.
+C	18	Nos investisseurs exigèrent une validation sur place.
+C	20	Je crus, bêtement, comme on le sait, que nous étions prêts.
+S	stream	b7e26f97
+C	26	La débâcle du 27 août 1989...
+C	16	...est désormais bien connue.
+C	20	Et les conséquences judiciaires furent, vous l'imaginez sans peine...
+C	11	...plutôt considérables.
+S	stream	c0e55f01
+C	16	
+C	14	Le 3 octobre 1989,
+C	27	j'étais assis sur un banc de bois, dans une salle d'attente à Washington.
+C	25	Une commission gouvernementale me fit comparaître.
+C	14	Quand mon nom fut appelé,
+C	15	la salle d'audience se tut.
+C	18	Je remontai l'allée jusqu'à la barre.
+C	12	On me demandait des comptes.
+C	19	Mais je n'avais aucune explication claire à donner.
+S	stream	817f41f4
+C	11	Sinon que...
+C	16	...dans sa voix et sa démarche, il y avait...
+C	38	un monde de grâce et de raffinement qui, je le savais, me resterait à jamais interdit.
+S	stream	1876104e
+C	30	Je m'abandonnai à l'étrange et solitaire discipline du marché...
+C	17	...stratégies d'investissement et profits.
+C	21	Je me tenais à l'écart, maître des codes et des mondes perdus,
+C	28	du chaud et du froid, et du sommeil de cent millions d'années.
+S	stream	6f7120d8
+C	10	Mon œuvre...
+C	13	mon œuvre repose là où je l'ai laissée,
+C	24	s'il se trouve quelqu'un d'assez brave et d'assez habile pour s'en emparer...
+C	18	...et rendre au temps ses clés.
+C	16	Peut-être les fondations d'un nouvel empire.
+S	stream	f115b57b
+C	16	Ce dernier jour, je me tenais à l'écart des autres.
+C	21	Les hélicoptères se posaient.
+C	9	Devant moi s'étendait la jungle,
+C	28	et je vis qu'un âge sauvage et primitif avait recommencé.
+S	stream	861285ed
+C	28	
+C	8	Allez, mon garçon.
+C	8	Sortez-nous d'ici...
+S	stream	1f1bd457
+C	16	J'ai quitté la maison à 15 ans,
+C	17	avec l'idée assez romantique de chercher fortune.
+C	19	Je me souviens du voyage en train vers le sud, dans mes plus beaux habits,
+C	9	en mangeant une pomme.
+C	13	Le monde entier devant moi.
+S	stream	681ce4c1
+C	27	Arrivé à Londres, je n'avais ni fortune, ni instruction, ni relations.
+C	6	Rien !
+S	stream	f8a3f950
+C	23	Un monde perdu est une sorte de mythe scientifique.
+C	13	Un scénario évolutif dans lequel...
+C	15	...un écosystème se retrouve isolé et préservé.
+C	33	Le reste du monde change, laissant une petite poche fragile où survivent des espèces anciennes.
+S	stream	8fa4c9c6
+C	17	Fléchettes tranquillisantes de fabrication américaine.
+C	26	L'effet varie selon la masse corporelle, le tempérament et l'humeur de la cible.
+C	8	Je crois que l'expression consacrée est...
+C	9	..."Résultats non garantis."
+S	stream	ef634023
+C	21	La création est un acte de pure volonté.
+C	15	La prochaine fois, ce sera parfait !
+S	stream	986470b5
+C	20	Le laboratoire du docteur Wu était un mystère pour moi.
+C	10	Je n'ai jamais terminé mes études.
+C	10	J'avais de la science une idée d'enfant...
+C	13	...des éprouvettes, des explosions...
+C	6	...et des miracles.
+S	stream	016d210f
+C	21	Chasser le dinosaure est une affaire délicate.
+C	10	Je recommande les hélicoptères...
+C	6	...si vous en avez.
+S	stream	766a1199
+C	21	Nous n'étions pas la seule entreprise clandestine à prospérer en Amérique centrale...
+C	8	...ni la plus dangereuse.
+S	stream	e80e843a
+C	8	Le raptor...
+C	16	se lissait, parfaitement sûr de son droit d'être là.
+C	29	Sans la moindre conscience de ne pas être le souverain de cette Terre.
+S	stream	9f09b4ac
+C	43	Et si un moustique avait sucé le sang d'un dinosaure, il y a cent millions d'années ?
+C	16	L'insecte est ensuite recouvert de sève qui...
+C	19	...au fil des millénaires, devient de l'ambre.
+S	stream	0600e516
+C	13	L'insecte est préservé...
+C	6	...parfaitement.
+C	14	Mais voyez-vous, et c'est là toute l'astuce...
+C	18	...le sang du dinosaure ne serait-il pas préservé lui aussi ?
+S	stream	7107d580
+C	13	Le sang contient de l'ADN,
+C	22	une minuscule spirale de code génétique.
+C	8	Abra cadabra!
+S	stream	e1b8c811
+C	26	Je reste convaincu que Nedry s'est laissé une porte dérobée, une histoire de hobbits ou Dieu sait quoi.
+S	stream	96bff887
+C	28	J'ai rencontré Harold Greenwood en 1992. C'était un Américain,
+C	16	qu'on m'a présenté comme un ancien Béret vert.
+C	23	Il posa nombre de questions sur le sort de la technologie InGen.
+S	stream	c44e13e0
+C	23	Harry prétendait être un ami de mon ancien gendre. Il me plaisait.
+C	13	Il était sûr de lui, fringant.
+S	stream	b3492376
+C	23	Greenwood portait une sorte d'appareil électronique qu'il aurait fabriqué lui-même,
+C	24	d'après des plans trouvés sur Internet.
+S	stream	8205972c
+C	35	Oh mon Dieu. C'est pas possible. On a heurté l'eau comme...
+C	5	Marquez?
+C	3	
+C	17	Marquez?
+C	10	Où suis-je ?
+S	stream	1b0cc696
+C	10	C'est magnifique ici.
+C	12	Ça doit être une des îles au large.
+C	6	L'île Cocos...
+C	12	...ou une des Cinco Muertes, peut-être.
+S	stream	f26f63a3
+C	11	Des fondations, peut-être.
+S	stream	1c61028f
+C	6	InGen.
+C	7	Une sorte de...
+C	9	...Attends !
+C	14	International Genetic Technologies
+S	stream	6b663219
+C	15	C'était la société du procès des dinosaures.
+C	9	Après le procès, ce vieux...
+C	19	...John Hammond a écrit un livre. Il disait que c'était quelque part en Amérique centrale.
+S	stream	fbd92f88
+C	10	Oh non !
+C	11	Oh mon Dieu !
+C	10	C'est le Site B.
+C	12	C'est le monde perdu de John Hammond.
+S	stream	8cde1f1e
+C	14	Je savais depuis le début que c'était une idée stupide.
+S	stream	c681b655
+C	12	Il devait y avoir quelque chose dans ses mémoires.
+S	stream	b18686c3
+C	5	Hammond.
+C	7	Évidemment.
+S	stream	288fd779
+C	10	Oh mon Dieu...
+C	12	...une trentaine de personnes sont mortes ici.
+C	10	Des chasseurs professionnels...
+C	9	...des mercenaires.
+S	stream	5f88e7ef
+C	6	Peut-être...
+C	15	Peut-être s'il y a une ligne téléphonique ou une radio.
+S	stream	c1ec724c
+C	9	"Défense d'entrer."
+C	7	Merci bien.
+S	stream	b6eb42da
+C	6	Oh mon Dieu.
+C	10	Il faut que quelqu'un vienne me chercher.
+S	stream	edace596
+C	13	Essaie plutôt "vieux cinglé psychopathe".
+S	stream	74a5b42c
+C	10	Ouais, ouais, envoyez-moi la facture.
+S	stream	6dbe856d
+C	8	Oh, mon...
+S	stream	55f8233c
+C	12	Oh là là.
+C	10	Il l'a vraiment fait.
+S	stream	bc9b8609
+C	16	D'accord, d'accord. Chut... Gentil dinosaure, fais dodo.
+S	stream	5295e725
+C	10	Bla-bla-bla...
+S	stream	2592d7b3
+C	11	Des vélociraptors.
+C	8	Les tueurs.
+S	stream	d5ea43c7
+C	22	Oh, c'est pas bon. C'est pas bon du tout.
+C	14	Je ne vais jamais revenir d'ici, hein ?
+S	stream	4ce3127d
+C	10	Oh non.
+C	10	Rien n'est aussi gros.
+S	stream	3be422eb
+C	10	Elle est magnifique.
+S	stream	a580b748
+C	3	
+C	8	Intello !
+S	stream	d28787de
+C	9	C'est là qu'ils sont morts.
+S	stream	4b8ed664
+C	9	Tous ces hommes.
+S	stream	89c02092
+C	8	Eh bien...
+C	14	...ils prenaient leur monorail très au sérieux.
+S	stream	fec71004
+C	19	...une radio, un téléphone. Deux boîtes et une ficelle ?
+S	stream	67ce41be
+C	10	J'étais au lycée à l'époque.
+S	stream	10c97128
+C	14	Ça, c'est une odeur incroyable.
+S	stream	f9aad41d
+C	6	Magnifique.
+C	10	Style colonial espagnol.
+S	stream	60a385a7
+C	11	On se croirait dans un documentaire.
+S	stream	17a4b531
+C	18	C'est l'or du café. L'or des esclavagistes.
+S	stream	871ba8a0
+C	6	Qu'est-ce que c'est ?
+S	stream	f01c9836
+C	10	Je sens l'odeur de l'océan.
+S	stream	90db11d3
+C	8	Peu importe...
+S	stream	8e4a5ca6
+C	10	Me fais pas ça.
+S	stream	102ec905
+C	10	Système de sécurité.
+C	10	On dirait qu'il est toujours actif.
+S	stream	6729f993
+C	4	Allô ?
+C	4	
+C	6	Allô !
+S	stream	fe20a829
+C	12	En pleine jungle...
+S	stream	892798bf
+C	18	C'est comme cet épisode de La Quatrième Dimension où il est dans une ville sans personne ?
+C	12	Et en fait le type est un astronaute ?
+S	stream	1998852e
+C	13	On dirait qu'ils ont tout vidé avant de partir.
+S	stream	6e9fb5b8
+C	7	Mmm...
+C	11	...Tout le monde est rentré.
+S	stream	0e583c5d
+C	13	Le plus drôle, c'est que c'était si facile.
+C	10	Personne ne vous arrête.
+C	18	On monte dans un bus et on regarde défiler l'autoroute.
+C	14	Le monde entier devant soi.
+C	18	Ce ne sont pas des vacances si on ne sait pas quand on rentre.
+S	stream	795f0ccb
+C	11	Où est ce fichu téléphone ?
+C	7	Je veux sortir d'ici.
+C	24	Je veux du soda light, des photocopieuses, des briques de jus et des dessins animés.
+S	stream	e0565d71
+C	8	Serrure bas de gamme.
+S	stream	97516de7
+C	7	Waouh...
+C	10	...Surréaliste.
+S	stream	0935f844
+C	18	Quelque chose me dit que ce n'est pas mon billet de sortie.
+S	stream	7e32c8d2
+C	12	Ce truc indique plus d'un émetteur.
+S	stream	e73b9968
+C	16	Ce n'est sans doute pas le moment de boire un verre...
+C	10	...même si j'en aurais bien envie.
+S	stream	903ca9fe
+C	15	C'est quoi, cette odeur ? On dirait une étable...
+S	stream	0083b46f
+C	10	Oh mon Dieu, c'est un nid.
+S	stream	778484f9
+C	11	Excusez-moi ? L'entretien, ohé ?
+C	11	Un petit coup de main ?
+S	stream	ef1cfbec
+C	10	Rien ici.
+C	15	Je parie que c'est Hammond qui avait tous les téléphones satellite.
+S	stream	981bcb7a
+C	12	Comment ils avaient l'électricité ?
+C	11	Ils devaient avoir un générateur.
+S	stream	01129ac0
+C	14	"Non !! Je mourrai pour InGen."
+C	10	C'est peut-être déjà fait.
+S	stream	71786e4f
+C	10	Cet endroit est mort.
+S	stream	e1c773de
+C	8	Cassé.
+C	19	Pas de radio. Pas de téléphone. Pas de satellite.
+C	10	C'est fini. Je suis morte.
+S	stream	96c04348
+C	10	Jolie chaîne hi-fi, mon gars.
+S	stream	f607caad
+C	10	Ce truc demande un code d'accès...
+C	11	...il doit être noté quelque part.
+S	stream	8100fa3b
+C	12	Très joli, John.
+S	stream	1809ab81
+C	24	Salon, salle à manger, parquet.
+C	8	Charmant.
+S	stream	6f0e9b17
+C	17	Cuisine moderne, hauts plafonds.
+S	stream	f16a0eb4
+C	18	Une chambre d'amis pour savants fous de passage.
+S	stream	866d3e22
+C	7	Chambre principale.
+C	8	Très joli !
+S	stream	1f646f98
+C	13	Vous plaisantez.
+C	23	Bienvenue sur mon île. Non, n'essayez pas de fuir. Laissez-moi vous exposer mon plan.
+S	stream	68635f0e
+C	8	Compartiment secret.
+C	8	Oooh, aaah !
+S	stream	f8dc429f
+C	6	Ha!
+C	11	Ça doit bien valoir quelque chose.
+S	stream	8fdb7209
+C	11	Là, on avance.
+S	stream	3324f842
+C	15	J'espérais vraiment que ça n'arriverait pas.
+S	stream	4423c8d4
+C	13	Waouh, ça doit faire un kilomètre et demi de large.
+C	10	Au moins 6,50 $ de taxi.
+S	stream	434e0ccd
+C	8	Pas beaucoup d'abris.
+C	10	Je vais devoir utiliser les arbres.
+S	stream	d3f1115c
+C	9	Cher journal.
+C	16	Chasse aux dinosaures sur une île étrange.
+C	12	Peu de chances de m'échapper...
+C	15	...euh... il fait beau.
+C	7	Bon, la suite bientôt.
+C	8	Anne.
+S	stream	b33698b9
+C	14	Pendant ce temps, quelque part dans le Pacifique...
+S	stream	2a3fc903
+C	6	Bon, reste pas allongé là...
+C	7	...va chercher de l'aide !
+S	stream	5d38f995
+C	8	Il fait frais ici.
+C	10	Une sorte d'entrepôt ?
+S	stream	c35c6c36
+C	9	Ce sont juste des vaches.
+C	13	Juste de grosses vaches.
+S	stream	2d520d1a
+C	10	Mon Dieu, qu'elle est grosse !
+S	stream	5a553d8c
+C	10	Elle m'a repérée.
+S	stream	caea201d
+C	8	Allez !
+S	stream	bded108b
+C	9	Finis-en, Anne.
+S	stream	8b703ee8
+C	10	Tombe, bon sang !
+S	stream	fc770e7e
+C	8	Allez, tombe !
+S	stream	657e5fc4
+C	8	Oh mon Dieu.
+S	stream	8c1dfaf1
+C	10	Il a dû avoir peur.
+C	17	Il était blessé, il s'est traîné ici, il perdait peut-être son sang.
+C	10	Il a dû se croire en sécurité.
+S	stream	fb1aca67
+C	10	Jusqu'à aujourd'hui.
+S	stream	62139bdd
+C	8	Une forêt comme celle-ci...
+C	15	...on pourrait y marcher à jamais sans jamais revenir.
+S	stream	1514ab4b
+C	5	
+C	9	Le grand chasseur blanc.
+S	stream	85abb6da
+C	13	Ça doit ramener à la ville, d'un côté.
+S	stream	f2ac864c
+C	6	Oh, génial !
+C	8	Encore un mort.
+S	stream	926b0fa9
+C	8	Plus de fléchettes, sans doute.
+S	stream	e56c3f3f
+C	13	J'arrive pas à croire que je viens de faire ça.
+S	stream	9506cbb0
+C	8	Reprends-toi, ma fille.
+S	stream	ebb7b70d
+C	15	Super ! Je peux prendre ça ?
+S	stream	5025f95f
+C	6	HA!
+C	8	Je suis un génie.
+S	stream	c09ae4ce
+C	10	Bla, bla, bla...
+S	stream	a05d6d2b
+C	13	Ils ne s'attendaient pas à ça.
+C	11	Hammond pensait que tout ça serait là pour toujours.
+S	stream	d75a5dbd
+C	8	Un monde perdu.
+S	stream	4e530c07
+C	12	On dirait le contenu d'un entrepôt.
+S	stream	39543c91
+C	18	JE SUIS SPARTACUUUUS !!!
+S	stream	a730a932
+C	15	Quand ça arrivera, ça pourrait être comme ça.
+C	10	3 secondes, et je n'existe plus...
+C	6	...à tout moment.
+S	stream	d03799a4
+C	9	Deux gamins.
+S	stream	493ec81e
+C	5	Bang.
+C	4	Laboratoire.
+C	5	Je te tiens.
+C	10	C'est forcément ce qu'il me faut.
+S	stream	ae86e519
+C	10	L'endroit a l'air presque intact.
+S	stream	d981d58f
+C	12	Tout passe par cet ordinateur.
+S	stream	27c571e4
+C	11	Si l'ordinateur gère les communications,
+C	15	il faut que je voie s'il est intact, sécurité ou pas.
+S	stream	50c24172
+C	13	On dirait une scène de fin du monde...
+S	stream	c9cb10c8
+C	10	Alors c'était tout ce qu'il y avait.
+C	10	On dirait un labo de sciences de fac.
+S	stream	becc205e
+C	10	Le cœur d'un empire.
+S	stream	20a8b5fd
+C	7	Allez, Hammond.
+C	13	C'est ton bureau. Il y a forcément quelque chose ici.
+S	stream	57af856b
+C	10	"Remue-toi, bébé !"
+S	stream	cea6d4d1
+C	8	
+C	13	D'accord, je l'admets, Hammond. Tu es malin.
+S	stream	b9a1e447
+C	6	Tu sais...
+C	13	...c'est pas aussi intéressant que je l'imaginais.
+S	stream	291ef9d6
+C	10	Le repaire des intellos.
+S	stream	5e19c940
+C	14	Pitié, mon Dieu, non.
+S	stream	3ede40a5
+C	12	Je déteste ces trucs de pirate !
+S	stream	49d97033
+C	5	Excusez-moi...
+C	13	...j'ai une fête Renaissance qui m'attend.
+S	stream	d0d02189
+C	8	Il fait froid ici.
+S	stream	a7d7111f
+C	9	C'est là qu'il l'a fait.
+S	stream	39b384bc
+C	8	Bon...
+C	7	...passons au plan B.
+S	stream	4eb4b42a
+C	10	Anne la perceuse de coffres.
+S	stream	3005c897
+C	5	Attends...
+C	12	...si les données sont encore là-dedans,
+C	15	je pourrais bien devenir une fille très riche.
+C	9	Il suffit d'un modem...
+S	stream	4702f801
+C	8	Victoire.
+S	stream	ed5a45b5
+C	11	S'il te plaît, marche.
+S	stream	9a5d7523
+C	6	Oui !
+S	stream	03542499
+C	9	"Remonter le puits."
+S	stream	7453140f
+C	8	Gagné !
+S	stream	ea3781ac
+C	14	Les données sont toujours là.
+C	15	Codes de téléchargement, liaisons satellite.
+C	10	L'héritage de Hammond.
+S	stream	9d30b13a
+C	13	C'est donc la station du sommet.
+C	7	Dernière chance.
+S	stream	0439e080
+C	17	Les Mayas ne sont sûrement jamais allés plus à l'ouest que ça.
+C	13	C'est comme regarder le bout du monde.
+S	stream	733ed016
+C	5	Attention :
+C	11	Montagne dangereusement haute.
+S	stream	9486fd11
+C	8	Je n'ai pas le vertige,
+C	10	je n'ai pas le vertige...
+S	stream	f44174f4
+C	10	Allez, qui veut commencer ?
+S	stream	83464462
+C	8	C'est dingue !
+S	stream	6d48254e
+C	14	Je parie qu'on voit jusqu'au Costa Rica,
+C	8	ou au Panama.
+S	stream	f32cb0ed
+C	13	Oh, il n'y a pas grand-chose à raconter.
+C	6	Tu sais...
+C	25	...je suis allée à la fête. J'avais mis la petite robe noire.
+C	13	C'était magnifique.
+C	23	Je crois que je ne voulais pas être seule, ou un truc comme ça. Il...
+C	39	...ce n'était pas ce que je voulais. Ça n'a plus d'importance, maintenant. Je ne rentre pas.
+S	stream	842b807b
+C	12	Il doit faire 40 degrés ici.
+S	stream	6a25e157
+C	12	On dirait que le bord s'est un peu effondré.
+S	stream	fa9afcc6
+C	19	Ça doit bien finir par mener quelque part.
+S	stream	8d9dcc50
+C	6	Ohé ?
+S	stream	9847e3ed
+C	7	Doucement
+S	stream	014eb257
+C	7	Restez vigilants
+S	stream	764982c1
+C	5	Écoutez
+S	stream	e82d1762
+C	5	Restez groupés
+S	stream	9f2a27f4
+C	8	Surveillez les angles
+S	stream	a4d4350f
+C	9	Allez ! Va-t'en, file !
+S	stream	3ddd64b5
+C	8	Je l'ai fait fuir.
+S	stream	4ada5423
+C	5	Parti
+S	stream	d4bec180
+C	9	Oh, merci mon Dieu !
+S	stream	b589814a
+C	9	
+C	10	Ça va. Ça va.
+C	12	Oh mon Dieu !
+C	16	Qui aurait cru que j'en étais capable ?
+S	stream	2c80d0f0
+C	10	Crève, salaud !
+S	stream	5b87e066
+C	11	Tu as peur de moi, hein ?
+C	13	Je crois que tu commences à deviner ce qui s'est passé.
+S	stream	c5e375c5
+C	8	Ton espèce a disparu.
+C	13	Vous êtes morts des millions d'années avant ma naissance.
+S	stream	b2e44553
+C	9	Ce n'est plus ton époque...
+C	9	...c'est la mienne.
+S	stream	2bed14e9
+C	10	J'y crois pas.
+S	stream	5cea247f
+C	11	Je l'ai ! Je l'ai !
+C	7	Je suis sauvée.
+S	stream	cc5539ee
+C	4	Ha!
+S	stream	bb520978
+C	11	Et hop, un petit somme sous terre.
+S	stream	6267fe2e
+C	15	Une menace de moins pour le mode de vie américain.
+S	stream	1560ceb8
+C	7	Un parc à dinosaures...
+C	9	...quelle idée géniale !
+S	stream	5a78cd09
+C	8	Je peux y arriver.
+S	stream	b476ac25
+C	6	Je l'ai estropié.
+S	stream	2a123986
+C	6	En pleine tête.
+S	stream	626e83a5
+C	10	Oh... Allô ?
+C	6	Allô ?
+S	stream	fb67d21f
+C	7	Il y a quelqu'un ?
+C	6	J'ai besoin d'aide.
+S	stream	8c60e289
+C	6	Ha!
+C	6	Je veux dire, oui ! Oui, je suis là.
+C	8	Je suis sur le Site B.
+S	stream	1204772a
+C	6	Non, je ne plaisante pas !
+C	17	Je suis sur le Site B. Je suis dans la réserve de dinosaures, bon sang.
+S	stream	650347bc
+C	14	Ça va. Ça va, sortez-moi juste d'ici !
+S	stream	fc0a1606
+C	5	Merci.
+C	10	Je veux dire, "bien reçu".
+C	7	
+C	7	Terminé...
+S	stream	f488a514
+C	9	Je ne veux pas mourir ici.
+S	stream	6d81f4ae
+C	8	Je peux m'en sortir.
+C	7	Je suis une grande fille.
+S	stream	1a86c438
+C	13	Bon. Là, j'ai vraiment un peu peur.
+S	stream	63631a78
+C	10	C'est plutôt lourd.
+S	stream	fa6a4bc2
+C	4	Bon.
+C	8	On va par où, là ?
+S	stream	8d6d7b54
+C	10	Il doit y avoir une astuce.
+S	stream	1309eef7
+C	13	Il doit bien y avoir un passage par ici.
+S	stream	8a00bf4d
+C	10	Ça a l'air trop loin pour sauter.
+S	stream	1abfa2dc
+C	8	Je peux y arriver.
+S	stream	6db8924a
+C	6	Ça a marché !
+S	stream	33a6a45a
+C	9	Il criait quand on est tombés.
+C	10	Il essayait de nous redresser.
+S	stream	dda8c576
+C	10	Ça devait être à la petite fille.
+S	stream	e441e01b
+C	9	Plus lourd que je pensais.
+S	stream	9346d08d
+C	6	
+C	10	Modèle pour dames.
+S	stream	0d22452e
+C	10	C'est seulement légal, ça ?
+S	stream	7a2575b8
+C	10	Oh mon Dieu !
+S	stream	e32c2402
+C	9	Oh, c'est bien.
+C	8	C'est très bien.
+S	stream	1cadb499
+C	8	Panier parfait.
+S	stream	c452867c
+C	10	Je commence à m'ennuyer, là !
+S	stream	5d5bd7c6
+C	5	Très bien...
+C	10	...je peux attendre aussi longtemps que toi.
+S	stream	65d17dd4
+C	7	C'est chaud.
+S	stream	fcd82c6e
+C	14	Je crois que j'ai pas envie de nager.
+S	stream	8bdf1cf8
+C	16	Bon, j'ai vraiment pas envie de nager.
+S	stream	15bb895b
+C	11	C'est pas comme si je pouvais nager jusqu'en Amérique.
+S	stream	bf9d47f1
+C	10	
+C	10	Mon Dieu, je manque d'entraînement !
+S	stream	2694164b
+C	6	
+C	13	J'aurais vraiment dû utiliser ce stepper.
+S	stream	050663f2
+C	11	Alors c'est ça que ça fait.
+S	stream	9c0f3248
+C	8	Ça marche !
+S	stream	eb0802de
+C	9	Reste stable.
+S	stream	026ba7eb
+C	5	Rafales courtes...
+C	5	...contrôlées...
+C	7	...peu importe !
+S	stream	9b62f651
+C	7	J'aime bien.
+S	stream	541303c5
+C	22	Je commençai à pressentir le sérieux de notre travail...
+C	15	...la profondeur du puits.
+C	33	C'était la vie d'il y a 65 ou 100 millions d'années, avant l'humanité.
+C	11	J'ai vraiment réussi.
+C	14	Ce n'est pas une situation normale.
+S	stream	9894ad42
+C	18	JE SUIS SPARTACUUUUS !!!
+S	stream	dfe08b10
+C	21	Le Site B était entièrement centralisé et contrôlé par ordinateur.
+C	24	Cette même conception fut le talon d'Achille de Jurassic Park.
+C	12	Tout passe par cet ordinateur.
+S	stream	f8843dd7
+C	28	Diagnostics, communications, sécurité : tout passait par l'ordinateur.
+C	23	La sécurité informatique était donc primordiale, la plus stricte de l'île.
+C	11	Si l'ordinateur gère les communications,
+C	15	il faut que je voie s'il est intact, sécurité ou pas.
+S	stream	6c519430
+C	25	Je reste convaincu que Nedry s'est laissé une porte dérobée, une histoire de hobbits ou Dieu sait quoi.
+C	15	Pitié, mon Dieu, non.
+S	stream	00b7cf6e
+C	16	Il fait froid ici.
+C	10	Tandis que Nedry tapait,
+C	13	le monde sembla retenir son souffle.
+C	38	Un instant, nous nous tînmes au tournant entre deux grandes ères planétaires...
+C	33	le règne millénaire de l'homme, et l'âge des dinosaures.
+S	stream	77a2604a
+C	18	En partant, nous avons saboté nos propres mécanismes de verrouillage.
+C	14	InGen ne tolère aucun intrus.
+C	10	Jusqu'à aujourd'hui.
+S	stream	f5e2e0cf
+C	11	Pour bouger votre bras...
+C	30	...maintenez <HAND> et déplacez <LOOK>.
+S	stream	0d86a67b
+C	25	Pour reculer, appuyez sur <BACKUP>.
+S	stream	8cc131c0
+C	30	Appuyez à nouveau sur <GRAB> pour lâcher l'objet.
+S	stream	a40a3d2d
+C	17	Pour faire feu avec une arme, appuyez sur <USE>.
+S	stream	5b6732f4
+C	30	Sautez avec <JUMP>, accroupissez-vous avec <CROUCH>.
+S	stream	d7eee0e0
+C	35	Pour regarder autour de vous, déplacez <LOOK>.
+S	stream	0c62a0f2
+C	11	Pour saisir un objet...
+C	20	...accroupissez-vous avec <CROUCH>, approchez votre main de l'objet,
+C	40	puis appuyez sur <GRAB> pour le prendre.
+S	stream	fb86913a
+C	30	Faites un pas à gauche ou à droite avec <LEFT> ou <RIGHT>.
+S	stream	afeee03a
+C	14	Pour frapper avec un objet...
+C	20	...maintenez <HAND> et <USE>,
+C	30	et déplacez <LOOK> pour manier l'objet.
+S	stream	016b1657
+C	11	Pour lancer un objet...
+C	16	...maintenez <GRAB>,
+C	20	déplacez <LOOK> dans la direction du lancer,
+C	22	puis relâchez <GRAB>.
+S	stream	71454eb7
+C	25	Utilisez <WALK> pour marcher lentement.
+C	25	Utilisez <RUN> pour courir.
+S	stream	aef95ed6
+C	25	Elle refusa d'abord de me répondre.
+C	10	Je lui reposai la question.
+S	stream	e454f47d
+C	15	Pour ma femme Michelle,
+C	15	Ton soutien et ta compréhension constants
+C	15	sont sans égal dans ma vie.
+C	15	Pendant 2 ans et demi, tu m'as soutenu et tu m'as relevé
+C	15	durant la période la plus difficile de ma vie.
+C	15	Je ne pourrai jamais te rendre tout cela. Je peux seulement
+C	15	te promettre un retour à une vie normale... un
+C	15	mari sain d'esprit... et ton meilleur ami.
+C	15	Avec tout mon amour,
+C	15	Brady
+S	stream	f2ae3313
+C	7	
+C	8	Je lance comme une fille.
+S	stream	2a4072cc
+C	21	J'ai rencontré un voyageur venu d'une terre antique,
+C	34	qui m'a dit : "Deux jambes de pierre, vastes et sans tronc, se dressent dans le désert.
+C	31	Près d'elles, sur le sable, à demi enfoui, gît un visage brisé
+C	27	dont la moue, la lèvre plissée et le rictus de froid commandement
+C	27	disent que son sculpteur sut bien lire ces passions, qui survivent encore,
+C	15	gravées sur ces choses sans vie,
+C	26	à la main qui les imita et au cœur qui les nourrit.
+C	27	Et sur le piédestal, on lit ces mots :
+C	25	Mon nom est Ozymandias, roi des rois.
+C	25	Contemplez mes œuvres, ô puissants, et désespérez !
+C	13	Rien d'autre ne demeure.
+C	16	Autour des ruines de ce colossal débris,
+C	37	infinis et nus, les sables solitaires et plats s'étendent au loin."
+S	stream	4adda36d
+C	11	
+C	6	Euh...
+C	11	Allô ? Allô ?
+C	15	Il y a quelqu'un ? J'ai besoin d'aide.
+C	15	Ici la marine des États-Unis, canal prioritaire.
+C	11	Identifiez-vous ou libérez la fréquence.
+C	20	Je veux dire, oui ! Oui, je suis là ! Je suis sur le Site B.
+C	27	C'est ça, c'est ça, on nous la fait souvent. Écoutez, libérez le canal ou...
+C	19	Non, je ne plaisante pas. Je suis sur le Site B. Je suis dans la réserve de dinosaures, bon sang.
+C	16	Sachez que nous triangulons votre position...
+C	12	...et qu'émettre sur cette fréquence constitue une infraction...
+C	19	Euh, mon commandant... ça vient du sommet du mont Watson.
+C	16	Désolé, madame, tenez bon. Êtes-vous en danger ?
+C	15	Ça va, ça va, sortez-moi juste d'ici.
+C	14	Restez où vous êtes, madame. Nous avons des gens dans le secteur.
+C	12	Nous envoyons un hélicoptère à votre position.
+C	4	Merci.
+C	17	Je veux dire... bien reçu...
+C	10	...terminé...
+S	stream	f7018a5c
+C	15	Mesdames et messieurs...
+C	30	JON GALVAN
+S	stream	7d5da5c7
+C	13	Pour mon bon ami Kyle,
+C	13	Tu l'as entendu encore et encore,
+C	13	mais je n'ai jamais été aussi impressionné par
+C	13	l'ardeur au travail de quelqu'un. Sans toi, nous n'aurions
+C	13	jamais sorti ce jeu, et je serais parti depuis longtemps.
+C	13	Je suis devenu meilleur en t'ayant
+C	13	pour ami. Je te remercie,
+C	15	Brady
+S	stream	0a5a9551
+C	13	Pour mon pote Galvan,
+C	13	Je suis content que nous soyons devenus
+C	13	si proches. Pour tout le temps que tu as
+C	13	passé à apprendre, et pour les efforts que tu as
+C	13	fournis pour faire de l'audio ce qu'il est,
+C	13	je te remercie.
+C	13	Pour m'avoir harcelé avec le pire film que je connaisse,
+C	13	'TITANIC'... va brûler en enfer.
+C	13	Faisons un film,
+C	13	Allez les Wings,
+C	15	Brady
+S	stream	85a90385
+C	13	Des cartes dans l'Atlantique, bonne chance.
+C	7	Bande d'amateurs.
+S	effects	228c710e
+C	4	Une
+S	effects	bb8520b4
+C	4	Une
+S	effects	cc821022
+C	4	Une
+S	effects	09a122cd
+C	4	Deux
+S	effects	90a87377
+C	4	Deux
+S	effects	10ba138c
+C	4	Trois
+S	effects	89b34236
+C	4	Trois
+S	effects	feb472a0
+C	4	Trois
+S	effects	5ffb854b
+C	4	Quatre
+S	effects	c6f2d4f1
+C	4	Quatre
+S	effects	46e0b40a
+C	4	Cinq
+S	effects	dfe9e5b0
+C	4	Cinq
+S	effects	6dcde7c9
+C	4	Six
+S	effects	83c386e5
+C	4	Six
+S	effects	74d6d688
+C	4	Sept
+S	effects	eddf8732
+C	4	Sept
+S	effects	9ad8b7a4
+C	4	Sept
+S	effects	f34eca47
+C	4	Huit
+S	effects	6a479bfd
+C	4	Huit
+S	effects	735caabc
+C	4	Neuf
+S	effects	045b9a2a
+C	4	Neuf
+S	effects	ac8d7320
+C	4	Dix
+S	effects	3584229a
+C	4	Dix
+S	effects	9ebb11a2
+C	4	Douze
+S	effects	07b24018
+C	4	Douze
+S	effects	87a020e3
+C	4	Treize
+S	effects	1ea97159
+C	4	Treize
+S	effects	69ae41cf
+C	4	Treize
+S	effects	d1fa8765
+C	4	Quinze
+S	effects	48f3d6df
+C	4	Quinze
+S	effects	3ff4e649
+C	4	Quinze
+S	effects	e3cce5e7
+C	5	Dix-sept
+S	effects	7ac5b45d
+C	5	Dix-sept
+S	effects	0dc284cb
+C	5	Dix-sept
+S	effects	37c29cc3
+C	4	Vingt
+S	effects	40c5ac55
+C	4	Vingt
+S	effects	af09a74e
+C	4	Trente
+S	effects	3600f6f4
+C	4	Trente
+S	effects	4107c662
+C	4	Trente
+S	effects	23db81ef
+C	6	Presque vide.
+S	effects	bad2d055
+C	6	Presque plus rien.
+S	effects	cdd5e0c3
+C	8	Quasiment vide.
+S	effects	53b17560
+C	8	Environ un demi-chargeur.
+S	effects	24b645f6
+C	6	À moitié vide.
+S	effects	bdbf144c
+C	8	À peu près la moitié.
+S	effects	cab824da
+C	6	Chargeur plein.
+S	effects	5a07394b
+C	8	Pas encore servi.
+S	effects	2d0009dd
+C	5	Ça a l'air plein
+S	effects	29b4af6b
+C	4	Vide
+S	effects	b0bdfed1
+C	5	C'est fini
+S	effects	c7bace47
+C	5	Une balle
+S	effects	59de5be4
+C	6	Plus qu'une balle
+S	effects	2ed96b72
+C	6	Deux balles
+S	effects	b7d03ac8
+C	7	Plus que deux
+S	effects	c0d70a5e
+C	7	Encore trois
+S	effects	506817cf
+C	6	Trois balles
+S	effects	276f2759
+C	7	Quatre balles
+S	effects	2e92d35e
+C	7	Quatre coups
+S	effects	5995e3c8
+C	8	Encore cinq cartouches
+S	effects	c09cb272
+C	6	Cinq balles
+S	effects	5ef827d1
+C	5	Sept, on dirait.
+S	effects	c7f1766b
+C	5	Sept balles
+S	effects	20495b6c
+C	5	Huit balles
+S	effects	574e6bfa
+C	5	Encore huit.
+S	effects	05bf809d
+C	6	Il en reste neuf.
+S	effects	72b8b00b
+C	5	Neuf balles
+S	effects	ebb1e1b1
+C	6	Une dizaine
+S	effects	9cb6d127
+C	6	Une dizaine
+S	effects	02d24484
+C	6	Douze, on dirait.
+S	effects	75d57412
+C	6	Une douzaine.
+S	effects	ecdc25a8
+C	6	Quinze environ.
+S	effects	9bdb153e
+C	5	Une quinzaine
+S	effects	0b6408af
+C	5	Une vingtaine
+S	effects	7c633839
+C	6	Vingt, on dirait.
+S	effects	1ca4b1dc
+C	5	Une trentaine
+S	effects	6ba3814a
+C	7	Une trentaine de cartouches.

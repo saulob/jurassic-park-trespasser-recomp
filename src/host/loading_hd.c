@@ -14,6 +14,8 @@
 
 #include "frontend_assets.h"
 #include "frontend_hd.h"
+#include "jpt_l10n.h"
+#include "l10n.h"
 #include "loading_hd.h"
 #include "save_preview.h"
 
@@ -202,7 +204,11 @@ static void read_caption(uint32_t c, int32_t id, fe_rect_t r, caption_t* caption
     t->used = 0;
     t->color = rgb_of_colorref(peek32(c + TEXT_FG));
     if (!guest_read_string(peek32(c + TEXT_STRING), t->text, sizeof t->text)) t->text[0] = 0;
-    if (t->text[0]) (*count)++;
+    if (t->text[0]) {
+        const char* label = l10n_label(t->text);
+        if (label) snprintf(t->text, sizeof t->text, "%s", label);
+        (*count)++;
+    }
 }
 
 static void read_bar(uint32_t c, int32_t id, fe_rect_t r, bar_t* bars, int* count) {
@@ -442,11 +448,14 @@ static void screen_message(void) {
         return;
     }
     if (MEM32(g_esp + 4) == LOADING_LEVEL_STRING && loading_hd_screen(&w, &h) && w > ART_W && h > ART_H) {
+        const char* translated = jpt_l10n_text_or(LOADING_LEVEL_STRING, NULL);
         memset(&now, 0, sizeof now);
         now.kind = LD_SCENE_MESSAGE;
         now.screen_w = w;
         now.screen_h = h;
-        if (LoadStringA((HINSTANCE)(uintptr_t)peek32(GAME_INSTANCE), LOADING_LEVEL_STRING, now.message, sizeof now.message) > 0) {
+        if (translated) snprintf(now.message, sizeof now.message, "%s", translated);
+        if (translated ||
+            LoadStringA((HINSTANCE)(uintptr_t)peek32(GAME_INSTANCE), LOADING_LEVEL_STRING, now.message, sizeof now.message) > 0) {
             frontend_hd_release();
             hd = show(&now);
         }

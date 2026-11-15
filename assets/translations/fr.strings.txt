@@ -1,0 +1,229 @@
+# Trespasser Recompiled game text 1
+1	Trespasser
+2	Erreur Trespasser
+3	Détection du processeur
+4	Erreur lors de la détection du processeur
+5	Nouvelle sauvegarde
+6	Souhaitez-vous remplacer\r\n"%s"?
+7	Souhaitez-vous supprimer la partie\r\n"%s"?
+8	Souhaitez-vous quitter Trespasser ?
+9	Souhaitez-vous quitter cette partie ?
+10	SAUVEGARDE
+11	Trespasser était instable lors de sa dernière exécution. \r\nSouhaitez-vous le lancer en 'Mode sans échec' ?\n\nCe mode paramètre Trespasser de façon à éviter l'instabilité. \nPour plus d'informations, cliquez sur Annuler et ouvrez \nle fichier 'ReadMe.txt' pour consulter la rubrique sur le mode sans échec.
+12	Souhaitez-vous relancer ce niveau ?
+13	Votre carte son ne dispose pas des pilotes DirectX qui conviennent. Cette partie peut se dérouler correctement, mais si vous rencontrez des problèmes audio, procurez-vous les pilotes mis à jour auprès de votre fabricant de carte son.
+14	Votre carte vidéo ne dispose pas des pilotes DirectX qui conviennent. Cette partie peut se dérouler correctement, mais si vous rencontrez des problèmes vidéo, procurez-vous les pilotes mis à jour auprès de votre fabricant de carte vidéo.
+15	Votre carte vidéo ne dispose pas de prise en charge matérielle. Cette partie peut se dérouler correctement, mais si vous rencontrez des problèmes vidéo, procurez-vous les pilotes mis à jour auprès de votre fabricant de carte vidéo.
+16	Direct Sound NON reconnu
+17	Direct Draw NON reconnu
+18	Pas de prise en charge matérielle
+19	DirectDraw introuvable. Veuillez vérifier que DirectDraw est installé.
+20	Erreur lors de l'initialisation de DirectDraw.
+21	Trespasser ne semble pas installé correctement. Veuillez relancer le programme d'installation. Si le problème persiste, essayez de désinstaller puis de réinstaller.
+22	Veuillez placez le CD de Trespasser dans %s.\r\n\r\nAppuyez sur le bouton OK pour continuer.\r\nAppuyez sur Annuler pour quitter.
+23	Une erreur bloquante a été détectée. Appuyez sur OK pour quitter.
+24	????
+25	Modification de la qualité du rendu
+26	Moins
+27	Plus
+28	Extrême
+29	Espace disque insuffisant pour sauvegarder une partie. Libérez de l'espace disque, puis réessayez.
+30	Erreur de chargement non répertoriée.
+31	Fichier de décor non valide.
+32	Espace disque insuffisant pour charger le niveau. Libérez de l'espace disque, puis réessayez.
+33	Trespasser nécessite %i Mo d'espace disque disponible. Appuyez sur OK pour quitter le jeu.
+34	Programme de commande
+35	affichage
+36	Logiciel
+37	Chargement du niveau... Veuillez patienter.
+38	Cette version de Trespasser nécessite un processeur compatible Intel PentiumPro/PentiumII.
+39	Cette version de Trespasser nécessite un processeur avec 3D Now!
+40	Impossible de détecter le processeur local. Voulez-vous continuer ?
+41	Aucune carte éccélératrice 3D compatible avec Trespasser n'a été trouvée.\r\nPour plus d'informations sur les cartes accélératrices 3D \r\nprises en charge, consultez le fichier 'ReadMe.txt'.
+42	Impossible d'afficher le fichier 'ReadMe.txt'. Veuillez ouvrir ce fichier\nmanuellement à partir du répertoire 'Setup' de votre CD-ROM\nà l'aide d'un programme tel que Notepad ou Wordpad.
+105	Bas
+106	Moyen
+107	Élevé
+10000	Qualité
+10001	Brillance
+10002	Taille écran
+10003	Nom pilote vidéo
+10010	Initialisation univers
+10011	Copie fichier de niveau
+10012	Copie fichier de niveau
+10020	Avancer
+10021	Courir
+10022	Reculer
+10023	Esquive gauche
+10024	Esquive droite
+10025	Sauter
+10026	S'accroupir
+10027	Lancer
+10028	Utiliser/Tirer
+10029	Poignet
+10030	Bouger main
+10031	Saisir/Lâcher
+10032	Rang./Sort.
+10033	Rejouer
+10034	voix off
+10035	Gore
+10036	Inverser souris
+10037	Tourner bras
+10050	Jouer effets sonores
+10051	Jouer sons d'ambiance
+10052	Jouer voix off
+10053	Jouer musique de fond
+10054	Afficher sous-titres
+10055	Accél. 3D audio activée
+16000	Clic - gauche
+16001	Clic - droite
+16002	Annuler
+16003	Clic - milieu
+16004	Ret.Arr
+16005	Tabulation
+16006	Effacer
+16007	Retour
+16008	Maj
+16009	Ctrl
+16010	Menu
+16011	Pause
+16012	Verr.Maj
+16013	Échap
+16014	Espace
+16015	Pg.Préc
+16016	Pg.Suiv
+16017	Fin
+16018	Origine
+16019	Gauche
+16020	Haut
+16021	Droite
+16022	Bas
+16023	Sélect
+16024	Impr
+16025	Exéc
+16026	Impr.Écran
+16027	Insertion
+16028	Suppression
+16029	Aide
+16030	Win G
+16031	Win D
+16032	Apps
+16033	0(pavé num.)
+16034	1(pavé num.)
+16035	2(pavé num.)
+16036	3(pavé num.)
+16037	4(pavé num.)
+16038	5(pavé num.)
+16039	6(pavé num.)
+16040	7(pavé num.)
+16041	8(pavé num.)
+16042	9(pavé num.)
+16043	*
+16044	+
+16045	|
+16046	-
+16047	.
+16048	/
+16049	F1
+16050	F2
+16051	F3
+16052	F4
+16053	F5
+16054	F6
+16055	F7
+16056	F8
+16057	F9
+16058	F10
+16059	F11
+16060	F12
+16061	F13
+16062	F14
+16063	F15
+16064	F16
+16065	F17
+16066	F18
+16067	F19
+16068	F20
+16069	F21
+16070	F22
+16071	F23
+16072	F24
+16073	Verr.Num
+16074	Défilement
+16075	`
+16076	-
+16077	=
+16078	[
+16079	]
+16080	\\
+16081	;
+16082	'
+16083	,
+16084	.
+16085	/
+18000	Indice # 0
+18001	Empilez les trois caisses pour obtenir un lingot d'or.
+18002	Indice # 2
+18003	Indice # 3
+18004	Indice # 4
+18005	Indice # 5
+18006	Indice # 6
+18007	Indice # 7
+18008	Indice # 8
+18009	Indice # 9
+18010	Félicitations! Vous avez l'indice #10 ! Yay!
+18100	Où suis-je?
+18101	Il y a peut-être un indice par-là sur ce qu'était cet édifice.
+18102	Il y a bien un moyen d'appeler de l'aide sur cette île. Il faut que j'explore l'intérieur.
+18200	Un monorail - ooh, futuriste ! Bon, ces voies mènent bien quelque part.
+18201	On dirait qu'il y a plusieurs pistes à explorer. J'ai plutôt intérêt à me souvenir où j'ai quitté le monorail.
+18202	Ça m'a l'air trop raide à escalader. Je crois que le seul moyen de gravir cette crête est de suivre les rails. 
+18300	La jungle. Je dois continuer jusqu'à ce que je trouve une civilisation. Je vais y arriver.
+18301	On dirait que c'est le seul moyen de descendre. Je me demande si cet étang est assez profond...
+18302	S'ils ont construit des lignes électriques, elles doivent bien mener quelque part.
+18400	Je suis sauvé ! Enfin presque. Un de ces vastes bâtiments doit certainement avoir une ligne téléphonique.
+18401	Je crois que le centre opérationnel était plutôt important. Là-bas il y a sans doute un téléphone ou un indice.
+18402	Ils contrôlaient tout les opérations depuis cette console -- lignes de données, portes blindées...
+18403	Hammond devait être l'autre site important pour les échanges de données. Et ce dénommé Wu détenait la clé du lieu.
+18404	Cet endroit est désert. Je dois sortir par la porte au nord-est et rechercher la liaison satellite.
+18600	Il doit bien y avoir un accès à la salle des machines dans le coin. C'est là que se trouve ce qui nous intéresse.
+18601	Cette porte s'ouvre à l'aide d'un passe vert. Il doit bien y en avoit un par-là...
+18603	Je n'ai pas regardé partout, ce n'est pas possible. Peut-être vais-je trouver un indice dans l'un de ces bureaux ?
+18604	Si je peux pénétrer dans cette salle, je pourrai sans doute joindre l'extérieur.
+18605	Sensass. Voyons si on peut faire marcher ça.
+18606	Des installations au sommet !? Tout simplement génial. Certaines de ces portes se sont peut-être déverrouillées. Je crois que c'est mon seul espoir.
+18700	Impossible de monter par-là. Il faut que je fasse le tour jusqu'à ce que je trouve quelque chose.
+18701	Des ruines ! Les Mayas avaient sans doute un itinéraire pour grimper.
+18800	Les ravins ont l'air trop abrupts pour être escaladés.
+18801	Bon. C'est maintenant ou jamais que je commence à grimper.
+18900	Ce sommet, j'y suis parvenu et personne ne m'arrêtera dorénavant.
+18901	Un dernier effort pour rejoindre l'hélicoptère.
+19010	Bienvenue dans Trespasser.
+19020	Pour regarder autour de vous, déplacez votre souris.
+19030	Pour avancer, maintenez la touche 'W' enfoncée.
+19040	Votre aventure commence ici.
+19050	Appuyez sur la touche 'Q' pour sauter.
+19060	Faites un pas à gauche ou à droite à l'aide de la touche 'A' ou 'D'.
+19070	Et appuyez sur 'Z' pour vous accroupir.
+19080	Votre main peut servir à déplacer ou porter des objets.
+19090	Essayez de maintenir le bouton gauche de la souris enfoncé.
+19100	Désormais, vous bougez votre main en déplaçant la souris.
+19110	Essayez de prendre la planche sur la caisse qui est là.
+19120	Pour saisir un objet, approchez votre main de l'objet...
+19130	Puis cliquez sur le bouton droit de la souris.
+19140	Bien ! Maintenez le bouton gauche enfoncé et déplacez la souris pour manier la planche.
+19150	Appuyez sur le bouton droit pour la lâcher.
+19160	Bien. Essayez de prendre d'autres objets.
+19170	Vous devez parfois vous accroupir pour les attraper lorsqu'ils sont par terre.
+19180	Ici, n'hésitez pas à vous essayer à la course et aux sauts avant de vous lancer.
+19190	Les armes à feu peuvent être très utiles pour rester en vie.
+19200	Pour faire feu, prenez l'arme et appuyez sur Espace.
+19210	Vous pouvez ajuster le tir à l'aide des viseurs.
+19220	Pour placer votre poignet, appuyez sur Maj + bouton gauche de la souris et déplacez la souris.
+19230	Vous pouvez faire pivoter votre bras en maintenant enfoncée la touche Ctrl + le bouton gauche en déplaçant la souris.
+19240	Appuyez sur la touche 'F' pour lancer un objet que vous avez en main.
+19250	Votre jet sera toujours dirigé vers le centre de votre champ de vision.
+19260	Approchez et essayez de toucher un pot de peinture !
+19270	Pour vous battre à l'aide d'un objet, prenez-le et appuyez sur Espace.
+19280	Essayez de manier la batte de base-ball.
+19290	À tout moment, vous pouvez appuyer sur F1 pour avoir un conseil pour la suite.

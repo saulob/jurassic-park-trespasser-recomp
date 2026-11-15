@@ -19,6 +19,7 @@
 #include "ddraw/target_sync.h"
 #include "host_policy.h"
 #include "jpt_display.h"
+#include "window_title.h"
 
 static int s_failures, s_checks;
 
@@ -2899,7 +2900,73 @@ static void test_speed_sanity(void) {
     }
 }
 
+static void test_window_title(void) {
+    static const char base[] = "Jurassic Park: Trespasser Recompiled | x86 | D3D11";
+    char out[160];
+    title_content_t c;
+    memset(&c, 0, sizeof c);
+    c.base = base;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, base));
+    c.width = 2560;
+    c.height = 1920;
+    c.fps = 60.04;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, base));
+    c.show_fps = 1;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, base));
+    c.fps_ready = 1;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, "Jurassic Park: Trespasser Recompiled | x86 | D3D11 | FPS: 60.0"));
+    c.show_fps = 0;
+    c.show_resolution = 1;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, "Jurassic Park: Trespasser Recompiled | x86 | D3D11 | 2560x1920"));
+    c.show_fps = 1;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, "Jurassic Park: Trespasser Recompiled | x86 | D3D11 | 2560x1920 | FPS: 60.0"));
+    c.fps_ready = 0;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, "Jurassic Park: Trespasser Recompiled | x86 | D3D11 | 2560x1920"));
+    c.width = c.height = 0;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, base) && !strstr(out, "0x0"));
+    c.width = 1920;
+    c.height = 1440;
+    c.fps_ready = 1;
+    title_compose(&c, out, sizeof out);
+    CHECK(!strcmp(out, "Jurassic Park: Trespasser Recompiled | x86 | D3D11 | 1920x1440 | FPS: 60.0"));
+    c.width = 3840;
+    c.height = 2880;
+    title_compose(&c, out, sizeof out);
+    CHECK(strstr(out, "| 3840x2880 |") && !strstr(out, "1920x1440") && out[strlen(out) - 1] != '|' && !strstr(out, "| |") && !strstr(out, "||"));
+    title_compose(&c, out, 24);
+    CHECK(strlen(out) == 23 && !strncmp(out, base, 23));
+}
+
+static void test_expected_misses(void) {
+    CHECK(host_expected_miss("FindFirstFileA", "*.swp", 2));
+    CHECK(host_expected_miss("FindFirstFileA", "C:\\port\\user_data\\saves\\*.SWP", 2));
+    CHECK(!host_expected_miss("FindFirstFileA", "*.swp", 3));
+    CHECK(!host_expected_miss("FindFirstFileA", "*.sav", 2));
+    CHECK(!host_expected_miss("FindFirstFileA", "level.swp", 2));
+    CHECK(!host_expected_miss("CreateFileA", "*.swp", 2));
+    CHECK(!host_expected_miss("LoadLibraryA", "A3d.dll", 126));
+    CHECK(!host_expected_miss(NULL, "*.swp", 2));
+    CHECK(host_unavailable_library("A3d.dll"));
+    CHECK(host_unavailable_library("a3d.dll"));
+    CHECK(host_unavailable_library("A3D.DLL"));
+    CHECK(host_unavailable_library("C:\\x\\a3d.dll"));
+    CHECK(!host_unavailable_library("DSound.dll"));
+    CHECK(!host_unavailable_library("d3dcompiler_47.dll"));
+    CHECK(!host_unavailable_library("xA3d.dll"));
+    CHECK(!host_unavailable_library("A3d.dll.bak"));
+    CHECK(!host_unavailable_library(NULL));
+}
+
 int main(void) {
+    test_window_title();
     test_hand_carrier_exact();
     test_hand_long_run();
     test_hand_log_073();
@@ -2978,6 +3045,7 @@ int main(void) {
     test_terrain_settings();
     test_engine_upload_clock();
     test_page_arena();
+    test_expected_misses();
     printf("%d checks, %d failures\n", s_checks, s_failures);
     return s_failures != 0;
 }

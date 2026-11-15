@@ -98,6 +98,7 @@ void diagnostics_process_ending(void);
 void window_host_init(void);
 /* trespasser.ini's Display settings; F11 writes display_mode back to settings_path. */
 void window_host_configure(int borderless, int monitor, int window_w, int window_h, int stretch, int show_fps,
+                           int show_resolution,
                            const char* settings_path);
 int window_host_monitor_size(int monitor, int* width, int* height);
 void window_host_set_display(HWND window, int width, int height);
@@ -218,6 +219,10 @@ int game_text_drawing(void);
 /* The overlay's TextOutA calls reach shim_TextOutA, so each string's box is known before it is drawn. */
 int game_text_boxes_known(void);
 void shim_TextOutA(void);
+/* l10n.c */
+void shim_LoadStringA(void);
+void shim_CreateFontA(void);
+void shim_CreateFontIndirectA(void);
 /* The device box a TextOutA under the text overlay's DC is about to draw into (NULL: anywhere on the surface). */
 void d3dr_text_box(HDC dc, const RECT* box);
 /* ui_canvas.c: the game's 640x480 menus and dialogs on a larger game screen draw into an offscreen canvas the

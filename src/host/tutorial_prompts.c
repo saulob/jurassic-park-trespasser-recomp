@@ -11,6 +11,7 @@
 #include "compass_policy.h"
 #include "gamepad.h"
 #include "jpt_prompt_text.h"
+#include "jpt_tr.h"
 #include "pad_glyphs.h"
 #include "tutorial_prompts.h"
 
@@ -394,7 +395,7 @@ static int panel_pass(entry_t* e, const jpt_card_t* card, const jpt_prompt_conte
     m->count = card->count;
     m->first_column = card->first_column;
     title->first = e->piece_count;
-    m->title_w = panel_template(e, card->title, ctx, P.measure);
+    m->title_w = panel_template(e, jpt_tr_cp(card->title), ctx, P.measure);
     title->count = e->piece_count - title->first;
     ok &= m->title_w >= 0;
     for (int i = 0; i < card->count && ok; i++) {
@@ -402,7 +403,7 @@ static int panel_pass(entry_t* e, const jpt_card_t* card, const jpt_prompt_conte
         m->binding_w[i] = panel_template(e, card->rows[i].binding, ctx, P.measure);
         binding[i].count = e->piece_count - binding[i].first;
         action[i].first = e->piece_count;
-        m->action_w[i] = panel_template(e, card->rows[i].action, ctx, P.measure);
+        m->action_w[i] = panel_template(e, jpt_tr_cp(card->rows[i].action), ctx, P.measure);
         action[i].count = e->piece_count - action[i].first;
         ok &= m->binding_w[i] >= 0 && m->action_w[i] >= 0;
     }

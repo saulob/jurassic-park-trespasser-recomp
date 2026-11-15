@@ -1,6 +1,7 @@
 #include "frontend_assets.h"
 
 #include "frontend_art.h"
+#include "jpt_l10n.h"
 #include "pad_glyphs.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -101,8 +102,10 @@ typedef struct {
     const pad_glyph_t* glyph;
 } op_t;
 
+#define FACE_CHOICES 6
+
 typedef struct {
-    int role, px, weight;
+    int role, face, px, weight;
     HFONT font;
     unsigned stamp;
 } font_entry_t;
@@ -110,8 +113,11 @@ typedef struct {
 struct fe_painter {
     float noise[TILE * TILE];
     HDC dc;
-    char faces[FE_FONT_COUNT][LF_FACESIZE];
-    int boost[FE_FONT_COUNT];
+    char faces[FE_FONT_COUNT][FACE_CHOICES][LF_FACESIZE];
+    int face_count[FE_FONT_COUNT];
+    int boost[FE_FONT_COUNT][FACE_CHOICES];
+    uint32_t chosen_key[FE_FONT_COUNT];
+    int chosen_face[FE_FONT_COUNT];
     font_entry_t fonts[FONT_CACHE];
     glyphs_t glyphs[GLYPH_CACHE];
     unsigned stamp;
@@ -616,12 +622,17 @@ static void run_op(const band_t* b, const op_t* o) {
     }
 }
 
-static const char* const k_faces[FE_FONT_COUNT][4] = {
-    { "Stencil", "Rockwell Extra Bold", "Georgia", "Times New Roman" },
-    { "Bahnschrift SemiBold", "Bahnschrift", "Franklin Gothic Medium", "Arial" },
-    { "Bahnschrift", "Segoe UI", "Arial", "Tahoma" },
-    { "Arial", "Segoe UI", "Tahoma", "Microsoft Sans Serif" },
+/* After the faces of the look come faces with Cyrillic (Impact, Courier New, Georgia, Arial) for the Russian text. */
+static const char* const k_faces[FE_FONT_COUNT][FACE_CHOICES] = {
+    { "Stencil", "Rockwell Extra Bold", "Impact", "Georgia", "Times New Roman", "Arial" },
+    { "Bahnschrift SemiBold", "Bahnschrift", "Franklin Gothic Medium", "Arial", NULL, NULL },
+    { "Bahnschrift", "Segoe UI", "Arial", "Tahoma", NULL, NULL },
+    { "Arial", "Segoe UI", "Tahoma", "Microsoft Sans Serif", NULL, NULL },
+    { "Rockwell", "Rockwell Nova", "Courier New", "Georgia", "Arial", NULL },
 };
+
+/* Faces that stand in for a role's own one are drawn heavier. */
+static int boost_for(int role, int index) { return role == FE_FONT_PLAQUE && index >= 3 ? 300 : 0; }
 
 static int face_exists(HDC dc, const char* face) {
     char got[LF_FACESIZE];
@@ -639,25 +650,72 @@ static int face_exists(HDC dc, const char* face) {
     return same;
 }
 
-static HFONT font_for(fe_painter_t* p, int role, int px, int weight) {
+static HFONT font_for(fe_painter_t* p, int role, int face, int px, int weight) {
     font_entry_t* slot = NULL;
+    int boosted = weight + p->boost[role][face];
     for (int i = 0; i < FONT_CACHE; i++) {
         font_entry_t* f = &p->fonts[i];
-        if (f->font && f->role == role && f->px == px && f->weight == weight) {
+        if (f->font && f->role == role && f->face == face && f->px == px && f->weight == weight) {
             f->stamp = ++p->stamp;
             return f->font;
         }
         if (!slot || !f->font || (slot->font && f->stamp < slot->stamp)) slot = f;
     }
     if (slot->font) DeleteObject(slot->font);
-    slot->font = CreateFontA(-px, 0, 0, 0, weight + p->boost[role] > 900 ? 900 : weight + p->boost[role], 0, 0, 0,
-                             ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-                             DEFAULT_PITCH | FF_DONTCARE, p->faces[role]);
+    slot->font = CreateFontA(-px, 0, 0, 0, boosted > 900 ? 900 : boosted, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, p->faces[role][face]);
     slot->role = role;
+    slot->face = face;
     slot->px = px;
     slot->weight = weight;
     slot->stamp = ++p->stamp;
     return slot->font;
+}
+
+/* The display code page's text as UTF-16; returns the length. */
+static int widen(const char* text, int len, WCHAR* out, int cap) {
+    int cp = jpt_l10n_display_codepage() ? jpt_l10n_display_codepage() : 1252;
+    int n = len > 0 ? MultiByteToWideChar((UINT)cp, 0, text, len, out, cap) : 0;
+    return n > 0 ? n : 0;
+}
+
+static int face_covers(fe_painter_t* p, int role, int face, const WCHAR* w, int n) {
+    WORD index[512];
+    HGDIOBJ old;
+    int ok;
+    if (n > 512) n = 512;
+    old = SelectObject(p->dc, font_for(p, role, face, 32, FW_NORMAL));
+    ok = GetGlyphIndicesW(p->dc, w, n, index, GGI_MARK_NONEXISTING_GLYPHS) == (DWORD)n;
+    for (int i = 0; ok && i < n; i++) ok = w[i] <= L' ' || index[i] != 0xFFFF;
+    SelectObject(p->dc, old);
+    return ok;
+}
+
+/* The first face of the role that has every character of the text, -1 when none has. */
+static int face_for(fe_painter_t* p, int role, const WCHAR* w, int n) {
+    uint32_t key = fe_hash(0x9E37u, w, sizeof(WCHAR) * (size_t)n);
+    if (p->chosen_key[role] == key && p->chosen_face[role] >= -1) return p->chosen_face[role];
+    p->chosen_key[role] = key;
+    p->chosen_face[role] = -1;
+    for (int f = 0; f < p->face_count[role]; f++)
+        if (face_covers(p, role, f, w, n)) {
+            p->chosen_face[role] = f;
+            break;
+        }
+    return p->chosen_face[role];
+}
+
+const char* fe_painter_face_for(fe_painter_t* p, int role, const char* text) {
+    WCHAR w[512];
+    int n = widen(text, (int)strlen(text), w, 512), face;
+    if (role < 0 || role >= FE_FONT_COUNT) return "";
+    face = face_for(p, role, w, n);
+    return face >= 0 ? p->faces[role][face] : "";
+}
+
+static HFONT text_font(fe_painter_t* p, int role, int px, int weight, const WCHAR* w, int n) {
+    int face = face_for(p, role, w, n);
+    return font_for(p, role, face < 0 ? 0 : face, px, weight);
 }
 
 static int ensure_dib(fe_painter_t* p, int w, int h) {
@@ -687,10 +745,11 @@ static int ensure_dib(fe_painter_t* p, int w, int h) {
 }
 
 static int text_extent(fe_painter_t* p, int role, int px, int weight, int spacing, const char* text, int len, SIZE* size) {
-    HGDIOBJ old = SelectObject(p->dc, font_for(p, role, px, weight));
-    int ok;
+    WCHAR w[1024];
+    int n = widen(text, len, w, 1024), ok;
+    HGDIOBJ old = SelectObject(p->dc, text_font(p, role, px, weight, w, n));
     SetTextCharacterExtra(p->dc, spacing);
-    ok = GetTextExtentPoint32A(p->dc, text, len, size);
+    ok = GetTextExtentPoint32W(p->dc, w, n, size);
     SelectObject(p->dc, old);
     return ok;
 }
@@ -702,7 +761,9 @@ static const glyphs_t* glyphs(fe_painter_t* p, int role, int px, int weight, int
     TEXTMETRICA tm;
     SIZE size;
     HGDIOBJ old;
-    int w, h, pad;
+    HFONT font;
+    WCHAR wide[1024];
+    int w, h, pad, wn;
     params[0] = role;
     params[1] = px;
     params[2] = weight;
@@ -717,9 +778,11 @@ static const glyphs_t* glyphs(fe_painter_t* p, int role, int px, int weight, int
         if (!slot || !g->a || (slot->a && g->stamp < slot->stamp)) slot = g;
     }
     if (px < 4 || len <= 0) return NULL;
-    old = SelectObject(p->dc, font_for(p, role, px, weight));
+    wn = widen(text, len, wide, 1024);
+    font = text_font(p, role, px, weight, wide, wn);
+    old = SelectObject(p->dc, font);
     SetTextCharacterExtra(p->dc, spacing);
-    if (!GetTextExtentPoint32A(p->dc, text, len, &size) || !GetTextMetricsA(p->dc, &tm)) {
+    if (!GetTextExtentPoint32W(p->dc, wide, wn, &size) || !GetTextMetricsA(p->dc, &tm)) {
         SelectObject(p->dc, old);
         return NULL;
     }
@@ -730,12 +793,12 @@ static const glyphs_t* glyphs(fe_painter_t* p, int role, int px, int weight, int
         SelectObject(p->dc, old);
         return NULL;
     }
-    SelectObject(p->dc, font_for(p, role, px, weight));
+    SelectObject(p->dc, font);
     for (int y = 0; y < h; y++) memset(p->dib_bits + (long)y * p->dib_w, 0, (size_t)w * 4);
     SetBkMode(p->dc, TRANSPARENT);
     SetTextColor(p->dc, RGB(255, 255, 255));
     SetTextAlign(p->dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
-    TextOutA(p->dc, pad, pad, text, len);
+    TextOutW(p->dc, pad, pad, wide, wn);
     GdiFlush();
     SelectObject(p->dc, old);
     free(slot->a);
@@ -753,7 +816,7 @@ static const glyphs_t* glyphs(fe_painter_t* p, int role, int px, int weight, int
     return slot;
 }
 
-const char* fe_painter_face(const fe_painter_t* p, int role) { return role >= 0 && role < FE_FONT_COUNT ? p->faces[role] : ""; }
+const char* fe_painter_face(const fe_painter_t* p, int role) { return role >= 0 && role < FE_FONT_COUNT ? p->faces[role][0] : ""; }
 
 fe_painter_t* fe_painter_create(void) {
     fe_painter_t* p = (fe_painter_t*)calloc(1, sizeof *p);
@@ -764,17 +827,18 @@ fe_painter_t* fe_painter_create(void) {
         return NULL;
     }
     for (int role = 0; role < FE_FONT_COUNT; role++) {
-        int found = 0;
-        for (int i = 0; i < 4 && !found; i++)
+        int n = 0;
+        for (int i = 0; i < FACE_CHOICES && k_faces[role][i]; i++)
             if (face_exists(p->dc, k_faces[role][i])) {
-                strncpy(p->faces[role], k_faces[role][i], LF_FACESIZE - 1);
-                p->boost[role] = role == FE_FONT_PLAQUE && i >= 2 ? 300 : 0;
-                found = 1;
+                strncpy(p->faces[role][n], k_faces[role][i], LF_FACESIZE - 1);
+                p->boost[role][n++] = boost_for(role, i);
             }
-        if (!found) {
-            strncpy(p->faces[role], "Arial", LF_FACESIZE - 1);
-            p->boost[role] = role == FE_FONT_PLAQUE ? 300 : 0;
+        if (!n) {
+            strncpy(p->faces[role][n], "Arial", LF_FACESIZE - 1);
+            p->boost[role][n++] = boost_for(role, FACE_CHOICES);
         }
+        p->face_count[role] = n;
+        p->chosen_face[role] = -2;
     }
     make_noise(p->noise);
     p->art = fa_cache_create(ART_BUDGET);
@@ -1045,7 +1109,7 @@ static int measure(fe_painter_t* p, const text_style_t* st, const char* text, in
 static int line_height(fe_painter_t* p, const text_style_t* st) {
     int px = (int)floor(st->px + 0.5);
     TEXTMETRICA tm;
-    HGDIOBJ old = SelectObject(p->dc, font_for(p, st->role, px, st->weight));
+    HGDIOBJ old = SelectObject(p->dc, font_for(p, st->role, 0, px, st->weight));
     int h = GetTextMetricsA(p->dc, &tm) ? tm.tmHeight : px;
     SelectObject(p->dc, old);
     return h;
@@ -1173,9 +1237,6 @@ static void make_torn(op_t* o, double bite, double leg, uint32_t seed) {
     o->pts[2] = (double)((seed >> 9) & 3);
 }
 
-static const char k_title[] = "TRESPASSER";
-static const char k_footer1[] = "\xA9 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & Amblin.";
-static const char k_footer2[] = "The Lost World: Jurassic Park\x99 & \xA9 1998 UCS & Amblin. All Rights Reserved.";
 
 /* ---- The menus drawn from the game's own pictures ---------------------------------------------------------------
  * Every picture is the game's bitmap for that control and state, scaled with the canvas by the art cache and placed
@@ -1520,6 +1581,235 @@ static void add_photo(fe_painter_t* p, const fe_scene_t* s, const fe_widget_t* w
     }
 }
 
+/* ---- translated labels over the game's pictures */
+
+#define LABEL_SHRINK 0.68     /* one line is made smaller down to this before two lines are tried */
+#define LABEL_TWO_LINES 0.62  /* two lines down to this */
+#define LABEL_FLOOR 0.55      /* the last resort, never clipped */
+#define LABEL_TIGHT 0.03      /* letter spacing (em) a long label falls back to */
+
+typedef struct {
+    double scale, spacing;
+    int lines;
+    int split; /* the byte where the second line starts */
+} label_fit_t;
+
+/* The rows of a capital letter's ink in a role's face at px: its top and bottom below the glyph box's top. */
+static void cap_rows(fe_painter_t* p, int role, int px, int weight, const char* text, double* top, double* bottom) {
+    char sample[2] = { 'H', 0 };
+    const glyphs_t* g;
+    int first = -1, last = -1;
+    for (const unsigned char* c = (const unsigned char*)text; *c; c++)
+        if ((*c >= 'A' && *c <= 'Z') || (jpt_l10n_display_codepage() == 1251 && *c >= 0xC0 && *c <= 0xDF)) {
+            sample[0] = (char)*c;
+            break;
+        }
+    g = glyphs(p, role, px, weight, 0, sample, 1);
+    for (int y = 0; g && y < g->h; y++)
+        for (int x = 0; x < g->w; x++)
+            if (g->a[y * g->w + x] >= 128) {
+                if (first < 0) first = y;
+                last = y;
+                break;
+            }
+    if (first < 0) {
+        *top = px * 0.25;
+        *bottom = px * 0.95;
+        return;
+    }
+    *top = first;
+    *bottom = last + 1;
+}
+
+static int line_width(fe_painter_t* p, const text_style_t* st, const char* text, int len) { return measure(p, st, text, len); }
+
+/* The space nearest the middle of the text (by width), -1 for none. */
+static int middle_space(fe_painter_t* p, const text_style_t* st, const char* text) {
+    int len = (int)strlen(text), best = -1, best_w = 0;
+    for (int i = 1; i < len - 1; i++) {
+        int a, b, w;
+        if (text[i] != ' ') continue;
+        a = line_width(p, st, text, i);
+        b = line_width(p, st, text + i + 1, len - i - 1);
+        w = a > b ? a : b;
+        if (best < 0 || w < best_w) best = i, best_w = w;
+    }
+    return best;
+}
+
+static label_fit_t fit_spaced(fe_painter_t* p, const text_style_t* st, const char* text, double room_w, double room_h,
+                              double cap);
+
+/* How a label fits its room: one line made smaller, else two lines, else smaller still; wide letter spacing is given
+ * up before the size. */
+static label_fit_t fit_label(fe_painter_t* p, const text_style_t* st, const char* text, double room_w, double room_h,
+                             double cap) {
+    label_fit_t f = fit_spaced(p, st, text, room_w, room_h, cap);
+    if (f.scale < LABEL_SHRINK && st->spacing > LABEL_TIGHT) {
+        text_style_t tight = *st;
+        label_fit_t g;
+        tight.spacing = LABEL_TIGHT;
+        g = fit_spaced(p, &tight, text, room_w, room_h, cap);
+        if (g.scale > f.scale) f = g;
+    }
+    return f;
+}
+
+static label_fit_t fit_spaced(fe_painter_t* p, const text_style_t* st, const char* text, double room_w, double room_h,
+                              double cap) {
+    label_fit_t f;
+    int len = (int)strlen(text), split = middle_space(p, st, text);
+    double one = line_width(p, st, text, len), s1 = one > room_w ? room_w / one : 1.0;
+    f.scale = s1;
+    f.spacing = st->spacing;
+    f.lines = 1;
+    f.split = -1;
+    if (s1 >= LABEL_SHRINK || split < 0) {
+        if (f.scale < LABEL_FLOOR) f.scale = LABEL_FLOOR;
+        return f;
+    }
+    {
+        double a = line_width(p, st, text, split), b = line_width(p, st, text + split + 1, len - split - 1);
+        double wide = a > b ? a : b, s2 = wide > room_w ? room_w / wide : 1.0, tall = cap * 2.45;
+        if (tall * s2 > room_h) s2 = room_h / tall;
+        if (s2 >= LABEL_TWO_LINES && s2 > s1) {
+            f.scale = s2;
+            f.lines = 2;
+            f.split = split + 1;
+            return f;
+        }
+    }
+    f.scale = s1 < LABEL_FLOOR ? LABEL_FLOOR : s1;
+    return f;
+}
+
+static void label_line(fe_painter_t* p, const text_style_t* st, const char* text, int len, double cx, double cap_mid,
+                       double cap_top, double cap_bottom, int label, int state, rgb_t ink) {
+    int px = (int)floor(st->px + 0.5), spacing = (int)floor(st->spacing * px + 0.5);
+    const glyphs_t* g = glyphs(p, st->role, px, st->weight, spacing, text, len);
+    double x, y, k = (cap_bottom - cap_top) / 10.0;
+    if (!g) return;
+    x = floor(cx - g->advance * 0.5 + 0.5);
+    y = floor(cap_mid - (cap_top + cap_bottom) * 0.5 + g->pad + 0.5);
+    if (label == FE_LABEL_ENGRAVED) {
+        add_text_line(p, st->role, st->px, st->weight, st->spacing, text, len, x + k * 0.4, y + k * 0.6,
+                      rgb(1.0f, 0.93f, 0.80f), 0.45f, F_BLUR, st->seed, 0, 0);
+        add_text_line(p, st->role, st->px, st->weight, st->spacing, text, len, x - k * 0.3, y - k * 0.3, k_black, 0.35f,
+                      F_BLUR, st->seed, 0, 0);
+        add_text_line(p, st->role, st->px, st->weight, st->spacing, text, len, x, y, ink, 0.92f, F_WEAR, st->seed, 0.25,
+                      cap_bottom - cap_top);
+        return;
+    }
+    if (state & FE_ST_PRESSED) {
+        for (int i = 0; i < 8; i++) {
+            double a = i * PI / 4.0;
+            add_text_line(p, st->role, st->px, st->weight, st->spacing, text, len, x + cos(a) * k * 1.4, y + sin(a) * k * 1.4,
+                          rgb(1.0f, 0.62f, 0.18f), 0.16f, F_BLUR, st->seed, 0, 0);
+        }
+    } else {
+        add_text_line(p, st->role, st->px, st->weight, st->spacing, text, len, x, y + k * 0.35, k_black, 0.25f, F_BLUR,
+                      st->seed, 0, 0);
+    }
+    add_text_line(p, st->role, st->px, st->weight, st->spacing, text, len, x, y, ink, 0.95f, F_WEAR, st->seed, 0.22,
+                  cap_bottom - cap_top);
+}
+
+static rgb_t label_ink(const fe_widget_t* w) {
+    if (w->label == FE_LABEL_ENGRAVED) return rgb_hex(w->color);
+    if (w->state & FE_ST_DISABLED) return rgb(0.11f, 0.11f, 0.10f);
+    if (w->state & FE_ST_PRESSED) return rgb(1.0f, 0.86f, 0.50f);
+    if (w->state & FE_ST_HOVER) return rgb(0.86f, 0.15f, 0.08f);
+    return rgb(0.05f, 0.05f, 0.045f);
+}
+
+double fe_painter_text_width(fe_painter_t* p, int role, int weight, double px, const char* text) {
+    text_style_t st;
+    if (!p || !text || !*text) return 0.0;
+    memset(&st, 0, sizeof st);
+    st.role = role;
+    st.weight = weight;
+    st.px = px;
+    return measure(p, &st, text, (int)strlen(text));
+}
+
+static void label_style(fe_painter_t* p, int label, const char* text, double cap, text_style_t* st) {
+    double top, bottom;
+    memset(st, 0, sizeof *st);
+    st->role = label == FE_LABEL_ENGRAVED ? FE_FONT_TITLE : FE_FONT_PLAQUE;
+    st->weight = label == FE_LABEL_ENGRAVED ? FW_BOLD : FW_NORMAL;
+    st->spacing = label == FE_LABEL_ENGRAVED ? 0.14 : 0.05;
+    cap_rows(p, st->role, 100, st->weight, text, &top, &bottom);
+    st->px = cap * 100.0 / (bottom - top > 1 ? bottom - top : 1);
+}
+
+double fe_painter_label_fit(fe_painter_t* p, int label, const char* text, double cap, double room_w, double room_h,
+                            int* lines) {
+    text_style_t st;
+    label_fit_t f;
+    if (!p || !text || !*text || cap < 3) return 0.0;
+    label_style(p, label, text, cap, &st);
+    f = fit_label(p, &st, text, room_w, room_h, cap);
+    if (lines) *lines = f.lines;
+    return f.scale;
+}
+
+/* The label in the face and size of the lettering it replaces, centred where that was and kept inside the room. */
+static void add_picture_label(fe_painter_t* p, const fe_scene_t* s, const fe_widget_t* w) {
+    const char* text = fe_scene_str(s, w->text);
+    box_t letters = box_rect(p, w->label_box), room = box_rect(p, w->label_room);
+    text_style_t st;
+    label_fit_t f;
+    double cap = letters.y1 - letters.y0, top, bottom, cx, cy, half, block;
+    if (!*text || cap < 3) return;
+    label_style(p, w->label, text, cap, &st);
+    st.seed = (uint32_t)w->id * 2654435761u;
+    f = fit_label(p, &st, text, room.x1 - room.x0, room.y1 - room.y0, cap);
+    st.px *= f.scale;
+    st.spacing = f.spacing;
+    cap_rows(p, st.role, (int)floor(st.px + 0.5), st.weight, text, &top, &bottom);
+    cx = (letters.x0 + letters.x1) * 0.5;
+    cy = (letters.y0 + letters.y1) * 0.5;
+    block = f.lines == 2 ? (bottom - top) * 2.35 : bottom - top;
+    half = block * 0.5;
+    if (cy - half < room.y0) cy = room.y0 + half;
+    if (cy + half > room.y1) cy = room.y1 - half;
+    for (int i = 0; i < f.lines; i++) {
+        const char* line = f.lines == 2 && i ? text + f.split : text;
+        int len = f.lines == 2 && !i ? f.split - 1 : (int)strlen(line);
+        double width = line_width(p, &st, line, len), x = cx, mid = f.lines == 2 ? cy - half + (bottom - top) * (0.5 + 1.35 * i) : cy;
+        if (x - width * 0.5 < room.x0) x = room.x0 + width * 0.5;
+        if (x + width * 0.5 > room.x1) x = room.x1 - width * 0.5;
+        label_line(p, &st, line, len, x, mid, top, bottom, w->label, w->state, label_ink(w));
+    }
+}
+
+/* The main screen's legal lines, set again in the game's own menu face over the backdrop they were taken out of. */
+static void add_footer(fe_painter_t* p, const fe_scene_t* s) {
+    const char* text = fe_scene_str(s, s->footer_text);
+    box_t b = box_rect(p, s->footer_box);
+    const char* nl = strchr(text, '\n');
+    text_style_t st;
+    double line_h = (b.y1 - b.y0) / 2.0, room_w = b.x1 - b.x0;
+    if (!*text || !nl) return;
+    memset(&st, 0, sizeof st);
+    st.role = FE_FONT_UI;
+    st.weight = FW_SEMIBOLD;
+    st.px = line_h * 0.82;
+    for (int i = 0; i < 2; i++) {
+        const char* line = i ? nl + 1 : text;
+        int len = i ? (int)strlen(line) : (int)(nl - text);
+        text_style_t one = st;
+        double width = measure(p, &one, line, len), x, y;
+        if (width > room_w && width > 0) one.px *= room_w / width;
+        width = measure(p, &one, line, len);
+        x = floor((b.x0 + b.x1 - width) * 0.5 + 0.5);
+        y = floor(b.y0 + line_h * i + (line_h - line_height(p, &one)) * 0.5 + 0.5);
+        add_text_line(p, one.role, one.px, one.weight, 0, line, len, x + p->view.sy * 0.6, y + p->view.sy * 0.6, k_black,
+                      0.8f, F_BLUR, 0, 0, 0);
+        add_text_line(p, one.role, one.px, one.weight, 0, line, len, x, y, rgb(0.92f, 0.92f, 0.90f), 1.0f, 0, 0, 0, 0);
+    }
+}
+
 static void add_widget(fe_painter_t* p, const fe_scene_t* s, const fe_window_t* win, const fe_widget_t* w) {
     switch (w->kind) {
     case FE_W_BUTTON:
@@ -1527,6 +1817,7 @@ static void add_widget(fe_painter_t* p, const fe_scene_t* s, const fe_window_t* 
     case FE_W_IMAGE:
         if (w->kind == FE_W_IMAGE && w->style == FE_IMAGE_PHOTO) add_photo(p, s, w, win->kind == FE_WND_DIRECT_LOAD);
         else add_picture(p, w, w->rect.left, w->rect.top);
+        if (w->label) add_picture_label(p, s, w);
         break;
     case FE_W_SLIDER: add_picture(p, w, w->value - w->image_w / 2, w->rect.top); break;
     case FE_W_LABEL: add_label(p, s, w); break;
@@ -1557,6 +1848,7 @@ static int add_main_backdrop(fe_painter_t* p, const fe_scene_t* s) {
     o->art2 = soft;
     o->art_x = d.left;
     o->art_y = d.top;
+    add_footer(p, s);
     return 1;
 }
 

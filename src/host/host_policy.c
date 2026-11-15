@@ -3,6 +3,22 @@
 #include <math.h>
 #include <string.h>
 
+
+static const char* base_name(const char* path) {
+    const char* slash = strrchr(path, '\\');
+    return slash ? slash + 1 : path;
+}
+
+int host_expected_miss(const char* api, const char* path, uint32_t error) {
+    enum { FILE_NOT_FOUND = 2 };
+    return api && path && !strcmp(api, "FindFirstFileA") && error == FILE_NOT_FOUND &&
+           !_stricmp(base_name(path), "*.swp");
+}
+
+int host_unavailable_library(const char* name) {
+    return name && !_stricmp(base_name(name), "A3d.dll");
+}
+
 #define FPS_STALL_WINDOWS 2
 
 enum { MSG_KEYDOWN = 0x100, MSG_KEYUP = 0x101, MSG_SYSKEYDOWN = 0x104, MSG_SYSKEYUP = 0x105 };

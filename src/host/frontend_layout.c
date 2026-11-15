@@ -1,9 +1,11 @@
 #include "frontend_layout.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "jpt_display.h"
+#include "jpt_l10n.h"
 
 /* Plaques glow and cast shadows past their own rectangle. */
 #define FE_GLOW_MARGIN 10
@@ -100,6 +102,8 @@ void fe_scene_reset_for(fe_scene_t* s, int guest_w, int guest_h, int screen_w, i
     s->backdrop = NULL;
     s->backdrop_pitch = 0;
     s->backdrop_hash = 0;
+    s->footer_text = -1;
+    s->footer_box = fe_rect(0, 0, 0, 0);
     s->legend_count = 0;
 }
 
@@ -197,7 +201,7 @@ uint32_t fe_hash_pixels(const uint16_t* rows, int w, int h, int pitch, int step)
 static int same_structure(const fe_scene_t* a, const fe_scene_t* b) {
     if (a->screen_w != b->screen_w || a->screen_h != b->screen_h || a->window_count != b->window_count ||
         a->widget_count != b->widget_count || a->backdrop != b->backdrop || a->backdrop_hash != b->backdrop_hash ||
-        a->legend_count != b->legend_count)
+        a->legend_count != b->legend_count || strcmp(fe_scene_str(a, a->footer_text), fe_scene_str(b, b->footer_text)))
         return 0;
     for (int i = 0; i < a->legend_count; i++)
         if (!same_prompt(&a->legend[i], &b->legend[i]) ||
@@ -238,6 +242,7 @@ static int same_content(const fe_scene_t* a, const fe_widget_t* x, const fe_scen
            x->color == y->color && x->value == y->value && x->range == y->range && x->top == y->top &&
            x->selected == y->selected && x->row_h == y->row_h && x->rows == y->rows && x->caret == y->caret &&
            fe_rect_equal(x->track, y->track) && x->image == y->image && x->image_w == y->image_w &&
+           x->label == y->label && fe_rect_equal(x->label_box, y->label_box) && fe_rect_equal(x->label_room, y->label_room) &&
            x->image_h == y->image_h && x->image_hash == y->image_hash && x->image32 == y->image32 &&
            !strcmp(fe_scene_str(a, x->text), fe_scene_str(b, y->text)) && same_items(a, x, b, y) &&
            same_prompt(&x->prompt, &y->prompt);
@@ -421,7 +426,8 @@ static fe_widget_t* label_with(fe_scene_t* s, const fe_window_t* w, const char* 
 }
 
 void fe_controls_polish(fe_scene_t* s, const fe_window_t* w, double zoom) {
-    fe_widget_t *replay = label_with(s, w, "Replay"), *voice = label_with(s, w, "voice over");
+    const char *replay_text = jpt_l10n_text_or(10033, "Replay"), *voice_text = jpt_l10n_text_or(10034, "voice over");
+    fe_widget_t *replay = label_with(s, w, replay_text), *voice = label_with(s, w, voice_text);
     for (int i = w->first; i < w->first + w->count; i++) {
         fe_widget_t* x = &s->widgets[i];
         x->text_h = (float)(x->text_h * zoom);
@@ -431,7 +437,10 @@ void fe_controls_polish(fe_scene_t* s, const fe_window_t* w, double zoom) {
     }
     /* the ddf breaks "Replay voice over" over two text boxes; one line reads as the other rows do */
     if (replay && voice) {
-        int text = fe_scene_text(s, "Replay voice over");
+        char joined[128];
+        int text;
+        snprintf(joined, sizeof joined, "%s %s", replay_text, voice_text);
+        text = fe_scene_text(s, joined);
         if (text >= 0) {
             replay->text = text;
             voice->text = -1;

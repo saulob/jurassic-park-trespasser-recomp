@@ -15,6 +15,7 @@
 #include "jpt_display.h"
 #include "jpt_launcher.h"
 #include "jpt_user_data.h"
+#include "l10n.h"
 #include "loading_hd.h"
 #include "recomp_trace.h"
 
@@ -100,6 +101,9 @@ static native32_shim_t s_shims[] = {
     { "CreateThread", shim_CreateThread },
     { "GetTickCount", shim_GetTickCount },
     { "TextOutA", shim_TextOutA },
+    { "LoadStringA", shim_LoadStringA },
+    { "CreateFontA", shim_CreateFontA },
+    { "CreateFontIndirectA", shim_CreateFontIndirectA },
     { "exit", shim_exit },
     { "_exit", shim__exit },
     { "ExitProcess", shim_ExitProcess },
@@ -424,6 +428,8 @@ int main(int argc, char** argv) {
         break;
     default: break;
     }
+    if (jpt_config_migrate_language(settings_file))
+        host_log("settings", "%s: the earlier game text and subtitle language settings became language", settings_file);
 
     if (!opt.dry_run) {
         jpt_launcher_config_t launcher;
@@ -462,10 +468,12 @@ int main(int argc, char** argv) {
         box = jpt_render_box(cfg.render_preset, cfg.aspect, monitor_w, monitor_h);
     }
     log_settings(&cfg, box, monitor_w, monitor_h);
+    l10n_init(user.cache_dir, game_dir, cfg.language);
     gamepad_configure(&cfg.gamepad);
     if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
+                          cfg.show_resolution_title,
                           settings_file);
     present_set_vsync(cfg.vsync);
     native32_init();
@@ -538,6 +546,7 @@ int main(int argc, char** argv) {
     terrain_quality_install();
     cpu_polygons_install();
     gamepad_install();
+    l10n_install();
     if (!guest_overrides_check()) return HOST_EXIT_SETUP;
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
     host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);

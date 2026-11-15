@@ -14,7 +14,7 @@ like any 32-bit program. It is not an emulator and it does not start the origina
 | `MSVCRT.dll`, `USER32`, `KERNEL32`, `GDI32`, `ADVAPI32`, `LZ32`, `WINMM`, `COMCTL32` | the real 32-bit system DLLs | **Windows** |
 | `DDRAW` (DirectDraw) | a virtual 16 bpp display in the host, presented with D3D11 (`src/host/ddraw/`); the system `ddraw.dll` is loaded but its exports are routed away | **host implementation** |
 | `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` | the original DLLs from the disc, loaded by the Windows loader | **original binaries** |
-| `DSound.dll`, `A3d.dll` | whatever `LoadLibrary` finds on the machine (A3D normally absent) | Windows, optional |
+| `DSound.dll` | whatever `LoadLibrary` finds on the machine; `A3d.dll` is never loaded (the host answers "not found") | Windows, optional |
 | Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `user_data\saves\recomp-registry.txt`; `Installed Directory` (saves, level swap files) is `user_data\saves\`, `Data Drive` is `game\` | **host implementation** |
 | The original installer | the launcher reads the player's disc image itself (docs/LAUNCHER.md) | **host implementation** |
 | Image loading, import binding, calls between lifted and native code, threads | pcrecomp `native32` | host runtime |
@@ -744,6 +744,37 @@ mouse policy; it never starts a new counting window. (Before, a 1 s `WM_TIMER` a
 both reset the window; the timer usually ran in the same 15.6 ms tick right after the Present path
 and published a rate measured over 0 ms, so the title showed 0.) Several front-buffer updates
 inside one game frame (a `ReleaseDC` after a `Blt`, say) are each a Present and each count.
+
+## Text translations
+
+`src/host/l10n.c` loads the text of the chosen `language` before the guest runs. The text is compiled into the executable
+(`assets/translations`, through `src/host/l10n_assets.cpp`): there is no installation and no file to find. One language
+gives a game text and a subtitle language (`jpt_l10n_game_text_language`, `jpt_l10n_subtitle_language`; `docs/LAUNCHER.md`,
+Language). With English nothing below is installed and the game runs as before.
+
+- **String IDs.** Every retail string goes through the `LoadStringA` import (0x00645434): hints are 18000 + the hint
+  (0x0040E820, also used by level TEXT actions that carry an ID), dialogs and key names their own IDs. The shim answers
+  with the translation in the display code page when there is one and its printf conversions match the English
+  string's, else the English resource. Objectives (F3) show the same string in UTF-8 for ImGui, with Arial merged into
+  the panel's font for the letters it lacks. Objective titles are the port's own English.
+- **Level TEXT actions** with inline English text (0x00472B60: ID at `+0x18`, text at `+0x14`): BE's F1 line is GameStrings
+  19290, swapped in for the call.
+- **Voice captions.** 0x004395A0 hands a playing sample's caption block (state at `+0x20`: shown flag, block at `+4`:
+  length, count, then a 0.2 s time and a NUL-terminated line per caption) to the text overlay. At start a thread reads
+  the game's own `Stream.tpa`, `Effects.tpa`, `Ambient.tpa` and `Menu.tpa` (directory and captioned headers only) and
+  fingerprints each English block; the override swaps the block for the translated one of the same sample, with the
+  translation's own times, and restores it after the call. Audio is untouched. A block without a translation, or one
+  played before the scan ends, stays English.
+- **Menu labels.** DDF files under `menu\` are opened with `CreateFileA`; the shim opens a copy in
+  `user_data\cache\menu-text\<language>\` whose `"English" ; Initial Text` labels were replaced (GameStrings
+  10000 + the DDF number, matched by their English text). The HD frontend joins "Replay" and "voice over" in their
+  translated form.
+- **Fonts.** `CreateFontA`/`CreateFontIndirectA` shims give the game's ANSI or default charset fonts the display code
+  page's charset (1252, or 1251 when Russian is chosen), and so does the HD frontend's own font, so `TextOutA` and
+  `DrawTextExA` draw the bytes as that code page. `MessageBoxA` is shown through `MessageBoxW`.
+- **Word wrap.** The overlay's layout (0x0050E8C0) reads advance widths through a signed char, so every byte above
+  0x7F took a width from before the font object. Text with such bytes is laid out by `src/host/text_layout.c`, the same
+  algorithm with unsigned widths (0xFF measured, the table stopping at 0xFE); ASCII text keeps the lifted routine.
 
 ## Legacy hardware warning
 

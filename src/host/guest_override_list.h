@@ -15,6 +15,8 @@ GUEST_OVERRIDE(00417300, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
 GUEST_OVERRIDE(00417380, REQUIRED) /* UI windows (ui_canvas.c) */
 GUEST_OVERRIDE(00417410, REQUIRED) /* UI cursor (ui_canvas.c) */
 GUEST_OVERRIDE(00418AE0, OPTIONAL) /* CVideoWnd::Play (video_hd.c) */
+GUEST_OVERRIDE(004395A0, OPTIONAL) /* voice captions to the text overlay (l10n.c) */
+GUEST_OVERRIDE(00472B60, OPTIONAL) /* level TEXT action (l10n.c) */
 GUEST_OVERRIDE(00477A40, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
 GUEST_OVERRIDE(00477E00, REQUIRED) /* combined culling (engine_limits.c) */
 GUEST_OVERRIDE(00478A30, REQUIRED) /* CPartition::bFlagCacheable (engine_limits.c) */
@@ -29,6 +31,7 @@ GUEST_OVERRIDE(00506EB0, REQUIRED) /* CDirect3D::bAllocateNonLocalMemory (engine
 GUEST_OVERRIDE(005072D0, REQUIRED) /* CDirect3D::iLargeMemAllocMB (engine_limits.c) */
 GUEST_OVERRIDE(0050E750, REQUIRED) /* text font (game_text.c) */
 GUEST_OVERRIDE(0050E830, REQUIRED) /* text line draw (game_text.c) */
+GUEST_OVERRIDE(0050E8C0, OPTIONAL) /* text layout, translated text (game_text.c) */
 GUEST_OVERRIDE(0050EAF0, REQUIRED) /* text draw (game_text.c) */
 GUEST_OVERRIDE(00514FE0, REQUIRED) /* CAGPTextureMemManager::AllocateMemory (engine_limits.c) */
 GUEST_OVERRIDE(0051FD90, REQUIRED) /* CCamera::SetProperties (widescreen.c) */

@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "jpt_tr.h"
+
 static const float k_multipliers[CH_MULTIPLIER_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f };
 static const char* const k_multiplier_text[CH_MULTIPLIER_COUNT] = { "0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x" };
 
@@ -109,22 +111,22 @@ void ch_freecam_placement(const ch_freecam_t* c, dm_placement_t* out) {
 }
 
 const char* ch_camera_name(ch_camera_t camera) {
-    return camera == CH_CAMERA_THIRD ? "Third Person" : camera == CH_CAMERA_FREE ? "Free Camera" : "Normal";
+    return jpt_tr(camera == CH_CAMERA_THIRD ? "Third Person" : camera == CH_CAMERA_FREE ? "Free Camera" : "Normal");
 }
 
-static const char* on_off(int v) { return v < 0 ? "?" : v ? "On" : "Off"; }
+static const char* on_off(int v) { return v < 0 ? "?" : jpt_tr(v ? "On" : "Off"); }
 
 int ch_format_change(char* out, size_t cap, dm_action_kind_t kind, int on, int value) {
     int n;
     switch (kind) {
-    case DM_ACT_SPEED: n = snprintf(out, cap, "Movement Speed = %s", ch_speed_text(value)); break;
-    case DM_ACT_JUMP: n = snprintf(out, cap, "Jump Height = %s", ch_multiplier_text(value)); break;
-    case DM_ACT_INVULNERABLE: n = snprintf(out, cap, "Invulnerability = %s", on_off(on)); break;
-    case DM_ACT_AMMO: n = snprintf(out, cap, "Infinite Ammo = %s", on_off(on)); break;
-    case DM_ACT_SUPER_HEALTH: n = snprintf(out, cap, "Super Health = %s", on_off(on)); break;
-    case DM_ACT_FREEZE_AI: n = snprintf(out, cap, "Freeze Dinosaurs = %s", on_off(on)); break;
-    case DM_ACT_CAMERA: n = snprintf(out, cap, "Camera = %s", ch_camera_name((ch_camera_t)value)); break;
-    case DM_ACT_HEAL: n = snprintf(out, cap, "Heal"); break;
+    case DM_ACT_SPEED: n = snprintf(out, cap, "%s = %s", jpt_tr("Movement Speed"), ch_speed_text(value)); break;
+    case DM_ACT_JUMP: n = snprintf(out, cap, "%s = %s", jpt_tr("Jump Height"), ch_multiplier_text(value)); break;
+    case DM_ACT_INVULNERABLE: n = snprintf(out, cap, "%s = %s", jpt_tr("Invulnerability"), on_off(on)); break;
+    case DM_ACT_AMMO: n = snprintf(out, cap, "%s = %s", jpt_tr("Infinite Ammo"), on_off(on)); break;
+    case DM_ACT_SUPER_HEALTH: n = snprintf(out, cap, "%s = %s", jpt_tr("Super Health"), on_off(on)); break;
+    case DM_ACT_FREEZE_AI: n = snprintf(out, cap, "%s = %s", jpt_tr("Freeze Dinosaurs"), on_off(on)); break;
+    case DM_ACT_CAMERA: n = snprintf(out, cap, "%s = %s", jpt_tr("Camera"), ch_camera_name((ch_camera_t)value)); break;
+    case DM_ACT_HEAL: n = snprintf(out, cap, "%s", jpt_tr("Heal")); break;
     default: return 0;
     }
     return n > 0 && (size_t)n < cap;

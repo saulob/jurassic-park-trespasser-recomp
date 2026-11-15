@@ -27,6 +27,7 @@ struct Panel {
 };
 
 Panel g_panel;
+char g_fallback_font[MAX_PATH];
 
 const ImVec4 kSection(0.95f, 0.72f, 0.30f, 1.0f);
 const ImVec4 kSelected(1.0f, 1.0f, 1.0f, 1.0f);
@@ -204,6 +205,11 @@ void fonts() {
     if (g_panel.vector) return;
     if (io.Fonts->Fonts.empty()) io.Fonts->AddFontDefault();
     g_panel.vector = io.Fonts->AddFontDefaultVector();
+    if (g_fallback_font[0]) {
+        ImFontConfig merge;
+        merge.MergeMode = true;
+        io.Fonts->AddFontFromFileTTF(g_fallback_font, 0.0f, &merge);
+    }
 }
 
 ImU32 colour(const ImVec4& c, float alpha) { return ImGui::ColorConvertFloat4ToU32(ImVec4(c.x, c.y, c.z, c.w * alpha)); }
@@ -257,7 +263,7 @@ void strip(ImDrawList* dl, const cp_hud_t& h, const cp_layout_t& l) {
             continue;
         }
         const float px = ticks[i].cardinal ? l.label_px : l.small_px;
-        outlined_text(dl, px, x, l.top + (l.height - px) * 0.5f, strcmp(ticks[i].name, "N") ? kWhite : kNorth, fade,
+        outlined_text(dl, px, x, l.top + (l.height - px) * 0.5f, ticks[i].north ? kNorth : kWhite, fade,
                       ticks[i].name, l);
     }
     dl->AddTriangleFilled(ImVec2(l.centre - k * 1.4f, l.top - k * 0.2f), ImVec2(l.centre + k * 1.4f, l.top - k * 0.2f),
@@ -390,3 +396,7 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
 }
 
 extern "C" void dmp_release(void) { shut_down(); }
+
+extern "C" void dmp_set_fallback_font(const char* path) {
+    snprintf(g_fallback_font, sizeof g_fallback_font, "%s", path ? path : "");
+}

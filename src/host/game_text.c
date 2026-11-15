@@ -4,12 +4,23 @@
  */
 #include "host.h"
 
+#include <string.h>
+
 #include "jpt_display.h"
+#include "jpt_l10n.h"
+#include "text_layout.h"
 #include "tutorial_prompts.h"
 
 #define FONT_CTOR_VA 0x0050E750u
 #define TEXT_DRAW_VA 0x0050EAF0u
 #define TEXT_DRAW_LINE_VA 0x0050E830u
+#define TEXT_LAYOUT_VA 0x0050E8C0u
+#define RASTER_PTR 0x0073DC40u
+#define RASTER_WIDTH 0x08u
+#define RASTER_HEIGHT 0x0Cu
+#define RASTER_LEFT 0x88u
+#define RASTER_TOP 0x8Cu
+#define TEXT_SCAN_MAX 0x10000u
 #define FONT_HFONT 0x00u
 #define FONT_TALLEST 0x0Cu
 #define FONT_WIDTHS 0x90u
@@ -18,8 +29,12 @@
 /* Both draws call TextOutA through this import slot. */
 #define TEXTOUT_IAT 0x0064506Cu
 
-static recomp_func_t s_ctor_lifted, s_draw_lifted, s_draw_line_lifted;
-static int s_drawing, s_logged, s_font_hooked, s_boxes_known = -1;
+static recomp_func_t s_ctor_lifted, s_draw_lifted, s_draw_line_lifted, s_layout_lifted;
+static int s_drawing, s_logged, s_font_hooked, s_boxes_known = -1, s_layouts_logged;
+static struct {
+    HFONT font;
+    uint32_t width;
+} s_last_glyph[4];
 
 /* Aliased glyphs make the draw a pure write (see GETDC_CALLER_TEXT_OVERLAY); the widths are measured again because
  * the game lays out with them. */
@@ -47,6 +62,62 @@ static void make_aliased(uint32_t font) {
     MEM32(font + FONT_TALLEST) = (uint32_t)tallest;
     MEM32(font + FONT_HFONT) = (uint32_t)(uintptr_t)aliased;
     DeleteObject(old);
+}
+
+/* The width table stops at 0xFE, but 0xFF is a letter in both code pages (y diaeresis, Cyrillic ya). */
+static uint32_t last_glyph_width(HFONT font) {
+    static int next;
+    char ch = (char)0xFF;
+    SIZE size = { 0, 0 };
+    HDC dc;
+    HGDIOBJ previous;
+    for (int i = 0; i < 4; i++)
+        if (s_last_glyph[i].font == font) return s_last_glyph[i].width;
+    dc = GetDC(NULL);
+    previous = SelectObject(dc, font);
+    GetTextExtentPointA(dc, &ch, 1, &size);
+    SelectObject(dc, previous);
+    ReleaseDC(NULL, dc);
+    s_last_glyph[next].font = font;
+    s_last_glyph[next].width = (uint32_t)size.cx;
+    next = (next + 1) % 4;
+    return (uint32_t)size.cx;
+}
+
+static uint32_t glyph_width(void* ctx, unsigned char c) {
+    uint32_t font = (uint32_t)(uintptr_t)ctx;
+    if (c >= FONT_FIRST_CHAR && c < FONT_END_CHAR) return MEM32(font + FONT_WIDTHS + (uint32_t)(c - FONT_FIRST_CHAR) * 4);
+    if (c == 0xFF) return last_glyph_width((HFONT)(uintptr_t)MEM32(font + FONT_HFONT));
+    return MEM32(font + 0x10u + (uint32_t)c * 4);
+}
+
+static int has_high_bytes(const unsigned char* s) {
+    for (uint32_t i = 0; i < TEXT_SCAN_MAX && s[i]; i++)
+        if (s[i] >= 0x80) return 1;
+    return 0;
+}
+
+/* thiscall (font in ecx): text, blob, flags; returns the blob's end. */
+static void text_layout(void) {
+    uint32_t font = g_ecx, text = GUEST_ARG(0), out = GUEST_ARG(1), flags = GUEST_ARG(2), raster;
+    tl_view_t view;
+    size_t size;
+    if (g_alias_entry || !text || !out || !has_high_bytes((const unsigned char*)ADDR(text)) ||
+        !(raster = MEM32(RASTER_PTR))) {
+        s_layout_lifted();
+        return;
+    }
+    view.width = (int32_t)MEM32(raster + RASTER_WIDTH);
+    view.height = (int32_t)MEM32(raster + RASTER_HEIGHT);
+    view.left = (int32_t)MEM32(raster + RASTER_LEFT);
+    view.top = (int32_t)MEM32(raster + RASTER_TOP);
+    view.line_height = (int32_t)MEM32(font + FONT_TALLEST);
+    size = tl_layout((const char*)ADDR(text), flags & 0xFFu, &view, glyph_width, (void*)(uintptr_t)font,
+                     (uint8_t*)ADDR(out), 8 + (strlen((const char*)ADDR(text)) + 1) * (TL_RECORD + 2));
+    if (s_layouts_logged++ < 4)
+        host_log("text", "laid out translated text with unsigned glyph widths (%u lines)", MEM32(out + 4));
+    g_eax = out + (uint32_t)size;
+    GUEST_RETURN_STDCALL(3);
 }
 
 static void font_ctor(void) {
@@ -127,6 +198,8 @@ void shim_TextOutA(void) {
 }
 
 void game_text_install(void) {
+    if (jpt_l10n_display_codepage() && !guest_override_install(TEXT_LAYOUT_VA, text_layout, &s_layout_lifted))
+        host_log("text", "the text layout override is missing: translated text keeps retail's signed glyph widths");
     static const struct {
         uint32_t va;
         recomp_func_t replacement;

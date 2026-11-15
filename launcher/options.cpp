@@ -1,5 +1,6 @@
 #include "options.h"
 
+#include "jpt_l10n.h"
 #include "localization/ui_text.h"
 
 namespace jpt {
@@ -56,6 +57,13 @@ bool WindowSizeFits(const jpt_window_size_t& size, const jpt_monitor_t& monitor)
     const jpt_size_t fitted = jpt_fit_window(requested, 0, 0, monitor.work.right - monitor.work.left,
                                              monitor.work.bottom - monitor.work.top);
     return fitted.width == requested.width && fitted.height == requested.height;
+}
+
+std::string LanguageCoverage(const std::string& language) {
+    const jpt_l10n_language_t* chosen = jpt_l10n_language(language.c_str());
+    if (!chosen) chosen = &jpt_l10n_languages[0];
+    return TrFormat("Game text, menus and subtitles: %s  \xC2\xB7  Audio: %s", Tr(chosen->name),
+                    Tr(jpt_l10n_languages[0].name));
 }
 
 std::string MonitorLabel(int monitor, const std::vector<jpt_monitor_t>& monitors) {

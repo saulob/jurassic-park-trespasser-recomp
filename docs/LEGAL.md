@@ -20,7 +20,26 @@ The disc image itself is only ever opened for reading.
 No copy protection is circumvented. The executable has none; its start-up media check is a
 test for a data file, and it passes because the file is present at the configured location.
 
-## Third-party code
+## Translated text
+
+The port embeds the text of seven community and official translations, converted to its own format
+(`assets/translations`): the game strings of the official Brazilian Portuguese, French, German and Spanish translations
+(DreamWorks Interactive; GameStrings conversion by Nick3069), the Russian game strings and the Russian subtitles
+(cynodesmus) and the Italian subtitles (KeyofBlueS), all hosted and preserved by the TresCom community. Credits are in
+the [README](../README.md#languages) and on the launcher's About page.
+
+The text the port adds to complete every language (`*.port.txt` and `*.interface.txt` in `assets/translations`:
+subtitles, the Italian game text, missing strings, the words of the menus and the port's own interface) was written for
+the port and is credited to it, not to the authors above.
+
+None of these downloads states a licence, and the repository holds no permission from their authors. Including the text
+is the repository owner's decision and responsibility; nothing else of the packages is included: no audio, menu picture,
+video or program, and the voices stay the player's own English files. The translated menu words are drawn over the
+player's own menu pictures at run time; no picture of the game or of the packages is in the repository. `tools/translation_pack.cpp` makes the files from
+the extracted downloads and recognises each source by name, size and SHA-256; the downloads themselves are not in the
+repository. The tests use the embedded text and made-up fixtures.
+
+## Third-party code## Third-party code
 
 | Project | Licence | How it is used |
 |---|---|---|

@@ -8,6 +8,7 @@
 
 #include "cheats_policy.h"
 #include "jpt_gamepad.h"
+#include "jpt_tr.h"
 
 #define VK_BACK_ 0x08u
 #define VK_RETURN_ 0x0Du
@@ -47,12 +48,12 @@ void dm_init(dm_state_t* s) {
 }
 
 const char* dm_item_label(dm_menu_t menu, dm_item_t item) {
-    if (menu == DM_MENU_CHEATS && item == DM_FREEZE_AI) return "Freeze Dinosaurs";
-    return item >= 0 && item < DM_ITEM_COUNT ? k_labels[item] : "?";
+    if (menu == DM_MENU_CHEATS && item == DM_FREEZE_AI) return jpt_tr("Freeze Dinosaurs");
+    return item >= 0 && item < DM_ITEM_COUNT ? jpt_tr(k_labels[item]) : "?";
 }
 
 const char* dm_menu_title(dm_menu_t menu) {
-    return menu == DM_MENU_CHEATS ? "Cheats" : menu == DM_MENU_OBJECTIVES ? "Objectives" : "Debug / Test Menu";
+    return jpt_tr(menu == DM_MENU_CHEATS ? "Cheats" : menu == DM_MENU_OBJECTIVES ? "Objectives" : "Debug / Test Menu");
 }
 
 static int is_field(int item) { return item == DM_FIELD_X || item == DM_FIELD_Y || item == DM_FIELD_Z; }
@@ -303,7 +304,7 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
         s->checkpoint.set = 1;
         snprintf(s->checkpoint.level, sizeof s->checkpoint.level, "%s", w->level);
         s->checkpoint.at = w->at;
-        dm_feedback(s, "Checkpoint set", now_ms);
+        dm_feedback(s, jpt_tr("Checkpoint set"), now_ms);
         break;
     case DM_RETURN_CHECKPOINT:
         request(s, DM_ACT_RETURN_CHECKPOINT);
@@ -311,7 +312,7 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
         break;
     case DM_SHOW_COORDS:
         s->show_coords = !s->show_coords;
-        dm_feedback(s, s->show_coords ? "Coordinates shown" : "Coordinates hidden", now_ms);
+        dm_feedback(s, jpt_tr(s->show_coords ? "Coordinates shown" : "Coordinates hidden"), now_ms);
         break;
     case DM_COPY_COORDS: request(s, DM_ACT_COPY); break;
     case DM_FREEZE_AI: toggle(s, DM_ACT_FREEZE_AI, w->ai == 0); break;
@@ -325,7 +326,7 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     case DM_FREE_CAMERA: camera_mode(s, w, CH_CAMERA_FREE); break;
     case DM_COMPASS:
         s->compass_off = !s->compass_off;
-        dm_feedback(s, s->compass_off ? "Compass off" : "Compass on", now_ms);
+        dm_feedback(s, jpt_tr(s->compass_off ? "Compass off" : "Compass on"), now_ms);
         break;
     case DM_AMBIENT_OCCLUSION:
         request_value(s, DM_ACT_AMBIENT_OCCLUSION, (w->ambient_occlusion + 1) % DM_AO_LEVELS);
@@ -521,7 +522,7 @@ static int retail_rank(const char* scene) {
 
 const char* dm_level_name(const char* scene) {
     int rank = retail_rank(scene);
-    return rank < COUNT(k_retail_levels) ? k_retail_levels[rank].name : NULL;
+    return rank < COUNT(k_retail_levels) ? jpt_tr(k_retail_levels[rank].name) : NULL;
 }
 
 int dm_level_title(const char* scene, char* out, size_t cap) {
@@ -614,7 +615,7 @@ static void add_row(dm_row_t* rows, int max, int* n, dm_row_kind_t kind, int ite
     snprintf(r->value, sizeof r->value, "%s", value ? value : "");
 }
 
-static const char* on_off(int v) { return v < 0 ? "-" : v ? "On" : "Off"; }
+static const char* on_off(int v) { return v < 0 ? "-" : jpt_tr(v ? "On" : "Off"); }
 
 static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item, int enabled, char* value, size_t cap) {
     value[0] = 0;
@@ -640,7 +641,7 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
     case DM_TELEPORT_PAGE: snprintf(value, cap, ">"); break;
     case DM_COMPASS: snprintf(value, cap, "%s", on_off(!s->compass_off)); break;
     case DM_AMBIENT_OCCLUSION:
-        snprintf(value, cap, "%s", enabled ? k_ao_levels[w->ambient_occlusion] : "Unavailable");
+        snprintf(value, cap, "%s", jpt_tr(enabled ? k_ao_levels[w->ambient_occlusion] : "Unavailable"));
         break;
     case DM_LEVEL_SELECT:
         if (s->menu == DM_MENU_CHEATS) snprintf(value, cap, ">");
@@ -653,7 +654,7 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
     case DM_PREV_KEY:
     case DM_NEXT_KEY:
         if (w->place != DM_PLACE_LEVEL) break;
-        if (w->key_count <= 0) snprintf(value, cap, "none");
+        if (w->key_count <= 0) snprintf(value, cap, "%s", jpt_tr("none"));
         else if (item == DM_NEXT_KEY && w->key_index >= 0)
             snprintf(value, cap, "%d / %d", w->key_index + 1, w->key_count);
         else if (item == DM_NEXT_KEY) snprintf(value, cap, "- / %d", w->key_count);
@@ -717,7 +718,7 @@ static int objective_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* ro
     if (!dm_level_title(w->scene, title, sizeof title)) snprintf(title, sizeof title, "%s", w->level[0] ? w->level : "?");
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, title, NULL);
     if (!w->goals.available) {
-        add_row(rows, max, &n, DM_ROW_NOTE, -1, 0, 0, "Objectives unavailable for this level", NULL);
+        add_row(rows, max, &n, DM_ROW_NOTE, -1, 0, 0, jpt_tr("Objectives unavailable for this level"), NULL);
         return n;
     }
     for (int i = 0; i < w->goals.count && i < DM_GOALS_MAX; i++) {
@@ -739,47 +740,48 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
     int n = 0;
     if (s->menu == DM_MENU_OBJECTIVES) return objective_rows(s, w, rows, max);
     add_row(rows, max, &n, DM_ROW_TITLE, -1, 1, 0, dm_menu_title(s->menu), NULL);
-    add_row(rows, max, &n, DM_ROW_INFO, -1, 1, 0, "Level",
+    add_row(rows, max, &n, DM_ROW_INFO, -1, 1, 0, jpt_tr("Level"),
             w->place == DM_PLACE_LEVEL ? (w->level[0] ? w->level : "?")
-                                       : w->place == DM_PLACE_MAIN_MENU ? "none (main menu)" : "none");
+                                       : jpt_tr(w->place == DM_PLACE_MAIN_MENU ? "none (main menu)" : "none"));
     if (w->place == DM_PLACE_LEVEL && w->player) {
         snprintf(line, sizeof line, "X %.3f  Y %.3f  Z %.3f  Yaw %.3f", tidy(w->at.pos[0]), tidy(w->at.pos[1]),
                  tidy(w->at.pos[2]), tidy(dm_yaw(w->at.rot)));
-        add_row(rows, max, &n, DM_ROW_INFO, -1, 1, 0, "Player", line);
+        add_row(rows, max, &n, DM_ROW_INFO, -1, 1, 0, jpt_tr("Player"), line);
     } else {
-        add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, "Player", "unavailable");
+        add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, jpt_tr("Player"), jpt_tr("unavailable"));
     }
     if (s->page == DM_PAGE_LEVELS) {
-        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Level Select", NULL);
-        if (!s->levels.count) add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, "No scene files in the data folder", NULL);
+        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Level Select"), NULL);
+        if (!s->levels.count)
+            add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, jpt_tr("No scene files in the data folder"), NULL);
         for (int i = 0; i < s->levels.count; i++) {
             char title[DM_TEXT_MAX];
             dm_level_title(s->levels.scene[i], title, sizeof title);
             add_row(rows, max, &n, DM_ROW_ITEM, i, w->place != DM_PLACE_NONE, s->level_cursor == i, title,
                     _stricmp(s->levels.scene[i], w->scene) || w->place != DM_PLACE_LEVEL ? s->levels.scene[i]
-                                                                                       : "current");
+                                                                                       : jpt_tr("current"));
         }
         return n;
     }
     if (s->page == DM_PAGE_TELEPORT) {
-        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Teleport", NULL);
+        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Teleport"), NULL);
         items_rows(s, w, rows, max, &n, k_teleport_page, COUNT(k_teleport_page));
         return n;
     }
     if (s->menu == DM_MENU_CHEATS) {
-        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Cheats", NULL);
+        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Cheats"), NULL);
         items_rows(s, w, rows, max, &n, k_cheats_main, COUNT(k_cheats_main));
         return n;
     }
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Level", NULL);
+    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Level"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main, 3);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Teleport", NULL);
+    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Teleport"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 3, 8);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Navigation", NULL);
+    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Navigation"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 11, 1);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Debug", NULL);
+    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Debug"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 12, 3);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, "Graphics", NULL);
+    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Graphics"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 15, 1);
     items_rows(s, w, rows, max, &n, k_debug_main + 16, 1);
     return n;

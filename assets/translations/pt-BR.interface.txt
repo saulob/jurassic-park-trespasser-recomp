@@ -1,0 +1,215 @@
+# Trespasser Recompiled interface text 1
+Menu::NEW GAME	NOVO JOGO
+Menu::LOAD	CARREGAR
+Menu::OPTIONS	OPÇÕES
+Menu::EXIT	SAIR
+Menu::QUIT	SAIR
+Menu::RESUME	CONTINUAR
+Menu::RESTART LEVEL	REINICIAR NÍVEL
+Menu::SAVE	SALVAR
+Menu::CANCEL	CANCELAR
+Menu::DESKTOP	ÁREA DE TRABALHO
+Menu::MAIN MENU	MENU PRINCIPAL
+Menu::CONTROLS	CONTROLES
+Menu::VIDEO	VÍDEO
+Menu::AUDIO	ÁUDIO
+Menu::CREDITS	CRÉDITOS
+Menu::CLOSE	FECHAR
+Menu::OK	OK
+Menu::DEFAULTS	PADRÃO
+Menu::DELETE	ELIMINAR
+Menu::YES	SIM
+Menu::NO	NÃO
+Title::QUIT	SAIR
+Title::SOUND	SOM
+Footer::© 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin.  All Rights Reserved.	© 1998 DreamWorks Interactive L.L.C. Trespasser é marca registrada de UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin. Todos os direitos reservados.
+Select	Selecionar
+Back	Voltar
+Controls	Controles
+<CONTROLS> Controls	<CONTROLS> Controles
+<CONTROLS> View Controls	<CONTROLS> Ver controles
+Move	Mover-se
+Look	Olhar
+Jump	Pular
+Crouch (hold)	Agachar (segurar)
+Crouch on/off	Agachar (alternar)
+Menu	Menu
+Move hand	Mover a mão
+Grab / drop	Pegar / soltar
+Use / fire	Usar / atirar
+Throw	Arremessar
+Rotate wrist	Girar o pulso
+Rotate arm	Girar o braço
+Stow / retrieve	Guardar / recuperar
+Hint	Dica
+Objectives	Objetivos
+Show Objective	Mostrar objetivo
+Run	Correr
+Walk	Andar
+Back up	Recuar
+Step left / right	Passo para o lado
+Replay voice	Repetir fala
+Raise and move the hand	Erguer e mover a mão
+Grab	Pegar
+Drop	Soltar
+Debug Menu	Menu de depuração
+Cheats	Trapaças
+Fullscreen	Tela cheia
+Debug / Test Menu	Menu de depuração / testes
+Level Select	Seleção de fase
+Restart Level	Reiniciar fase
+Reload Current Level	Recarregar fase atual
+X	X
+Y	Y
+Z	Z
+Teleport	Teleportar
+Previous Key Point	Ponto-chave anterior
+Next Key Point	Próximo ponto-chave
+Set Checkpoint	Marcar checkpoint
+Return to Checkpoint	Voltar ao checkpoint
+Show Coordinates	Mostrar coordenadas
+Copy Coordinates	Copiar coordenadas
+Freeze AI	Congelar IA
+Freeze Dinosaurs	Congelar dinossauros
+Movement Speed	Velocidade de movimento
+Jump Height	Altura do pulo
+Invulnerability	Invulnerabilidade
+Infinite Ammo	Munição infinita
+Heal	Curar
+Super Health	Supervida
+Third Person	Terceira pessoa
+Fly / Free Camera	Voo / câmera livre
+Compass	Bússola
+Ambient Occlusion	Oclusão de ambiente
+Close	Fechar
+Off	Desligado
+On	Ligado
+Low	Baixa
+Medium	Média
+High	Alta
+Ultra	Ultra
+Unavailable	Indisponível
+unavailable	indisponível
+none	nenhum
+none (main menu)	nenhuma (menu principal)
+current	atual
+Level	Fase
+Player	Jogadora
+Navigation	Navegação
+Debug	Depuração
+Graphics	Gráficos
+No scene files in the data folder	Nenhum arquivo de fase na pasta data
+Objectives unavailable for this level	Objetivos indisponíveis nesta fase
+Checkpoint set	Checkpoint marcado
+Coordinates shown	Coordenadas visíveis
+Coordinates hidden	Coordenadas ocultas
+Coordinates copied	Coordenadas copiadas
+Coordinates unavailable	Coordenadas indisponíveis
+Compass off	Bússola desligada
+Compass on	Bússola ligada
+Not available here	Indisponível aqui
+Not available	Indisponível
+Level Select failed	A seleção de fase falhou
+Reload failed	Falha ao recarregar
+Restart failed	Falha ao reiniciar
+Teleported to %.3f %.3f %.3f	Teleportada para %.3f %.3f %.3f
+Teleport failed	Falha ao teleportar
+Returned to checkpoint	De volta ao checkpoint
+Return to Checkpoint failed	Falha ao voltar ao checkpoint
+Next Key Point failed	Falha ao ir ao próximo ponto-chave
+Previous Key Point failed	Falha ao ir ao ponto-chave anterior
+The clipboard could not be opened	Não foi possível abrir a área de transferência
+Ambient Occlusion is unavailable (see the log)	Oclusão de ambiente indisponível (veja o log)
+Freeze AI failed	Falha ao congelar a IA
+Key point %d / %d	Ponto-chave %d / %d
+No objective	Nenhum objetivo
+Objective updated	Objetivo atualizado
+Anne cannot be healed now	Anne não pode ser curada agora
+Camera	Câmera
+Normal	Normal
+Free Camera	Câmera livre
+Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Cima/Baixo seleciona | Enter/A usa | Esquerda/Direita ajusta (Shift 10, Ctrl 0.1, LB/RB 10) | números editam | Esc/B volta | F5 fecha
+Esc/B or F3 close	Esc/B ou F3 fecha
+Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Cima/Baixo seleciona | Enter/A usa | Esquerda/Direita muda | Esc/B volta | F10 fecha. Câmera livre: WASD/analógico esquerdo move, mouse/analógico direito olha, Espaço/A sobe, Ctrl/B desce, Shift/LB rápido
+Beach	Praia
+Jungle Road	Estrada da selva
+Industrial Jungle	Selva industrial
+InGen Town	Cidade da InGen
+InGen Lab	Laboratório da InGen
+Ascent, Part 1	Subida, parte 1
+Ascent, Part 2	Subida, parte 2
+Summit	Cume
+Test Scene	Cena de teste
+Test Scene Night	Cena de teste (noite)
+Find out where you are	Descubra onde você está
+Search the construction site for clues	Procure pistas no canteiro de obras
+Head inland	Siga para o interior
+Follow the monorail tracks	Siga os trilhos do monotrilho
+Explore, then return to the monorail	Explore e depois volte ao monotrilho
+Cross the ridge on the monorail tracks	Atravesse a serra pelos trilhos do monotrilho
+Push on through the jungle	Continue pela selva
+Find a way down	Encontre um caminho para descer
+Follow the power lines	Siga as linhas de energia
+Find a building with a line out	Encontre um prédio com linha externa
+Search the Operations Center	Vasculhe o Centro de Operações
+Use the control console	Use o console de controle
+Go to Hammond's place	Vá até a casa de Hammond
+Leave by the northeastern gate	Saia pelo portão nordeste
+Find a way through to the computer lab	Encontre um caminho até o laboratório de informática
+Find a green keycard	Encontre um cartão de acesso verde
+Search the offices for a keycard	Procure um cartão de acesso nos escritórios
+Get to the computer lab	Chegue ao laboratório de informática
+Start up the computer	Ligue o computador
+Head for the mountaintop	Siga para o topo da montanha
+Circle around to find a way up	Contorne para achar um caminho para subir
+Climb up through the ruins	Suba pelas ruínas
+Find a place to climb	Encontre um lugar para escalar
+Climb the cliffs	Escale os penhascos
+Explore the summit facility	Explore as instalações do cume
+Race to meet the helicopter	Corra até o helicóptero
+Compass::N	N
+Compass::NE	NE
+Compass::E	L
+Compass::SE	SE
+Compass::S	S
+Compass::SW	SO
+Compass::W	O
+Compass::NW	NO
+%d m	%d m
+%.1f km	%.1f km
+Video Test	Teste de vídeo
+Original	Original
+HD	HD
+The game's own player, audio and timing: only the presentation differs.	O próprio player, áudio e tempo do jogo: só a apresentação muda.
+HD needs the D3D11 renderer.	HD precisa do renderizador D3D11.
+F5 closes the panel. Esc, a key or a click skips a video, as in the game.	F5 fecha o painel. Esc, uma tecla ou um clique pula o vídeo, como no jogo.
+not found	não encontrado
+Tutorial::Welcome to Trespasser.	Bem-vindo ao Trespasser.
+Tutorial::To look around, move <LOOK>.	Para olhar em volta, mova <LOOK>.
+Tutorial::To move forward, press and hold <RUN>.	Para andar para a frente, pressione e mantenha <RUN>.
+Tutorial::Your adventure begins here.	Sua aventura começa aqui.
+Tutorial::Press <JUMP> to jump up.	Pressione <JUMP> para pular.
+Tutorial::Press <LEFT> and <RIGHT> to step left and right.	Pressione <LEFT> e <RIGHT> para dar um passo para a esquerda e para a direita.
+Tutorial::And press <CROUCH> to crouch.	E pressione <CROUCH> para agachar.
+Tutorial::You can use your hand to move and carry objects.	Você pode usar a mão para mover e carregar objetos.
+Tutorial::Try pressing and holding <HAND>.	Tente pressionar e manter <HAND>.
+Tutorial::Now, moving <LOOK> moves your hand.	Agora, ao mover <LOOK>, você move a mão.
+Tutorial::Try picking up the two-by-four on the crate up ahead.	Tente pegar a tábua no caixote logo à frente.
+Tutorial::To pick up an object, move your hand near it....	Para pegar um objeto, aproxime a mão dele....
+Tutorial::Then click <GRAB>.	Em seguida, clique em <GRAB>.
+Tutorial::Good! Hold <HAND> and move <LOOK> to wield the two-by-four.	Ótimo! Mantenha <HAND> e mova <LOOK> para manejar a tábua.
+Tutorial::Press <GRAB> to drop it.	Pressione <GRAB> para soltá-la.
+Tutorial::Good. Try picking up some other items.	Ótimo. Tente pegar alguns outros objetos.
+Tutorial::You may have to crouch to reach them if they're on the ground.	Talvez você precise agachar para alcançá-los se estiverem no chão.
+Tutorial::Feel free to practice running and jumping here, until you're ready to move on.	Fique à vontade para praticar corrida e pulos aqui, até a hora de seguir em frente.
+Tutorial::Firearms can be an important survival tool.	Armas de fogo podem ser uma ferramenta importante de sobrevivência.
+Tutorial::To fire a gun, pick it up, and press <USE>.	Para disparar uma arma, pegue-a e pressione <USE>.
+Tutorial::You can aim the gun using the sights.	Você pode mirar a arma usando a mira.
+Tutorial::To adjust your wrist, press <WRIST> + <HAND>, and move <LOOK>.	Para ajustar o pulso, pressione <WRIST> + <HAND> e mova <LOOK>.
+Tutorial::You can rotate your arm by holding <ARM> + <HAND>, and moving <LOOK>.	Você pode girar o braço mantendo <ARM> + <HAND> e movendo <LOOK>.
+Tutorial::Press <THROW> to throw an object you are holding.	Pressione <THROW> para jogar um objeto que esteja segurando.
+Tutorial::You will always throw toward the center of your view.	O objeto sempre será jogado em direção ao centro da sua visão.
+Tutorial::Step up and try to nail a paint can!	Avance e tente acertar uma lata de tinta!
+Tutorial::To strike with an object, pick up the object and press <USE>.	Para golpear com um objeto, pegue-o e pressione <USE>.
+Tutorial::Try swinging the baseball bat.	Tente balançar o taco de beisebol.
+Tutorial::You can always press <HINT> for a hint about what to do next.	Você pode pressionar <HINT> a qualquer momento para receber uma dica sobre o que fazer a seguir.

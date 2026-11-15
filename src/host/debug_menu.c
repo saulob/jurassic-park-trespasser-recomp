@@ -15,6 +15,7 @@
 #include "debug_menu_policy.h"
 #include "jpt_config.h"
 #include "jpt_gamepad.h"
+#include "jpt_tr.h"
 #include "objectives.h"
 #include "tutorial_prompts.h"
 
@@ -262,7 +263,7 @@ static int moves_the_game(dm_action_kind_t kind) {
 }
 
 static void say(const char* text, uint32_t now) {
-    dm_feedback(&D.state, text, now);
+    dm_feedback(&D.state, jpt_tr(text), now);
     host_log("debug-menu", "%s", text);
 }
 
@@ -291,7 +292,7 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
         break;
     case DM_ACT_TELEPORT:
         moved = move_player(&a->to, 1, scratch);
-        snprintf(line, sizeof line, moved ? "Teleported to %.3f %.3f %.3f" : "Teleport failed", a->to.pos[0],
+        snprintf(line, sizeof line, jpt_tr(moved ? "Teleported to %.3f %.3f %.3f" : "Teleport failed"), a->to.pos[0],
                  a->to.pos[1], a->to.pos[2]);
         say(line, now);
         break;
@@ -310,7 +311,7 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
     case DM_ACT_COPY:
         dm_format_coords(line, sizeof line, D.world.level, &D.world.at);
         if (copy_text(line)) {
-            dm_feedback(&D.state, "Coordinates copied", now);
+            say("Coordinates copied", now);
             host_log("debug-menu", "copied: %s", line);
         } else {
             say("The clipboard could not be opened", now);
@@ -319,7 +320,7 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
     case DM_ACT_AMBIENT_OCCLUSION:
         if (d3dr_set_ambient_occlusion(a->value)) {
             D.world.ambient_occlusion = d3dr_ambient_occlusion();
-            snprintf(line, sizeof line, "Ambient Occlusion %s", jpt_ao_names[a->value]);
+            snprintf(line, sizeof line, "%s %s", jpt_tr("Ambient Occlusion"), jpt_tr(jpt_ao_names[a->value]));
             dm_feedback(&D.state, line, now);
         } else {
             D.world.ambient_occlusion = d3dr_ambient_occlusion();
@@ -344,7 +345,7 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
     sample(v, 1, scratch);
     if (D.world.player) dm_fill_fields(&D.state, &D.world.at);
     if (a->kind == DM_ACT_NEXT_KEY || a->kind == DM_ACT_PREV_KEY) {
-        snprintf(line, sizeof line, "Key point %d / %d", D.world.key_index + 1, D.world.key_count);
+        snprintf(line, sizeof line, jpt_tr("Key point %d / %d"), D.world.key_index + 1, D.world.key_count);
         say(line, now);
     }
 }
@@ -444,7 +445,7 @@ void debug_menu_show_objective(void) {
         host_log("objectives", "Show Objective: %s", D.reminder.title);
         return;
     }
-    dm_notice_for(&D.state, "No objective", now, CP_NO_OBJECTIVE_MS);
+    dm_notice_for(&D.state, jpt_tr("No objective"), now, CP_NO_OBJECTIVE_MS);
 }
 
 int debug_menu_open_menu(void) {
@@ -528,9 +529,9 @@ static float dpi_scale(void) {
 static void coordinate_lines(dmp_frame_t* f) {
     const dm_world_t* w = &D.world;
     if (!D.state.show_coords || w->place != DM_PLACE_LEVEL) return;
-    snprintf(f->coords[f->coord_lines++], DM_TEXT_MAX, "Level %s", w->level[0] ? w->level : "?");
+    snprintf(f->coords[f->coord_lines++], DM_TEXT_MAX, "%s %s", jpt_tr("Level"), w->level[0] ? w->level : "?");
     if (!w->player) {
-        snprintf(f->coords[f->coord_lines++], DM_TEXT_MAX, "Coordinates unavailable");
+        snprintf(f->coords[f->coord_lines++], DM_TEXT_MAX, "%s", jpt_tr("Coordinates unavailable"));
         return;
     }
     snprintf(f->coords[f->coord_lines++], DM_TEXT_MAX, "X %.3f", w->at.pos[0]);
@@ -555,9 +556,9 @@ void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext*
         f.rows = D.rows;
         f.row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);
         f.feedback = dm_feedback_text(&D.state, GetTickCount());
-        f.help = D.state.menu == DM_MENU_CHEATS        ? k_cheats_help
-                 : D.state.menu == DM_MENU_OBJECTIVES ? k_objectives_help
-                                                      : k_help;
+        f.help = jpt_tr(D.state.menu == DM_MENU_CHEATS        ? k_cheats_help
+                        : D.state.menu == DM_MENU_OBJECTIVES ? k_objectives_help
+                                                             : k_help);
         f.title = dm_menu_title(D.state.menu);
     }
     coordinate_lines(&f);

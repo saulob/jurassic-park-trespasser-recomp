@@ -13,9 +13,10 @@ JurassicParkTrespasser\
         launcher\               trespasser.ini: the launcher's and the port's settings
         saves\                  the game's own files (its "Installed Directory"):
                                   SAVEGAME.NNN, previews\ (HD save pictures),
-                                  recomp-registry.txt (the game's options: Gore, Invert mouse, KeyMap),
+                                  recomp-registry.txt (the game's own options),
                                   level swap files (*-130.swp, temp.scx) and the game's screenshots (TPassNNN.BMP)
-        cache\                  reserved for caches the port may keep
+        cache\                  caches the port may keep: menu-text\<language>\ holds the game's menu files with
+                                  their labels translated, rebuilt at each start
 ```
 
 Copying the whole program folder to another PC carries the saves and settings with it. `user_data` is created at the

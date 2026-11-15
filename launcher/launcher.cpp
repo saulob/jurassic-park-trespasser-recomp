@@ -23,6 +23,7 @@
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_gamepad.h"
+#include "jpt_l10n.h"
 #include "jpt_prompt_text.h"
 #include "launcher_log.h"
 #include "launcher_quit.h"
@@ -79,8 +80,8 @@ constexpr char kAmbientOcclusionHelp[] =
     "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
     "Higher levels look smoother and cost more. Direct3D 11 only; F5's Debug Menu changes it while playing.";
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
-constexpr char kShowFpsTitleHelp[] =
-    "Shows the renderer, the frame rate and the game's screen size in the window title.";
+constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title.";
+constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution in the window title.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
 constexpr char kKeyboardHelp[] =
@@ -102,6 +103,7 @@ constexpr char kTriggerDeadzoneHelp[] = "How far a trigger is pressed before it 
 constexpr char kGuideHelp[] =
     "Hold Move Hand to raise Anne's hand; the right stick then moves it instead of the view, as the mouse does with "
     "the left button. Rotate Wrist and Rotate Arm work with Move Hand held. In a level, View (F2 on the keyboard) shows this list.";
+constexpr char kLanguageHelp[] = "Changes the game text, menus and subtitles. Voices, effects and music remain in English.";
 constexpr char kBindingHelp[] =
     "Choosing a button another action uses gives that action this one's button. Start always opens the pause menu, "
     "and View/Back is kept free.";
@@ -203,7 +205,7 @@ std::string StatusDetail(const GameCheck& check) {
     case GameState::kMissing:
         return Tr("Install the game from your Trespasser disc image.");
     default:
-        return check.detail;
+        return TrMessage(check.detail);
     }
 }
 
@@ -237,6 +239,7 @@ public:
             gpu_.msaa_mask & 4 ? "2x " : "", gpu_.msaa_mask & 16 ? "4x " : "", gpu_.msaa_mask & 256 ? "8x" : "",
             monitors_.size());
         ReadGameplay();
+        SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
         placement_ = PlacementTracker(host_.Restored());
         fonts_ = trg::LoadSystemFonts(trg::layout::kTextBody);
         if (LoadLauncherImage("header-art.png", header_art_image_)) {
@@ -280,6 +283,7 @@ private:
     bool Ready() const { return check_.state == GameState::kReady; }
 
     Outcome Frame() {
+        SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
         TrackPlacement();
         PollInstall();
         if (play_.starting() && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds) {
@@ -329,7 +333,7 @@ private:
             Log("settings saved to %s, starting the game", Utf8(settings_.file()).c_str());
             break;
         case PlayRequest::kFilesNotReady:
-            launcher_->SetStatus(std::string(GameStateTitle(check_.state)) + Tr(". Install the game files first."), 6.0);
+            launcher_->SetStatus(std::string(Tr(GameStateTitle(check_.state))) + Tr(". Install the game files first."), 6.0);
             break;
         case PlayRequest::kBusy:
             launcher_->SetStatus("Wait for the installation to finish.", 6.0);
@@ -401,9 +405,8 @@ private:
         };
         c.on_save = [this] { return SaveGameRegistry(); };
         c.on_reset = [this] {
-            gore_ = 1;
             invert_ = false;
-            gore_dirty_ = invert_dirty_ = true;
+            invert_dirty_ = true;
         };
         return c;
     }
@@ -447,7 +450,7 @@ private:
             return {name, "Renderer, resolution, anti-aliasing and texture filtering.",
                     [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr};
         case PageId::kGameplay:
-            return {name, "The game's own options, Skip Intro and frame rate readouts.",
+            return {name, "Language, Skip Intro and what the window title shows.",
                     [this](trg::Ui& ui) { PageGameplay(ui); }, nullptr, nullptr};
         case PageId::kControls:
             return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
@@ -467,8 +470,8 @@ private:
 
     void PagePlay(trg::Ui& ui) {
         const bool ready = Ready();
-        const std::string title = ready ? std::string(GameStateTitle(check_.state)) + " \xC2\xB7 " + check_.profile->label
-                                        : GameStateTitle(check_.state);
+        const std::string title = ready ? std::string(Tr(GameStateTitle(check_.state))) + " \xC2\xB7 " + check_.profile->label
+                                        : std::string(Tr(GameStateTitle(check_.state)));
         const std::string detail = StatusDetail(check_);
         ui.StatusCard(ready ? trg::Status::kReady : trg::Status::kAttention, title.c_str(), detail.c_str());
         if (!install_failure_.empty()) {
@@ -476,7 +479,7 @@ private:
             ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
             ImGui::TextUnformatted(Tr(install_failure_.c_str()));
             ImGui::PopStyleColor();
-            ui.Help(install_failure_text_.c_str());
+            ui.Help((TrMessage(install_failure_text_) + Tr(". The current installation was not changed.")).c_str());
             ui.Spacer(4);
         }
         ui.Row("Game files");
@@ -551,8 +554,8 @@ private:
         }
         Log("game install failed: %s (%s)", InstallStatusTitle(outcome->status), outcome->detail.c_str());
         install_failure_ = InstallStatusTitle(outcome->status);
-        install_failure_text_ = outcome->detail + Tr(". The current installation was not changed.");
-        launcher_->SetStatus(Tr("Install failed: ") + install_failure_, 8.0);
+        install_failure_text_ = outcome->detail;
+        launcher_->SetStatus(Tr("Install failed: ") + Tr(install_failure_), 8.0);
     }
 
     // ---- Display
@@ -668,9 +671,9 @@ private:
         const std::string current = settings_.Get(JPT_KEY_MSAA);
         const bool listed = current == "1" || std::any_of(options.begin(), options.end(),
                                                           [&current](const trg::Option& o) { return o.value == current; });
-        std::string help = kAntiAliasingHelp;
+        std::string help = Tr(kAntiAliasingHelp);
         if (!listed) {
-            help += Tr(" The saved ") + current + Tr("x is not supported here: choose another level.");
+            help += " " + TrFormat("The saved %sx is not supported here: choose another level.", current.c_str());
         }
         ui.Choice("Anti-aliasing", help.c_str(), JPT_KEY_MSAA, "4", options, 4);
     }
@@ -679,12 +682,6 @@ private:
 
     void ReadGameplay() {
         unsigned long value = 0;
-        // The game reads Gore with default 1 and clamps it to 0..2 (0x0040BA01).
-        gore_ = 1;
-        if (registry_.GetDword("Gore", value)) {
-            const long level = static_cast<long>(value);
-            gore_ = level < 0 ? 0 : level > 2 ? 2 : static_cast<int>(level);
-        }
         invert_ = registry_.GetDword("InvertMouse", value) && value != 0;
         std::vector<uint8_t> keymap;
         if (!registry_.GetBinary("KeyMap", keymap) || !jpt_keymap_parse(keymap.data(), keymap.size(), keymap_)) {
@@ -693,30 +690,28 @@ private:
     }
 
     bool SaveGameRegistry() {
-        if (gore_dirty_ && registry_.SetDword("Gore", static_cast<unsigned long>(gore_))) {
-            gore_dirty_ = false;
-        }
         if (invert_dirty_ && registry_.SetDword("InvertMouse", invert_ ? 1 : 0)) {
             invert_dirty_ = false;
         }
-        return !gore_dirty_ && !invert_dirty_;
+        return !invert_dirty_;
     }
 
     void PageGameplay(trg::Ui& ui) {
-        ui.Row("Gore", "The game's own gore level, 0 to 2 (1 is its default); its options menu changes it too.");
-        const int level = ui.Segmented("##gore", {"0", "1", "2"}, gore_);
-        if (level >= 0 && level != gore_) {
-            gore_ = level;
-            gore_dirty_ = true;
+        std::vector<trg::Option> languages;
+        for (const jpt_l10n_language_t& language : jpt_l10n_languages) {
+            languages.push_back({language.code, language.name});
         }
+        ui.Combo("Language", kLanguageHelp, JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH, languages);
+        ui.Info("Language coverage", LanguageCoverage(settings_.Get(JPT_KEY_LANGUAGE)).c_str());
+        ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
+        ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
+        ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
         ui.Row("Invert mouse", "Mouse look up and down inverted, the game's own option.");
         const int invert = ui.Segmented("##invert_mouse", {"Off", "On"}, invert_ ? 1 : 0);
         if (invert >= 0 && (invert == 1) != invert_) {
             invert_ = invert == 1;
             invert_dirty_ = true;
         }
-        ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
-        ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
         ui.EndRows();
     }
 
@@ -729,19 +724,19 @@ private:
         if (ui.Section("Gamepad", true)) {
             ui.Help(kGamepadHelp);
             ui.Info("Connected controller", pads.empty() ? "None" : pads.front().name.c_str());
-            const std::string status = pads.empty()       ? "Not connected"
-                                       : pads.size() == 1 ? "Connected"
-                                                          : "Connected (" + std::to_string(pads.size()) + " controllers)";
+            const std::string status = pads.empty()       ? std::string(Tr("Not connected"))
+                                       : pads.size() == 1 ? std::string(Tr("Connected"))
+                                                          : TrFormat("Connected (%d controllers)", int(pads.size()));
             ui.Info("Status", status.c_str());
             GamepadSettingsRows(ui);
             ui.EndRows();
         }
         if (ui.Section("Gamepad controls", true)) {
-            const std::string help = std::string("With ") + jpt_pad_family_name(family) + " buttons. " + kGuideHelp;
+            const std::string help = TrFormat("With %s buttons.", jpt_pad_family_name(family)) + " " + Tr(kGuideHelp);
             ui.Help(help.c_str());
             GuideRows(ui, 1, family, pad);
-            const std::string menus = "D-pad or left stick, " + ControlName(JPT_PAD_SOUTH) + " select, " +
-                                      ControlName(JPT_PAD_EAST) + " back, right stick pointer";
+            const std::string menus = TrFormat("D-pad or left stick, %s select, %s back, right stick pointer",
+                                               ControlName(JPT_PAD_SOUTH).c_str(), ControlName(JPT_PAD_EAST).c_str());
             ui.Info("Menus", menus.c_str());
             ui.EndRows();
         }
@@ -803,7 +798,7 @@ private:
         jpt_guide_row_t rows[JPT_GUIDE_MAX_ROWS];
         const int count = jpt_controls_guide(&context, rows, JPT_GUIDE_MAX_ROWS);
         for (int i = 0; i < count; ++i) {
-            ui.Info(rows[i].action, rows[i].binding);
+            ui.Info(rows[i].action, TrMessage(rows[i].binding).c_str());
         }
     }
 
@@ -844,11 +839,11 @@ private:
     std::string ControlName(int control) const {
         const int style = GlyphStyle();
         if (style != JPT_GLYPHS_AUTOMATIC) {
-            return jpt_pad_control_name(jpt_glyph_family(static_cast<jpt_glyph_style_t>(style), 1, JPT_FAMILY_XBOX),
-                                        control);
+            return Tr(jpt_pad_control_name(jpt_glyph_family(static_cast<jpt_glyph_style_t>(style), 1, JPT_FAMILY_XBOX),
+                                           control));
         }
-        const std::string xbox = jpt_pad_control_name(JPT_FAMILY_XBOX, control);
-        const std::string playstation = jpt_pad_control_name(JPT_FAMILY_PLAYSTATION, control);
+        const std::string xbox = Tr(jpt_pad_control_name(JPT_FAMILY_XBOX, control));
+        const std::string playstation = Tr(jpt_pad_control_name(JPT_FAMILY_PLAYSTATION, control));
         return xbox == playstation ? xbox : xbox + " / " + playstation;
     }
 
@@ -909,6 +904,18 @@ private:
             launcher_->SetStatus("Settings reset to defaults. Save or press Play to keep them.", 6.0);
             Log("settings reset to defaults (pending)");
         }
+        ui.Heading("Translation credits");
+        for (const jpt_l10n_credit_t& credit : jpt_l10n_credits) {
+            std::string by = std::string(credit.author) + " (" + Tr(credit.source) + ")";
+            if (credit.converter) {
+                by += "; " + TrFormat("GameStrings conversion by %s", credit.converter);
+            }
+            ui.Info((std::string(Tr(jpt_l10n_language(credit.language)->name)) + " (" + Tr(credit.content) + ")").c_str(),
+                    by.c_str());
+        }
+        ui.Info("Source preservation", JPT_L10N_PRESERVATION);
+        ui.Info("PC port completion", (std::string(JPT_L10N_PORT_COMPLETION) + ": " + Tr(JPT_L10N_PORT_CONTENT)).c_str());
+        ui.EndRows();
         ui.Heading("Diagnostics");
         if (ui.ButtonRow("Logs folder", "Open the folder containing session logs", "Open logs folder")) {
             OpenLogsFolder();
@@ -961,8 +968,7 @@ private:
     GpuInfo gpu_;
     PlayGate play_;
     double play_started_ = 0.0;
-    int gore_ = 1;
-    bool invert_ = false, gore_dirty_ = false, invert_dirty_ = false;
+    bool invert_ = false, invert_dirty_ = false;
     jpt_key_binding_t keymap_[JPT_KEYMAP_COUNT] = {};
 };
 

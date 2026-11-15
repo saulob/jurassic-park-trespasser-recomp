@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "l10n.h"
+
 #define GUEST_EXE_NAME "trespass.exe"
 
 static char s_guest_exe[MAX_PATH];
@@ -81,7 +83,7 @@ void shim_MessageBoxA(void) {
     host_log("msgbox", "\"%s\": %s (type 0x%X, from sub_%08X)", text_or_placeholder(caption),
              text_or_placeholder(text), type, g_cur_func);
     mach_leave();
-    answer = MessageBoxA(owner, text, caption, type);
+    answer = l10n_active() ? l10n_message_box(owner, text, caption, type) : MessageBoxA(owner, text, caption, type);
     mach_enter();
     host_log("msgbox", "answered %d", answer);
     g_eax = (uint32_t)answer;

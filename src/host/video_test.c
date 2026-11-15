@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "jpt_tr.h"
 #include "video_test_panel.h"
 #include "video_test_state.h"
 
@@ -52,7 +53,7 @@ static void read_rows(void) {
             fclose(f);
         }
         if (!vl_smk_parse(header, (uint32_t)got, &info)) {
-            strcpy(r->size, "not found");
+            snprintf(r->size, sizeof r->size, "%s", jpt_tr("not found"));
             r->length[0] = 0;
             continue;
         }

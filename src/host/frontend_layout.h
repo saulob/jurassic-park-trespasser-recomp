@@ -102,6 +102,9 @@ enum {
     FE_TEXT_FIT = 256    /* one line inset from its box's sides, made smaller when it would not fit */
 };
 
+/* A translated label set over a picture whose own lettering was taken out (frontend_plaque.h). */
+enum { FE_LABEL_NONE, FE_LABEL_STENCIL, FE_LABEL_ENGRAVED };
+
 /* A button prompt: a gamepad control in a family's glyphs, or a key. */
 enum { FE_PROMPT_NONE, FE_PROMPT_PAD, FE_PROMPT_KEY };
 typedef struct {
@@ -133,6 +136,9 @@ typedef struct {
     uint8_t image_keyed;
     uint32_t image_hash;
     const uint16_t* normal_image;           /* hover picture: the normal one, for FA_HOVER_LIFT */
+    uint8_t label;                          /* FE_LABEL_*: text is the label, color its ink */
+    fe_rect_t label_box;                    /* canvas: the picture's own lettering */
+    fe_rect_t label_room;                   /* canvas: where the label may go */
     int normal_pitch;
     float image_zoom;                       /* 0: native size */
     uint32_t shadow_color;                 /* 0xRRGGBB, the text's offset copy (shadow_offset canvas units; 0: none) */
@@ -162,6 +168,8 @@ typedef struct {
     char text[FE_TEXT_BYTES];
     int cursor_x, cursor_y; /* canvas */
     const uint16_t* backdrop; /* the main screen's 640x480 art, RGB565 */
+    int footer_text;          /* the backdrop's legal lines when they were taken out of it ('\n' between lines), -1 */
+    fe_rect_t footer_box;     /* canvas */
     int backdrop_pitch;
     uint32_t backdrop_hash;
     int legend_count;         /* prompts in the screen's lower right corner */

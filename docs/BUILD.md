@@ -167,6 +167,10 @@ $env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86
 .\build\cmake\msvc-x86\x87_tests.exe    # the patched runtime: x87 ring, inline rounding against the C library, per-site call cache
 ninja -C build\cmake\msvc-x86 user_data_tests
 .\build\cmake\msvc-x86\user_data_tests.exe  # the portable user_data root, --user_data_root, an unwritable root (an error, no fallback), migration of the old user folder
+ninja -C build\cmake\msvc-x86 l10n_tests
+.\build\cmake\msvc-x86\l10n_tests.exe         # the language choice, `language` and the migration of the old settings, GameStrings, code pages 1252/1251, captions, DDF labels, the overlay's word wrap, and every language's coverage: GameStrings, captions and interface keys complete, placeholders and tokens kept, no English left, code page and Arial glyphs (--inventory lists the game's menu files)
+ninja -C build\cmake\msvc-x86 translation_pack
+.\build\cmake\msvc-x86\translation_pack.exe 'D:\downloads\translations' assets\translations  # developer tool: makes assets\translations from the extracted TresCom downloads (never run by the build)
 .\tools\test-release-check.ps1              # tools\verify-release.ps1 refuses user data, downloaded archives and game files in a release
 ```
 

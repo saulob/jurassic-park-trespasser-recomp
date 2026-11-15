@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "jpt_gamepad.h"
+#include "jpt_l10n.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,6 +28,12 @@ extern "C" {
 #define JPT_KEY_AMBIENT_OCCLUSION "ambient_occlusion"
 #define JPT_KEY_SHOW_FPS "show_fps"
 #define JPT_KEY_SKIP_INTRO "skip_intro"
+#define JPT_KEY_SHOW_RESOLUTION_TITLE "show_resolution_title"
+/* A language code (jpt_l10n_languages): the game's text and subtitles where it has them, English elsewhere. */
+#define JPT_KEY_LANGUAGE "language"
+/* The two settings it replaced: read to choose the language, then removed. */
+#define JPT_KEY_LEGACY_GAME_TEXT_LANGUAGE "game_text_language"
+#define JPT_KEY_LEGACY_SUBTITLE_LANGUAGE "subtitle_language"
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
 #define JPT_SETTINGS_VERSION "3"
@@ -53,7 +60,9 @@ typedef struct {
     int vsync;
     int ambient_occlusion;    /* JPT_AO_* */
     int show_fps;
+    int show_resolution_title;
     int skip_intro;
+    char language[JPT_L10N_CODE_MAX];
     jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
 
@@ -62,14 +71,15 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (14 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (16 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);
 /* 1 when the value is valid for the key and was applied; otherwise the config keeps what it had. */
 int jpt_config_apply(jpt_config_t* c, const char* key, const char* value);
 int jpt_config_valid(const char* key, const char* value);
-/* Defaults, then every valid line of the file. 1 when the file was read. */
+/* Defaults, then every valid line of the file. 1 when the file was read. A file with the two earlier language
+ * settings and no language gets the language they gave. */
 int jpt_config_load(const char* path, jpt_config_t* c);
 const char* jpt_default_value(const char* key);
 
@@ -91,6 +101,8 @@ enum {
  * choices cannot be told apart from its defaults. Version 2: texture_filter original, msaa 0/1 and vsync off were
  * that launcher's defaults, so those values are removed and the current defaults apply; other values are kept. */
 int jpt_config_migrate(const char* path);
+/* Writes the language the two earlier language settings gave and removes them; 1 when the file was changed. */
+int jpt_config_migrate_language(const char* path);
 
 int jpt_parse_bool(const char* text, int* out);
 

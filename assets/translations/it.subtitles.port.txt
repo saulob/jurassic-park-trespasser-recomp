@@ -1,0 +1,153 @@
+# Trespasser Recompiled subtitles 1
+S	effects	228c710e
+C	4	Uno
+S	effects	bb8520b4
+C	4	Uno
+S	effects	cc821022
+C	4	Uno
+S	effects	09a122cd
+C	4	Due
+S	effects	90a87377
+C	4	Due
+S	effects	10ba138c
+C	4	Tre
+S	effects	89b34236
+C	4	Tre
+S	effects	feb472a0
+C	4	Tre
+S	effects	5ffb854b
+C	4	Quattro
+S	effects	c6f2d4f1
+C	4	Quattro
+S	effects	46e0b40a
+C	4	Cinque
+S	effects	dfe9e5b0
+C	4	Cinque
+S	effects	6dcde7c9
+C	4	Sei
+S	effects	83c386e5
+C	4	Sei
+S	effects	74d6d688
+C	4	Sette
+S	effects	eddf8732
+C	4	Sette
+S	effects	9ad8b7a4
+C	4	Sette
+S	effects	f34eca47
+C	4	Otto
+S	effects	6a479bfd
+C	4	Otto
+S	effects	735caabc
+C	4	Nove
+S	effects	045b9a2a
+C	4	Nove
+S	effects	ac8d7320
+C	4	Dieci
+S	effects	3584229a
+C	4	Dieci
+S	effects	9ebb11a2
+C	4	Dodici
+S	effects	07b24018
+C	4	Dodici
+S	effects	87a020e3
+C	4	Tredici
+S	effects	1ea97159
+C	4	Tredici
+S	effects	69ae41cf
+C	4	Tredici
+S	effects	d1fa8765
+C	4	Quindici
+S	effects	48f3d6df
+C	4	Quindici
+S	effects	3ff4e649
+C	4	Quindici
+S	effects	e3cce5e7
+C	5	Diciassette
+S	effects	7ac5b45d
+C	5	Diciassette
+S	effects	0dc284cb
+C	5	Diciassette
+S	effects	37c29cc3
+C	4	Venti
+S	effects	40c5ac55
+C	4	Venti
+S	effects	af09a74e
+C	4	Trenta
+S	effects	3600f6f4
+C	4	Trenta
+S	effects	4107c662
+C	4	Trenta
+S	effects	23db81ef
+C	6	Quasi finiti.
+S	effects	bad2d055
+C	6	Quasi esaurito.
+S	effects	cdd5e0c3
+C	8	Quasi vuoto.
+S	effects	53b17560
+C	8	Circa mezzo caricatore.
+S	effects	24b645f6
+C	6	Ne ho usato metà.
+S	effects	bdbf144c
+C	8	Mi sembra a metà.
+S	effects	cab824da
+C	6	Caricatore pieno.
+S	effects	5a07394b
+C	8	Non è mai stata usata.
+S	effects	2d0009dd
+C	5	Sembra pieno
+S	effects	29b4af6b
+C	4	Vuoto
+S	effects	b0bdfed1
+C	5	Finito
+S	effects	c7bace47
+C	5	Un colpo
+S	effects	59de5be4
+C	6	Resta un colpo
+S	effects	2ed96b72
+C	6	Due colpi
+S	effects	b7d03ac8
+C	7	Ne restano solo due
+S	effects	c0d70a5e
+C	7	Ne restano tre
+S	effects	506817cf
+C	6	Tre colpi
+S	effects	276f2759
+C	7	Quattro proiettili
+S	effects	2e92d35e
+C	7	Quattro colpi
+S	effects	5995e3c8
+C	8	Restano cinque colpi
+S	effects	c09cb272
+C	6	Cinque colpi
+S	effects	5ef827d1
+C	5	Sembrano sette.
+S	effects	c7f1766b
+C	5	Sette colpi
+S	effects	20495b6c
+C	5	Otto colpi
+S	effects	574e6bfa
+C	5	Ne restano otto.
+S	effects	05bf809d
+C	6	Sono nove.
+S	effects	72b8b00b
+C	5	Nove colpi
+S	effects	ebb1e1b1
+C	6	Una decina
+S	effects	9cb6d127
+C	6	Una decina
+S	effects	02d24484
+C	6	Sembrano dodici.
+S	effects	75d57412
+C	6	Circa una dozzina.
+S	effects	ecdc25a8
+C	6	Quindici, più o meno.
+S	effects	9bdb153e
+C	5	Circa quindici
+S	effects	0b6408af
+C	5	Circa venti
+S	effects	7c633839
+C	6	Sembrano venti.
+S	effects	1ca4b1dc
+C	5	Circa trenta
+S	effects	6ba3814a
+C	7	Circa trenta colpi.

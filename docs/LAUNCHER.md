@@ -28,7 +28,7 @@ online page.
 | `launcher/iso9660.cpp` | the disc image reader |
 | `launcher/game_files.cpp`, `game_manifest_uk_116.inc` | supported builds, the readiness check, SHA-256 (CNG) |
 | `launcher/game_install.cpp` | Install game: identity, plan, staging, check, activation, rollback |
-| `launcher/settings.cpp` | the pending view of `trespasser.ini`; the game's registry values Gore and InvertMouse |
+| `launcher/settings.cpp` | the pending view of `trespasser.ini`; the game's registry value InvertMouse |
 | `launcher/user_data.cpp` | the portable `user_data` root, `PortFolder()`, the migration of the old `user` folder ([user-data](user-data.md)) |
 | `launcher/system_info.cpp` | the graphics card and its real MSAA levels |
 | `assets/launcher/` | header art, sponsor heart, page icons with `SOURCES.md` (README.md there) |
@@ -78,10 +78,10 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Render resolution, Render size (what will really be created), Anti-aliasing, Ambient occlusion, Texture filtering, VSync, Graphics card |
-| Gameplay | Gore (the game's 0-2), Invert mouse, Frame rate in title |
+| Gameplay | Language, Language coverage, Skip Intro, Frame rate in title, Render resolution in title, Invert mouse |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys ([CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
-| About | Sponsor card, description and credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
+| About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 
 ## Play
 
@@ -148,7 +148,9 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `off` |
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
+| `show_resolution_title` | 1, 0 | 0 |
 | `skip_intro` | 1, 0 | 0 |
+| `language` | `en`, `pt-BR`, `fr`, `de`, `es`, `ru`, `it` | `en` |
 | `launcher_x`, `_y`, `_width`, `_height`, `_maximized`, `_fullscreen` | the launcher window | |
 | `settings_version` | 3 | written with every change |
 
@@ -163,8 +165,52 @@ off (log 023). Once, at the next start, exactly those values are removed (`textu
 three keys, is kept, and the log says `held the earlier launcher's graphics defaults`. Files written since carry
 version 3 and are never reset, so choosing Original, Off or Off again sticks.
 
-`recomp-registry.txt` stays the game's own registry; the Gameplay page edits its `Gore` and `InvertMouse` values,
-which the game's options menu also changes. The run log's `[settings]` lines show what a run uses.
+`recomp-registry.txt` stays the game's own registry; the Gameplay page edits its `InvertMouse` value, which the game's
+options menu also changes. The launcher does not touch the game's other options. The run log's `[settings]` lines show what a run uses.
+
+## Language
+
+**Gameplay > Language** is the one language setting (`language`). Languages are built into the port: there is nothing to
+download, install or choose a folder for. Every language has the game's text, the words on its menu pictures, subtitles
+and the port's own panels; voices, effects, music and videos always stay the English game files.
+
+| `language` | Game text, menus and subtitles | Launcher |
+|---|---|---|
+| `en` | English | English |
+| `pt-BR` | Brazilian Portuguese | Brazilian Portuguese |
+| `fr` | French | English |
+| `de` | German | English |
+| `es` | Spanish | English |
+| `ru` | Russian | English |
+| `it` | Italian | English |
+
+The combo lists English, Brazilian Portuguese, French, German, Spanish, Russian and Italian; with the launcher in
+Brazilian Portuguese the same labels read Inglês, Português Brasil, Francês, Alemão, Espanhol, Russo and Italiano.
+
+Under the combo, **Language coverage** shows what the choice gives ("Game text, menus and subtitles: French · Audio:
+English"; in the Brazilian Portuguese launcher "Texto do jogo, menus e legendas: Francês · Áudio: Inglês"). The game's
+own Show Subtitles option (Options > Audio) still turns subtitles on and off.
+
+**The launcher in Português Brasil.** Only Português Brasil translates the launcher; every other language leaves it in
+English. The launcher follows the setting every frame, so choosing Português Brasil changes the whole launcher at once
+(no Save, no restart) and choosing another language brings English back. The texts are the rows of
+`launcher/localization/pt_br_ui_text.cpp` (English text to Português Brasil, the same scheme as the other ports); a text
+without a row stays English, and messages built at run time are translated by known phrase. Logs, diagnostics and the
+settings file stay English. The test `launcher_tests` fails when a text the pages show has no row.
+
+**Settings of earlier builds.** `game_text_language` and `subtitle_language` became `language`: at the next start a file
+with only the old keys gets the language they gave (a game text language wins, else the subtitle language), the old keys
+are removed, and a `language` already there is kept. Files with the old keys still load.
+
+The translated text lives in `assets/translations` (UTF-8) and is compiled into the executable:
+`<language>.strings.txt` and `<language>.subtitles.txt` are the releases' text, made by `tools/translation_pack.cpp`
+from the extracted TresCom downloads (not part of the build); `<language>.strings.port.txt` and
+`<language>.subtitles.port.txt` complete them and are read only for what a release lacks (and for the key names the
+Russian strings left in English); `<language>.interface.txt` holds the words of the menu pictures and the port's own
+text, with `en.interface.txt` as the list of keys every language must have. GameStrings keep their IDs, string 10 (the
+saves' file name) is never translated, and captions keep their own timings (0.2 s units; the port's captions use those of
+the English sample). The only files written at run time are a translated copy of each menu `.ddf` the game opens, in
+`user_data\cache\menu-text\<language>`, rebuilt at every start; deleting them changes nothing.
 
 ## Resolutions
 
@@ -289,9 +335,13 @@ is not part of this work.
   (Ultra is its adaptive level). It needs feature level 11.0; without it, or if the effect cannot be created, it stays
   Off and the log says why. F5's Debug Menu changes it while playing and saves the choice here.
 - **VSync**: On keeps the game's own Flip request (waits for the refresh); Off never waits.
-- **Frame rate in title** (Gameplay, as in the other ports; key `show_fps`): the title shows the renderer, FPS and
-  the selected resolution (the render size with D3D11, the gameplay mode with Software or Original), which menus and
-  videos do not change; Off shows only the name.
+- **Frame rate in title** and **Render resolution in title** (Gameplay, as in the other ports; keys `show_fps`, On by
+  default, and `show_resolution_title`, Off by default): the title is always `Jurassic Park: Trespasser Recompiled | x86 |
+  D3D11` (the renderer's name), then ` | 2560x1920` and ` | FPS: 60.0` when they are on and known, in that order, never
+  with a separator left over. The resolution is the render size with D3D11 (the Render resolution box), the gameplay
+  mode with Software or Original, not the window or the desktop; menus and videos do not change it, and nothing is shown
+  until it is known. FPS appears after the first measured rate. There is no in-game frame counter, so the Gameplay
+  page has no Frame counter option.
 - **Skip Intro** (Gameplay, as in Dragon's Crown Pro PC; key `skip_intro`, Off by default): the opening video before
   the main menu (`tpassintro.smk`) and the one after New Game (`newgame.smk`) are not shown. When the game is about to
   play one of them, its own `NoVideo` value reads 1 for that call only, so `CVideoWnd::Play` takes the game's own

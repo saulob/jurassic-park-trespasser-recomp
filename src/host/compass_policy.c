@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "jpt_tr.h"
+
 #define DEG_PER_RAD 57.29577951308232
 #define EDGE_FADE_FROM 0.7f
 #define NEAR_M 0.25f
@@ -36,16 +38,17 @@ float cp_distance_m(const float from[3], const float to[3]) {
 }
 
 const char* cp_direction_name(int deg) {
-    static const char* const names[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+    static const char* const names[8] = { "Compass::N", "Compass::NE", "Compass::E", "Compass::SE",
+                                          "Compass::S", "Compass::SW", "Compass::W", "Compass::NW" };
     deg = ((deg % 360) + 360) % 360;
-    return deg % 45 ? NULL : names[deg / 45];
+    return deg % 45 ? NULL : jpt_tr(names[deg / 45]);
 }
 
 int cp_format_distance(float metres, char* out, size_t cap) {
     int n;
     if (!(metres > 0.0f)) metres = 0.0f;
-    n = metres < 999.5f ? snprintf(out, cap, "%d m", (int)(metres + 0.5f))
-                        : snprintf(out, cap, "%.1f km", metres / 1000.0f);
+    n = metres < 999.5f ? snprintf(out, cap, jpt_tr("%d m"), (int)(metres + 0.5f))
+                        : snprintf(out, cap, jpt_tr("%.1f km"), metres / 1000.0f);
     return n > 0 && (size_t)n < cap;
 }
 
@@ -140,6 +143,7 @@ int cp_ticks(float heading, cp_tick_t* out, int max) {
         out[n].relative = relative;
         out[n].name = cp_direction_name(deg);
         out[n].cardinal = deg % 90 == 0;
+        out[n].north = deg % 360 == 0;
         n++;
     }
     return n;

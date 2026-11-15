@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "frontend_hd.h"
+#include "l10n.h"
 
 #define SUCCESS_LINE_LIMIT 300
 #define FAILURE_LINE_LIMIT 1000
@@ -23,7 +24,7 @@ typedef int (__cdecl* crt_open_t)(const char*, int, int);
 
 static crt_fopen_t s_crt_fopen;
 static crt_open_t s_crt_open;
-static LONG s_success_lines, s_failure_lines, s_resolved_misses, s_repeated_successes;
+static LONG s_success_lines, s_failure_lines, s_resolved_misses, s_repeated_successes, s_expected_misses;
 static char s_game_dir[MAX_PATH];
 static char s_user_dir[MAX_PATH];
 static char s_last_success[2 * MAX_PATH + 32];
@@ -88,6 +89,11 @@ static void report(const char* api, const char* path, int ok, DWORD error) {
     LONG* lines = ok ? &s_success_lines : &s_failure_lines;
     LONG limit = ok ? SUCCESS_LINE_LIMIT : FAILURE_LINE_LIMIT;
     LONG n;
+    if (!ok && host_expected_miss(api, path, error)) {
+        InterlockedIncrement(&s_expected_misses);
+        SetLastError(error);
+        return;
+    }
     if (ok ? repeats_last_success(api, path) : answered_by_data_folder(path, error)) {
         InterlockedIncrement(ok ? &s_repeated_successes : &s_resolved_misses);
         SetLastError(error);
@@ -105,6 +111,9 @@ static void report(const char* api, const char* path, int ok, DWORD error) {
 }
 
 void io_trace_summary(void) {
+    if (s_expected_misses)
+        host_log("file", "%ld expected misses not listed (no *.swp swap file yet)",
+                 s_expected_misses);
     if (s_resolved_misses || s_repeated_successes)
         host_log("file", "not listed above: %ld lookups under the game or user folder answered by the data subfolder, %ld "
                  "repeats of the previous successful open", s_resolved_misses, s_repeated_successes);
@@ -147,7 +156,10 @@ void shim_CloseHandle(void) {
 
 void shim_CreateFileA(void) {
     const char* path = (const char*)GUEST_PTR(0);
-    HANDLE h = CreateFileA(path, GUEST_ARG(1), GUEST_ARG(2), (LPSECURITY_ATTRIBUTES)GUEST_PTR(3),
+    char translated[MAX_PATH];
+    HANDLE h;
+    if (path && GUEST_ARG(4) == OPEN_EXISTING && l10n_menu_file(path, translated, sizeof translated)) path = translated;
+    h = CreateFileA(path, GUEST_ARG(1), GUEST_ARG(2), (LPSECURITY_ATTRIBUTES)GUEST_PTR(3),
                            GUEST_ARG(4), GUEST_ARG(5), (HANDLE)GUEST_PTR(6));
     DWORD error = GetLastError();
     if (h != INVALID_HANDLE_VALUE && is_swap_file(path)) note_swap_file(path, h);
@@ -183,7 +195,14 @@ void shim_LZOpenFileA(void) {
 
 void shim_LoadLibraryA(void) {
     const char* name = (const char*)GUEST_PTR(0);
-    HMODULE module = LoadLibraryA(name);
+    HMODULE module;
+    if (host_unavailable_library(name)) {
+        SetLastError(ERROR_MOD_NOT_FOUND);
+        g_eax = 0;
+        GUEST_RETURN_STDCALL(1);
+        return;
+    }
+    module = LoadLibraryA(name);
     report("LoadLibraryA", name, module != NULL, GetLastError());
     g_eax = (uint32_t)(uintptr_t)module;
     GUEST_RETURN_STDCALL(1);

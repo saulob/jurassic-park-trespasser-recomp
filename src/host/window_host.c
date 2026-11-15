@@ -18,6 +18,7 @@
 #include "overlay_policy.h"
 #include "physics_watch.h"
 #include "tutorial_prompts.h"
+#include "window_title.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -123,7 +124,7 @@ static struct {
     int fps_ready;
     char title[160];
     struct {
-        int borderless, monitor, window_w, window_h, stretch, show_fps;
+        int borderless, monitor, window_w, window_h, stretch, show_fps, show_resolution;
         char settings_path[MAX_PATH];
     } cfg;
 } s;
@@ -159,22 +160,23 @@ void window_host_init(void) {
 }
 
 void window_host_configure(int borderless, int monitor, int window_w, int window_h, int stretch, int show_fps,
-                           const char* settings_path) {
+                           int show_resolution, const char* settings_path) {
     s.cfg.borderless = borderless;
     s.cfg.monitor = monitor;
     s.cfg.window_w = window_w;
     s.cfg.window_h = window_h;
     s.cfg.stretch = stretch;
     s.cfg.show_fps = show_fps;
+    s.cfg.show_resolution = show_resolution;
     strncpy(s.cfg.settings_path, settings_path ? settings_path : "", sizeof s.cfg.settings_path - 1);
     if (window_w > 0)
-        host_log("window", "display: %s, monitor %d, window %dx%d, presentation %s, FPS in title %s",
+        host_log("window", "display: %s, monitor %d, window %dx%d, presentation %s, FPS in title %s, resolution in title %s",
                  borderless ? "borderless full screen" : "windowed", monitor, window_w, window_h,
-                 stretch ? "stretch" : "letterbox", show_fps ? "on" : "off");
+                 stretch ? "stretch" : "letterbox", show_fps ? "on" : "off", show_resolution ? "on" : "off");
     else
-        host_log("window", "display: %s, monitor %d, window size auto, presentation %s, FPS in title %s",
+        host_log("window", "display: %s, monitor %d, window size auto, presentation %s, FPS in title %s, resolution in title %s",
                  borderless ? "borderless full screen" : "windowed", monitor, stretch ? "stretch" : "letterbox",
-                 show_fps ? "on" : "off");
+                 show_fps ? "on" : "off", show_resolution ? "on" : "off");
 }
 
 int window_host_monitor_size(int monitor, int* width, int* height) {
@@ -514,20 +516,18 @@ static int title_size(int* width, int* height) {
 }
 
 static void refresh_title(void) {
-    char text[sizeof s.title];
-    char fps[24];
-    int width, height;
-    if (s.fps_ready) _snprintf(fps, sizeof fps - 1, "%.1f", s.fps.fps);
-    else strcpy(fps, "0");
-    fps[sizeof fps - 1] = 0;
-    if (!s.cfg.show_fps)
-        strcpy(text, PRODUCT_TITLE);
-    else if (title_size(&width, &height))
-        _snprintf(text, sizeof text - 1, PRODUCT_TITLE " | " HOST_ARCH " | %s | FPS: %s | %dx%d", renderer_text(), fps,
-                  width, height);
-    else
-        _snprintf(text, sizeof text - 1, PRODUCT_TITLE " | " HOST_ARCH " | %s | FPS: %s", renderer_text(), fps);
-    text[sizeof text - 1] = 0;
+    char text[sizeof s.title], base[sizeof s.title];
+    title_content_t content;
+    memset(&content, 0, sizeof content);
+    _snprintf(base, sizeof base - 1, PRODUCT_TITLE " | " HOST_ARCH " | %s", renderer_text());
+    base[sizeof base - 1] = 0;
+    content.base = base;
+    content.show_resolution = s.cfg.show_resolution;
+    title_size(&content.width, &content.height);
+    content.show_fps = s.cfg.show_fps;
+    content.fps_ready = s.fps_ready;
+    content.fps = s.fps.fps;
+    title_compose(&content, text, sizeof text);
     if (!s.game || !strcmp(text, s.title)) return;
     strcpy(s.title, text);
     DefWindowProcA(s.game, WM_SETTEXT, 0, (LPARAM)text);

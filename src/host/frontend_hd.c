@@ -14,7 +14,10 @@
 #include "frontend_art.h"
 #include "frontend_assets.h"
 #include "frontend_hd.h"
+#include "frontend_plaque.h"
 #include "gamepad.h"
+#include "jpt_tr.h"
+#include "l10n.h"
 #include "save_preview.h"
 
 #define MAIN_WINDOW_OBJECT 0x0066E010u
@@ -118,6 +121,15 @@
 #define TEXT_CAP 512
 #define IDLE_FRAMES 120
 #define LOG_LIMIT 8
+#define TITLE_PICTURE_W 320
+#define TITLE_PICTURE_H 200
+#define TITLE_QUIT_ZONE 108, 14, 216, 40
+#define TITLE_QUIT_ROOM 96, 13, 234, 41
+#define TITLE_SOUND_ZONE 26, 22, 130, 43
+#define TITLE_SOUND_ROOM 24, 20, 132, 44
+#define FOOTER_LEFT 66
+#define FOOTER_RIGHT 566
+#define FOOTER_AREA FOOTER_LEFT, 452, FOOTER_RIGHT, 480
 
 typedef struct {
     uint32_t vtable;
@@ -278,6 +290,213 @@ static uint32_t button_slot(uint32_t flags, uint32_t state) {
     return 0;
 }
 
+/* ---- translated labels: the English lettering of the game's pictures replaced by the language's */
+
+typedef struct {
+    uint8_t window;
+    int32_t id;
+    int w, h; /* the retail picture's size; 0 for any */
+    const char* key;
+} picture_label_t;
+
+/* Message boxes share their IDs (yes/no, ok): the retail picture's size tells the buttons apart. */
+static const picture_label_t k_button_labels[] = {
+    { FE_WND_MAIN, 1000, 0, 0, "Menu::NEW GAME" },     { FE_WND_MAIN, 1001, 0, 0, "Menu::LOAD" },
+    { FE_WND_MAIN, 1002, 0, 0, "Menu::OPTIONS" },      { FE_WND_MAIN, 1003, 0, 0, "Menu::EXIT" },
+    { FE_WND_GAME_MENU, 1000, 0, 0, "Menu::QUIT" },    { FE_WND_GAME_MENU, 1001, 0, 0, "Menu::RESUME" },
+    { FE_WND_GAME_MENU, 1002, 0, 0, "Menu::RESTART LEVEL" }, { FE_WND_GAME_MENU, 1003, 0, 0, "Menu::SAVE" },
+    { FE_WND_GAME_MENU, 1004, 0, 0, "Menu::LOAD" },    { FE_WND_GAME_MENU, 1005, 0, 0, "Menu::OPTIONS" },
+    { FE_WND_QUIT, 1000, 0, 0, "Menu::CANCEL" },       { FE_WND_QUIT, 1001, 0, 0, "Menu::DESKTOP" },
+    { FE_WND_QUIT, 1002, 0, 0, "Menu::MAIN MENU" },    { FE_WND_OPTIONS, 1000, 0, 0, "Menu::CONTROLS" },
+    { FE_WND_OPTIONS, 1001, 0, 0, "Menu::VIDEO" },     { FE_WND_OPTIONS, 1002, 0, 0, "Menu::AUDIO" },
+    { FE_WND_OPTIONS, 1003, 0, 0, "Menu::CREDITS" },   { FE_WND_OPTIONS, 1004, 0, 0, "Menu::CLOSE" },
+    { FE_WND_AUDIO, 1000, 0, 0, "Menu::CANCEL" },      { FE_WND_AUDIO, 1001, 0, 0, "Menu::OK" },
+    { FE_WND_CONTROLS, 1000, 0, 0, "Menu::CANCEL" },   { FE_WND_CONTROLS, 1001, 0, 0, "Menu::OK" },
+    { FE_WND_CONTROLS, 1002, 0, 0, "Menu::DEFAULTS" }, { FE_WND_LOAD, 1000, 0, 0, "Menu::CANCEL" },
+    { FE_WND_LOAD, 1001, 0, 0, "Menu::OK" },           { FE_WND_LOAD, 1004, 0, 0, "Menu::DELETE" },
+    { FE_WND_SAVE, 1000, 0, 0, "Menu::CANCEL" },       { FE_WND_SAVE, 1001, 0, 0, "Menu::OK" },
+    { FE_WND_SAVE, 1005, 0, 0, "Menu::DELETE" },       { FE_WND_DIRECT_LOAD, 1000, 0, 0, "Menu::CANCEL" },
+    { FE_WND_DIRECT_LOAD, 1001, 0, 0, "Menu::OK" },    { FE_WND_MESSAGE, -1, 80, 42, "Menu::YES" },
+    { FE_WND_MESSAGE, -1, 65, 42, "Menu::NO" },        { FE_WND_MESSAGE, -1, 62, 42, "Menu::OK" },
+    { FE_WND_MESSAGE, -1, 118, 42, "Menu::CANCEL" },
+};
+
+/* The engraved titles of window backgrounds (retail 320x200 pictures): where their plate's letters are. */
+typedef struct {
+    uint8_t window;
+    fe_rect_t zone, room;
+    const char* key;
+} title_label_t;
+
+static const title_label_t k_titles[] = {
+    { FE_WND_QUIT, { TITLE_QUIT_ZONE }, { TITLE_QUIT_ROOM }, "Title::QUIT" },
+    { FE_WND_AUDIO, { TITLE_SOUND_ZONE }, { TITLE_SOUND_ROOM }, "Title::SOUND" },
+};
+
+static const char* button_label(uint8_t window, int32_t id, int w, int h) {
+    for (size_t i = 0; i < sizeof k_button_labels / sizeof k_button_labels[0]; i++) {
+        const picture_label_t* l = &k_button_labels[i];
+        if (l->window == window && (l->id == id || (l->id < 0 && l->w == w && l->h == h))) return l->key;
+    }
+    return NULL;
+}
+
+#define LABEL_CACHE 48
+#define LABEL_STATES 4
+
+typedef struct {
+    const uint16_t* source;
+    uint32_t hash;
+    int failed;
+    fp_plaque_t plaque;
+    uint16_t* states[LABEL_STATES]; /* the clean picture in the tones of each state's own picture */
+    uint32_t state_hash[LABEL_STATES];
+} label_entry_t;
+
+static struct {
+    label_entry_t entries[LABEL_CACHE];
+    int next, made, failed;
+} LB;
+
+static void release_labels(void) {
+    for (int i = 0; i < LABEL_CACHE; i++) {
+        fp_free(&LB.entries[i].plaque);
+        for (int k = 1; k < LABEL_STATES; k++) free(LB.entries[i].states[k]);
+    }
+    memset(&LB, 0, sizeof LB);
+}
+
+static label_entry_t* label_entry(const uint16_t* bits, uint32_t hash) {
+    label_entry_t* e;
+    for (int i = 0; i < LABEL_CACHE; i++)
+        if (LB.entries[i].source == bits && LB.entries[i].hash == hash) return &LB.entries[i];
+    e = &LB.entries[LB.next];
+    LB.next = (LB.next + 1) % LABEL_CACHE;
+    fp_free(&e->plaque);
+    for (int k = 1; k < LABEL_STATES; k++) free(e->states[k]);
+    memset(e, 0, sizeof *e);
+    e->source = bits;
+    e->hash = hash;
+    return e;
+}
+
+static void source_of(fa_source_t* s, const uint16_t* bits, int w, int h, int pitch, int keyed) {
+    memset(s, 0, sizeof *s);
+    s->bits = bits;
+    s->w = w;
+    s->h = h;
+    s->pitch = pitch;
+    s->keyed = keyed;
+    s->key = bits[0];
+}
+
+static void set_label(fe_scene_t* s, fe_widget_t* w, const label_entry_t* e, int slot, const char* key, uint8_t kind) {
+    w->image = e->states[slot];
+    w->image_pitch = e->plaque.w;
+    w->image_hash = e->state_hash[slot];
+    w->normal_image = NULL;
+    w->label = kind;
+    w->text = fe_scene_text(s, jpt_tr_cp(key));
+    w->color = e->plaque.ink;
+    w->label_box = fe_rect_offset(e->plaque.letters, w->rect.left, w->rect.top);
+    w->label_room = fe_rect_offset(e->plaque.room, w->rect.left, w->rect.top);
+}
+
+static void log_label(const char* key, const label_entry_t* e) {
+    if (e->failed) {
+        if (LB.failed++ < LOG_LIMIT)
+            host_log("frontend", "\"%s\": its picture's lettering was not found, the picture is shown as it is", key);
+    } else if (LB.made++ < LOG_LIMIT) {
+        host_log("frontend", "\"%s\": lettering %d,%d-%d,%d taken out, \"%s\" set in its place", key, e->plaque.letters.left,
+                 e->plaque.letters.top, e->plaque.letters.right, e->plaque.letters.bottom, jpt_tr(key));
+    }
+}
+
+/* A button whose picture spells an English word: the word is taken out of every state's picture and the language's
+ * label is drawn over it. The button keeps its own pictures when the lettering cannot be found. */
+static void relabel_button(reader_t* r, uint32_t c, fe_widget_t* w, uint32_t slot) {
+    const uint16_t *normal, *hover, *own;
+    int nw, nh, np, hw, hh, hp, ow, oh, op;
+    const char* key = button_label(r->wc->kind, w->id, w->image_w, w->image_h);
+    label_entry_t* e;
+    fa_source_t a, b;
+    if (!key || !jpt_tr_has(key) || slot >= LABEL_STATES) return;
+    if (!read_image(peek32(c + BUTTON_IMAGES), &normal, &nw, &nh, &np) ||
+        !read_image(peek32(c + BUTTON_IMAGES + 4), &hover, &hw, &hh, &hp) || hw != nw || hh != nh)
+        return;
+    e = label_entry(normal, image_hash(normal, nw, nh, np));
+    if (!e->plaque.clean && !e->failed) {
+        source_of(&a, normal, nw, nh, np, 1);
+        source_of(&b, hover, hw, hh, hp, 1);
+        e->failed = !fp_button(&a, &b, &e->plaque);
+        if (!e->failed) {
+            e->states[0] = e->plaque.clean;
+            e->state_hash[0] = fe_hash(e->hash, "clean", 5);
+        }
+        log_label(key, e);
+    }
+    if (e->failed) return;
+    if (!e->states[slot]) {
+        if (!read_image(peek32(c + BUTTON_IMAGES + 4 * slot), &own, &ow, &oh, &op) || ow != nw || oh != nh) return;
+        e->states[slot] = (uint16_t*)malloc(sizeof(uint16_t) * (size_t)nw * (size_t)nh);
+        source_of(&a, own, ow, oh, op, 1);
+        if (!e->states[slot] || !fp_tone(&e->plaque, &a, e->states[slot])) {
+            free(e->states[slot]);
+            e->states[slot] = NULL;
+            return;
+        }
+        e->state_hash[slot] = fe_hash(e->hash, &slot, sizeof slot);
+    }
+    w->image_key = e->plaque.clean[0];
+    set_label(r->s, w, e, (int)slot, key, FE_LABEL_STENCIL);
+}
+
+/* A window background with an engraved English title. */
+static void relabel_static(reader_t* r, fe_widget_t* w) {
+    label_entry_t* e;
+    fa_source_t a;
+    for (size_t i = 0; i < sizeof k_titles / sizeof k_titles[0]; i++) {
+        const title_label_t* t = &k_titles[i];
+        if (t->window != r->wc->kind || w->image_w != TITLE_PICTURE_W || w->image_h != TITLE_PICTURE_H ||
+            !jpt_tr_has(t->key))
+            continue;
+        e = label_entry(w->image, w->image_hash);
+        if (!e->plaque.clean && !e->failed) {
+            source_of(&a, w->image, w->image_w, w->image_h, w->image_pitch, w->image_keyed);
+            e->failed = !fp_engraved(&a, t->zone, t->room, &e->plaque);
+            if (!e->failed) {
+                e->states[0] = e->plaque.clean;
+                e->state_hash[0] = fe_hash(e->hash, "title", 5);
+            }
+            log_label(t->key, e);
+        }
+        if (!e->failed) set_label(r->s, w, e, 0, t->key, FE_LABEL_ENGRAVED);
+        return;
+    }
+}
+
+/* The main screen's legal lines, taken out of its backdrop and set again in the language's wording. */
+static void relabel_backdrop(fe_scene_t* s) {
+    static const char* const k_footer = "Footer::\xC2\xA9 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & "
+                                        "Amblin.\nThe Lost World: Jurassic Park\xE2\x84\xA2 & \xC2\xA9 1998 UCS & Amblin.  "
+                                        "All Rights Reserved.";
+    label_entry_t* e;
+    fa_source_t a;
+    if (!jpt_tr_has(k_footer)) return;
+    e = label_entry(s->backdrop, s->backdrop_hash);
+    if (!e->plaque.clean && !e->failed) {
+        source_of(&a, s->backdrop, FE_CANVAS_W, FE_CANVAS_H, s->backdrop_pitch, 0);
+        e->failed = !fp_light(&a, fe_rect(FOOTER_AREA), &e->plaque) || e->plaque.lines != 2;
+        log_label("Footer", e);
+    }
+    if (e->failed) return;
+    s->backdrop = e->plaque.clean;
+    s->backdrop_pitch = FE_CANVAS_W;
+    s->backdrop_hash = fe_hash(s->backdrop_hash, "footer", 6);
+    s->footer_text = fe_scene_text(s, jpt_tr_cp(k_footer));
+    s->footer_box = fe_rect(FOOTER_LEFT, e->plaque.letters.top, FOOTER_RIGHT, e->plaque.letters.bottom);
+}
+
 static int add_button(reader_t* r, uint32_t c, uint32_t flags, int32_t id, fe_rect_t rect) {
     uint32_t state = peek32(c + BUTTON_STATE), slot = button_slot(flags, state);
     uint32_t raster = peek32(c + BUTTON_IMAGES + 4 * slot);
@@ -298,6 +517,7 @@ static int add_button(reader_t* r, uint32_t c, uint32_t flags, int32_t id, fe_re
             w->normal_pitch = pitch;
         }
     }
+    if (w->image && w->style == FE_BUTTON_PLAQUE) relabel_button(r, c, w, slot);
     return 1;
 }
 
@@ -341,6 +561,10 @@ static int add_textbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     uint32_t border = peek32(c + TEXT_BORDER);
     fe_widget_t* w;
     if (!guest_read_string(peek32(c + TEXT_STRING), text, sizeof text)) text[0] = 0;
+    {
+        const char* label = l10n_label(text);
+        if (label) snprintf(text, sizeof text, "%s", label);
+    }
     read8(c + TEXT_POINTS, &points);
     read8(c + TEXT_TRANSPARENT, &transparent);
     w = fe_scene_widget(r->s, border ? FE_W_FIELD : FE_W_LABEL, id, rect);
@@ -439,6 +663,7 @@ static int add_static(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     w = fe_scene_widget(r->s, FE_W_IMAGE, id, rect);
     if (!w) return 0;
     if (!set_picture(w, raster, transparent)) w->image = NULL;
+    else if (id == -1) relabel_static(r, w);
     return 1;
 }
 
@@ -723,6 +948,7 @@ static int read_window(reader_t* r, uint32_t window, int top) {
         r->s->backdrop = bits;
         r->s->backdrop_pitch = pitch;
         r->s->backdrop_hash = fe_hash_pixels(bits, bw, bh, pitch, 7);
+        relabel_backdrop(r->s);
     }
     if (top && r->wc->kind != FE_WND_GAME) {
         if (!read_controls(window, controls, &count)) return 0;
@@ -771,9 +997,9 @@ void frontend_hd_prompts(fe_scene_t* s) {
         w->prompt.tilt = (uint8_t)binding.tilt;
     }
     pad.control = JPT_PAD_SOUTH;
-    fe_scene_legend(s, pad, "Select");
+    fe_scene_legend(s, pad, jpt_tr_cp("Select"));
     pad.control = JPT_PAD_EAST;
-    fe_scene_legend(s, pad, "Back");
+    fe_scene_legend(s, pad, jpt_tr_cp("Back"));
 }
 
 int frontend_hd_read_scene(fe_scene_t* s, int screen_w, int screen_h) {
@@ -923,6 +1149,7 @@ static void update_pointer(const fe_scene_t* s) {
 }
 
 static void release_all(void) {
+    release_labels();
     release_level_picture();
     free(F.layer);
     F.layer = NULL;

@@ -12,6 +12,7 @@
 
 #include "cheats.h"
 #include "gamepad.h"
+#include "jpt_tr.h"
 #include "physics_watch.h"
 
 #define WORLD 0x0073F444u
@@ -321,7 +322,7 @@ static const char* changed(dm_action_kind_t kind, int on, int value) {
 }
 
 static const char* run_toggle(int ok, dm_action_kind_t kind, int on) {
-    return ok ? changed(kind, on, 0) : "Not available";
+    return ok ? changed(kind, on, 0) : jpt_tr("Not available");
 }
 
 const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch) {
@@ -332,7 +333,7 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
         return run_toggle(p && write_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, a->on), a->kind, a->on);
     case DM_ACT_AMMO: return run_toggle(write_byte(AMMO_FLAGS, AMMO_SHIFT, a->on), a->kind, a->on);
     case DM_ACT_HEAL:
-        if (!p || !ch_heal(rdf(p + ANIMATE_HP), rdf(p + ANIMATE_HP_MAX), &hp)) return "Anne cannot be healed now";
+        if (!p || !ch_heal(rdf(p + ANIMATE_HP), rdf(p + ANIMATE_HP_MAX), &hp)) return jpt_tr("Anne cannot be healed now");
         wrf(p + ANIMATE_HP, hp);
         return changed(a->kind, 1, 0);
     default: break;

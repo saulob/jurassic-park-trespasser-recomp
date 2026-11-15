@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "jpt_tr.h"
+#include "l10n.h"
 #include "objective_policy.h"
 #include "objectives.h"
 
@@ -82,7 +84,7 @@ static void resolve(const dm_world_t* w, uint32_t scratch) {
     const ob_objective_t* o = &O.table->items[O.current];
     memset(&O.goal, 0, sizeof O.goal);
     O.goal.set = 1;
-    snprintf(O.goal.title, sizeof O.goal.title, "%s", o->title);
+    snprintf(O.goal.title, sizeof O.goal.title, "%s", jpt_tr(o->title));
     aim(w, scratch);
     if (!O.goal.target) return;
     for (int i = 0; i < CP_ROUTE_MAX && o->route[i]; i++) {
@@ -102,8 +104,11 @@ static void forget(void) {
     O.quiet = 1;
 }
 
+/* UTF-8 for the panel: the chosen language's string, else the game's English one. */
 static const char* hint_text(int hint) {
     HINSTANCE game = (HINSTANCE)(uintptr_t)MEM32(GAME_INSTANCE);
+    const char* translated = hint >= 0 ? l10n_text_utf8(OB_HINT_STRING_BASE + (unsigned)hint) : NULL;
+    if (translated) return translated;
     if (hint != O.text_hint) {
         O.text_hint = hint;
         O.text[0] = 0;
@@ -118,7 +123,7 @@ static void fill_list(dm_world_t* w) {
     if (!O.table) return;
     for (int i = 0; i < O.table->count && i < DM_GOALS_MAX; i++) {
         w->goals.item[i].status = ob_status(i, O.current);
-        snprintf(w->goals.item[i].title, DM_LINE_MAX, "%s", O.table->items[i].title);
+        snprintf(w->goals.item[i].title, DM_LINE_MAX, "%s", jpt_tr(O.table->items[i].title));
         w->goals.item[i].hint[0] = 0;
         if (i == O.current && O.table->items[i].hint == O.hint)
             snprintf(w->goals.item[i].hint, DM_LINE_MAX, "%s", hint_text(O.hint));
@@ -157,7 +162,7 @@ const char* objectives_frame(dm_world_t* w, int list, uint32_t scratch) {
     O.hint = (int)hint;
     O.quiet = 0;
     if (list) fill_list(w);
-    return moved ? "Objective updated" : NULL;
+    return moved ? jpt_tr("Objective updated") : NULL;
 }
 
 const cp_goal_t* objectives_goal(void) { return O.goal.set ? &O.goal : NULL; }

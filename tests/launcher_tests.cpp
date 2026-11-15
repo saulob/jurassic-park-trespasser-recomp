@@ -4,22 +4,31 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
+#include <regex>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "game_files.h"
 #include "game_install.h"
 #include "iso9660.h"
+#include "localization/ui_text.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
+#include "jpt_gamepad.h"
+#include "jpt_l10n.h"
+#include "jpt_prompt_text.h"
 #include "jpt_user_data.h"
 #include "options.h"
+#include "user_data.h"
 #include "page_icons.h"
 #include "play_gate.h"
 #include "settings.h"
@@ -682,6 +691,293 @@ static void TestRealDisc() {
                 profile->label);
 }
 
+// ---- Language: one choice in Gameplay, the launcher in English except for Português Brasil
+
+static std::string ReadSource(const char* relative) {
+    std::ifstream in(fs::path(JPT_SOURCE_DIR) / relative, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+static bool HasRow(const char* english) {
+    for (size_t i = 0; i < kPtBrUiTextCount; ++i)
+        if (std::strcmp(kPtBrUiText[i].english, english) == 0) return true;
+    return false;
+}
+
+static std::string Conversions(const char* text) {
+    std::string out;
+    for (const char* p = text; *p; ++p) {
+        if (*p != '%') continue;
+        if (p[1] == '%') ++p;
+        else out += p[1];
+    }
+    return out;
+}
+
+static size_t Spaces(const char* text, bool leading) {
+    const size_t n = std::strlen(text);
+    size_t count = 0;
+    while (count < n && text[leading ? count : n - 1 - count] == ' ') ++count;
+    return count;
+}
+
+static void TestUiTable() {
+    std::map<std::string, int> seen;
+    for (size_t i = 0; i < kPtBrUiTextCount; ++i) {
+        const UiTextRow& row = kPtBrUiText[i];
+        CHECK(row.english[0] && row.text[0]);
+        CHECK(++seen[row.english] == 1);
+        CHECK(Conversions(row.english) == Conversions(row.text));
+        CHECK(Spaces(row.english, true) == Spaces(row.text, true) && Spaces(row.english, false) == Spaces(row.text, false));
+    }
+    for (size_t i = 0; i < kPtBrPhraseCount; ++i) {
+        CHECK(kPtBrPhrases[i].english[0] && kPtBrPhrases[i].text[0]);
+    }
+    CHECK(kPtBrUiTextCount > 200);
+}
+
+static void TestLauncherLanguage(const fs::path& dir) {
+    const char* english_only[] = {"en", "fr", "de", "es", "ru", "it", "xx", ""};
+    SetLauncherLanguage("en");
+    CHECK(!LauncherIsPortuguese() && std::string(Tr("Play")) == "Play" && Tr(std::string("Display")) == "Display");
+    SetLauncherLanguage("pt-BR");
+    CHECK(LauncherIsPortuguese());
+    const std::pair<const char*, const char*> pages[] = {
+        {"Play", "Jogar"},       {"Display", "Tela"},     {"Graphics", "Gráficos"}, {"Gameplay", "Jogabilidade"},
+        {"Controls", "Controles"}, {"Cheats", "Cheats"},  {"Bug Report", "Relatar Problema"}, {"About", "Sobre"},
+        {"Language", "Idioma"},  {"Save", "Salvar"},     {"Quit", "Sair"}};
+    for (const auto& [english, portuguese] : pages) CHECK(std::string(Tr(english)) == portuguese);
+    CHECK(std::string(Tr("A text that is in no table")) == "A text that is in no table");
+    CHECK(TrFormat("Connected (%d controllers)", 2) == "Conectado (2 controles)");
+    CHECK(TrFormat("GameStrings conversion by %s", "Nick3069") == "conversão das GameStrings por Nick3069");
+    CHECK(TrMessage("missing data/a.bin") == "ausente: data/a.bin");
+    CHECK(TrMessage("data/a.bin has 5 bytes, expected 9") == "data/a.bin tem 5 bytes, esperado 9");
+    CHECK(TrMessage("Left trigger (LT) + Right stick") == "Gatilho esquerdo (LT) + Analógico direito");
+    CHECK(TrMessage("the disc has no data/ folder") == "o disco não tem data/ (pasta)");
+    CHECK(TrMessage("W") == "W" && TrMessage("") == "");
+    for (const char* language : english_only) {
+        SetLauncherLanguage(language);
+        CHECK(!LauncherIsPortuguese() && std::string(Tr("Play")) == "Play" && std::string(Tr("About")) == "About");
+        CHECK(TrMessage("missing data/a.bin") == "missing data/a.bin");
+        CHECK(TrFormat("Connected (%d controllers)", 2) == "Connected (2 controllers)");
+    }
+
+    // the launcher follows the setting at once: a pending choice, no Save, no restart
+    LauncherSettings settings(dir / "language.ini");
+    CHECK(settings.Get(JPT_KEY_LANGUAGE) == "en");
+    SetLauncherLanguage(settings.Get(JPT_KEY_LANGUAGE));
+    CHECK(std::string(Tr("Play")) == "Play");
+    settings.Set(JPT_KEY_LANGUAGE, "pt-BR");
+    SetLauncherLanguage(settings.Get(JPT_KEY_LANGUAGE));
+    CHECK(std::string(Tr("Play")) == "Jogar");
+    for (const char* language : {"fr", "de", "es", "ru", "it", "en"}) {
+        settings.Set(JPT_KEY_LANGUAGE, "pt-BR");
+        SetLauncherLanguage(settings.Get(JPT_KEY_LANGUAGE));
+        CHECK(std::string(Tr("Play")) == "Jogar");
+        settings.Set(JPT_KEY_LANGUAGE, language);
+        SetLauncherLanguage(settings.Get(JPT_KEY_LANGUAGE));
+        CHECK(std::string(Tr("Play")) == "Play" && std::string(Tr("Gameplay")) == "Gameplay");
+    }
+    {
+        std::ofstream(dir / "bad_language.ini") << "language = klingon\n";
+        const LauncherSettings invalid(dir / "bad_language.ini");
+        CHECK(invalid.Get(JPT_KEY_LANGUAGE) == "en");
+        std::ofstream(dir / "saved_language.ini") << "language = pt-BR\n";
+        const LauncherSettings saved(dir / "saved_language.ini");
+        CHECK(saved.Get(JPT_KEY_LANGUAGE) == "pt-BR");
+    }
+    SetLauncherLanguage("en");
+}
+
+// Every text the launcher shows has a row: the shared tables, the page and status titles and the literals of the pages.
+static void TestUiCoverage() {
+    int missing = 0;
+    const auto require = [&missing](const char* english, const char* where) {
+        if (!HasRow(english)) {
+            ++missing;
+            std::printf("no Português Brasil row for \"%s\" (%s)\n", english, where);
+        }
+    };
+    const auto lower = [](char c) { return c >= 'a' && c <= 'z'; };
+    const auto wording = [&lower](const char* text) {
+        const size_t n = std::strlen(text);
+        for (size_t i = 0; i + 1 < n; ++i)
+            if (lower(text[i]) && lower(text[i + 1])) return true;
+        return false;
+    };
+    const std::set<std::string> kept = {"Create", "Start", "Nintendo", "Xbox", "PlayStation", "Steam Deck"};
+    for (const PageId page : kPageOrder) require(PageName(page), "page");
+    for (const GameState state : {GameState::kReady, GameState::kMissing, GameState::kInvalid, GameState::kUnreadable})
+        require(GameStateTitle(state), "game state");
+    for (int status = 0; status <= static_cast<int>(InstallStatus::kActivateFailed); ++status)
+        require(InstallStatusTitle(static_cast<InstallStatus>(status)), "install status");
+    for (int outcome = 0; outcome <= static_cast<int>(UserDataOutcome::kExplicit); ++outcome)
+        require(UserDataFolderHelp(static_cast<UserDataOutcome>(outcome)), "user data");
+    for (const jpt_aspect_t& aspect : jpt_aspects)
+        if (wording(aspect.label)) require(aspect.label, "aspect ratio");
+    for (const jpt_render_preset_t& preset : jpt_render_presets)
+        if (wording(preset.label)) require(preset.label, "render resolution");
+    for (int style = 0; style < JPT_GLYPHS_COUNT; ++style)
+        if (!kept.count(jpt_glyph_style_labels[style])) require(jpt_glyph_style_labels[style], "glyph style");
+    for (const jpt_pad_action_info_t& action : jpt_pad_actions) require(action.name, "gamepad action");
+    for (int family = 0; family < JPT_FAMILY_COUNT; ++family) {
+        for (int control = 0; control < JPT_PAD_CONTROL_COUNT; ++control) {
+            const char* name = jpt_pad_control_name(static_cast<jpt_pad_family_t>(family), control);
+            if (name && wording(name) && !kept.count(name)) require(name, "gamepad control");
+        }
+    }
+    jpt_key_binding_t keymap[JPT_KEYMAP_COUNT];
+    jpt_keymap_default(keymap);
+    jpt_gamepad_settings_t pad;
+    jpt_gamepad_defaults(&pad);
+    for (int gamepad = 0; gamepad < 2; ++gamepad) {
+        jpt_prompt_context_t context{};
+        context.gamepad = gamepad;
+        context.family = JPT_FAMILY_XBOX;
+        context.settings = &pad;
+        context.keymap = keymap;
+        context.keymap_count = JPT_KEYMAP_COUNT;
+        jpt_guide_row_t rows[JPT_GUIDE_MAX_ROWS];
+        const int count = jpt_controls_guide(&context, rows, JPT_GUIDE_MAX_ROWS);
+        for (int i = 0; i < count; ++i) require(rows[i].action, "controls guide");
+    }
+    for (const jpt_l10n_credit_t& credit : jpt_l10n_credits) require(credit.content, "translation credit");
+
+    // the literals of the pages: whatever reads as text must have a row
+    const std::regex group(R"re("(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)re");
+    const std::regex piece(R"re("((?:[^"\\]|\\.)*)")re");
+    for (const char* file : {"launcher/launcher.cpp", "launcher/options.cpp"}) {
+        std::string source = ReadSource(file);
+        const size_t stop = source.find("extern \"C\" jpt_launcher_result_t jpt_launcher_run");
+        if (stop != std::string::npos) source.resize(stop);
+        for (std::sregex_iterator it(source.begin(), source.end(), group), end; it != end; ++it) {
+            std::string text;
+            const std::string joined = it->str();
+            for (std::sregex_iterator p(joined.begin(), joined.end(), piece); p != end; ++p) text += (*p)[1].str();
+            const size_t line_start = source.rfind('\n', size_t(it->position())) + 1;
+            const std::string line = source.substr(line_start, source.find('\n', size_t(it->position())) - line_start);
+            const bool single_word = text.find(' ') == std::string::npos;
+            const bool camel = single_word && std::any_of(text.begin() + 1, text.end(), [](char c) { return c >= 'A' && c <= 'Z'; });
+            const bool prose = !single_word && wording(text.c_str());
+            const bool title = single_word && text.size() > 3 && text[0] >= 'A' && text[0] <= 'Z' && !camel &&
+                               std::regex_match(text, std::regex("[A-Za-z]+"));
+            if (line.find("Log(") != std::string::npos || line.find("#include") != std::string::npos ||
+                text.find('\\') != std::string::npos || text.find('/') != std::string::npos ||
+                text.find("##") != std::string::npos || text.rfind("--", 0) == 0 || text.find(".png") != std::string::npos ||
+                text == "JURASSIC PARK: TRESPASSER" || !(prose || title))
+                continue;
+            require(text.c_str(), file);
+        }
+    }
+    CHECK(missing == 0);
+}
+
+static void TestLanguageNamesAndCoverage() {
+    const char* english_names[] = {"English", "Brazilian Portuguese", "French", "German", "Spanish", "Russian", "Italian"};
+    const char* portuguese_names[] = {"Inglês", "Português Brasil", "Francês", "Alemão", "Espanhol", "Russo", "Italiano"};
+    const char* codes[] = {"en", "pt-BR", "fr", "de", "es", "ru", "it"};
+    const char* english_coverage[std::size(codes)];
+    const char* portuguese_coverage[std::size(codes)];
+    std::string english_rows[std::size(codes)], portuguese_rows[std::size(codes)];
+    for (size_t i = 0; i < std::size(codes); ++i) {
+        english_rows[i] = std::string("Game text, menus and subtitles: ") + english_names[i] + "  \xC2\xB7  Audio: English";
+        portuguese_rows[i] = std::string("Texto do jogo, menus e legendas: ") + portuguese_names[i] + "  \xC2\xB7  \xC3\x81udio: Ingl\xC3\xAAs";
+        english_coverage[i] = english_rows[i].c_str();
+        portuguese_coverage[i] = portuguese_rows[i].c_str();
+    }
+    CHECK(std::size(jpt_l10n_languages) == std::size(codes));
+    for (size_t i = 0; i < std::size(codes); ++i) {
+        CHECK(std::string(jpt_l10n_languages[i].code) == codes[i] && std::string(jpt_l10n_languages[i].name) == english_names[i]);
+        for (const char* launcher : {"en", "fr", "de", "es", "ru", "it", "pt-BR", "en"}) {
+            SetLauncherLanguage(launcher);
+            const bool portuguese = std::string(launcher) == "pt-BR";
+            CHECK(std::string(Tr(jpt_l10n_languages[i].name)) == (portuguese ? portuguese_names[i] : english_names[i]));
+            CHECK(LanguageCoverage(codes[i]) == (portuguese ? portuguese_coverage[i] : english_coverage[i]));
+        }
+    }
+    SetLauncherLanguage("en");
+    CHECK(std::string(Tr("Language coverage")) == "Language coverage" && std::string(Tr("Language")) == "Language");
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr("Language coverage")) == "Cobertura do idioma" && std::string(Tr("Language")) == "Idioma");
+    CHECK(std::string(Tr("Changes the game text, menus and subtitles. Voices, effects and music remain in English.")) ==
+          "Altera os textos, menus e legendas do jogo. Vozes, efeitos e música permanecem em inglês.");
+    CHECK(std::string(Tr("PC port completion")) == "Complemento do port para PC" && std::string(Tr("official")) == "oficial" &&
+          std::string(Tr(JPT_L10N_PORT_CONTENT)) != JPT_L10N_PORT_CONTENT);
+    CHECK(std::string(Tr("Frame rate in title")) == "Taxa de quadros no título" &&
+          std::string(Tr("Render resolution in title")) == "Resolução de render no título" &&
+          std::string(Tr("Shows the frame rate in the window title.")) == "Mostra a taxa de quadros no título da janela." &&
+          std::string(Tr("Shows the game's render resolution in the window title.")) ==
+              "Mostra a resolução de render do jogo no título da janela.");
+    CHECK(std::string(Tr("Off")) == "Desligado" && std::string(Tr("On")) == "Ligado");
+    // English -> Português Brasil -> Français -> Português Brasil -> English, with no restart in between
+    for (const char* language : {"en", "pt-BR", "fr", "pt-BR", "en"}) {
+        SetLauncherLanguage(language);
+        CHECK(std::string(Tr("Gameplay")) == (std::string(language) == "pt-BR" ? "Jogabilidade" : "Gameplay"));
+    }
+    SetLauncherLanguage("en");
+}
+
+static void TestGoreAndTitleOptions() {
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const std::string options = ReadSource("launcher/options.cpp");
+    const std::string table = ReadSource("launcher/localization/pt_br_ui_text.cpp");
+    for (const char* text : {"Gore", "gore", "Segmented(\"##gore"}) {
+        CHECK(launcher.find(text) == std::string::npos && options.find(text) == std::string::npos &&
+              table.find(text) == std::string::npos);
+    }
+    CHECK(launcher.find("registry_.SetDword(\"Gore\"") == std::string::npos);
+    const size_t gameplay = launcher.find("void PageGameplay(");
+    const size_t controls = launcher.find("// ---- Controls");
+    const std::string body = launcher.substr(gameplay, controls - gameplay);
+    const size_t language = body.find("ui.Combo(\"Language\""), coverage = body.find("\"Language coverage\""),
+                 skip = body.find("\"Skip Intro\""), fps = body.find("\"Frame rate in title\""),
+                 resolution = body.find("\"Render resolution in title\"");
+    CHECK(language < coverage && coverage < skip && skip < fps && fps < resolution && resolution != std::string::npos);
+    CHECK(body.find("\"Coverage\"") == std::string::npos && body.find("Frame counter") == std::string::npos);
+    CHECK(body.find("JPT_KEY_SHOW_RESOLUTION_TITLE") != std::string::npos && body.find("JPT_KEY_SHOW_FPS") != std::string::npos);
+    for (int i = 0; i < JPT_SETTING_COUNT; ++i) CHECK(std::string(jpt_settings[i].key).find("gore") == std::string::npos);
+    CHECK(std::string(jpt_default_value(JPT_KEY_SHOW_FPS)) == "1" && std::string(jpt_default_value(JPT_KEY_SHOW_RESOLUTION_TITLE)) == "0");
+}
+
+static void TestNoLanguagePage() {
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const std::string options = ReadSource("launcher/options.cpp");
+    CHECK(options.find("kLanguage") == std::string::npos && launcher.find("PageLanguage") == std::string::npos);
+    CHECK(!fs::exists(fs::path(JPT_SOURCE_DIR) / "assets" / "launcher" / "icons" / "language.svg"));
+    CHECK(!fs::exists(fs::path(JPT_SOURCE_DIR) / "launcher" / "translations.cpp"));
+    const size_t gameplay = launcher.find("void PageGameplay(");
+    const size_t controls = launcher.find("// ---- Controls");
+    CHECK(gameplay != std::string::npos && controls != std::string::npos && gameplay < controls);
+    const std::string body = launcher.substr(gameplay, controls - gameplay);
+    CHECK(body.find("ui.Combo(\"Language\"") != std::string::npos && body.find("JPT_KEY_LANGUAGE") != std::string::npos);
+    size_t combos = 0;
+    for (size_t at = launcher.find("\"Language\""); at != std::string::npos; at = launcher.find("\"Language\"", at + 1)) ++combos;
+    CHECK(combos == 1);
+    for (const char* forbidden : {"\"game_text_language\"", "\"subtitle_language\"", "JPT_KEY_LEGACY", "Install downloaded",
+                                  "Open TresCom", "BrowseForFolder"})
+        CHECK(launcher.find(forbidden) == std::string::npos);
+    CHECK(launcher.find("Translation credits") != std::string::npos);
+    std::size_t sections = 0;
+    for (const PageId page : kPageOrder) sections += std::string(PageName(page)) == "Language";
+    CHECK(sections == 0 && std::size(kPageOrder) == 8);
+}
+
+// The translations are part of the program: no installation, download or folder of the player's.
+static void TestEmbeddedOnly() {
+    for (const char* file : {"src/host/l10n.c", "src/common/jpt_l10n.c", "src/common/jpt_l10n.h", "launcher/launcher.cpp",
+                             "src/host/main.c"}) {
+        const std::string source = ReadSource(file);
+        for (const char* forbidden : {"user_data\\\\translations", "\"translations\"", "JPT_L10N_DIR", "WinHttp", "InternetOpen",
+                                      "URLDownload", "Decomp_Downloads", "TresCom page", "staging\\\\translations"})
+            CHECK(source.find(forbidden) == std::string::npos);
+    }
+    const fs::path assets = fs::path(JPT_SOURCE_DIR) / "assets" / "translations";
+    for (const char* name : {"pt-BR.strings.txt", "fr.strings.txt", "de.strings.txt", "es.strings.txt", "ru.strings.txt",
+                             "ru.subtitles.txt", "it.subtitles.txt"})
+        CHECK(fs::is_regular_file(assets / name));
+    CHECK(ReadSource("CMakeLists.txt").find("assets/translations/*.txt") != std::string::npos);
+}
+
 int main() {
     wchar_t temp[MAX_PATH];
     GetTempPathW(MAX_PATH, temp);
@@ -702,6 +998,13 @@ int main() {
     TestMigration(dir);
     TestPages();
     TestAssets();
+    TestUiTable();
+    TestLauncherLanguage(dir);
+    TestUiCoverage();
+    TestNoLanguagePage();
+    TestLanguageNamesAndCoverage();
+    TestGoreAndTitleOptions();
+    TestEmbeddedOnly();
     TestRealDisc();
     std::error_code ec;
     fs::remove_all(dir, ec);

@@ -1,0 +1,215 @@
+# Trespasser Recompiled interface text 1
+Menu::NEW GAME	НОВАЯ ИГРА
+Menu::LOAD	ЗАГРУЗИТЬ
+Menu::OPTIONS	НАСТРОЙКИ
+Menu::EXIT	ВЫХОД
+Menu::QUIT	ВЫЙТИ
+Menu::RESUME	ПРОДОЛЖИТЬ
+Menu::RESTART LEVEL	НАЧАТЬ ЗАНОВО
+Menu::SAVE	СОХРАНИТЬ
+Menu::CANCEL	ОТМЕНА
+Menu::DESKTOP	РАБОЧИЙ СТОЛ
+Menu::MAIN MENU	ГЛАВНОЕ МЕНЮ
+Menu::CONTROLS	УПРАВЛЕНИЕ
+Menu::VIDEO	ВИДЕО
+Menu::AUDIO	ЗВУК
+Menu::CREDITS	АВТОРЫ
+Menu::CLOSE	ЗАКРЫТЬ
+Menu::OK	ОК
+Menu::DEFAULTS	ПО УМОЛЧАНИЮ
+Menu::DELETE	УДАЛИТЬ
+Menu::YES	ДА
+Menu::NO	НЕТ
+Title::QUIT	ВЫХОД
+Title::SOUND	ЗВУК
+Footer::© 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin.  All Rights Reserved.	© 1998 DreamWorks Interactive L.L.C. Trespasser является товарным знаком UCS и Amblin.\nThe Lost World: Jurassic Park™ и © 1998 UCS и Amblin.  Все права защищены.
+Select	Выбрать
+Back	Назад
+Controls	Управление
+<CONTROLS> Controls	<CONTROLS> Управление
+<CONTROLS> View Controls	<CONTROLS> Показать управление
+Move	Движение
+Look	Обзор
+Jump	Прыжок
+Crouch (hold)	Присесть (удерживать)
+Crouch on/off	Присесть вкл./выкл.
+Menu	Меню
+Move hand	Двигать рукой
+Grab / drop	Взять / бросить
+Use / fire	Использовать / огонь
+Throw	Метнуть
+Rotate wrist	Повернуть запястье
+Rotate arm	Повернуть руку
+Stow / retrieve	Убрать / достать
+Hint	Подсказка
+Objectives	Задачи
+Show Objective	Показать задачу
+Run	Бежать
+Walk	Идти
+Back up	Назад
+Step left / right	Шаг влево / вправо
+Replay voice	Повторить реплику
+Raise and move the hand	Поднять и двигать руку
+Grab	Взять
+Drop	Бросить
+Debug Menu	Меню отладки
+Cheats	Читы
+Fullscreen	Полный экран
+Debug / Test Menu	Меню отладки / тестов
+Level Select	Выбор уровня
+Restart Level	Перезапустить уровень
+Reload Current Level	Перезагрузить уровень
+X	X
+Y	Y
+Z	Z
+Teleport	Телепорт
+Previous Key Point	Предыдущая точка
+Next Key Point	Следующая точка
+Set Checkpoint	Поставить контрольную точку
+Return to Checkpoint	Вернуться к контрольной точке
+Show Coordinates	Показать координаты
+Copy Coordinates	Копировать координаты
+Freeze AI	Заморозить ИИ
+Freeze Dinosaurs	Заморозить динозавров
+Movement Speed	Скорость движения
+Jump Height	Высота прыжка
+Invulnerability	Неуязвимость
+Infinite Ammo	Бесконечные патроны
+Heal	Лечение
+Super Health	Суперздоровье
+Third Person	Третье лицо
+Fly / Free Camera	Полёт / свободная камера
+Compass	Компас
+Ambient Occlusion	Фоновое затенение
+Close	Закрыть
+Off	Выкл.
+On	Вкл.
+Low	Низкое
+Medium	Среднее
+High	Высокое
+Ultra	Ультра
+Unavailable	Недоступно
+unavailable	недоступно
+none	нет
+none (main menu)	нет (главное меню)
+current	текущий
+Level	Уровень
+Player	Игрок
+Navigation	Навигация
+Debug	Отладка
+Graphics	Графика
+No scene files in the data folder	В папке data нет файлов уровней
+Objectives unavailable for this level	Задачи для этого уровня недоступны
+Checkpoint set	Контрольная точка поставлена
+Coordinates shown	Координаты показаны
+Coordinates hidden	Координаты скрыты
+Coordinates copied	Координаты скопированы
+Coordinates unavailable	Координаты недоступны
+Compass off	Компас выкл.
+Compass on	Компас вкл.
+Not available here	Здесь недоступно
+Not available	Недоступно
+Level Select failed	Не удалось выбрать уровень
+Reload failed	Не удалось перезагрузить
+Restart failed	Не удалось перезапустить
+Teleported to %.3f %.3f %.3f	Телепорт в %.3f %.3f %.3f
+Teleport failed	Не удалось телепортироваться
+Returned to checkpoint	Возврат к контрольной точке
+Return to Checkpoint failed	Не удалось вернуться к контрольной точке
+Next Key Point failed	Не удалось перейти к следующей точке
+Previous Key Point failed	Не удалось перейти к предыдущей точке
+The clipboard could not be opened	Не удалось открыть буфер обмена
+Ambient Occlusion is unavailable (see the log)	Фоновое затенение недоступно (см. журнал)
+Freeze AI failed	Не удалось заморозить ИИ
+Key point %d / %d	Точка %d / %d
+No objective	Нет задачи
+Objective updated	Задача обновлена
+Anne cannot be healed now	Сейчас Анну нельзя вылечить
+Camera	Камера
+Normal	Обычная
+Free Camera	Свободная камера
+Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Вверх/Вниз выбор | Enter/A применить | Влево/Вправо изменить (Shift 10, Ctrl 0.1, LB/RB 10) | цифры ввод | Esc/B назад | F5 закрыть
+Esc/B or F3 close	Esc/B или F3 закрыть
+Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Вверх/Вниз выбор | Enter/A применить | Влево/Вправо изменить | Esc/B назад | F10 закрыть. Свободная камера: WASD/левый стик движение, мышь/правый стик обзор, Пробел/A вверх, Ctrl/B вниз, Shift/LB быстро
+Beach	Пляж
+Jungle Road	Дорога в джунглях
+Industrial Jungle	Индустриальные джунгли
+InGen Town	Город InGen
+InGen Lab	Лаборатория InGen
+Ascent, Part 1	Подъём, часть 1
+Ascent, Part 2	Подъём, часть 2
+Summit	Вершина
+Test Scene	Тестовая сцена
+Test Scene Night	Тестовая сцена (ночь)
+Find out where you are	Выясните, где вы находитесь
+Search the construction site for clues	Обыщите стройку в поисках улик
+Head inland	Идите вглубь острова
+Follow the monorail tracks	Идите вдоль путей монорельса
+Explore, then return to the monorail	Осмотритесь и вернитесь к монорельсу
+Cross the ridge on the monorail tracks	Перейдите хребет по путям монорельса
+Push on through the jungle	Пробирайтесь через джунгли
+Find a way down	Найдите путь вниз
+Follow the power lines	Идите вдоль линии электропередачи
+Find a building with a line out	Найдите здание со связью с внешним миром
+Search the Operations Center	Обыщите центр управления
+Use the control console	Воспользуйтесь пультом управления
+Go to Hammond's place	Идите к дому Хэммонда
+Leave by the northeastern gate	Уходите через северо-восточные ворота
+Find a way through to the computer lab	Найдите путь в компьютерную лабораторию
+Find a green keycard	Найдите зелёную ключ-карту
+Search the offices for a keycard	Обыщите кабинеты в поисках ключ-карты
+Get to the computer lab	Доберитесь до компьютерной лаборатории
+Start up the computer	Включите компьютер
+Head for the mountaintop	Направляйтесь к вершине горы
+Circle around to find a way up	Обойдите кругом и найдите путь наверх
+Climb up through the ruins	Поднимитесь через руины
+Find a place to climb	Найдите, где можно взобраться
+Climb the cliffs	Взберитесь на скалы
+Explore the summit facility	Обследуйте комплекс на вершине
+Race to meet the helicopter	Бегите к вертолёту
+Compass::N	С
+Compass::NE	СВ
+Compass::E	В
+Compass::SE	ЮВ
+Compass::S	Ю
+Compass::SW	ЮЗ
+Compass::W	З
+Compass::NW	СЗ
+%d m	%d м
+%.1f km	%.1f км
+Video Test	Проверка видео
+Original	Оригинал
+HD	HD
+The game's own player, audio and timing: only the presentation differs.	Собственный проигрыватель, звук и тайминги игры: меняется только изображение.
+HD needs the D3D11 renderer.	Для HD нужен рендерер D3D11.
+F5 closes the panel. Esc, a key or a click skips a video, as in the game.	F5 закрывает панель. Esc, клавиша или щелчок пропускают видео, как в игре.
+not found	не найден
+Tutorial::Welcome to Trespasser.	Добро пожаловать в Trespasser.
+Tutorial::To look around, move <LOOK>.	Чтобы оглядеться, двигайте <LOOK>.
+Tutorial::To move forward, press and hold <RUN>.	Чтобы двигаться вперёд, нажмите и удерживайте <RUN>.
+Tutorial::Your adventure begins here.	Ваше приключение начинается здесь.
+Tutorial::Press <JUMP> to jump up.	Нажмите <JUMP>, чтобы подпрыгнуть.
+Tutorial::Press <LEFT> and <RIGHT> to step left and right.	Нажмите <LEFT> или <RIGHT>, чтобы сделать шаг влево или вправо.
+Tutorial::And press <CROUCH> to crouch.	И нажмите <CROUCH>, чтобы присесть.
+Tutorial::You can use your hand to move and carry objects.	Вы можете использовать руку, чтобы перемещать и переносить предметы.
+Tutorial::Try pressing and holding <HAND>.	Попробуйте нажать и удерживать <HAND>.
+Tutorial::Now, moving <LOOK> moves your hand.	Теперь, двигая <LOOK>, вы перемещаете руку.
+Tutorial::Try picking up the two-by-four on the crate up ahead.	Попробуйте поднять толстую палку на ящике впереди.
+Tutorial::To pick up an object, move your hand near it....	Чтобы поднять предмет, поднесите к нему руку...
+Tutorial::Then click <GRAB>.	Затем нажмите <GRAB>.
+Tutorial::Good! Hold <HAND> and move <LOOK> to wield the two-by-four.	Хорошо! Удерживайте <HAND> и двигайте <LOOK>, чтобы замахнуться палкой.
+Tutorial::Press <GRAB> to drop it.	Нажмите <GRAB>, чтобы отбросить её.
+Tutorial::Good. Try picking up some other items.	Хорошо. Попробуйте подобрать какие-нибудь другие предметы.
+Tutorial::You may have to crouch to reach them if they're on the ground.	Возможно, вам придётся присесть, чтобы дотянуться до них, если они лежат на земле.
+Tutorial::Feel free to practice running and jumping here, until you're ready to move on.	Не стесняйтесь потренироваться здесь в беге и прыжках, пока не будете готовы двигаться дальше.
+Tutorial::Firearms can be an important survival tool.	Огнестрельное оружие может стать важным средством выживания.
+Tutorial::To fire a gun, pick it up, and press <USE>.	Чтобы выстрелить из пистолета, возьмите его и нажмите <USE>.
+Tutorial::You can aim the gun using the sights.	Вы можете прицелиться из пистолета с помощью прицела.
+Tutorial::To adjust your wrist, press <WRIST> + <HAND>, and move <LOOK>.	Чтобы повернуть запястье, нажмите <WRIST> + <HAND> и двигайте <LOOK>.
+Tutorial::You can rotate your arm by holding <ARM> + <HAND>, and moving <LOOK>.	Вы можете вращать рукой, удерживая <ARM> + <HAND> и двигая <LOOK>.
+Tutorial::Press <THROW> to throw an object you are holding.	Нажмите <THROW>, чтобы бросить предмет, который вы держите.
+Tutorial::You will always throw toward the center of your view.	Вы всегда будете бросать в центр поля зрения.
+Tutorial::Step up and try to nail a paint can!	Подойдите и постарайтесь попасть в банку с краской!
+Tutorial::To strike with an object, pick up the object and press <USE>.	Чтобы ударить предметом, возьмите его и нажмите <USE>.
+Tutorial::Try swinging the baseball bat.	Попробуйте помахать бейсбольной битой.
+Tutorial::You can always press <HINT> for a hint about what to do next.	Вы всегда можете нажать <HINT>, чтобы получить подсказку о том, что делать дальше.

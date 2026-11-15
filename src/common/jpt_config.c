@@ -32,6 +32,8 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_AMBIENT_OCCLUSION, "off" },
     { JPT_KEY_SHOW_FPS, "1" },
     { JPT_KEY_SKIP_INTRO, "0" },
+    { JPT_KEY_SHOW_RESOLUTION_TITLE, "0" },
+    { JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH },
     { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
     { JPT_KEY_GAMEPAD_LOOK_X, "100" },
     { JPT_KEY_GAMEPAD_LOOK_Y, "100" },
@@ -83,6 +85,7 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);
     if (!strcmp(key, JPT_KEY_SHOW_FPS)) return jpt_parse_bool(value, &c->show_fps);
     if (!strcmp(key, JPT_KEY_SKIP_INTRO)) return jpt_parse_bool(value, &c->skip_intro);
+    if (!strcmp(key, JPT_KEY_SHOW_RESOLUTION_TITLE)) return jpt_parse_bool(value, &c->show_resolution_title);
     if (!strcmp(key, JPT_KEY_DISPLAY_MODE)) return (n = parse_choice(value, modes, 2)) >= 0 ? (c->borderless = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_PRESENTATION))
         return (n = parse_choice(value, presentations, 2)) >= 0 ? (c->stretch = n, 1) : 0;
@@ -91,6 +94,11 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
         return (n = parse_choice(value, jpt_filter_keys, JPT_FILTER_COUNT)) >= 0 ? (c->texture_filter = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_AMBIENT_OCCLUSION))
         return (n = parse_choice(value, jpt_ao_keys, JPT_AO_COUNT)) >= 0 ? (c->ambient_occlusion = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_LANGUAGE)) {
+        if (!jpt_l10n_language(value)) return 0;
+        strcpy(c->language, value);
+        return 1;
+    }
     if (!strcmp(key, JPT_KEY_MONITOR)) {
         long v = strtol(value, &end, 10);
         if (*end || v < 1 || v > 16) return 0;
@@ -180,17 +188,33 @@ int jpt_ini_parse_line(const char* line, int allow_comment, char* key, size_t ke
     return 1;
 }
 
+typedef struct {
+    int has_language;
+    char game_text[JPT_L10N_CODE_MAX], subtitles[JPT_L10N_CODE_MAX];
+} earlier_language_t;
+
+static void note_earlier_language(earlier_language_t* e, const char* key, const char* value) {
+    if (!strcmp(key, JPT_KEY_LANGUAGE)) e->has_language = jpt_l10n_language(value) != NULL;
+    else if (!strcmp(key, JPT_KEY_LEGACY_GAME_TEXT_LANGUAGE) && strlen(value) < sizeof e->game_text) strcpy(e->game_text, value);
+    else if (!strcmp(key, JPT_KEY_LEGACY_SUBTITLE_LANGUAGE) && strlen(value) < sizeof e->subtitles) strcpy(e->subtitles, value);
+}
+
 int jpt_config_load(const char* path, jpt_config_t* c) {
     char line[MAX_LINE], key[128], value[MAX_LINE];
+    earlier_language_t earlier;
     FILE* f;
+    memset(&earlier, 0, sizeof earlier);
     jpt_config_defaults(c);
     f = path ? fopen(path, "r") : NULL;
     if (!f) return 0;
     while (fgets(line, sizeof line, f)) {
         line[strcspn(line, "\r\n")] = 0;
-        if (jpt_ini_parse_line(line, 0, key, sizeof key, value, sizeof value)) jpt_config_apply(c, key, value);
+        if (!jpt_ini_parse_line(line, 0, key, sizeof key, value, sizeof value)) continue;
+        note_earlier_language(&earlier, key, value);
+        jpt_config_apply(c, key, value);
     }
     fclose(f);
+    if (!earlier.has_language) strcpy(c->language, jpt_l10n_infer_language(earlier.game_text, earlier.subtitles));
     return 1;
 }
 
@@ -337,6 +361,24 @@ static int reset_old_graphics_defaults(const char* path, int* reset) {
         }
     *reset = count;
     return jpt_ini_set(path, picked, values, count);
+}
+
+int jpt_config_migrate_language(const char* path) {
+    const char* keys[3] = { JPT_KEY_LANGUAGE, JPT_KEY_LEGACY_GAME_TEXT_LANGUAGE, JPT_KEY_LEGACY_SUBTITLE_LANGUAGE };
+    const char* values[3] = { NULL, NULL, NULL };
+    char text[JPT_L10N_CODE_MAX], subtitles[JPT_L10N_CODE_MAX], language[JPT_L10N_CODE_MAX];
+    int has_text, has_subtitles, first = 0;
+    if (!path || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return 0;
+    has_text = jpt_ini_get(path, keys[1], text, sizeof text);
+    has_subtitles = jpt_ini_get(path, keys[2], subtitles, sizeof subtitles);
+    if (!has_text && !has_subtitles) return 0;
+    if (jpt_ini_get(path, JPT_KEY_LANGUAGE, language, sizeof language) && jpt_l10n_language(language)) {
+        first = 1;
+    } else {
+        strcpy(language, jpt_l10n_infer_language(has_text ? text : "", has_subtitles ? subtitles : ""));
+        values[0] = language;
+    }
+    return jpt_ini_set(path, keys + first, values + first, 3 - first);
 }
 
 int jpt_config_migrate(const char* path) {

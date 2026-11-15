@@ -54,7 +54,15 @@ and View shows every control in a level ([CONTROLS](docs/CONTROLS.md) explains t
 
 The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
 anti-aliasing, texture filtering, VSync and renderer, and the gamepad's layout and feel ([LAUNCHER](docs/LAUNCHER.md)).
-It is portable: saves and settings stay in `user_data` next to the program ([user data](docs/user-data.md)). Not yet: uncapped frame rate, vibration, translations, mods, x64.
+It is portable: saves and settings stay in `user_data` next to the program ([user data](docs/user-data.md)).
+
+**Languages** are built into the port: Gameplay > Language in the launcher picks one of English, Brazilian Portuguese,
+French, German, Spanish, Russian or Italian. Every language has the whole text of the game: game text, the words on the
+menu pictures, subtitles, the tutorial and the port's own panels; the voices, effects, music and videos stay the English
+originals. Brazilian Portuguese also translates the launcher, at once; the other languages keep it in English
+([Languages](#languages)).
+
+Not yet: uncapped frame rate, vibration, mods, x64.
 
 ## How it works
 
@@ -91,17 +99,72 @@ tools/         disc extraction, analysis and lift drivers
 src/host/      the runtime host (hand-written)
 src/recomp/gen lifted C (generated, ignored by Git)
 launcher/      the launcher: pages, disc image reader, installer (C++)
-assets/        launcher header art, sponsor heart and page icons
+assets/        launcher header art, sponsor heart, page icons and the translated text (assets/translations)
 packaging/     third-party licence notices
 src/common/    settings file and display arithmetic shared by host, launcher and tests
 docs/          ANALYSIS, ARCHITECTURE, BUILD, CONTROLS, LAUNCHER, LEGAL, REFERENCES, user-data
 external/      pcrecomp checkout (fetched, ignored by Git)
 game/          your installed game files (ignored by Git)
-user_data/     next to the program: settings and saves (never in a release; build\user_data for
-               tools\build.ps1 -Run)
+user_data/     next to the program: settings and saves (never in a release;
+               build\user_data for tools\build.ps1 -Run)
 analysis/      regenerated analysis output (ignored by Git)
 logs/          one log per run (ignored by Git)
 ```
+
+## Languages
+
+Languages are built into the PC port: nothing is downloaded or installed. The translated text is part of the executable,
+and the launcher's Gameplay page has one Language setting.
+
+| Language | Game text, menus and subtitles | Voices and videos | Launcher |
+|---|---|---|---|
+| English | English | English | English |
+| Brazilian Portuguese | Brazilian Portuguese | English | **Brazilian Portuguese** |
+| French | French | English | English |
+| German | German | English | English |
+| Spanish | Spanish | English | English |
+| Russian | Russian | English | English |
+| Italian | Italian | English | English |
+
+The port completes the localizations where the releases of 1998 and the fan translations stop: the official
+translations have no subtitles, the Russian strings and the German ones miss a few entries, and there is no Italian game
+text. Everything else (the subtitles of four languages, the Italian game text, the words on the menu pictures, the
+controls card, the objectives, the debug and cheat menus) was translated for the port. Localized audio and videos are
+not distributed: the voices stay the player's own English files.
+
+The words on the menu pictures (NEW GAME, RESUME, CANCEL, the Quit and Sound titles, the legal lines of the main screen)
+are taken out of the player's own pictures at run time and set again in the language, in the same stencil face and
+colours, hover and pressed states included; no picture of the game is shipped. The tutorial's subtitles name the
+controls by the button or key of the device in use in every language. The game's own Show Subtitles option still turns
+subtitles on and off.
+
+### Translation credits
+
+| Language | Content | Source | Translation | GameStrings conversion |
+|---|---|---|---|---|
+| Brazilian Portuguese | game text, menu wording | official | DreamWorks Interactive | Nick3069 |
+| French | game text, menu wording | official | DreamWorks Interactive | Nick3069 |
+| German | game text, menu wording | official | DreamWorks Interactive | Nick3069 |
+| Spanish | game text, menu wording | official | DreamWorks Interactive | Nick3069 |
+| Russian | game text and subtitles | community | cynodesmus | |
+| Italian | subtitles (v1.0.0, timings adjusted by hand) | community | KeyofBlueS | |
+| All | subtitles of Brazilian Portuguese, French, German and Spanish; Italian game text; missing German and Russian strings; the menus' words where a release had none; the port's own interface | PC port completion | Trespasser Recompiled | |
+
+The port's own translations are not attributed to DreamWorks Interactive, cynodesmus or KeyofBlueS. Where an official
+text had an evident defect it was corrected: the French strings have every "è" and "ê" swapped in the converted file,
+and the Spanish OK button and the Brazilian Portuguese Credits button of the 1998 menus show the wrong word.
+
+Source preservation and hosting: the [TresCom](https://www.trescom.org/) community, from whose download pages these
+come ([Brazilian Portuguese](https://www.trescom.org/download/brazilian-portuguese-official-translation-audio/),
+[French](https://www.trescom.org/download/french-official-translation-audio/),
+[German](https://www.trescom.org/download/german-official-translation-audio/),
+[Spanish](https://www.trescom.org/download/spanish-official-translation-audio/),
+[Russian game strings](https://www.trescom.org/download/russian-unofficial-translation-game-strings/),
+[Russian subtitles](https://www.trescom.org/download/russian-fan-translation-subtitles/),
+[Italian subtitles](https://www.trescom.org/download/italian-fan-translation-subtitles/)). Only the text of those
+packages is used: no audio, menu picture, video or program. The About page lists the same credits. Czech subtitles, the
+Fargus and Lost Jungle Russian translations and the Italian cutscene packages are not included. The licence of these
+downloads is not stated ([LEGAL](docs/LEGAL.md)).
 
 ## Credits
 

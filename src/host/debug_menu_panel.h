@@ -31,6 +31,8 @@ extern "C" {
 void dmp_draw(struct ID3D11Device* device, struct ID3D11DeviceContext* context, struct ID3D11RenderTargetView* target,
               int bb_w, int bb_h, const dmp_frame_t* frame);
 void dmp_release(void);
+/* A TrueType font whose glyphs fill in what the panel's own font lacks (translated hints); before the first draw. */
+void dmp_set_fallback_font(const char* path);
 
 #ifdef __cplusplus
 }

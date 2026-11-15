@@ -1,0 +1,219 @@
+# Trespasser Recompiled game text 1
+1	Trespasser
+2	Trespasser-Fehler
+3	Prozessorerkennung
+4	Fehlererkennungsprozessor
+5	Spiel neu speichern
+6	Möchten Sie "%s"\r\nüberschreiben?
+7	Möchten Sie das Spiel löschen\r\n"%s"?
+8	Möchten Sie Trespasser beenden?
+9	Möchten Sie dieses Spiel beenden?
+10	SAVEGAME
+11	Trespasser war bei der letzten Ausführung instabil. Möchten Sie Trespasser im 'sicheren Modus starten'?\n\nIm sicheren Modus werden unriskante Einstellungen für Trespasser verwendet, um die gewöhnlichen Ursachen\nvon Instabilität zu vermeiden. Weitere Informationen erhalten Sie, wenn Sie 'Abbrechen' wählen,\ndie Datei 'Readme.txt' öffnen und den Abschnitt über den sicheren Modus lesen.
+12	Möchten Sie diesen Level wiederholen?
+13	Für Ihre Soundkarte ist kein anerkannter DirectX-Treiber vorhanden. Auch wenn dieses Spiel ansonsten problemlos läuft, sollten Sie beim Hersteller aktualisierte Treiber bestellen, wenn Probleme mit der Akustik der Soundkarte auftreten.
+14	Für Ihre Videokarte ist kein anerkannter DirectX-Treiber vorhanden. Auch wenn dieses Spiel ansonsten problemlos läuft, sollten Sie beim Hersteller der Videokarte aktualisierte Treiber bestellen, wenn Video-Probleme auftreten.
+15	Für Ihre Videokarte besteht keine Hardware-Unterstützung. Auch wenn dieses Spiel ansonsten problemlos läuft, sollten Sie beim Hersteller der Videokarte aktualisierte Treiber bestellen, wenn Video-Probleme auftreten.
+16	DirectSound NICHT anerkannt
+17	DirectDraw NICHT anerkannt
+18	Keine Hardware-Unterstützung
+19	DirectDraw nicht gefunden. Sehen Sie nach, ob DirectDraw installiert ist.
+20	Fehler bei der Initialisierung von DirectDraw.
+21	Trespasser ist anscheinend nicht korrekt installiert. Führen Sie bitte erneut das Setup-Programm aus. Wenn dieses Problem erneut auftritt, sollten Sie deinstallieren und dann neu installieren.
+22	Legen Sie die Trespasser-CD in %s ein.\r\n\r\nDrücken Sie die Schaltfläche 'OK', um fortzufahren.\r\nMit 'Abbrechen' wird der Vorgang beendet.
+23	Es ist ein schwerwiegender Fehler aufgetreten. Beenden Sie durch Drücken von 'OK'
+24	????
+25	Änderung der Wiedergabequalität
+26	Weniger
+27	Mehr
+28	Extrem
+29	Der Platz reicht zum Speichern eines Spiels nicht aus. Schaffen Sie Speicherplatz, und versuchen Sie es erneut.
+30	Unbekannter Ladefehler.
+31	Szenendatei ungültig.
+32	Der freie Festplattenspeicher reicht nicht zum Laden der Ebene aus. Schaffen Sie etwas Platz, und versuchen Sie es erneut.
+33	Für Trespasser wird %i MB freier Speicher benötigt. Beenden Sie das Spiel durch Drücken auf 'OK'.
+34	Software Renderer
+35	Display
+36	Software
+37	Ebene wird geladen. Bitte warten.
+38	Für diese Version von Trespasser wird ein mit Intel PentiumPro/PentiumII kompatibler Prozessor benötigt.
+39	Für diese Version von Trespasser wird ein Prozessor mit 3D Now! benötigt
+40	Lokaler Prozessor wurde nicht erkannt. Möchten Sie fortfahren?
+41	Es wurden keine mit Trespasser kompatible Hardware-Beschleunigerkarte gefunden.\r\nIn der Datei 'Readme.txt' finden Sie weitere Informationen zu den unterstützten\r\nHardware-Beschleunigerkarten.
+42	Die Datei 'Readme.txt' kann nicht angezeigt werden. Öffnen Sie die Datei\nmanuell vom Verzeichnis 'Setup' auf der gelieferten CD-ROM\nin einer Anwendung wie Editor oder Wordpad.
+105	Niedrig
+106	Mittel
+107	Hoch
+10000	Qualität
+10001	Helligkeit
+10002	Bildschirmgröße
+10003	Video-Treibername
+10010	Weltinitialisierung
+10011	Ebenendateikopie
+10012	Ebenendateikopie
+10020	Gehen
+10021	Laufen
+10022	Rückwärts
+10023	Schritt links
+10024	Schritt rechts
+10025	Springen
+10026	Ducken
+10027	Werfen
+10028	Ben./Feuern
+10029	Handgelenk
+10030	Hand bew.
+10031	Aufn./Ableg.
+10032	Ein-/Auspacken
+10033	Wiedrhlg.
+10034	Stimmen
+10035	Brutalität
+10036	Maus umkehren
+10037	Arm bew
+10050	Soundeffekte
+10051	Umgebungsgeräusch
+10052	überlagerte Stimmen 
+10053	Hintergrundmusik
+10054	Untertitel anzeigen
+10055	3D-Sound aktiviert
+16000	Maus links
+16001	Maus rechts
+16002	Abbrechen
+16003	Maus Mitte
+16004	Rück
+16005	Tabulator
+16006	Löschen
+16007	Eingabe
+16008	Umschalt
+16009	Steuerung
+16010	Menü
+16011	Pause
+16012	Großbuchst.
+16013	Esc
+16014	Leertaste
+16015	Zurück
+16016	Vor
+16017	Ende
+16018	Pos 1
+16019	Links
+16020	Nach oben
+16021	Rechts
+16022	Nach unten
+16023	Auswählen
+16024	Drucken
+16025	Ausführen
+16026	Bildschirm drucken
+16027	Einfügen
+16028	Löschen
+16029	Hilfe
+16030	L Win
+16031	R Win
+16032	Anwendungen
+16033	Zehnertastatur 0
+16034	Zehnertastatur 1
+16035	Zehnertastatur 2
+16036	Zehnertastatur 3
+16037	Zehnertastatur 4
+16038	Zehnertastatur 5
+16039	Zehnertastatur 6
+16040	Zehnertastatur 7
+16041	Zehnertastatur 8
+16042	Zehnertastatur 9
+16043	*
+16044	+
+16045	|
+16046	-
+16047	.
+16048	/
+16049	F1
+16050	F2
+16051	F3
+16052	F4
+16053	F5
+16054	F6
+16055	F7
+16056	F8
+16057	F9
+16058	F10
+16059	F11
+16060	F12
+16061	F13
+16062	F14
+16063	F15
+16064	F16
+16065	F17
+16066	F18
+16067	F19
+16068	F20
+16069	F21
+16070	F22
+16071	F23
+16072	F24
+16073	Num
+16074	Rollen
+16075	`
+16076	-
+16077	=
+16078	[
+16079	]
+16080	\\
+16081	;
+16082	'
+16083	,
+16084	.
+16085	/
+18001	Wenn Sie drei Kisten übereinanderstapeln, erhalten Sie einen Goldbarren.
+18100	Wo bin ich?
+18101	Vielleicht gibt es hier einen Hinweis darauf, warum das alles gebaut wurde.
+18102	Irgendwo auf der Insel muss es eine Möglichkeit geben, um Hilfe zu rufen. Mir bleibt nur, weiter im Inneren zu suchen.
+18200	Eine Einschienenbahn - wie futuristisch! Diese Schienen müssen doch irgendwo hinführen.
+18201	Anscheinend gibt es mehrere Möglichkeiten zum Erkunden. Am besten merke ich mir die Stelle, an der ich die Schienen verlassen habe.
+18202	Es sieht zu steil aus, um weiterzugehen. Vielleicht kann man nur über den Kamm gelangen, wenn man auf den Schienen läuft. 
+18300	Dschungel. Ich gehe weiter, bis ich zur Zivilisation zurückkomme. Ich schaffe es.
+18301	Das scheint der einzige Weg nach unten zu sein. Ich frage mich, ob der Teich tief genug ist ...
+18302	Wenn man Stromkabel verlegt, müssen diese irgendwohin führen.
+18400	Ich bin gerettet! Ganz bestimmt! Aus einem der Hauptgebäude muss eine Leitung herausführen.
+18401	Die Zentrale war wahrscheinlich ziemlich wichtig. Vielleicht findet man da ein Telefon oder einen Hinweis.
+18402	Man hat alles von dieser Konsole aus gesteuert - Datenverbindungen, Sicherheitstore ...
+18403	Anscheinend war bei Hammond das andere wichtige Zentrum für Datenübermittlung. Und Wu wird irgendwann einen Schlüssel dafür gehabt haben.
+18404	Hier gibt es nichts zu finden. Ich muss durch das nordöstliche Tor raus und nach dieser Satellitenverbindung suchen.
+18600	Hier hindurch muss ein Weg zum Computerlabor führen. Da finde ich die wichtigen Informationen.
+18601	Für dieses Tor braucht man eine grüne Karte. Hier muss doch irgendwo eine sein...
+18603	Scheinbar habe ich nicht überall nachgesehen. Vielleicht finde ich etwas in einem dieser Büro?
+18604	Wenn ich es ins Labor schaffe, kriege ich vielleicht eine nach draußen führende Leitung.
+18605	Klasse. Mal sehen, ob wir das hier zum Laufen bringen.
+18606	Die Gebäude auf dem Berg!? Das ist ja optimal. Vielleicht haben sich welche von diesen Koppeltoren geöffnet. Das ist vielleicht meine einzige Hoffnung.
+18700	Hier führt kein Weg hoch. Ich muss weiter Runden drehen, bis ich etwas finde.
+18701	Ruinen! Vielleicht hatten die Mayas einen Weg nach oben.
+18800	Die Klippen sehen zu steil aus, um hochzuklettern.
+18801	Also gut. Ich muss wohl hier mit dem Klettern anfangen.
+18900	Gipfelgebäude. Ich bin so weit gekommen, jetzt kann mich keiner mehr aufhalten.
+18901	Ein letzes Mal rennen, um den Hubschrauber zu erwischen.
+19010	Willkommen bei Trespasser.
+19020	Durch Bewegen der Maus können Sie sich umsehen.
+19030	Zum Vorwärtsbewegen drücken Sie 'W' und halten die Taste gedrückt.
+19040	Ihr Abenteuer beginnt hier.
+19050	Zum Springen drücken Sie 'Q'.
+19060	Wenn Sie 'A' und 'D' drücken, machen Sie einen Schritt nach links bzw. rechts.
+19070	Drücken Sie 'Z', um sich zu ducken.
+19080	Sie können Objekte mit der Hand bewegen und tragen.
+19090	Drücken Sie die linke Maustaste, und halten Sie diese gedrückt.
+19100	Nun bewegt sich die Hand entsprechend der Verschiebung der Maus.
+19110	Versuchen Sie, das Kantholz vorne auf der Kiste zu greifen.
+19120	Zum Greifen eines Objekts bewegen Sie die Hand in deßen Nähe ...
+19130	Klicken Sie dann mit der rechten Maustaste.
+19140	Gut! Sie schwingen das Kantholz, indem Sie die linke Maustaste gedrückt halten und die Maus verschieben.
+19150	Drücken Sie die rechte Maustaste, wenn Sie es fallen lassen möchten.
+19160	Gut. Versuchen Sie, andere Objekte zu greifen.
+19170	Sie müssen sich vielleicht bücken, wenn sie sich in Bodennähe befinden.
+19180	üben Sie das Rennen und Springen, bis Sie bereit sind, weiterzumachen.
+19190	Schusswaffen können überlebenswichtig sein.
+19200	Sie feuern mit einer Schusswaffe, indem Sie sie greifen und die Leertaste drücken.
+19210	Zum Zielen mit der Waffe können Sie das Visier verwenden.
+19220	Sie bewegen das Handgelenk, indem Sie die Umschalt- und die linke Maustaste drücken und die Maus verschieben.
+19230	Sie können den Arm drehen, wenn Sie die Strg- und die linke Maustaste gedrückt halten und die Maus verschieben.
+19240	Durch Drücken von 'F' werfen Sie ein Objekt, das Sie halten.
+19250	Die Wurfrichtung ist immer die Mitte der Sichtrichtung.
+19260	Versuchen Sie jetzt, einen Farbeimer zu treffen!
+19270	Sie schlagen mit einem Objekt, indem Sie es greifen und die Leertaste drücken.
+19280	Schwingen Sie den Baseballschläger.
+19290	Durch Drücken von F1 können Sie jederzeit einen Hinweis auf den nächsten Schritt aufrufen.

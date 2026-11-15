@@ -1,0 +1,11 @@
+# Trespasser Recompiled game text 1
+18000	Hinweis Nr. 0
+18002	Hinweis Nr. 2
+18003	Hinweis Nr. 3
+18004	Hinweis Nr. 4
+18005	Hinweis Nr. 5
+18006	Hinweis Nr. 6
+18007	Hinweis Nr. 7
+18008	Hinweis Nr. 8
+18009	Hinweis Nr. 9
+18010	Glückwunsch!  Du hast Hinweis Nr. 10!  Juhu!

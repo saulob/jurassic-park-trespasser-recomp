@@ -23,6 +23,7 @@ void frontend_bridge_tests(int* checks, int* failures);
 void save_preview_tests(int* checks, int* failures);
 void frontend_art_tests(int* checks, int* failures);
 void frontend_retail_tests(int* checks, int* failures, const char* dump_dir);
+void frontend_l10n_tests(int* checks, int* failures, const char* dump_dir);
 void loading_tests(int* checks, int* failures, const char* dump_dir);
 
 #define CHECK(cond, ...)                                                                                                \
@@ -1028,6 +1029,7 @@ int main(int argc, char** argv) {
     save_preview_tests(&g_checks, &g_failures);
     frontend_art_tests(&g_checks, &g_failures);
     frontend_retail_tests(&g_checks, &g_failures, dump);
+    frontend_l10n_tests(&g_checks, &g_failures, dump);
     loading_tests(&g_checks, &g_failures, dump);
     printf("frontend_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

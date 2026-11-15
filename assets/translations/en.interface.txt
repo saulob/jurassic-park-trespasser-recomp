@@ -1,0 +1,215 @@
+# Trespasser Recompiled interface text 1
+Menu::NEW GAME	NEW GAME
+Menu::LOAD	LOAD
+Menu::OPTIONS	OPTIONS	keep=fr
+Menu::EXIT	EXIT
+Menu::QUIT	QUIT
+Menu::RESUME	RESUME
+Menu::RESTART LEVEL	RESTART LEVEL
+Menu::SAVE	SAVE
+Menu::CANCEL	CANCEL
+Menu::DESKTOP	DESKTOP	keep=de,it
+Menu::MAIN MENU	MAIN MENU
+Menu::CONTROLS	CONTROLS
+Menu::VIDEO	VIDEO	keep=de,it
+Menu::AUDIO	AUDIO	keep=de,es,it
+Menu::CREDITS	CREDITS
+Menu::CLOSE	CLOSE
+Menu::OK	OK	keep=pt-BR,fr,de,es,it
+Menu::DEFAULTS	DEFAULTS
+Menu::DELETE	DELETE
+Menu::YES	YES
+Menu::NO	NO	keep=es,it
+Title::QUIT	QUIT
+Title::SOUND	SOUND	keep=de
+Footer::© 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin.  All Rights Reserved.	© 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin.  All Rights Reserved.
+Select	Select
+Back	Back
+Controls	Controls
+<CONTROLS> Controls	<CONTROLS> Controls
+<CONTROLS> View Controls	<CONTROLS> View Controls
+Move	Move
+Look	Look
+Jump	Jump
+Crouch (hold)	Crouch (hold)
+Crouch on/off	Crouch on/off
+Menu	Menu	keep=pt-BR,fr,es,it
+Move hand	Move hand
+Grab / drop	Grab / drop
+Use / fire	Use / fire
+Throw	Throw
+Rotate wrist	Rotate wrist
+Rotate arm	Rotate arm
+Stow / retrieve	Stow / retrieve
+Hint	Hint
+Objectives	Objectives
+Show Objective	Show Objective
+Run	Run
+Walk	Walk
+Back up	Back up
+Step left / right	Step left / right
+Replay voice	Replay voice
+Raise and move the hand	Raise and move the hand
+Grab	Grab
+Drop	Drop
+Debug Menu	Debug Menu
+Cheats	Cheats	keep=de
+Fullscreen	Fullscreen
+Debug / Test Menu	Debug / Test Menu
+Level Select	Level Select
+Restart Level	Restart Level
+Reload Current Level	Reload Current Level
+X	X	keep=*
+Y	Y	keep=*
+Z	Z	keep=*
+Teleport	Teleport
+Previous Key Point	Previous Key Point
+Next Key Point	Next Key Point
+Set Checkpoint	Set Checkpoint
+Return to Checkpoint	Return to Checkpoint
+Show Coordinates	Show Coordinates
+Copy Coordinates	Copy Coordinates
+Freeze AI	Freeze AI
+Freeze Dinosaurs	Freeze Dinosaurs
+Movement Speed	Movement Speed
+Jump Height	Jump Height
+Invulnerability	Invulnerability
+Infinite Ammo	Infinite Ammo
+Heal	Heal
+Super Health	Super Health
+Third Person	Third Person
+Fly / Free Camera	Fly / Free Camera
+Compass	Compass
+Ambient Occlusion	Ambient Occlusion
+Close	Close
+Off	Off
+On	On
+Low	Low
+Medium	Medium
+High	High
+Ultra	Ultra	keep=pt-BR,fr,de,es,it
+Unavailable	Unavailable
+unavailable	unavailable
+none	none
+none (main menu)	none (main menu)
+current	current
+Level	Level	keep=de
+Player	Player
+Navigation	Navigation	keep=fr,de
+Debug	Debug	keep=de,it
+Graphics	Graphics
+No scene files in the data folder	No scene files in the data folder
+Objectives unavailable for this level	Objectives unavailable for this level
+Checkpoint set	Checkpoint set
+Coordinates shown	Coordinates shown
+Coordinates hidden	Coordinates hidden
+Coordinates copied	Coordinates copied
+Coordinates unavailable	Coordinates unavailable
+Compass off	Compass off
+Compass on	Compass on
+Not available here	Not available here
+Not available	Not available
+Level Select failed	Level Select failed
+Reload failed	Reload failed
+Restart failed	Restart failed
+Teleported to %.3f %.3f %.3f	Teleported to %.3f %.3f %.3f
+Teleport failed	Teleport failed
+Returned to checkpoint	Returned to checkpoint
+Return to Checkpoint failed	Return to Checkpoint failed
+Next Key Point failed	Next Key Point failed
+Previous Key Point failed	Previous Key Point failed
+The clipboard could not be opened	The clipboard could not be opened
+Ambient Occlusion is unavailable (see the log)	Ambient Occlusion is unavailable (see the log)
+Freeze AI failed	Freeze AI failed
+Key point %d / %d	Key point %d / %d
+No objective	No objective
+Objective updated	Objective updated
+Anne cannot be healed now	Anne cannot be healed now
+Camera	Camera	keep=it
+Normal	Normal	keep=pt-BR,de,es
+Free Camera	Free Camera
+Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close
+Esc/B or F3 close	Esc/B or F3 close
+Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast
+Beach	Beach
+Jungle Road	Jungle Road
+Industrial Jungle	Industrial Jungle
+InGen Town	InGen Town
+InGen Lab	InGen Lab
+Ascent, Part 1	Ascent, Part 1
+Ascent, Part 2	Ascent, Part 2
+Summit	Summit
+Test Scene	Test Scene
+Test Scene Night	Test Scene Night
+Find out where you are	Find out where you are
+Search the construction site for clues	Search the construction site for clues
+Head inland	Head inland
+Follow the monorail tracks	Follow the monorail tracks
+Explore, then return to the monorail	Explore, then return to the monorail
+Cross the ridge on the monorail tracks	Cross the ridge on the monorail tracks
+Push on through the jungle	Push on through the jungle
+Find a way down	Find a way down
+Follow the power lines	Follow the power lines
+Find a building with a line out	Find a building with a line out
+Search the Operations Center	Search the Operations Center
+Use the control console	Use the control console
+Go to Hammond's place	Go to Hammond's place
+Leave by the northeastern gate	Leave by the northeastern gate
+Find a way through to the computer lab	Find a way through to the computer lab
+Find a green keycard	Find a green keycard
+Search the offices for a keycard	Search the offices for a keycard
+Get to the computer lab	Get to the computer lab
+Start up the computer	Start up the computer
+Head for the mountaintop	Head for the mountaintop
+Circle around to find a way up	Circle around to find a way up
+Climb up through the ruins	Climb up through the ruins
+Find a place to climb	Find a place to climb
+Climb the cliffs	Climb the cliffs
+Explore the summit facility	Explore the summit facility
+Race to meet the helicopter	Race to meet the helicopter
+Compass::N	N	keep=pt-BR,fr,de,es,it
+Compass::NE	NE	keep=pt-BR,fr,es,it
+Compass::E	E	keep=fr,es,it
+Compass::SE	SE	keep=pt-BR,fr,es,it
+Compass::S	S	keep=pt-BR,fr,de,es,it
+Compass::SW	SW	keep=de
+Compass::W	W	keep=de
+Compass::NW	NW	keep=de
+%d m	%d m	keep=pt-BR,fr,de,es,it
+%.1f km	%.1f km	keep=pt-BR,fr,de,es,it
+Video Test	Video Test
+Original	Original	keep=pt-BR,de,es
+HD	HD	keep=*
+The game's own player, audio and timing: only the presentation differs.	The game's own player, audio and timing: only the presentation differs.
+HD needs the D3D11 renderer.	HD needs the D3D11 renderer.
+F5 closes the panel. Esc, a key or a click skips a video, as in the game.	F5 closes the panel. Esc, a key or a click skips a video, as in the game.
+not found	not found
+Tutorial::Welcome to Trespasser.	Welcome to Trespasser.
+Tutorial::To look around, move <LOOK>.	To look around, move <LOOK>.
+Tutorial::To move forward, press and hold <RUN>.	To move forward, press and hold <RUN>.
+Tutorial::Your adventure begins here.	Your adventure begins here.
+Tutorial::Press <JUMP> to jump up.	Press <JUMP> to jump up.
+Tutorial::Press <LEFT> and <RIGHT> to step left and right.	Press <LEFT> and <RIGHT> to step left and right.
+Tutorial::And press <CROUCH> to crouch.	And press <CROUCH> to crouch.
+Tutorial::You can use your hand to move and carry objects.	You can use your hand to move and carry objects.
+Tutorial::Try pressing and holding <HAND>.	Try pressing and holding <HAND>.
+Tutorial::Now, moving <LOOK> moves your hand.	Now, moving <LOOK> moves your hand.
+Tutorial::Try picking up the two-by-four on the crate up ahead.	Try picking up the two-by-four on the crate up ahead.
+Tutorial::To pick up an object, move your hand near it....	To pick up an object, move your hand near it....
+Tutorial::Then click <GRAB>.	Then click <GRAB>.
+Tutorial::Good! Hold <HAND> and move <LOOK> to wield the two-by-four.	Good! Hold <HAND> and move <LOOK> to wield the two-by-four.
+Tutorial::Press <GRAB> to drop it.	Press <GRAB> to drop it.
+Tutorial::Good. Try picking up some other items.	Good. Try picking up some other items.
+Tutorial::You may have to crouch to reach them if they're on the ground.	You may have to crouch to reach them if they're on the ground.
+Tutorial::Feel free to practice running and jumping here, until you're ready to move on.	Feel free to practice running and jumping here, until you're ready to move on.
+Tutorial::Firearms can be an important survival tool.	Firearms can be an important survival tool.
+Tutorial::To fire a gun, pick it up, and press <USE>.	To fire a gun, pick it up, and press <USE>.
+Tutorial::You can aim the gun using the sights.	You can aim the gun using the sights.
+Tutorial::To adjust your wrist, press <WRIST> + <HAND>, and move <LOOK>.	To adjust your wrist, press <WRIST> + <HAND>, and move <LOOK>.
+Tutorial::You can rotate your arm by holding <ARM> + <HAND>, and moving <LOOK>.	You can rotate your arm by holding <ARM> + <HAND>, and moving <LOOK>.
+Tutorial::Press <THROW> to throw an object you are holding.	Press <THROW> to throw an object you are holding.
+Tutorial::You will always throw toward the center of your view.	You will always throw toward the center of your view.
+Tutorial::Step up and try to nail a paint can!	Step up and try to nail a paint can!
+Tutorial::To strike with an object, pick up the object and press <USE>.	To strike with an object, pick up the object and press <USE>.
+Tutorial::Try swinging the baseball bat.	Try swinging the baseball bat.
+Tutorial::You can always press <HINT> for a hint about what to do next.	You can always press <HINT> for a hint about what to do next.

@@ -3,6 +3,7 @@
 #include "frontend_hd.h"
 #include "gamepad.h"
 #include "host.h"
+#include "l10n.h"
 #include "loading_hd.h"
 #include "save_preview.h"
 
@@ -149,6 +150,12 @@ void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty) 
     g_layer.has_dirty = dirty != NULL;
     if (dirty) g_layer.dirty = *dirty;
 }
+
+/* The language's menu labels as the frontend and the loading screen ask for them: none until a test sets some. */
+static const char* s_label_from;
+static const char* s_label_to;
+
+const char* l10n_label(const char* english) { return s_label_from && !strcmp(english, s_label_from) ? s_label_to : NULL; }
 
 void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y) {
     (void)sprite;
@@ -437,6 +444,13 @@ static void test_audio(void) {
     stack(ws, 2);
     CHECK(frontend_hd_read_scene(&g_scene, 3440, 1440), "the Audio scene is refused");
     CHECK(!has_text(&g_scene, "3D Audio Accel. Enabled") && !find(&g_scene, FE_W_CHECK, 1025), "3D audio is in the frontend");
+    s_label_from = "Play Voice Overs";
+    s_label_to = "Reproduzir vozes";
+    CHECK(frontend_hd_read_scene(&g_scene, 3440, 1440) && has_text(&g_scene, s_label_to) && !has_text(&g_scene, "Play Voice Overs") &&
+              has_text(&g_scene, "Play Ambient Sounds"),
+          "a label of the game's own text boxes is read translated, the others as they are");
+    s_label_from = s_label_to = NULL;
+    CHECK(frontend_hd_read_scene(&g_scene, 3440, 1440), "the Audio scene is read again");
     for (int k = 0; k < 5; k++) {
         const fe_widget_t* x = find(&g_scene, FE_W_CHECK, 1020 + k);
         CHECK(x && ((x->state & FE_ST_CHECKED) != 0) == (k < 4), "audio check box %d state", k);
@@ -897,6 +911,26 @@ static void test_loading_texts(void) {
     free_fakes();
 }
 
+/* The loading screen reads its labels from the game's own controls: a translated label replaces the English one there. */
+static void test_loading_labels_translated(void) {
+    ld_scene_t s;
+    char slot[LD_SLOT_BYTES];
+    s_label_from = "World Initialization";
+    s_label_to = "Inicialização do mundo";
+    CHECK(read_loader(L_RETAIL, &s, slot) && s.gauge_count == 2 && !strcmp(s.gauges[0].caption, s_label_to) &&
+              !strcmp(s.gauges[1].caption, "Level File Copy"),
+          "World Initialization is drawn translated, the other label as the game has it (%s | %s)", s.gauges[0].caption,
+          s.gauges[1].caption);
+    free_fakes();
+    s_label_from = "Level File Copy";
+    s_label_to = "Cópia dos arquivos da fase";
+    CHECK(read_loader(L_RETAIL, &s, slot) && !strcmp(s.gauges[0].caption, "World Initialization") &&
+              !strcmp(s.gauges[1].caption, s_label_to),
+          "Level File Copy is drawn translated (%s)", s.gauges[1].caption);
+    free_fakes();
+    s_label_from = s_label_to = NULL;
+}
+
 static void test_loading_fallbacks(void) {
     ld_scene_t s;
     char slot[LD_SLOT_BYTES];
@@ -1123,6 +1157,7 @@ void frontend_bridge_tests(int* checks, int* failures) {
     test_loading_window();
     test_loading_042();
     test_loading_texts();
+    test_loading_labels_translated();
     test_loading_fallbacks();
     test_options();
     test_options_in_game();

@@ -453,4 +453,9 @@ typedef struct {
  * height (lines_scale = height / 480; 0 keeps the level's); far is never finer than near. */
 terrain_settings_t terrain_modern_settings(terrain_settings_t level, float far_clip, float lines_scale);
 
+/* A miss the game itself expects: the *.swp search before any level swap file exists. */
+int host_expected_miss(const char* api, const char* path, uint32_t error);
+/* The legacy Aureal A3D library: never loaded, the game takes its DirectSound path. */
+int host_unavailable_library(const char* name);
+
 #endif

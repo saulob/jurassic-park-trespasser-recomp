@@ -1121,6 +1121,7 @@ void compass_tests(int* checks, int* failures);
 void objective_tests(int* checks, int* failures);
 void overlay_tests(int* checks, int* failures);
 void physics_watch_tests(int* checks, int* failures);
+void menu_l10n_tests(int* checks, int* failures);
 
 int main(void) {
     test_f5();
@@ -1143,6 +1144,7 @@ int main(void) {
     objective_tests(&g_checks, &g_failures);
     overlay_tests(&g_checks, &g_failures);
     physics_watch_tests(&g_checks, &g_failures);
+    menu_l10n_tests(&g_checks, &g_failures);
     test_retail(JPT_SOURCE_DIR);
     test_panel();
     printf("debug_menu_tests: %d checks, %d failures\n", g_checks, g_failures);
