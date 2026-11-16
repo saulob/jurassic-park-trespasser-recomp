@@ -45,9 +45,27 @@ extern "C" {
 #define JPT_KEY_ENHANCED_SKY "enhanced_sky"
 #define JPT_KEY_QUICK_SAVE "quick_save_key"
 #define JPT_KEY_QUICK_LOAD "quick_load_key"
+/* Degrees across the 4:3 picture, as Trespasser CE's FOV; wider shapes add view to the sides (Hor+). */
+#define JPT_KEY_FOV "fov"
+/* Mouse-look factor for both axes, as Trespasser CE's MouseSensX/MouseSensY. */
+#define JPT_KEY_MOUSE_SENSITIVITY "mouse_sensitivity"
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
 #define JPT_SETTINGS_VERSION "3"
+
+#define JPT_FOV_DEFAULT 75
+#define JPT_FOV_MIN 60
+#define JPT_FOV_MAX 110
+int jpt_fov_clamp(int degrees);
+
+#define JPT_MOUSE_SENSITIVITY_DEFAULT 1.0f
+#define JPT_MOUSE_SENSITIVITY_MIN 0.25f
+#define JPT_MOUSE_SENSITIVITY_MAX 4.0f
+#define JPT_MOUSE_SENSITIVITY_STEP 0.05f
+/* Inside the range, on the step; anything not finite is the default. */
+float jpt_mouse_sensitivity_clamp(float value);
+/* "1.00": the text the settings file keeps. */
+void jpt_mouse_sensitivity_text(float value, char* out, size_t cap);
 
 enum { JPT_FILTER_ORIGINAL, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4, JPT_FILTER_ANISO8, JPT_FILTER_ANISO16, JPT_FILTER_COUNT };
 extern const char* const jpt_filter_keys[JPT_FILTER_COUNT];
@@ -103,6 +121,8 @@ typedef struct {
     int active_ai_enhanced; /* 0: the retail 3 active animals, 1: 6 */
     int water_refraction;
     int enhanced_sky;
+    int fov;
+    float mouse_sensitivity;
     char language[JPT_L10N_CODE_MAX];
     uint32_t hotkey_vk[JPT_HOTKEY_COUNT];
     jpt_gamepad_settings_t gamepad;
@@ -113,7 +133,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (24 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (26 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

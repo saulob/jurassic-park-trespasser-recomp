@@ -110,6 +110,21 @@ void goal_mark(dm_goal_status_t status) {
     ImGui::SameLine();
 }
 
+float unit(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
+
+void value_bar(const dm_row_t& r) {
+    const float h = ImGui::GetFontSize(), w = h * 6.0f, t = unit(r.bar);
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    const float y = at.y + h * 0.5f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 track = ImGui::GetColorU32(ImGuiCol_FrameBg), fill = ImGui::ColorConvertFloat4ToU32(r.selected ? kSelected : kSection);
+    dl->AddRectFilled(ImVec2(at.x, y - h * 0.12f), ImVec2(at.x + w, y + h * 0.12f), track, h * 0.12f);
+    dl->AddRectFilled(ImVec2(at.x, y - h * 0.12f), ImVec2(at.x + w * t, y + h * 0.12f), fill, h * 0.12f);
+    dl->AddCircleFilled(ImVec2(at.x + w * t, y), h * 0.3f, fill);
+    ImGui::Dummy(ImVec2(w + h * 0.5f, h));
+    ImGui::SameLine();
+}
+
 void row(const dm_row_t& r) {
     switch (r.kind) {
     case DM_ROW_TITLE: break;
@@ -147,6 +162,7 @@ void row(const dm_row_t& r) {
         ImGui::Selectable(r.text, r.selected != 0);
         if (r.value[0]) {
             ImGui::SameLine(ImGui::GetFontSize() * 14.0f);
+            if (r.bar >= 0.0f) value_bar(r);
             if (r.selected) ImGui::TextColored(kSelected, "%s", r.value);
             else ImGui::TextUnformatted(r.value);
         }

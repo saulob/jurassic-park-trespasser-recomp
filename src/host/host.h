@@ -225,6 +225,11 @@ int guest_overrides_check(void);
 /* widescreen.c: lifts the mode table's width cap and makes the main camera Hor+; 0 when a site is missing. */
 int widescreen_install(int aspect);
 int widescreen_active(void);
+/* Field of view in degrees across the 4:3 view (JPT_FOV_*): set from the settings or F5's session value; the main
+ * camera takes a change at widescreen_apply_fov, run from the game's UI loop. */
+void widescreen_set_fov(int degrees);
+int widescreen_fov(void);
+void widescreen_apply_fov(void);
 /* game_text.c: the gameplay text overlay keeps its share of the screen height and is drawn aliased. */
 void game_text_install(void);
 int game_text_drawing(void);
@@ -374,6 +379,8 @@ void window_host_release_pad_cursor(void);
 /* Mouse counts from the right stick, into the same cursor the raw mouse moves in gameplay (the device stays the
  * pad). */
 void window_host_pad_relative(int dx, int dy);
+/* Mouse sensitivity for the mouse's own motion in gameplay (both axes; the gamepad keeps its own). */
+void window_host_set_mouse_sensitivity(float value);
 int window_host_game_cursor(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */
 int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h);

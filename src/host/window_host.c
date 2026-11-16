@@ -108,6 +108,8 @@ static struct {
     int pad_cursor, pad_focus;
     POINT menu_mouse;
     int menu_mouse_valid;
+    float mouse_sensitivity;
+    mouse_scale_t mouse_scale;
     HWND capture;
     unsigned long relative_moves, captures, dropped_repeats;
     int input_lines, key_lines, quit_lines, ignored_logged;
@@ -492,6 +494,7 @@ static void update_input(const char* why) {
             s.clip_hold_until = 0;
         }
         pointer_recapture(s.state, next, &s.cursor.x, &s.cursor.y, s.fbw, s.fbh);
+        memset(&s.mouse_scale, 0, sizeof s.mouse_scale);
         s.last_move_valid = 0;
         s.raw_abs_valid = 0;
         s.menu_mouse_valid = 0;
@@ -722,6 +725,15 @@ static void add_relative(LONG dx, LONG dy) {
     if (pointer_add_relative(s.state, &s.cursor.x, &s.cursor.y, dx, dy)) s.relative_moves++;
 }
 
+/* The mouse's own motion; the gamepad's look has its own sensitivity and goes to add_relative directly. */
+static void mouse_relative(LONG dx, LONG dy) {
+    long x = dx, y = dy;
+    if (input_captured(s.state)) mouse_scale_counts(&s.mouse_scale, s.mouse_sensitivity, dx, dy, &x, &y);
+    add_relative((LONG)x, (LONG)y);
+}
+
+void window_host_set_mouse_sensitivity(float value) { s.mouse_sensitivity = jpt_mouse_sensitivity_clamp(value); }
+
 int window_host_input_focused(void) {
     return s.game && s.active && s.focused && GetForegroundWindow() == s.game && !shutdown_active(&s.shutdown) &&
            !IsIconic(s.game);
@@ -796,7 +808,7 @@ static int route_mouse(UINT msg, LPARAM* lparam) {
         s.menu_mouse_valid = 1;
     }
     if (!s.raw_input && msg == WM_MOUSEMOVE && input_captured(s.state)) {
-        if (s.last_move_valid) add_relative(client.x - s.last_move.x, client.y - s.last_move.y);
+        if (s.last_move_valid) mouse_relative(client.x - s.last_move.x, client.y - s.last_move.y);
         s.last_move = client;
         s.last_move_valid = 1;
     }
@@ -833,14 +845,14 @@ static void read_raw_input(HRAWINPUT handle) {
         LONG x = MulDiv(input.data.mouse.lLastX, w, 65535), y = MulDiv(input.data.mouse.lLastY, h, 65535);
         if (s.raw_abs_valid) {
             gamepad_note_mouse_motion((int)(x - s.raw_abs_x), (int)(y - s.raw_abs_y));
-            add_relative(x - s.raw_abs_x, y - s.raw_abs_y);
+            mouse_relative(x - s.raw_abs_x, y - s.raw_abs_y);
         }
         s.raw_abs_x = x;
         s.raw_abs_y = y;
         s.raw_abs_valid = 1;
     } else {
         gamepad_note_mouse_motion((int)input.data.mouse.lLastX, (int)input.data.mouse.lLastY);
-        add_relative(input.data.mouse.lLastX, input.data.mouse.lLastY);
+        mouse_relative(input.data.mouse.lLastX, input.data.mouse.lLastY);
     }
 }
 
@@ -1473,6 +1485,7 @@ void shim_GetCursorPos(void) {
             gamepad_ui_loop();
             overlay_ui_loop();
             debug_menu_ui_loop();
+            widescreen_apply_fov();
             ce_gameplay_ui_loop();
             update_input("GetCursorPos");
         }

@@ -1136,6 +1136,57 @@ static void TestInvertMouseInControls() {
     for (int i = 0; i < JPT_SETTING_COUNT; ++i) CHECK(std::string(jpt_settings[i].key).find("invert_mouse") == std::string::npos);
 }
 
+// Field of view (Graphics) and Mouse sensitivity (Controls): defaults, what the launcher saves, Reset, Portuguese.
+static void TestFovAndMouseSensitivity(const fs::path& dir) {
+    const fs::path ini = dir / "fov_mouse.ini";
+    WriteFile(ini, "settings_version = 3\nrenderer = d3d11\n");
+    LauncherSettings s(ini);
+    CHECK(s.Get(JPT_KEY_FOV) == "75" && s.Get(JPT_KEY_MOUSE_SENSITIVITY) == "1.00");
+    s.SetInt(JPT_KEY_FOV, 95);
+    s.Set(JPT_KEY_MOUSE_SENSITIVITY, "1.35");
+    CHECK(s.Save());
+    jpt_config_t c;
+    CHECK(jpt_config_load(ini.string().c_str(), &c) && c.fov == 95 && c.mouse_sensitivity > 1.349f &&
+          c.mouse_sensitivity < 1.351f && c.hardware);
+    LauncherSettings again(ini);
+    CHECK(again.Get(JPT_KEY_FOV) == "95" && again.Get(JPT_KEY_MOUSE_SENSITIVITY) == "1.35");
+    again.ResetToDefaults();
+    CHECK(again.Save() && again.Get(JPT_KEY_FOV) == "75" && again.Get(JPT_KEY_MOUSE_SENSITIVITY) == "1.00");
+    CHECK(jpt_config_load(ini.string().c_str(), &c) && c.fov == 75 && c.mouse_sensitivity == 1.0f);
+    WriteFile(ini, "fov = 300\nmouse_sensitivity = 0.01\n");
+    CHECK(jpt_config_load(ini.string().c_str(), &c) && c.fov == JPT_FOV_MAX && c.mouse_sensitivity == JPT_MOUSE_SENSITIVITY_MIN);
+    WriteFile(ini, "fov = wide\nmouse_sensitivity = fast\n");
+    LauncherSettings broken(ini);
+    CHECK(broken.Get(JPT_KEY_FOV) == "75" && broken.Get(JPT_KEY_MOUSE_SENSITIVITY) == "1.00");
+
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    CHECK(launcher.find("SliderWithDefault(\"fov\", fov, JPT_FOV_MIN, JPT_FOV_MAX, JPT_FOV_DEFAULT") != std::string::npos);
+    char default_text[16];
+    jpt_mouse_sensitivity_text(JPT_MOUSE_SENSITIVITY_DEFAULT, default_text, sizeof default_text);
+    CHECK(std::string(default_text) == "1.00" && std::string(jpt_default_value(JPT_KEY_MOUSE_SENSITIVITY)) == default_text);
+    CHECK(JPT_MOUSE_SENSITIVITY_MIN == 0.25f && JPT_MOUSE_SENSITIVITY_MAX == 4.0f && JPT_MOUSE_SENSITIVITY_STEP == 0.05f);
+    const size_t mouse_row = launcher.find("void MouseSensitivityRow("), controls_page = launcher.find("void PageControls(");
+    CHECK(mouse_row != std::string::npos && mouse_row < controls_page);
+    const std::string mouse_body = launcher.substr(mouse_row, controls_page - mouse_row);
+    CHECK(mouse_body.find("SliderWithDefault(\"mouse_sensitivity\", sensitivity, JPT_MOUSE_SENSITIVITY_MIN, "
+                          "JPT_MOUSE_SENSITIVITY_MAX,") != std::string::npos &&
+          mouse_body.find("JPT_MOUSE_SENSITIVITY_DEFAULT") != std::string::npos &&
+          mouse_body.find("SetNextItemWidth(-FLT_MIN)") == std::string::npos);
+    CHECK(launcher.find("Reset all settings on the About page") == std::string::npos &&
+          launcher.find("Controls how fast the mouse turns the view and moves Anne's hand on both axes. 1.00 is the original speed.") !=
+              std::string::npos);
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr("Controls how fast the mouse turns the view and moves Anne's hand on both axes. 1.00 is the original speed.")) ==
+          "Controla a velocidade do mouse ao girar a visão e mover a mão de Anne nos dois eixos. 1,00 é a velocidade original.");
+    SetLauncherLanguage("en");
+    CHECK(launcher.find("\"mouse_sensitivity_x\"") == std::string::npos && launcher.find("MouseSensY\"") == std::string::npos);
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr("Field of view")) == "Campo de visão (FOV)" && std::string(Tr("Mouse sensitivity")) == "Sensibilidade do mouse" &&
+          std::string(Tr("Default")) == "Padrão");
+    SetLauncherLanguage("en");
+    CHECK(std::string(Tr("Default")) == "Default");
+}
+
 // The translations are part of the program: no installation, download or folder of the player's.
 static void TestEmbeddedOnly() {
     for (const char* file : {"src/host/l10n.c", "src/common/jpt_l10n.c", "src/common/jpt_l10n.h", "launcher/launcher.cpp",
@@ -1200,6 +1251,7 @@ int main() {
     TestGoreAndTitleOptions();
     TestGraphicsCard(dir);
     TestInvertMouseInControls();
+    TestFovAndMouseSensitivity(dir);
     TestEmbeddedOnly();
     TestRealDisc();
     std::error_code ec;

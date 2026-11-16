@@ -83,6 +83,8 @@ Compass	Kompass
 Ambient Occlusion	Umgebungsverdeckung
 Water Refraction	Wasserbrechung
 Enhanced Sky	Verbesserter Himmel
+Field of View	Sichtfeld (FOV)
+Default	Standard
 Close	Schließen
 Off	Aus
 On	An

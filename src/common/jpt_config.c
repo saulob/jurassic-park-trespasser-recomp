@@ -2,6 +2,7 @@
 #include "jpt_config.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,6 +61,8 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_ENHANCED_SKY, "1" },
     { JPT_KEY_QUICK_SAVE, "F7" },
     { JPT_KEY_QUICK_LOAD, "F8" },
+    { JPT_KEY_FOV, "75" },
+    { JPT_KEY_MOUSE_SENSITIVITY, "1.00" },
     { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
     { JPT_KEY_GAMEPAD_LOOK_X, "100" },
     { JPT_KEY_GAMEPAD_LOOK_Y, "100" },
@@ -92,6 +95,31 @@ int jpt_parse_bool(const char* text, int* out) {
         if (!_stricmp(text, off[i])) return *out = 0, 1;
     }
     return 0;
+}
+
+int jpt_fov_clamp(int degrees) {
+    return degrees < JPT_FOV_MIN ? JPT_FOV_MIN : degrees > JPT_FOV_MAX ? JPT_FOV_MAX : degrees;
+}
+
+float jpt_mouse_sensitivity_clamp(float value) {
+    float steps;
+    if (!isfinite(value)) return JPT_MOUSE_SENSITIVITY_DEFAULT;
+    if (value < JPT_MOUSE_SENSITIVITY_MIN) value = JPT_MOUSE_SENSITIVITY_MIN;
+    if (value > JPT_MOUSE_SENSITIVITY_MAX) value = JPT_MOUSE_SENSITIVITY_MAX;
+    steps = floorf(value / JPT_MOUSE_SENSITIVITY_STEP + 0.5f);
+    return steps * JPT_MOUSE_SENSITIVITY_STEP;
+}
+
+void jpt_mouse_sensitivity_text(float value, char* out, size_t cap) {
+    if (cap) _snprintf(out, cap - 1, "%.2f", jpt_mouse_sensitivity_clamp(value)), out[cap - 1] = 0;
+}
+
+static int parse_number(const char* text, double* out) {
+    char* end;
+    double v = strtod(text, &end);
+    if (end == text || *end || !isfinite(v)) return 0;
+    *out = v;
+    return 1;
 }
 
 static int parse_choice(const char* text, const char* const* names, int count) {
@@ -139,6 +167,18 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_LANGUAGE)) {
         if (!jpt_l10n_language(value)) return 0;
         strcpy(c->language, value);
+        return 1;
+    }
+    if (!strcmp(key, JPT_KEY_FOV)) {
+        double v;
+        if (!parse_number(value, &v)) return 0;
+        c->fov = jpt_fov_clamp(v > 1000.0 ? 1000 : v < -1000.0 ? -1000 : (int)floor(v + 0.5));
+        return 1;
+    }
+    if (!strcmp(key, JPT_KEY_MOUSE_SENSITIVITY)) {
+        double v;
+        if (!parse_number(value, &v)) return 0;
+        c->mouse_sensitivity = jpt_mouse_sensitivity_clamp((float)(v > 1000.0 ? 1000.0 : v));
         return 1;
     }
     if (!strcmp(key, JPT_KEY_MONITOR)) {

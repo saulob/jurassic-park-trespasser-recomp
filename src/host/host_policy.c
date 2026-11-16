@@ -163,6 +163,22 @@ int pointer_recapture(input_state_t before, input_state_t after, long* x, long* 
     return 1;
 }
 
+void mouse_scale_counts(mouse_scale_t* m, float sensitivity, long dx, long dy, long* out_x, long* out_y) {
+    double x, y;
+    if (sensitivity == 1.0f || !(sensitivity > 0.0f)) {
+        m->rest_x = m->rest_y = 0.0;
+        *out_x = dx;
+        *out_y = dy;
+        return;
+    }
+    x = m->rest_x + (double)dx * sensitivity;
+    y = m->rest_y + (double)dy * sensitivity;
+    *out_x = (long)x;
+    *out_y = (long)y;
+    m->rest_x = x - (double)*out_x;
+    m->rest_y = y - (double)*out_y;
+}
+
 void open_press_reset(open_press_t* p) { memset(p, 0, sizeof *p); }
 
 void open_press_keydown(open_press_t* p, unsigned vk, int repeat, int gameplay, unsigned depth) {

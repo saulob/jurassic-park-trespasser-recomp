@@ -13,6 +13,7 @@
 #include "cheats_policy.h"
 #include "debug_menu_panel.h"
 #include "debug_menu_policy.h"
+#include "jpt_config.h"
 #include "jpt_gamepad.h"
 
 static int g_checks, g_failures;
@@ -745,9 +746,10 @@ static void test_ambient_occlusion(void) {
         if (rows[i].kind == DM_ROW_SECTION && !strcmp(rows[i].text, "Graphics")) graphics = i;
         if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_AMBIENT_OCCLUSION) at = i;
     }
-    CHECK(graphics >= 0 && at == graphics + 1 && row_says(rows, n, DM_AMBIENT_OCCLUSION, "Off") &&
-              rows[at].selected && !strcmp(rows[at].text, "Ambient Occlusion"),
-          "a Graphics section holds Ambient Occlusion: Off");
+    CHECK(graphics >= 0 && at == graphics + 2 && rows[graphics + 1].item == DM_FIELD_OF_VIEW &&
+              row_says(rows, n, DM_AMBIENT_OCCLUSION, "Off") && rows[at].selected &&
+              !strcmp(rows[at].text, "Ambient Occlusion"),
+          "a Graphics section holds Field of View, then Ambient Occlusion: Off");
     CHECK(rows[n - 1].item == DM_CLOSE, "Close stays last");
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_AMBIENT_OCCLUSION && a.value == 1, "Enter: Off -> Low");
@@ -775,6 +777,66 @@ static void test_ambient_occlusion(void) {
     dm_toggle(&s, &w, DM_MENU_CHEATS);
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     CHECK(!row_of(rows, n, DM_AMBIENT_OCCLUSION), "not in Cheats");
+}
+
+/* Field of View: the session's value, stepped by 1 (Shift, LB/RB: 10) inside the setting's range; Enter is Default. */
+static void test_field_of_view(void) {
+    dm_state_t s;
+    dm_world_t w = level_world("be.scn"), menu = main_menu_world();
+    dm_action_t a;
+    dm_row_t rows[DM_ROWS_MAX];
+    const dm_row_t* r;
+    int n;
+    dm_init(&s);
+    w.fov = JPT_FOV_DEFAULT;
+    w.ambient_occlusion = 2;
+    dm_f5(&s, &w);
+    go_to(&s, &w, DM_FIELD_OF_VIEW);
+    CHECK(s.cursor == DM_FIELD_OF_VIEW, "the Debug Menu reaches Field of View");
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    r = row_of(rows, n, DM_FIELD_OF_VIEW);
+    CHECK(r && !strcmp(r->text, "Field of View") && !strcmp(r->value, "75 (Default)") && r->selected,
+          "Field of View 75 (Default)");
+    CHECK(r && fabsf(r->bar - 0.3f) < 1e-6f, "its bar sits at 75 of 60..110");
+    for (int i = 0; i < n; i++) CHECK(rows[i].item == DM_FIELD_OF_VIEW || rows[i].bar < 0.0f, "only Field of View has a bar");
+    press(&s, &w, VK_RIGHT);
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_FIELD_OF_VIEW && a.value == 76, "Right: 76");
+    press(&s, &w, VK_LEFT);
+    CHECK(dm_take(&s, &a) && a.value == 74, "Left: 74");
+    dm_key(&s, &w, VK_RIGHT, 1, 0, 1, 0, 1000);
+    dm_key(&s, &w, VK_RIGHT, 0, 0, 1, 0, 1000);
+    CHECK(dm_take(&s, &a) && a.value == 85, "Shift+Right: 85");
+    dm_key(&s, &w, VK_LEFT, 1, 0, 0, 1, 1000);
+    dm_key(&s, &w, VK_LEFT, 0, 0, 0, 1, 1000);
+    CHECK(dm_take(&s, &a) && a.value == 74, "Ctrl+Left still moves a whole degree");
+    dm_pad(&s, &w, JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER), 1000);
+    CHECK(dm_take(&s, &a) && a.value == 85, "RB: +10");
+    w.fov = 105;
+    dm_pad(&s, &w, JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER), 2000);
+    CHECK(dm_take(&s, &a) && a.value == JPT_FOV_MAX, "RB stops at the maximum");
+    w.fov = JPT_FOV_MAX;
+    press(&s, &w, VK_RIGHT);
+    CHECK(!dm_take(&s, &a), "Right at the maximum: nothing");
+    w.fov = JPT_FOV_MIN;
+    press(&s, &w, VK_LEFT);
+    CHECK(!dm_take(&s, &a), "Left at the minimum: nothing");
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    CHECK(row_says(rows, n, DM_FIELD_OF_VIEW, "60") && fabsf(row_of(rows, n, DM_FIELD_OF_VIEW)->bar) < 1e-6f,
+          "the row follows the session's value");
+    w.fov = 98;
+    press(&s, &w, VK_RETURN);
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_FIELD_OF_VIEW && a.value == JPT_FOV_DEFAULT, "Enter: Default 75");
+    w.fov = 0;
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    CHECK(!dm_item_enabled(&s, &w, DM_FIELD_OF_VIEW) && row_says(rows, n, DM_FIELD_OF_VIEW, "-") &&
+              row_of(rows, n, DM_FIELD_OF_VIEW)->bar < 0.0f,
+          "no value: disabled");
+    menu.fov = 90;
+    CHECK(dm_item_enabled(&s, &menu, DM_FIELD_OF_VIEW), "it can be changed from the main menu too");
+    w.fov = 90;
+    dm_toggle(&s, &w, DM_MENU_CHEATS);
+    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
+    CHECK(!row_of(rows, n, DM_FIELD_OF_VIEW), "not in Cheats");
 }
 
 /* Water Refraction and Enhanced Sky: the running state, switched for the session only (the renderer keeps the setting). */
@@ -805,8 +867,8 @@ static void test_effect_switches(void) {
             if (rows[i].kind == DM_ROW_ITEM && rows[i].item == (int)k[e].item) at = i;
             if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_CLOSE) close = i;
         }
-        CHECK(graphics >= 0 && ao == graphics + 1 && at == ao + 1 + e && close == n - 1 && close > at,
-              "Graphics: Ambient Occlusion, Water Refraction, Enhanced Sky, then Close");
+        CHECK(graphics >= 0 && ao == graphics + 2 && at == ao + 1 + e && close == n - 1 && close > at,
+              "Graphics: Field of View, Ambient Occlusion, Water Refraction, Enhanced Sky, then Close");
         CHECK(!strcmp(rows[at].text, k[e].label) && row_says(rows, n, k[e].item, "On") && rows[at].selected,
               "%s shows the state in use: On", k[e].label);
         press(&s, &w, VK_RETURN);
@@ -1205,6 +1267,7 @@ int main(void) {
     test_stale_state();
     test_cheats_menu();
     test_ambient_occlusion();
+    test_field_of_view();
     test_effect_switches();
     cheats_tests(&g_checks, &g_failures);
     compass_tests(&g_checks, &g_failures);

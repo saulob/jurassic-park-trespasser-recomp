@@ -30,6 +30,12 @@ page lists the ones the game loads (its `KeyMap`), so a remapped key shows up th
 | Rotate wrist | Shift + mouse left + mouse movement |
 | Pause menu | Esc |
 
+**Mouse sensitivity** (0.25-4.00, default 1.00, key `mouse_sensitivity`) scales the mouse's motion for looking and for
+moving the hand, on both axes alike, as Trespasser CE's `MouseSensX`/`MouseSensY`: the game turns sensitivity x counts
+x 0.005 radians. 1.00 is the original. It is set in the launcher only (Controls > Keyboard & Mouse) and read when the
+game starts; Reset all settings on the About page puts back 1.00. The game's own Controls screen is unchanged. Invert
+mouse stays the game's own option, independent of it; the gamepad's look keeps its own Look sensitivity.
+
 Port hotkeys: **F7 Quick Save** and **F8 Quick Load** (changed on the launcher's Controls page; Insert, Delete, Home,
 End, Page Up, Page Down, F6 and F9 are the other keys they can take, and a key taken by one of them never reaches the
 game). Quick Save writes the level in progress to its own slot, `SAVEGAME.QCK` beside the numbered saves, with the
@@ -64,6 +70,7 @@ does not move or look and the game gets no keys; Esc (or B) closes it first, or 
 | Show Coordinates | level, X, Y, Z and yaw in the top-left corner (off at every start) |
 | Copy Coordinates | `Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570` to the clipboard |
 | Freeze AI | the DINOS cheat: dinosaurs sleep and stop updating until it is turned off |
+| Field of View | Graphics: the session's field of view in degrees across the 4:3 view (60-110), with a bar; Left/Right 1, Shift or LB/RB 10, Enter puts back the Default 75. Applies at once (the main camera is set again from the game's UI loop). For this session only: `trespasser.ini` keeps the launcher's value and the next start uses it. The log says `[debug] field of view: N (this session only)` |
 | Ambient Occlusion | Graphics: Off, Low, Medium, High, Ultra (Enter cycles, Left/Right step); applies from the next frame and is saved to `trespasser.ini`. Unavailable with the Software renderer or without feature level 11.0 |
 | Water Refraction, Enhanced Sky | Graphics: On / Off (Enter switches, Right On, Left Off), the state in use, from the next draw: for A/B comparison of the same view. For this session only: `trespasser.ini` keeps the launcher's choice, and the next start uses it. The log says `[debug] water refraction: on` / `off` (and `enhanced sky`) when it changes. Unavailable with the Software renderer |
 

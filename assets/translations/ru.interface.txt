@@ -83,6 +83,8 @@ Compass	Компас
 Ambient Occlusion	Фоновое затенение
 Water Refraction	Преломление воды
 Enhanced Sky	Улучшенное небо
+Field of View	Поле зрения (FOV)
+Default	По умолчанию
 Close	Закрыть
 Off	Выкл.
 On	Вкл.

@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -74,6 +75,10 @@ constexpr char kGraphicsCardHelp[] =
 constexpr char kRenderResolutionHelp[] =
     "The size the 3D world is really drawn at, with its own depth buffer and anti-aliasing; it follows the Aspect ratio "
     "on the Display page. Native uses the monitor's size. Original keeps the earlier compatibility size.";
+constexpr char kFieldOfViewHelp[] =
+    "How much of the world the 3D view shows, in degrees across a 4:3 picture, as Trespasser CE's FOV. 75 is the "
+    "original view. Wider aspect ratios add view to the sides (Hor+) without stretching; menus, HUD, subtitles and "
+    "videos stay the same. F5's Debug Menu changes it while playing, for this session only.";
 constexpr char kAntiAliasingHelp[] =
     "Multisample anti-aliasing of the 3D world. Only the levels this graphics card supports are listed.";
 constexpr char kTextureFilteringHelp[] =
@@ -106,6 +111,8 @@ constexpr char kDualStowHelp[] =
     "while pressing Stow/Retrieve to stow without taking the other item out, or to take the item from the back. Off is "
     "the original behaviour.";
 constexpr char kInvertMouseHelp[] = "Mouse look up and down inverted, the game's own option.";
+constexpr char kMouseSensitivityHelp[] =
+    "Controls how fast the mouse turns the view and moves Anne's hand on both axes. 1.00 is the original speed.";
 constexpr char kKeyboardHelp[] =
     "The game's own bindings as it loads them, changed in its Controls screen (Options > Controls). They keep "
     "working while a gamepad is connected.";
@@ -474,7 +481,7 @@ private:
             return {name, "Window, monitor, aspect ratio and presentation.", [this](trg::Ui& ui) { PageDisplay(ui); },
                     nullptr, nullptr};
         case PageId::kGraphics:
-            return {name, "Renderer, graphics card, resolution, anti-aliasing and texture filtering.",
+            return {name, "Renderer, graphics card, resolution, field of view, anti-aliasing and texture filtering.",
                     [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr};
         case PageId::kGameplay:
             return {name, "Language, Skip Intro and what the window title shows.",
@@ -718,6 +725,7 @@ private:
             resolutions.push_back({jpt_render_presets[preset].key, ResolutionLabel(preset, box)});
         }
         ui.Combo("Render resolution", kRenderResolutionHelp, JPT_KEY_RENDER_RESOLUTION, "native", resolutions);
+        FieldOfViewRow(ui);
         AntiAliasingRow(ui);
         ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "medium",
                  {{"off", "Off"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}, {"ultra", "Ultra"}});
@@ -738,6 +746,42 @@ private:
                   {"anisotropic16", "Anisotropic 16x"}});
         ui.Toggle("VSync", kVSyncHelp, JPT_KEY_VSYNC, true, "Off", "On");
         ui.EndRows();
+    }
+
+    // A slider with its value and a Default button on one row.
+    template <typename Value>
+    bool SliderWithDefault(const char* id, Value& value, Value lo, Value hi, Value def, const char* format) {
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const char* reset = Tr("Default");
+        const float button = ImGui::CalcTextSize(reset).x + style.FramePadding.x * 2.0f;
+        bool changed = false;
+        ImGui::PushID(id);
+        ImGui::SetNextItemWidth(-(button + style.ItemSpacing.x));
+        if constexpr (std::is_same_v<Value, int>) {
+            changed = ImGui::SliderInt("##slider", &value, lo, hi, format, ImGuiSliderFlags_AlwaysClamp);
+        } else {
+            changed = ImGui::SliderFloat("##slider", &value, lo, hi, format, ImGuiSliderFlags_AlwaysClamp);
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(value == def);
+        if (ImGui::Button(reset)) {
+            value = def;
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::PopID();
+        return changed;
+    }
+
+    void FieldOfViewRow(trg::Ui& ui) {
+        ui.Row("Field of view", kFieldOfViewHelp);
+        int fov = JPT_FOV_DEFAULT;
+        jpt_config_t parsed;
+        jpt_config_defaults(&parsed);
+        if (jpt_config_apply(&parsed, JPT_KEY_FOV, settings_.Get(JPT_KEY_FOV).c_str())) fov = parsed.fov;
+        if (SliderWithDefault("fov", fov, JPT_FOV_MIN, JPT_FOV_MAX, JPT_FOV_DEFAULT, "%d\xC2\xB0")) {
+            settings_.SetInt(JPT_KEY_FOV, jpt_fov_clamp(fov));
+        }
     }
 
     void AntiAliasingRow(trg::Ui& ui) {
@@ -805,6 +849,22 @@ private:
         }
     }
 
+    void MouseSensitivityRow(trg::Ui& ui) {
+        ui.Row("Mouse sensitivity", kMouseSensitivityHelp);
+        float sensitivity = JPT_MOUSE_SENSITIVITY_DEFAULT;
+        jpt_config_t parsed;
+        jpt_config_defaults(&parsed);
+        if (jpt_config_apply(&parsed, JPT_KEY_MOUSE_SENSITIVITY, settings_.Get(JPT_KEY_MOUSE_SENSITIVITY).c_str())) {
+            sensitivity = parsed.mouse_sensitivity;
+        }
+        if (SliderWithDefault("mouse_sensitivity", sensitivity, JPT_MOUSE_SENSITIVITY_MIN, JPT_MOUSE_SENSITIVITY_MAX,
+                              JPT_MOUSE_SENSITIVITY_DEFAULT, "%.2f")) {
+            char text[16];
+            jpt_mouse_sensitivity_text(sensitivity, text, sizeof text);
+            settings_.Set(JPT_KEY_MOUSE_SENSITIVITY, text);
+        }
+    }
+
     void PageControls(trg::Ui& ui) {
         const std::vector<ConnectedGamepad> pads = host_.Gamepads();
         const jpt_gamepad_settings_t pad = GamepadSettings();
@@ -843,6 +903,7 @@ private:
             ui.EndRows();
         }
         if (ui.Section("Keyboard & Mouse", true)) {
+            MouseSensitivityRow(ui);
             InvertMouseRow(ui);
             ui.Help(kKeyboardHelp);
             GuideRows(ui, 0, family, pad);

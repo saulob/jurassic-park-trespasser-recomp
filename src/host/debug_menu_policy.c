@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "cheats_policy.h"
+#include "jpt_config.h"
 #include "jpt_gamepad.h"
 #include "jpt_tr.h"
 
@@ -25,7 +26,7 @@ static const char* const k_labels[DM_ITEM_COUNT] = {
     "Level Select", "Restart Level", "Reload Current Level", "X", "Y", "Z", "Teleport", "Previous Key Point",
     "Next Key Point", "Set Checkpoint", "Return to Checkpoint", "Show Coordinates", "Copy Coordinates", "Freeze AI",
     "Movement Speed", "Jump Height", "Invulnerability", "Infinite Ammo", "Heal", "Super Health", "Teleport",
-    "Third Person", "Fly / Free Camera", "Compass", "Ambient Occlusion", "Water Refraction", "Enhanced Sky", "Close",
+    "Third Person", "Fly / Free Camera", "Compass", "Field of View", "Ambient Occlusion", "Water Refraction", "Enhanced Sky", "Close",
 };
 
 static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "High", "Ultra" };
@@ -33,7 +34,7 @@ static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "
 static const dm_item_t k_debug_main[] = {
     DM_LEVEL_SELECT, DM_RESTART,  DM_RELOAD,   DM_FIELD_X,        DM_FIELD_Y,           DM_FIELD_Z, DM_TELEPORT,
     DM_PREV_KEY,     DM_NEXT_KEY, DM_SET_CHECKPOINT, DM_RETURN_CHECKPOINT, DM_COMPASS, DM_SHOW_COORDS, DM_COPY_COORDS,
-    DM_FREEZE_AI,    DM_AMBIENT_OCCLUSION, DM_WATER_REFRACTION, DM_ENHANCED_SKY, DM_CLOSE,
+    DM_FREEZE_AI,    DM_FIELD_OF_VIEW, DM_AMBIENT_OCCLUSION, DM_WATER_REFRACTION, DM_ENHANCED_SKY, DM_CLOSE,
 };
 static const dm_item_t k_cheats_main[] = {
     DM_MOVE_SPEED,    DM_JUMP_HEIGHT,  DM_INVULNERABLE, DM_INFINITE_AMMO, DM_FREEZE_AI,   DM_HEAL,  DM_SUPER_HEALTH,
@@ -109,6 +110,7 @@ int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     case DM_THIRD_PERSON:
     case DM_FREE_CAMERA: return player && w->camera_head;
     case DM_COMPASS: return level;
+    case DM_FIELD_OF_VIEW: return w->fov > 0;
     case DM_AMBIENT_OCCLUSION: return w->ambient_occlusion >= 0 && w->ambient_occlusion < DM_AO_LEVELS;
     case DM_WATER_REFRACTION: return w->water_refraction >= 0;
     case DM_ENHANCED_SKY: return w->enhanced_sky >= 0;
@@ -234,9 +236,18 @@ static void step_ambient_occlusion(dm_state_t* s, const dm_world_t* w, int step)
     if (next >= 0 && next < DM_AO_LEVELS) request_value(s, DM_ACT_AMBIENT_OCCLUSION, next);
 }
 
+static void step_field_of_view(dm_state_t* s, const dm_world_t* w, float step) {
+    int by = fabsf(step) >= 1.0f ? (int)step : step > 0.0f ? 1 : -1, next = jpt_fov_clamp(w->fov + by);
+    if (next != w->fov) request_value(s, DM_ACT_FIELD_OF_VIEW, next);
+}
+
 static void adjust(dm_state_t* s, const dm_world_t* w, float step) {
     float* f;
     if (s->page == DM_PAGE_LEVELS || !dm_item_enabled(s, w, (dm_item_t)s->cursor)) return;
+    if (s->cursor == DM_FIELD_OF_VIEW) {
+        step_field_of_view(s, w, step);
+        return;
+    }
     if (is_multiplier(s->cursor)) {
         step_multiplier(s, w, step > 0.0f ? 1 : -1);
         return;
@@ -337,6 +348,7 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
         s->compass_off = !s->compass_off;
         dm_feedback(s, jpt_tr(s->compass_off ? "Compass off" : "Compass on"), now_ms);
         break;
+    case DM_FIELD_OF_VIEW: request_value(s, DM_ACT_FIELD_OF_VIEW, JPT_FOV_DEFAULT); break;
     case DM_AMBIENT_OCCLUSION:
         request_value(s, DM_ACT_AMBIENT_OCCLUSION, (w->ambient_occlusion + 1) % DM_AO_LEVELS);
         break;
@@ -624,6 +636,7 @@ static void add_row(dm_row_t* rows, int max, int* n, dm_row_kind_t kind, int ite
     r->selected = selected;
     snprintf(r->text, sizeof r->text, "%s", text);
     snprintf(r->value, sizeof r->value, "%s", value ? value : "");
+    r->bar = -1.0f;
 }
 
 static const char* on_off(int v) { return v < 0 ? "-" : jpt_tr(v ? "On" : "Off"); }
@@ -651,6 +664,11 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
         break;
     case DM_TELEPORT_PAGE: snprintf(value, cap, ">"); break;
     case DM_COMPASS: snprintf(value, cap, "%s", on_off(!s->compass_off)); break;
+    case DM_FIELD_OF_VIEW:
+        if (!enabled) snprintf(value, cap, "-");
+        else if (w->fov == JPT_FOV_DEFAULT) snprintf(value, cap, "%d (%s)", w->fov, jpt_tr("Default"));
+        else snprintf(value, cap, "%d", w->fov);
+        break;
     case DM_AMBIENT_OCCLUSION:
         snprintf(value, cap, "%s", jpt_tr(enabled ? k_ao_levels[w->ambient_occlusion] : "Unavailable"));
         break;
@@ -678,10 +696,12 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
 
 static void item_row(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n, dm_item_t item) {
     char value[DM_TEXT_MAX];
-    int enabled = dm_item_enabled(s, w, item);
+    int enabled = dm_item_enabled(s, w, item), at = *n;
     item_value(s, w, item, enabled, value, sizeof value);
     add_row(rows, max, n, DM_ROW_ITEM, (int)item, enabled, s->page != DM_PAGE_LEVELS && s->cursor == (int)item,
             dm_item_label(s->menu, item), value);
+    if (item == DM_FIELD_OF_VIEW && enabled && *n > at)
+        rows[at].bar = (float)(w->fov - JPT_FOV_MIN) / (float)(JPT_FOV_MAX - JPT_FOV_MIN);
 }
 
 static void items_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n,
@@ -795,7 +815,7 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Debug"), NULL);
     items_rows(s, w, rows, max, &n, k_debug_main + 12, 3);
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Graphics"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main + 15, 3);
-    items_rows(s, w, rows, max, &n, k_debug_main + 18, 1);
+    items_rows(s, w, rows, max, &n, k_debug_main + 15, 4);
+    items_rows(s, w, rows, max, &n, k_debug_main + 19, 1);
     return n;
 }

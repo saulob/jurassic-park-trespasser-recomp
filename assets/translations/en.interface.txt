@@ -83,6 +83,8 @@ Compass	Compass
 Ambient Occlusion	Ambient Occlusion
 Water Refraction	Water Refraction
 Enhanced Sky	Enhanced Sky
+Field of View	Field of View
+Default	Default
 Close	Close
 Off	Off
 On	On

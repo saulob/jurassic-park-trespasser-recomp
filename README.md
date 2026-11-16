@@ -29,6 +29,8 @@ original game. These are part of the normal Direct3D 11 renderer; there is nothi
   compatibility fallback (chosen in the launcher; it stays until the game closes).
 - **Native high resolutions**: the 3D world is drawn at the monitor's resolution (or 720p to 4K), not upscaled.
 - **True widescreen**: 16:9 to 32:9 show more of the world to the sides (Hor+), with no stretching and no holes.
+- **Field of view**: 60-110 degrees across the 4:3 view (75, the original, by default), as Trespasser CE's `FOV`;
+  wider screens add to the sides. F5's Debug Menu changes it while playing, for the session.
 - **Scaled UI**: menus and dialogs keep their original 4:3 layout, scaled to the screen.
 - **Modern texture filtering**: anisotropic filtering up to 16x, and MSAA up to 8x where the card supports it.
 - **Generated mipmaps**: the 3D world's textures get full mip chains made from the originals at load time (the files
@@ -53,7 +55,8 @@ tutorial's instructions show the bound keycaps or controller buttons as glyphs a
 and View shows every control in a level ([CONTROLS](docs/CONTROLS.md) explains the hand, crouching and each button).
 
 The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
-anti-aliasing, texture filtering, VSync and renderer, and the gamepad's layout and feel ([LAUNCHER](docs/LAUNCHER.md)).
+field of view, anti-aliasing, texture filtering, VSync and renderer, mouse sensitivity, and the gamepad's layout and
+feel ([LAUNCHER](docs/LAUNCHER.md)).
 It is portable: saves and settings stay in `user_data` next to the program ([user data](docs/user-data.md)).
 
 **Languages** are built into the port: Gameplay > Language in the launcher picks one of English, Brazilian Portuguese,
@@ -83,6 +86,8 @@ or Original choice that keeps the retail behaviour.
 - **Enhanced sky** (Graphics): the sky fades into the level's fog colour towards the horizon by view direction with the
   level's own sky fog band, as CE's enhanced sky, in Direct3D 11 over the retail sky plane and texture.
 - **Maximum object detail** (Graphics): every object keeps its most detailed model, as CE's `ForceMaxObjectDetail`.
+- **Mouse sensitivity** (launcher, Controls > Keyboard & Mouse): one value for both axes, as CE's
+  `MouseSensX`/`MouseSensY`.
 - **Footstep and collision sounds** no longer go silent after loading a save or restarting a level (always on).
 
 Credits: [Trespasser CE](https://www.trescomforum.org/viewtopic.php?t=10674) by Lee Arbuco;

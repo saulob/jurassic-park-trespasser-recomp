@@ -83,6 +83,8 @@ Compass	Bussola
 Ambient Occlusion	Occlusione ambientale
 Water Refraction	Rifrazione dell'acqua
 Enhanced Sky	Cielo migliorato
+Field of View	Campo visivo (FOV)
+Default	Predefinito
 Close	Chiudi
 Off	Disattivato
 On	Attivato

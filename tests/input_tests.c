@@ -104,6 +104,8 @@ static struct {
     int stopped;
     int recapture, update_after_hooks; /* the host's two guards against a stale state */
     uint8_t down[256], since[256];
+    float sensitivity; /* Mouse sensitivity, applied to the mouse's counts as mouse_relative does */
+    mouse_scale_t scale;
 } H;
 
 /* update_input: the state from what the game shows, the virtual cursor re-set when the game takes its pointer back. */
@@ -268,6 +270,7 @@ typedef struct {
 static void rig_init(rig_t* r, int pads, int invert_mouse) {
     memset(r, 0, sizeof *r);
     memset(&H, 0, sizeof H);
+    H.sensitivity = 1.0f;
     jpt_gamepad_defaults(&r->cfg);
     r->pads = pads;
     H.state = INPUT_GAMEPLAY_CAPTURED;
@@ -301,7 +304,9 @@ static frame_t run_step(rig_t* r, const step_t* s) {
         if (s->hand && !H.down[VK_LBUTTON]) H.since[VK_LBUTTON] = 1;
         H.down[VK_LBUTTON] = (uint8_t)(s->hand != 0);
         H.down[VK_SHIFT] = (uint8_t)(s->shoulder != 0.0f);
-        pointer_add_relative(H.state, &H.cursor_x, &H.cursor_y, s->count_x, s->count_y);
+        long x = s->count_x, y = s->count_y;
+        if (input_captured(H.state)) mouse_scale_counts(&H.scale, H.sensitivity, s->count_x, s->count_y, &x, &y);
+        pointer_add_relative(H.state, &H.cursor_x, &H.cursor_y, x, y);
     } else {
         pad.lt = s->hand ? 1.0f : 0.0f;
         pad.rx = s->stick_x;
@@ -594,6 +599,58 @@ static void test_quick_save_recapture(void) {
     }
 }
 
+/* Mouse sensitivity reaches CPlayer as CE's MouseSensX/MouseSensY do: the game's rotation is sensitivity x counts x
+ * 0.005 on both axes, Invert mouse still turns only the vertical, and the gamepad's look is not touched. */
+static void test_mouse_sensitivity(void) {
+    static const float k[] = { 0.25f, 0.5f, 1.0f, 1.5f, 2.0f, 4.0f };
+    static const step_t look = { 0, 20, -12, 0.0f, 0.0f, 0.0f, DT_FRAME, 0 };
+    static const step_t idle = { 0, 0, 0, 0.0f, 0.0f, 0.0f, DT_FRAME, 0 };
+    static const step_t stick = { 0, 0, 0, 1.0f, -1.0f, 0.0f, DT_X20, 0 };
+    rig_t r;
+    frame_t f, plain;
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        for (int invert = 0; invert < 2; invert++) {
+            rig_init(&r, 0, invert);
+            H.sensitivity = k[i];
+            f = run_step(&r, &look);
+            CHECK(fabsf(rot(f.rotate_x) - (float)(long)(20 * k[i]) * 0.005f) < 1e-6f);
+            CHECK(fabsf(rot(f.rotate_y) - (invert ? -1.0f : 1.0f) * (float)(long)(12 * k[i]) * 0.005f) < 1e-6f);
+            CHECK(f.after_x == CLIENT_W / 2 && f.after_y == CLIENT_H / 2); /* CInput recentres as always */
+            f = run_step(&r, &idle);
+            CHECK(rot(f.rotate_x) == 0.0f && rot(f.rotate_y) == 0.0f); /* nothing left over turns the view once the mouse stops */
+        }
+    /* 1.00 is the game exactly */
+    rig_init(&r, 0, 0);
+    plain = run_step(&r, &look);
+    rig_init(&r, 0, 0);
+    H.sensitivity = 1.0f;
+    f = run_step(&r, &look);
+    CHECK(field_differs(&plain, &f) == NULL);
+    /* the stick is the same at any mouse sensitivity */
+    rig_init(&r, 1, 0);
+    run_step(&r, &stick);
+    plain = run_step(&r, &stick);
+    rig_init(&r, 1, 0);
+    H.sensitivity = 3.0f;
+    run_step(&r, &stick);
+    f = run_step(&r, &stick);
+    CHECK(field_differs(&plain, &f) == NULL && !no_rotation(&f));
+    /* slow motion below one count at 0.25 still turns, a count every fourth frame */
+    {
+        const step_t crawl = { 0, 1, 0, 0.0f, 0.0f, 0.0f, DT_FRAME, 0 };
+        float turned = 0.0f;
+        rig_init(&r, 0, 0);
+        H.sensitivity = 0.25f;
+        for (int i = 0; i < 8; i++) turned += rot(run_step(&r, &crawl).rotate_x);
+        CHECK(fabsf(turned - 2 * 0.005f) < 1e-6f);
+    }
+    /* F7 between two frames at a high sensitivity: still no jump */
+    rig_init(&r, 0, 0);
+    H.sensitivity = 4.0f;
+    f = quick_save_between(&r, 1, 1, &look, &idle);
+    CHECK(no_rotation(&f) && f.read_x == CLIENT_W / 2 && f.read_y == CLIENT_H / 2);
+}
+
 int main(void) {
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
     int from_exe;
@@ -608,6 +665,7 @@ int main(void) {
     test_sequences();
     test_pauses();
     test_quick_save_recapture();
+    test_mouse_sensitivity();
     printf("input tests: %lu checks, %lu failed\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

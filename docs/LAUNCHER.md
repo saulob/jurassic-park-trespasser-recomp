@@ -77,9 +77,9 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 |---|---|
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Graphics card, Render resolution, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
+| Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Skip Intro, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
-| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
+| Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
 | About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 
@@ -314,6 +314,20 @@ Gameplay runs at a mode of the Aspect Ratio's shape (see Resolutions). Found in 
   caller's values are stored back, because callers copy, edit and set the properties again and savegames keep the
   angle. The LOD scale stays the 4:3 one. 75 degrees becomes about 91 at 16:9, 107 at 21:9 and 128 at 32:9.
 
+**Field of view** (key `fov`, 60-110, default 75). Trespasser CE's `FOV` in `[Render]`: "how it would appear on a 4:3
+display", the full horizontal angle of the 4:3 view, widened for wider displays unless its `LockHorizFOV` is set. In
+CE it is read once (`0.0` or absent: the game's own angle; else clamped to 30-175) and applied when the main camera is
+created, as the ratio of the new angle to the camera's own. Retail has no setting: `CCamera::SProperties` (`0x0051F720`)
+sets 75 degrees through `SetAngleOfView` (`0x0051F890`, `+0x48 = tan(angle / 2)`, angles in 2^32 units per turn),
+and a level's `CSetRendererAction` (`0x0046EFF0`) can set another angle. The wrapper above scales the angle the game
+asks for by `fov / 75` before the Hor+ widening, so 75 is the retail camera bit for bit and a level's own angle keeps
+its ratio. The range stops at 60 (the 4:3 vertical view 47 degrees) and 110 (4:3 vertical 94 degrees, 125 degrees
+across at 16:9, 151 at 32:9): wide enough for modern screens while the projection stays well short of 180 degrees
+(the angle is also capped at 170). There is no Vert-: every aspect ratio keeps the 4:3 vertical view of the chosen
+field of view. The F5 Debug Menu
+changes it for the session: the host calls `SetProperties` on the main camera again with its own stored properties
+from the game's UI loop, which changes only its projection (never its position, rotation, speed or the save).
+
 This happens before anything is projected, so the D3D TLVERTEX path, the software rasteriser and culling all see the
 same wider view; nothing is stretched afterwards. Presentation Stretch only decides how the final picture fits the
 window.
@@ -335,6 +349,7 @@ is not part of this work.
   The `[d3d11]` lines `graphics card: ... (DXGI adapter N)` and `device created: ..., adapter "..."` show the choice and the device.
   Software uses it too: its picture and the videos are shown through the same device. Anti-aliasing lists the
   chosen card's levels. Without a usable card the page says No graphics card found and Direct3D picks the device.
+- **Field of view**: a slider (60-110 degrees across the 4:3 view) with its value and Default (75); see True widescreen.
 - **Texture filtering**: Original (the filters the game asks for, its single texture level), Bilinear (every
   texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game filters, with generated
   mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where a card has less and

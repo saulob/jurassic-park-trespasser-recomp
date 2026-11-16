@@ -79,6 +79,7 @@ set(HOST_SOURCES
   src/host/occlusion_kernel.c
   src/host/polygon_submit.c
   src/host/widescreen.c
+  src/host/fov_policy.c
   src/host/game_text.c
   src/host/text_layout.c
   src/host/l10n.c
@@ -486,6 +487,15 @@ target_include_directories(ce_gpu_tests PRIVATE src/host src/host/ddraw)
 target_compile_options(ce_gpu_tests PRIVATE /W3)
 target_compile_definitions(ce_gpu_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 target_link_libraries(ce_gpu_tests PRIVATE d3d11 dxguid)
+# Field of view and mouse sensitivity: settings, the camera's arithmetic per aspect ratio, the mouse's counts and where
+# each value is written (headless):
+#   ninja -C <build dir> fov_mouse_tests && fov_mouse_tests.exe
+add_executable(fov_mouse_tests EXCLUDE_FROM_ALL tests/fov_mouse_tests.c src/host/fov_policy.c
+  src/host/host_policy.c)
+target_include_directories(fov_mouse_tests PRIVATE src/host)
+target_link_libraries(fov_mouse_tests PRIVATE jpt_common)
+target_compile_options(fov_mouse_tests PRIVATE /W3)
+target_compile_definitions(fov_mouse_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 # The F5 Debug / Test Menu, F10 Cheats, F3 Objectives and the compass: their policies, the retail sites and level data
 # they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
 add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c

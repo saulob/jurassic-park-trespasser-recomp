@@ -531,6 +531,8 @@ int main(int argc, char** argv) {
                    cfg.msaa);
     d3dr_configure_ambient_occlusion(cfg.ambient_occlusion, settings_file);
     d3dr_configure_effects(cfg.water_refraction, cfg.enhanced_sky);
+    window_host_set_mouse_sensitivity(cfg.mouse_sensitivity);
+    host_log("input", "mouse sensitivity %.2f (both axes)", cfg.mouse_sensitivity);
     if (!d3dr_startup()) return HOST_EXIT_SETUP;
 
     if (opt.dry_run) {
@@ -542,6 +544,7 @@ int main(int argc, char** argv) {
     {
         jpt_size_t hardware = jpt_gameplay_mode(box, cfg.aspect, 1), software = jpt_gameplay_mode(box, cfg.aspect, 0);
         jpt_size_t hardware_title = jpt_title_size(box, hardware, 1);
+        widescreen_set_fov(cfg.fov);
         if (!widescreen_install(cfg.aspect)) hardware = software = jpt_gameplay_mode(box, 0, 0);
         registry_gameplay_sizes(hardware.width, hardware.height, software.width, software.height);
         dd_set_gameplay_modes((DWORD)hardware.width, (DWORD)hardware.height, (DWORD)software.width,

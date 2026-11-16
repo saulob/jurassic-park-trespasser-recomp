@@ -67,6 +67,12 @@ int pointer_add_relative(input_state_t state, long* x, long* y, long dx, long dy
 /* The game takes its pointer back from a state where its cursor was the real one: the virtual cursor starts at the
  * centre CInput recentres to, not where the real cursor was left. 1 when it was set. */
 int pointer_recapture(input_state_t before, input_state_t after, long* x, long* y, long width, long height);
+/* The mouse's own motion for mouse-look, scaled by Mouse sensitivity before it reaches the virtual cursor. The parts of
+ * a count a scale leaves carry to the next motion, so slow movements are kept; 1.0 passes counts through unchanged. */
+typedef struct {
+    double rest_x, rest_y;
+} mouse_scale_t;
+void mouse_scale_counts(mouse_scale_t* m, float sensitivity, long dx, long dy, long* out_x, long* out_y);
 
 typedef enum {
     KEY_TO_GAME,
