@@ -225,3 +225,33 @@ Tutorial::Step up and try to nail a paint can!	Approchez et essayez de toucher u
 Tutorial::To strike with an object, pick up the object and press <USE>.	Pour vous battre à l'aide d'un objet, prenez-le et appuyez sur <USE>.
 Tutorial::Try swinging the baseball bat.	Essayez de manier la batte de base-ball.
 Tutorial::You can always press <HINT> for a hint about what to do next.	À tout moment, vous pouvez appuyer sur <HINT> pour avoir un conseil pour la suite.
+Video::My name is John Parker Hammond. I was born on March 14, 1928.	Je m'appelle John Parker Hammond. Je suis né le 14 mars 1928.
+Video::What follows is a record of certain events	Ce qui suit est le récit de certains événements
+Video::in which I took part, between the years 1980 and 1997,	auxquels j'ai pris part, entre 1980 et 1997,
+Video::on an island I will call Site B.	sur une île que j'appellerai le Site B.
+Video::Site B was not to be a theme park, but a research station.	Le Site B ne devait pas être un parc à thème, mais une station de recherche.
+Video::This was where we did the real work.	C'est là que se faisait le vrai travail.
+Video::By 1989, International Genetic Technologies had succeeded in their design,	En 1989, International Genetic Technologies avait réussi son projet,
+Video::to genetically recreate the dinosaurs.	recréer génétiquement les dinosaures.
+Video::It was an unprecedented accomplishment, the pinnacle of 20th century science,	C'était un exploit sans précédent, le sommet de la science du XXe siècle,
+Video::a work to rank with the achievements of Galileo, or Einstein.	une œuvre digne des découvertes de Galilée ou d'Einstein.
+Video::But it was not all so easy or so simple as it appeared.	Mais tout ne fut pas aussi facile ni aussi simple qu'il y paraissait.
+Video::One seldom hears the true history of such events,	On entend rarement la véritable histoire de tels événements,
+Video::what happened at the place where the world changed.	ce qui s'est passé à l'endroit où le monde a changé.
+Video::How it began...	Comment tout a commencé...
+Video::...what were the reasons...	...quelles en furent les raisons...
+Video::...what was the cost.	...quel en fut le prix.
+Video::The person you're trying to reach is unavailable.	La personne que vous essayez de joindre n'est pas disponible.
+Video::Please leave a message after the tone.	Veuillez laisser un message après le bip.
+Video::Anne? Anne, are you there?	Anne ? Anne, tu es là ?
+Video::It's Jill, pick up the phone!	C'est Jill, décroche !
+Video::God, don't tell me your mom was serious? You're in Costa Rica?	Mon Dieu, ne me dis pas que ta mère était sérieuse ? Tu es au Costa Rica ?
+Video::Visiting the natives, huh? Sun, sand and adventure.	En visite chez les autochtones, hein ? Soleil, sable et aventure.
+Video::My little Indiana Anne, world traveler extraordinaire.	Ma petite Indiana Anne, globe-trotteuse extraordinaire.
+Video::Well, give me a call when you get back, okay?	Bon, appelle-moi quand tu rentres, d'accord ?
+Video::By the way, I thought you hated flying?	Au fait, je croyais que tu détestais l'avion ?
+Video::Anne! It's Jill. This is like the eighth message I'm leaving you.	Anne ! C'est Jill. C'est genre le huitième message que je te laisse.
+Video::I'm sensing some sort of pattern here...	Je sens comme une tendance, là...
+Video::Come on, Anne. Quit being antisocial and pick up the phone sometime.	Allez, Anne. Arrête d'être asociale et décroche de temps en temps.
+Video::Oh, and by the way, don't even bother calling me	Oh, et au fait, ne prends même pas la peine de m'appeler
+Video::unless you have a damn good excuse.	à moins d'avoir une sacrée bonne excuse.

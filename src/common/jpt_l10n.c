@@ -11,6 +11,12 @@ const jpt_l10n_language_t jpt_l10n_languages[JPT_L10N_LANGUAGE_COUNT] = {
     { "it", "Italian", 1252 },
 };
 
+static const int k_listed[JPT_L10N_LANGUAGE_COUNT] = { 0, 1, 2, 3, 6, 5, 4 };
+
+const jpt_l10n_language_t* jpt_l10n_language_listed(int position) {
+    return position >= 0 && position < JPT_L10N_LANGUAGE_COUNT ? &jpt_l10n_languages[k_listed[position]] : NULL;
+}
+
 const jpt_l10n_credit_t jpt_l10n_credits[JPT_L10N_CREDIT_COUNT] = {
     { "pt-BR", "game text", "DreamWorks Interactive", "Nick3069", "official" },
     { "fr", "game text", "DreamWorks Interactive", "Nick3069", "official" },

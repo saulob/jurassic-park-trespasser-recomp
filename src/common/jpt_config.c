@@ -52,6 +52,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_AMBIENT_OCCLUSION, "medium" },
     { JPT_KEY_SHOW_FPS, "1" },
     { JPT_KEY_SKIP_INTRO, "0" },
+    { JPT_KEY_VIDEO_SUBTITLES, "1" },
     { JPT_KEY_SHOW_RESOLUTION_TITLE, "0" },
     { JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH },
     { JPT_KEY_DUAL_STOW, "1" },
@@ -145,6 +146,7 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);
     if (!strcmp(key, JPT_KEY_SHOW_FPS)) return jpt_parse_bool(value, &c->show_fps);
     if (!strcmp(key, JPT_KEY_SKIP_INTRO)) return jpt_parse_bool(value, &c->skip_intro);
+    if (!strcmp(key, JPT_KEY_VIDEO_SUBTITLES)) return jpt_parse_bool(value, &c->video_subtitles);
     if (!strcmp(key, JPT_KEY_SHOW_RESOLUTION_TITLE)) return jpt_parse_bool(value, &c->show_resolution_title);
     if (!strcmp(key, JPT_KEY_DUAL_STOW)) return jpt_parse_bool(value, &c->dual_stow);
     if (!strcmp(key, JPT_KEY_MAX_OBJECT_DETAIL)) return jpt_parse_bool(value, &c->max_object_detail);

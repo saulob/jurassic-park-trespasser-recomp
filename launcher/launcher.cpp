@@ -92,6 +92,8 @@ constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title."
 constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution in the window title.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
+constexpr char kVideoSubtitlesHelp[] =
+    "Shows subtitles in the game's language over the intro, the New Game video and the ending, where people speak.";
 constexpr char kMaxObjectDetailHelp[] =
     "Every object keeps its most detailed model at any distance, as Trespasser CE's ForceMaxObjectDetail. Off lets the "
     "game swap distant objects for simpler models, as the original did.";
@@ -486,7 +488,7 @@ private:
             return {name, "Renderer, graphics card, resolution, field of view, anti-aliasing and texture filtering.",
                     [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr};
         case PageId::kGameplay:
-            return {name, "Language, Skip Intro and what the window title shows.",
+            return {name, "Language, Skip Intro, video subtitles and what the window title shows.",
                     [this](trg::Ui& ui) { PageGameplay(ui); }, nullptr, nullptr};
         case PageId::kControls:
             return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
@@ -809,11 +811,13 @@ private:
 
     void PageGameplay(trg::Ui& ui) {
         std::vector<trg::Option> languages;
-        for (const jpt_l10n_language_t& language : jpt_l10n_languages) {
-            languages.push_back({language.code, language.name});
+        for (int i = 0; i < JPT_L10N_LANGUAGE_COUNT; ++i) {
+            const jpt_l10n_language_t* language = jpt_l10n_language_listed(i);
+            languages.push_back({language->code, language->name});
         }
         ui.Combo("Language", kLanguageHelp, JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH, languages);
         ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
+        ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
         ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
         ui.EndRows();

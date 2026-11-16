@@ -299,6 +299,7 @@ static int show_black(HWND window, const char** why) {
 static int show_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565, const uint16_t* gamma,
                       const player_t* p, const char** why) {
     video_gpu_frame_t f;
+    const video_subtitle_image_t* subtitle;
     vl_policy_t policy = vl_policy_for(p->flags, p->shown);
     vl_layout_t layout;
     int screen_w = source->right - source->left, screen_h = source->bottom - source->top, first_row;
@@ -329,6 +330,8 @@ static int show_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
         *why = video_gpu_error();
         return 0;
     }
+    subtitle = video_subtitles_image(V.chain_w, V.chain_h, layout.video.x, layout.video.y, layout.video.w, layout.video.h);
+    if (subtitle) d3dr_draw_video_subtitle(V.rtv, V.chain_w, V.chain_h, subtitle);
     if (FAILED(IDXGISwapChain1_Present(V.chain, 0, 0))) {
         *why = "Present of the video surface failed";
         return 0;
@@ -360,6 +363,17 @@ int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* sour
     }
     vl_session_shown(&V.session, show, (int32_t)p.frame, now_ms() - start);
     window_host_frame_presented();
+    return 1;
+}
+
+int video_hd_picture(int32_t* frame, int* x, int* y, int* w, int* h) {
+    player_t p;
+    if (!V.player || !read_player(&p) || !p.width || !p.shown) return 0;
+    *frame = (int32_t)p.frame;
+    *x = p.left;
+    *y = p.top;
+    *w = (int)p.width;
+    *h = (int)p.shown;
     return 1;
 }
 
@@ -416,7 +430,11 @@ static void play(void) {
     vl_display_name(guest_name, V.name, sizeof V.name);
     if (!vl_play_uses_session(mode)) {
         host_log("video", "%s: the game's own presentation (Video Test, ORIGINAL)", V.name);
+        V.player = g_ecx;
+        video_subtitles_begin(guest_name);
         V.play_lifted();
+        video_subtitles_end();
+        V.player = 0;
         host_log("video", "%s finished with the game's own presentation", V.name);
         return;
     }
@@ -428,7 +446,9 @@ static void play(void) {
     memset(&V.first, 0, sizeof V.first);
     vl_session_begin(&V.session);
     if (!d3dr_hardware()) host_log("video", "%s: the software renderer shows the game's own playback", V.name);
+    video_subtitles_begin(guest_name);
     V.play_lifted();
+    video_subtitles_end();
     vl_session_end(&V.session);
     log_finish();
     V.player = 0;

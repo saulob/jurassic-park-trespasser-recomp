@@ -225,3 +225,33 @@ Tutorial::Step up and try to nail a paint can!	Step up and try to nail a paint c
 Tutorial::To strike with an object, pick up the object and press <USE>.	To strike with an object, pick up the object and press <USE>.
 Tutorial::Try swinging the baseball bat.	Try swinging the baseball bat.
 Tutorial::You can always press <HINT> for a hint about what to do next.	You can always press <HINT> for a hint about what to do next.
+Video::My name is John Parker Hammond. I was born on March 14, 1928.	My name is John Parker Hammond. I was born on March 14, 1928.
+Video::What follows is a record of certain events	What follows is a record of certain events
+Video::in which I took part, between the years 1980 and 1997,	in which I took part, between the years 1980 and 1997,
+Video::on an island I will call Site B.	on an island I will call Site B.
+Video::Site B was not to be a theme park, but a research station.	Site B was not to be a theme park, but a research station.
+Video::This was where we did the real work.	This was where we did the real work.
+Video::By 1989, International Genetic Technologies had succeeded in their design,	By 1989, International Genetic Technologies had succeeded in their design,
+Video::to genetically recreate the dinosaurs.	to genetically recreate the dinosaurs.
+Video::It was an unprecedented accomplishment, the pinnacle of 20th century science,	It was an unprecedented accomplishment, the pinnacle of 20th century science,
+Video::a work to rank with the achievements of Galileo, or Einstein.	a work to rank with the achievements of Galileo, or Einstein.
+Video::But it was not all so easy or so simple as it appeared.	But it was not all so easy or so simple as it appeared.
+Video::One seldom hears the true history of such events,	One seldom hears the true history of such events,
+Video::what happened at the place where the world changed.	what happened at the place where the world changed.
+Video::How it began...	How it began...
+Video::...what were the reasons...	...what were the reasons...
+Video::...what was the cost.	...what was the cost.
+Video::The person you're trying to reach is unavailable.	The person you're trying to reach is unavailable.
+Video::Please leave a message after the tone.	Please leave a message after the tone.
+Video::Anne? Anne, are you there?	Anne? Anne, are you there?
+Video::It's Jill, pick up the phone!	It's Jill, pick up the phone!
+Video::God, don't tell me your mom was serious? You're in Costa Rica?	God, don't tell me your mom was serious? You're in Costa Rica?
+Video::Visiting the natives, huh? Sun, sand and adventure.	Visiting the natives, huh? Sun, sand and adventure.
+Video::My little Indiana Anne, world traveler extraordinaire.	My little Indiana Anne, world traveler extraordinaire.
+Video::Well, give me a call when you get back, okay?	Well, give me a call when you get back, okay?
+Video::By the way, I thought you hated flying?	By the way, I thought you hated flying?
+Video::Anne! It's Jill. This is like the eighth message I'm leaving you.	Anne! It's Jill. This is like the eighth message I'm leaving you.
+Video::I'm sensing some sort of pattern here...	I'm sensing some sort of pattern here...
+Video::Come on, Anne. Quit being antisocial and pick up the phone sometime.	Come on, Anne. Quit being antisocial and pick up the phone sometime.
+Video::Oh, and by the way, don't even bother calling me	Oh, and by the way, don't even bother calling me
+Video::unless you have a damn good excuse.	unless you have a damn good excuse.

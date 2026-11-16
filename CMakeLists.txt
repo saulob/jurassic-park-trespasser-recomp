@@ -97,6 +97,7 @@ set(HOST_SOURCES
   src/host/loading_layout.c
   src/host/video_hd.c
   src/host/video_layout.c
+  src/host/video_subtitles.c
   src/host/video_test.c
   src/host/video_test_state.c
   src/host/video_test_panel.cpp
@@ -161,7 +162,8 @@ set(PCRECOMP_SOURCES
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_restored_audio.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
-  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c)
+  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c
+  src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
 target_compile_options(jpt_common PRIVATE /W4)
@@ -521,6 +523,20 @@ target_include_directories(debug_menu_tests PRIVATE src/host src/common)
 target_compile_options(debug_menu_tests PRIVATE /W3)
 target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 target_link_libraries(debug_menu_tests PRIVATE jpt_common imgui_dx11 d3d11 dxguid)
+# Alt+Tab during a video: the lifted facts that keep a video from playing under a live game window (headless):
+#   ninja -C <build dir> video_focus_tests && video_focus_tests.exe
+add_executable(video_focus_tests EXCLUDE_FROM_ALL tests/video_focus_tests.c)
+target_compile_options(video_focus_tests PRIVATE /W3)
+target_compile_definitions(video_focus_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+
+# Video subtitles: timelines, fingerprints, languages, setting, layout and wiring (headless):
+#   ninja -C <build dir> video_subtitle_tests && video_subtitle_tests.exe
+add_executable(video_subtitle_tests EXCLUDE_FROM_ALL tests/video_subtitle_tests.c src/host/video_layout.c)
+target_include_directories(video_subtitle_tests PRIVATE src/host src/common)
+target_link_libraries(video_subtitle_tests PRIVATE jpt_common)
+target_compile_options(video_subtitle_tests PRIVATE /W3 /utf-8)
+target_compile_definitions(video_subtitle_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+
 # The HD videos: the retail inventory, the original decoder (no audio track, no window), the layout and session, and the
 # GPU passes on a WARP device (headless): ninja -C <build dir> video_tests && video_tests.exe
 add_executable(video_tests EXCLUDE_FROM_ALL tests/video_tests.c src/host/video_layout.c src/host/ddraw/video_gpu.c

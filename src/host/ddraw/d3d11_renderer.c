@@ -217,6 +217,13 @@ static struct {
         ID3D11ShaderResourceView* pointer_srv;
         int pointer_tex_size;
     } fe;
+    struct {
+        ID3D11Texture2D* tex;
+        ID3D11ShaderResourceView* srv;
+        int w, h;
+        unsigned uploaded;
+        const video_subtitle_image_t* pending;
+    } subtitle;
     ID3D11Texture2D* last_frame;
     ID3D11ShaderResourceView* last_frame_srv;
     UINT last_w, last_h, last_legacy_w, last_legacy_h;
@@ -676,6 +683,9 @@ static void release_static_objects(void) {
     SAFE_RELEASE(R.blend_premultiplied);
     SAFE_RELEASE(R.ui_srv);
     SAFE_RELEASE(R.ui_tex);
+    SAFE_RELEASE(R.subtitle.srv);
+    SAFE_RELEASE(R.subtitle.tex);
+    R.subtitle.w = R.subtitle.h = 0;
     d3dr_frontend_release();
     SAFE_RELEASE(R.still_srv);
     SAFE_RELEASE(R.still_tex);
@@ -3298,6 +3308,40 @@ static void draw_pointer(UINT width, UINT height) {
               NULL);
 }
 
+static void draw_subtitle(UINT width, UINT height, const video_subtitle_image_t* image) {
+    float rect[4];
+    if (!image || !image->pixels || image->w <= 0 || image->h <= 0 || !R.blend_premultiplied) return;
+    if (!R.subtitle.tex || R.subtitle.w != image->w || R.subtitle.h != image->h) {
+        SAFE_RELEASE(R.subtitle.srv);
+        SAFE_RELEASE(R.subtitle.tex);
+        R.subtitle.w = R.subtitle.h = 0;
+        if (!frontend_texture(&R.subtitle.tex, &R.subtitle.srv, image->w, image->h)) return;
+        R.subtitle.w = image->w;
+        R.subtitle.h = image->h;
+        R.subtitle.uploaded = image->generation - 1;
+    }
+    if (R.subtitle.uploaded != image->generation) {
+        ID3D11DeviceContext_UpdateSubresource(R.ctx, (ID3D11Resource*)R.subtitle.tex, 0, NULL, image->pixels,
+                                              (UINT)image->w * 4, 0);
+        R.subtitle.uploaded = image->generation;
+    }
+    rect[0] = (float)image->x / (float)width * 2.0f - 1.0f;
+    rect[1] = 1.0f - (float)image->y / (float)height * 2.0f;
+    rect[2] = (float)(image->x + image->w) / (float)width * 2.0f - 1.0f;
+    rect[3] = 1.0f - (float)(image->y + image->h) / (float)height * 2.0f;
+    set_pass(rect, k_full_uv, NULL, 0.0f);
+    draw_pass(R.ps[D3D11_SHADER_PS_COPY], R.subtitle.srv, R.point_clamp, R.blend_premultiplied, NULL, width, height, NULL);
+}
+
+void d3dr_draw_video_subtitle(ID3D11RenderTargetView* target, int width, int height, const video_subtitle_image_t* image) {
+    if (!target || width <= 0 || height <= 0 || !ensure_device()) return;
+    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &target, NULL);
+    draw_subtitle((UINT)width, (UINT)height, image);
+    unbind_views();
+    ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
+    R.bound.valid = 0;
+}
+
 /* The HD menu layer (frontend_hd.c): the game's screen size, premultiplied, only its changed rectangle uploaded. */
 static int draw_frontend(UINT width, UINT height) {
     if (!R.fe.pixels || R.fe.w <= 0 || R.fe.h <= 0 || R.fe.failed || !R.blend_premultiplied) return 0;
@@ -3399,6 +3443,7 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], srv, sampler, R.blend_none, NULL, width, height, NULL);
     if (R.ao.frame) apply_ambient_occlusion(R.ao.frame, rtv);
     if (!draw_frontend(width, height)) draw_ui_layer(width, height);
+    draw_subtitle(width, height, R.subtitle.pending);
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
     R.bound.valid = 0;
@@ -3781,5 +3826,7 @@ void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
     }
     upload_picture(R.screen, R.screen_scratch, w, h);
     choose_size(w, h, &out_w, &out_h);
+    R.subtitle.pending = video_subtitles_for_screen((int)w, (int)h, (int)out_w, (int)out_h);
     if (present_view(window, R.screen_srv, out_w, out_h, R.linear_clamp, gamma, vsync)) R.frames_dib++;
+    R.subtitle.pending = NULL;
 }

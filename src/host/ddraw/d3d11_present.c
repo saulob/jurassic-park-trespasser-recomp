@@ -11,6 +11,7 @@
 #include "d3d_legacy.h"
 #include "host.h"
 #include "jpt_gpu.h"
+#include "jpt_video_subtitles.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -364,6 +365,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
     ID3D11Texture2D* staging;
     ID3D11Texture2D* back = NULL;
     D3D11_MAPPED_SUBRESOURCE mapped;
+    const video_subtitle_image_t* subtitle;
     HRESULT hr;
     LARGE_INTEGER start;
     QueryPerformanceCounter(&start);
@@ -395,6 +397,10 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         uint32_t* out = (uint32_t*)((BYTE*)mapped.pData + (size_t)y * mapped.RowPitch);
         for (UINT x = 0; x < width; x++) out[x] = s_p.table[in[x]];
     }
+    subtitle = video_subtitles_for_screen((int)width, (int)height, (int)width, (int)height);
+    if (subtitle)
+        jvs_blend((uint32_t*)mapped.pData, (long)(mapped.RowPitch / 4), (int)width, (int)height, subtitle->pixels,
+                  subtitle->w, subtitle->h, subtitle->x, subtitle->y);
     ID3D11DeviceContext_Unmap(s_p.context, (ID3D11Resource*)staging, 0);
     hr = IDXGISwapChain_GetBuffer(s_p.swapchain, 0, &IID_ID3D11Texture2D, (void**)&back);
     if (FAILED(hr)) {

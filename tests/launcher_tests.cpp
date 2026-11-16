@@ -884,6 +884,24 @@ static void TestLanguageNames() {
             CHECK(std::string(Tr(jpt_l10n_languages[i].name)) == (portuguese ? portuguese_names[i] : english_names[i]));
         }
     }
+    {
+        const char* listed_names[] = {"English", "Brazilian Portuguese", "French", "German", "Italian", "Russian", "Spanish"};
+        const char* listed_codes[] = {"en", "pt-BR", "fr", "de", "it", "ru", "es"};
+        for (int i = 0; i < JPT_L10N_LANGUAGE_COUNT; ++i) {
+            const jpt_l10n_language_t* language = jpt_l10n_language_listed(i);
+            CHECK(language && std::string(language->name) == listed_names[i] && std::string(language->code) == listed_codes[i]);
+            jpt_config_t config;
+            jpt_config_defaults(&config);
+            CHECK(jpt_config_apply(&config, JPT_KEY_LANGUAGE, listed_codes[i]) && std::string(config.language) == listed_codes[i]);
+        }
+        jpt_config_t config;
+        jpt_config_defaults(&config);
+        CHECK(std::string(config.language) == "en" && std::string(jpt_default_value(JPT_KEY_LANGUAGE)) == "en");
+        CHECK(std::string(jpt_l10n_languages[4].code) == "es" && std::string(jpt_l10n_languages[6].code) == "it");
+        const std::string launcher = ReadSource("launcher/launcher.cpp");
+        CHECK(launcher.find("jpt_l10n_language_listed(i)") != std::string::npos &&
+              launcher.find("for (const jpt_l10n_language_t& language : jpt_l10n_languages)") == std::string::npos);
+    }
     SetLauncherLanguage("en");
     CHECK(std::string(Tr("Language")) == "Language");
     SetLauncherLanguage("pt-BR");

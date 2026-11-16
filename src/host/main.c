@@ -178,6 +178,7 @@ static int parse_options(int argc, char** argv, options_t* o) {
         { "--display-mode", JPT_KEY_DISPLAY_MODE }, { "--monitor", JPT_KEY_MONITOR },
         { "--window-size", JPT_KEY_WINDOW_SIZE },   { "--presentation", JPT_KEY_PRESENTATION },
         { "--show-fps", JPT_KEY_SHOW_FPS },         { "--skip-intro", JPT_KEY_SKIP_INTRO },
+        { "--video-subtitles", JPT_KEY_VIDEO_SUBTITLES },
         { "--ambient-occlusion", JPT_KEY_AMBIENT_OCCLUSION },
     };
     o->game_dir = getenv("TRESPASSER_GAME_DIR");
@@ -563,6 +564,7 @@ int main(int argc, char** argv) {
     loading_hd_install();
     video_hd_install();
     video_hd_skip_intro(cfg.skip_intro);
+    video_subtitles_configure(cfg.video_subtitles, game_dir);
     physics_fixes_install();
     ce_gameplay_install();
     active_ai_install();

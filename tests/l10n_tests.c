@@ -324,6 +324,18 @@ static void test_language_mapping(void) {
         static const char* const names[] = { "English", "Brazilian Portuguese", "French", "German", "Spanish", "Russian", "Italian" };
         for (int i = 0; i < JPT_L10N_LANGUAGE_COUNT; i++) CHECK(!strcmp(jpt_l10n_languages[i].name, names[i]));
     }
+    {
+        static const char* const listed[] = { "English", "Brazilian Portuguese", "French", "German", "Italian", "Russian", "Spanish" };
+        static const char* const listed_codes[] = { "en", "pt-BR", "fr", "de", "it", "ru", "es" };
+        for (int i = 0; i < JPT_L10N_LANGUAGE_COUNT; i++) {
+            const jpt_l10n_language_t* l = jpt_l10n_language_listed(i);
+            CHECK(l && !strcmp(l->name, listed[i]) && !strcmp(l->code, listed_codes[i]) && l == jpt_l10n_language(listed_codes[i]),
+                  "launcher position %d is %s, the same entry as its code's", i, listed[i]);
+            CHECK(i < 2 || strcmp(jpt_l10n_language_listed(i - 1)->name, l->name) < 0, "%s follows its neighbour alphabetically", listed[i]);
+        }
+        CHECK(!jpt_l10n_language_listed(-1) && !jpt_l10n_language_listed(JPT_L10N_LANGUAGE_COUNT), "positions outside the list");
+        CHECK(!strcmp(jpt_l10n_language_listed(0)->code, JPT_L10N_ENGLISH), "English is first");
+    }
     CHECK(jpt_l10n_language("ru")->codepage == 1251 && jpt_l10n_language("de")->codepage == 1252);
     CHECK(JPT_L10N_CREDIT_COUNT == 7 && !strcmp(jpt_l10n_credits[0].language, "pt-BR") &&
           !strcmp(jpt_l10n_credits[0].converter, "Nick3069") && !strcmp(jpt_l10n_credits[4].author, "cynodesmus") &&

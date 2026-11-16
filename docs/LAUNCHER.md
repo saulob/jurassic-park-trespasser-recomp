@@ -78,7 +78,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
-| Gameplay | Language, Skip Intro, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
+| Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
 | About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
@@ -158,6 +158,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `show_fps` | 1, 0 | 1 |
 | `show_resolution_title` | 1, 0 | 0 |
 | `skip_intro` | 1, 0 | 0 |
+| `video_subtitles` | 1, 0 | 1 |
 | `language` | `en`, `pt-BR`, `fr`, `de`, `es`, `ru`, `it` | `en` |
 | `launcher_x`, `_y`, `_width`, `_height`, `_maximized`, `_fullscreen` | the launcher window | |
 | `settings_version` | 3 | written with every change |
@@ -415,6 +416,10 @@ is not part of this work.
   play one of them, its own `NoVideo` value reads 1 for that call only, so `CVideoWnd::Play` takes the game's own
   no-video branch and returns as after the video: the main menu, or the level load, follows. The credits, the ending
   and the Video Test still play. Read when the game starts, so a change in the launcher applies to that run.
+- **Video subtitles** (Gameplay; key `video_subtitles`, On by default; a file without the key and Reset all settings
+  give On): the spoken lines of `tpassintro.smk`, `newgame.smk` and `win.smk` in the game's language, drawn over the
+  picture; `credits.smk` has no dialogue. Only the retail files (size and SHA-256 of their first 64 KiB) get them. Read
+  when the game starts. Log: `[video-subtitles] enabled`, `tpassintro.smk timeline: 16 cues`.
 - Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
   Direct3D 11 renderer (see the README and `[graphics]` in the log).
 

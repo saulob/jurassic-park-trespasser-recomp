@@ -298,6 +298,25 @@ void video_hd_release(void);
 void video_hd_force(int mode);
 /* Skip Intro (key skip_intro): read at start-up, applied as each opening is about to play. */
 void video_hd_skip_intro(int enabled);
+/* Inside Play: the Smacker frame on screen and the picture's rectangle on the game's screen. */
+int video_hd_picture(int32_t* frame, int* x, int* y, int* w, int* h);
+/* video_subtitles.c: the dialogue of the retail videos drawn over the picture (key video_subtitles). */
+typedef struct {
+    const uint32_t* pixels; /* premultiplied BGRA, w x h */
+    int x, y, w, h;         /* on the target */
+    unsigned generation;    /* changes with the pixels */
+} video_subtitle_image_t;
+void video_subtitles_configure(int enabled, const char* game_dir);
+void video_subtitles_begin(const char* guest_name);
+void video_subtitles_end(void);
+/* The subtitle on screen for a target_w x target_h target whose picture is at px, py (pw x ph); NULL for none. */
+const video_subtitle_image_t* video_subtitles_image(int target_w, int target_h, int px, int py, int pw, int ph);
+/* The same for the game's screen as presented (screen_w x screen_h scaled to target_w x target_h). */
+const video_subtitle_image_t* video_subtitles_for_screen(int screen_w, int screen_h, int target_w, int target_h);
+struct ID3D11RenderTargetView;
+/* Hardware renderer: the image drawn over a render target. */
+void d3dr_draw_video_subtitle(struct ID3D11RenderTargetView* target, int width, int height,
+                              const video_subtitle_image_t* image);
 /* video_test.c: the Video Test panel, with the main menu alone in front. No key opens it since F5 is the Debug Menu. */
 void video_test_f5(void);
 int video_test_visible(void);
@@ -327,6 +346,7 @@ void debug_menu_close(void);
 void overlay_request(int kind, const char* source);
 void overlay_ui_loop(void);
 int overlay_blocks_gameplay(void);
+
 
 /* ce_gameplay.c: Quick Save / Quick Load, Dual stow and Maximum object detail. Requests run in the game's UI loop. */
 void ce_gameplay_configure(int dual_stow, int max_object_detail);

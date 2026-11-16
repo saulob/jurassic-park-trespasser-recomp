@@ -31,6 +31,7 @@ extern "C" {
 #define JPT_KEY_AMBIENT_OCCLUSION "ambient_occlusion"
 #define JPT_KEY_SHOW_FPS "show_fps"
 #define JPT_KEY_SKIP_INTRO "skip_intro"
+#define JPT_KEY_VIDEO_SUBTITLES "video_subtitles"
 #define JPT_KEY_SHOW_RESOLUTION_TITLE "show_resolution_title"
 /* A language code (jpt_l10n_languages): the game's text and subtitles where it has them, English elsewhere. */
 #define JPT_KEY_LANGUAGE "language"
@@ -118,6 +119,7 @@ typedef struct {
     int show_fps;
     int show_resolution_title;
     int skip_intro;
+    int video_subtitles;
     int dual_stow;
     int max_object_detail;
     int active_ai_enhanced; /* 0: the retail 3 active animals, 1: 6 */
@@ -136,7 +138,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (27 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (28 + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

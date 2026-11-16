@@ -225,3 +225,33 @@ Tutorial::Step up and try to nail a paint can!	Versuchen Sie jetzt, einen Farbei
 Tutorial::To strike with an object, pick up the object and press <USE>.	Sie schlagen mit einem Objekt, indem Sie es greifen und <USE> drücken.
 Tutorial::Try swinging the baseball bat.	Schwingen Sie den Baseballschläger.
 Tutorial::You can always press <HINT> for a hint about what to do next.	Mit <HINT> erhalten Sie jederzeit einen Hinweis auf den nächsten Schritt.
+Video::My name is John Parker Hammond. I was born on March 14, 1928.	Mein Name ist John Parker Hammond. Ich wurde am 14. März 1928 geboren.
+Video::What follows is a record of certain events	Was folgt, ist ein Bericht über gewisse Ereignisse,
+Video::in which I took part, between the years 1980 and 1997,	an denen ich beteiligt war, zwischen 1980 und 1997,
+Video::on an island I will call Site B.	auf einer Insel, die ich Site B nennen werde.
+Video::Site B was not to be a theme park, but a research station.	Site B sollte kein Themenpark werden, sondern eine Forschungsstation.
+Video::This was where we did the real work.	Hier wurde die eigentliche Arbeit geleistet.
+Video::By 1989, International Genetic Technologies had succeeded in their design,	1989 hatte International Genetic Technologies sein Ziel erreicht,
+Video::to genetically recreate the dinosaurs.	die Dinosaurier genetisch neu zu erschaffen.
+Video::It was an unprecedented accomplishment, the pinnacle of 20th century science,	Es war eine beispiellose Leistung, der Höhepunkt der Wissenschaft des 20. Jahrhunderts,
+Video::a work to rank with the achievements of Galileo, or Einstein.	ein Werk, vergleichbar mit den Errungenschaften Galileis oder Einsteins.
+Video::But it was not all so easy or so simple as it appeared.	Doch es war nicht alles so leicht oder so einfach, wie es schien.
+Video::One seldom hears the true history of such events,	Selten hört man die wahre Geschichte solcher Ereignisse,
+Video::what happened at the place where the world changed.	was an dem Ort geschah, an dem sich die Welt veränderte.
+Video::How it began...	Wie es begann...
+Video::...what were the reasons...	...was die Gründe waren...
+Video::...what was the cost.	...was es gekostet hat.
+Video::The person you're trying to reach is unavailable.	Der gewünschte Gesprächspartner ist nicht erreichbar.
+Video::Please leave a message after the tone.	Bitte hinterlassen Sie eine Nachricht nach dem Signalton.
+Video::Anne? Anne, are you there?	Anne? Anne, bist du da?
+Video::It's Jill, pick up the phone!	Hier ist Jill, geh ran!
+Video::God, don't tell me your mom was serious? You're in Costa Rica?	Gott, sag nicht, deine Mutter hat das ernst gemeint? Du bist in Costa Rica?
+Video::Visiting the natives, huh? Sun, sand and adventure.	Besuchst die Einheimischen, was? Sonne, Sand und Abenteuer.
+Video::My little Indiana Anne, world traveler extraordinaire.	Meine kleine Indiana Anne, Weltenbummlerin der Extraklasse.
+Video::Well, give me a call when you get back, okay?	Na ja, ruf mich an, wenn du zurück bist, okay?
+Video::By the way, I thought you hated flying?	Übrigens, ich dachte, du hasst das Fliegen?
+Video::Anne! It's Jill. This is like the eighth message I'm leaving you.	Anne! Hier ist Jill. Das ist ungefähr die achte Nachricht, die ich dir hinterlasse.
+Video::I'm sensing some sort of pattern here...	Ich erkenne da so etwas wie ein Muster...
+Video::Come on, Anne. Quit being antisocial and pick up the phone sometime.	Komm schon, Anne. Hör auf, so ungesellig zu sein, und geh mal ans Telefon.
+Video::Oh, and by the way, don't even bother calling me	Ach, und übrigens, ruf mich gar nicht erst an,
+Video::unless you have a damn good excuse.	außer du hast eine verdammt gute Ausrede.

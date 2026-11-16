@@ -225,3 +225,33 @@ Tutorial::Step up and try to nail a paint can!	Подойдите и поста�
 Tutorial::To strike with an object, pick up the object and press <USE>.	Чтобы ударить предметом, возьмите его и нажмите <USE>.
 Tutorial::Try swinging the baseball bat.	Попробуйте помахать бейсбольной битой.
 Tutorial::You can always press <HINT> for a hint about what to do next.	Вы всегда можете нажать <HINT>, чтобы получить подсказку о том, что делать дальше.
+Video::My name is John Parker Hammond. I was born on March 14, 1928.	Меня зовут Джон Паркер Хэммонд. Я родился 14 марта 1928 года.
+Video::What follows is a record of certain events	Далее следует запись определенных событий,
+Video::in which I took part, between the years 1980 and 1997,	в которых я принимал участие в период с 1980 по 1997 год
+Video::on an island I will call Site B.	на острове, который я назову "Объект Б".
+Video::Site B was not to be a theme park, but a research station.	"Объект Б" должен был стать не тематическим парком, а исследовательской станцией.
+Video::This was where we did the real work.	Здесь мы проделали настоящую работу.
+Video::By 1989, International Genetic Technologies had succeeded in their design,	К 1989 году International Genetic Technologies добилась своего,
+Video::to genetically recreate the dinosaurs.	генетически воссоздав динозавров.
+Video::It was an unprecedented accomplishment, the pinnacle of 20th century science,	Это было беспрецедентное достижение, вершина науки XX века,
+Video::a work to rank with the achievements of Galileo, or Einstein.	труд, сравнимый с достижениями Галилея или Эйнштейна.
+Video::But it was not all so easy or so simple as it appeared.	Но не всё было так легко и просто, как казалось.
+Video::One seldom hears the true history of such events,	Редко можно услышать правдивую историю таких событий,
+Video::what happened at the place where the world changed.	о том, что произошло там, где изменился мир.
+Video::How it began...	Как всё началось...
+Video::...what were the reasons...	...каковы были причины...
+Video::...what was the cost.	...и какой ценой.
+Video::The person you're trying to reach is unavailable.	Абонент, которому вы звоните, недоступен.
+Video::Please leave a message after the tone.	Пожалуйста, оставьте сообщение после сигнала.
+Video::Anne? Anne, are you there?	Энн? Энн, ты там?
+Video::It's Jill, pick up the phone!	Это Джилл, возьми трубку!
+Video::God, don't tell me your mom was serious? You're in Costa Rica?	Боже, только не говори, что твоя мама не шутила! Ты в Коста-Рике?
+Video::Visiting the natives, huh? Sun, sand and adventure.	Навещаешь туземцев, да? Солнце, песок и приключения.
+Video::My little Indiana Anne, world traveler extraordinaire.	Моя маленькая Индиана Энн, путешественница экстра-класса.
+Video::Well, give me a call when you get back, okay?	Ладно, позвони мне, когда вернёшься, хорошо?
+Video::By the way, I thought you hated flying?	Кстати, я думала, ты ненавидишь летать!
+Video::Anne! It's Jill. This is like the eighth message I'm leaving you.	Энн! Это Джилл. Это уже, наверное, восьмое сообщение, которое я тебе оставляю.
+Video::I'm sensing some sort of pattern here...	Мне кажется, тут прослеживается некая закономерность...
+Video::Come on, Anne. Quit being antisocial and pick up the phone sometime.	Ну же, Энн. Хватит быть затворницей, возьми хоть раз трубку.
+Video::Oh, and by the way, don't even bother calling me	И да, кстати, можешь даже не звонить мне,
+Video::unless you have a damn good excuse.	если только у тебя нет чертовски веской причины.

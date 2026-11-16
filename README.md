@@ -263,6 +263,37 @@ the executable (about 3.5 MB more in a release archive).
 The developer tool `tools/stream_fix_pack.cpp` made `assets/restored_audio` and `assets/translations/en.subtitles.txt`
 from the fix and the retail file; it is not part of the build, and a clean clone builds without the fix.
 
+## Video subtitles
+
+Gameplay > **Video subtitles** (key `video_subtitles`, **On** by default) shows the spoken lines of the videos in the
+language chosen in Gameplay > Language: English, Brazilian Portuguese, French, German, Italian, Russian or Spanish.
+There is no separate language for the videos.
+
+| Video | Dialogue | Cues |
+|---|---|---|
+| `tpassintro.smk` (opening) | Hammond's narration | 16 |
+| `newgame.smk` (after New Game) | the answering machine and Jill's message | 9 |
+| `win.smk` (ending) | the answering machine and Jill's last message | 7 |
+| `credits.smk` | music only | none |
+
+- The subtitles are drawn by the port over the picture at the window's resolution, in the face of the game's own
+  caption font, white with a dark outline, centred near the bottom of the picture (not the window), on at most two
+  lines when they fit. The video files, their pixels and their audio are never changed.
+- Each cue follows the frame the game's Smacker player shows, so subtitles stop with the video, end with it and are
+  never left on the next screen; Skip Intro still skips the video and its subtitles.
+- Only the retail files get subtitles: each timeline is tied to the file's size and the SHA-256 of its first 64 KiB.
+  A replaced or dubbed video (a mod, the official translated releases) plays without them, and the log says
+  `unknown replacement video, subtitles skipped`.
+- Works with Direct3D 11 (HD video presentation and the game's own) and with the Software renderer (drawn at the
+  software picture's size).
+
+The cue boundaries were measured frame by frame on the Italian-subtitled upscaled cutscenes by KeyofBlueS, used
+only as a timing reference; their frames match the retail files one to one. No video, frame, picture or audio from
+them is included, and the build does not need them. The English text of the narration is the game's own captions
+and the English Stream TPA Fix's; Jill's lines follow the *Trespasser Voiceover List 3.0* by tatu (TresCom) and the
+retail audio. The Italian lines are those of the Italian reference; the other languages reuse the port's existing
+translations of the same captions where they exist, and the rest was translated for the port.
+
 ## Credits
 
 Built on [sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp), following the

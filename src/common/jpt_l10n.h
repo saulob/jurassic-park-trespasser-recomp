@@ -29,6 +29,8 @@ typedef struct {
 extern const jpt_l10n_language_t jpt_l10n_languages[JPT_L10N_LANGUAGE_COUNT];
 /* NULL for a code that is not a language of the table. */
 const jpt_l10n_language_t* jpt_l10n_language(const char* code);
+/* The language at a position of the launcher's list: English first, then the others by English name. */
+const jpt_l10n_language_t* jpt_l10n_language_listed(int position);
 /* The choice that replaces two earlier settings (game_text_language, subtitle_language): the first that names a
  * translation, else "en". */
 const char* jpt_l10n_infer_language(const char* game_text, const char* subtitles);
