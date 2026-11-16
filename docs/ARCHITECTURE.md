@@ -497,8 +497,13 @@ the port's hint and any other top text hide it.
 
 ### Cheats
 
-F10 (`cheats.c`, policy in `cheats_policy.c`) is a second item list of the Debug Menu's policy: Teleport, Level Select,
-Show Coordinates and Freeze Dinosaurs are the Debug Menu's items and actions. The rest are the game's own state:
+F10 (`cheats.c`, policy in `cheats_policy.c`) is a second item list of the Debug Menu's policy: Teleport, Level Select
+and Freeze Dinosaurs are the Debug Menu's items and actions. Its rows, labels and choices are the cheats of
+`src/common/jpt_cheats.c`, the one list the launcher's Cheats page and the settings table read too. The launcher's
+saved values start each session (`cheats_start`, from `jpt_config_t.cheat`); F10 only records its changes over them
+(`jpt_cheat_session_t`) and never writes the settings file. The game's own flags (INVUL, WOO, DINOS) take the effective
+values once per level, load or player, never every frame, so the game's console cheats still work over them. The cheats
+are the game's own state:
 `CPlayer::bInvulnerable` (`+ 0xDD`; retail still returns from `CPlayer::Process(CMessageCollision)` on it at
 `0x004569D7`, though the INVUL console case was compiled out), `g_bUnlimitedAmmo` (`0x0066ECC1`, WOO, read by `CGun` at
 `0x0043FA5B`), `CAnimate` hit points `+ 0x50` and maximum `+ 0x54`, the player's own `CPhysicsInfoPlayer`
@@ -506,11 +511,10 @@ Show Coordinates and Freeze Dinosaurs are the Debug Menu's items and actions. Th
 (`0x004F0B27`), and the voluntary jump's `Pelvis_Jump.z` (`0x0067AFA8`, flag `0x0067AF5D`), scaled by the square root of
 the height multiplier in the existing `Pelvic_IDOF` override before `Foot_IDOF` turns it into the starting speed. The
 camera is a `CEntityAttached` (`+ 0x50` attached, `+ 0x54` animate, `+ 0x58` relative placement, followed by
-`UpdateFromAttached` `0x00617F20`): Third Person sets the relative placement behind the head; Free Camera clears the
-attachment and moves the camera with `CInstance::Move` (`0x00614B10`) from the `CInput` result it takes from Anne. The
+`UpdateFromAttached` `0x00617F20`): Free Camera clears the attachment and moves the camera with `CInstance::Move` (`0x00614B10`) from the `CInput` result it takes from Anne. The
 host-side cheats are written into the game only in a running level with no pending load (`CWorld + 0x38`) or save
 (`+ 0x44`); otherwise the game's values are put back, so saves (which keep hit points and the camera's link) and
-loads never see them. They reset in another level or the main menu.
+loads never see them. The free camera resets in another level or the main menu; the other cheats stay for the session.
 
 Above 1x Movement Speed the right hand is carried with Anne. Pel (`0x6CF198 + 0x300 i`, 12 bytes per DOF: value,
 velocity, acceleration) is world space. For a human, `Pelvic_IDOF` rebuilds BODY (DOF 0-2) every step as the foot
@@ -578,6 +582,14 @@ The game's worker threads: `sub_00435580` (created by `sub_00435390`) streams au
 the game's own audio teardown (`TerminateThread`, `0x004354A3`); `sub_005FB070` (by `sub_005FA370`)
 works through a list until done or until its abort flag (`+0x180`); `sub_004B08E0` (by
 `sub_004B0000`) copies the level file into the new `.swp`.
+
+Alt+Tab during a level load: the game's `WM_ACTIVATEAPP` handler (`0x0040EFE0`) releases the screen when deactivated
+and, reactivated, recreates the display (`0x0040EB20`) and the renderer (`0x00412A00` -> `0x005061E0`), which rebuilds
+the sky texture (`CSkyRender` at `[0x732A28]`, `0x005241A0`) pixel by pixel from its source raster. During a load
+that raster's pixels live in the level's paged memory (`0x005FA370` reserves it, its loader thread `0x005FB070`
+commits pages as it reads them), so a reactivation there read a page not yet committed (log 148, read of
+`0x1BF80000` in `0x0050AEC0`). While the level load (`0x004142C0`) runs, the game is not sent `WM_ACTIVATEAPP`; when
+it returns the game gets the last one if it differs from what it saw (`activation_defer_t`, `[focus]` lines).
 
 ### Cursor and the game's screen
 

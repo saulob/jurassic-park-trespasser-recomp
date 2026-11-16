@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cheats.h"
 #include "ddraw/d3d_legacy.h"
 #include "gamepad.h"
 #include "jpt_config.h"
@@ -490,6 +491,7 @@ int main(int argc, char** argv) {
     patch117_configure(cfg.official_patch_117);
     patch117_player_configure(cfg.official_patch_117);
     patch117_physics_configure(cfg.official_patch_117);
+    cheats_start(cfg.cheat);
     if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,

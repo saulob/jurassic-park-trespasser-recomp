@@ -57,6 +57,7 @@ Cheats	Cheats	keep=de
 Fullscreen	Fullscreen
 Debug / Test Menu	Debug / Test Menu
 Level Select	Level Select
+Current level	Current level
 Restart Level	Restart Level
 Reload Current Level	Reload Current Level
 X	X	keep=*
@@ -77,7 +78,6 @@ Invulnerability	Invulnerability
 Infinite Ammo	Infinite Ammo
 Heal	Heal
 Super Health	Super Health
-Third Person	Third Person
 Fly / Free Camera	Fly / Free Camera
 Compass	Compass
 Ambient Occlusion	Ambient Occlusion
@@ -96,7 +96,6 @@ Unavailable	Unavailable
 unavailable	unavailable
 none	none
 none (main menu)	none (main menu)
-current	current
 Level	Level	keep=de
 Player	Player
 Navigation	Navigation	keep=fr,de
@@ -116,7 +115,6 @@ Not available	Not available
 Level Select failed	Level Select failed
 Reload failed	Reload failed
 Restart failed	Restart failed
-Teleported to %.3f %.3f %.3f	Teleported to %.3f %.3f %.3f
 Teleport failed	Teleport failed
 Returned to checkpoint	Returned to checkpoint
 Return to Checkpoint failed	Return to Checkpoint failed
@@ -137,12 +135,12 @@ Quick Save works in a level	Quick Save works in a level
 Quick Save is not available now	Quick Save is not available now
 Quick Load is not available now	Quick Load is not available now
 Anne cannot be healed now	Anne cannot be healed now
+Fill health to maximum	Fill health to maximum
 Camera	Camera	keep=it
 Normal	Normal	keep=pt-BR,de,es
 Free Camera	Free Camera
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close
 Esc/B or F3 close	Esc/B or F3 close
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast
 Beach	Beach
 Jungle Road	Jungle Road
 Industrial Jungle	Industrial Jungle

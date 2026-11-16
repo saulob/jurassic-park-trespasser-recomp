@@ -103,6 +103,7 @@ set(HOST_SOURCES
   src/host/video_test_panel.cpp
   src/host/debug_menu.c
   src/host/debug_menu_policy.c
+  src/host/debug_menu_layout.c
   src/host/debug_menu_panel.cpp
   src/host/compass_policy.c
   src/host/objective_policy.c
@@ -161,7 +162,7 @@ set(PCRECOMP_SOURCES
 )
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
-add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_restored_audio.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
+add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c
   src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
@@ -516,7 +517,8 @@ target_compile_definitions(fov_mouse_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_
 # The F5 Debug / Test Menu, F10 Cheats, F3 Objectives and the compass: their policies, the retail sites and level data
 # they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
 add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c
-  tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c src/host/debug_menu_policy.c src/host/cheats_policy.c
+  tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c tests/menu_layout_tests.c src/host/debug_menu_policy.c
+  src/host/debug_menu_layout.c src/host/cheats_policy.c
   src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
   tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)

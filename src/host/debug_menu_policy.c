@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "cheats_policy.h"
+#include "jpt_cheats.h"
 #include "jpt_config.h"
 #include "jpt_gamepad.h"
 #include "jpt_tr.h"
@@ -26,7 +27,7 @@ static const char* const k_labels[DM_ITEM_COUNT] = {
     "Level Select", "Restart Level", "Reload Current Level", "X", "Y", "Z", "Teleport", "Previous Key Point",
     "Next Key Point", "Set Checkpoint", "Return to Checkpoint", "Show Coordinates", "Copy Coordinates", "Freeze AI",
     "Movement Speed", "Jump Height", "Invulnerability", "Infinite Ammo", "Heal", "Super Health", "Teleport",
-    "Third Person", "Fly / Free Camera", "Compass", "Field of View", "Ambient Occlusion", "Water Refraction", "Enhanced Sky", "Close",
+    "Fly / Free Camera", "Compass", "Field of View", "Ambient Occlusion", "Water Refraction", "Enhanced Sky", "Back", "Close",
 };
 
 static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "High", "Ultra" };
@@ -36,11 +37,32 @@ static const dm_item_t k_debug_main[] = {
     DM_PREV_KEY,     DM_NEXT_KEY, DM_SET_CHECKPOINT, DM_RETURN_CHECKPOINT, DM_COMPASS, DM_SHOW_COORDS, DM_COPY_COORDS,
     DM_FREEZE_AI,    DM_FIELD_OF_VIEW, DM_AMBIENT_OCCLUSION, DM_WATER_REFRACTION, DM_ENHANCED_SKY, DM_CLOSE,
 };
-static const dm_item_t k_cheats_main[] = {
-    DM_MOVE_SPEED,    DM_JUMP_HEIGHT,  DM_INVULNERABLE, DM_INFINITE_AMMO, DM_FREEZE_AI,   DM_HEAL,  DM_SUPER_HEALTH,
-    DM_TELEPORT_PAGE, DM_LEVEL_SELECT, DM_SHOW_COORDS,  DM_THIRD_PERSON,  DM_FREE_CAMERA, DM_CLOSE,
+static const dm_item_t k_cheat_item[JPT_CHEAT_COUNT] = {
+    [JPT_CHEAT_SPEED] = DM_MOVE_SPEED,       [JPT_CHEAT_JUMP] = DM_JUMP_HEIGHT,
+    [JPT_CHEAT_INVULNERABLE] = DM_INVULNERABLE, [JPT_CHEAT_AMMO] = DM_INFINITE_AMMO,
+    [JPT_CHEAT_FREEZE_AI] = DM_FREEZE_AI,    [JPT_CHEAT_HEAL] = DM_HEAL,
+    [JPT_CHEAT_SUPER_HEALTH] = DM_SUPER_HEALTH, [JPT_CHEAT_TELEPORT] = DM_TELEPORT_PAGE,
+    [JPT_CHEAT_LEVEL_SELECT] = DM_LEVEL_SELECT, [JPT_CHEAT_FREE_CAMERA] = DM_FREE_CAMERA,
 };
-static const dm_item_t k_teleport_page[] = { DM_FIELD_X, DM_FIELD_Y, DM_FIELD_Z, DM_TELEPORT };
+
+/* F10's rows: the cheats of jpt_cheats.h in their order, then Close. */
+static int cheats_items(const dm_item_t** items) {
+    static dm_item_t list[JPT_CHEAT_COUNT + 1];
+    static int count;
+    if (!count) {
+        for (int i = 0; i < JPT_CHEAT_COUNT; i++) list[count++] = k_cheat_item[i];
+        list[count++] = DM_CLOSE;
+    }
+    *items = list;
+    return count;
+}
+
+static const jpt_cheat_info_t* cheat_of(dm_item_t item) {
+    for (int i = 0; i < JPT_CHEAT_COUNT; i++)
+        if (k_cheat_item[i] == item) return &jpt_cheats[i];
+    return NULL;
+}
+static const dm_item_t k_teleport_page[] = { DM_FIELD_X, DM_FIELD_Y, DM_FIELD_Z, DM_TELEPORT, DM_BACK };
 static const dm_item_t k_objectives_page[] = { DM_CLOSE };
 
 void dm_init(dm_state_t* s) {
@@ -49,7 +71,13 @@ void dm_init(dm_state_t* s) {
 }
 
 const char* dm_item_label(dm_menu_t menu, dm_item_t item) {
-    if (menu == DM_MENU_CHEATS && item == DM_FREEZE_AI) return jpt_tr("Freeze Dinosaurs");
+    static char back[DM_TEXT_MAX];
+    const jpt_cheat_info_t* cheat = menu == DM_MENU_CHEATS ? cheat_of(item) : NULL;
+    if (cheat) return jpt_tr(cheat->label);
+    if (item == DM_BACK) {
+        snprintf(back, sizeof back, "< %s", jpt_tr("Back"));
+        return back;
+    }
     return item >= 0 && item < DM_ITEM_COUNT ? jpt_tr(k_labels[item]) : "?";
 }
 
@@ -72,10 +100,7 @@ static int page_items(const dm_state_t* s, const dm_item_t** items) {
         *items = k_teleport_page;
         return COUNT(k_teleport_page);
     }
-    if (s->menu == DM_MENU_CHEATS) {
-        *items = k_cheats_main;
-        return COUNT(k_cheats_main);
-    }
+    if (s->menu == DM_MENU_CHEATS) return cheats_items(items);
     if (s->menu == DM_MENU_OBJECTIVES) {
         *items = k_objectives_page;
         return COUNT(k_objectives_page);
@@ -107,7 +132,6 @@ int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     case DM_INFINITE_AMMO: return level && w->ammo >= 0;
     case DM_HEAL: return player && w->hp > 0.0f && w->hp_max > 0.0f;
     case DM_SUPER_HEALTH: return player && (w->super_health || (w->hp > 0.0f && w->hp_max > 0.0f));
-    case DM_THIRD_PERSON:
     case DM_FREE_CAMERA: return player && w->camera_head;
     case DM_COMPASS: return level;
     case DM_FIELD_OF_VIEW: return w->fov > 0;
@@ -115,6 +139,7 @@ int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     case DM_WATER_REFRACTION: return w->water_refraction >= 0;
     case DM_ENHANCED_SKY: return w->enhanced_sky >= 0;
     case DM_SHOW_COORDS:
+    case DM_BACK:
     case DM_CLOSE: return 1;
     default: return 0;
     }
@@ -205,8 +230,8 @@ static void move_cursor(dm_state_t* s, const dm_world_t* w, int step) {
     const dm_item_t* items;
     int n, at = -1;
     if (s->page == DM_PAGE_LEVELS) {
-        n = s->levels.count;
-        if (n > 0) s->level_cursor = (s->level_cursor + step + n) % n;
+        n = s->levels.count + 1;
+        s->level_cursor = (s->level_cursor + step + n) % n;
         return;
     }
     commit_edit(s);
@@ -230,6 +255,7 @@ static void step_multiplier(dm_state_t* s, const dm_world_t* w, int step) {
 }
 
 static void toggle(dm_state_t* s, dm_action_kind_t kind, int on);
+static void back(dm_state_t* s);
 
 static void step_ambient_occlusion(dm_state_t* s, const dm_world_t* w, int step) {
     int next = w->ambient_occlusion + step;
@@ -276,10 +302,6 @@ static void open_levels(dm_state_t* s, const dm_world_t* w) {
         if (!_stricmp(s->levels.scene[i], w->scene)) s->level_cursor = i;
 }
 
-static void camera_mode(dm_state_t* s, const dm_world_t* w, int mode) {
-    request_value(s, DM_ACT_CAMERA, w->camera == mode ? CH_CAMERA_NORMAL : mode);
-}
-
 static void toggle(dm_state_t* s, dm_action_kind_t kind, int on) {
     request(s, kind);
     s->pending.on = on;
@@ -287,6 +309,10 @@ static void toggle(dm_state_t* s, dm_action_kind_t kind, int on) {
 
 static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     if (s->page == DM_PAGE_LEVELS) {
+        if (s->level_cursor == s->levels.count) {
+            back(s);
+            return;
+        }
         if (w->place == DM_PLACE_NONE || s->level_cursor < 0 || s->level_cursor >= s->levels.count) return;
         request(s, DM_ACT_LOAD_LEVEL);
         snprintf(s->pending.scene, sizeof s->pending.scene, "%s", s->levels.scene[s->level_cursor]);
@@ -342,8 +368,9 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     case DM_INFINITE_AMMO: toggle(s, DM_ACT_AMMO, w->ammo == 0); break;
     case DM_HEAL: request(s, DM_ACT_HEAL); break;
     case DM_SUPER_HEALTH: toggle(s, DM_ACT_SUPER_HEALTH, !w->super_health); break;
-    case DM_THIRD_PERSON: camera_mode(s, w, CH_CAMERA_THIRD); break;
-    case DM_FREE_CAMERA: camera_mode(s, w, CH_CAMERA_FREE); break;
+    case DM_FREE_CAMERA:
+        request_value(s, DM_ACT_CAMERA, w->camera == CH_CAMERA_FREE ? CH_CAMERA_NORMAL : CH_CAMERA_FREE);
+        break;
     case DM_COMPASS:
         s->compass_off = !s->compass_off;
         dm_feedback(s, jpt_tr(s->compass_off ? "Compass off" : "Compass on"), now_ms);
@@ -354,6 +381,7 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
         break;
     case DM_WATER_REFRACTION: toggle(s, DM_ACT_WATER_REFRACTION, !w->water_refraction); break;
     case DM_ENHANCED_SKY: toggle(s, DM_ACT_ENHANCED_SKY, !w->enhanced_sky); break;
+    case DM_BACK: back(s); break;
     case DM_CLOSE: dm_close(s); break;
     default: break;
     }
@@ -625,6 +653,17 @@ int dm_prev_key_index(int count, int index) {
     return index - 1;
 }
 
+int dm_level_display(const dm_world_t* w, char* out, size_t cap) {
+    const char* name = dm_level_name(w->scene);
+    int n;
+    if (!cap) return 0;
+    if (!name && w->level[0])
+        for (int i = 0; i < COUNT(k_retail_levels); i++)
+            if (!_stricmp(w->level, k_retail_levels[i].id)) name = jpt_tr(k_retail_levels[i].name);
+    n = snprintf(out, cap, "%s", name ? name : w->level[0] ? w->level : "?");
+    return n > 0 && (size_t)n < cap;
+}
+
 static void add_row(dm_row_t* rows, int max, int* n, dm_row_kind_t kind, int item, int enabled, int selected,
                     const char* text, const char* value) {
     dm_row_t* r;
@@ -655,12 +694,11 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
     case DM_INVULNERABLE: snprintf(value, cap, "%s", on_off(w->invulnerable)); break;
     case DM_INFINITE_AMMO: snprintf(value, cap, "%s", on_off(w->ammo)); break;
     case DM_SUPER_HEALTH: snprintf(value, cap, "%s", on_off(w->super_health)); break;
-    case DM_THIRD_PERSON: snprintf(value, cap, "%s", on_off(w->camera == CH_CAMERA_THIRD)); break;
     case DM_FREE_CAMERA: snprintf(value, cap, "%s", on_off(w->camera == CH_CAMERA_FREE)); break;
     case DM_MOVE_SPEED: snprintf(value, cap, "%s", ch_speed_text(w->speed)); break;
     case DM_JUMP_HEIGHT: snprintf(value, cap, "%s", ch_multiplier_text(w->jump)); break;
     case DM_HEAL:
-        if (enabled) snprintf(value, cap, "%.0f / %.0f  >", w->hp, w->hp_max);
+        if (enabled) snprintf(value, cap, "%.0f / %.0f", w->hp, w->hp_max);
         break;
     case DM_TELEPORT_PAGE: snprintf(value, cap, ">"); break;
     case DM_COMPASS: snprintf(value, cap, "%s", on_off(!s->compass_off)); break;
@@ -768,32 +806,49 @@ static int objective_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* ro
     return n;
 }
 
-int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
+const char* dm_help_text(const dm_state_t* s, const dm_world_t* w) {
+    if (s->open && s->menu == DM_MENU_CHEATS && s->page == DM_PAGE_MAIN && s->cursor == DM_HEAL &&
+        dm_item_enabled(s, w, DM_HEAL))
+        return jpt_tr("Fill health to maximum");
+    return NULL;
+}
+
+static void info_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n) {
     char line[DM_TEXT_MAX];
-    int n = 0;
-    if (s->menu == DM_MENU_OBJECTIVES) return objective_rows(s, w, rows, max);
-    add_row(rows, max, &n, DM_ROW_TITLE, -1, 1, 0, dm_menu_title(s->menu), NULL);
-    add_row(rows, max, &n, DM_ROW_INFO, -1, 1, 0, jpt_tr("Level"),
-            w->place == DM_PLACE_LEVEL ? (w->level[0] ? w->level : "?")
+    const int readable = s->menu == DM_MENU_CHEATS || s->page == DM_PAGE_LEVELS;
+    if (s->menu == DM_MENU_CHEATS && s->page == DM_PAGE_MAIN) return;
+    if (readable) dm_level_display(w, line, sizeof line);
+    add_row(rows, max, n, DM_ROW_INFO, -1, 1, 0, jpt_tr(s->page == DM_PAGE_LEVELS ? "Current level" : "Level"),
+            w->place == DM_PLACE_LEVEL ? (readable ? line : w->level[0] ? w->level : "?")
                                        : jpt_tr(w->place == DM_PLACE_MAIN_MENU ? "none (main menu)" : "none"));
+    if (s->page == DM_PAGE_LEVELS) return;
     if (w->place == DM_PLACE_LEVEL && w->player) {
         snprintf(line, sizeof line, "X %.3f  Y %.3f  Z %.3f  Yaw %.3f", tidy(w->at.pos[0]), tidy(w->at.pos[1]),
                  tidy(w->at.pos[2]), tidy(dm_yaw(w->at.rot)));
-        add_row(rows, max, &n, DM_ROW_INFO, -1, 1, 0, jpt_tr("Player"), line);
+        add_row(rows, max, n, DM_ROW_INFO, -1, 1, 0, jpt_tr("Player"), line);
     } else {
-        add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, jpt_tr("Player"), jpt_tr("unavailable"));
+        add_row(rows, max, n, DM_ROW_INFO, -1, 0, 0, jpt_tr("Player"), jpt_tr("unavailable"));
     }
+}
+
+int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
+    const dm_item_t* items;
+    int n = 0, count;
+    if (s->menu == DM_MENU_OBJECTIVES) return objective_rows(s, w, rows, max);
+    add_row(rows, max, &n, DM_ROW_TITLE, -1, 1, 0, dm_menu_title(s->menu), NULL);
+    info_rows(s, w, rows, max, &n);
     if (s->page == DM_PAGE_LEVELS) {
         add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Level Select"), NULL);
         if (!s->levels.count)
             add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, jpt_tr("No scene files in the data folder"), NULL);
         for (int i = 0; i < s->levels.count; i++) {
-            char title[DM_TEXT_MAX];
-            dm_level_title(s->levels.scene[i], title, sizeof title);
-            add_row(rows, max, &n, DM_ROW_ITEM, i, w->place != DM_PLACE_NONE, s->level_cursor == i, title,
-                    _stricmp(s->levels.scene[i], w->scene) || w->place != DM_PLACE_LEVEL ? s->levels.scene[i]
-                                                                                       : jpt_tr("current"));
+            char id[DM_LEVEL_ID_MAX];
+            const char* name = dm_level_name(s->levels.scene[i]);
+            if (!name) name = dm_level_id(s->levels.scene[i], id, sizeof id) ? id : s->levels.scene[i];
+            add_row(rows, max, &n, DM_ROW_ITEM, i, w->place != DM_PLACE_NONE, s->level_cursor == i, name, NULL);
         }
+        add_row(rows, max, &n, DM_ROW_ITEM, s->levels.count, 1, s->level_cursor == s->levels.count,
+                dm_item_label(s->menu, DM_BACK), NULL);
         return n;
     }
     if (s->page == DM_PAGE_TELEPORT) {
@@ -802,8 +857,8 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
         return n;
     }
     if (s->menu == DM_MENU_CHEATS) {
-        add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Cheats"), NULL);
-        items_rows(s, w, rows, max, &n, k_cheats_main, COUNT(k_cheats_main));
+        count = cheats_items(&items);
+        items_rows(s, w, rows, max, &n, items, count);
         return n;
     }
     add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Level"), NULL);
@@ -818,4 +873,42 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
     items_rows(s, w, rows, max, &n, k_debug_main + 15, 4);
     items_rows(s, w, rows, max, &n, k_debug_main + 19, 1);
     return n;
+}
+
+static int hits_current(const dm_state_t* s, const dml_hits_t* h) {
+    return h && h->valid && h->menu == (int)s->menu && h->page == (int)s->page;
+}
+
+static int select_hit(dm_state_t* s, const dm_world_t* w, int item) {
+    if (s->page == DM_PAGE_LEVELS) {
+        if (item < 0 || item > s->levels.count) return 0;
+        s->level_cursor = item;
+        return 1;
+    }
+    if (item < 0 || item >= DM_ITEM_COUNT || !dm_item_enabled(s, w, (dm_item_t)item)) return 0;
+    if (s->cursor != item) commit_edit(s);
+    s->cursor = item;
+    return 1;
+}
+
+int dm_mouse_move(dm_state_t* s, const dm_world_t* w, const dml_hits_t* hits, float x, float y) {
+    int at;
+    if (!s->open) return 0;
+    if (!hits_current(s, hits)) return 1;
+    at = dml_hit_find(hits, x, y);
+    if (at >= 0) select_hit(s, w, hits->hit[at].item);
+    return 1;
+}
+
+int dm_mouse_click(dm_state_t* s, const dm_world_t* w, const dml_hits_t* hits, float x, float y, uint32_t now_ms) {
+    int at;
+    if (!s->open) return 0;
+    if (!hits_current(s, hits)) return 1;
+    if (hits->has_close && dml_contains(&hits->close, x, y)) {
+        dm_close(s);
+        return 1;
+    }
+    at = dml_hit_find(hits, x, y);
+    if (at >= 0 && select_hit(s, w, hits->hit[at].item)) activate(s, w, now_ms);
+    return 1;
 }

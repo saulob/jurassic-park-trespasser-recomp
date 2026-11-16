@@ -11,6 +11,7 @@
 
 #include "backends/imgui_impl_dx11.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 
 extern "C" {
 #include "debug_menu_panel.h"
@@ -39,6 +40,11 @@ const float kObjectivesFont = 1.25f;
 const float kCurrentFont = 1.2f;
 const ImVec4 kWhite(1.0f, 1.0f, 1.0f, 1.0f);
 
+int g_imgui_errors;
+
+// Counts the layout errors Dear ImGui reports; its own diagnostics (log, tooltip, assert) stay as they are.
+void count_imgui_error(ImGuiContext*, void*, const char*) { g_imgui_errors++; }
+
 bool current() {
     if (!g_panel.context) return false;
     ImGui::SetCurrentContext(g_panel.context);
@@ -60,6 +66,7 @@ bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
     io.LogFilename = nullptr;
+    ImGui::GetCurrentContext()->ErrorCallback = count_imgui_error;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoMouse;
     if (!ImGui_ImplDX11_Init(device, context)) {
         ImGui::DestroyContext(g_panel.context);
@@ -173,7 +180,7 @@ void row(const dm_row_t& r) {
     }
 }
 
-void menu(const dmp_frame_t* f) {
+void legacy_menu(const dmp_frame_t* f) {
     if (f->objectives) ImGui::PushFont(g_panel.vector, ImGui::GetStyle().FontSizeBase * kObjectivesFont);
     const float w = ImGui::GetFontSize() * (f->objectives ? 24.0f : 30.0f);
     if (f->objectives)
@@ -200,6 +207,231 @@ void menu(const dmp_frame_t* f) {
         ImGui::PopStyleVar();
         ImGui::PopFont();
     }
+}
+
+dml_hits_t g_hits;
+
+// The widest the open page has been: a value that grows (coordinates, health) never makes the panel shrink back.
+struct {
+    bool open = false;
+    int menu = -1, page = -1;
+    float view_w = 0.0f, view_h = 0.0f, width = 0.0f;
+} g_stable;
+
+float stable_width(const dmp_frame_t* f, float width) {
+    if (!g_stable.open || g_stable.menu != f->menu_id || g_stable.page != f->page || g_stable.view_w != f->view_w ||
+        g_stable.view_h != f->view_h) {
+        g_stable.open = true;
+        g_stable.menu = f->menu_id;
+        g_stable.page = f->page;
+        g_stable.view_w = f->view_w;
+        g_stable.view_h = f->view_h;
+        g_stable.width = 0.0f;
+    }
+    g_stable.width = fmaxf(g_stable.width, width);
+    return g_stable.width;
+}
+
+const ImVec4 kCloseHover(1.0f, 0.42f, 0.36f, 1.0f);
+
+float row_pitch() { return ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y; }
+
+float row_height(const dm_row_t& r) {
+    switch (r.kind) {
+    case DM_ROW_TITLE: return 0.0f;
+    case DM_ROW_SECTION: return ImGui::GetStyle().ItemSpacing.y + row_pitch();
+    default: return row_pitch();
+    }
+}
+
+float value_width(const dm_row_t& r) {
+    if (!r.value[0]) return 0.0f;
+    return ImGui::CalcTextSize(r.value).x + (r.bar >= 0.0f ? ImGui::GetFontSize() * 6.5f : 0.0f);
+}
+
+struct Table {
+    float label_w = 0.0f, value_w = 0.0f, other_w = 0.0f, body_h = 0.0f;
+    float x[2] = { 0.0f, 0.0f };
+};
+
+Table measure(const dmp_frame_t* f) {
+    Table t;
+    char line[DM_TEXT_MAX * 2 + 4];
+    for (int i = 0; i < f->row_count; i++) {
+        const dm_row_t& r = f->rows[i];
+        t.body_h += row_height(r);
+        if (r.kind == DM_ROW_ITEM) {
+            t.label_w = fmaxf(t.label_w, ImGui::CalcTextSize(r.text).x);
+            t.value_w = fmaxf(t.value_w, value_width(r));
+        } else if (r.kind == DM_ROW_INFO) {
+            snprintf(line, sizeof line, "%s: %s", r.text, r.value);
+            t.other_w = fmaxf(t.other_w, ImGui::CalcTextSize(line).x);
+        } else if (r.kind == DM_ROW_SECTION) {
+            t.other_w = fmaxf(t.other_w, ImGui::CalcTextSize(r.text).x);
+        }
+    }
+    return t;
+}
+
+float help_area_height(const dmp_frame_t* f) { return (float)f->help_lines * ImGui::GetTextLineHeightWithSpacing(); }
+
+float footer_height(const dmp_frame_t* f, float wrap) {
+    float h = help_area_height(f);
+    if (f->help && f->help[0]) h += ImGui::CalcTextSize(f->help, nullptr, false, wrap).y + ImGui::GetStyle().ItemSpacing.y;
+    return h;
+}
+
+void footer_text(const char* text, const ImVec4& colour, float wrap_x) {
+    if (!text || !text[0]) return;
+    ImGui::PushTextWrapPos(wrap_x);
+    ImGui::TextColored(colour, "%s", text);
+    ImGui::PopTextWrapPos();
+}
+
+void table_row(const dm_row_t& r, int id, float value_x, float pad, ImVec2* lo, ImVec2* hi) {
+    switch (r.kind) {
+    case DM_ROW_SECTION:
+        ImGui::Spacing();
+        ImGui::TextColored(kSection, "%s", r.text);
+        break;
+    case DM_ROW_INFO:
+        ImGui::BeginDisabled(!r.enabled);
+        ImGui::Text("%s: %s", r.text, r.value);
+        ImGui::EndDisabled();
+        break;
+    case DM_ROW_ITEM:
+        ImGui::BeginDisabled(!r.enabled);
+        {
+            const ImVec2 at = ImGui::GetCursorScreenPos();
+            ImGui::PushID(id);
+            ImGui::Selectable("##row", r.selected != 0);
+            ImGui::PopID();
+            // The item rectangle already takes in half the spacing above and below.
+            *lo = ImGui::GetItemRectMin();
+            *hi = ImGui::GetItemRectMax();
+            // The label stops short of the value column, so a long name is cut rather than run into the value.
+            const float limit = r.value[0] ? at.x + value_x - ImGui::GetFontSize() * 0.5f : hi->x;
+            const ImVec4 clip(at.x, at.y, limit, at.y + ImGui::GetTextLineHeight() + 1.0f);
+            ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), at,
+                                                ImGui::GetColorU32(ImGuiCol_Text), r.text, nullptr, 0.0f, &clip);
+        }
+        if (r.value[0]) {
+            ImGui::SameLine(pad + value_x);
+            if (r.bar >= 0.0f) value_bar(r);
+            if (r.selected) ImGui::TextColored(kSelected, "%s", r.value);
+            else ImGui::TextUnformatted(r.value);
+        }
+        ImGui::EndDisabled();
+        if (r.selected) ImGui::SetScrollHereY(0.5f);
+        break;
+    default: break;
+    }
+}
+
+void record_hit(const dml_rect_t& body, const dm_row_t& r, ImVec2 lo, ImVec2 hi, float panel_x, float panel_w) {
+    if (r.kind != DM_ROW_ITEM || !r.enabled || g_hits.count >= DML_HITS_MAX) return;
+    const float top = fmaxf(lo.y, body.y), bottom = fminf(hi.y, body.y + body.h);
+    if (bottom <= top) return;
+    g_hits.hit[g_hits.count].rect = dml_rect_t{ panel_x, top, panel_w, bottom - top };
+    g_hits.hit[g_hits.count].item = r.item;
+    g_hits.count++;
+}
+
+// The close button: a square in the header's corner with a cross, lit under the pointer.
+void close_button(const dml_rect_t& c, bool hot) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 lo(c.x, c.y), hi(c.x + c.w, c.y + c.h);
+    const float m = c.w * 0.3f, t = fmaxf(1.5f, c.w * 0.08f);
+    const ImU32 ink = ImGui::ColorConvertFloat4ToU32(hot ? kSelected : kSection);
+    dl->AddRectFilled(lo, hi, ImGui::ColorConvertFloat4ToU32(hot ? ImVec4(0.7f, 0.2f, 0.18f, 0.9f) : ImVec4(1, 1, 1, 0.08f)),
+                      c.w * 0.15f);
+    dl->AddLine(ImVec2(lo.x + m, lo.y + m), ImVec2(hi.x - m, hi.y - m), ink, t);
+    dl->AddLine(ImVec2(hi.x - m, lo.y + m), ImVec2(lo.x + m, hi.y - m), ink, t);
+}
+
+void panel(const dmp_frame_t* f) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float em = ImGui::GetFontSize(), pad = style.WindowPadding.x, gap = em * 1.5f;
+    const char* title_text = f->title ? f->title : "Debug / Test Menu";
+    Table t = measure(f);
+    float widths[2] = { t.label_w, t.value_w }, content_w;
+    const float title_w = ImGui::CalcTextSize(title_text).x;
+    content_w = fmaxf(t.other_w, t.label_w + (t.value_w > 0.0f ? gap + t.value_w : 0.0f)) + style.FramePadding.x * 2.0f;
+    dml_params_t p;
+    dml_layout_t l;
+    p.view_w = f->view_w;
+    p.view_h = f->view_h;
+    p.em = em;
+    p.pad = pad;
+    p.panel_w = stable_width(f, dml_panel_width(f->view_w, f->view_h, em, pad, em * 24.0f, content_w, title_w));
+    p.body_h = t.body_h;
+    p.footer_h = footer_height(f, dml_footer_width(p.panel_w, pad));
+    dml_layout(&p, &l);
+    dml_columns(widths, 2, l.panel.w - 2.0f * pad - style.FramePadding.x * 2.0f, gap, em * 0.75f, t.x);
+
+    memset(&g_hits, 0, sizeof g_hits);
+    g_hits.valid = 1;
+    g_hits.menu = f->menu_id;
+    g_hits.page = f->page;
+    g_hits.panel = l.panel;
+    g_hits.close = l.close;
+    g_hits.has_close = 1;
+
+    ImGui::SetNextWindowPos(ImVec2(l.panel.x, l.panel.y));
+    ImGui::SetNextWindowSize(ImVec2(l.panel.w, l.panel.h));
+    ImGui::SetNextWindowBgAlpha(0.92f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
+                                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    if (ImGui::Begin("###menu", nullptr, flags)) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const bool hot = f->pointer && dml_contains(&l.close, f->pointer_x, f->pointer_y);
+        const ImU32 rule = ImGui::GetColorU32(ImGuiCol_Separator);
+        dl->AddText(ImVec2(l.title.x, l.title.y + (l.title.h - em) * 0.5f), ImGui::ColorConvertFloat4ToU32(kSection),
+                    title_text);
+        close_button(l.close, hot);
+        dl->AddLine(ImVec2(l.header.x, l.header.y + l.header.h), ImVec2(l.header.x + l.header.w, l.header.y + l.header.h),
+                    rule);
+
+        ImGui::SetCursorScreenPos(ImVec2(l.body.x, l.body.y));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, 0.0f));
+        if (ImGui::BeginChild("##body", ImVec2(l.body.w, l.body.h), ImGuiChildFlags_AlwaysUseWindowPadding,
+                              ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoScrollWithMouse)) {
+            for (int i = 0; i < f->row_count; i++) {
+                ImVec2 lo(0.0f, 0.0f), hi(0.0f, 0.0f);
+                table_row(f->rows[i], i, t.x[1], pad, &lo, &hi);
+                record_hit(l.body, f->rows[i], lo, hi, l.panel.x, l.panel.w);
+            }
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+
+        const float rule_y = l.body.y + l.body.h + (l.footer.y - l.body.y - l.body.h) * 0.5f;
+        dl->AddLine(ImVec2(l.panel.x, rule_y), ImVec2(l.panel.x + l.panel.w, rule_y), rule);
+        const float wrap = pad + l.footer.w, area = help_area_height(f);
+        const char* note = f->feedback && f->feedback[0] ? f->feedback : f->context_help;
+        g_hits.help = dml_rect_t{ l.footer.x, l.footer.y, l.footer.w, area };
+        ImGui::SetCursorScreenPos(ImVec2(l.footer.x, l.footer.y));
+        ImGui::Dummy(ImVec2(l.footer.w, area));
+        if (note && note[0]) {
+            const ImVec4 clip(l.footer.x, l.footer.y, l.footer.x + l.footer.w, l.footer.y + area);
+            dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(l.footer.x, l.footer.y),
+                        ImGui::ColorConvertFloat4ToU32(note == f->feedback ? kFeedback : kSelected), note, nullptr,
+                        l.footer.w, &clip);
+        }
+        if (f->help && f->help[0]) {
+            ImGui::SetCursorScreenPos(ImVec2(l.footer.x, l.footer.y + area));
+            footer_text(f->help, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), wrap);
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+void menu(const dmp_frame_t* f) {
+    if (f->objectives) legacy_menu(f);
+    else panel(f);
 }
 
 void coords(const dmp_frame_t* f) {
@@ -388,6 +620,8 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
                          int bb_h, const dmp_frame_t* f) {
     ID3D11RenderTargetView* previous = nullptr;
     ID3D11DepthStencilView* previous_depth = nullptr;
+    g_hits.valid = 0;
+    if (!f->menu || f->objectives) g_stable.open = false;
     if (!device || !context || !target || bb_w <= 0 || bb_h <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return;
     if (!f->menu && !f->coord_lines && !hud_shown(f)) return;
     if (!start(device, context)) return;
@@ -411,7 +645,14 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     if (previous_depth) previous_depth->Release();
 }
 
-extern "C" void dmp_release(void) { shut_down(); }
+extern "C" void dmp_release(void) {
+    g_hits.valid = 0;
+    shut_down();
+}
+
+extern "C" const dml_hits_t* dmp_hits(void) { return &g_hits; }
+
+extern "C" int dmp_imgui_errors(void) { return g_imgui_errors; }
 
 extern "C" void dmp_set_fallback_font(const char* path) {
     snprintf(g_fallback_font, sizeof g_fallback_font, "%s", path ? path : "");

@@ -57,6 +57,7 @@ Cheats	Trapaças
 Fullscreen	Tela cheia
 Debug / Test Menu	Menu de depuração / testes
 Level Select	Seleção de fase
+Current level	Fase atual
 Restart Level	Reiniciar fase
 Reload Current Level	Recarregar fase atual
 X	X
@@ -77,7 +78,6 @@ Invulnerability	Invulnerabilidade
 Infinite Ammo	Munição infinita
 Heal	Curar
 Super Health	Supervida
-Third Person	Terceira pessoa
 Fly / Free Camera	Voo / câmera livre
 Compass	Bússola
 Ambient Occlusion	Oclusão de ambiente
@@ -96,7 +96,6 @@ Unavailable	Indisponível
 unavailable	indisponível
 none	nenhum
 none (main menu)	nenhuma (menu principal)
-current	atual
 Level	Fase
 Player	Jogadora
 Navigation	Navegação
@@ -116,7 +115,6 @@ Not available	Indisponível
 Level Select failed	A seleção de fase falhou
 Reload failed	Falha ao recarregar
 Restart failed	Falha ao reiniciar
-Teleported to %.3f %.3f %.3f	Teleportada para %.3f %.3f %.3f
 Teleport failed	Falha ao teleportar
 Returned to checkpoint	De volta ao checkpoint
 Return to Checkpoint failed	Falha ao voltar ao checkpoint
@@ -137,12 +135,12 @@ Quick Save works in a level	O salvamento rápido funciona durante uma fase
 Quick Save is not available now	Salvamento rápido indisponível agora
 Quick Load is not available now	Carregamento rápido indisponível agora
 Anne cannot be healed now	Anne não pode ser curada agora
+Fill health to maximum	Enche a vida até o máximo
 Camera	Câmera
 Normal	Normal
 Free Camera	Câmera livre
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Cima/Baixo seleciona | Enter/A usa | Esquerda/Direita ajusta (Shift 10, Ctrl 0.1, LB/RB 10) | números editam | Esc/B volta | F5 fecha
 Esc/B or F3 close	Esc/B ou F3 fecha
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Cima/Baixo seleciona | Enter/A usa | Esquerda/Direita muda | Esc/B volta | F10 fecha. Câmera livre: WASD/analógico esquerdo move, mouse/analógico direito olha, Espaço/A sobe, Ctrl/B desce, Shift/LB rápido
 Beach	Praia
 Jungle Road	Estrada da selva
 Industrial Jungle	Selva industrial

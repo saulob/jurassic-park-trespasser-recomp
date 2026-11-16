@@ -1,5 +1,6 @@
 /* The F5 Debug / Test Menu and the F10 Cheats menu without windows or the guest: two item lists over one state, so
- * the items both show (Teleport, Level Select, Show Coordinates, Freeze AI) are the same ones. */
+ * the items both show (Teleport, Level Select, Freeze AI) are the same ones. F10's list and labels are the cheats of
+ * jpt_cheats.h, the list the launcher's Cheats page shows. */
 #ifndef DEBUG_MENU_POLICY_H
 #define DEBUG_MENU_POLICY_H
 
@@ -7,6 +8,7 @@
 #include <stdint.h>
 
 #include "compass_policy.h"
+#include "debug_menu_layout.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,13 +46,13 @@ typedef enum {
     DM_HEAL,
     DM_SUPER_HEALTH,
     DM_TELEPORT_PAGE,
-    DM_THIRD_PERSON,
     DM_FREE_CAMERA,
     DM_COMPASS,
     DM_FIELD_OF_VIEW,
     DM_AMBIENT_OCCLUSION,
     DM_WATER_REFRACTION,
     DM_ENHANCED_SKY,
+    DM_BACK,
     DM_CLOSE,
     DM_ITEM_COUNT
 } dm_item_t;
@@ -211,6 +213,16 @@ void dm_feedback(dm_state_t* s, const char* text, uint32_t now_ms);
 const char* dm_feedback_text(const dm_state_t* s, uint32_t now_ms);
 
 int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max);
+/* What the selected row does, one short line; NULL when it needs none. */
+const char* dm_help_text(const dm_state_t* s, const dm_world_t* w);
+/* The level as the menus name it: "Beach", the id alone for a level the game did not ship. */
+int dm_level_display(const dm_world_t* w, char* out, size_t cap);
+
+/* The pointer over the panel (x, y in the presentation view's pixels, hits from the last draw). A move selects the row
+ * under it; a click on the close button closes the menu, on a row selects and uses it. Both are 1 when the menu is open
+ * and the pointer event is its own. */
+int dm_mouse_move(dm_state_t* s, const dm_world_t* w, const dml_hits_t* hits, float x, float y);
+int dm_mouse_click(dm_state_t* s, const dm_world_t* w, const dml_hits_t* hits, float x, float y, uint32_t now_ms);
 
 /* Each sample: what the HUD draws. Distance is Anne's; the compass, the markers' directions and the projection are the
  * active camera's. */

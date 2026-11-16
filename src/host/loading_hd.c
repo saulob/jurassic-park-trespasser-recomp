@@ -497,11 +497,14 @@ static void level_load(void) {
     L.scene[0] = L.slot[0] = L.refusal[0] = 0;
     L.level_lifted();
     L.loading = 0;
+    window_host_level_load_done();
     log_load();
     release();
     if (d3dr_hardware()) load_hold_arm(&L.hold, GetTickCount());
     else load_hold_release(&L.hold);
 }
+
+int loading_hd_level_loading(void) { return L.loading; }
 
 int loading_hd_present_held(void) {
     int held = load_hold_present(&L.hold, L.drawing || L.messaging, GetTickCount());

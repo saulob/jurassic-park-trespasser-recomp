@@ -57,6 +57,7 @@ Cheats	Trucos
 Fullscreen	Pantalla completa
 Debug / Test Menu	Menú de depuración / pruebas
 Level Select	Selección de nivel
+Current level	Nivel actual
 Restart Level	Reiniciar nivel
 Reload Current Level	Recargar nivel actual
 X	X
@@ -77,7 +78,6 @@ Invulnerability	Invulnerabilidad
 Infinite Ammo	Munición infinita
 Heal	Curar
 Super Health	Supersalud
-Third Person	Tercera persona
 Fly / Free Camera	Vuelo / cámara libre
 Compass	Brújula
 Ambient Occlusion	Oclusión ambiental
@@ -96,7 +96,6 @@ Unavailable	No disponible
 unavailable	no disponible
 none	ninguno
 none (main menu)	ninguno (menú principal)
-current	actual
 Level	Nivel
 Player	Jugadora
 Navigation	Navegación
@@ -116,7 +115,6 @@ Not available	No disponible
 Level Select failed	Error al seleccionar el nivel
 Reload failed	Error al recargar
 Restart failed	Error al reiniciar
-Teleported to %.3f %.3f %.3f	Teletransportada a %.3f %.3f %.3f
 Teleport failed	Error al teletransportar
 Returned to checkpoint	De vuelta al punto de control
 Return to Checkpoint failed	Error al volver al punto de control
@@ -137,12 +135,12 @@ Quick Save works in a level	El guardado rápido funciona en un nivel
 Quick Save is not available now	Guardado rápido no disponible ahora
 Quick Load is not available now	Carga rápida no disponible ahora
 Anne cannot be healed now	Anne no puede curarse ahora
+Fill health to maximum	Rellena la salud hasta el máximo
 Camera	Cámara
 Normal	Normal
 Free Camera	Cámara libre
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Arriba/Abajo elegir | Intro/A usar | Izquierda/Derecha ajustar (Mayús 10, Ctrl 0.1, LB/RB 10) | dígitos editar | Esc/B volver | F5 cerrar
 Esc/B or F3 close	Esc/B o F3 cierra
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Arriba/Abajo elegir | Intro/A usar | Izquierda/Derecha cambiar | Esc/B volver | F10 cerrar. Cámara libre: WASD/stick izquierdo mover, ratón/stick derecho mirar, Espacio/A subir, Ctrl/B bajar, Mayús/LB rápido
 Beach	Playa
 Jungle Road	Carretera de la jungla
 Industrial Jungle	Jungla industrial

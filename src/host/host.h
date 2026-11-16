@@ -109,6 +109,10 @@ void window_host_clear_display(HWND window);
 HWND window_host_surface(HWND window);
 void window_host_frame_presented(void);
 void window_host_release_cursor(void);
+/* The host's menu opened or closed: the pointer is freed for it, or captured again for the game. */
+void window_host_input_changed(void);
+/* A level load ended: the game gets the activation change it was kept from during the load. */
+void window_host_level_load_done(void);
 void window_host_view_size(int* width, int* height);
 /* While on, the game's cursor and mouse messages are in its 640x480 UI canvas, centred in its screen (ui_canvas.c). */
 void window_host_set_ui_canvas(int on);
@@ -381,8 +385,8 @@ int debug_menu_blocks_gameplay(void);
 /* 1 when the game must not see this key message or character. */
 int debug_menu_key(UINT msg, WPARAM wparam, LPARAM lparam);
 int debug_menu_char(WPARAM wparam);
-/* 1 while the menu is open over the main menu: its buttons must not take the mouse. */
-int debug_menu_mouse(void);
+/* A mouse message over the open menu, x and y in the presentation surface's pixels: 1 when the menu took it. */
+int debug_menu_mouse(UINT msg, int x, int y);
 /* Gamepad buttons (JPT_PAD_BIT) while the menu is open. */
 void debug_menu_pad(uint32_t held, uint32_t pressed);
 /* The game's modal UI loop, after gamepad_ui_loop: requested actions run here. */

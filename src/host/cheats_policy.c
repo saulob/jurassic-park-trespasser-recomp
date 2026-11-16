@@ -6,25 +6,23 @@
 
 #include "jpt_tr.h"
 
-static const float k_multipliers[CH_MULTIPLIER_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f };
-static const char* const k_multiplier_text[CH_MULTIPLIER_COUNT] = { "0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x" };
+static const jpt_cheat_info_t* speed_info(void) { return &jpt_cheats[JPT_CHEAT_SPEED]; }
 
-static const float k_speeds[CH_SPEED_COUNT] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
-static const char* const k_speed_text[CH_SPEED_COUNT] = { "0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x", "7.5x", "10.0x" };
+static const jpt_cheat_info_t* jump_info(void) { return &jpt_cheats[JPT_CHEAT_JUMP]; }
 
 int ch_speed_clamp(int index) { return index < 0 ? 0 : index >= CH_SPEED_COUNT ? CH_SPEED_COUNT - 1 : index; }
 
-float ch_speed(int index) { return k_speeds[ch_speed_clamp(index)]; }
+float ch_speed(int index) { return speed_info()->choices[ch_speed_clamp(index)].value; }
 
-const char* ch_speed_text(int index) { return k_speed_text[ch_speed_clamp(index)]; }
+const char* ch_speed_text(int index) { return speed_info()->choices[ch_speed_clamp(index)].label; }
 
 int ch_multiplier_clamp(int index) {
     return index < 0 ? 0 : index >= CH_MULTIPLIER_COUNT ? CH_MULTIPLIER_COUNT - 1 : index;
 }
 
-float ch_multiplier(int index) { return k_multipliers[ch_multiplier_clamp(index)]; }
+float ch_multiplier(int index) { return jump_info()->choices[ch_multiplier_clamp(index)].value; }
 
-const char* ch_multiplier_text(int index) { return k_multiplier_text[ch_multiplier_clamp(index)]; }
+const char* ch_multiplier_text(int index) { return jump_info()->choices[ch_multiplier_clamp(index)].label; }
 
 float ch_jump_speed_scale(int index) { return sqrtf(ch_multiplier(index)); }
 
@@ -34,17 +32,35 @@ void ch_init(ch_state_t* s) {
     s->camera = CH_CAMERA_NORMAL;
 }
 
+void ch_from_session(ch_state_t* s, const jpt_cheat_session_t* session) {
+    char level[DM_LEVEL_ID_MAX];
+    memcpy(level, s->level, sizeof level);
+    ch_init(s);
+    memcpy(s->level, level, sizeof level);
+    s->speed = ch_speed_clamp(jpt_cheat_effective(session, JPT_CHEAT_SPEED));
+    s->jump = ch_multiplier_clamp(jpt_cheat_effective(session, JPT_CHEAT_JUMP));
+    s->super_health = jpt_cheat_effective(session, JPT_CHEAT_SUPER_HEALTH) != 0;
+    s->camera = jpt_cheat_effective(session, JPT_CHEAT_FREE_CAMERA) ? CH_CAMERA_FREE : CH_CAMERA_NORMAL;
+}
+
 int ch_any(const ch_state_t* s) {
     return s->speed != CH_MULTIPLIER_DEFAULT || s->jump != CH_MULTIPLIER_DEFAULT || s->super_health ||
            s->camera != CH_CAMERA_NORMAL;
 }
 
 int ch_level_seen(ch_state_t* s, dm_place_t place, const char* level) {
-    int left = place == DM_PLACE_MAIN_MENU ||
-               (place == DM_PLACE_LEVEL && level && level[0] && s->level[0] && strcmp(level, s->level));
-    if (!left || !ch_any(s)) return 0;
-    ch_init(s);
-    return 1;
+    int left;
+    if (place == DM_PLACE_MAIN_MENU) {
+        left = s->level[0] != 0;
+        s->level[0] = 0;
+    } else if (place == DM_PLACE_LEVEL && level && level[0]) {
+        left = s->level[0] && strcmp(level, s->level);
+        ch_set_level(s, level);
+    } else {
+        return 0;
+    }
+    if (left) s->camera = CH_CAMERA_NORMAL;
+    return left;
 }
 
 void ch_set_level(ch_state_t* s, const char* level) { snprintf(s->level, sizeof s->level, "%s", level ? level : ""); }
@@ -64,13 +80,6 @@ int ch_heal(float hp, float max, float* out) {
     if (!(hp > 0.0f) || !(max > 0.0f)) return 0;
     *out = max;
     return 1;
-}
-
-void ch_third_person_relative(dm_placement_t* out) {
-    memset(out, 0, sizeof *out);
-    out->pos[1] = -CH_THIRD_PERSON_BACK;
-    out->pos[2] = CH_THIRD_PERSON_UP;
-    out->rot[0] = 1.0f;
 }
 
 void ch_freecam_from(const dm_placement_t* at, ch_freecam_t* out) {
@@ -111,7 +120,7 @@ void ch_freecam_placement(const ch_freecam_t* c, dm_placement_t* out) {
 }
 
 const char* ch_camera_name(ch_camera_t camera) {
-    return jpt_tr(camera == CH_CAMERA_THIRD ? "Third Person" : camera == CH_CAMERA_FREE ? "Free Camera" : "Normal");
+    return jpt_tr(camera == CH_CAMERA_FREE ? "Free Camera" : "Normal");
 }
 
 static const char* on_off(int v) { return v < 0 ? "?" : jpt_tr(v ? "On" : "Off"); }

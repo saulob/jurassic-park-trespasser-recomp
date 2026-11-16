@@ -248,13 +248,12 @@ static void test_level_names(void) {
     CHECK(s.page == DM_PAGE_LEVELS && s.level_cursor == 3, "Level Select starts on the current level");
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     for (int i = 0; i < n; i++) {
-        if (rows[i].kind != DM_ROW_ITEM) continue;
-        CHECK(rows[i].item == rows_seen && !strcmp(rows[i].text, rows_seen < 10 ? retail[rows_seen].title
+        if (rows[i].kind != DM_ROW_ITEM || rows[i].item == l.count) continue;
+        CHECK(rows[i].item == rows_seen && !strcmp(rows[i].text, rows_seen < 10 ? strstr(retail[rows_seen].title, " - ") + 3
                                                                                 : rows_seen == 10 ? "ALPHA"
                                                                                                   : "ZZ_CUSTOM"),
               "row %d: \"%s\"", rows_seen, rows[i].text);
-        CHECK(!strcmp(rows[i].value, rows_seen == 3 ? "current" : l.scene[rows_seen]), "row %d value \"%s\"",
-              rows_seen, rows[i].value);
+        CHECK(!rows[i].value[0], "row %d has no second column: \"%s\"", rows_seen, rows[i].value);
         rows_seen++;
     }
     CHECK(rows_seen == 12, "all twelve rows");
@@ -267,8 +266,7 @@ static void test_level_names(void) {
     n = dm_rows(&s, &menu, rows, DM_ROWS_MAX);
     for (int i = 0; i < n; i++)
         if (rows[i].kind == DM_ROW_ITEM && rows[i].item == 0)
-            CHECK(!strcmp(rows[i].text, "BE - Beach") && !strcmp(rows[i].value, "be.scn"),
-                  "in the main menu nothing is \"current\"");
+            CHECK(!strcmp(rows[i].text, "Beach") && !rows[i].value[0], "from the main menu the list reads the same");
     press(&s, &menu, VK_DOWN);
     press(&s, &menu, VK_DOWN);
     press(&s, &menu, VK_RETURN);
@@ -691,30 +689,23 @@ static void test_cheats_menu(void) {
     CHECK(s.page == DM_PAGE_LEVELS, "Level Select: the same list");
     press(&s, &w, VK_ESCAPE);
     CHECK(s.page == DM_PAGE_MAIN && s.cursor == DM_LEVEL_SELECT, "and back");
-    go_to(&s, &w, DM_SHOW_COORDS);
-    press(&s, &w, VK_RETURN);
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(s.show_coords && row_says(rows, n, DM_SHOW_COORDS, "On"), "Show Coordinates is one state for both menus");
-    dm_toggle(&s, &w, DM_MENU_CHEATS);
-    go_to(&s, &w, DM_THIRD_PERSON);
+    CHECK(!row_of(rows, n, DM_SHOW_COORDS), "Show Coordinates is not a cheat");
+    for (int i = 0; i < n; i++)
+        CHECK(strcmp(rows[i].text, "Show Coordinates") && strcmp(rows[i].text, "Third Person"),
+              "no Show Coordinates or Third Person row: %s", rows[i].text);
+    go_to(&s, &w, DM_FREE_CAMERA);
+    CHECK(s.cursor == DM_FREE_CAMERA, "Fly / Free Camera is in the list");
     press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_CAMERA && a.value == CH_CAMERA_THIRD, "Third Person on");
-    w.camera = CH_CAMERA_THIRD;
-    press(&s, &w, VK_DOWN);
-    press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_CAMERA && a.value == CH_CAMERA_FREE,
-          "Free Camera replaces Third Person: one camera mode");
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_CAMERA && a.value == CH_CAMERA_FREE, "Free Camera on");
     w.camera = CH_CAMERA_FREE;
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(row_says(rows, n, DM_THIRD_PERSON, "Off") && row_says(rows, n, DM_FREE_CAMERA, "On"),
-          "never both shown on");
+    CHECK(row_says(rows, n, DM_FREE_CAMERA, "On"), "Free Camera shows On");
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_CAMERA && a.value == CH_CAMERA_NORMAL, "Free Camera off");
     w.camera_head = 0;
     w.camera = CH_CAMERA_NORMAL;
-    CHECK(!dm_item_enabled(&s, &w, DM_THIRD_PERSON) && !dm_item_enabled(&s, &w, DM_FREE_CAMERA),
-          "no camera on Anne: no camera modes");
+    CHECK(!dm_item_enabled(&s, &w, DM_FREE_CAMERA), "no camera on Anne: no free camera");
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     CHECK(rows[0].kind == DM_ROW_TITLE && !strcmp(rows[0].text, "Cheats") && row_says(rows, n, DM_MOVE_SPEED, "1.0x") &&
               row_says(rows, n, DM_TELEPORT_PAGE, ">") && row_of(rows, n, DM_CLOSE),
@@ -725,7 +716,7 @@ static void test_cheats_menu(void) {
     CHECK(s.open && s.cursor == DM_LEVEL_SELECT, "in the main menu Cheats offers Level Select");
     for (int i = 0; i < DM_ITEM_COUNT; i++)
         if (i != DM_LEVEL_SELECT && i != DM_SHOW_COORDS && i != DM_AMBIENT_OCCLUSION && i != DM_WATER_REFRACTION &&
-            i != DM_ENHANCED_SKY && i != DM_CLOSE)
+            i != DM_ENHANCED_SKY && i != DM_BACK && i != DM_CLOSE)
             CHECK(!dm_item_enabled(&s, &menu, (dm_item_t)i), "no level: %s disabled",
                   dm_item_label(DM_MENU_CHEATS, (dm_item_t)i));
 }
@@ -1235,6 +1226,116 @@ static void test_panel(void) {
         CHECK(amber_px > 80 && dark_px > 80, "the title is amber with a dark outline (%d, %d pixels)", amber_px, dark_px);
         CHECK(reach >= 1 && distant * 50 <= dark_px, "the outline hugs the letters: %d of %d dark pixels are more than 3 px from them", distant, dark_px);
     }
+    {
+        /* the Cheats panel as drawn: its click targets are the rows, inside the panel, with the close button in the header */
+        dm_state_t c;
+        dm_levels_t scenes;
+        dm_world_t cw = level_world("testscnnght.scn");
+        const dml_hits_t* hits;
+        float main_w = 0.0f;
+        memset(&scenes, 0, sizeof scenes);
+        for (int i = 0; i < 12; i++) {
+            static const char* const names[] = { "be.scn", "jr.scn", "ij.scn", "it.scn", "lab.scn", "as.scn", "as2.scn",
+                                                 "sum.scn", "testscene.scn", "testscnnght.scn", "alpha.scn", "zz_custom.scn" };
+            dm_levels_add(&scenes, names[i]);
+        }
+        cw.hp = 90.0f;
+        cw.hp_max = 100.0f;
+        for (int page = 0; page < 3; page++) {
+            int enabled = 0;
+            dm_init(&c);
+            dm_set_levels(&c, &scenes);
+            dm_toggle(&c, &cw, DM_MENU_CHEATS);
+            if (page == 1) {
+                c.cursor = DM_LEVEL_SELECT;
+                dm_key(&c, &cw, VK_RETURN, 1, 0, 0, 0, 0);
+            } else if (page == 2) {
+                c.cursor = DM_TELEPORT_PAGE;
+                dm_key(&c, &cw, VK_RETURN, 1, 0, 0, 0, 0);
+            }
+            memset(&f, 0, sizeof f);
+            f.view_w = 960.0f;
+            f.view_h = 720.0f;
+            f.dpi_scale = 1.5f;
+            f.menu = 1;
+            f.rows = rows;
+            f.row_count = dm_rows(&c, &cw, rows, DM_ROWS_MAX);
+            f.title = dm_menu_title(DM_MENU_CHEATS);
+            f.help_lines = DMP_HELP_LINES;
+            f.context_help = dm_help_text(&c, &cw);
+            f.menu_id = DM_MENU_CHEATS;
+            f.page = c.page;
+            for (int i = 0; i < f.row_count; i++) enabled += rows[i].kind == DM_ROW_ITEM && rows[i].enabled;
+            for (int frame = 0; frame < 3; frame++) {
+                ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, black);
+                dmp_draw(dev, ctx, rtv, 1280, 960, &f);
+            }
+            hits = dmp_hits();
+            CHECK(hits->valid && hits->menu == DM_MENU_CHEATS && hits->page == c.page && hits->has_close,
+                  "page %d: the panel reports its targets", page);
+            CHECK(hits->count == enabled, "page %d: every enabled row is a target (%d of %d)", page, hits->count, enabled);
+            CHECK(hits->panel.x >= 0.0f && hits->panel.y >= 0.0f && hits->panel.x + hits->panel.w <= 960.0f &&
+                      hits->panel.y + hits->panel.h <= 720.0f,
+                  "page %d: the panel is on the screen (%.0f,%.0f %.0fx%.0f)", page, hits->panel.x, hits->panel.y, hits->panel.w,
+                  hits->panel.h);
+            CHECK(dml_inside(&hits->close, &hits->panel) && hits->close.y < hits->panel.y + 60.0f &&
+                      hits->close.x > hits->panel.x + hits->panel.w * 0.5f && hits->close.w >= 24.0f,
+                  "page %d: the close button is at the panel's top right", page);
+            for (int i = 0; i < hits->count; i++) {
+                CHECK(dml_inside(&hits->hit[i].rect, &hits->panel), "page %d: target %d is inside the panel", page, i);
+                CHECK(!dml_contains(&hits->hit[i].rect, hits->close.x + 1.0f, hits->close.y + 1.0f),
+                      "page %d: no row under the close button", page);
+                for (int j = 0; j < i; j++)
+                    CHECK(hits->hit[j].rect.y + hits->hit[j].rect.h <= hits->hit[i].rect.y + 0.5f ||
+                              hits->hit[i].rect.y + hits->hit[i].rect.h <= hits->hit[j].rect.y + 0.5f,
+                          "page %d: targets %d and %d do not overlap", page, j, i);
+            }
+            CHECK(dml_inside(&hits->help, &hits->panel) && hits->help.h > 0.0f, "page %d: the help area is inside the panel", page);
+            if (page == 0) {
+                /* every row selected in turn, with and without a help line or a message: the panel never moves */
+                const dml_rect_t first = hits->panel;
+                int moved = 0;
+                for (int row = 0; row < f.row_count; row++) {
+                    if (rows[row].kind != DM_ROW_ITEM || !rows[row].enabled) continue;
+                    c.cursor = rows[row].item;
+                    f.row_count = dm_rows(&c, &cw, rows, DM_ROWS_MAX);
+                    f.context_help = dm_help_text(&c, &cw);
+                    f.feedback = row % 3 == 0 ? "Not available" : NULL;
+                    cw.hp = row % 2 ? 100.0f : 90.0f;
+                    ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, black);
+                    dmp_draw(dev, ctx, rtv, 1280, 960, &f);
+                    hits = dmp_hits();
+                    moved += hits->panel.x != first.x || hits->panel.y != first.y || hits->panel.w != first.w ||
+                             hits->panel.h != first.h;
+                }
+                CHECK(moved == 0, "the main panel keeps its size and place on every row (%d changes)", moved);
+                c.cursor = DM_HEAL;
+                CHECK(dm_help_text(&c, &cw) != NULL, "Heal has its help line in the reserved area");
+                f.feedback = NULL;
+                main_w = hits->panel.w;
+            }
+            if (page == 1) {
+                CHECK(hits->panel.w <= main_w + 0.5f, "Level Select is no wider than the main menu (%.0f against %.0f)",
+                      hits->panel.w, main_w);
+                CHECK(hits->count == scenes.count + 1, "every level and Back are targets (%d)", hits->count);
+                CHECK(dm_mouse_click(&c, &cw, hits, hits->hit[hits->count - 1].rect.x + 5.0f,
+                                     hits->hit[hits->count - 1].rect.y + hits->hit[hits->count - 1].rect.h * 0.5f, 0) &&
+                          c.page == DM_PAGE_MAIN,
+                      "a click on the drawn < Back returns to Cheats");
+            }
+            if (page == 0)
+                CHECK(dm_mouse_click(&c, &cw, hits, hits->close.x + hits->close.w * 0.5f, hits->close.y + hits->close.h * 0.5f, 0) &&
+                          !c.open,
+                      "a click on the drawn close button closes the menu");
+        }
+        f.menu = 0;
+        ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, black);
+        dmp_draw(dev, ctx, rtv, 1280, 960, &f);
+        CHECK(!dmp_hits()->valid, "no menu, no targets");
+        CHECK(dmp_imgui_errors() == 0,
+              "Dear ImGui reported no layout error drawing the main page (every row, with and without help), Teleport, "
+              "Level Select and the Debug Menu (%d)", dmp_imgui_errors());
+    }
     dmp_release();
 done:
     if (staging) ID3D11Texture2D_Release(staging);
@@ -1250,6 +1351,7 @@ void objective_tests(int* checks, int* failures);
 void overlay_tests(int* checks, int* failures);
 void physics_watch_tests(int* checks, int* failures);
 void menu_l10n_tests(int* checks, int* failures);
+void menu_layout_tests(int* checks, int* failures);
 
 int main(void) {
     test_f5();
@@ -1275,6 +1377,7 @@ int main(void) {
     overlay_tests(&g_checks, &g_failures);
     physics_watch_tests(&g_checks, &g_failures);
     menu_l10n_tests(&g_checks, &g_failures);
+    menu_layout_tests(&g_checks, &g_failures);
     test_retail(JPT_SOURCE_DIR);
     test_panel();
     printf("debug_menu_tests: %d checks, %d failures\n", g_checks, g_failures);

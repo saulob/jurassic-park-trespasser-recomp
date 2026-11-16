@@ -65,6 +65,12 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_OFFICIAL_PATCH_117, "1" },
     { JPT_KEY_FOV, "75" },
     { JPT_KEY_MOUSE_SENSITIVITY, "1.00" },
+    { JPT_KEY_CHEAT_MOVEMENT_SPEED, "1" },
+    { JPT_KEY_CHEAT_JUMP_HEIGHT, "1" },
+    { JPT_KEY_CHEAT_INVULNERABILITY, "0" },
+    { JPT_KEY_CHEAT_INFINITE_AMMO, "0" },
+    { JPT_KEY_CHEAT_FREEZE_DINOSAURS, "0" },
+    { JPT_KEY_CHEAT_SUPER_HEALTH, "0" },
     { JPT_KEY_GAMEPAD_GLYPHS, "automatic" },
     { JPT_KEY_GAMEPAD_LOOK_X, "100" },
     { JPT_KEY_GAMEPAD_LOOK_Y, "100" },
@@ -141,6 +147,11 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
         if (!strcmp(key, jpt_hotkeys[n].setting)) {
             uint32_t vk = jpt_hotkey_vk(value);
             return vk ? (c->hotkey_vk[n] = vk, 1) : 0;
+        }
+    for (n = 0; n < JPT_CHEAT_COUNT; n++)
+        if (jpt_cheat_is_saved(&jpt_cheats[n]) && !strcmp(key, jpt_cheats[n].key)) {
+            int parsed;
+            return jpt_cheat_parse(&jpt_cheats[n], value, &parsed) ? (c->cheat[n] = parsed, 1) : 0;
         }
     if (!strcmp(key, JPT_KEY_SHOW_LAUNCHER)) return jpt_parse_bool(value, &c->show_launcher);
     if (!strcmp(key, JPT_KEY_VSYNC)) return jpt_parse_bool(value, &c->vsync);

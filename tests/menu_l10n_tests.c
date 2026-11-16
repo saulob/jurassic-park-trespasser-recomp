@@ -81,6 +81,8 @@ void menu_l10n_tests(int* checks, int* failures) {
             CHECK(strcmp(label, english_items[i]) || shared(code, english_items[i]), "%s F5 item %d \"%s\" English", code, i, label);
         }
         CHECK(strcmp(dm_item_label(DM_MENU_CHEATS, DM_FREEZE_AI), "Freeze Dinosaurs"), "%s F10 Freeze Dinosaurs", code);
+        for (int i = 0; i < JPT_CHEAT_COUNT; i++)
+            CHECK(jpt_tr_has(jpt_cheats[i].label), "%s F10 has a translation of %s", code, jpt_cheats[i].label);
         CHECK(strcmp(dm_menu_title(DM_MENU_DEBUG), "Debug / Test Menu") && strcmp(dm_menu_title(DM_MENU_OBJECTIVES), "Objectives"),
               "%s titles", code);
         CHECK(strcmp(dm_menu_title(DM_MENU_CHEATS), "Cheats") || !strcmp(code, "de"), "%s Cheats title", code);

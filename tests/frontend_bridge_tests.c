@@ -185,6 +185,8 @@ int ui_frozen_picture(const uint16_t** bits, int* w, int* h, long* pitch) {
     return 1;
 }
 void d3dr_frontend_release(void) {}
+void window_host_level_load_done(void) {}
+
 int window_host_pointer(int* x, int* y) {
     *x = *y = 0;
     return 0;

@@ -57,6 +57,7 @@ Cheats	Читы
 Fullscreen	Полный экран
 Debug / Test Menu	Меню отладки / тестов
 Level Select	Выбор уровня
+Current level	Текущий уровень
 Restart Level	Перезапустить уровень
 Reload Current Level	Перезагрузить уровень
 X	X
@@ -77,7 +78,6 @@ Invulnerability	Неуязвимость
 Infinite Ammo	Бесконечные патроны
 Heal	Лечение
 Super Health	Суперздоровье
-Third Person	Третье лицо
 Fly / Free Camera	Полёт / свободная камера
 Compass	Компас
 Ambient Occlusion	Фоновое затенение
@@ -96,7 +96,6 @@ Unavailable	Недоступно
 unavailable	недоступно
 none	нет
 none (main menu)	нет (главное меню)
-current	текущий
 Level	Уровень
 Player	Игрок
 Navigation	Навигация
@@ -116,7 +115,6 @@ Not available	Недоступно
 Level Select failed	Не удалось выбрать уровень
 Reload failed	Не удалось перезагрузить
 Restart failed	Не удалось перезапустить
-Teleported to %.3f %.3f %.3f	Телепорт в %.3f %.3f %.3f
 Teleport failed	Не удалось телепортироваться
 Returned to checkpoint	Возврат к контрольной точке
 Return to Checkpoint failed	Не удалось вернуться к контрольной точке
@@ -137,12 +135,12 @@ Quick Save works in a level	Быстрое сохранение работает
 Quick Save is not available now	Быстрое сохранение сейчас недоступно
 Quick Load is not available now	Быстрая загрузка сейчас недоступна
 Anne cannot be healed now	Сейчас Анну нельзя вылечить
+Fill health to maximum	Восполняет здоровье до максимума
 Camera	Камера
 Normal	Обычная
 Free Camera	Свободная камера
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Вверх/Вниз выбор | Enter/A применить | Влево/Вправо изменить (Shift 10, Ctrl 0.1, LB/RB 10) | цифры ввод | Esc/B назад | F5 закрыть
 Esc/B or F3 close	Esc/B или F3 закрыть
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Вверх/Вниз выбор | Enter/A применить | Влево/Вправо изменить | Esc/B назад | F10 закрыть. Свободная камера: WASD/левый стик движение, мышь/правый стик обзор, Пробел/A вверх, Ctrl/B вниз, Shift/LB быстро
 Beach	Пляж
 Jungle Road	Дорога в джунглях
 Industrial Jungle	Индустриальные джунгли

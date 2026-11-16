@@ -472,7 +472,7 @@ static void TestPages() {
         const std::string name = PageName(kPageOrder[i]);
         CHECK(name == expected[i]);
         CHECK(name.find("Online") == std::string::npos && name.find("Multiplayer") == std::string::npos);
-        CHECK(PageComingLater(kPageOrder[i]) == (name == "Cheats" || name == "Bug Report"));
+        CHECK(PageComingLater(kPageOrder[i]) == (name == "Bug Report"));
         CHECK(FindPageIcon(kPageOrder[i]) != nullptr);
         const std::vector<uint8_t> icon = RenderPageIcon(kPageOrder[i], 24);
         CHECK(icon.size() == 24 * 24 * 4);
@@ -743,7 +743,7 @@ static void TestLauncherLanguage(const fs::path& dir) {
     CHECK(LauncherIsPortuguese());
     const std::pair<const char*, const char*> pages[] = {
         {"Play", "Jogar"},       {"Display", "Tela"},     {"Graphics", "Gráficos"}, {"Gameplay", "Jogabilidade"},
-        {"Controls", "Controles"}, {"Cheats", "Cheats"},  {"Bug Report", "Relatar Problema"}, {"About", "Sobre"},
+        {"Controls", "Controles"}, {"Cheats", "Trapaças"},  {"Bug Report", "Relatar Problema"}, {"About", "Sobre"},
         {"Language", "Idioma"},  {"Save", "Salvar"},     {"Quit", "Sair"}};
     for (const auto& [english, portuguese] : pages) CHECK(std::string(Tr(english)) == portuguese);
     CHECK(std::string(Tr("A text that is in no table")) == "A text that is in no table");
@@ -1240,6 +1240,159 @@ static void TestDirect3DEffectsPolicy() {
           launcher.find("Set(JPT_KEY_ENHANCED_SKY") == std::string::npos);
 }
 
+static std::vector<int> CheatValues(const fs::path& ini) {
+    jpt_config_t c;
+    jpt_config_load(ini.string().c_str(), &c);
+    return std::vector<int>(c.cheat, c.cheat + JPT_CHEAT_COUNT);
+}
+
+static void TestCheats(const fs::path& dir) {
+    // the placeholder is gone
+    CHECK(!PageComingLater(PageId::kCheats) && PageComingLater(PageId::kBugReport));
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    CHECK(launcher.find("PageComingLater(ui, \"Cheats\")") == std::string::npos &&
+          launcher.find("PageCheats(ui)") != std::string::npos);
+    CHECK(std::string(kCheatsHelp).find("F10") != std::string::npos &&
+          std::string(kCheatsHelp).find("only to the current session") != std::string::npos);
+
+    // the page shows the saved cheats of the one list, in F10's order
+    const std::vector<const jpt_cheat_info_t*> rows = LauncherCheats();
+    const char* labels[] = {"Movement Speed", "Jump Height", "Invulnerability", "Infinite Ammo", "Freeze Dinosaurs", "Super Health"};
+    const char* keys[] = {"cheat_movement_speed", "cheat_jump_height", "cheat_invulnerability", "cheat_infinite_ammo",
+                          "cheat_freeze_dinosaurs", "cheat_super_health"};
+    CHECK(rows.size() == std::size(labels) && rows.size() == JPT_CHEAT_PERSISTENT_COUNT);
+    for (size_t i = 0; i < rows.size() && i < std::size(labels); ++i) {
+        CHECK(std::string(rows[i]->label) == labels[i] && std::string(rows[i]->key) == keys[i]);
+        CHECK(rows[i]->kind == (i < 2 ? JPT_CHEAT_CHOICE : JPT_CHEAT_TOGGLE));
+        CHECK(std::string(rows[i]->help).size() > 10);
+    }
+    for (const jpt_cheat_info_t* row : rows) {
+        const std::string label = row->label;
+        CHECK(label != "Heal" && label != "Teleport" && label != "Level Select" && label != "Fly / Free Camera");
+        CHECK(label.find("Coordinates") == std::string::npos && label.find("Third Person") == std::string::npos);
+    }
+    CHECK(launcher.find("LauncherCheats()") != std::string::npos);
+    for (const char* label : labels) {
+        CHECK(launcher.find(std::string("\"") + label + "\"") == std::string::npos);
+        CHECK(ReadSource("launcher/options.cpp").find(std::string("\"") + label + "\"") == std::string::npos);
+    }
+    CHECK(launcher.find("Coordinates") == std::string::npos && launcher.find("Third Person") == std::string::npos);
+
+    // the choices are the F10 lists
+    const jpt_cheat_info_t& speed = *rows[0];
+    const jpt_cheat_info_t& jump = *rows[1];
+    const char* speed_labels[] = {"0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x", "7.5x", "10.0x"};
+    const char* jump_labels[] = {"0.5x", "1.0x", "1.5x", "2.0x", "3.0x", "5.0x"};
+    CHECK(speed.choice_count == int(std::size(speed_labels)) && jump.choice_count == int(std::size(jump_labels)));
+    for (int i = 0; i < speed.choice_count && i < int(std::size(speed_labels)); ++i)
+        CHECK(std::string(speed.choices[i].label) == speed_labels[i]);
+    for (int i = 0; i < jump.choice_count && i < int(std::size(jump_labels)); ++i)
+        CHECK(std::string(jump.choices[i].label) == jump_labels[i]);
+    CHECK(std::string(speed.choices[speed.default_value].label) == "1.0x" &&
+          std::string(jump.choices[jump.default_value].label) == "1.0x");
+
+    // defaults: nothing is on, speed and jump are the original
+    const fs::path fresh = dir / "cheats_fresh.ini";
+    WriteFile(fresh, "settings_version = 3\nrenderer = d3d11\n");
+    LauncherSettings defaults(fresh);
+    for (const jpt_cheat_info_t* row : rows)
+        CHECK(defaults.Get(row->key) == jpt_cheat_saved_text(row, row->default_value));
+    CHECK(defaults.Get("cheat_movement_speed") == "1" && defaults.Get("cheat_jump_height") == "1");
+    for (const char* key : {"cheat_invulnerability", "cheat_infinite_ammo", "cheat_freeze_dinosaurs", "cheat_super_health"})
+        CHECK(defaults.Get(key) == "0");
+    const std::vector<int> old_config = CheatValues(fresh);
+    for (int i = 0; i < JPT_CHEAT_COUNT; ++i) CHECK(old_config[size_t(i)] == jpt_cheats[i].default_value);
+    jpt_config_t config;
+    jpt_config_defaults(&config);
+    CHECK(config.cheat[JPT_CHEAT_SPEED] == 1 && config.cheat[JPT_CHEAT_JUMP] == 1 && !config.cheat[JPT_CHEAT_INVULNERABLE] &&
+          !config.cheat[JPT_CHEAT_AMMO] && !config.cheat[JPT_CHEAT_FREEZE_AI] && !config.cheat[JPT_CHEAT_SUPER_HEALTH]);
+
+    // Save keeps the values without starting; Play saves the same way
+    const fs::path saved = dir / "cheats_saved.ini";
+    WriteFile(saved, "settings_version = 3\nrenderer = d3d11\n");
+    LauncherSettings s(saved);
+    s.Set("cheat_movement_speed", "5");
+    s.Set("cheat_jump_height", "2");
+    s.SetBool("cheat_invulnerability", true);
+    s.SetBool("cheat_super_health", true);
+    CHECK(s.Dirty() && ReadFile(saved).find("cheat_") == std::string::npos);
+    CHECK(s.Save() && !s.Dirty());
+    const std::string text = ReadFile(saved);
+    CHECK(text.find("cheat_movement_speed = 5") != std::string::npos && text.find("cheat_invulnerability = 1") != std::string::npos);
+    CHECK(text.find("renderer = d3d11") != std::string::npos);
+    LauncherSettings reopened(saved);
+    CHECK(reopened.Get("cheat_movement_speed") == "5" && reopened.Get("cheat_jump_height") == "2" &&
+          reopened.GetBool("cheat_invulnerability", false) && !reopened.GetBool("cheat_infinite_ammo", true) &&
+          reopened.GetBool("cheat_super_health", false) && !reopened.GetBool("cheat_freeze_dinosaurs", true));
+    std::vector<int> runtime = CheatValues(saved);
+    CHECK(runtime[JPT_CHEAT_SPEED] == 5 && runtime[JPT_CHEAT_JUMP] == 3 && runtime[JPT_CHEAT_INVULNERABLE] == 1 &&
+          runtime[JPT_CHEAT_AMMO] == 0 && runtime[JPT_CHEAT_FREEZE_AI] == 0 && runtime[JPT_CHEAT_SUPER_HEALTH] == 1);
+
+    const fs::path played = dir / "cheats_played.ini";
+    WriteFile(played, "settings_version = 3\n");
+    LauncherSettings play_settings(played);
+    play_settings.SetBool("cheat_infinite_ammo", true);
+    play_settings.SetBool("cheat_freeze_dinosaurs", true);
+    play_settings.Set("cheat_movement_speed", "10");
+    PlayGate gate;
+    CHECK(gate.Request(false, true, [&] { return play_settings.Save(); }) == PlayRequest::kStarting);
+    runtime = CheatValues(played);
+    CHECK(runtime[JPT_CHEAT_AMMO] == 1 && runtime[JPT_CHEAT_FREEZE_AI] == 1 && runtime[JPT_CHEAT_SPEED] == 7 &&
+          runtime[JPT_CHEAT_INVULNERABLE] == 0);
+
+    // Reset all settings puts every cheat back, in the file too
+    LauncherSettings reset(saved);
+    reset.ResetToDefaults();
+    CHECK(reset.Save());
+    const std::string after = ReadFile(saved);
+    CHECK(after.find("cheat_movement_speed = 1") != std::string::npos && after.find("cheat_jump_height = 1") != std::string::npos &&
+          after.find("cheat_invulnerability = 0") != std::string::npos && after.find("cheat_super_health = 0") != std::string::npos);
+    runtime = CheatValues(saved);
+    for (int i = 0; i < JPT_CHEAT_COUNT; ++i) CHECK(runtime[size_t(i)] == jpt_cheats[i].default_value);
+
+    // a hand-edited file never crashes and never turns a cheat on
+    const fs::path bad = dir / "cheats_bad.ini";
+    WriteFile(bad, "cheat_invulnerability = banana\ncheat_movement_speed = 4\ncheat_jump_height = fast\ncheat_infinite_ammo = 2\n"
+                   "cheat_super_health =\ncheat_freeze_dinosaurs = nan\n");
+    runtime = CheatValues(bad);
+    for (int i = 0; i < JPT_CHEAT_COUNT; ++i) CHECK(runtime[size_t(i)] == jpt_cheats[i].default_value);
+    LauncherSettings broken(bad);
+    CHECK(broken.Get("cheat_invulnerability") == "0" && broken.Get("cheat_movement_speed") == "1" &&
+          broken.Get("cheat_jump_height") == "1" && broken.Get("cheat_infinite_ammo") == "0" &&
+          broken.Get("cheat_super_health") == "0" && broken.Get("cheat_freeze_dinosaurs") == "0");
+    const fs::path spelled = dir / "cheats_spelled.ini";
+    WriteFile(spelled, "cheat_movement_speed = 2.0\ncheat_jump_height = 0.50\ncheat_invulnerability = on\n");
+    runtime = CheatValues(spelled);
+    CHECK(runtime[JPT_CHEAT_SPEED] == 3 && runtime[JPT_CHEAT_JUMP] == 0 && runtime[JPT_CHEAT_INVULNERABLE] == 1);
+    CHECK(CanonicalCheatValue(speed, "2.0") == "2" && CanonicalCheatValue(speed, "garbage") == "1" &&
+          CanonicalCheatValue(jump, "0.50") == "0.5" && CanonicalCheatValue(*rows[2], "yes") == "1" &&
+          CanonicalCheatValue(*rows[2], "?") == "0");
+
+    // actions and the removed options are not settings
+    for (const char* key : {"cheat_heal", "cheat_teleport", "cheat_level_select", "cheat_free_camera", "cheat_fly_free_camera",
+                            "cheat_show_coordinates", "cheat_third_person"}) {
+        CHECK(jpt_default_value(key) == nullptr && !jpt_config_valid(key, "1"));
+        CHECK(text.find(key) == std::string::npos);
+    }
+    int cheat_keys = 0;
+    for (int i = 0; i < JPT_SETTING_COUNT; ++i) cheat_keys += std::strncmp(jpt_settings[i].key, "cheat_", 6) == 0;
+    CHECK(cheat_keys == JPT_CHEAT_PERSISTENT_COUNT);
+
+    // Portuguese: the page, the rows and their help
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr("Cheats")) == "Trapaças");
+    const char* pt[] = {"Velocidade de movimento", "Altura do pulo", "Invulnerabilidade", "Munição infinita",
+                        "Congelar dinossauros", "Supervida"};
+    for (size_t i = 0; i < rows.size() && i < std::size(pt); ++i) {
+        CHECK(std::string(Tr(rows[i]->label)) == pt[i]);
+        CHECK(HasRow(rows[i]->help) && std::string(Tr(rows[i]->help)) != rows[i]->help);
+    }
+    CHECK(HasRow(kCheatsHelp) && HasRow(kCheatsPageSubtitle));
+    CHECK(std::string(Tr("Off")) != "" && std::string(Tr(kCheatsPageSubtitle)) != kCheatsPageSubtitle);
+    SetLauncherLanguage("en");
+    CHECK(std::string(Tr(rows[0]->label)) == "Movement Speed" && std::string(Tr(rows[0]->help)) == rows[0]->help);
+}
+
 int main() {
     wchar_t temp[MAX_PATH];
     GetTempPathW(MAX_PATH, temp);
@@ -1270,6 +1423,7 @@ int main() {
     TestGraphicsCard(dir);
     TestInvertMouseInControls();
     TestFovAndMouseSensitivity(dir);
+    TestCheats(dir);
     TestEmbeddedOnly();
     TestRealDisc();
     std::error_code ec;

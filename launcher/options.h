@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "jpt_cheats.h"
 #include "jpt_display.h"
 #include "jpt_monitors.h"
 
@@ -22,6 +23,17 @@ inline constexpr PageId kPageOrder[] = {PageId::kPlay,     PageId::kDisplay, Pag
 const char* PageName(PageId page);
 // Pages that are listed but have nothing to set yet.
 bool PageComingLater(PageId page);
+
+inline constexpr char kCheatsPageSubtitle[] = "Optional gameplay modifiers";
+inline constexpr char kCheatsHelp[] =
+    "Press F10 while playing to open the Cheats menu. Changes made there apply only to the current session: the values "
+    "below are what every session starts with. Heal, Teleport, Level Select and Fly / Free Camera are only in that menu.";
+
+// The cheats the page shows, in F10's order: the saved ones of jpt_cheats.h.
+std::vector<const jpt_cheat_info_t*> LauncherCheats();
+// The value a cheat's setting is stored as, for text the file may spell another way ("1.0" for 1); the default for a
+// text that is not one of its values.
+std::string CanonicalCheatValue(const jpt_cheat_info_t& cheat, const std::string& text);
 
 // "1440p — 2560 × 1440", or "Original (compatibility size)".
 std::string ResolutionLabel(int preset, jpt_size_t box);

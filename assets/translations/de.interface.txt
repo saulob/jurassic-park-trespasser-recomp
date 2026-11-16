@@ -57,6 +57,7 @@ Cheats	Cheats
 Fullscreen	Vollbild
 Debug / Test Menu	Debug-/Testmenü
 Level Select	Levelauswahl
+Current level	Aktuelles Level
 Restart Level	Level neu starten
 Reload Current Level	Aktuellen Level neu laden
 X	X
@@ -77,7 +78,6 @@ Invulnerability	Unverwundbarkeit
 Infinite Ammo	Unendlich Munition
 Heal	Heilen
 Super Health	Supergesundheit
-Third Person	Dritte Person
 Fly / Free Camera	Flug / freie Kamera
 Compass	Kompass
 Ambient Occlusion	Umgebungsverdeckung
@@ -96,7 +96,6 @@ Unavailable	Nicht verfügbar
 unavailable	nicht verfügbar
 none	keiner
 none (main menu)	keiner (Hauptmenü)
-current	aktuell
 Level	Level
 Player	Spielerin
 Navigation	Navigation
@@ -116,7 +115,6 @@ Not available	Nicht verfügbar
 Level Select failed	Levelauswahl fehlgeschlagen
 Reload failed	Neu laden fehlgeschlagen
 Restart failed	Neustart fehlgeschlagen
-Teleported to %.3f %.3f %.3f	Teleportiert nach %.3f %.3f %.3f
 Teleport failed	Teleport fehlgeschlagen
 Returned to checkpoint	Zum Kontrollpunkt zurückgekehrt
 Return to Checkpoint failed	Rückkehr zum Kontrollpunkt fehlgeschlagen
@@ -137,12 +135,12 @@ Quick Save works in a level	Schnellspeichern nur in einem Level
 Quick Save is not available now	Schnellspeichern ist gerade nicht möglich
 Quick Load is not available now	Schnellladen ist gerade nicht möglich
 Anne cannot be healed now	Anne kann jetzt nicht geheilt werden
+Fill health to maximum	Füllt die Gesundheit bis zum Maximum auf
 Camera	Kamera
 Normal	Normal
 Free Camera	Freie Kamera
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Auf/Ab wählen | Enter/A benutzen | Links/Rechts ändern (Umschalt 10, Strg 0.1, LB/RB 10) | Ziffern eingeben | Esc/B zurück | F5 schließen
 Esc/B or F3 close	Esc/B oder F3 schließt
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Auf/Ab wählen | Enter/A benutzen | Links/Rechts ändern | Esc/B zurück | F10 schließen. Freie Kamera: WASD/linker Stick bewegen, Maus/rechter Stick umsehen, Leertaste/A hoch, Strg/B runter, Umschalt/LB schnell
 Beach	Strand
 Jungle Road	Dschungelstraße
 Industrial Jungle	Industriedschungel

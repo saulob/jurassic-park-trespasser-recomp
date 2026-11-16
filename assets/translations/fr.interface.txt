@@ -57,6 +57,7 @@ Cheats	Codes de triche
 Fullscreen	Plein écran
 Debug / Test Menu	Menu de débogage / test
 Level Select	Choix du niveau
+Current level	Niveau actuel
 Restart Level	Relancer le niveau
 Reload Current Level	Recharger le niveau
 X	X
@@ -77,7 +78,6 @@ Invulnerability	Invulnérabilité
 Infinite Ammo	Munitions infinies
 Heal	Soigner
 Super Health	Super santé
-Third Person	Troisième personne
 Fly / Free Camera	Vol / caméra libre
 Compass	Boussole
 Ambient Occlusion	Occlusion ambiante
@@ -96,7 +96,6 @@ Unavailable	Indisponible
 unavailable	indisponible
 none	aucun
 none (main menu)	aucun (menu principal)
-current	actuel
 Level	Niveau
 Player	Joueuse
 Navigation	Navigation
@@ -116,7 +115,6 @@ Not available	Indisponible
 Level Select failed	Échec du choix du niveau
 Reload failed	Échec du rechargement
 Restart failed	Échec du redémarrage
-Teleported to %.3f %.3f %.3f	Téléportée en %.3f %.3f %.3f
 Teleport failed	Échec de la téléportation
 Returned to checkpoint	Retour au point de contrôle effectué
 Return to Checkpoint failed	Échec du retour au point de contrôle
@@ -137,12 +135,12 @@ Quick Save works in a level	La sauvegarde rapide fonctionne dans un niveau
 Quick Save is not available now	Sauvegarde rapide indisponible pour le moment
 Quick Load is not available now	Chargement rapide indisponible pour le moment
 Anne cannot be healed now	Anne ne peut pas être soignée maintenant
+Fill health to maximum	Remplit la santé au maximum
 Camera	Caméra
 Normal	Normale
 Free Camera	Caméra libre
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Haut/Bas choisir | Entrée/A utiliser | Gauche/Droite régler (Maj 10, Ctrl 0.1, LB/RB 10) | chiffres modifier | Échap/B retour | F5 fermer
 Esc/B or F3 close	Échap/B ou F3 fermer
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Haut/Bas choisir | Entrée/A utiliser | Gauche/Droite changer | Échap/B retour | F10 fermer. Caméra libre : WASD/stick gauche déplacer, souris/stick droit regarder, Espace/A monter, Ctrl/B descendre, Maj/LB vite
 Beach	Plage
 Jungle Road	Route de la jungle
 Industrial Jungle	Jungle industrielle

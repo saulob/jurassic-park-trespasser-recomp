@@ -322,6 +322,7 @@ private:
     Outcome Frame() {
         SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
         NormalizeGraphicsCard();
+        NormalizeCheats();
         TrackPlacement();
         PollInstall();
         if (play_.starting() && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds) {
@@ -493,7 +494,7 @@ private:
         case PageId::kControls:
             return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
         case PageId::kCheats:
-            return {name, "Coming later.", [this](trg::Ui& ui) { PageComingLater(ui, "Cheats"); }, nullptr, nullptr};
+            return {name, kCheatsPageSubtitle, [this](trg::Ui& ui) { PageCheats(ui); }, nullptr, nullptr};
         case PageId::kBugReport:
             return {name, "Coming later.", [this](trg::Ui& ui) { PageComingLater(ui, "Bug reports"); }, nullptr,
                     nullptr};
@@ -1047,6 +1048,33 @@ private:
         for (int other = 0; other < JPT_ACT_COUNT; ++other) {
             if (other != action && settings_.Get(jpt_pad_actions[other].key) == chosen) {
                 settings_.Set(jpt_pad_actions[other].key, before);
+            }
+        }
+    }
+
+    void PageCheats(trg::Ui& ui) {
+        ui.Help(kCheatsHelp);
+        ui.Spacer(6);
+        for (const jpt_cheat_info_t* cheat : LauncherCheats()) {
+            if (cheat->kind == JPT_CHEAT_CHOICE) {
+                std::vector<trg::Option> options;
+                for (int i = 0; i < cheat->choice_count; ++i) {
+                    options.push_back({cheat->choices[i].saved, cheat->choices[i].label});
+                }
+                ui.Combo(cheat->label, cheat->help, cheat->key, jpt_cheat_saved_text(cheat, cheat->default_value), options);
+            } else {
+                ui.Toggle(cheat->label, cheat->help, cheat->key, cheat->default_value != 0, "Off", "On");
+            }
+        }
+        ui.EndRows();
+    }
+
+    void NormalizeCheats() {
+        for (const jpt_cheat_info_t* cheat : LauncherCheats()) {
+            const std::string text = settings_.Get(cheat->key);
+            const std::string canonical = CanonicalCheatValue(*cheat, text);
+            if (text != canonical) {
+                settings_.Set(cheat->key, canonical);
             }
         }
     }

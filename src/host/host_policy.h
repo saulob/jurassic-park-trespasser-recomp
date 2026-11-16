@@ -106,6 +106,24 @@ typedef struct {
 } open_press_t;
 
 void open_press_reset(open_press_t* p);
+
+/* The game's WM_ACTIVATEAPP handler (0x0040EFE0) releases its screen when deactivated and, reactivated, recreates the
+ * display and the renderer, which rebuilds the sky texture from its source raster. During a level load that raster's
+ * pixels are in the level's paged memory, which the loader thread is still committing, so the game must not see a
+ * change of activation until the load ends: then it gets the last one, if it differs from what it saw. */
+typedef struct {
+    int game_active; /* what the game last saw */
+    int wanted;      /* what Windows said last */
+    int deferred;    /* a change arrived during the load */
+} activation_defer_t;
+
+void activation_defer_init(activation_defer_t* a);
+/* WM_ACTIVATEAPP from Windows: 1 when the game gets it now. */
+int activation_message(activation_defer_t* a, int loading, int active);
+/* The load ended: 1 when the game must now get WM_ACTIVATEAPP with *active. */
+int activation_after_load(activation_defer_t* a, int* active);
+/* The host itself sent the game WM_ACTIVATEAPP. */
+void activation_delivered(activation_defer_t* a, int active);
 void open_press_keydown(open_press_t* p, unsigned vk, int repeat, int gameplay, unsigned depth);
 /* 1 when this key-up belongs to the press that opened a window (the game's window stack grew). */
 int open_press_keyup(open_press_t* p, unsigned vk, unsigned depth_now);

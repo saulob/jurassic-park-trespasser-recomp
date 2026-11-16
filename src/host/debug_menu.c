@@ -34,9 +34,6 @@
 #define TELEPORT_NEXT 0x0060CB70u
 #define TELEPORT_LIST_HEAD 0x0073F600u
 #define TELEPORT_ITERATOR 0x0073F614u
-#define AI_SYSTEM 0x0066E77Cu
-#define AI_FLAGS 0x50u /* bActive, bSleep, bBoring: DINOS toggles the third byte */
-#define AI_BORING_SHIFT 16
 #define APP 0x0066E338u
 #define APP_SCENE 0x0066E342u
 #define APP_RESTART 0x00414480u
@@ -52,9 +49,6 @@
 static const char k_help[] = "Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | "
                              "digits edit | Esc/B back | F5 close";
 static const char k_objectives_help[] = "Esc/B or F3 close";
-static const char k_cheats_help[] = "Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. "
-                                    "Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, "
-                                    "Ctrl/B down, Shift/LB fast";
 
 static struct {
     dm_state_t state;
@@ -64,6 +58,8 @@ static struct {
     dm_menu_t was_menu;
     cp_hud_t hud;
     cp_reminder_t reminder;
+    int pointer;
+    float pointer_x, pointer_y;
 } D = { .world = { .ai = -1, .key_index = -1 } };
 
 static uint32_t mover(void) {
@@ -95,10 +91,6 @@ static dm_place_t place_of(const guest_ui_view_t* v) {
     if (v->kind == GUEST_WND_GAME && v->ui == GUEST_UI_GAMEPLAY) return DM_PLACE_LEVEL;
     if (v->kind == GUEST_WND_MAIN_MENU) return DM_PLACE_MAIN_MENU;
     return DM_PLACE_NONE;
-}
-
-static int read_ai(uint32_t* system, uint32_t* flags) {
-    return guest_read32(AI_SYSTEM, system) && *system && guest_read32(*system + AI_FLAGS, flags);
 }
 
 static int read_eye(dm_placement_t* out) {
@@ -142,7 +134,7 @@ static void sample(const guest_ui_view_t* v, int depth, uint32_t scratch) {
     cheats_world(w);
     if (w->place != DM_PLACE_LEVEL) return;
     if (guest_read_string(APP_SCENE, w->scene, sizeof w->scene)) dm_level_id(w->scene, w->level, sizeof w->level);
-    if (read_ai(&system, &flags)) w->ai = (int)((flags >> AI_BORING_SHIFT) & 0xFFu) != 0;
+    if (cheats_read_ai(&system, &flags)) w->ai = (int)((flags >> CHEATS_AI_BORING_SHIFT) & 0xFFu) != 0;
     if (depth < SAMPLE_PLAYER) return;
     ins = mover();
     w->player = ins && debug_menu_placement(ins, scratch, &w->at) && player_alive();
@@ -213,13 +205,6 @@ static int previous_key(void) {
     dm_keys_t keys;
     if (!read_keys(&keys) || !keys.count || !guest_write32(TELEPORT_ITERATOR, keys.prev_target)) return 0;
     return guest_call(TELEPORT_NEXT, 0, NULL, 0, 0, NULL);
-}
-
-static int freeze_ai(int on) {
-    uint32_t system, flags;
-    if (!read_ai(&system, &flags)) return 0;
-    flags = (flags & ~(0xFFu << AI_BORING_SHIFT)) | ((on ? 1u : 0u) << AI_BORING_SHIFT);
-    return guest_write32(system + AI_FLAGS, flags);
 }
 
 static int copy_text(const char* text) {
@@ -298,9 +283,8 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
         break;
     case DM_ACT_TELEPORT:
         moved = move_player(&a->to, 1, scratch);
-        snprintf(line, sizeof line, jpt_tr(moved ? "Teleported to %.3f %.3f %.3f" : "Teleport failed"), a->to.pos[0],
-                 a->to.pos[1], a->to.pos[2]);
-        say(line, now);
+        if (moved) host_log("debug-menu", "teleported to %.3f %.3f %.3f", a->to.pos[0], a->to.pos[1], a->to.pos[2]);
+        else say("Teleport failed", now);
         break;
     case DM_ACT_RETURN_CHECKPOINT:
         moved = move_player(&a->to, 0, scratch);
@@ -354,9 +338,8 @@ static void run(const dm_action_t* a, const guest_ui_view_t* v, uint32_t scratch
         dm_feedback(&D.state, line, now);
         break;
     case DM_ACT_FREEZE_AI:
-        if (freeze_ai(a->on) && ch_format_change(line, sizeof line, a->kind, a->on, 0)) {
-            host_log("cheats", "%s", line);
-            dm_feedback(&D.state, line, now);
+        if (cheats_freeze_ai(a->on)) {
+            if (ch_format_change(line, sizeof line, a->kind, a->on, 0)) host_log("cheats", "%s", line);
         } else {
             say("Freeze AI failed", now);
         }
@@ -400,6 +383,8 @@ static void note_changes(void) {
     if (D.state.open != D.was_open || (D.state.open && D.state.menu != D.was_menu))
         host_log("debug-menu", "%s %s", dm_menu_title(D.state.open ? D.state.menu : D.was_menu),
                  D.state.open ? "opened" : "closed");
+    if (!D.state.open) D.pointer = 0;
+    if (D.state.open != D.was_open) window_host_input_changed();
     D.was_menu = D.state.menu;
     if (D.state.checkpoint.set && !D.had_checkpoint)
         host_log("debug-menu", "checkpoint set in %s at %.3f %.3f %.3f", D.state.checkpoint.level,
@@ -519,7 +504,22 @@ int debug_menu_key(UINT msg, WPARAM wparam, LPARAM lparam) {
 
 int debug_menu_char(WPARAM wparam) { return dm_char(&D.state, &D.world, (char)wparam); }
 
-int debug_menu_mouse(void) { return D.state.open && D.world.place == DM_PLACE_MAIN_MENU; }
+int debug_menu_mouse(UINT msg, int x, int y) {
+    const int was_open = D.state.open;
+    const dm_menu_t menu = D.state.menu;
+    if (!D.state.open) return 0;
+    D.pointer = 1;
+    D.pointer_x = (float)x;
+    D.pointer_y = (float)y;
+    if (msg == WM_MOUSEMOVE) {
+        dm_mouse_move(&D.state, &D.world, dmp_hits(), D.pointer_x, D.pointer_y);
+    } else if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) {
+        dm_mouse_click(&D.state, &D.world, dmp_hits(), D.pointer_x, D.pointer_y, GetTickCount());
+        note_closed_by(was_open, menu, "the mouse");
+        note_changes();
+    }
+    return 1;
+}
 
 void debug_menu_pad(uint32_t held, uint32_t pressed) {
     uint32_t now = GetTickCount();
@@ -584,9 +584,15 @@ void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext*
         f.rows = D.rows;
         f.row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);
         f.feedback = dm_feedback_text(&D.state, GetTickCount());
-        f.help = jpt_tr(D.state.menu == DM_MENU_CHEATS        ? k_cheats_help
-                        : D.state.menu == DM_MENU_OBJECTIVES ? k_objectives_help
-                                                             : k_help);
+        f.menu_id = D.state.menu;
+        f.page = D.state.page;
+        f.pointer = D.pointer;
+        f.pointer_x = D.pointer_x;
+        f.pointer_y = D.pointer_y;
+        f.context_help = dm_help_text(&D.state, &D.world);
+        f.help_lines = DMP_HELP_LINES;
+        if (D.state.menu != DM_MENU_CHEATS)
+            f.help = jpt_tr(D.state.menu == DM_MENU_OBJECTIVES ? k_objectives_help : k_help);
         f.title = dm_menu_title(D.state.menu);
     }
     coordinate_lines(&f);

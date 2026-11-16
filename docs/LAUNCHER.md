@@ -1,7 +1,7 @@
 # Launcher, display and graphics
 
 `trespasser.exe` opens the launcher before the game, in the same process. Pages: Play, Display, Graphics, Gameplay,
-Controls, Cheats (coming later), Bug Report (coming later) and About. There is no online or multiplayer page.
+Controls, Cheats, Bug Report (coming later) and About. There is no online or multiplayer page.
 
 ## Architecture
 
@@ -80,7 +80,8 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
-| Cheats, Bug Report | listed, "Coming later"; nothing active, nothing sent |
+| Cheats | Movement Speed, Jump Height, Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health: what every session starts with ([Cheats](#cheats)) |
+| Bug Report | listed, "Coming later"; nothing active, nothing sent |
 | About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
 
 ## Play
@@ -159,6 +160,9 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `show_resolution_title` | 1, 0 | 0 |
 | `skip_intro` | 1, 0 | 0 |
 | `video_subtitles` | 1, 0 | 1 |
+| `cheat_movement_speed` | 0.5, 1, 1.5, 2, 3, 5, 7.5, 10 | 1 |
+| `cheat_jump_height` | 0.5, 1, 1.5, 2, 3, 5 | 1 |
+| `cheat_invulnerability`, `cheat_infinite_ammo`, `cheat_freeze_dinosaurs`, `cheat_super_health` | 1, 0 | 0 |
 | `language` | `en`, `pt-BR`, `fr`, `de`, `es`, `ru`, `it` | `en` |
 | `launcher_x`, `_y`, `_width`, `_height`, `_maximized`, `_fullscreen` | the launcher window | |
 | `settings_version` | 3 | written with every change |
@@ -422,6 +426,27 @@ is not part of this work.
   when the game starts. Log: `[video-subtitles] enabled`, `tpassintro.smk timeline: 16 cues`.
 - Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
   Direct3D 11 renderer (see the README and `[graphics]` in the log).
+
+## Cheats
+
+The page lists the cheats worth keeping from one session to the next, as Dragon's Crown Pro PC does: **Movement Speed**
+and **Jump Height** (a select of the same values F10 steps through, 1.0x the original) and **Invulnerability**,
+**Infinite Ammo**, **Freeze Dinosaurs** and **Super Health** (Off or On, Off by default). Nothing is on in a file
+without the keys, and a value that is not one of the listed ones reads as the default. The page's help says: press F10
+while playing to open the Cheats menu; what it changes applies only to the current session.
+
+- **One list.** `src/common/jpt_cheats.c` holds every cheat once: label, help text, settings key, kind, default and
+  choices. The page (`LauncherCheats()` in `launcher/options.cpp`), F10 (`debug_menu_policy.c`: its rows and labels) and
+  the settings table read it; `cheats_tests` and `launcher_tests` fail when they stop agreeing.
+- **Saved and session.** Save and PLAY write the keys like any other setting; Reset all settings puts them back to the
+  defaults in the file too. At start the host reads them once (`cheats_start`, log line `[cheats] saved: Movement Speed
+  1.0x, ...`) and F10 starts from those values. F10 never writes the file: it only records what it changed over the
+  saved value (`jpt_cheat_session_t`), so a cheat cycled back follows the saved value again, and the next start uses
+  the saved values.
+- **F10 only.** Heal, Teleport and Level Select are actions, not settings. Fly / Free Camera is a mode of the level in
+  play (it needs the camera's link to Anne's head, which exists only in a running level, and it takes the controls from
+  her), so it is never saved or started On: F10 turns it on, and another level or the main menu turns it off.
+- **Removed from F10.** Show Coordinates (still in F5's Debug Menu) and Third Person.
 
 ## Gameplay > Trespasser CE
 

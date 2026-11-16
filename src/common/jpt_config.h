@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 
+#include "jpt_cheats.h"
 #include "jpt_gamepad.h"
 #include "jpt_gpu.h"
 #include "jpt_l10n.h"
@@ -52,6 +53,7 @@ extern "C" {
 #define JPT_KEY_FOV "fov"
 /* Mouse-look factor for both axes, as Trespasser CE's MouseSensX/MouseSensY. */
 #define JPT_KEY_MOUSE_SENSITIVITY "mouse_sensitivity"
+/* The cheats the launcher saves (jpt_cheats.h): the values F10 starts each session from. */
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
 #define JPT_SETTINGS_VERSION "3"
@@ -128,6 +130,7 @@ typedef struct {
     int official_patch_117;
     int fov;
     float mouse_sensitivity;
+    int cheat[JPT_CHEAT_COUNT]; /* a toggle's 0 or 1, a choice's index; only the saved cheats are read */
     char language[JPT_L10N_CODE_MAX];
     uint32_t hotkey_vk[JPT_HOTKEY_COUNT];
     jpt_gamepad_settings_t gamepad;
@@ -138,7 +141,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (28 + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (28 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

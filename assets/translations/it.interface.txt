@@ -57,6 +57,7 @@ Cheats	Trucchi
 Fullscreen	Schermo intero
 Debug / Test Menu	Menu di debug / test
 Level Select	Selezione livello
+Current level	Livello attuale
 Restart Level	Riavvia livello
 Reload Current Level	Ricarica livello attuale
 X	X
@@ -77,7 +78,6 @@ Invulnerability	Invulnerabilità
 Infinite Ammo	Munizioni infinite
 Heal	Cura
 Super Health	Supersalute
-Third Person	Terza persona
 Fly / Free Camera	Volo / camera libera
 Compass	Bussola
 Ambient Occlusion	Occlusione ambientale
@@ -96,7 +96,6 @@ Unavailable	Non disponibile
 unavailable	non disponibile
 none	nessuno
 none (main menu)	nessuno (menu principale)
-current	attuale
 Level	Livello
 Player	Giocatrice
 Navigation	Navigazione
@@ -116,7 +115,6 @@ Not available	Non disponibile
 Level Select failed	Selezione livello non riuscita
 Reload failed	Ricaricamento non riuscito
 Restart failed	Riavvio non riuscito
-Teleported to %.3f %.3f %.3f	Teletrasportata a %.3f %.3f %.3f
 Teleport failed	Teletrasporto non riuscito
 Returned to checkpoint	Tornata al checkpoint
 Return to Checkpoint failed	Ritorno al checkpoint non riuscito
@@ -137,12 +135,12 @@ Quick Save works in a level	Il salvataggio rapido funziona in un livello
 Quick Save is not available now	Salvataggio rapido non disponibile ora
 Quick Load is not available now	Caricamento rapido non disponibile ora
 Anne cannot be healed now	Anne non può essere curata ora
+Fill health to maximum	Riempie la salute fino al massimo
 Camera	Camera
 Normal	Normale
 Free Camera	Camera libera
 Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Su/Giù scegli | Invio/A usa | Sinistra/Destra regola (Maiusc 10, Ctrl 0.1, LB/RB 10) | cifre modifica | Esc/B indietro | F5 chiudi
 Esc/B or F3 close	Esc/B o F3 chiude
-Up/Down select | Enter/A use | Left/Right change | Esc/B back | F10 close. Free Camera: WASD/left stick move, mouse/right stick look, Space/A up, Ctrl/B down, Shift/LB fast	Su/Giù scegli | Invio/A usa | Sinistra/Destra cambia | Esc/B indietro | F10 chiude. Camera libera: WASD/levetta sinistra muovi, mouse/levetta destra guarda, Spazio/A su, Ctrl/B giù, Maiusc/LB veloce
 Beach	Spiaggia
 Jungle Road	Strada nella giungla
 Industrial Jungle	Giungla industriale

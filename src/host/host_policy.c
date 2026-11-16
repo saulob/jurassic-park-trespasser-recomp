@@ -181,6 +181,33 @@ void mouse_scale_counts(mouse_scale_t* m, float sensitivity, long dx, long dy, l
 
 void open_press_reset(open_press_t* p) { memset(p, 0, sizeof *p); }
 
+void activation_defer_init(activation_defer_t* a) {
+    a->game_active = a->wanted = 1;
+    a->deferred = 0;
+}
+
+int activation_message(activation_defer_t* a, int loading, int active) {
+    a->wanted = active != 0;
+    if (loading) {
+        a->deferred = 1;
+        return 0;
+    }
+    a->deferred = 0;
+    a->game_active = a->wanted;
+    return 1;
+}
+
+int activation_after_load(activation_defer_t* a, int* active) {
+    if (!a->deferred) return 0;
+    a->deferred = 0;
+    if (a->wanted == a->game_active) return 0;
+    a->game_active = a->wanted;
+    *active = a->wanted;
+    return 1;
+}
+
+void activation_delivered(activation_defer_t* a, int active) { a->game_active = active != 0; }
+
 void open_press_keydown(open_press_t* p, unsigned vk, int repeat, int gameplay, unsigned depth) {
     if (repeat || (vk != VK_ESC && vk != VK_F1_)) return;
     p->armed = gameplay != 0;

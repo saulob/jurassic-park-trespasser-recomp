@@ -2,8 +2,9 @@
  * F10 cheats on the game's own state. INVUL is CPlayer::bInvulnerable, which retail still tests before collision damage
  * (0x004569D7) though its console case was compiled out; WOO is g_bUnlimitedAmmo (CGun, 0x0043FA5B). Movement Speed is
  * the player's own rSpeedMultiplier (CPhysicsInfoSkeleton, 0x004F0B27), Jump Height scales the voluntary jump's
- * Pelvis_Jump before Foot_IDOF reads it, Super Health is CAnimate's maximum, the camera modes are the camera's
+ * Pelvis_Jump before Foot_IDOF reads it, Super Health is CAnimate's maximum, the free camera is the camera's
  * CEntityAttached link. Host-side cheats leave the game whenever it is not in a running level (menus, saves, loads).
+ * The launcher's saved values start each session; F10 only records what it changed over them (jpt_cheats.h).
  */
 #include "host.h"
 
@@ -28,6 +29,8 @@
 #define INFO_PHYSICS 0x0Cu
 #define PHYSICS_PLAYER_VTABLE 0x0064D644u
 #define PHYSICS_SPEED 0x70u
+#define AI_SYSTEM 0x0066E77Cu
+#define AI_FLAGS 0x50u /* bActive, bSleep, bBoring: DINOS toggles the third byte */
 #define AMMO_FLAGS 0x0066ECC0u /* g_bUnlimitedAmmo is its second byte */
 #define AMMO_SHIFT 8
 #define CAMERA_PRESENCE 0x30u
@@ -43,9 +46,13 @@
 #define FRAME_SECONDS_MAX 0.1f
 #define LOG_LIMIT 48
 
+static jpt_cheat_session_t S;
+
 static struct {
     ch_state_t want;
-    int applied, free_valid, logs;
+    int started, applied, free_valid, logs;
+    int armed_player, armed_ai;
+    uint32_t flags_player, flags_ai;
     uint32_t player, camera, camera_vtable, attached, animate, info;
     float speed_original, normal_max, super_hp;
     uint8_t relative[PLACEMENT_BYTES];
@@ -55,13 +62,37 @@ static struct {
     char level[DM_LEVEL_ID_MAX];
     char reported[DM_LEVEL_ID_MAX];
     char text[DM_TEXT_MAX];
-} C = { .super_hp = -1.0f };
+} C = { .want = { .speed = CH_MULTIPLIER_DEFAULT, .jump = CH_MULTIPLIER_DEFAULT }, .super_hp = -1.0f };
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
 
 static void note(const char* text) {
     if (C.logs < LOG_LIMIT && ++C.logs) host_log("cheats", "%s", text);
+}
+
+static jpt_cheat_session_t* session(void) {
+    if (!C.started) cheats_start(NULL);
+    return &S;
+}
+
+/* A change F10 made: kept over the saved value for this session only. */
+static void remember(jpt_cheat_t cheat, int value) {
+    jpt_cheat_set(session(), cheat, value);
+    ch_from_session(&C.want, &S);
+}
+
+static int effective(jpt_cheat_t cheat) { return jpt_cheat_effective(session(), cheat); }
+
+void cheats_start(const int saved[JPT_CHEAT_COUNT]) {
+    char line[256];
+    jpt_cheat_session_start(&S, saved);
+    ch_from_session(&C.want, &S);
+    C.started = C.armed_player = C.armed_ai = 1;
+    C.applied = C.free_valid = C.logs = 0;
+    C.flags_player = C.flags_ai = 0;
+    C.super_hp = -1.0f;
+    if (jpt_cheat_format_saved(line, sizeof line, &S)) host_log("cheats", "saved: %s", line);
 }
 
 static int read_byte(uint32_t dword_va, int shift, int* out) {
@@ -163,12 +194,6 @@ static int apply_camera(uint32_t scratch) {
         !guest_read32(C.camera + CAMERA_ANIMATE, &C.animate) || !C.attached || !C.animate)
         return 0;
     memcpy(C.relative, (const void*)ADDR(C.camera + CAMERA_RELATIVE), PLACEMENT_BYTES);
-    if (C.want.camera == CH_CAMERA_THIRD) {
-        ch_third_person_relative(&at);
-        memcpy((void*)ADDR(C.camera + CAMERA_RELATIVE), &at, PLACEMENT_BYTES);
-        camera_follow(C.camera);
-        return 1;
-    }
     if (!C.free_valid) {
         memcpy(&at, (const void*)ADDR(C.camera + CAMERA_PRESENCE), PLACEMENT_BYTES);
         ch_freecam_from(&at, &C.free);
@@ -202,8 +227,8 @@ static void apply(const char* level, uint32_t scratch) {
         wrf(C.player + ANIMATE_HP, hp);
     }
     if (C.want.camera != CH_CAMERA_NORMAL && !apply_camera(scratch)) {
-        C.want.camera = CH_CAMERA_NORMAL;
-        note("camera mode off: the camera does not follow the player");
+        remember(JPT_CHEAT_FREE_CAMERA, 0);
+        note("Fly / Free Camera off: the camera does not follow the player");
     }
     C.applied = 1;
 }
@@ -246,8 +271,48 @@ static void report_active(const dm_world_t* w) {
     char line[160];
     if (w->place != DM_PLACE_LEVEL || !w->level[0] || !player() || !strcmp(C.reported, w->level)) return;
     snprintf(C.reported, sizeof C.reported, "%s", w->level);
-    if (ch_format_active(line, sizeof line, &C.want, w->invulnerable, w->ammo))
+    if (ch_format_active(line, sizeof line, &C.want, effective(JPT_CHEAT_INVULNERABLE), effective(JPT_CHEAT_AMMO)))
         host_log("cheats", "active in %s: %s", w->level, line);
+}
+
+int cheats_read_ai(uint32_t* system, uint32_t* flags) {
+    return guest_read32(AI_SYSTEM, system) && *system && guest_read32(*system + AI_FLAGS, flags);
+}
+
+int cheats_freeze_ai(int on) {
+    uint32_t system, flags;
+    if (!cheats_read_ai(&system, &flags)) return 0;
+    flags = (flags & ~(0xFFu << CHEATS_AI_BORING_SHIFT)) | ((on ? 1u : 0u) << CHEATS_AI_BORING_SHIFT);
+    if (!guest_write32(system + AI_FLAGS, flags)) return 0;
+    remember(JPT_CHEAT_FREEZE_AI, on != 0);
+    return 1;
+}
+
+/* The game's own flags take the effective values once per level, load or player: never every frame, so the game's own
+ * console cheats still work over them. */
+static void apply_flags(int should) {
+    uint32_t p = player(), system, flags;
+    if (!should) return;
+    if (p != C.flags_player) {
+        C.flags_player = p;
+        C.armed_player = 1;
+    }
+    if (C.armed_player) {
+        C.armed_player = 0;
+        if (effective(JPT_CHEAT_INVULNERABLE) && !write_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, 1))
+            note("Invulnerability could not be applied");
+        if (effective(JPT_CHEAT_AMMO) && !write_byte(AMMO_FLAGS, AMMO_SHIFT, 1))
+            note("Infinite Ammo could not be applied");
+    }
+    if (!cheats_read_ai(&system, &flags)) return;
+    if (system != C.flags_ai) {
+        C.flags_ai = system;
+        C.armed_ai = 1;
+    }
+    if (!C.armed_ai) return;
+    C.armed_ai = 0;
+    if (effective(JPT_CHEAT_FREEZE_AI) && !((flags >> CHEATS_AI_BORING_SHIFT) & 0xFFu) && !cheats_freeze_ai(1))
+        note("Freeze Dinosaurs could not be applied");
 }
 
 void cheats_frame(const dm_world_t* w, uint32_t scratch) {
@@ -257,11 +322,15 @@ void cheats_frame(const dm_world_t* w, uint32_t scratch) {
         if (C.applied) drop("cheats dropped with their level");
         C.free_valid = 0;
         C.super_hp = -1.0f;
-        note("Movement Speed, Jump Height, Super Health and the camera modes reset: another level");
+        C.armed_player = C.armed_ai = 1;
+        remember(JPT_CHEAT_FREE_CAMERA, 0);
+        note("another level: Fly / Free Camera off, the other cheats stay");
     }
+    if (pending(WORLD_LOAD_PENDING)) C.armed_player = C.armed_ai = 1;
     should = ch_should_apply(w->place, pending(WORLD_LOAD_PENDING), pending(WORLD_SAVE_PENDING), player() != 0);
     if (C.applied && (!should || !unchanged())) suspend();
     if (!C.applied && should) apply(w->level, scratch);
+    apply_flags(should);
     if (C.applied && C.want.camera == CH_CAMERA_FREE) free_camera_step(scratch);
     else C.last = 0;
 }
@@ -314,15 +383,16 @@ void cheats_before_pelvis(void) {
     wrf(PELVIS_JUMP_Z, ch_jump_speed_scale(C.want.jump));
 }
 
-/* The menu's feedback and the log line for a change that happened. */
+/* The menu's row already shows the new value: a change is only logged, the menu gets no feedback line. */
 static const char* changed(dm_action_kind_t kind, int on, int value) {
-    if (!ch_format_change(C.text, sizeof C.text, kind, on, value)) return NULL;
-    host_log("cheats", "%s", C.text);
-    return C.text;
+    if (ch_format_change(C.text, sizeof C.text, kind, on, value)) host_log("cheats", "%s", C.text);
+    return NULL;
 }
 
-static const char* run_toggle(int ok, dm_action_kind_t kind, int on) {
-    return ok ? changed(kind, on, 0) : jpt_tr("Not available");
+static const char* run_toggle(int ok, dm_action_kind_t kind, int on, jpt_cheat_t cheat) {
+    if (!ok) return jpt_tr("Not available");
+    remember(cheat, on != 0);
+    return changed(kind, on, 0);
 }
 
 const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch) {
@@ -330,8 +400,9 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
     float hp;
     switch (a->kind) {
     case DM_ACT_INVULNERABLE:
-        return run_toggle(p && write_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, a->on), a->kind, a->on);
-    case DM_ACT_AMMO: return run_toggle(write_byte(AMMO_FLAGS, AMMO_SHIFT, a->on), a->kind, a->on);
+        return run_toggle(p && write_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, a->on), a->kind, a->on,
+                          JPT_CHEAT_INVULNERABLE);
+    case DM_ACT_AMMO: return run_toggle(write_byte(AMMO_FLAGS, AMMO_SHIFT, a->on), a->kind, a->on, JPT_CHEAT_AMMO);
     case DM_ACT_HEAL:
         if (!p || !ch_heal(rdf(p + ANIMATE_HP), rdf(p + ANIMATE_HP_MAX), &hp)) return jpt_tr("Anne cannot be healed now");
         wrf(p + ANIMATE_HP, hp);
@@ -340,16 +411,16 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
     }
     suspend();
     switch (a->kind) {
-    case DM_ACT_SPEED: C.want.speed = ch_speed_clamp(a->value); break;
-    case DM_ACT_JUMP: C.want.jump = ch_multiplier_clamp(a->value); break;
+    case DM_ACT_SPEED: remember(JPT_CHEAT_SPEED, ch_speed_clamp(a->value)); break;
+    case DM_ACT_JUMP: remember(JPT_CHEAT_JUMP, ch_multiplier_clamp(a->value)); break;
     case DM_ACT_SUPER_HEALTH:
-        C.want.super_health = a->on;
+        remember(JPT_CHEAT_SUPER_HEALTH, a->on != 0);
         C.super_hp = -1.0f;
         break;
     case DM_ACT_CAMERA:
         if (a->value != CH_CAMERA_FREE) C.free_valid = 0;
         physics_watch_camera(C.want.camera, (ch_camera_t)a->value);
-        C.want.camera = (ch_camera_t)a->value;
+        remember(JPT_CHEAT_FREE_CAMERA, a->value == CH_CAMERA_FREE);
         break;
     default: return NULL;
     }

@@ -26,7 +26,25 @@ const char* PageName(PageId page) {
     return "";
 }
 
-bool PageComingLater(PageId page) { return page == PageId::kCheats || page == PageId::kBugReport; }
+bool PageComingLater(PageId page) { return page == PageId::kBugReport; }
+
+std::vector<const jpt_cheat_info_t*> LauncherCheats() {
+    std::vector<const jpt_cheat_info_t*> cheats;
+    for (const jpt_cheat_info_t& cheat : jpt_cheats) {
+        if (jpt_cheat_is_saved(&cheat)) {
+            cheats.push_back(&cheat);
+        }
+    }
+    return cheats;
+}
+
+std::string CanonicalCheatValue(const jpt_cheat_info_t& cheat, const std::string& text) {
+    int value = cheat.default_value;
+    if (!jpt_cheat_parse(&cheat, text.c_str(), &value)) {
+        value = cheat.default_value;
+    }
+    return jpt_cheat_saved_text(&cheat, value);
+}
 
 bool Direct3DEffectsAvailable(const std::string& renderer) { return renderer != "software"; }
 

@@ -79,8 +79,8 @@ Keyboard: Up/Down, Enter. Gamepad: D-pad, A to use, B back, Menu to close. Yaw i
 
 ### Compass and objectives
 
-The compass at the top of the picture shows where the camera faces (north is the world's +Y; Third Person and Free
-Camera turn it with the camera). On it is a diamond for where the current objective is, with Anne's distance in
+The compass at the top of the picture shows where the camera faces (north is the world's +Y; Free Camera
+turns it with the camera). On it is a diamond for where the current objective is, with Anne's distance in
 metres along the ground under it; past the strip's ends the diamond becomes an arrow at the end to turn
 towards. In the picture a smaller diamond sits over the objective (an arrow at the edge when it is off screen or
 behind), and where the level has real stepping stones on the way, chevrons mark the next ones ahead of Anne. The
@@ -102,6 +102,14 @@ compass, the markers and the trail stay while Anne speaks.
 F10 opens and closes it where F5 works; F5 and F10 replace each other, so only one is ever shown. The game's own
 console (Ctrl+F11) still works.
 
+The panel has a header with the title and an X button (top right), the rows, and a fixed help area under them that
+says what the selected row does (Heal: "Fill health to maximum") or why something could not be done; a change that
+worked shows in its own row only. The panel keeps its size while you move through it. The main page lists only the
+cheats and Close; Teleport (with X, Y, Z) and Level Select ("Current level: Beach", then the level names) have a
+`< Back` row. Esc or B close the main page and go back from the others; F10 and the X close the whole menu. The mouse
+works on every row: the pointer over a row selects it and a click does what Enter does (a choice steps to its next
+value). The panel is kept inside the screen; its rows scroll when the screen is too short.
+
 | Cheat | What it does |
 |---|---|
 | Movement Speed | 0.5x, 1x, 1.5x, 2x, 3x, 5x, 7.5x, 10x (the most) of Anne's walking and running only (Left/Right or Enter); her hand stays with her as at 1x |
@@ -109,17 +117,20 @@ console (Ctrl+F11) still works.
 | Invulnerability | the game's INVUL: no damage from hits, bites, shots or falls; level-scripted deaths still happen |
 | Infinite Ammo | the game's WOO: guns do not use up ammunition |
 | Freeze Dinosaurs | the game's DINOS, the same switch as the Debug Menu's Freeze AI |
-| Heal | Anne's health back to her maximum (not after death) |
+| Heal | shows her health as `90 / 100` and, once used, fills it to her maximum (not after death); an action, not a submenu |
 | Super Health | four times the normal maximum, full; off brings the maximum back without taking health below it |
-| Teleport, Level Select, Show Coordinates | the Debug Menu's own |
-| Third Person | the camera behind and above Anne, following her head |
+| Teleport, Level Select | the Debug Menu's own |
 | Fly / Free Camera | a camera that moves on its own while Anne stays where she is |
 
 Free Camera: WASD or the left stick moves, the mouse or the right stick looks, Space or A goes up, Ctrl or B goes
-down, Shift or LB is faster. Third Person and Free Camera exclude each other. Movement Speed, Jump Height, Super Health
-and the camera modes go back to normal in another level or in the main menu; while a menu of the game is open (and
-whenever it saves or loads) the game has its own values, so a save never keeps a cheat. Nothing is remembered between
-runs.
+down, Shift or LB is faster.
+
+The launcher's Cheats page sets what every session starts with: Movement Speed, Jump Height, Invulnerability, Infinite
+Ammo, Freeze Dinosaurs and Super Health (see [LAUNCHER](LAUNCHER.md)). F10 shows those values and changes them for the
+running session only; the settings file is never written from the game, and the next start uses the saved values again.
+Heal, Teleport, Level Select and Fly / Free Camera are F10 only. Free Camera goes back to normal in another level or in
+the main menu; the other cheats stay for the session. While a menu of the game is open (and whenever it saves or loads)
+the game has its own values, so a save never keeps a cheat.
 
 ## Gamepad
 

@@ -11,6 +11,8 @@
 void loading_hd_install(void);
 /* 1 when a present now is one of the blank ones around a level load and the screen keeps its last picture. */
 int loading_hd_present_held(void);
+/* 1 inside the game's level load (0x004142C0). */
+int loading_hd_level_loading(void);
 /* A UI frame begins: the hold ends, and what a level load kept is freed. */
 void loading_hd_ui_frame(void);
 /* The game's screen size the HD loading screen is painted at; 0 with the software renderer or no display. */

@@ -3012,7 +3012,82 @@ static void test_expected_misses(void) {
     CHECK(!host_unavailable_library(NULL));
 }
 
+/* The game's WM_ACTIVATEAPP handler as it behaves: deactivated it releases the screen; reactivated with the screen gone it
+ * recreates the display and rebuilds the sky texture from the sky's source raster, whose pixels a level load keeps in
+ * paged memory the loader thread commits as it goes. */
+typedef struct {
+    int screen, rebuilds, faults, pages_committed, surface_locked;
+} game_model_t;
+
+static void game_activate(game_model_t* g, int active) {
+    if (!active) {
+        g->screen = 0;
+        return;
+    }
+    if (g->screen) return;
+    g->screen = 1;
+    g->rebuilds++;
+    if (!g->pages_committed) g->faults++;
+}
+
+static void windows_activation(game_model_t* g, activation_defer_t* a, int loading, int active, int defer) {
+    if (!defer || activation_message(a, loading, active)) game_activate(g, active);
+}
+
+static void load_level(game_model_t* g, activation_defer_t* a, const int* changes, int count, int defer) {
+    int active;
+    g->pages_committed = 0;
+    g->surface_locked = 1;
+    for (int i = 0; i < count; i++) windows_activation(g, a, 1, changes[i], defer);
+    g->surface_locked = 0;
+    g->pages_committed = 1;
+    if (defer && activation_after_load(a, &active)) game_activate(g, active);
+}
+
+static void test_activation_during_load(void) {
+    static const int away_and_back[] = { 0, 1 };
+    static const int many[] = { 0, 1, 0, 1, 0, 1 };
+    static const int away[] = { 0 };
+    static const int away_back_away[] = { 0, 1, 0 };
+    activation_defer_t a;
+    game_model_t g;
+    int active = -1;
+
+    memset(&g, 0, sizeof g);
+    g.screen = g.pages_committed = 1;
+    activation_defer_init(&a);
+    load_level(&g, &a, away_and_back, 2, 0);
+    CHECK(g.faults == 1); /* the model reproduces log 148: the rebuild reads the uncommitted page */
+
+    memset(&g, 0, sizeof g);
+    g.screen = g.pages_committed = 1;
+    activation_defer_init(&a);
+    load_level(&g, &a, away_and_back, 2, 1);
+    CHECK(g.faults == 0 && g.rebuilds == 0 && g.screen == 1); /* away and back during the load: nothing to redo */
+    load_level(&g, &a, many, 6, 1);
+    CHECK(g.faults == 0 && g.rebuilds == 0 && g.screen == 1);
+
+    load_level(&g, &a, away, 1, 1);
+    CHECK(g.faults == 0 && g.screen == 0 && a.game_active == 0); /* still away when it ends: the game is told then */
+    windows_activation(&g, &a, 0, 1, 1);
+    CHECK(g.screen == 1 && g.rebuilds == 1 && g.faults == 0); /* back in gameplay: restored with the pages in place */
+
+    load_level(&g, &a, away_back_away, 3, 1);
+    CHECK(g.faults == 0 && g.screen == 0 && a.game_active == 0);
+    windows_activation(&g, &a, 0, 1, 1);
+    CHECK(g.screen == 1 && g.faults == 0);
+
+    activation_defer_init(&a);
+    CHECK(activation_message(&a, 0, 0) && a.game_active == 0); /* outside a load it goes through at once */
+    CHECK(activation_message(&a, 0, 1) && a.game_active == 1);
+    CHECK(!activation_after_load(&a, &active) && active == -1); /* no load, nothing kept */
+    CHECK(!activation_message(&a, 1, 0) && a.game_active == 1 && a.deferred);
+    activation_delivered(&a, 1); /* the quit path reactivates the game itself */
+    CHECK(activation_after_load(&a, &active) && active == 0 && a.game_active == 0 && !a.deferred);
+}
+
 int main(void) {
+    test_activation_during_load();
     test_window_title();
     test_hand_carrier_exact();
     test_hand_long_run();

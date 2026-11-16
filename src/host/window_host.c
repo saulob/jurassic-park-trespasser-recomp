@@ -15,6 +15,7 @@
 #include "host.h"
 #include "gamepad.h"
 #include "host_policy.h"
+#include "loading_hd.h"
 #include "overlay_policy.h"
 #include "physics_watch.h"
 #include "tutorial_prompts.h"
@@ -118,6 +119,8 @@ static struct {
     volatile uint32_t quit_front_vtable, quit_pump_func;
     volatile unsigned long quit_pump_calls;
     open_press_t open_press;
+    activation_defer_t activation;
+    int activation_logs;
     int modal_lines;
     WINDOWPLACEMENT saved_placement;
     LONG_PTR saved_style, saved_exstyle;
@@ -401,6 +404,7 @@ static void show_client_cursor(void) {
 }
 
 static int pointer_hidden(void) {
+    if (debug_menu_visible()) return 0;
     return input_hide_pointer(s.state, game_cursor_hidden()) || input_pad_hides_pointer(s.state, s.pad_focus);
 }
 
@@ -437,6 +441,15 @@ static void apply_clip(void) {
 static void release_everything(void) {
     release_clip();
     if (GetCapture() == s.game && s.game) ReleaseCapture();
+}
+
+void window_host_input_changed(void) { update_input("host menu"); }
+
+void window_host_level_load_done(void) {
+    int active;
+    if (!s.game || !activation_after_load(&s.activation, &active)) return;
+    host_log("focus", "deferred %s delivered after the level load", active ? "display restore" : "deactivation");
+    CallWindowProcA(s.previous, s.game, WM_ACTIVATEAPP, active, 0);
 }
 
 void window_host_release_cursor(void) {
@@ -485,7 +498,7 @@ static void update_input(const char* why) {
     signals.size_move = s.size_move;
     signals.focused = s.active && s.focused && GetForegroundWindow() == s.game;
     signals.minimized = IsIconic(s.game) != 0;
-    signals.ui = guest.ui;
+    signals.ui = guest.ui == GUEST_UI_GAMEPLAY && debug_menu_visible() ? GUEST_UI_MENU : guest.ui;
     next = input_state_from(&signals);
     if (next != s.state) {
         input_log("state %s -> %s (%s)", input_state_name(s.state), input_state_name(next), why);
@@ -910,6 +923,7 @@ static void reactivate_for_quit(const guest_ui_view_t* v) {
     if (s.quit_reactivations >= QUIT_REACTIVATIONS || !s.game) return;
     s.quit_reactivations++;
     quit_log("the game is inactive (%s): reactivated so its pump returns to its loops", ui_text(v));
+    activation_delivered(&s.activation, 1);
     CallWindowProcA(s.previous, s.game, WM_ACTIVATEAPP, TRUE, 0);
 }
 
@@ -1157,6 +1171,11 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
                                            : "activation");
         /* While the host leads the game out, losing the foreground must not pause the game. */
         if (shutdown_host_driving(&s.shutdown)) return DefWindowProcA(window, msg, wparam, lparam);
+        if (msg == WM_ACTIVATEAPP && !activation_message(&s.activation, loading_hd_level_loading(), wparam != 0)) {
+            if (s.activation_logs < 16 && ++s.activation_logs)
+                host_log("focus", "%s deferred while the level loads", wparam ? "display restore" : "deactivation");
+            return 0;
+        }
         break;
     case WM_SETCURSOR:
         if (LOWORD(lparam) == HTCLIENT && ((HWND)wparam == window || (HWND)wparam == s.surface)) {
@@ -1237,7 +1256,11 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL_:
         if (video_test_mouse(msg, wparam, lparam)) return 0;
-        if (debug_menu_mouse()) return 0;
+        if (debug_menu_visible()) {
+            if (msg != WM_MOUSEWHEEL && msg != WM_MOUSEHWHEEL_)
+                debug_menu_mouse(msg, (short)LOWORD(lparam) - (int)s.view.left, (short)HIWORD(lparam) - (int)s.view.top);
+            return 0;
+        }
         if (virtual_input_active() && !route_mouse(msg, &lparam)) return 0;
         break;
     }
@@ -1272,6 +1295,7 @@ static HWND create_surface(HWND parent) {
 
 static void attach(HWND window) {
     s.game = window;
+    activation_defer_init(&s.activation);
     s.active = 1;
     s.previous = (WNDPROC)GetWindowLongPtrA(window, GWLP_WNDPROC);
     SetWindowLongPtrA(window, GWLP_WNDPROC, (LONG_PTR)host_proc);
