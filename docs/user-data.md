@@ -24,6 +24,8 @@ first start and is never part of a release download.
 
 The game builds its save, swap file and screenshot paths from its registry value `Installed Directory`; the port
 answers it with `user_data\saves`, and `Data Drive` with `game`, so nothing is ever written into the installed game.
+The menus also open `<Installed Directory>menu.tpa` (their selection sound, music and birds); when it is not there the
+`CreateFileA` shim serves `game\data\Menu.tpa` instead (`src/host/menu_audio_policy.c`).
 `trespasser.ini` moved out of the old flat folder into `user_data\launcher`; nothing reads it from beside the program,
 so moving it breaks nothing. A `trespasser.ini` that still has a `high_resolution_textures` line (from a build that
 had that option) loads normally: the line is ignored and never written again.

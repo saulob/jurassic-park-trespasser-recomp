@@ -499,6 +499,39 @@ static void TestAssets() {
     CHECK(fs::exists(assets / "icons" / "SOURCES.md") && fs::exists(assets / "sponsor-heart.svg"));
 }
 
+// 16:9 is the default Aspect ratio; a choice the player saved is never replaced.
+static void TestAspectRatioChoice(const fs::path& dir) {
+    jpt_config_t c;
+    CHECK(JPT_ASPECT_COUNT == 5 && std::string(jpt_aspects[JPT_ASPECT_4_3].label) == "4:3 (original)");
+    CHECK(std::string(jpt_default_value(JPT_KEY_ASPECT_RATIO)) == "16:9");
+    CHECK(!jpt_config_load((dir / "no-settings-yet.ini").string().c_str(), &c) && c.aspect == JPT_ASPECT_16_9);
+
+    const fs::path ini = dir / "aspect.ini";
+    WriteFile(ini, "# Set by Trespasser Recompiled\nsettings_version = 3\nmsaa = 8\n");
+    CHECK(jpt_config_load(ini.string().c_str(), &c) && c.aspect == JPT_ASPECT_16_9);
+
+    for (const char* key : {"4:3", "16:9", "16:10", "21:9", "32:9"}) {
+        const char* keys[] = {JPT_KEY_ASPECT_RATIO};
+        const char* values[] = {key};
+        CHECK(jpt_ini_set(ini.string().c_str(), keys, values, 1));
+        CHECK(jpt_config_migrate(ini.string().c_str()) == 0);
+        CHECK(jpt_config_load(ini.string().c_str(), &c) && std::string(jpt_aspects[c.aspect].key) == key);
+        LauncherSettings saved(ini);
+        CHECK(saved.Get(JPT_KEY_ASPECT_RATIO) == key);
+    }
+
+    WriteFile(ini, "settings_version = 3\naspect_ratio = widescreen\n");
+    CHECK(jpt_config_load(ini.string().c_str(), &c) && c.aspect == JPT_ASPECT_16_9);
+    LauncherSettings invalid(ini);
+    CHECK(invalid.Get(JPT_KEY_ASPECT_RATIO) == "16:9");
+
+    WriteFile(ini, "settings_version = 3\naspect_ratio = 4:3\n");
+    LauncherSettings reset(ini);
+    CHECK(reset.Get(JPT_KEY_ASPECT_RATIO) == "4:3");
+    reset.ResetToDefaults();
+    CHECK(reset.Get(JPT_KEY_ASPECT_RATIO) == "16:9");
+}
+
 static void TestPlayGate() {
     CHECK(LauncherWanted(false, false, false, true));  // files not ready: always
     CHECK(LauncherWanted(true, true, false, false));
@@ -1405,6 +1438,7 @@ int main() {
     TestWindowAndMonitor();
     TestMsaa();
     TestSettings(dir);
+    TestAspectRatioChoice(dir);
     TestPlayGate();
     TestIsoReader(dir);
     TestIdentity(dir);

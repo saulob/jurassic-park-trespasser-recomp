@@ -14,6 +14,7 @@
 
 #include "frontend_hd.h"
 #include "l10n.h"
+#include "menu_audio_policy.h"
 #include "stream_audio.h"
 
 #define SUCCESS_LINE_LIMIT 300
@@ -156,11 +157,26 @@ void shim_CloseHandle(void) {
     GUEST_RETURN_STDCALL(1);
 }
 
+static const char* menu_audio_file(const char* path, char* out, size_t cap) {
+    static LONG logged;
+    if (!menu_audio_source(path, s_user_dir, s_game_dir, out, cap) || GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES)
+        return path;
+    if (GetFileAttributesA(out) == INVALID_FILE_ATTRIBUTES) {
+        if (!InterlockedExchange(&logged, 1)) host_log("menu-audio", "%s is missing: the menus stay silent", out);
+        return path;
+    }
+    if (!InterlockedExchange(&logged, 1))
+        host_log("menu-audio", "original selection sound restored: menu.tpa served from %s", out);
+    return out;
+}
+
 void shim_CreateFileA(void) {
     const char* path = (const char*)GUEST_PTR(0);
     char translated[MAX_PATH];
+    char menu_audio[MAX_PATH];
     HANDLE h;
     if (path && GUEST_ARG(4) == OPEN_EXISTING && l10n_menu_file(path, translated, sizeof translated)) path = translated;
+    if (path && GUEST_ARG(4) == OPEN_EXISTING) path = menu_audio_file(path, menu_audio, sizeof menu_audio);
     h = CreateFileA(path, GUEST_ARG(1), GUEST_ARG(2), (LPSECURITY_ATTRIBUTES)GUEST_PTR(3),
                            GUEST_ARG(4), GUEST_ARG(5), (HANDLE)GUEST_PTR(6));
     DWORD error = GetLastError();

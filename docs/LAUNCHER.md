@@ -251,7 +251,7 @@ compatibility mode too, with the earlier automatic target (the smallest 4:3 size
 
 **Render resolution.** A preset names a 16:9 size; with the Aspect Ratio (Display page) it gives the render box: wider
 shapes keep the preset's height, narrower ones its width, and 21:9 takes the ultrawide monitor sizes. Native fits the
-Monitor setting's monitor. 640x480 menus and videos get the largest 4:3 size inside it. The Aspect Ratio never changes by itself.
+Monitor setting's monitor. 640x480 menus and videos get the largest 4:3 size inside it. The Aspect Ratio never changes by itself: 16:9 is the default modern shape, 4:3 (original) stays available, and a saved choice is never replaced.
 
 | Preset | 4:3 | 16:9 | 16:10 | 21:9 | 32:9 |
 |---|---|---|---|---|---|

@@ -62,6 +62,7 @@ set(HOST_SOURCES
   src/host/guest_env.c
   src/host/registry.c
   src/host/io_trace.c
+  src/host/menu_audio_policy.c
   src/host/window_host.c
   src/host/window_title.c
   src/host/gamepad.c
@@ -464,6 +465,12 @@ add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_poli
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The menus' selection sound read from the retail executable, and the lookup of the file it is loaded from (headless):
+#   ninja -C <build dir> menu_audio_tests && menu_audio_tests.exe
+add_executable(menu_audio_tests EXCLUDE_FROM_ALL tests/menu_audio_tests.c src/host/menu_audio_policy.c src/common/jpt_hash.c)
+target_include_directories(menu_audio_tests PRIVATE src/host src/common)
+target_compile_options(menu_audio_tests PRIVATE /W3)
+target_compile_definitions(menu_audio_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 # The HD frontend's and loading screen's layout, pointer mapping and painter (headless: GDI draws into memory only):
 #   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
