@@ -6,7 +6,8 @@ Adapted from sp00nznet/themovies run_lift.py (MIT); drives pcrecomp's generate.p
 SelfMod is deliberately not lifted: it patches its own immediates at run time, so the host
 runs its original bytes (src/host/selfmod.c). Calls into it lift as RECOMP_ICALL.
 
-The functions of src/host/guest_override_list.h lift as lifted_sub_<va> (tools/stable_entries.py). The lift is
+The functions of src/host/guest_override_list.h lift as lifted_sub_<va> (tools/stable_entries.py); the addresses of
+src/host/lift_hook_list.h get a host hook in front of their instruction (tools/lift_hooks.py). The lift is
 written and validated in build/lift-staging, then published into src/recomp/gen (tools/lift_staging.py): only files
 whose content changed are rewritten, and analysis/lift_stats.json, written last, marks the lift complete.
 
@@ -22,6 +23,7 @@ import time
 from pathlib import Path
 
 from common import ANALYSIS_DIR, CONFIG_DIR, GEN_DIR, TARGET, require_target_exe, use_pcrecomp
+import lift_hooks
 from lift_staging import LiftPublishError, create_staging, finish_staging, publish, sweep_staging
 from stable_entries import check_folder, listed_overrides, rename_definition
 
@@ -102,11 +104,12 @@ def scan_generated(folder, entries, selfmod):
     return sorted(bad), lines, unimplemented
 
 
-def write_header(out, entries):
+def write_header(out, entries, hooks):
     with open(out / "recomp_funcs.h", "w", newline="\n") as f:
         f.write(BANNER + "#pragma once\n#include <stdint.h>\n\n"
                 "void recomp_not_lifted(uint32_t va);\n"
                 "#define RECOMP_NOT_LIFTED(va) recomp_not_lifted(va)\n\n")
+        f.write(lift_hooks.header_text(hooks) + "\n")
         for _, name in entries:
             f.write(f"void {name}(void);\n")
 
@@ -172,6 +175,7 @@ def main():
     print(f"[*] decoder fixups applied: {fixups}")
 
     lifter = Lifter(iat_map=iat, lifted=set(byaddr), precise_carry=True, precise_sbb=True)
+    lift_hooks.install(lifter, lift_hooks.listed_hooks())
     out = create_staging(args.staging_root)
     sweep_staging(args.staging_root, keep=out, legacy_dir=args.gen_dir)
     try:
@@ -281,11 +285,12 @@ def run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t0):
         sys.exit("listed in src/host/guest_override_list.h but not lifted: " +
                  ", ".join(f"0x{a:08X}" for a in sorted(stable - renamed)))
 
-    write_header(out, entries)
+    write_header(out, entries, lift_hooks.listed_hooks())
     write_dispatch(out, entries, (cs, ce), selfmod)
 
     unresolved, lines, unimplemented = scan_generated(out, entries, selfmod)
     _, stable_problems = check_folder(out)
+    stable_problems += lift_hooks.check_folder(out)[1]
     stats = {"target_sha256": TARGET["sha256"], "lifted": len(chosen) - len(errors),
              "closure_stubs": len(stubs), "shared_aliases": len(alias_parent),
              "lift_errors": errors, "no_terminator": dirty,

@@ -106,6 +106,8 @@ constexpr char kActiveAiHelp[] =
     "Controls how many AI creatures can be active at once. Original uses the retail limit of 3; Enhanced uses 6, as "
     "supported by Trespasser CE. Applies the next time the game starts.";
 constexpr char kTrespasserCeHelp[] = "Gameplay enhancements reimplemented natively from Trespasser CE.";
+constexpr char kOfficialPatchHelp[] =
+    "Applies gameplay and level fixes from DreamWorks Interactive's official Trespasser v1.1 build 117 patch";
 constexpr char kDualStowHelp[] =
     "Allows one item on the belt and one on the back while keeping the hand free. Hold Rotate Arm or Rotate Wrist "
     "while pressing Stow/Retrieve to stow without taking the other item out, or to take the item from the back. Off is "
@@ -819,6 +821,9 @@ private:
         ui.Help(kTrespasserCeHelp);
         ui.Toggle("Dual stow", kDualStowHelp, JPT_KEY_DUAL_STOW, true, "Off", "On");
         ui.Combo("Active AI", kActiveAiHelp, JPT_KEY_ACTIVE_AI, "enhanced", {{"original", "Original"}, {"enhanced", "Enhanced"}});
+        ui.EndRows();
+        ui.Heading("Official Patch 1.1");
+        ui.Toggle("Patch 1.1 fixes", kOfficialPatchHelp, JPT_KEY_OFFICIAL_PATCH_117, true, "Off", "On");
         ui.EndRows();
     }
 

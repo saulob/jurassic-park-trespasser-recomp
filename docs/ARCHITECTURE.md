@@ -266,6 +266,11 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   incremental linking; a list and a lift that disagree fail the link. Installs are refused until the executable's
   fingerprint is verified; one startup line counts them, and a required override that is missing stops the run
   (`tests/override_tests.c` links a fixture both ways).
+- Lift hooks: `src/host/lift_hook_list.h` lists guest addresses inside lifted functions; `tools/run_lift.py` puts
+  `RECOMP_LIFT_HOOK(lift_hook_<va>)` in front of the instruction at each one, in every lifted body that holds it, and
+  the host defines the function. A hook sees and may change the guest registers, flags and memory, then the instruction
+  runs as lifted; a listed address no lifted body holds fails the lift. The official v1.1 fixes use them
+  (`patch117_player.c`, `patch117_physics.c`).
 - `guest_overrides.c` also installs the host kernels: the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step (`0x00638670`, `water_kernels.c`),
   the occlusion test (`0x00630D90`, `occlusion_kernel.c`) and the per-polygon Direct3D submission (`0x00559240`,
   `polygon_submit.c`: address modes, the lit and fogged D3DTLVERTEX fan, render states and DrawPrimitive, each call

@@ -156,6 +156,7 @@ ninja -C build\cmake\msvc-x86 launcher_tests host_tests gamepad_tests com_tests 
 .\build\cmake\msvc-x86\override_tests_incremental.exe      # host overrides through stable entries: direct, alias and dispatched calls, refusals, counts
 .\build\cmake\msvc-x86\override_tests_non_incremental.exe  # the same fixture linked /INCREMENTAL:NO, as Release links
 py -3 -m unittest discover -s tests -p "test_stable_entries.py"  # the lift's stable-entry renaming and check
+py -3 -m unittest discover -s tests -p "test_lift_hooks.py"     # lift hooks: the list, their place in front of an instruction, the check
 py -3 -m unittest discover -s tests -p "test_lift_staging.py"    # staging, publishing changed files only, cleanup retries when a scanner holds a file (TRESPASSER_TEST_LIFT=1 also lifts a small closure twice)
 py -3 -m unittest discover -s tests -p "test_renderer_fixed.py"  # no runtime renderer switch: the renderer is set once at start, F5 is only the Video Test
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets

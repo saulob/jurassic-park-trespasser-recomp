@@ -61,6 +61,9 @@ void shim_CloseHandle(void);
 void shim_GetFileAttributesA(void);
 void shim_FindFirstFileA(void);
 void shim_LZOpenFileA(void);
+void shim_LZRead(void);
+void shim_LZSeek(void);
+void shim_LZClose(void);
 void shim_LoadLibraryA(void);
 void shim_fopen(void);
 void shim_open(void);
@@ -333,6 +336,17 @@ void quick_save_request(void);
 void quick_load_request(void);
 /* active_ai.c: Active AI (CE's MaxActiveAi), 6 animals active instead of 3; Original installs nothing. */
 void active_ai_configure(int enhanced);
+
+/* patch117.c: the official v1.1 build 117 level fixes, applied to retail level scenes as the game reads them. */
+void patch117_configure(int on);
+void patch117_install(void);
+void patch117_lz_opened(const char* path, INT handle);
+/* patch117_player.c: the official v1.1 build 117 player fixes over the lifted 116 code. */
+void patch117_player_configure(int on);
+void patch117_player_install(void);
+/* patch117_physics.c: the official v1.1 build 117 box-box and broad-phase fixes over the lifted 116 code. */
+void patch117_physics_configure(int on);
+void patch117_physics_install(void);
 void active_ai_install(void);
 int active_ai_installed(void);
 /* ce_graphics.c: the sky draw hook and the water rows' observer (Direct3D 11 only). */

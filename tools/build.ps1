@@ -173,7 +173,8 @@ function Get-LiftOutputsMissing {
 
 function Get-LiftInputs {
     @('analysis\functions.json', 'analysis\rtti_seeds.json', 'config\decoder_fixups.json', 'config\extra_entries.json',
-        'tools\run_lift.py', 'tools\stable_entries.py', 'tools\lift_staging.py', 'src\host\guest_override_list.h') |
+        'tools\run_lift.py', 'tools\stable_entries.py', 'tools\lift_hooks.py', 'tools\lift_staging.py',
+        'src\host\guest_override_list.h', 'src\host\lift_hook_list.h') |
         ForEach-Object { Join-Path $root $_ }
 }
 

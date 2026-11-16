@@ -34,11 +34,14 @@ GUEST_OVERRIDE(004218C0, REQUIRED) /* brain influences tail, Active AI (active_a
 GUEST_OVERRIDE(004395A0, OPTIONAL) /* voice captions to the text overlay (l10n.c) */
 GUEST_OVERRIDE(004610D0, OPTIONAL) /* CPlayer stow handler, Dual stow (ce_gameplay.c) */
 GUEST_OVERRIDE(00472B60, OPTIONAL) /* level TEXT action (l10n.c) */
+GUEST_OVERRIDE(00475F60, REQUIRED) /* CPartition::bAddChild, official Patch 1.1 fix (patch117.c) */
 GUEST_OVERRIDE(00477A40, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
 GUEST_OVERRIDE(00477E00, REQUIRED) /* combined culling (engine_limits.c) */
 GUEST_OVERRIDE(00478A30, REQUIRED) /* CPartition::bFlagCacheable (engine_limits.c) */
 GUEST_OVERRIDE(00492200, REQUIRED) /* CTextureNode::SetTextureMemSize (engine_limits.c) */
 GUEST_OVERRIDE(0049E530, REQUIRED) /* CQuadRootTIN::Update (terrain_quality.c) */
+GUEST_OVERRIDE(004EDFA0, REQUIRED) /* physics box set-up, official Patch 1.1 fix (patch117_physics.c) */
+GUEST_OVERRIDE(004F0960, REQUIRED) /* jump hand-off, official Patch 1.1 fix (patch117_player.c) */
 GUEST_OVERRIDE(004F3FB0, REQUIRED) /* Pelvic_IDOF (physics_fixes.c) */
 GUEST_OVERRIDE(00502970, REQUIRED) /* mode table (widescreen.c) */
 GUEST_OVERRIDE(00503400, REQUIRED) /* CRasterVid::Lock (cpu_polygons.c) */

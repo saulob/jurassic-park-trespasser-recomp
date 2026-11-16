@@ -55,6 +55,12 @@ hand raised and drops on the next press, Throw and Stow act on presses.
 named as possible architecture references; neither was consulted for this implementation and nothing from them is in
 this port. NVIDIA HBAO+, FidelityFX CACAO and XeGTAO are not used.
 
+## Official v1.1 build 117 patch
+
+| Reference | Kind | Used for |
+|---|---|---|
+| [Trespasser v1.1 (117) Full Patch](https://www.trescom.org/download/trespasser-patch-v1-1-117-full/) by DreamWorks Interactive (hosted by TresCom), and its executable-only edition | behaviour (static comparison of build 117 against the retail build 116, never run) | the patch notes; the executable's changes (function-level comparison of both builds); the level files' changes (objects, properties, transforms, scene sections, terrain). The port reproduces the scenes' terrain tolerances, the executable's jump, hand, box-contact and partition fixes, and 178 object placements; the patch's files are not used by the port. |
+
 ## Trespasser CE
 
 | Reference | Kind | Used for |

@@ -88,6 +88,15 @@ was run. No part of them (executable, DLL, shader, data, menu picture or configu
 read by the port, and nothing is downloaded. The features the port took as ideas are its own implementation over the
 retail executable.
 
+## Official v1.1 build 117 patch
+
+DreamWorks Interactive's official v1.1 (build 117) patch was studied statically, by comparing its executable and level
+files with the retail ones (`docs/REFERENCES.md`); it was never run or installed. No part of it (executable, level file,
+installer or text) is included, required or read by the port, and nothing is downloaded. What the port keeps from it
+are the level values it reproduces (two terrain tolerances per level and the transforms of 178 objects, each stored
+with the retail bytes it replaces) and the retail files' sizes and SHA-256 fingerprints that guard them; the executable
+fixes are the port's own code.
+
 ## This repository's own code
 
 No licence file has been added yet; that choice belongs to the repository owner.

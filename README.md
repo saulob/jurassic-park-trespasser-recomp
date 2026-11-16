@@ -95,6 +95,35 @@ Credits: [Trespasser CE](https://www.trescomforum.org/viewtopic.php?t=10674) by 
 TresCom; [Trespasser Mod Manager](https://github.com/miketheraptor/Trespasser-Mod-Manager) by MikeTheRaptor, used as a
 reference for CE's configuration options.
 
+## Official Trespasser v1.1 build 117 fixes
+
+DreamWorks Interactive released an official v1.1 (build 117) patch in November 1998. The port runs the retail 1.0
+build 116 and reimplements selected fixes from that patch natively, studied by comparing the two builds and their
+level files. The patch does not need to be installed, and none of its files are included or read.
+
+- **Patch 1.1 fixes** (Gameplay > Official Patch 1.1, On by default): the levels' terrain mesh tolerances
+  (`TrrPixelTol` 8 to 10, `TrrPixelTolFar` 20 to 50, the patch's "Adjusted terrain texture resolution") are applied to
+  the retail level scenes as they load, only when each file is the retail one. Off keeps the retail values. Saved games
+  are not changed and stay retail saves.
+- **Occasional object disappearance** (same setting): when an object moves, build 117 no longer lets the world place
+  it inside a more detailed partition that the renderer skips at lower render qualities (`CPartition::bAddChild`).
+- **Jump consistency**: a jump request stays pending until it fires or 25 physics steps fail to find ground, and a
+  held jump key keeps asking, so a press between physics steps is no longer lost.
+- **Object pickup, keypad interaction, centering aim**: build 117's hand: an empty hand rises toward the view and is
+  tucked at the shoulder while something blocks the way, reaches 0.7 m instead of 0.8 m, can grab only once settled,
+  holds a picked-up object 2 s instead of 1 s before pulling it in, and the view no longer chases a settling hand or
+  recentres a held gun.
+- **Interpenetration of compound objects, box-box interaction**: corners already inside a box are pushed out,
+  contact normals use the rotation of compound sub-boxes, edge-edge contacts run, and pairs that ignore each other's
+  collisions still wake each other.
+- **Floating objects**: the official placements of 177 vegetation objects in IJ and IT and one rifle in AS, the ones
+  that need none of the patch's rebuilt terrain or partitions.
+
+Each fix follows the same setting; Off runs the retail code and data. What was left out and why is in
+`docs/LAUNCHER.md`. Credits:
+[Trespasser v1.1 (117) Full Patch](https://www.trescom.org/download/trespasser-patch-v1-1-117-full/) by DreamWorks
+Interactive, hosted by TresCom.
+
 ## How it works
 
 - The target is `setup\tpassp6.exe` from the disc: retail 1.0.116, Pentium Pro build,

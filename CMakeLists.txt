@@ -126,6 +126,12 @@ set(HOST_SOURCES
   src/host/ce_gameplay.c
   src/host/active_ai_policy.c
   src/host/active_ai.c
+  src/host/patch117_policy.c
+  src/host/patch117_objects.c
+  src/host/patch117.c
+  src/host/patch117_rules.c
+  src/host/patch117_player.c
+  src/host/patch117_physics.c
   src/host/ce_effects.c
   src/host/ce_graphics.c
   src/host/ddraw_trace.c
@@ -440,6 +446,15 @@ target_link_options(override_tests_non_incremental PRIVATE /INCREMENTAL:NO /OPT:
 # The fixture as the lifted code is compiled; the test side lets the compiler expand the stable entries inline.
 set_source_files_properties(tests/override_fixture.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob1")
 set_source_files_properties(tests/override_tests.c PROPERTIES COMPILE_OPTIONS "/W3;/O2;/Ob2")
+
+# Official Patch 1.1 (build 117) level fixes over scene images, fingerprints, setting and wiring (headless):
+#   ninja -C <build dir> patch117_tests && patch117_tests.exe
+add_executable(patch117_tests EXCLUDE_FROM_ALL tests/patch117_tests.c src/host/patch117_policy.c src/host/patch117_objects.c
+  src/host/patch117_rules.c)
+target_include_directories(patch117_tests PRIVATE src/host)
+target_link_libraries(patch117_tests PRIVATE jpt_common lz32)
+target_compile_options(patch117_tests PRIVATE /W3)
+target_compile_definitions(patch117_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/window_title.c src/host/bump_spans.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/host/ddraw/page_arena.c src/common/jpt_display.c)

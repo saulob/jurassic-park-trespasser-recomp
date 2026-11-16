@@ -152,6 +152,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `max_object_detail` | 1, 0 | 1 |
 | `dual_stow` | 1, 0 | 1 |
 | `active_ai` | `original`, `enhanced` | `enhanced` |
+| `official_patch_117` | 1, 0 | 1 |
 | `quick_save_key`, `quick_load_key` | `F6`, `F7`, `F8`, `F9`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown` | `F7`, `F8` |
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
@@ -449,6 +450,68 @@ Quick Save and Quick Load are not options: they are always available, with their
   log says so once. Saves keep the retail layout: the active list is a fixed block of 10 handles, which already holds 6,
   so a save is byte-identical to retail's while 3 or fewer are active, and retail saves load unchanged. Read when the
   game starts: a change applies at the next start. Not in F5.
+
+- **Patch 1.1 fixes** (key `official_patch_117`, On by default; Gameplay > Official Patch 1.1): DreamWorks
+  Interactive's official v1.1 build 117 patch, studied against the retail build 116 and its levels; the patch is never
+  needed or read. Every retail level scene (`be`, `jr`, `ij`, `it`, `lab`, `as`, `as2`, `sum`) carries a `Terrain`
+  section that `CTerrain::pcLoad` (0x00475010) loads into `TrrPixelTol` (0x0066FAD8) and `TrrPixelTolFar`
+  (0x0066FB68); build 117's scenes change them from 8 and 20 to 10 and 50 pixels in every level, the patch's "Adjusted
+  terrain texture resolution". The game reads a scene with `LZOpenFileA`/`LZRead`/`LZSeek`; when the opened file is a
+  retail level scene (name, size and SHA-256), the port reads it, writes the two official values only where the retail
+  ones still are, and serves those bytes to that handle. Any other file, or a scene whose values differ, is read as it
+  is (`[patch117] ... skipped`). Each load starts from the retail file, so the fixes apply once per load. Saved games
+  keep the values they were saved with, as build 117 does with a 1.0 save, and stay retail saves (build 117 only raised
+  the save version from 22 to 23 to look its levels up in its own `Patch` folder; the port keeps 22). Under Direct3D 11
+  the port's terrain caps still apply on top (`terrain_quality.c`). Off reads every file unchanged. The log says
+  `[patch117] official Patch 1.1 fixes: on` at start and `[patch117] applied 2 official level fixes to BE` when a level
+  loads.
+
+  The same setting carries the patch's "Occasional object disappearance" fix. When an object moves, the world database
+  re-files it with `CPartition::bAddChild(object, test_priority = 1)` (0x00475F60, from the move path 0x00605AF0): a
+  partition refuses an object of lower priority (bits 0-3 of +0x10) and otherwise offers it to its children first. Build
+  116 asks the children with the test off, so a moved object could be filed under a child of higher priority, which the
+  render traversal (0x00519B20) and the shadow pass (0x00543C20) skip with everything under it when the render quality
+  is below that priority: the object and its shadow vanished. Build 117 passes the caller's flag down; the port's
+  override of 0x00475F60 does the same when the setting is On and leaves every call as retail when Off. Loading and
+  rebuilding the partitions pass the flag off in both builds and are unchanged.
+
+  The other fixes run inside large lifted functions, through host hooks the lift places in front of single
+  instructions (`src/host/lift_hook_list.h`, `tools/lift_hooks.py`); every hook does nothing when the setting is Off.
+
+  - **Jump consistency.** Build 116 replaces the pelvis jump request (0x0067AFA0..A8) on every frame in the hand-off
+    0x004F0960, so a press is lost when no 10 ms physics step of that frame finds ground. Build 117 keeps it: the key's
+    hit frame and, while the key stays held, every frame with no request pending arm it, and Foot_IDOF (0x004E2470)
+    drops it after 25 ground checks that could not jump (0.25 s). A held key therefore jumps again on landing. The
+    game's own impulses (0x00456490, 0x004609F0) get the same lifetime.
+  - **Object pickup, keypad interaction, centering aim** (build 117's hand rework). The raise moves into a function of
+    its own (117 0x443320, reimplemented in `patch117_player.c` over 116 functions): an empty hand aims at the view box
+    centre at 0.7 m (0.8 m in 116; the stow target too) and, for its first 0.4 s, a hand whose way is blocked by
+    anything but the terrain or the player is tucked at the shoulder instead of being pushed into it; the hand settles
+    by time or a clear way, not by reaching the box. The mouse steers it only once raised, a grab needs the new state 3
+    (the hand once inside the view box; 116 grabbed at 2), and the view follows the hand only in state 3 (116 dragged it
+    at once). A picked-up object is lifted 0.1 m at once and held 2 s (116: 1 s, with a 0.5 s strong arm at every raise
+    that 117 dropped) before it is pulled in to carry. Raising the hand with a free gun no longer recentres it in the
+    view, and looking past the head's 30 degree range turns the body by the whole angle. No keypad code exists in the
+    executable: keypads are level triggers the finger touches, so the keypad fix is this hand (shorter reach, no
+    pushing into panels).
+  - **Interpenetration of compound objects, box-box.** In box-box 0x004E9780 a corner already deeper than the 0.09 m
+    skin behind every face of a sub-box got no force; 117 pushes it out along the line from the sub-box core and kills
+    the closing velocity. The velocity kill (0x004E85A0) now turns the face normal by the sub-box's own rotation. The
+    edge-edge contact code is in build 116 but its gate (per-pair bytes +0xFB4) is never armed; 117 runs it once per
+    pair, from the box with the larger smallest half extent (taken when the box is set up, 0x004EDFA0). In the broad
+    phase (0x004DC600) pairs that ignore each other's collisions now wake each other. The rest of the box-box changes
+    (coefficients hoisted out of the corner loop, cached pointers, the box pool relayout) give the same results and are
+    not reproduced; the world-query changes follow 117's rebuilt terrain records and have no visible effect outside
+    the terrain's edge, so they are not either.
+  - **Floating objects.** The world files (`.grf`, read expanded through `LZRead`) of IJ and IT get the official
+    placements of 177 static objects (IJ's billboard vegetation lowered 0.5 m, palms and shrubs in IJ and IT), and AS's
+    scene the official resting place of one rifle, each written only over its retail bytes in a retail file (name,
+    size, SHA-256). Left out, because build 117 placed them together with changes the port cannot reproduce:
+    objects on or near re-encoded terrain (`.wtd`: every level except AS and AS2; all of BE's and JR's moves), objects
+    whose new place leaves their 116 partition (build 117 rebuilt every partition: the AS2 truck and its crates, AS's
+    ruins, most of IJ's billboards, IT's keypad lowered 0.15 m), everything resting on those, and the added and removed
+    objects. A world file is read again on every load, saves included, so the placements follow the setting at once;
+    the rifle's applies when AS starts from its level file. `[patch117] applied 172 official object placements to IJ`.
 
 Not listed: **Experimental AI behaviours** (CE's `EnableAiActivityEx`) are not applicable to the retail executable: the
 14 activity classes it enables do not exist in it at all, so there is nothing to switch on. There is no **Bump mapping**

@@ -190,8 +190,11 @@ void shim_FindFirstFileA(void) {
 
 void shim_LZOpenFileA(void) {
     char* path = (char*)GUEST_PTR(0);
-    INT h = LZOpenFileA(path, (OFSTRUCT*)GUEST_PTR(1), (WORD)GUEST_ARG(2));
-    report("LZOpenFileA", path, h >= 0, GetLastError());
+    OFSTRUCT* opened = (OFSTRUCT*)GUEST_PTR(1);
+    INT h = LZOpenFileA(path, opened, (WORD)GUEST_ARG(2));
+    DWORD error = GetLastError();
+    if (h >= 0) patch117_lz_opened(opened && opened->szPathName[0] ? opened->szPathName : path, h);
+    report("LZOpenFileA", path, h >= 0, error);
     g_eax = (uint32_t)h;
     GUEST_RETURN_STDCALL(3);
 }

@@ -77,6 +77,9 @@ static native32_shim_t s_shims[] = {
     { "GetFileAttributesA", shim_GetFileAttributesA },
     { "FindFirstFileA", shim_FindFirstFileA },
     { "LZOpenFileA", shim_LZOpenFileA },
+    { "LZRead", shim_LZRead },
+    { "LZSeek", shim_LZSeek },
+    { "LZClose", shim_LZClose },
     { "LoadLibraryA", shim_LoadLibraryA },
     { "fopen", shim_fopen },
     { "_open", shim_open },
@@ -483,6 +486,9 @@ int main(int argc, char** argv) {
     key_policy_set_quick_keys(cfg.hotkey_vk[JPT_HOTKEY_QUICK_SAVE], cfg.hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
     ce_gameplay_configure(cfg.dual_stow, cfg.max_object_detail);
     active_ai_configure(cfg.active_ai_enhanced);
+    patch117_configure(cfg.official_patch_117);
+    patch117_player_configure(cfg.official_patch_117);
+    patch117_physics_configure(cfg.official_patch_117);
     if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
@@ -560,6 +566,9 @@ int main(int argc, char** argv) {
     physics_fixes_install();
     ce_gameplay_install();
     active_ai_install();
+    patch117_install();
+    patch117_player_install();
+    patch117_physics_install();
     host_log("ce", "active AI: %s", active_ai_installed() ? "enhanced (6)" : "original (3)");
     ce_graphics_install(d3dr_hardware());
     engine_limits_install(d3dr_hardware());
