@@ -207,7 +207,7 @@ const UiTextRow kPtBrUiText[] = {
     {"Port hotkeys", "Atalhos do port"},
     {"Port version", "Versão do port"},
     {"Presentation", "Apresentação"},
-    {"Press F10 while playing to open the Cheats menu. Changes made there apply only to the current session: the values below are what every session starts with. Heal, Teleport, Level Select and Fly / Free Camera are only in that menu.", "Aperte F10 durante o jogo para abrir o menu de trapaças. As mudanças feitas ali valem só para a sessão atual: os valores abaixo são com os quais toda sessão começa. Curar, Teleportar, Seleção de fase e Voo / câmera livre estão apenas nesse menu."},
+    {"Press F10 while playing to open the Cheats menu. Changes made there apply only to the current session: the values below are what every session starts with. Heal, Teleport, Level Select, Fly / Free Camera, Noclip and Stealth Mode are only in that menu.", "Aperte F10 durante o jogo para abrir o menu de trapaças. As mudanças feitas ali valem só para a sessão atual: os valores abaixo são com os quais toda sessão começa. Curar, Teleportar, Seleção de fase, Voo / câmera livre, Noclip e Modo Furtivo estão apenas nesse menu."},
     {"Press a key...  (Esc cancels)", "Pressione uma tecla...  (Esc cancela)"},
     {"Put every gamepad setting back to its default?", "Devolver todas as configurações do gamepad ao padrão?"},
     {"Put every setting back to its default?", "Devolver todas as configurações ao padrão?"},

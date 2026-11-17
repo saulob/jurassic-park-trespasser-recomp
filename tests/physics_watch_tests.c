@@ -154,7 +154,7 @@ static void test_sanity(void) {
 }
 
 static void test_cheat_lines(void) {
-    char line[96];
+    char line[160];
     ch_state_t c;
     CHECK(ch_format_change(line, sizeof line, DM_ACT_SPEED, 1, 5) && !strcmp(line, "Movement Speed = 5.0x"), "%s", line);
     CHECK(ch_format_change(line, sizeof line, DM_ACT_JUMP, 1, 3) && !strcmp(line, "Jump Height = 2.0x"), "%s", line);
@@ -169,7 +169,7 @@ static void test_cheat_lines(void) {
     c.speed = 5;
     c.jump = 3;
     CHECK(ch_format_active(line, sizeof line, &c, 0, -1) &&
-              !strcmp(line, "movement=5.0x jump=2.0x super health=Off camera=Normal invulnerability=Off infinite ammo=?"),
+              !strcmp(line, "movement=5.0x jump=2.0x super health=Off stealth=Off noclip=Off camera=Normal invulnerability=Off infinite ammo=?"),
           "%s", line);
 }
 

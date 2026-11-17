@@ -619,6 +619,116 @@ static int string_at(uint32_t va, const char* text) {
     return p && !strcmp((const char*)p, text);
 }
 
+static char* read_text(const char* root, const char* relative) {
+    char path[MAX_PATH];
+    FILE* f;
+    long n;
+    char* text;
+    snprintf(path, sizeof path, "%s/%s", root, relative);
+    f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    text = (char*)calloc((size_t)n + 1, 1);
+    if (text && fread(text, 1, (size_t)n, f) != (size_t)n) {
+        free(text);
+        text = NULL;
+    }
+    fclose(f);
+    return text;
+}
+
+/* The text of a source function: from its signature to the next line that starts at column 0 with a brace. */
+static int function_has(const char* text, const char* signature, const char* needle) {
+    const char* start = strstr(text, signature);
+    const char* end;
+    char* body;
+    int found;
+    if (!start) return 0;
+    end = strstr(start, "\n}");
+    if (!end) return 0;
+    body = (char*)calloc((size_t)(end - start) + 1, 1);
+    memcpy(body, start, (size_t)(end - start));
+    found = strstr(body, needle) != NULL;
+    free(body);
+    return found;
+}
+
+/* Stealth Mode: every sighting of an object goes through CInfluenceList::See -> Add, whose callers are all inside the two
+ * functions the host already owns; the wrappers only mark Anne's AI infos and call the retail body. */
+static void test_perception(const char* root) {
+    char* ai = read_text(root, "src/host/active_ai.c");
+    char* cheats = read_text(root, "src/host/cheats.c");
+    char* list = read_text(root, "src/host/guest_override_list.h");
+    char* fixes = read_text(root, "src/host/physics_fixes.c");
+    CHECK(bytes_at(0x00424AB0u, "56") && bytes_at(0x00424B1Cu, "E80F000000") && calls(0x00424B1Cu, 0x00424B30u),
+          "CInfluenceList::See hands an object to Add (0x00424B30)");
+    CHECK(calls(0x004215BFu, 0x00424AB0u) && calls(0x00421788u, 0x00424AB0u) && calls(0x00421803u, 0x00424AB0u) &&
+              calls(0x00419D93u, 0x00424AB0u),
+          "See is called from CBrain::Influences (the world query, Anne's parts, the other animals' parts) and SeenByNearest");
+    CHECK(bytes_at(0x004213F0u, "83EC58") && bytes_at(0x00419CE0u, "83EC18"),
+          "0x004213F0 (Influences) and 0x00419CE0 (SeenByNearest) are the entries that hold every one of those calls");
+    CHECK(bytes_at(0x00424B3Fu, "8B4528568B7010F6460C0257"),
+          "Add: object + 0x28 (info), info + 0x10 (CAIInfo), flags + 0x0C bit 2: the object never enters the influences");
+    CHECK(bytes_at(0x0042176Au, "BEAC000000") && bytes_at(0x0042177Bu, "A164EF6600") && bytes_at(0x00421790u, "81FECC0000007CD7"),
+          "Influences sights gpPlayer's eight parts at + 0x0AC..+0x0CC");
+    CHECK(bytes_at(0x00424AD4u, "8B56288B421085C074438B4808") && bytes_at(0x00424AFDu, "8B471033C905AC000000"),
+          "See reads the same CAIInfo and skips an animal's own parts (+ 0x0AC)");
+    CHECK(bytes_at(0x0060A469u, "8DBEAC000000") && bytes_at(0x0060A474u, "C744242C08000000"),
+          "CAnimate moves eight parts at + 0x0AC: the same array");
+    CHECK(ai && list, "the sources are readable");
+    if (ai && list) {
+        CHECK(strstr(list, "GUEST_OVERRIDE(004213F0, REQUIRED)") && strstr(list, "GUEST_OVERRIDE(00419CE0, REQUIRED)"),
+              "both perception entries have a stable entry in every lift");
+        CHECK(function_has(ai, "static void stealth_influences(void) {", "A.influences();") &&
+                  function_has(ai, "static void stealth_influences(void) {", "cheats_stealth_begin") &&
+                  function_has(ai, "static void stealth_seen_by_nearest(void) {", "A.seen();"),
+              "the Original wrappers run the retail bodies: the AI keeps updating");
+        CHECK(function_has(ai, "static void ai_influences(void) {", "cheats_stealth_begin") &&
+                  function_has(ai, "static void ai_seen_by_nearest(void) {", "cheats_stealth_end"),
+              "the Enhanced entries hide Anne the same way");
+        CHECK(function_has(ai, "void active_ai_install(void) {", "stealth_install();"),
+              "Stealth Mode works without the Active AI hooks");
+    }
+    if (cheats) {
+        CHECK(!function_has(cheats, "void cheats_stealth_begin(", "AI_SYSTEM") &&
+                  !function_has(cheats, "void cheats_stealth_begin(", "AI_FLAGS") &&
+                  !function_has(cheats, "void cheats_stealth_begin(", "freeze") &&
+                  !function_has(cheats, "static const char* run_stealth(", "cheats_freeze_ai") &&
+                  !function_has(cheats, "static const char* run_stealth(", "AI_BORING"),
+              "Stealth Mode never touches CAISystem's flags: Freeze Dinosaurs is not involved");
+        CHECK(function_has(cheats, "void cheats_stealth_begin(", "if (!C.want.stealth") &&
+                  function_has(cheats, "void cheats_stealth_end(", "original"),
+              "off: nothing is marked; on: every flag written is put back");
+        CHECK(function_has(cheats, "static const char* run_stealth(", "remember(JPT_CHEAT_STEALTH") &&
+                  function_has(cheats, "static const char* run_stealth(", "log_toggle(\"Stealth Mode\""),
+              "the toggle is one session value and one log line");
+        CHECK(!strstr(cheats, "debug_menu_move_player") && !strstr(cheats, "noclip_commit") && !strstr(cheats, "CH_CAMERA_NOCLIP"),
+              "Noclip never moves Anne or the camera: it keeps no position of its own");
+        CHECK(function_has(cheats, "static const char* run_noclip(", "remember(JPT_CHEAT_NOCLIP") &&
+                  !function_has(cheats, "static const char* run_noclip(", "FREE_CAMERA") &&
+                  !function_has(cheats, "static const char* run_noclip(", "suspend"),
+              "the Noclip toggle is one session value and one log line: no Fly, no camera");
+    }
+    if (fixes) {
+        CHECK(function_has(fixes, "static void noclip_before(", "nc_vertical_response") &&
+                  function_has(fixes, "static void noclip_before(", "cheats_noclip()") &&
+                  function_has(fixes, "static void noclip_after(", "nc_next_velocity"),
+              "Noclip works on the physics step's contact responses, in Pelvic_IDOF's wrapper");
+        CHECK(!strstr(fixes, "ATTACHED") && !strstr(fixes, "camera") && !strstr(fixes, "PURGE"),
+              "and touches neither the camera link nor a teleport");
+        CHECK(function_has(fixes, "static void noclip_before(", "wrf(tag, response[0]);") &&
+                  function_has(fixes, "static void noclip_before(", "wrf(tag + 4, response[1]);") &&
+                  !function_has(fixes, "static void noclip_before(", "wrf(tag + 8"),
+              "only the x and y of each part's BioTag are rewritten, never its z");
+    }
+    free(ai);
+    free(cheats);
+    free(list);
+    free(fixes);
+}
+
 static void test_retail(const char* root) {
     static const struct {
         const char* name;
@@ -707,6 +817,7 @@ static void test_retail(const char* root) {
               calls(0x0061820Du, 0x00614B10u) && bytes_at(0x00614BD3u, "C20800"),
           "CEntityAttached::UpdateFromAttached: attached + 0x50, animate + 0x54, relative + 0x58, CInstance::Move");
     CHECK(bytes_at(0x00618250u, "8D7358"), "a save keeps the camera's relative placement: cheats leave it before saves");
+    test_perception(root);
     CHECK(bytes_at(0x00608130u, "8A4144"), "CWorld's pending save flag + 0x44");
     CHECK(bytes_at(0x0041789Au, "8B3D60536400") && bytes_at(0x004178B5u, "FFD7"),
           "the modal UI loop reads its cursor (GetCursorPos) each pass: where the menu's actions run");

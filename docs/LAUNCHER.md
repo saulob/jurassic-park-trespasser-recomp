@@ -470,7 +470,8 @@ while playing to open the Cheats menu; what it changes applies only to the curre
   1.0x, ...`) and F10 starts from those values. F10 never writes the file: it only records what it changed over the
   saved value (`jpt_cheat_session_t`), so a cheat cycled back follows the saved value again, and the next start uses
   the saved values.
-- **F10 only.** Heal, Teleport and Level Select are actions, not settings. Fly / Free Camera is a mode of the level in
+- **F10 only.** Heal, Teleport and Level Select are actions, not settings. Noclip and Stealth Mode are toggles of the
+  session, never saved and Off at every start. Fly / Free Camera is a mode of the level in
   play (it needs the camera's link to Anne's head, which exists only in a running level, and it takes the controls from
   her), so it is never saved or started On: F10 turns it on, and another level or the main menu turns it off.
 - **Removed from F10.** Show Coordinates and Third Person.

@@ -499,6 +499,28 @@ typedef struct {
  * height (lines_scale = height / 480; 0 keeps the level's); far is never finer than near. */
 terrain_settings_t terrain_modern_settings(terrain_settings_t level, float far_clip, float lines_scale);
 
+/* Noclip. The box of each part of Anne's skeleton meets the world in the physics step: a contact kills the box's
+ * velocity along its normal and adds a force to the part's BioTag, which Pelvic_IDOF reads. Both are linear in the
+ * contacts, so keeping only their vertical components leaves every response that holds Anne up and drops every one that
+ * stops her sideways, whatever the normal: a wall (normal horizontal) is gone, a floor or a ceiling (vertical) is whole,
+ * a slope keeps the vertical share of its response. */
+#define NC_PARTS 6
+extern const unsigned nc_part_dof[NC_PARTS]; /* the DOF of each part's x; y and z follow */
+#define NC_VELOCITY_NOISE 0.05f              /* m/s: below it a velocity is not a contact's work */
+typedef struct {
+    int valid;
+    float vx[NC_PARTS], vy[NC_PARTS]; /* each part's horizontal velocity as the next step starts */
+} nc_memory_t;
+/* The velocity after Pelvis_integrate's Euler step (v + a dt, in the double the lifted code evaluates). */
+float nc_next_velocity(float velocity, float acceleration, float dt);
+/* A contact response (a BioTag x, y, z or a velocity change) with only its vertical component left. */
+void nc_vertical_response(float response[3]);
+/* The horizontal velocity a part keeps when it was `remembered` before the step and is `now` after the contacts:
+ * the remembered one when the contacts changed it, else the current one. */
+float nc_horizontal_velocity(float remembered, float now);
+/* A contact's change of velocity (v - (v . n) n) with its horizontal part left out. */
+void nc_vertical_kill(const float before[3], const float after[3], float out[3]);
+
 /* A miss the game itself expects: the *.swp search before any level swap file exists. */
 int host_expected_miss(const char* api, const char* path, uint32_t error);
 /* The legacy Aureal A3D library: never loaded, the game takes its DirectSound path. */

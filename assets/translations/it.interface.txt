@@ -71,6 +71,8 @@ Infinite Ammo	Munizioni infinite
 Heal	Cura
 Super Health	Supersalute
 Fly / Free Camera	Volo / camera libera
+Noclip	Noclip
+Stealth Mode	Modalità furtiva
 Close	Chiudi
 Off	Disattivato
 On	Attivato

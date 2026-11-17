@@ -71,6 +71,8 @@ Infinite Ammo	Infinite Ammo
 Heal	Heal
 Super Health	Super Health
 Fly / Free Camera	Fly / Free Camera
+Noclip	Noclip	keep=*
+Stealth Mode	Stealth Mode
 Close	Close
 Off	Off
 On	On

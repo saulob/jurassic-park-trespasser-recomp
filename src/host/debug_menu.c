@@ -183,6 +183,8 @@ static dm_item_t action_item(dm_action_kind_t kind) {
     case DM_ACT_HEAL: return DM_HEAL;
     case DM_ACT_SUPER_HEALTH: return DM_SUPER_HEALTH;
     case DM_ACT_CAMERA: return DM_FREE_CAMERA;
+    case DM_ACT_NOCLIP: return DM_NOCLIP;
+    case DM_ACT_STEALTH: return DM_STEALTH;
     default: return DM_FREEZE_AI;
     }
 }

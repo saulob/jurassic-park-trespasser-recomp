@@ -1212,6 +1212,15 @@
    ],
    "set": "CCameraSet",
    "kind": "size"
+  },
+  {
+   "names": [
+    "ANIMATE_PARTS"
+   ],
+   "files": [
+    "cheats.c"
+   ],
+   "class": "CAnimate"
   }
  ],
  "sets": {

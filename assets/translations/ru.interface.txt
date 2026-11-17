@@ -71,6 +71,8 @@ Infinite Ammo	Бесконечные патроны
 Heal	Лечение
 Super Health	Суперздоровье
 Fly / Free Camera	Полёт / свободная камера
+Noclip	Noclip
+Stealth Mode	Режим скрытности
 Close	Закрыть
 Off	Выкл.
 On	Вкл.

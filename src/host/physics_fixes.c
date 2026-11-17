@@ -1,7 +1,8 @@
 /*
  * Two places where the lifted physics must keep the retail arithmetic: the human pelvis's crouch-height clamps, which
  * the x87 evaluated at the 24-bit precision the game selects for its physics, and the wave model's step, which must
- * not shrink with the frame time. Above 1x Movement Speed the right hand follows Anne as at 1x (host_policy.h).
+ * not shrink with the frame time. Above 1x Movement Speed the right hand follows Anne as at 1x (host_policy.h). Noclip
+ * keeps only the vertical part of the contact responses Pelvic_IDOF reads (host_policy.h).
  */
 #include "guest_va.h"
 #include "host.h"
@@ -27,6 +28,8 @@
 #define PELVIS_ALIVE (49u * 4u)
 #define PELVIS_BIOTAG GVA(0x0067B0C0)
 #define PELVIS_BIOTAG_STRIDE 0x100u
+#define DOF_ACCELERATION 8u
+#define NOCLIP_LOG_LIMIT 16u
 #define BIOTAG_BODY_Z (2u * 4u)
 #define KNEE_OFFSET_VA GVA(0x00647F58)
 #define LOW_FACTOR_VA GVA(0x0064D970)
@@ -40,6 +43,8 @@
 
 static recomp_func_t s_idof_lifted, s_integrate_lifted;
 static hand_carrier_t s_carrier[PELVIS_COUNT];
+static nc_memory_t s_noclip[PELVIS_COUNT];
+static unsigned s_noclip_logged;
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
 
@@ -53,6 +58,45 @@ static void write3(uint32_t dof, uint32_t part, const float v[3]) {
 }
 static double rdd(uint32_t va) { return *(const double*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
+
+/* Before Pelvic_IDOF: each part's contact response of this step loses its horizontal part (nc_part_dof). */
+static void noclip_before(uint32_t me, uint32_t state, int alive) {
+    nc_memory_t* m = &s_noclip[me];
+    uint32_t biotag = PELVIS_BIOTAG + PELVIS_BIOTAG_STRIDE * me;
+    if (!cheats_noclip() || !alive) {
+        m->valid = 0;
+        s_noclip_logged = 0;
+        return;
+    }
+    for (unsigned i = 0; i < NC_PARTS; i++) {
+        uint32_t dof = state + nc_part_dof[i] * DOF_BYTES + DOF_VELOCITY, tag = biotag + nc_part_dof[i] * 4u;
+        float response[3] = { rdf(tag), rdf(tag + 4), rdf(tag + 8) }, vx = rdf(dof), vy = rdf(dof + DOF_BYTES);
+        float kept_x = m->valid ? nc_horizontal_velocity(m->vx[i], vx) : vx;
+        float kept_y = m->valid ? nc_horizontal_velocity(m->vy[i], vy) : vy;
+        if (s_noclip_logged < NOCLIP_LOG_LIMIT && (kept_x != vx || kept_y != vy || response[0] != 0.0f || response[1] != 0.0f)) {
+            s_noclip_logged++;
+            host_log("noclip", "part DOF %u: contact xy %.3f %.3f z %.3f, speed %.3f %.3f -> %.3f %.3f", /* DEBUG_SAULO */
+                     nc_part_dof[i], response[0], response[1], response[2], vx, vy, kept_x, kept_y);
+        }
+        nc_vertical_response(response);
+        wrf(tag, response[0]);
+        wrf(tag + 4, response[1]);
+        wrf(dof, kept_x);
+        wrf(dof + DOF_BYTES, kept_y);
+    }
+}
+
+/* After Pelvic_IDOF: the speed each part will start the next step with, if no contact touches it. */
+static void noclip_after(uint32_t me, uint32_t state, float dt) {
+    nc_memory_t* m = &s_noclip[me];
+    if (!cheats_noclip()) return;
+    for (unsigned i = 0; i < NC_PARTS; i++) {
+        uint32_t dof = state + nc_part_dof[i] * DOF_BYTES + DOF_VELOCITY;
+        m->vx[i] = nc_next_velocity(rdf(dof), rdf(dof + DOF_ACCELERATION - DOF_VELOCITY), dt);
+        m->vy[i] = nc_next_velocity(rdf(dof + DOF_BYTES), rdf(dof + DOF_BYTES + DOF_ACCELERATION - DOF_VELOCITY), dt);
+    }
+    m->valid = 1;
+}
 
 /* Pelvic_IDOF(me, dt, inputs), cdecl. The lifted body evaluates every x87 operation in double precision whatever
  * the control word, which leaves a height clamped to 0.09 * (h - 0.2) and stored as a float below that bound: the
@@ -70,6 +114,7 @@ static void pelvic_idof(void) {
     state = PELVIS_STATE + PELVIS_STATE_STRIDE * me;
     mouth = state + PELVIS_MOUTH;
     data = PELVIS_DATA + PELVIS_DATA_STRIDE * me;
+    noclip_before(me, state, rdf(data + PELVIS_ALIVE) > 0.0f);
     pos = rdf(mouth);
     vel = rdf(mouth + 4);
     k = rdf(data + PELVIS_ALIVE) > 0.0f ? hand_frame_share(cheats_speed_factor()) : 0.0f;
@@ -89,6 +134,7 @@ static void pelvic_idof(void) {
         hand_damping_shift(k, -1.0f, body_vel, hand_vel);
         write3(state + PELVIS_RIGHT_HAND, DOF_VELOCITY, hand_vel);
     }
+    noclip_after(me, state, dt);
     if ((g_fpu_cw & FPU_PRECISION_MASK) || !(rdf(data + PELVIS_ALIVE) > 0.0f)) return;
     fixed = pelvis_mouth_clamps(pos, vel, rdf(data + PELVIS_HEIGHT),
                                 rdf(PELVIS_BIOTAG + PELVIS_BIOTAG_STRIDE * me + BIOTAG_BODY_Z), rdd(KNEE_OFFSET_VA),

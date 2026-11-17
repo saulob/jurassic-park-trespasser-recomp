@@ -19,6 +19,9 @@ extern "C" {
 
 typedef enum { CH_CAMERA_NORMAL, CH_CAMERA_FREE } ch_camera_t;
 
+/* CAIInfo flags bit 2: CInfluenceList::Add drops the object before it enters any brain's influences. */
+#define CH_AI_INFO_IGNORE 2u
+
 float ch_multiplier(int index);
 const char* ch_multiplier_text(int index);
 int ch_multiplier_clamp(int index);
@@ -32,7 +35,7 @@ float ch_jump_speed_scale(int index);
 
 /* The host-side cheats: what is in effect, and in which level. */
 typedef struct {
-    int speed, jump, super_health;
+    int speed, jump, super_health, stealth, noclip;
     ch_camera_t camera;
     char level[DM_LEVEL_ID_MAX];
 } ch_state_t;
@@ -41,6 +44,8 @@ void ch_init(ch_state_t* s);
 /* The state a session starts from or F10 left it in (jpt_cheat_effective). */
 void ch_from_session(ch_state_t* s, const jpt_cheat_session_t* session);
 int ch_any(const ch_state_t* s);
+/* The AI info flags with the ignore bit set, and 1 when it was not set before (only then it is restored). */
+int ch_ai_hide_flags(uint8_t flags, uint8_t* hidden);
 /* 1 once when the level seen before was left, for another one or the main menu: the free camera goes back, the other
  * cheats stay for the session. */
 int ch_level_seen(ch_state_t* s, dm_place_t place, const char* level);
@@ -55,6 +60,8 @@ void ch_super_off(float normal_max, float* hp, float* max);
 /* A living player's health to its current maximum; 0 for a dead one, who stays dead. */
 int ch_heal(float hp, float max, float* out);
 
+/* "Noclip On", "Stealth Mode Off": the untranslated log line of a toggle. */
+int ch_format_toggle(char* out, size_t cap, const char* name, int on);
 /* "Movement Speed = 5.0x", "Invulnerability = On", "Camera = Free Camera": a cheat's name and its new value. on is a
  * toggle's state, value a multiplier index or ch_camera_t. */
 int ch_format_change(char* out, size_t cap, dm_action_kind_t kind, int on, int value);

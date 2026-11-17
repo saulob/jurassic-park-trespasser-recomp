@@ -71,6 +71,38 @@
    "status": "unmoved",
    "value": "0x10",
    "evidence": "width(c) is at font+0x10+4*c in ES and PT-BR (CFont::CFont, lea ebx,[esi+0x10] then add ebx,4 for c=0..0xFF) and at font+0x90+4*(c-0x20) = font+0x10+4*c in 1.0.116 for c >= 0x20; the host reads printable characters"
+  },
+  {
+   "file": "src/host/cheats.c",
+   "name": "INFO_AI",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x10",
+   "evidence": "CInfluenceList::See (0x00617C90, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x00617D10) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x00617D26, the same distance from See as 0x00424B46"
+  },
+  {
+   "file": "src/host/cheats.c",
+   "name": "INFO_AI",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x10",
+   "evidence": "CInfluenceList::See (0x0061A280, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x0061A300) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x0061A316, the same distance from See as 0x00424B46"
+  },
+  {
+   "file": "src/host/cheats.c",
+   "name": "AI_INFO_FLAGS",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0xC",
+   "evidence": "CInfluenceList::See (0x00617C90, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x00617D10) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x00617D26, the same distance from See as 0x00424B46"
+  },
+  {
+   "file": "src/host/cheats.c",
+   "name": "AI_INFO_FLAGS",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0xC",
+   "evidence": "CInfluenceList::See (0x0061A280, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x0061A300) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x0061A316, the same distance from See as 0x00424B46"
   }
  ]
 }

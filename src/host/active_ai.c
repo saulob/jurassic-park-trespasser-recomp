@@ -3,7 +3,7 @@
  * the game's arrays (+0x3188 animals, +0x31A0 slots); entries 4..6 live here, their slots allocated by the game's own
  * operator new and slot constructor. Every function that walks those arrays is replaced with the retail logic over
  * 1..6, in the retail order; Activate also refuses an animal the physics box pool could not hold (CE's guard, with the
- * retail pool). Original installs nothing.
+ * retail pool). Original installs only the Stealth Mode wrappers of the two perception entries.
  */
 #include "guest_va.h"
 #include "host.h"
@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "active_ai_policy.h"
+#include "cheats.h"
 #include "minimap.h"
 
 #define AI_SYSTEM GVA(0x0066E77C)
@@ -510,10 +511,12 @@ static void ai_seen_by_nearest(void) {
     uint32_t sys = g_ecx, object = GUEST_ARG(0), buf;
     double r2;
     float o[3], v[3];
+    cheats_hidden_t hidden;
     if (g_alias_entry) {
         A.seen();
         return;
     }
+    cheats_stealth_begin(&hidden);
     r2 = (double)rdf(g_esp + 8u) * (double)rdf(g_esp + 8u);
     g_esp -= SCRATCH;
     buf = g_esp;
@@ -529,6 +532,7 @@ static void ai_seen_by_nearest(void) {
         break;
     }
     g_esp += SCRATCH;
+    cheats_stealth_end(&hidden);
     GUEST_RETURN_STDCALL(2);
 }
 
@@ -650,15 +654,50 @@ static void ai_load(void) {
 
 static void ai_influences(void) {
     uint32_t brain = A.think_brain, esp = A.think_esp;
+    cheats_hidden_t hidden;
     if (g_alias_entry) {
         A.influences();
         return;
     }
     A.think_brain = g_ecx;
     A.think_esp = g_esp;
+    cheats_stealth_begin(&hidden);
     A.influences();
+    cheats_stealth_end(&hidden);
     A.think_brain = brain;
     A.think_esp = esp;
+}
+
+static void stealth_influences(void) {
+    cheats_hidden_t hidden;
+    if (g_alias_entry) {
+        A.influences();
+        return;
+    }
+    cheats_stealth_begin(&hidden);
+    A.influences();
+    cheats_stealth_end(&hidden);
+}
+
+/* Without the Active AI hooks the retail SeenByNearest runs as it is, with Anne hidden from it. */
+static void stealth_seen_by_nearest(void) {
+    cheats_hidden_t hidden;
+    if (g_alias_entry) {
+        A.seen();
+        return;
+    }
+    cheats_stealth_begin(&hidden);
+    A.seen();
+    cheats_stealth_end(&hidden);
+}
+
+static void stealth_install(void) {
+    if (guest_override_lifted(INFLUENCES_VA) && guest_override_lifted(SEEN_BY_NEAREST_VA)) {
+        guest_override_install(INFLUENCES_VA, stealth_influences, &A.influences);
+        guest_override_install(SEEN_BY_NEAREST_VA, stealth_seen_by_nearest, &A.seen);
+    } else {
+        host_log("cheats", "Stealth Mode: the perception entries have no stable entry, the mode does nothing");
+    }
 }
 
 /* Entered from 0x00421829, right after 0x004213F0's loop over entries 0..3: entries 4..6 add their parts here, with
@@ -716,7 +755,10 @@ void active_ai_install(void) {
         { INFLUENCES_TAIL_VA, ai_influences_tail, &A.influences_tail },
     };
     size_t n = sizeof o / sizeof o[0], done = 0;
-    if (!A.enhanced) return;
+    if (!A.enhanced) {
+        stealth_install();
+        return;
+    }
     if (n != active_ai_override_count) {
         host_log("ce", "active AI: the override table is out of step with the policy: original limit kept");
         return;

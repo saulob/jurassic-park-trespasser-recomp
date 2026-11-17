@@ -2,8 +2,12 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef VK_RETURN
+#define VK_RETURN 0x0D
+#endif
 
 #include "cheats_policy.h"
+#include "host_policy.h"
 #include "jpt_cheats.h"
 #include "jpt_config.h"
 
@@ -199,7 +203,8 @@ static void test_central_list(void) {
         { JPT_CHEAT_SPEED, "Movement Speed" },         { JPT_CHEAT_JUMP, "Jump Height" },
         { JPT_CHEAT_INVULNERABLE, "Invulnerability" }, { JPT_CHEAT_AMMO, "Infinite Ammo" },
         { JPT_CHEAT_FREEZE_AI, "Freeze Dinosaurs" },   { JPT_CHEAT_HEAL, "Heal" },
-        { JPT_CHEAT_SUPER_HEALTH, "Super Health" },    { JPT_CHEAT_TELEPORT, "Teleport" },
+        { JPT_CHEAT_SUPER_HEALTH, "Super Health" },    { JPT_CHEAT_NOCLIP, "Noclip" },
+        { JPT_CHEAT_STEALTH, "Stealth Mode" },         { JPT_CHEAT_TELEPORT, "Teleport" },
         { JPT_CHEAT_LEVEL_SELECT, "Level Select" },    { JPT_CHEAT_FREE_CAMERA, "Fly / Free Camera" },
     };
     int saved_count = 0;
@@ -290,6 +295,190 @@ static void test_f10_uses_the_list(void) {
               "no Show Coordinates or Third Person row: %s", rows[i].text);
     for (int d = 0; d < DM_ITEM_COUNT; d++) CHECK(strcmp(dm_item_label(DM_MENU_CHEATS, (dm_item_t)d), "Third Person"), "no item");
     dm_close(&s);
+}
+
+static void dot_kill(const float v[3], const float n[3], float out[3]) {
+    float d = v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+    for (int i = 0; i < 3; i++) out[i] = d < 0.0f ? v[i] - d * n[i] : v[i];
+}
+
+static void test_noclip_contacts(void) {
+    static const struct {
+        const char* what;
+        float normal[3];
+        int horizontal_kept, vertical_kept;
+    } contacts[] = {
+        { "wall", { 1.0f, 0.0f, 0.0f }, 1, 0 },
+        { "wall along y", { 0.0f, 1.0f, 0.0f }, 1, 0 },
+        { "floor", { 0.0f, 0.0f, 1.0f }, 0, 1 },
+        { "ceiling", { 0.0f, 0.0f, -1.0f }, 0, 1 },
+        { "slope", { 0.5f, 0.0f, 0.866025f }, 1, 1 },
+    };
+    const float v[3] = { -3.0f, 0.0f, -2.0f };
+    float bio[3];
+    for (size_t i = 0; i < sizeof contacts / sizeof contacts[0]; i++) {
+        float after[3], kept[3];
+        dot_kill(v, contacts[i].normal, after);
+        nc_vertical_kill(v, after, kept);
+        CHECK(near(kept[0], v[0]) && near(kept[1], v[1]), "%s: Noclip leaves the horizontal speed as it was", contacts[i].what);
+        CHECK(near(kept[2], after[2]), "%s: the vertical response stays whole", contacts[i].what);
+        if (contacts[i].horizontal_kept && !contacts[i].vertical_kept)
+            CHECK(near(kept[2], v[2]), "%s: nothing is left of a response that was only sideways", contacts[i].what);
+        if (!contacts[i].horizontal_kept)
+            CHECK(near(kept[0], after[0]) && near(kept[1], after[1]),
+                  "%s: a vertical contact changes no horizontal speed, with or without Noclip", contacts[i].what);
+    }
+    {
+        float wall[3], floor_[3], ceiling[3], slope[3];
+        dot_kill(v, contacts[0].normal, wall);
+        dot_kill(v, contacts[2].normal, floor_);
+        dot_kill(v, contacts[3].normal, ceiling);
+        dot_kill(v, contacts[4].normal, slope);
+        CHECK(near(wall[0], 0.0f), "with Noclip off the same wall stops Anne: the engine's own response is %.2f", wall[0]);
+        CHECK(floor_[2] >= 0.0f && floor_[2] < v[2] + 2.5f, "a floor takes the fall speed (%.2f)", floor_[2]);
+        CHECK(ceiling[2] == v[2], "a ceiling does not act on a fall");
+        CHECK(slope[2] != v[2], "a slope acts on the vertical speed (%.2f -> %.2f)", v[2], slope[2]);
+    }
+
+    bio[0] = 40.0f;
+    bio[1] = -25.0f;
+    bio[2] = 9.8f;
+    nc_vertical_response(bio);
+    CHECK(bio[0] == 0.0f && bio[1] == 0.0f && bio[2] == 9.8f, "a contact force keeps only its z: gravity and support stay");
+    bio[0] = bio[1] = bio[2] = 0.0f;
+    nc_vertical_response(bio);
+    CHECK(bio[0] == 0.0f && bio[1] == 0.0f && bio[2] == 0.0f, "no contact, no change");
+
+    CHECK(nc_horizontal_velocity(2.0f, 0.0f) == 2.0f, "a wall that cut the speed to 0 gives back the 2.0 it had");
+    CHECK(nc_horizontal_velocity(2.0f, 1.98f) == 1.98f, "noise is not a contact's work");
+    CHECK(nc_horizontal_velocity(2.0f, 2.5f) == 2.0f, "any change beyond noise is one the step must not keep");
+    CHECK(near(nc_next_velocity(1.0f, 2.0f, 0.01f), 1.02f), "Euler: v + a dt");
+    CHECK(NC_PARTS == 6 && nc_part_dof[0] == 0u && nc_part_dof[1] == 7u && nc_part_dof[2] == 14u && nc_part_dof[3] == 25u,
+          "the parts are the body, the feet and the hand's DOFs");
+    for (unsigned i = 1; i < NC_PARTS; i++)
+        CHECK(nc_part_dof[i] >= nc_part_dof[i - 1] + 6u, "each part's six BioTag floats are its own");
+}
+
+static int menu_action(dm_item_t item, const dm_world_t* w, dm_action_t* a) {
+    dm_state_t s;
+    dm_init(&s);
+    dm_toggle(&s, w, DM_MENU_CHEATS);
+    s.cursor = (int)item;
+    dm_key(&s, w, VK_RETURN, 1, 0, 0, 0, 1000);
+    dm_key(&s, w, VK_RETURN, 0, 0, 0, 0, 1000);
+    return dm_take(&s, a);
+}
+
+static void test_noclip_and_stealth_cheats(void) {
+    const jpt_cheat_info_t* noclip = &jpt_cheats[JPT_CHEAT_NOCLIP];
+    const jpt_cheat_info_t* stealth = &jpt_cheats[JPT_CHEAT_STEALTH];
+    jpt_cheat_session_t session;
+    int on_every_row[JPT_CHEAT_COUNT];
+    ch_state_t s;
+    dm_world_t w;
+    dm_action_t a;
+
+    CHECK(noclip->kind == JPT_CHEAT_TOGGLE && stealth->kind == JPT_CHEAT_TOGGLE && !noclip->default_value &&
+              !stealth->default_value,
+          "both are toggles that start Off");
+    CHECK(JPT_CHEAT_SUPER_HEALTH + 1 == JPT_CHEAT_NOCLIP && JPT_CHEAT_NOCLIP + 1 == JPT_CHEAT_STEALTH &&
+              JPT_CHEAT_STEALTH + 1 == JPT_CHEAT_TELEPORT,
+          "F10 lists Noclip and Stealth Mode after Super Health, before Teleport");
+    CHECK(!jpt_cheat_is_saved(noclip) && !jpt_cheat_is_saved(stealth) && !noclip->key && !stealth->key,
+          "like Fly / Free Camera they are F10 only: never saved, so every run starts Off");
+
+    memset(on_every_row, 0, sizeof on_every_row);
+    on_every_row[JPT_CHEAT_NOCLIP] = on_every_row[JPT_CHEAT_STEALTH] = on_every_row[JPT_CHEAT_FREE_CAMERA] = 1;
+    jpt_cheat_session_start(&session, on_every_row);
+    CHECK(!jpt_cheat_effective(&session, JPT_CHEAT_NOCLIP) && !jpt_cheat_effective(&session, JPT_CHEAT_STEALTH),
+          "whatever a settings array holds, a session starts with both Off");
+
+    jpt_cheat_session_start(&session, NULL);
+    ch_init(&s);
+    CHECK(!s.stealth && !s.noclip && s.camera == CH_CAMERA_NORMAL && !ch_any(&s), "everything starts Off");
+    jpt_cheat_set(&session, JPT_CHEAT_STEALTH, 1);
+    ch_from_session(&s, &session);
+    CHECK(s.stealth && !s.noclip && s.camera == CH_CAMERA_NORMAL && !ch_any(&s),
+          "Stealth Mode alone changes neither Noclip, the camera nor the other cheats");
+    CHECK(!jpt_cheat_effective(&session, JPT_CHEAT_FREEZE_AI), "and it is not Freeze Dinosaurs");
+    jpt_cheat_set(&session, JPT_CHEAT_NOCLIP, 1);
+    ch_from_session(&s, &session);
+    CHECK(s.noclip && s.stealth && s.camera == CH_CAMERA_NORMAL, "Noclip is no camera mode: it does not turn Fly on");
+    CHECK(!ch_any(&s), "and it needs no camera link, speed or health in the game");
+    jpt_cheat_set(&session, JPT_CHEAT_FREE_CAMERA, 1);
+    ch_from_session(&s, &session);
+    CHECK(s.noclip && s.camera == CH_CAMERA_FREE, "Fly is independent of Noclip");
+    jpt_cheat_set(&session, JPT_CHEAT_FREE_CAMERA, 0);
+
+    for (int i = 0; i < 5; i++) {
+        CHECK(jpt_cheat_cycle(&session, JPT_CHEAT_NOCLIP) == 0 && jpt_cheat_cycle(&session, JPT_CHEAT_NOCLIP) == 1,
+              "Noclip cycles Off and On as often as asked");
+        jpt_cheat_cycle(&session, JPT_CHEAT_STEALTH);
+        jpt_cheat_cycle(&session, JPT_CHEAT_STEALTH);
+    }
+    ch_from_session(&s, &session);
+    CHECK(s.noclip && s.stealth && s.camera == CH_CAMERA_NORMAL, "five rounds of toggling leave the state exactly as asked");
+
+    ch_set_level(&s, "BE");
+    CHECK(!ch_level_seen(&s, DM_PLACE_LEVEL, "BE") && s.noclip, "the same level keeps Noclip");
+    CHECK(!ch_level_seen(&s, DM_PLACE_NONE, "") && s.noclip, "a dialog over the level too");
+    CHECK(ch_level_seen(&s, DM_PLACE_LEVEL, "IT") && !s.noclip && s.stealth,
+          "another level ends Noclip; Stealth Mode holds no guest state and stays");
+    s.noclip = 1;
+    CHECK(ch_level_seen(&s, DM_PLACE_MAIN_MENU, "") && !s.noclip, "the main menu ends Noclip too");
+
+    CHECK(DM_ACT_STEALTH != DM_ACT_FREEZE_AI && DM_ACT_NOCLIP != DM_ACT_CAMERA, "each has an action of its own");
+    {
+        char line[64];
+        CHECK(ch_format_toggle(line, sizeof line, "Noclip", 1) && !strcmp(line, "Noclip On"), "%s", line);
+        CHECK(ch_format_toggle(line, sizeof line, "Noclip", 0) && !strcmp(line, "Noclip Off"), "%s", line);
+        CHECK(ch_format_toggle(line, sizeof line, "Stealth Mode", 1) && !strcmp(line, "Stealth Mode On"), "%s", line);
+        CHECK(ch_format_toggle(line, sizeof line, "Stealth Mode", 0) && !strcmp(line, "Stealth Mode Off"), "%s", line);
+        CHECK(!ch_format_toggle(line, 6, "Stealth Mode", 1), "a short buffer is refused");
+    }
+
+    memset(&w, 0, sizeof w);
+    w.place = DM_PLACE_LEVEL;
+    snprintf(w.scene, sizeof w.scene, "be.scn");
+    snprintf(w.level, sizeof w.level, "BE");
+    w.player = w.camera_head = 1;
+    w.ai = 0;
+    w.hp = w.hp_max = 100.0f;
+    w.speed = w.jump = CH_MULTIPLIER_DEFAULT;
+    CHECK(menu_action(DM_NOCLIP, &w, &a) && a.kind == DM_ACT_NOCLIP && a.on == 1, "F10 turns Noclip on");
+    w.noclip = 1;
+    CHECK(menu_action(DM_NOCLIP, &w, &a) && a.kind == DM_ACT_NOCLIP && a.on == 0, "and off");
+    w.camera = CH_CAMERA_FREE;
+    CHECK(menu_action(DM_FREE_CAMERA, &w, &a) && a.kind == DM_ACT_CAMERA && a.value == CH_CAMERA_NORMAL,
+          "Fly keeps its own row and its own action, with Noclip on");
+    w.camera = CH_CAMERA_NORMAL;
+    w.noclip = 0;
+    CHECK(menu_action(DM_STEALTH, &w, &a) && a.kind == DM_ACT_STEALTH && a.on == 1, "F10 turns Stealth Mode on");
+    w.stealth = 1;
+    CHECK(menu_action(DM_STEALTH, &w, &a) && a.kind == DM_ACT_STEALTH && a.on == 0, "and off");
+    CHECK(!menu_action(DM_FREEZE_AI, &w, &a) || a.kind != DM_ACT_STEALTH, "Freeze Dinosaurs is a different row");
+    w.camera_head = 0;
+    {
+        dm_state_t st;
+        dm_init(&st);
+        CHECK(dm_item_enabled(&st, &w, DM_NOCLIP) && dm_item_enabled(&st, &w, DM_STEALTH),
+              "Noclip needs no camera on Anne's head: Fly's link is not involved");
+        w.player = 0;
+        CHECK(!dm_item_enabled(&st, &w, DM_NOCLIP), "Noclip needs Anne");
+        w.player = 1;
+        w.place = DM_PLACE_MAIN_MENU;
+        CHECK(!dm_item_enabled(&st, &w, DM_STEALTH) && !dm_item_enabled(&st, &w, DM_NOCLIP),
+              "neither works outside a level");
+    }
+    {
+        char line[200];
+        ch_init(&s);
+        s.stealth = 1;
+        s.noclip = 1;
+        CHECK(ch_format_active(line, sizeof line, &s, 0, 0) && strstr(line, "stealth=On") && strstr(line, "noclip=On"),
+              "the level report names both: %s", line);
+    }
+    test_noclip_contacts();
 }
 
 static void test_saved_and_session(void) {
@@ -398,6 +587,7 @@ void cheats_tests(int* checks, int* failures) {
     test_central_list();
     test_choice_lists();
     test_f10_uses_the_list();
+    test_noclip_and_stealth_cheats();
     test_saved_and_session();
     test_saved_validation();
     *checks += g_checks;

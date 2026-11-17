@@ -1064,6 +1064,50 @@
   },
   {
    "file": "src/host/cheats.c",
+   "name": "INFO_AI",
+   "value": "0x10",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x10",
+    "evidence": "CInfluenceList::See (0x00617C90, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x00617D10) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x00617D26, the same distance from See as 0x00424B46"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x10",
+    "evidence": "CInfluenceList::See (0x0061A280, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x0061A300) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x0061A316, the same distance from See as 0x00424B46"
+   }
+  },
+  {
+   "file": "src/host/cheats.c",
+   "name": "AI_INFO_FLAGS",
+   "value": "0xC",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0xC",
+    "evidence": "CInfluenceList::See (0x00617C90, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x00617D10) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x00617D26, the same distance from See as 0x00424B46"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0xC",
+    "evidence": "CInfluenceList::See (0x0061A280, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x0061A300) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x0061A316, the same distance from See as 0x00424B46"
+   }
+  },
+  {
+   "file": "src/host/cheats.c",
+   "name": "ANIMATE_PARTS",
+   "value": "0xAC",
+   "struct": "CAnimate",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0xac used by 18 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0xac used by 14 identical functions"
+   }
+  },
+  {
+   "file": "src/host/cheats.c",
    "name": "PHYSICS_SPEED",
    "value": "0x70",
    "struct": "CPhysicsInfoSkeleton",
@@ -5398,15 +5442,17 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    235,
-    235,
-    236,
-    237,
-    250,
-    251,
-    251,
-    556,
-    590
+    201,
+    213,
+    279,
+    279,
+    280,
+    281,
+    294,
+    295,
+    295,
+    603,
+    637
    ],
    "es-117": {
     "status": "unmoved",
@@ -5425,14 +5471,15 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    233,
-    233,
-    249,
-    367,
-    379,
-    557,
-    565,
-    591
+    225,
+    277,
+    277,
+    293,
+    411,
+    423,
+    604,
+    612,
+    638
    ],
    "es-117": {
     "status": "unmoved",
@@ -5451,7 +5498,7 @@
    "value": "0x14",
    "literal": true,
    "lines": [
-    347
+    391
    ],
    "struct": "CMessage",
    "es-117": {
@@ -5461,6 +5508,25 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "CMessage: 136 functions, 99 without a counterpart; +0x14 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/active_ai.c",
+   "name": "@0x20",
+   "value": "0x20",
+   "literal": true,
+   "lines": [
+    217
+   ],
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x20",
+    "evidence": "port: the 13 guest functions active_ai.c overrides are byte-identical, so is what they read"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x20",
+    "evidence": "port: port:active_ai.c: 13 functions, 0 without a counterpart; +0x20 used by 6 identical functions"
    }
   },
   {
@@ -5710,7 +5776,9 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    368
+    376,
+    493,
+    494
    ],
    "struct": "SInput",
    "es-117": {
@@ -5728,7 +5796,7 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    369
+    377
    ],
    "struct": "SInput",
    "es-117": {
@@ -5746,7 +5814,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    370
+    378
    ],
    "struct": "SInput",
    "es-117": {
@@ -5764,7 +5832,7 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    371
+    379
    ],
    "struct": "SInput",
    "es-117": {
@@ -5897,7 +5965,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    383
+    388
    ],
    "es-117": {
     "status": "unmoved",
@@ -5919,9 +5987,8 @@
     487,
     490,
     517,
-    522,
-    528,
-    530
+    523,
+    525
    ],
    "es-117": {
     "status": "unmoved",
@@ -6391,8 +6458,10 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    74,
-    97
+    73,
+    83,
+    119,
+    143
    ],
    "es-117": {
     "status": "unmoved",
@@ -6403,6 +6472,25 @@
     "status": "unmoved",
     "value": "0x4",
     "evidence": "port: port:physics_fixes.c: 2 functions, 0 without a counterpart; +0x4 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/physics_fixes.c",
+   "name": "@0x8",
+   "value": "0x8",
+   "literal": true,
+   "lines": [
+    73
+   ],
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x8",
+    "evidence": "port: the 2 guest functions physics_fixes.c overrides are byte-identical, so is what they read"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x8",
+    "evidence": "port: port:physics_fixes.c: 2 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
    }
   },
   {

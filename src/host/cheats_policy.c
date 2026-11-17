@@ -40,12 +40,19 @@ void ch_from_session(ch_state_t* s, const jpt_cheat_session_t* session) {
     s->speed = ch_speed_clamp(jpt_cheat_effective(session, JPT_CHEAT_SPEED));
     s->jump = ch_multiplier_clamp(jpt_cheat_effective(session, JPT_CHEAT_JUMP));
     s->super_health = jpt_cheat_effective(session, JPT_CHEAT_SUPER_HEALTH) != 0;
+    s->stealth = jpt_cheat_effective(session, JPT_CHEAT_STEALTH) != 0;
+    s->noclip = jpt_cheat_effective(session, JPT_CHEAT_NOCLIP) != 0;
     s->camera = jpt_cheat_effective(session, JPT_CHEAT_FREE_CAMERA) ? CH_CAMERA_FREE : CH_CAMERA_NORMAL;
 }
 
 int ch_any(const ch_state_t* s) {
     return s->speed != CH_MULTIPLIER_DEFAULT || s->jump != CH_MULTIPLIER_DEFAULT || s->super_health ||
            s->camera != CH_CAMERA_NORMAL;
+}
+
+int ch_ai_hide_flags(uint8_t flags, uint8_t* hidden) {
+    *hidden = (uint8_t)(flags | CH_AI_INFO_IGNORE);
+    return (flags & CH_AI_INFO_IGNORE) == 0;
 }
 
 int ch_level_seen(ch_state_t* s, dm_place_t place, const char* level) {
@@ -59,7 +66,7 @@ int ch_level_seen(ch_state_t* s, dm_place_t place, const char* level) {
     } else {
         return 0;
     }
-    if (left) s->camera = CH_CAMERA_NORMAL;
+    if (left) s->camera = CH_CAMERA_NORMAL, s->noclip = 0;
     return left;
 }
 
@@ -123,6 +130,11 @@ const char* ch_camera_name(ch_camera_t camera) {
     return jpt_tr(camera == CH_CAMERA_FREE ? "Free Camera" : "Normal");
 }
 
+int ch_format_toggle(char* out, size_t cap, const char* name, int on) {
+    int n = snprintf(out, cap, "%s %s", name, on ? "On" : "Off");
+    return n > 0 && (size_t)n < cap;
+}
+
 static const char* on_off(int v) { return v < 0 ? "?" : jpt_tr(v ? "On" : "Off"); }
 
 int ch_format_change(char* out, size_t cap, dm_action_kind_t kind, int on, int value) {
@@ -142,8 +154,8 @@ int ch_format_change(char* out, size_t cap, dm_action_kind_t kind, int on, int v
 }
 
 int ch_format_active(char* out, size_t cap, const ch_state_t* s, int invulnerable, int ammo) {
-    int n = snprintf(out, cap, "movement=%s jump=%s super health=%s camera=%s invulnerability=%s infinite ammo=%s",
+    int n = snprintf(out, cap, "movement=%s jump=%s super health=%s stealth=%s noclip=%s camera=%s invulnerability=%s infinite ammo=%s",
                      ch_speed_text(s->speed), ch_multiplier_text(s->jump), on_off(s->super_health),
-                     ch_camera_name(s->camera), on_off(invulnerable), on_off(ammo));
+                     on_off(s->stealth), on_off(s->noclip), ch_camera_name(s->camera), on_off(invulnerable), on_off(ammo));
     return n > 0 && (size_t)n < cap;
 }

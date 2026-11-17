@@ -37,6 +37,8 @@ typedef enum {
     DM_SUPER_HEALTH,
     DM_TELEPORT_PAGE,
     DM_FREE_CAMERA,
+    DM_NOCLIP,
+    DM_STEALTH,
     DM_BACK,
     DM_CLOSE,
     DM_ITEM_COUNT
@@ -79,7 +81,7 @@ typedef struct {
             char hint[DM_LINE_MAX]; /* the game's own hint text, for the current one */
         } item[DM_GOALS_MAX];
     } goals;
-    int speed, jump, super_health, camera; /* the host's cheats (cheats_policy.h) */
+    int speed, jump, super_health, camera, stealth, noclip; /* the host's cheats (cheats_policy.h) */
 } dm_world_t;
 
 typedef enum {
@@ -93,7 +95,9 @@ typedef enum {
     DM_ACT_AMMO,
     DM_ACT_HEAL,
     DM_ACT_SUPER_HEALTH,
-    DM_ACT_CAMERA
+    DM_ACT_CAMERA,
+    DM_ACT_NOCLIP,
+    DM_ACT_STEALTH
 } dm_action_kind_t;
 
 typedef struct {
@@ -101,7 +105,7 @@ typedef struct {
     dm_placement_t to; /* TELEPORT: only pos is used */
     char scene[DM_SCENE_MAX];
     int on;    /* toggles: the state asked for */
-    int value; /* SPEED, JUMP: the multiplier index; CAMERA: ch_camera_t */
+    int value; /* SPEED, JUMP: the multiplier index; CAMERA: ch_camera_t; NOCLIP, STEALTH: on */
 } dm_action_t;
 
 typedef struct {

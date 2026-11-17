@@ -105,6 +105,8 @@ value). The panel is kept inside the screen; its rows scroll when the screen is 
 | Freeze Dinosaurs | the game's DINOS: dinosaurs sleep and stop updating until it is turned off |
 | Heal | shows her health as `90 / 100` and, once used, fills it to her maximum (not after death); an action, not a submenu |
 | Super Health | four times the normal maximum, full; off brings the maximum back without taking health below it |
+| Noclip | Anne walks through walls and other sideways obstacles on her own feet: the camera stays on her head and gravity, floors, ceilings and falls work as always; nothing moves her when it is turned off (a wall she stands inside pushes her out as the game normally does). Jump and Crouch do what they always do; Fly is the cheat that flies. Another level or the main menu turns it off |
+| Stealth Mode | creatures keep thinking, walking and animating but never notice Anne: she is kept out of every brain's influences while the AI looks around. Creatures that already knew her forget her as their memory expires. Gunshots still make noise at a place |
 | Teleport, Level Select | Teleport: type X, Y, Z (starting at Anne's position) or step them with Left/Right (Shift 10, Ctrl 0.1; gamepad D-pad 1, LB/RB 10). Level Select: the scene files of `data` (`BE - Beach` ... `SUM - Summit`, the two test scenes, then any other scene by file name), loaded the way the game changes level, also from the main menu |
 | Fly / Free Camera | a camera that moves on its own while Anne stays where she is |
 
@@ -114,8 +116,8 @@ down, Shift or LB is faster.
 The launcher's Cheats page sets what every session starts with: Movement Speed, Jump Height, Invulnerability, Infinite
 Ammo, Freeze Dinosaurs and Super Health (see [LAUNCHER](LAUNCHER.md)). F10 shows those values and changes them for the
 running session only; the settings file is never written from the game, and the next start uses the saved values again.
-Heal, Teleport, Level Select and Fly / Free Camera are F10 only. Free Camera goes back to normal in another level or in
-the main menu; the other cheats stay for the session. While a menu of the game is open (and whenever it saves or loads)
+Heal, Teleport, Level Select, Fly / Free Camera, Noclip and Stealth Mode are F10 only and start Off in every run. Free Camera and
+Noclip go back to normal in another level or in the main menu; the other cheats stay for the session. While a menu of the game is open (and whenever it saves or loads)
 the game has its own values, so a save never keeps a cheat.
 
 ## Gamepad

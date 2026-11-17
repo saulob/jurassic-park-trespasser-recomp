@@ -30,6 +30,20 @@ float cheats_speed_factor(void);
 void cheats_before_pelvis(void);
 /* What the cheats ask for, whether the free camera is in use, and the player's rSpeedMultiplier (-1 unknown). */
 void cheats_watch(ch_state_t* want, int* free_camera, float* speed_real);
+/* Noclip: 1 while lateral contacts must not stop Anne (noclip.c). */
+int cheats_noclip(void);
+/* Stealth Mode: 1 while the animals must not notice Anne. */
+int cheats_stealth(void);
+/* Around a perception update (CBrain::Influences, SeenByNearest): Anne's AI infos carry the game's ignore bit, so no
+ * brain adds her to its influences; end puts the flags back. Both do nothing while Stealth Mode is Off. */
+#define CHEATS_STEALTH_PARTS 8
+typedef struct {
+    int count;
+    uint32_t flags_va[CHEATS_STEALTH_PARTS];
+    uint8_t original[CHEATS_STEALTH_PARTS];
+} cheats_hidden_t;
+void cheats_stealth_begin(cheats_hidden_t* h);
+void cheats_stealth_end(const cheats_hidden_t* h);
 /* Runs a cheat action: why it could not be done, else NULL (the row shows the result). */
 const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch);
 

@@ -56,7 +56,8 @@ static int shared(const char* code, const char* english) {
     } k[] = { { "de", "Level" }, { "de", "Cheats" }, { "it", "Camera" }, { "pt-BR", "Normal" }, { "de", "Normal" }, { "es", "Normal" } };
     for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
         if (!strcmp(k[i].code, code) && !strcmp(k[i].text, english)) return 1;
-    return !strcmp(english, "X") || !strcmp(english, "Y") || !strcmp(english, "Z") || !strcmp(english, "HD");
+    return !strcmp(english, "X") || !strcmp(english, "Y") || !strcmp(english, "Z") || !strcmp(english, "HD") ||
+           !strcmp(english, "Noclip");
 }
 
 void menu_l10n_tests(int* checks, int* failures) {

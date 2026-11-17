@@ -71,6 +71,8 @@ Infinite Ammo	Unendlich Munition
 Heal	Heilen
 Super Health	Supergesundheit
 Fly / Free Camera	Flug / freie Kamera
+Noclip	Noclip
+Stealth Mode	Schleichmodus
 Close	Schließen
 Off	Aus
 On	An

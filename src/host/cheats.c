@@ -28,6 +28,10 @@
 #define ANIMATE_HP_MAX 0x54u
 #define INSTANCE_INFO 0x28u
 #define INFO_PHYSICS 0x0Cu
+#define INFO_AI 0x10u
+#define AI_INFO_FLAGS 0x0Cu
+#define ANIMATE_PARTS 0xACu
+#define ANIMATE_PART_COUNT 8
 #define PHYSICS_PLAYER_VTABLE GVA(0x0064D644)
 #define PHYSICS_SPEED 0x70u
 #define AI_SYSTEM GVA(0x0066E77C)
@@ -57,6 +61,7 @@ static struct {
     uint32_t player, camera, camera_vtable, attached, animate, info;
     float speed_original, normal_max, super_hp;
     uint8_t relative[PLACEMENT_BYTES];
+    unsigned hidden_updates;
     ch_freecam_t free;
     ch_freecam_input_t input;
     int64_t last;
@@ -325,7 +330,8 @@ void cheats_frame(const dm_world_t* w, uint32_t scratch) {
         C.super_hp = -1.0f;
         C.armed_player = C.armed_ai = 1;
         remember(JPT_CHEAT_FREE_CAMERA, 0);
-        note("another level: Fly / Free Camera off, the other cheats stay");
+        remember(JPT_CHEAT_NOCLIP, 0);
+        note("another level: Fly / Free Camera and Noclip off, the other cheats stay");
     }
     if (pending(WORLD_LOAD_PENDING)) C.armed_player = C.armed_ai = 1;
     should = ch_should_apply(w->place, pending(WORLD_LOAD_PENDING), pending(WORLD_SAVE_PENDING), player() != 0);
@@ -348,6 +354,8 @@ void cheats_world(dm_world_t* w) {
     w->jump = C.want.jump;
     w->super_health = C.want.super_health;
     w->camera = C.want.camera;
+    w->stealth = C.want.stealth;
+    w->noclip = C.want.noclip;
     if (w->place != DM_PLACE_LEVEL) return;
     if (p) {
         read_byte(p + PLAYER_FLAGS, INVULNERABLE_SHIFT, &w->invulnerable);
@@ -390,6 +398,24 @@ static const char* changed(dm_action_kind_t kind, int on, int value) {
     return NULL;
 }
 
+static void log_toggle(const char* name, int on) {
+    if (ch_format_toggle(C.text, sizeof C.text, name, on)) host_log("cheats", "%s", C.text);
+}
+
+static const char* run_stealth(int on) {
+    remember(JPT_CHEAT_STEALTH, on != 0);
+    if (on) C.hidden_updates = 0;
+    log_toggle("Stealth Mode", on);
+    if (!on) host_log("cheats", "Stealth Mode: %u perception updates ran with Anne hidden", C.hidden_updates); /* DEBUG_SAULO */
+    return NULL;
+}
+
+static const char* run_noclip(int on) {
+    remember(JPT_CHEAT_NOCLIP, on != 0);
+    log_toggle("Noclip", on);
+    return NULL;
+}
+
 static const char* run_toggle(int ok, dm_action_kind_t kind, int on, jpt_cheat_t cheat) {
     if (!ok) return jpt_tr("Not available");
     remember(cheat, on != 0);
@@ -408,6 +434,8 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
         if (!p || !ch_heal(rdf(p + ANIMATE_HP), rdf(p + ANIMATE_HP_MAX), &hp)) return jpt_tr("Anne cannot be healed now");
         wrf(p + ANIMATE_HP, hp);
         return changed(a->kind, 1, 0);
+    case DM_ACT_STEALTH: return run_stealth(a->on);
+    case DM_ACT_NOCLIP: return run_noclip(a->on);
     default: break;
     }
     suspend();
@@ -440,4 +468,40 @@ void cheats_watch(ch_state_t* want, int* free_camera, float* speed_real) {
     *want = C.want;
     *free_camera = C.applied && C.want.camera == CH_CAMERA_FREE;
     *speed_real = info ? rdf(info + PHYSICS_SPEED) : -1.0f;
+}
+
+int cheats_stealth(void) { return C.want.stealth; }
+
+int cheats_noclip(void) { return C.want.noclip; }
+
+static int read_byte_at(uint32_t va, uint8_t* out) {
+    if (!guest_readable(va, 1)) return 0;
+    *out = *(const uint8_t*)ADDR(va);
+    return 1;
+}
+
+/* Every sighting of an object enters a brain's influences through CInfluenceList::Add, which drops an object whose AI
+ * info has the ignore bit. Anne's parts carry it only while a perception update runs, so nothing else reads it. */
+void cheats_stealth_begin(cheats_hidden_t* h) {
+    uint32_t p;
+    h->count = 0;
+    if (!C.want.stealth || !(p = player())) return;
+    C.hidden_updates++;
+    for (uint32_t i = 0; i < ANIMATE_PART_COUNT; i++) {
+        uint32_t part, info, ai;
+        uint8_t flags, hidden;
+        if (!guest_read32(p + ANIMATE_PARTS + 4u * i, &part) || !part || !guest_readable(part, INSTANCE_INFO + 4u) ||
+            !guest_read32(part + INSTANCE_INFO, &info) || !info || !guest_readable(info, INFO_AI + 4u) ||
+            !guest_read32(info + INFO_AI, &ai) || !ai || !read_byte_at(ai + AI_INFO_FLAGS, &flags) ||
+            !ch_ai_hide_flags(flags, &hidden))
+            continue;
+        *(uint8_t*)ADDR(ai + AI_INFO_FLAGS) = hidden;
+        h->flags_va[h->count] = ai + AI_INFO_FLAGS;
+        h->original[h->count++] = flags;
+    }
+}
+
+void cheats_stealth_end(const cheats_hidden_t* h) {
+    for (int i = 0; i < h->count; i++)
+        if (guest_readable(h->flags_va[i], 1)) *(uint8_t*)ADDR(h->flags_va[i]) = h->original[i];
 }

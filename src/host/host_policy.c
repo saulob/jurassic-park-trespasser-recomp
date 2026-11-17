@@ -758,3 +758,22 @@ uint32_t icall_ring_caller(const uint32_t* targets, const uint32_t* from, uint32
     }
     return 0;
 }
+
+const unsigned nc_part_dof[NC_PARTS] = { 0u, 7u, 14u, 25u, 46u, 53u };
+
+float nc_next_velocity(float velocity, float acceleration, float dt) {
+    return (float)((double)velocity + (double)acceleration * (double)dt);
+}
+
+void nc_vertical_response(float response[3]) { response[0] = response[1] = 0.0f; }
+
+float nc_horizontal_velocity(float remembered, float now) {
+    float change = now - remembered;
+    return (change < 0.0f ? -change : change) > NC_VELOCITY_NOISE ? remembered : now;
+}
+
+void nc_vertical_kill(const float before[3], const float after[3], float out[3]) {
+    out[0] = before[0];
+    out[1] = before[1];
+    out[2] = after[2];
+}

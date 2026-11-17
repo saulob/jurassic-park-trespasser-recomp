@@ -25,7 +25,7 @@
 
 static const char* const k_labels[DM_ITEM_COUNT] = {
     "Level Select", "X", "Y", "Z", "Teleport", "Freeze AI", "Movement Speed", "Jump Height", "Invulnerability",
-    "Infinite Ammo", "Heal", "Super Health", "Teleport", "Fly / Free Camera", "Back", "Close",
+    "Infinite Ammo", "Heal", "Super Health", "Teleport", "Fly / Free Camera", "Noclip", "Stealth Mode", "Back", "Close",
 };
 
 static const dm_item_t k_cheat_item[JPT_CHEAT_COUNT] = {
@@ -34,6 +34,7 @@ static const dm_item_t k_cheat_item[JPT_CHEAT_COUNT] = {
     [JPT_CHEAT_FREEZE_AI] = DM_FREEZE_AI,    [JPT_CHEAT_HEAL] = DM_HEAL,
     [JPT_CHEAT_SUPER_HEALTH] = DM_SUPER_HEALTH, [JPT_CHEAT_TELEPORT] = DM_TELEPORT_PAGE,
     [JPT_CHEAT_LEVEL_SELECT] = DM_LEVEL_SELECT, [JPT_CHEAT_FREE_CAMERA] = DM_FREE_CAMERA,
+    [JPT_CHEAT_NOCLIP] = DM_NOCLIP,          [JPT_CHEAT_STEALTH] = DM_STEALTH,
 };
 
 /* F10's rows: the cheats of jpt_cheats.h in their order, then Close. */
@@ -111,6 +112,8 @@ int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     case DM_HEAL: return player && w->hp > 0.0f && w->hp_max > 0.0f;
     case DM_SUPER_HEALTH: return player && (w->super_health || (w->hp > 0.0f && w->hp_max > 0.0f));
     case DM_FREE_CAMERA: return player && w->camera_head;
+    case DM_NOCLIP: return player;
+    case DM_STEALTH: return level;
     case DM_BACK:
     case DM_CLOSE: return 1;
     default: return 0;
@@ -291,6 +294,8 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     case DM_FREE_CAMERA:
         request_value(s, DM_ACT_CAMERA, w->camera == CH_CAMERA_FREE ? CH_CAMERA_NORMAL : CH_CAMERA_FREE);
         break;
+    case DM_NOCLIP: toggle(s, DM_ACT_NOCLIP, !w->noclip); break;
+    case DM_STEALTH: toggle(s, DM_ACT_STEALTH, !w->stealth); break;
     case DM_BACK: back(s); break;
     case DM_CLOSE: dm_close(s); break;
     default: break;
@@ -560,6 +565,8 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
     case DM_INFINITE_AMMO: snprintf(value, cap, "%s", on_off(w->ammo)); break;
     case DM_SUPER_HEALTH: snprintf(value, cap, "%s", on_off(w->super_health)); break;
     case DM_FREE_CAMERA: snprintf(value, cap, "%s", on_off(w->camera == CH_CAMERA_FREE)); break;
+    case DM_NOCLIP: snprintf(value, cap, "%s", on_off(w->noclip)); break;
+    case DM_STEALTH: snprintf(value, cap, "%s", on_off(w->stealth)); break;
     case DM_MOVE_SPEED: snprintf(value, cap, "%s", ch_speed_text(w->speed)); break;
     case DM_JUMP_HEIGHT: snprintf(value, cap, "%s", ch_multiplier_text(w->jump)); break;
     case DM_HEAL:
