@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Lay out a local install in game/ from the user's own English disc image.
+"""Maintainers only: lay out the original files of an English disc in game/ (development inputs for tools/generate-lift.ps1
+and the retail checks of the tests). The build, the launcher and the game never use them: players import from the launcher.
 
 The image is opened read-only. Nothing extracted is tracked by Git.
 
-    py -3 tools/extract_game.py --iso "D:\\images\\Trespasser_EN.iso"
+    py -3 tools/extract_game.py --iso "D:\\images\\trespasser.iso"
     py -3 tools/extract_game.py              # iso from TRESPASSER_ISO or config/local.json
     py -3 tools/extract_game.py --binaries-only
 """

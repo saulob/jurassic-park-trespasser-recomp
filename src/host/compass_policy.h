@@ -125,6 +125,9 @@ typedef struct {
 } cp_layout_t;
 
 void cp_layout(float view_w, float view_h, cp_layout_t* out);
+/* The same for the 3D image inside the presentation surface (x, y, w, h in the surface's pixels): sized by the image and
+ * glued to its top edge, whatever margin the game's view-size setting leaves around it. */
+void cp_layout_in(float x, float y, float w, float h, cp_layout_t* out);
 /* The objective title's outline: a pixel at the base scale, growing with the picture. */
 float cp_outline_px(const cp_layout_t* l);
 /* A relative direction on the strip; side -1 or 1 when it is past an end and pinned there. */
@@ -153,6 +156,9 @@ typedef struct {
 /* Camera space: x right, y forward, z up. */
 void cp_to_camera(const cp_camera_t* c, const float world[3], float out[3]);
 int cp_project(const cp_camera_t* c, float view_w, float view_h, float margin, const float world[3], cp_screen_t* out);
+/* The same on the 3D image at (x, y) in the surface's pixels. */
+int cp_project_in(const cp_camera_t* c, float x, float y, float w, float h, float margin, const float world[3],
+                  cp_screen_t* out);
 
 #ifdef __cplusplus
 }

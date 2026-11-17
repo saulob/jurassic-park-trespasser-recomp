@@ -1,12 +1,13 @@
+#include "guest_va.h"
 #include "bump_spans.h"
 
-#define DELTA_TEX 0x00737EA0u       /* iUVInt[0], iUVInt[1], uUFrac, uVFrac */
-#define TILE_MASK 0x006699F8u       /* u4TextureTileMask */
-#define TEXTURE_LINE 0x00737F34u    /* the texel raster's row length */
-#define NEG_DU 0x00737E90u          /* bfNegDU: fraction, integer */
-#define NEG_DV 0x00737E40u          /* w1dNegDV: fraction, integer */
-#define EVEN_ROWS_ONLY 0x00737F68u
-#define SCREEN_LINE 0x00737EC4u     /* u4LinePixels */
+#define DELTA_TEX GVA(0x00737EA0)       /* iUVInt[0], iUVInt[1], uUFrac, uVFrac */
+#define TILE_MASK GVA(0x006699F8)       /* u4TextureTileMask */
+#define TEXTURE_LINE GVA(0x00737F34)    /* the texel raster's row length */
+#define NEG_DU GVA(0x00737E90)          /* bfNegDU: fraction, integer */
+#define NEG_DV GVA(0x00737E40)          /* w1dNegDV: fraction, integer */
+#define EVEN_ROWS_ONLY GVA(0x00737F68)
+#define SCREEN_LINE GVA(0x00737EC4)     /* u4LinePixels */
 #define LINE_INCREMENT 0x38u        /* in the base edge: fxX step, fxXDifference step, U, V */
 
 static uint32_t rd(uint32_t va) { return *(const volatile uint32_t*)(uintptr_t)va; }

@@ -5,9 +5,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <system_error>
 
-#include "jpt_user_data.h"
+#include "jpt_hash.h"
+#include "jpt_l10n.h"
+#include "jpt_string_table.h"
 #include "utf8.h"
 
 namespace fs = std::filesystem;
@@ -16,15 +19,9 @@ namespace jpt {
 namespace {
 
 constexpr uint64_t kSpaceMargin = 64ull << 20;
-
-bool StartsWithNoCase(const std::string& text, const std::string& prefix) {
-    return text.size() >= prefix.size() &&
-           std::equal(prefix.begin(), prefix.end(), text.begin(), [](char a, char b) {
-               return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-           });
-}
-
-bool EqualNoCase(const std::string& a, const std::string& b) { return a.size() == b.size() && StartsWithNoCase(a, b); }
+const LPCWSTR kStringResource = MAKEINTRESOURCEW(6);  // RT_STRING, wide whatever the project's character set
+// Data files whose presence marks a Trespasser disc, for the fingerprints of one no profile knows.
+constexpr const char* kTrespasserMarkers[] = {"data/be.scn", "data/menu/loader.ddf", "tresp.ttf"};
 
 fs::path Sibling(const fs::path& dir, const wchar_t* suffix) {
     fs::path clean = dir;
@@ -58,72 +55,223 @@ InstallResult Fail(InstallStatus status, std::string detail) {
     return r;
 }
 
-}  // namespace
-
-fs::path StagingFolder(const fs::path& game_dir) { return Sibling(game_dir, L".install-temp"); }
-fs::path BackupFolder(const fs::path& game_dir) { return Sibling(game_dir, L".install-backup"); }
-
-const GameProfile* IdentifyDisc(const IsoImage& image, std::span<const GameProfile> profiles, std::string& why) {
-    for (const GameProfile& p : profiles) {
-        const IsoFile* exe = image.Find(p.disc_files.front().disc_path);
-        const bool volume = EqualNoCase(image.volume_id(), p.volume_id);
-        if (volume && exe && exe->size == p.executable_size) return &p;
-        if (volume || exe) {
-            why = std::string("this disc is not ") + p.label + " (volume \"" + image.volume_id() + "\"" +
-                  (exe ? ", " + std::to_string(exe->size) + "-byte executable" : ", no " + std::string(p.disc_files.front().disc_path)) +
-                  ")";
-            return nullptr;
-        }
-    }
-    why = "this is not a Trespasser disc image (volume \"" + image.volume_id() + "\")";
-    return nullptr;
+std::string Digest(const std::vector<uint8_t>& bytes) {
+    char hex[65];
+    jpt_sha256_buffer_hex(bytes.data(), bytes.size(), hex);
+    return hex;
 }
 
-std::vector<PlannedFile> PlanInstall(const IsoImage& image, const GameProfile& profile, std::string& why) {
+bool WriteBytes(const fs::path& to, const std::vector<uint8_t>& bytes, std::string& error) {
+    fs::path part = to;
+    part += L".part";
+    HANDLE out = CreateFileW(part.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (out == INVALID_HANDLE_VALUE) {
+        error = "cannot create " + Utf8(to);
+        return false;
+    }
+    DWORD written = 0;
+    const bool ok = bytes.empty() ||
+                    (WriteFile(out, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+                     written == bytes.size());
+    CloseHandle(out);
+    if (!ok || !MoveFileExW(part.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        DeleteFileW(part.c_str());
+        error = "cannot write " + Utf8(to) + " (disk full?)";
+        return false;
+    }
+    return true;
+}
+
+// Another installed version's copy of a file with the pressed digest (the five level files every 1998 disc shares).
+bool Repair(const fs::path& game_root, std::span<const GameProfile> profiles, const fs::path& staging,
+            const InstallFile& f, const InstallHooks& hooks) {
+    std::error_code ec;
+    for (const InstalledVersion& v : FindInstalledVersions(game_root, profiles)) {
+        if (!v.profile) continue;
+        const fs::path candidate = v.dir / PathFromUtf8(f.installed);
+        if (fs::file_size(candidate, ec) != f.size || ec || Sha256File(candidate) != f.sha256) continue;
+        const fs::path to = staging / PathFromUtf8(f.installed);
+        fs::copy_file(candidate, to, fs::copy_options::overwrite_existing, ec);
+        if (ec || Sha256File(to) != f.sha256) continue;
+        Say(hooks, std::string("repaired ") + f.installed + " from the installed " + v.profile->label());
+        return true;
+    }
+    return false;
+}
+
+uint64_t SourceSize(const InstallFile& f) { return f.role == FileRole::kStringTable ? f.source_size : f.size; }
+
+bool ReadSource(IsoImage& image, const Cabinet& cabinet, const PlannedFile& f, std::vector<uint8_t>& bytes,
+                std::string& error) {
+    return f.disc ? image.ReadAll(*f.disc, bytes, error) : cabinet.Read(*f.cabinet, bytes, error);
+}
+
+}  // namespace
+
+std::vector<uint8_t> BuildStringTable(const std::vector<ReleaseString>& strings) {
+    std::vector<uint32_t> ids, lengths;
+    std::vector<const char*> texts;
+    size_t text_bytes = 0;
+    for (const ReleaseString& s : strings) {
+        ids.push_back(s.id);
+        lengths.push_back(static_cast<uint32_t>(s.bytes.size()));
+        texts.push_back(s.bytes.data());
+        text_bytes += s.bytes.size();
+    }
+    const uint32_t count = static_cast<uint32_t>(strings.size());
+    std::vector<uint8_t> table(jpt_string_table_size(count, text_bytes));
+    table.resize(jpt_string_table_write(table.data(), table.size(), ids.data(), texts.data(), lengths.data(), count));
+    return table;
+}
+
+bool DeriveStringTable(const std::vector<uint8_t>& executable, const fs::path& scratch_dir, std::vector<uint8_t>& table,
+                       std::string& error) {
+    std::error_code ec;
+    fs::create_directories(scratch_dir, ec);
+    const fs::path file = fs::absolute(scratch_dir, ec) / L"resources.tmp";
+    if (!WriteBytes(file, executable, error)) return false;
+    // Resources only: the file is mapped as data and never run.
+    HMODULE module = LoadLibraryExW(file.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+    if (!module) {
+        DeleteFileW(file.c_str());
+        error = "the file has no readable resources";
+        return false;
+    }
+    std::vector<ReleaseString> strings;
+    for (uint32_t block = 1; block <= JPT_L10N_ID_LIMIT / 16; ++block) {
+        HRSRC found = FindResourceW(module, MAKEINTRESOURCEW(block), kStringResource);
+        HGLOBAL loaded = found ? LoadResource(module, found) : nullptr;
+        const WORD* at = loaded ? static_cast<const WORD*>(LockResource(loaded)) : nullptr;
+        if (!at) continue;
+        const WORD* end = at + SizeofResource(module, found) / sizeof(WORD);
+        for (uint32_t i = 0; i < 16 && at < end; ++i) {
+            const size_t units = *at++;
+            if (units > static_cast<size_t>(end - at)) break;
+            if (units) {
+                ReleaseString s{(block - 1) * 16 + i, {}};
+                for (size_t u = 0; u < units; ++u) s.bytes.push_back(at[u] < 0x100 ? static_cast<char>(at[u]) : '?');
+                strings.push_back(std::move(s));
+            }
+            at += units;
+        }
+    }
+    FreeLibrary(module);
+    DeleteFileW(file.c_str());
+    if (strings.empty()) {
+        error = "the executable has no string resources";
+        return false;
+    }
+    table = BuildStringTable(strings);
+    return true;
+}
+
+fs::path VersionFolder(const fs::path& game_root, const GameProfile& profile) {
+    return game_root / JPT_VERSIONS_DIR / PathFromUtf8(profile.id());
+}
+fs::path StagingFolder(const fs::path& dir) { return Sibling(dir, L".install-temp"); }
+fs::path BackupFolder(const fs::path& dir) { return Sibling(dir, L".install-backup"); }
+
+bool OpenCabinet(IsoImage& image, const GameProfile& profile, Cabinet& cabinet, std::string& why) {
+    if (!profile.cabinet) return true;
+    const IsoFile* f = image.Find(profile.cabinet);
+    std::vector<uint8_t> bytes;
+    if (!f) {
+        why = std::string("the disc has no ") + profile.cabinet;
+        return false;
+    }
+    return image.ReadAll(*f, bytes, why) && cabinet.Open(std::move(bytes), why);
+}
+
+std::vector<PlannedFile> PlanInstall(const IsoImage& image, const Cabinet* cabinet, const GameProfile& profile,
+                                     std::string& why) {
     std::vector<PlannedFile> plan;
-    for (const DiscFile& d : profile.disc_files) {
-        const IsoFile* f = image.Find(d.disc_path);
-        if (!f) {
-            why = std::string("the disc has no ") + d.disc_path;
+    for (const InstallFile& f : profile.files) {
+        PlannedFile p{&f};
+        if (f.kind == SourceKind::kDisc) p.disc = image.Find(f.source);
+        else if (cabinet) p.cabinet = cabinet->Find(f.source);
+        if (!p.present() && f.role != FileRole::kData) {
+            plan.push_back(p);
+            continue;
+        }
+        const uint64_t size = p.disc ? p.disc->size : p.cabinet ? p.cabinet->size : ~0ull;
+        if (size != SourceSize(f)) {
+            why = (size == ~0ull ? std::string("the disc has no ") : std::string("another size of ")) + f.source;
             return {};
         }
-        plan.push_back({f, d.installed});
-    }
-    const std::string prefix = profile.data_prefix;
-    for (const IsoFile& f : image.files())
-        if (StartsWithNoCase(f.path, prefix)) plan.push_back({&f, f.path});
-    if (plan.size() == profile.disc_files.size()) {
-        why = std::string("the disc has no ") + profile.data_prefix + " folder";
-        return {};
+        plan.push_back(p);
     }
     return plan;
 }
 
-bool ActivateStaging(const fs::path& staging, const fs::path& game_dir, const fs::path& user_dir, std::string& error,
+DiscMatch IdentifyDisc(IsoImage& image, std::span<const GameProfile> profiles, std::string& why) {
+    DiscMatch match;
+    std::map<std::string, std::string> digests;
+    auto digest_of = [&](const char* path) -> const std::string& {
+        auto it = digests.find(path);
+        if (it != digests.end()) return it->second;
+        std::string& d = digests[path];
+        std::vector<uint8_t> bytes;
+        std::string error;
+        const IsoFile* f = image.Find(path);
+        if (f && image.ReadAll(*f, bytes, error)) d = Digest(bytes);
+        return d;
+    };
+    std::string near_miss;
+    for (const GameProfile& p : profiles) {
+        if (p.discs.empty() || digest_of(p.identity_file) != p.identity_sha256) continue;
+        Cabinet cabinet;
+        std::string plan_error;
+        if (OpenCabinet(image, p, cabinet, plan_error) &&
+            !PlanInstall(image, p.cabinet ? &cabinet : nullptr, p, plan_error).empty()) {
+            match.profile = &p;
+            match.disc = &p.discs[0];
+            for (const DiscIdentity& d : p.discs)  // the label tells the pressings of one version apart
+                if (_stricmp(d.volume_id, image.volume_id().c_str()) == 0) match.disc = &d;
+            return match;
+        }
+        if (near_miss.empty()) near_miss = std::string("a ") + p.label() + " disc without all of its files (" + plan_error + ")";
+    }
+    bool trespasser = false;
+    match.diagnostics.push_back("volume \"" + image.volume_id() + "\", " + std::to_string(image.files().size()) + " files");
+    for (const char* marker : kTrespasserMarkers) {
+        const IsoFile* f = image.Find(marker);
+        if (!f) continue;
+        trespasser = true;
+        match.diagnostics.push_back(std::string(marker) + ": " + std::to_string(f->size) + " bytes, SHA-256 " + digest_of(marker));
+    }
+    if (!near_miss.empty()) {
+        match.status = InstallStatus::kDamagedDisc;
+        why = "this is " + near_miss;
+    } else if (trespasser) {
+        match.status = InstallStatus::kUnsupportedBuild;
+        why = "Unsupported Trespasser build (volume \"" + image.volume_id() + "\"); its fingerprints are in the log";
+    } else {
+        why = "this is not a Trespasser disc image (volume \"" + image.volume_id() + "\")";
+    }
+    return match;
+}
+
+bool ActivateStaging(const fs::path& staging, const fs::path& dir, std::string& error,
                      const std::function<void(const std::string&)>& log) {
     std::error_code ec;
-    const fs::path backup = BackupFolder(game_dir);
-    const bool replacing = fs::exists(game_dir, ec);
+    const fs::path backup = BackupFolder(dir);
+    const bool replacing = fs::exists(dir, ec);
     if (replacing) {
-        if (jpt_carry_user_files(game_dir.string().c_str(), user_dir.string().c_str(), nullptr) < 0) {
-            error = "the saves of the current installation could not be copied to " + Utf8(user_dir);
-            return false;
-        }
         Remove(backup);
-        fs::rename(game_dir, backup, ec);
+        fs::rename(dir, backup, ec);
         if (ec) {
-            error = "the game folder is in use (close anything using " + Utf8(game_dir) + ")";
+            error = "the version folder is in use (close anything using " + Utf8(dir) + ")";
             return false;
         }
-    } else if (game_dir.has_parent_path()) {
-        fs::create_directories(game_dir.parent_path(), ec);
+    } else if (dir.has_parent_path()) {
+        fs::create_directories(dir.parent_path(), ec);
     }
-    fs::rename(staging, game_dir, ec);
+    fs::rename(staging, dir, ec);
     if (ec) {
         error = "the new installation could not be moved into place";
         if (replacing) {
             std::error_code restore;
-            fs::rename(backup, game_dir, restore);
+            fs::rename(backup, dir, restore);
             if (restore) error += "; the previous installation is in " + Utf8(backup);
         }
         return false;
@@ -135,24 +283,55 @@ bool ActivateStaging(const fs::path& staging, const fs::path& game_dir, const fs
     return true;
 }
 
-InstallResult InstallFromIso(const fs::path& iso, const fs::path& game_dir, const fs::path& user_dir,
-                             const InstallHooks& hooks, std::span<const GameProfile> profiles) {
+InstallResult InstallFromIso(const fs::path& iso, const fs::path& game_root, const InstallHooks& hooks,
+                             std::span<const GameProfile> profiles) {
     std::string why;
     std::error_code ec;
     if (hooks.phase) hooks.phase("Reading the disc image...");
-    if (Inside(iso, game_dir)) return Fail(InstallStatus::kInsideGameFolder, Utf8(iso));
     IsoImage image;
     if (!image.Open(iso, why)) return Fail(InstallStatus::kNotAnImage, why);
     Say(hooks, "disc image " + Utf8(iso) + ": volume \"" + image.volume_id() + "\", " +
                    std::to_string(image.files().size()) + " files, " + (image.joliet() ? "Joliet names" : "ISO names"));
-    const GameProfile* profile = IdentifyDisc(image, profiles, why);
-    if (!profile) return Fail(InstallStatus::kWrongDisc, why);
-    const std::vector<PlannedFile> plan = PlanInstall(image, *profile, why);
+    if (hooks.phase) hooks.phase("Identifying the game version...");
+    DiscMatch match = IdentifyDisc(image, profiles, why);
+    if (!match.profile) {
+        for (const std::string& line : match.diagnostics) Say(hooks, "unsupported disc: " + line);
+        InstallResult r = Fail(match.status, why);
+        r.diagnostics = std::move(match.diagnostics);
+        return r;
+    }
+    const GameProfile& profile = *match.profile;
+    Say(hooks, std::string("identified ") + match.disc->edition + ": " + profile.label() + " (" + profile.id() + ")");
+
+    if (!hooks.replace) {
+        for (const InstalledVersion& v : FindInstalledVersions(game_root, profiles)) {
+            if (v.profile != &profile || v.check.state != GameState::kReady) continue;
+            InstallResult r;
+            r.status = InstallStatus::kUpToDate;
+            r.profile = &profile;
+            r.disc = match.disc;
+            r.dir = v.dir;
+            r.detail = std::string(profile.label()) + " is already installed in " + Utf8(v.dir);
+            return r;
+        }
+    }
+
+    const fs::path target = VersionFolder(game_root, profile);
+    if (Inside(iso, target)) return Fail(InstallStatus::kInsideGameFolder, Utf8(iso));
+    Cabinet cabinet;
+    if (!OpenCabinet(image, profile, cabinet, why)) return Fail(InstallStatus::kDamagedDisc, why);
+    const std::vector<PlannedFile> plan = PlanInstall(image, profile.cabinet ? &cabinet : nullptr, profile, why);
     if (plan.empty()) return Fail(InstallStatus::kWrongDisc, why);
     uint64_t total = 0;
-    for (const PlannedFile& f : plan) total += f.source->size;
+    for (const PlannedFile& f : plan) {
+        if (!f.present())
+            return Fail(InstallStatus::kNoGuestImageSource,
+                        std::string("the disc lacks ") + f.file->source + ", the file the " +
+                            (f.file->role == FileRole::kStringTable ? "game text" : "guest image") + " is made from");
+        total += SourceSize(*f.file);
+    }
 
-    const fs::path staging = StagingFolder(game_dir);
+    const fs::path staging = StagingFolder(target);
     Remove(staging);
     fs::create_directories(staging, ec);
     if (ec) return Fail(InstallStatus::kExtractFailed, "cannot create " + Utf8(staging));
@@ -166,21 +345,72 @@ InstallResult InstallFromIso(const fs::path& iso, const fs::path& game_dir, cons
 
     if (hooks.phase) hooks.phase("Copying the game files...");
     uint64_t done = 0;
+    std::vector<const InstallFile*> damaged;
     for (const PlannedFile& f : plan) {
-        const fs::path to = staging / PathFromUtf8(f.installed);
+        const fs::path to = staging / PathFromUtf8(f.file->installed);
         fs::create_directories(to.parent_path(), ec);
-        const bool copied = image.Extract(*f.source, to, [&](uint64_t n) {
-            done += n;
-            return !hooks.progress || hooks.progress(done, total);
-        }, why);
+        std::string sha;
+        bool copied;
+        if (f.file->role == FileRole::kStringTable) {
+            std::vector<uint8_t> bytes, table;
+            copied = ReadSource(image, cabinet, f, bytes, why);
+            if (copied) {
+                done += bytes.size();
+                if (hooks.progress && !hooks.progress(done, total)) {
+                    why = "cancelled";
+                    copied = false;
+                } else if (Digest(bytes) != f.file->source_sha256) {
+                    damaged.push_back(f.file);
+                    continue;
+                }
+            }
+            copied = copied && DeriveStringTable(bytes, staging, table, why) && WriteBytes(to, table, why);
+            if (copied) sha = Digest(table);
+        } else if (f.disc) {
+            copied = image.Extract(*f.disc, to, [&](uint64_t n) {
+                done += n;
+                return !hooks.progress || hooks.progress(done, total);
+            }, why, &sha);
+        } else {
+            std::vector<uint8_t> bytes;
+            copied = cabinet.Read(*f.cabinet, bytes, why) && WriteBytes(to, bytes, why);
+            if (copied) {
+                sha = Digest(bytes);
+                done += bytes.size();
+                if (hooks.progress && !hooks.progress(done, total)) {
+                    why = "cancelled";
+                    copied = false;
+                }
+            }
+        }
         if (!copied) {
             Remove(staging);
             return Fail(why == "cancelled" ? InstallStatus::kCancelled : InstallStatus::kExtractFailed, why);
         }
+        if (sha != f.file->sha256) damaged.push_back(f.file);
+    }
+
+    size_t repaired = 0;
+    std::string unrepaired;
+    for (const InstallFile* f : damaged) {
+        Say(hooks, std::string(f->installed) + " on the disc differs from the pressed file (damaged copy)");
+        if (Repair(game_root, profiles, staging, *f, hooks)) {
+            ++repaired;
+        } else {
+            unrepaired += unrepaired.empty() ? "" : ", ";
+            unrepaired += f->installed;
+        }
+    }
+    if (!unrepaired.empty()) {
+        Remove(staging);
+        return Fail(InstallStatus::kDamagedDisc,
+                    "the image is damaged: " + unrepaired +
+                        " differ from the pressed files. Use another copy of the disc, or install another version "
+                        "first: its identical files repair them");
     }
 
     if (hooks.phase) hooks.phase("Checking the installed files...");
-    const GameCheck check = CheckGameFolder(staging, std::span<const GameProfile>(profile, 1));
+    const GameCheck check = CheckGameFolder(staging, profile);
     if (check.state != GameState::kReady) {
         Remove(staging);
         return Fail(InstallStatus::kValidationFailed, check.detail);
@@ -191,25 +421,32 @@ InstallResult InstallFromIso(const fs::path& iso, const fs::path& game_dir, cons
     }
 
     if (hooks.phase) hooks.phase("Activating the installation...");
-    if (!ActivateStaging(staging, game_dir, user_dir, why, hooks.log)) {
+    if (!ActivateStaging(staging, target, why, hooks.log)) {
         Remove(staging);
         return Fail(InstallStatus::kActivateFailed, why);
     }
     InstallResult result;
     result.status = InstallStatus::kInstalled;
-    result.profile = profile;
+    result.profile = &profile;
+    result.disc = match.disc;
+    result.dir = target;
     result.files = plan.size();
+    result.repaired = repaired;
     result.bytes = total;
-    result.detail = std::string(profile->label) + ", SHA-256 " + check.executable_sha256;
+    result.detail = std::string(match.disc->edition) + ", " + profile.label();
     return result;
 }
 
 const char* InstallStatusTitle(InstallStatus status) {
     switch (status) {
     case InstallStatus::kInstalled: return "Game installed";
+    case InstallStatus::kUpToDate: return "Already installed";
     case InstallStatus::kCancelled: return "Installation cancelled";
     case InstallStatus::kNotAnImage: return "Not a disc image";
     case InstallStatus::kWrongDisc: return "Unsupported disc";
+    case InstallStatus::kUnsupportedBuild: return "Unsupported Trespasser build";
+    case InstallStatus::kDamagedDisc: return "Damaged disc image";
+    case InstallStatus::kNoGuestImageSource: return "The disc lacks a file the game needs";
     case InstallStatus::kInsideGameFolder: return "Image inside the game folder";
     case InstallStatus::kNoSpace: return "Not enough disk space";
     case InstallStatus::kExtractFailed: return "Copy failed";

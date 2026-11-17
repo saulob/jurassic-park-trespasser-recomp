@@ -128,7 +128,7 @@ static __declspec(naked) void __fastcall selfmod_run(selfmod_ctx_t* c) {
 }
 
 static void report_first_entry(uint32_t va) {
-    uint32_t slot = (va - trespasser_selfmod_start) >> ENTRY_ALIGN_SHIFT;
+    uint32_t slot = (va - lift_selfmod_start) >> ENTRY_ALIGN_SHIFT;
     if (slot >= MAX_TRACKED_ENTRIES || (s_seen[slot / 8] & (1u << (slot % 8)))) return;
     s_seen[slot / 8] |= (unsigned char)(1u << (slot % 8));
     host_log("selfmod", "first native entry at 0x%08X from sub_%08X", va, g_cur_func);
@@ -172,7 +172,7 @@ static void selfmod_bridge(void) {
 }
 
 recomp_func_t selfmod_lookup(uint32_t va) {
-    if (va < trespasser_selfmod_start || va >= trespasser_selfmod_end) return NULL;
+    if (va < lift_selfmod_start || va >= lift_selfmod_end) return NULL;
     s_target = va;
     return selfmod_bridge;
 }
@@ -181,12 +181,12 @@ unsigned long selfmod_entries(void) { return (unsigned long)s_entries; }
 
 int selfmod_init(void) {
     DWORD old;
-    uint32_t size = trespasser_selfmod_end - trespasser_selfmod_start;
-    if (!VirtualProtect((void*)(uintptr_t)trespasser_selfmod_start, size, PAGE_EXECUTE_READWRITE, &old)) {
+    uint32_t size = lift_selfmod_end - lift_selfmod_start;
+    if (!VirtualProtect((void*)(uintptr_t)lift_selfmod_start, size, PAGE_EXECUTE_READWRITE, &old)) {
         host_log("selfmod", "VirtualProtect failed (error %lu)", GetLastError());
         return 0;
     }
     host_log("selfmod", "0x%08X-0x%08X keeps its original code: writable, executable, run natively",
-             trespasser_selfmod_start, trespasser_selfmod_end);
+             lift_selfmod_start, lift_selfmod_end);
     return 1;
 }

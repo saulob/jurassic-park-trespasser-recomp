@@ -1,0 +1,5 @@
+{
+  "literals": [
+    {"file": "src/host/host_policy.c", "literal": "0x600000", "category": "DATA_NOT_CODE", "reason": "free memory threshold in bytes"}
+  ]
+}

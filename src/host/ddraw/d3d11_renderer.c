@@ -9,6 +9,7 @@
  * the immediate context.
  */
 #define COBJMACROS
+#include "guest_va.h"
 #include "ao_policy.h"
 #include "assao_host.h"
 #include "ce_effects.h"
@@ -37,9 +38,9 @@
 #define MAX_UNKNOWN_FORMATS 16
 /* CRasterVid::Lock and CRasterWin::Lock (RTTI vtables 0x0064DAE4 / 0x0064DB54): every CPU access to
  * the game's rasters goes through them, so a readback is charged to the function that called them. */
-#define RASTER_LOCK 0x00503400u
-#define RASTER_WIN_LOCK 0x00504D20u
-#define RASTER_WIN_LOCK_THUNK 0x00504D40u
+#define RASTER_LOCK GVA(0x00503400)
+#define RASTER_WIN_LOCK GVA(0x00504D20)
+#define RASTER_WIN_LOCK_THUNK GVA(0x00504D40)
 #define UNTRACKED_LOG_LIMIT 8
 #define WATCH_PAGES 1024
 #define STATE_TEX_NONE 0u
@@ -399,6 +400,17 @@ void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, un
 }
 
 int d3dr_hardware(void) { return R.hardware; }
+
+static float s_scene_view[4], s_scene_frame[4];
+
+int d3dr_scene_view(float out[4]) {
+    if (s_scene_frame[2] > 0.0f) {
+        memcpy(s_scene_view, s_scene_frame, sizeof s_scene_view);
+        memset(s_scene_frame, 0, sizeof s_scene_frame);
+    }
+    memcpy(out, s_scene_view, sizeof s_scene_view);
+    return s_scene_view[2] > 0.0f && s_scene_view[3] > 0.0f;
+}
 
 int d3dr_set_debug_output(const char* mode) {
     static const char* const modes[] = { "texture", "vertex-color", "depth" };
@@ -1407,7 +1419,7 @@ static ID3D11ShaderResourceView* resolved_view(d3dr_target_t* t) {
 
 /* The game function behind a raster Lock: the newest virtual call into a Lock wrapper names it. */
 static uint32_t readback_caller(void) {
-    static const uint32_t wrappers[] = { RASTER_LOCK, RASTER_WIN_LOCK, RASTER_WIN_LOCK_THUNK };
+    const uint32_t wrappers[] = { RASTER_LOCK, RASTER_WIN_LOCK, RASTER_WIN_LOCK_THUNK };
     uint32_t caller = g_cur_func, found;
     if (caller != RASTER_LOCK && caller != RASTER_WIN_LOCK && caller != RASTER_WIN_LOCK_THUNK) return caller;
     found = icall_ring_caller(g_icall_trace, g_icall_from, g_icall_trace_idx, ICALL_TRACE_SIZE, wrappers, 3);
@@ -2548,6 +2560,16 @@ static void flush(void) {
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     scissor = viewport_scissor(dev, t);
+    if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && t->width && t->height) {
+        const float w = (float)(scissor.right - scissor.left) / (float)t->width;
+        const float h = (float)(scissor.bottom - scissor.top) / (float)t->height;
+        if (w * h > s_scene_frame[2] * s_scene_frame[3]) {
+            s_scene_frame[0] = (float)scissor.left / (float)t->width;
+            s_scene_frame[1] = (float)scissor.top / (float)t->height;
+            s_scene_frame[2] = w;
+            s_scene_frame[3] = h;
+        }
+    }
     if (effect == EFFECT_WATER && !water_ready(t, R.batch_water, &scissor, effect_views)) effect = EFFECT_NONE;
     if (effect == EFFECT_SKY && !sky_ready()) effect = EFFECT_NONE;
     bind_draw_states(dev, t, has_depth, sampled ? samplers : NULL, &vp, &scissor);

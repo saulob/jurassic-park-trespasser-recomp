@@ -3,33 +3,34 @@
  * the x87 evaluated at the 24-bit precision the game selects for its physics, and the wave model's step, which must
  * not shrink with the frame time. Above 1x Movement Speed the right hand follows Anne as at 1x (host_policy.h).
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include "cheats.h"
 #include "water_kernels.h"
 
-#define PELVIC_IDOF_VA 0x004F3FB0u
-#define WATER_INTEGRATE_VA 0x0060FC10u
+#define PELVIC_IDOF_VA GVA(0x004F3FB0)
+#define WATER_INTEGRATE_VA GVA(0x0060FC10)
 #define PELVIS_COUNT 8u
-#define PELVIS_USAGE 0x006CE290u
+#define PELVIS_USAGE GVA(0x006CE290)
 #define PELVIS_HUMAN 1u
-#define PELVIS_STATE 0x006CF198u
+#define PELVIS_STATE GVA(0x006CF198)
 #define PELVIS_STATE_STRIDE 0x300u
 #define PELVIS_MOUTH (21u * 12u)
 #define PELVIS_BODY 0u
 #define PELVIS_RIGHT_HAND (25u * 12u)
 #define DOF_BYTES 12u
 #define DOF_VELOCITY 4u
-#define PELVIS_DATA 0x006CEAB8u
+#define PELVIS_DATA GVA(0x006CEAB8)
 #define PELVIS_DATA_STRIDE 0xDCu
 #define PELVIS_HEIGHT (14u * 4u)
 #define PELVIS_ALIVE (49u * 4u)
-#define PELVIS_BIOTAG 0x0067B0C0u
+#define PELVIS_BIOTAG GVA(0x0067B0C0)
 #define PELVIS_BIOTAG_STRIDE 0x100u
 #define BIOTAG_BODY_Z (2u * 4u)
-#define KNEE_OFFSET_VA 0x00647F58u
-#define LOW_FACTOR_VA 0x0064D970u
-#define HIGH_FACTOR_VA 0x0064B9B0u
+#define KNEE_OFFSET_VA GVA(0x00647F58)
+#define LOW_FACTOR_VA GVA(0x0064D970)
+#define HIGH_FACTOR_VA GVA(0x0064B9B0)
 #define FPU_PRECISION_MASK 0x0300u
 #define WATER_ROOT 0x50u
 #define WATER_REQUIRED 0x9Cu

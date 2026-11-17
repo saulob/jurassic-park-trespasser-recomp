@@ -3,33 +3,34 @@
  * use (world textures and impostors) and the texture memory the game divides among them. Only guest data and
  * overridden functions change; the software renderer keeps the original values.
  */
+#include "guest_va.h"
 #include "host.h"
 #include "host_policy.h"
 
 #include <math.h>
 #include <string.h>
 
-#define CACHE_MIN_DISTANCE 0x0064E458u      /* bShouldCache's fMinDistanceToCache (.rdata) */
-#define CULL_COMBINED 0x006634ECu           /* fCullDistanceCombined: multiplies every squared cull distance */
-#define RECOMMENDED_TEX_DIM 0x006D0F1Cu     /* d3dDriver.iRecommendedMaxDim, from "Max Recommended Tex Dim" */
-#define LARGE_MEM_ALLOC_VA 0x005072D0u      /* CDirect3D::iLargeMemAllocMB */
-#define CACHE_PARAMETERS_VA 0x005477E0u     /* CRenderCache::SetParameters */
-#define TERRAIN_TEXTURE_MEM_VA 0x00492200u  /* CTextureNode::SetTextureMemSize(KB) */
-#define ALLOCATE_TEXTURE_MEM_VA 0x00506270u /* CDirect3D::AllocateTextureMemory */
-#define ALLOCATE_NON_LOCAL_VA 0x00506EB0u   /* CDirect3D::bAllocateNonLocalMemory: the split */
-#define ALLOCATE_MANAGED_VA 0x00506C00u     /* the same split for managed textures */
-#define CACHE_MEMORY_VA 0x00547710u         /* CRenderCache::SetTextureMemSize(system KB, video KB), cdecl */
-#define AGP_ALLOCATE_VA 0x00514FE0u         /* CAGPTextureMemManager::AllocateMemory(bytes) */
-#define SET_COMBINED_CULLING_VA 0x00477E00u /* (objects, shadows), cdecl */
-#define SET_GLOBAL_PARTITION_DATA_VA 0x004A24B0u
-#define IN_RANGE_VA 0x00477A40u             /* CPartition::bInRange(distance squared) */
-#define SHOULD_CACHE_VA 0x00543830u         /* bShouldCache(partition, camera, distance squared, ...), cdecl */
-#define FLAG_CACHEABLE_VA 0x00478A30u       /* CPartition::bFlagCacheable, thiscall */
-#define MAX_OBJECTS_PER_CACHE 0x007371A0u   /* rcsRenderCacheSettings.iMaxObjectsPerCache */
-#define D3D_DRIVER 0x006D0E98u
+#define CACHE_MIN_DISTANCE GVA(0x0064E458)      /* bShouldCache's fMinDistanceToCache (.rdata) */
+#define CULL_COMBINED GVA(0x006634EC)           /* fCullDistanceCombined: multiplies every squared cull distance */
+#define RECOMMENDED_TEX_DIM GVA(0x006D0F1C)     /* d3dDriver.iRecommendedMaxDim, from "Max Recommended Tex Dim" */
+#define LARGE_MEM_ALLOC_VA GVA(0x005072D0)      /* CDirect3D::iLargeMemAllocMB */
+#define CACHE_PARAMETERS_VA GVA(0x005477E0)     /* CRenderCache::SetParameters */
+#define TERRAIN_TEXTURE_MEM_VA GVA(0x00492200)  /* CTextureNode::SetTextureMemSize(KB) */
+#define ALLOCATE_TEXTURE_MEM_VA GVA(0x00506270) /* CDirect3D::AllocateTextureMemory */
+#define ALLOCATE_NON_LOCAL_VA GVA(0x00506EB0)   /* CDirect3D::bAllocateNonLocalMemory: the split */
+#define ALLOCATE_MANAGED_VA GVA(0x00506C00)     /* the same split for managed textures */
+#define CACHE_MEMORY_VA GVA(0x00547710)         /* CRenderCache::SetTextureMemSize(system KB, video KB), cdecl */
+#define AGP_ALLOCATE_VA GVA(0x00514FE0)         /* CAGPTextureMemManager::AllocateMemory(bytes) */
+#define SET_COMBINED_CULLING_VA GVA(0x00477E00) /* (objects, shadows), cdecl */
+#define SET_GLOBAL_PARTITION_DATA_VA GVA(0x004A24B0)
+#define IN_RANGE_VA GVA(0x00477A40)             /* CPartition::bInRange(distance squared) */
+#define SHOULD_CACHE_VA GVA(0x00543830)         /* bShouldCache(partition, camera, distance squared, ...), cdecl */
+#define FLAG_CACHEABLE_VA GVA(0x00478A30)       /* CPartition::bFlagCacheable, thiscall */
+#define MAX_OBJECTS_PER_CACHE GVA(0x007371A0)   /* rcsRenderCacheSettings.iMaxObjectsPerCache */
+#define D3D_DRIVER GVA(0x006D0E98)
 #define D3D_IN_USE (D3D_DRIVER + 0x1u)          /* CDirect3D::bUse */
 #define D3D_TEXTURE_TOTAL (D3D_DRIVER + 0x604u) /* bytes split among the texture pools */
-#define AGP_TEXTURE_MANAGER 0x006D2040u         /* +8 allocated, +0xC 85% mark, +0x10 95% mark */
+#define AGP_TEXTURE_MANAGER GVA(0x006D2040)         /* +8 allocated, +0xC 85% mark, +0x10 95% mark */
 #define SOFTWARE_SLOTS 8192u
 /* CPartition: CShortFloats (a float's high 16 bits), SPartitionData, cache state. */
 #define PARTITION_CACHE_MUL 0x4u
@@ -39,9 +40,9 @@
 #define PARTITION_FLAGS 0x10u
 #define PARTITION_NO_CACHE_UNTIL 0x14u
 #define PARTITION_PARENT 0x24u
-#define PARTITION_FRAME 0x006648F4u     /* SPartitionSettings::u4FrameNumber */
-#define MAX_ACCEPT_CYLINDER 0x00737190u /* rcsRenderCacheSettings.fMaxAcceptCylinder */
-#define AREA_THRESHOLD_SQR 0x0066F510u  /* CPartition::fAreaEfficiencyThresholdSqr */
+#define PARTITION_FRAME GVA(0x006648F4)     /* SPartitionSettings::u4FrameNumber */
+#define MAX_ACCEPT_CYLINDER GVA(0x00737190) /* rcsRenderCacheSettings.fMaxAcceptCylinder */
+#define AREA_THRESHOLD_SQR GVA(0x0066F510)  /* CPartition::fAreaEfficiencyThresholdSqr */
 
 static recomp_func_t s_large_mem_lifted, s_cache_parameters_lifted, s_terrain_mem_lifted, s_allocate_lifted;
 static recomp_func_t s_non_local_lifted, s_managed_lifted, s_cache_memory_lifted, s_agp_allocate_lifted;
@@ -362,7 +363,7 @@ static void engine_limits_apply(int hardware) {
 }
 
 void engine_limits_install(int hardware) {
-    static const struct {
+    const struct {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;

@@ -1,13 +1,17 @@
 # Copies lifted functions out of the generated sources, renamed <PREFIX><name>, for headless tests:
-#   cmake -DGEN_DIR=<src/recomp/gen> "-DFUNCS=sub_A;sub_B" -DPREFIX=lifted_ -DOUT=<file.c> -P extract_lifted.cmake
-# A function with a stable entry (src/host/guest_override_list.h) is defined as lifted_<name>.
+#   cmake -DGEN_DIR=<src/recomp/gen> -DLIFT_PREFIX=lift116_ "-DFUNCS=sub_A;sub_B" -DPREFIX=lifted_ -DOUT=<file.c> -P extract_lifted.cmake
+# The generated sources name every symbol <lift prefix><name> (tools/run_lift.py); the copies carry the plain names. A
+# function with a stable entry (src/host/guest_override_list.h) is defined as <lift prefix>lifted_<name>.
+if(NOT DEFINED LIFT_PREFIX)
+  set(LIFT_PREFIX "")
+endif()
 file(GLOB sources "${GEN_DIR}/recomp_*.c")
 set(text "#define RECOMP_GENERATED_CODE\n#include \"recomp_types.h\"\n#include <math.h>\n#include <string.h>\n")
 foreach(func IN LISTS FUNCS)
   set(found "")
   foreach(src IN LISTS sources)
     file(READ "${src}" body)
-    foreach(defined IN ITEMS "${func}" "lifted_${func}")
+    foreach(defined IN ITEMS "${LIFT_PREFIX}${func}" "${LIFT_PREFIX}lifted_${func}")
       string(FIND "${body}" "\nvoid ${defined}(void) {" at)
       if(at GREATER -1)
         string(SUBSTRING "${body}" ${at} -1 rest)
@@ -15,6 +19,9 @@ foreach(func IN LISTS FUNCS)
         math(EXPR end "${end} + 2")
         string(SUBSTRING "${rest}" 0 ${end} found)
         string(REPLACE "void ${defined}(void)" "void ${PREFIX}${func}(void)" found "${found}")
+        if(NOT LIFT_PREFIX STREQUAL "")
+          string(REPLACE "${LIFT_PREFIX}" "" found "${found}")
+        endif()
         break()
       endif()
     endforeach()

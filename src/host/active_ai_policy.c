@@ -1,27 +1,30 @@
+#include "guest_va.h"
 #include "active_ai_policy.h"
 
 #include <string.h>
 
-const uint32_t active_ai_override_vas[] = {
-    0x00419330u, /* CAISystem constructor */
-    0x004195A0u, /* CAISystem destructor */
-    0x00419800u, /* Activate */
-    0x004199D0u, /* Deactivate */
-    0x00419C60u, /* deactivate within a radius */
-    0x00419CE0u, /* the first active animal near an object sees it */
-    0x00419DB0u, /* every active animal near a point hears it */
-    0x00419E30u, /* think scheduler */
-    0x0041A200u, /* Process */
-    0x0041AE50u, /* Save */
-    0x0041AF00u, /* Load */
-    0x004213F0u, /* brain influences (wrapped) */
-    0x004218C0u, /* its tail call, where entries 4..6 join the influences */
+static const unsigned k_override_ids[] = {
+    GVA_ID(0x00419330), /* CAISystem constructor */
+    GVA_ID(0x004195A0), /* CAISystem destructor */
+    GVA_ID(0x00419800), /* Activate */
+    GVA_ID(0x004199D0), /* Deactivate */
+    GVA_ID(0x00419C60), /* deactivate within a radius */
+    GVA_ID(0x00419CE0), /* the first active animal near an object sees it */
+    GVA_ID(0x00419DB0), /* every active animal near a point hears it */
+    GVA_ID(0x00419E30), /* think scheduler */
+    GVA_ID(0x0041A200), /* Process */
+    GVA_ID(0x0041AE50), /* Save */
+    GVA_ID(0x0041AF00), /* Load */
+    GVA_ID(0x004213F0), /* brain influences (wrapped) */
+    GVA_ID(0x004218C0), /* its tail call, where entries 4..6 join the influences */
 };
-const unsigned active_ai_override_count = sizeof active_ai_override_vas / sizeof active_ai_override_vas[0];
+const unsigned active_ai_override_count = sizeof k_override_ids / sizeof k_override_ids[0];
+
+uint32_t active_ai_override_va(unsigned i) { return GVA_AT(k_override_ids[i]); }
 
 int active_ai_overrides(uint32_t va) {
     for (unsigned i = 0; i < active_ai_override_count; i++)
-        if (active_ai_override_vas[i] == va) return 1;
+        if (active_ai_override_va(i) == va) return 1;
     return 0;
 }
 

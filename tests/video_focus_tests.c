@@ -62,11 +62,11 @@ static void load_gen(void) {
     }
 }
 
-/* The text of lifted function `name` (from its definition to the closing brace of column 0). */
+/* The text of lifted function `name` of lift116 (from its definition to the closing brace of column 0). */
 static char* function_body(const char* name) {
     char head[64], hooked[80];
-    snprintf(head, sizeof head, "void %s(void) {", name);
-    snprintf(hooked, sizeof hooked, "void lifted_%s(void) {", name);
+    snprintf(head, sizeof head, "void lift116_%s(void) {", name);
+    snprintf(hooked, sizeof hooked, "void lift116_lifted_%s(void) {", name);
     for (int i = 0; i < s_gen.count; i++) {
         const char* at = strstr(s_gen.all[i], head);
         const char* end;
@@ -130,10 +130,10 @@ static void test_play_and_frame_step(void) {
         CHECK(!find_in(frame, "0x00669B90"), "and never looks for the sentinel: it relies on no video playing without a screen");
         free(frame);
     }
-    CHECK(count_all("RECOMP_CALL(sub_00418AE0)") == 5, "CVideoWnd::Play has five callers (%d)", count_all("RECOMP_CALL(sub_00418AE0)"));
-    CHECK(count_all("RECOMP_CALL(sub_00418AE0); /* 0x0040F2BC") == 1 && count_all("RECOMP_CALL(sub_00418AE0); /* 0x00415687") == 1 &&
-              count_all("RECOMP_CALL(sub_00418AE0); /* 0x004163FA") == 1 && count_all("RECOMP_CALL(sub_00418AE0); /* 0x0040F440") == 1 &&
-              count_all("RECOMP_CALL(sub_00418AE0); /* 0x0040F46A") == 1,
+    CHECK(count_all("RECOMP_CALL(lift116_sub_00418AE0)") == 5, "CVideoWnd::Play has five callers (%d)", count_all("RECOMP_CALL(lift116_sub_00418AE0)"));
+    CHECK(count_all("RECOMP_CALL(lift116_sub_00418AE0); /* 0x0040F2BC") == 1 && count_all("RECOMP_CALL(lift116_sub_00418AE0); /* 0x00415687") == 1 &&
+              count_all("RECOMP_CALL(lift116_sub_00418AE0); /* 0x004163FA") == 1 && count_all("RECOMP_CALL(lift116_sub_00418AE0); /* 0x0040F440") == 1 &&
+              count_all("RECOMP_CALL(lift116_sub_00418AE0); /* 0x0040F46A") == 1,
           "tpassintro (start-up), newgame (New Game), credits (menu), win and credits (the finished game): the game's own five calls");
     loop = function_body("sub_00418AE0");
     CHECK(loop && find_in(loop, "RECOMP_ICALL(MEM32(0x645390)); /* 0x00418EED") && !find_in(loop, "MEM32(0x645398)"),

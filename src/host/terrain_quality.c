@@ -5,25 +5,27 @@
  * variables once per call to build its evaluation constants, so the modern values are in place for that call only:
  * levels, save games and the software renderer keep their own.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <string.h>
 
-#define QUAD_ROOT_UPDATE_VA 0x0049E530u   /* CQuadRootTIN::Update(camera, force) */
-#define RVAR_NO_DYN_TEXTURE 0x0066FB78u   /* CRangeVar<float> {data, max, min} */
-#define RVAR_PIXEL_TOL 0x0066FAD8u
-#define RVAR_PIXEL_TOL_FAR 0x0066FB68u
-#define QUALITY_SETTINGS 0x0066C4E8u      /* qdQualitySettings[5], 0x5C each */
+#define QUAD_ROOT_UPDATE_VA GVA(0x0049E530)   /* CQuadRootTIN::Update(camera, force) */
+#define RVAR_NO_DYN_TEXTURE GVA(0x0066FB78)   /* CRangeVar<float> {data, max, min} */
+#define RVAR_PIXEL_TOL GVA(0x0066FAD8)
+#define RVAR_PIXEL_TOL_FAR GVA(0x0066FB68)
+#define QUALITY_SETTINGS GVA(0x0066C4E8)      /* qdQualitySettings[5], 0x5C each */
 #define QUALITY_STRIDE 0x5Cu
 #define QUALITY_DISTANCE_SCALE 0x44u      /* fTerrainDistanceScale */
 #define QUALITY_PIXEL_TOL_ADJ 0x48u       /* fPixelTolAdj */
 #define ROOT_QUALITY 0x40u                /* CQuadRootTIN::iLastQualitySetting */
-#define MAIN_CAMERA_HOLDER 0x0073F444u    /* [[holder] + 0x14] is the main camera */
+#define MAIN_CAMERA_HOLDER GVA(0x0073F444)    /* [[holder] + HOLDER_CAMERA] is the main camera */
+#define HOLDER_CAMERA 0x14u
 #define CAMERA_FAR 0xB0u                  /* SProperties (+0x74) rFarClipPlaneDist (+0x3C) */
-#define PAGE_SIZE 0x0066424Cu             /* terrain texture page size */
-#define REGION_UPLOADS 0x006D1461u        /* d3dDriver.bUseRegionUploads */
-#define BASE_TEXTURE 0x0066F9C4u          /* CRaster* of the level's base texture: +8 width, +0xC height */
-#define BASE_REGION_SIZE 0x0066F9B0u      /* the base texture's region in the pages: width, height */
+#define PAGE_SIZE GVA(0x0066424C)             /* terrain texture page size */
+#define REGION_UPLOADS GVA(0x006D1461)        /* d3dDriver.bUseRegionUploads */
+#define BASE_TEXTURE GVA(0x0066F9C4)          /* CRaster* of the level's base texture: +8 width, +0xC height */
+#define BASE_REGION_SIZE GVA(0x0066F9B0)      /* the base texture's region in the pages: width, height */
 
 static recomp_func_t s_update_lifted;
 static int s_installed;
@@ -39,7 +41,7 @@ void terrain_quality_set_render_height(int height) {
 }
 
 static float main_camera_far(void) {
-    uint32_t holder = MEM32(MAIN_CAMERA_HOLDER), cam = holder ? MEM32(holder + 0x14) : 0;
+    uint32_t holder = MEM32(MAIN_CAMERA_HOLDER), cam = holder ? MEM32(holder + HOLDER_CAMERA) : 0;
     return cam ? rdf(cam + CAMERA_FAR) : 0.0f;
 }
 

@@ -61,6 +61,7 @@ static size_t build_record(uint8_t* out, uint32_t id_hint, const uint32_t* units
     wr32(out + 20, (uint32_t)payload_size);
     wr32(out + 24, 22050);
     wr32(out + 28, format);
+    if (block_size) wr32(out + 32, 0x24);
     if (block_size) memcpy(out + 0x24, block, block_size);
     memcpy(out + header, payload, payload_size);
     return header + payload_size;
@@ -233,6 +234,40 @@ static void record_line(void* ctx, uint32_t units, const char* text, size_t n) {
     c->units[c->lines] = units;
     jpt_cp_to_utf8(1252, text, n, c->text[c->lines], sizeof c->text[0]);
     c->lines++;
+}
+
+/* A sample the release shipped without captions (the Spanish and Brazilian files have none): the descriptor must say a
+ * block follows it, as every captioned retail sample does, or the game does not read the block. */
+static void test_caption_into_a_sample_without_one(void) {
+    static const uint32_t ids[2] = {0x1111, 0x2222};
+    static const int none[2] = {0, 0};
+    static const uint32_t units[1] = {7};
+    static const char* const lines[1] = {"Fixed"};
+    blob_t retail = make_retail(ids, 2, none);
+    uint8_t block[256], dir[0x18 + 2 * 0x38], record[400];
+    size_t size;
+    stream_caption_t caption;
+    stream_pack_stats_t stats;
+    stream_pack_t* pack;
+    block_of(lines, units, 1, block, &size);
+    caption = (stream_caption_t){0x2222, block, size};
+    CHECK(rd32(retail.data + 0x18 + 0x38 + 0x34) == 0 && rd32(retail.data + 0x18 + 0x38 + 0x1C) == 0x24);
+    pack = stream_pack_open(read_blob, &retail, retail.size, NULL, 0, &caption, 1, &stats);
+    CHECK(pack != NULL && stats.captions_applied == 1);
+    if (pack) {
+        const uint8_t* entry = dir + 0x18 + 0x38;
+        uint32_t offset, total;
+        CHECK(stream_pack_read(pack, 0, dir, sizeof dir) == (long)sizeof dir);
+        offset = rd32(entry + 4);
+        total = rd32(entry + 8);
+        CHECK(rd32(entry + 0x1C) == 0x24 + size && rd32(entry + 0x34) == 0x24);
+        CHECK(stream_pack_read(pack, offset, record, total) == (long)total);
+        CHECK(rd32(record + 8) == 0x24 + size && rd32(record + 0x20) == 0x24 && !memcmp(record + 0x24, block, size));
+        CHECK(!memcmp(record, entry + 0x14, 0x24));
+        CHECK(rd32(dir + 0x18 + 0x34) == 0 && rd32(dir + 0x18 + 0x1C) == 0x24);
+        stream_pack_close(pack);
+    }
+    free(retail.data);
 }
 
 static void test_embedded_audio(void) {
@@ -481,6 +516,63 @@ static const timing_t* timing_of(const timings_t* t, uint32_t id) {
     return NULL;
 }
 
+/* Each installed release's own Stream.tpa with the English captions given to it: every sample with a block says so in its
+ * descriptor, the other samples do not, and the game reads back the block that was given. */
+static void test_release_views(void) {
+    static const char* const files[][2] = { { "en-116", "Stream.tpa" }, { "ru-116", "Stream.tpa" }, { "es-117", "stream.tpa" },
+                                            { "ptbr-117", "Stream.tpa" } };
+    for (size_t f = 0; f < sizeof files / sizeof files[0]; f++) {
+        char path[MAX_PATH];
+        HANDLE file;
+        LARGE_INTEGER size;
+        static expected_t expected;
+        stream_caption_t captions[512];
+        stream_pack_stats_t stats;
+        stream_pack_t* pack;
+        const char* english;
+        size_t english_size;
+        uint8_t view_head[0x18], *view_dir;
+        uint32_t count, with_block = 0, flagged = 0, mismatched = 0;
+        snprintf(path, sizeof path, "%s/game/versions/%s/data/%s", JPT_SOURCE_DIR, files[f][0], files[f][1]);
+        file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_RANDOM_ACCESS, NULL);
+        if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
+            printf("stream_tests: no Stream.tpa for %s: skipped\n", files[f][0]);
+            s_skipped++;
+            if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+            continue;
+        }
+        memset(&expected, 0, sizeof expected);
+        CHECK(l10n_asset(JPT_L10N_ENGLISH, JPT_L10N_SUBTITLES_ASSET, &english, &english_size));
+        jpt_l10n_read_subtitles(english, english_size, expect_caption, &expected);
+        for (int i = 0; i < expected.count; i++) captions[i] = (stream_caption_t){expected.id[i], expected.block[i], expected.size[i]};
+        pack = stream_pack_open(read_file, file, (uint64_t)size.QuadPart, NULL, 0, captions, expected.count, &stats);
+        CHECK(pack != NULL);
+        if (pack) {
+            CHECK(stream_pack_read(pack, 0, view_head, 0x18) == 0x18);
+            count = rd32(view_head + 4);
+            view_dir = (uint8_t*)malloc((size_t)count * 0x38);
+            CHECK(view_dir && stream_pack_read(pack, 0x18, view_dir, (size_t)count * 0x38) == (long)((size_t)count * 0x38));
+            for (uint32_t i = 0; view_dir && i < count; i++) {
+                const uint8_t* e = view_dir + (size_t)i * 0x38;
+                const int block = rd32(e + 0x1C) > 0x24;
+                with_block += (uint32_t)block;
+                flagged += rd32(e + 0x34) == 0x24;
+                mismatched += block != (rd32(e + 0x34) == 0x24);
+            }
+            CHECK(mismatched == 0 && with_block == flagged);
+            CHECK(with_block >= 390);
+            {
+                played_t played = {&expected, 0, 0};
+                CHECK(jpt_tpa_captions(read_view, pack, stream_pack_size(pack), check_played, &played, NULL));
+                CHECK(played.seen > 390 && played.differing == 0);
+            }
+            free(view_dir);
+            stream_pack_close(pack);
+        }
+        CloseHandle(file);
+    }
+}
+
 static void test_timing_parity(void) {
     static const char* const kinds[] = {JPT_L10N_SUBTITLES_ASSET, JPT_L10N_SUBTITLES_PORT_ASSET};
     const char* data;
@@ -585,6 +677,8 @@ static void test_no_development_path(void) {
 
 int main(void) {
     test_synthetic_pack();
+    test_caption_into_a_sample_without_one();
+    test_release_views();
     test_embedded_audio();
     test_retail_view();
     test_timing_parity();

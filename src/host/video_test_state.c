@@ -1,10 +1,11 @@
+#include "guest_va.h"
 #include "video_test_state.h"
 
 const vt_video_t vt_videos[VT_VIDEO_COUNT] = {
-    { "tpassintro.smk", 0x00660B88u },
-    { "newgame.smk", 0x00661298u },
-    { "credits.smk", 0x00660B98u },
-    { "win.smk", 0x00660BA8u },
+    { "tpassintro.smk", GVA_ID(0x00660B88) },
+    { "newgame.smk", GVA_ID(0x00661298) },
+    { "credits.smk", GVA_ID(0x00660B98) },
+    { "win.smk", GVA_ID(0x00660BA8) },
 };
 
 int vt_f5(vt_state_t* s, int main_menu_front) {

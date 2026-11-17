@@ -104,13 +104,11 @@ static uint8_t* read_file(const char* path, size_t* n) {
     return data;
 }
 
-static uint16_t* load565(const char* name, int* w, int* h) {
-    char path[MAX_PATH];
+static uint16_t* load565_at(const char* path, int* w, int* h) {
     size_t n = 0;
     uint8_t* data;
     uint32_t* px = NULL;
     uint16_t* out = NULL;
-    snprintf(path, sizeof path, MENU_DIR "%s", name);
     data = read_file(path, &n);
     if (data && fa_tga_decode(data, n, &px, w, h) && (out = (uint16_t*)malloc(sizeof(uint16_t) * (size_t)*w * *h)))
         for (int i = 0; i < *w * *h; i++) {
@@ -120,6 +118,12 @@ static uint16_t* load565(const char* name, int* w, int* h) {
     free(px);
     free(data);
     return out;
+}
+
+static uint16_t* load565(const char* name, int* w, int* h) {
+    char path[MAX_PATH];
+    snprintf(path, sizeof path, MENU_DIR "%s", name);
+    return load565_at(path, w, h);
 }
 
 static void source(fa_source_t* s, const uint16_t* bits, int w, int h, int keyed) {
@@ -675,12 +679,66 @@ static void dump_titles(const char* dir) {
     }
 }
 
+/* The Brazilian release's own credits picture is lettered "AREA DE TRABALHO": its lettering is found like any other, and
+ * only that version and button get the corrected label. */
+static void test_ptbr_credits_label(void) {
+    static const char dir[] = ROOT "game/versions/ptbr-117/data/menu/";
+    char path[MAX_PATH];
+    int w, h, w1, h1;
+    uint16_t *normal, *hover;
+    fa_source_t a, b;
+    fp_plaque_t plaque;
+    CHECK(!strcmp(fe_release_label_fix("ptbr-117", FE_WND_OPTIONS, 1003), "CR\xC9" "DITOS"), "the Brazilian credits button reads CREDITOS");
+    CHECK(!fe_release_label_fix("ptbr-117", FE_WND_OPTIONS, 1002) && !fe_release_label_fix("ptbr-117", FE_WND_GAME_MENU, 1003), "only that button");
+    CHECK(!fe_release_label_fix("en-116", FE_WND_OPTIONS, 1003) && !fe_release_label_fix("ru-116", FE_WND_OPTIONS, 1003) &&
+              !fe_release_label_fix("es-117", FE_WND_OPTIONS, 1003) && !fe_release_label_fix(NULL, FE_WND_OPTIONS, 1003),
+          "no other version");
+    {
+        static const struct {
+            const char* id;
+            const char* native;
+        } releases[] = { { "en-116", "en" }, { "ru-116", "ru" }, { "es-117", "es" }, { "ptbr-117", "pt-BR" } };
+        static const char* const chosen[] = { "en", "ru", "es", "pt-BR", "fr" };
+        for (size_t v = 0; v < sizeof releases / sizeof releases[0]; v++)
+            for (size_t l = 0; l < sizeof chosen / sizeof chosen[0]; l++) {
+                const int native = !strcmp(releases[v].native, chosen[l]);
+                int fixes = 0, relabels = 0;
+                for (int kind = 0; kind < 16; kind++)
+                    for (int id = 1000; id < 1012; id++) {
+                        const char* text = fe_button_text(native, "TRANSLATED", fe_release_label_fix(releases[v].id, kind, id));
+                        fixes += native && text != NULL;
+                        relabels += !native && text != NULL && !strcmp(text, "TRANSLATED");
+                    }
+                if (native) CHECK(fixes == !strcmp(releases[v].id, "ptbr-117"), "%s in %s: the release's own menus, only the Credits fix", releases[v].id, chosen[l]);
+                else CHECK(relabels == 16 * 12, "%s in %s: the port's labels for another language", releases[v].id, chosen[l]);
+            }
+    }
+    snprintf(path, sizeof path, "%sgm_credits_0.tga", dir);
+    normal = load565_at(path, &w, &h);
+    snprintf(path, sizeof path, "%sgm_credits_1.tga", dir);
+    hover = load565_at(path, &w1, &h1);
+    if (!normal || !hover) {
+        printf("Brazilian credits picture: game files not found, skipped\n");
+        free(normal);
+        free(hover);
+        return;
+    }
+    source(&a, normal, w, h, 1);
+    source(&b, hover, w1, h1, 1);
+    memset(&plaque, 0, sizeof plaque);
+    CHECK(w == w1 && h == h1 && fp_button(&a, &b, &plaque), "the lettering of the Brazilian credits picture is found");
+    fp_free(&plaque);
+    free(normal);
+    free(hover);
+}
+
 void frontend_l10n_tests(int* checks, int* failures, const char* dump_dir) {
     char probe[MAX_PATH];
     fe_painter_t* p;
     g_checks = checks;
     g_failures = failures;
     test_fill_edges();
+    test_ptbr_credits_label();
     snprintf(probe, sizeof probe, MENU_DIR "ms_new_1.tga");
     if (GetFileAttributesA(probe) == INVALID_FILE_ATTRIBUTES) {
         printf("translated labels: game files not found, skipped\n");

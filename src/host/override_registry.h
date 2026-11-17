@@ -14,8 +14,8 @@ typedef enum {
     OVERRIDE_REFUSED_TWICE
 } override_refusal_t;
 
-/* One lifted function the host may replace. Its stable entry (sub_<va>) always jumps through *entry, which holds the
- * lifted body until an override is installed; nothing depends on how the linker reaches sub_<va>. */
+/* One lifted function the host may replace. Its stable entry (<lift>_sub_<va>) always jumps through *entry, which holds
+ * the lifted body until an override is installed; nothing depends on how the linker reaches the entry. */
 typedef struct {
     uint32_t va;
     override_fn_t* entry;
@@ -43,13 +43,18 @@ typedef struct {
     unsigned refused, required_refused;
 } override_counts_t;
 
-/* Expansions of a GUEST_OVERRIDE(hex address, REQUIRED|OPTIONAL) list: the lifted body's declaration, the stable entry
- * that replaces the lifted function's own symbol, and the registry row. */
-#define OVERRIDE_LIFTED_DECL(va, need) void lifted_sub_##va(void);
-#define OVERRIDE_STABLE_ENTRY(va, need)                    \
-    static override_fn_t s_entry_##va = lifted_sub_##va; \
-    void sub_##va(void) { s_entry_##va(); }
-#define OVERRIDE_ROW(va, need) { 0x##va##u, &s_entry_##va, lifted_sub_##va, OVERRIDE_##need, OVERRIDE_UNUSED },
+/* Expansions of a GUEST_OVERRIDE(hex address, REQUIRED|OPTIONAL) list for the lift named by OVERRIDE_LIFT (its symbol
+ * prefix, e.g. lift116_): the lifted body's declaration, the stable entry that is the symbol every call reaches, and the
+ * registry row. */
+#define OVERRIDE_JOIN_(a, b) a##b
+#define OVERRIDE_JOIN(a, b) OVERRIDE_JOIN_(a, b)
+#define OVERRIDE_NAME(kind, va) OVERRIDE_JOIN(OVERRIDE_LIFT, OVERRIDE_JOIN(kind, va))
+#define OVERRIDE_LIFTED_DECL(va, need) void OVERRIDE_NAME(lifted_sub_, va)(void);
+#define OVERRIDE_STABLE_ENTRY(va, need)                                                  \
+    static override_fn_t OVERRIDE_NAME(s_entry_, va) = OVERRIDE_NAME(lifted_sub_, va); \
+    void OVERRIDE_NAME(sub_, va)(void) { OVERRIDE_NAME(s_entry_, va)(); }
+#define OVERRIDE_ROW(va, need) \
+    { 0x##va##u, &OVERRIDE_NAME(s_entry_, va), OVERRIDE_NAME(lifted_sub_, va), OVERRIDE_##need, OVERRIDE_UNUSED },
 
 /* Sorted by va without duplicates, every entry still pointing at its lifted body. */
 int override_registry_valid(const override_registry_t* r);

@@ -1,0 +1,46 @@
+{
+ "allow": [
+  {
+   "file": "*",
+   "match": "\\bg_esp\\b",
+   "category": "STACK_ARGUMENT",
+   "reason": "an argument or local of a hooked guest function: the stack bytes each one releases are compared per build by tools/abi_check.py"
+  },
+  {
+   "file": "active_ai.c",
+   "match": "\\bbuf\\s*\\+",
+   "category": "HOST_BUFFER",
+   "reason": "offsets inside the scratch buffer the host reserves below the guest stack"
+  },
+  {
+   "file": "frontend_hd.c",
+   "match": "CTRL_RECT",
+   "category": "TYPE_LAYOUT",
+   "reason": "the bottom member of a Windows RECT, whose layout the type fixes"
+  },
+  {
+   "file": "patch117_policy.c",
+   "match": "\\b(image|header)\\s*\\+",
+   "category": "FILE_FORMAT",
+   "reason": "fields of the COFF header and section table of the executable image, whose layout the format fixes"
+  },
+  {
+   "file": "tutorial_prompts.c",
+   "match": "\\bat\\s*\\+",
+   "category": "HOST_BUFFER",
+   "reason": "the line records the host builds in its own scratch block"
+  },
+  {
+   "file": "physics_watch.c",
+   "match": "12u \\+ 4u|PELVIS_SHOULDER \\+",
+   "category": "TYPE_LAYOUT",
+   "reason": "the y and z of a Vec3 of floats, whose layout the type fixes"
+  },
+  {
+   "file": "stream_pack.c",
+   "match": "\\bentry|head|record\\b|\\+ (4|8)",
+   "category": "FILE_FORMAT",
+   "reason": "the records of a TPA data pack, read in memory as the file stores them"
+  }
+ ]
+}

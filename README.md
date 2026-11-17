@@ -126,12 +126,13 @@ Interactive, hosted by TresCom.
 
 ## How it works
 
-- The target is `setup\tpassp6.exe` from the disc: retail 1.0.116, Pentium Pro build,
-  SHA-256 `d88bb548…5679ed`.
-- [pcrecomp](https://github.com/sp00nznet/pcrecomp) recovers the functions in `.text` and
-  lifts them to C.
-- The host is a 32-bit process that maps the original image at `0x00400000`, forwards its
-  imports to the real Windows DLLs, and runs the lifted C in place of `.text`.
+- The lifts were made from the retail builds (1.0.116 Pentium Pro, and the Spanish and Brazilian 117 builds) with
+  [pcrecomp](https://github.com/sp00nznet/pcrecomp), which recovers the functions in `.text` and lifts them to C. They
+  are project artifacts (`lifts\`); the original executables are development inputs only and are not required to
+  install, build or play the recomp.
+- The host is one 32-bit program, `trespasser_recomp.exe`, that carries every lift, maps the guest image the launcher
+  installed from your disc at `0x00400000`, forwards its imports to the real Windows DLLs, and runs the lifted C of the
+  selected game version in place of `.text`.
 - `SelfMod`, the self-patching rasteriser section, runs as the original machine code.
 
 [ARCHITECTURE](docs/ARCHITECTURE.md) lists exactly which parts are recompiled, which are
@@ -147,17 +148,17 @@ original code, and which are Windows.
 Nothing that is already current is redone, so the same command is the normal way to build and to play.
 `.\tools\run.ps1` is an optional shortcut that starts the existing build without checking for changes.
 
-The first run needs your disc image (`-Iso`, `TRESPASSER_ISO` or `config\local.json`) and about
-20 minutes of analysis. Later runs redo only what changed. Details, options and what to do when
-a run stops: [BUILD](docs/BUILD.md).
+The build needs no game files. To play, import your own disc image from the launcher's Play page. Details, options and
+what to do when a run stops: [BUILD](docs/BUILD.md).
 
 ## Layout
 
 ```
-config/        target fingerprint, decoder fixups, extra entry points
-tools/         disc extraction, analysis and lift drivers
+config/        profiles, guest maps, decoder fixups, extra entry points (lift development)
+lifts/         the lifted builds (tar.xz) and their manifest
+tools/         lift generation (maintainers), checks and build scripts
 src/host/      the runtime host (hand-written)
-src/recomp/gen lifted C (generated, ignored by Git)
+src/recomp/gen* lifted C unpacked from lifts/ by CMake (ignored by Git)
 launcher/      the launcher: pages, disc image reader, installer (C++)
 assets/        launcher header art, sponsor heart, page icons and the translated text (assets/translations)
 packaging/     third-party licence notices
@@ -282,8 +283,10 @@ There is no separate language for the videos.
 - Each cue follows the frame the game's Smacker player shows, so subtitles stop with the video, end with it and are
   never left on the next screen; Skip Intro still skips the video and its subtitles.
 - Only the retail files get subtitles: each timeline is tied to the file's size and the SHA-256 of its first 64 KiB.
-  A replaced or dubbed video (a mod, the official translated releases) plays without them, and the log says
-  `unknown replacement video, subtitles skipped`.
+  A replaced video (a mod) plays without them, and the log says `unknown replacement video, subtitles skipped`. The
+  Russian, Spanish and Brazilian Portuguese releases' dubbed videos each have their own timeline (the dubs speak on their
+  own timing); the words come from the chosen language, never from the timeline. `tools/smk_inventory.py` lists the
+  videos with their sizes and hashes and `tools/smk_speech.py` derives the dubs' cue frames from their audio.
 - Works with Direct3D 11 (HD video presentation and the game's own) and with the Software renderer (drawn at the
   software picture's size).
 

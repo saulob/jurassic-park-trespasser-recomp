@@ -9,7 +9,7 @@ import json
 import subprocess
 import sys
 
-from common import ANALYSIS_DIR, PCRECOMP_DIR, TARGET, require_target_exe, sha256_of
+from common import ANALYSIS_DIR, PCRECOMP_DIR, PROFILE_ID, TARGET, require_target_exe, sha256_of
 
 PE_TOOLS = PCRECOMP_DIR / "tools"
 
@@ -29,6 +29,7 @@ def run(script, *args, log=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--skip-catalog", action="store_true", help="keep the existing functions.json")
+    ap.add_argument("--profile", default=PROFILE_ID, help="build to analyse (config/profiles/<id>.json); default 1.0.116")
     args = ap.parse_args()
 
     exe = require_target_exe()

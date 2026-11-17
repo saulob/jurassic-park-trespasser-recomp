@@ -3,6 +3,7 @@
  * frontend_bridge_tests.c covers the bridge to the game's objects.
  *   frontend_tests.exe [--dump <dir>]   (--dump writes .ppm pictures of the mock screens) */
 #include "frontend_assets.h"
+#include "test_profile.h"
 #include "frontend_layout.h"
 #include "host_policy.h"
 #include "jpt_display.h"
@@ -997,6 +998,7 @@ static void test_prompt_glyphs(const char* dump_dir) {
 }
 
 int main(int argc, char** argv) {
+    test_profile_activate();
     const char* dump = NULL;
     char path[MAX_PATH];
     for (int i = 1; i < argc; i++)

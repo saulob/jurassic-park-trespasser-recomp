@@ -155,6 +155,7 @@ void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty) 
 static const char* s_label_from;
 static const char* s_label_to;
 
+int l10n_release_language(void) { return 0; }
 const char* l10n_label(const char* english) { return s_label_from && !strcmp(english, s_label_from) ? s_label_to : NULL; }
 
 void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y) {

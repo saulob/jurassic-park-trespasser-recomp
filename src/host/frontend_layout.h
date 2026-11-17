@@ -213,6 +213,14 @@ void fe_layout_options(const int32_t* ids, const int* widths, const int* heights
 /* Rows of the audio options spread evenly over the band [top, bottom): the new top of each row. */
 void fe_layout_rows(int count, int top, int bottom, int row_h, int* row_tops);
 
+/* The lettering a release's own picture gets wrong, in the game's display code page: the Brazilian Portuguese Options
+ * button that opens the credits is lettered "AREA DE TRABALHO". NULL for every other version and button. */
+const char* fe_release_label_fix(const char* version_id, int window_kind, int button_id);
+
+/* The text a button's lettering is replaced by: in the release's own language only the release's correction, else the
+ * language's label. NULL leaves the picture as it is. */
+const char* fe_button_text(int release_language, const char* translated, const char* release_fix);
+
 /* Controls (controls.ddf, 320x200): the host's larger layout with wider label columns. */
 #define FE_CONTROLS_W 320
 #define FE_CONTROLS_H 200

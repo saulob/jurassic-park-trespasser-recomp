@@ -9,7 +9,7 @@
 
 typedef struct {
     const char* file;
-    uint32_t name_va; /* the name string the game itself passes to CVideoWnd::Play */
+    unsigned name_id; /* GVA id of the name string the game itself passes to CVideoWnd::Play */
 } vt_video_t;
 
 extern const vt_video_t vt_videos[VT_VIDEO_COUNT];

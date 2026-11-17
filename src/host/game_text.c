@@ -2,6 +2,7 @@
  * The gameplay text overlay (hints, subtitles, tutorial prompts): font class 0x0050E750 (HFONT +0, tallest glyph +0xC, advance widths of
  * 0x20..0xFE from +0x90), drawn through GetDC by 0x0050EAF0 and 0x0050E830.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <string.h>
@@ -11,11 +12,11 @@
 #include "text_layout.h"
 #include "tutorial_prompts.h"
 
-#define FONT_CTOR_VA 0x0050E750u
-#define TEXT_DRAW_VA 0x0050EAF0u
-#define TEXT_DRAW_LINE_VA 0x0050E830u
-#define TEXT_LAYOUT_VA 0x0050E8C0u
-#define RASTER_PTR 0x0073DC40u
+#define FONT_CTOR_VA GVA(0x0050E750)
+#define TEXT_DRAW_VA GVA(0x0050EAF0)
+#define TEXT_DRAW_LINE_VA GVA(0x0050E830)
+#define TEXT_LAYOUT_VA GVA(0x0050E8C0)
+#define RASTER_PTR GVA(0x0073DC40)
 #define RASTER_WIDTH 0x08u
 #define RASTER_HEIGHT 0x0Cu
 #define RASTER_LEFT 0x88u
@@ -24,10 +25,11 @@
 #define FONT_HFONT 0x00u
 #define FONT_TALLEST 0x0Cu
 #define FONT_WIDTHS 0x90u
+#define FONT_WIDTH_BASE 0x10u
 #define FONT_FIRST_CHAR 0x20
 #define FONT_END_CHAR 0xFF
 /* Both draws call TextOutA through this import slot. */
-#define TEXTOUT_IAT 0x0064506Cu
+#define TEXTOUT_IAT GVA(0x0064506C)
 
 static recomp_func_t s_ctor_lifted, s_draw_lifted, s_draw_line_lifted, s_layout_lifted;
 static int s_drawing, s_logged, s_font_hooked, s_boxes_known = -1, s_layouts_logged;
@@ -88,7 +90,7 @@ static uint32_t glyph_width(void* ctx, unsigned char c) {
     uint32_t font = (uint32_t)(uintptr_t)ctx;
     if (c >= FONT_FIRST_CHAR && c < FONT_END_CHAR) return MEM32(font + FONT_WIDTHS + (uint32_t)(c - FONT_FIRST_CHAR) * 4);
     if (c == 0xFF) return last_glyph_width((HFONT)(uintptr_t)MEM32(font + FONT_HFONT));
-    return MEM32(font + 0x10u + (uint32_t)c * 4);
+    return MEM32(font + FONT_WIDTH_BASE + (uint32_t)c * 4);
 }
 
 static int has_high_bytes(const unsigned char* s) {
@@ -200,7 +202,7 @@ void shim_TextOutA(void) {
 void game_text_install(void) {
     if (jpt_l10n_display_codepage() && !guest_override_install(TEXT_LAYOUT_VA, text_layout, &s_layout_lifted))
         host_log("text", "the text layout override is missing: translated text keeps retail's signed glyph widths");
-    static const struct {
+    const struct {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;

@@ -23,7 +23,7 @@ static milestone_t s_milestones[] = {
 static int s_pending;
 
 static uint32_t bound_import(const char* wanted) {
-    uint8_t* base = (uint8_t*)(uintptr_t)trespasser_image_base;
+    uint8_t* base = (uint8_t*)(uintptr_t)JPT_GUEST_IMAGE_BASE;
     IMAGE_NT_HEADERS32* nt = (IMAGE_NT_HEADERS32*)(base + ((IMAGE_DOS_HEADER*)base)->e_lfanew);
     IMAGE_DATA_DIRECTORY dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
     IMAGE_IMPORT_DESCRIPTOR* d = (IMAGE_IMPORT_DESCRIPTOR*)(base + dir.VirtualAddress);

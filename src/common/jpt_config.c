@@ -55,6 +55,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_VIDEO_SUBTITLES, "1" },
     { JPT_KEY_SHOW_RESOLUTION_TITLE, "0" },
     { JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH },
+    { JPT_KEY_GAME_VERSION, "" },
     { JPT_KEY_DUAL_STOW, "1" },
     { JPT_KEY_MAX_OBJECT_DETAIL, "1" },
     { JPT_KEY_ACTIVE_AI, "enhanced" },
@@ -179,9 +180,20 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
         strcpy(c->graphics_card, value);
         return 1;
     }
+    if (!strcmp(key, JPT_KEY_GAME_VERSION)) {
+        if (*value && !jpt_game_version_by_id(value)) return 0;
+        strcpy(c->game_version, value);
+        return 1;
+    }
     if (!strcmp(key, JPT_KEY_LANGUAGE)) {
         if (!jpt_l10n_language(value)) return 0;
         strcpy(c->language, value);
+        return 1;
+    }
+    if (!strncmp(key, JPT_KEY_LANGUAGE_PREFIX, strlen(JPT_KEY_LANGUAGE_PREFIX))) {
+        const jpt_game_version_t* v = jpt_game_version_by_id(key + strlen(JPT_KEY_LANGUAGE_PREFIX));
+        if (!v || !jpt_l10n_language(value)) return 0;
+        strcpy(c->version_language[v - jpt_game_versions], value);
         return 1;
     }
     if (!strcmp(key, JPT_KEY_FOV)) {
@@ -238,8 +250,27 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
 int jpt_config_apply(jpt_config_t* c, const char* key, const char* value) {
     jpt_config_t next = *c;
     if (!key || !value || !apply(&next, key, value)) return 0;
+    if (!strcmp(key, JPT_KEY_LANGUAGE)) next.language_forced = 1;
     *c = next;
     return 1;
+}
+
+int jpt_language_key(const jpt_game_version_t* v, char* out, size_t cap) {
+    int n = v ? snprintf(out, cap, JPT_KEY_LANGUAGE_PREFIX "%s", v->id) : -1;
+    return n > 0 && (size_t)n < cap;
+}
+
+const char* jpt_language_for(const jpt_game_version_t* v, const char* chosen, const char* earlier) {
+    if (chosen && jpt_l10n_language(chosen)) return chosen;
+    if (v && !strcmp(v->id, "en-116") && earlier && jpt_l10n_language(earlier)) return earlier;
+    return v && jpt_l10n_language(v->language_code) ? v->language_code : JPT_L10N_ENGLISH;
+}
+
+void jpt_config_select_language(jpt_config_t* c, const jpt_game_version_t* v) {
+    const char* language;
+    if (c->language_forced || !v) return;
+    language = jpt_language_for(v, c->version_language[v - jpt_game_versions], c->earlier_language);
+    strcpy(c->language, language);
 }
 
 int jpt_config_valid(const char* key, const char* value) {
@@ -308,10 +339,16 @@ int jpt_config_load(const char* path, jpt_config_t* c) {
         line[strcspn(line, "\r\n")] = 0;
         if (!jpt_ini_parse_line(line, 0, key, sizeof key, value, sizeof value)) continue;
         note_earlier_language(&earlier, key, value);
-        jpt_config_apply(c, key, value);
+        if (jpt_config_apply(c, key, value) && !strcmp(key, JPT_KEY_LANGUAGE)) {
+            c->language_forced = 0;
+            strcpy(c->earlier_language, c->language);
+        }
     }
     fclose(f);
-    if (!earlier.has_language) strcpy(c->language, jpt_l10n_infer_language(earlier.game_text, earlier.subtitles));
+    if (!earlier.has_language) {
+        strcpy(c->language, jpt_l10n_infer_language(earlier.game_text, earlier.subtitles));
+        if (strcmp(c->language, JPT_L10N_ENGLISH)) strcpy(c->earlier_language, c->language);
+    }
     return 1;
 }
 

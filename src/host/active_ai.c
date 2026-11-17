@@ -5,55 +5,56 @@
  * 1..6, in the retail order; Activate also refuses an animal the physics box pool could not hold (CE's guard, with the
  * retail pool). Original installs nothing.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <string.h>
 
 #include "active_ai_policy.h"
 
-#define AI_SYSTEM 0x0066E77Cu
-#define PLAYER 0x0066EF64u
-#define THINK_CURSOR 0x00661570u
-#define AI_HALTED 0x006D0E99u
-#define SAVE_VERSION 0x00665130u
-#define PHYSICS_ACTIVE_ARG 0x0067A088u
-#define BRAIN_RESET_ARG 0x00661758u
-#define NODE_FREE 0x0066E794u
-#define NODE_NEXT 0x0066E790u
-#define NODE_END 0x0066E78Cu
+#define AI_SYSTEM GVA(0x0066E77C)
+#define PLAYER GVA(0x0066EF64)
+#define THINK_CURSOR GVA(0x00661570)
+#define AI_HALTED GVA(0x006D0E99)
+#define SAVE_VERSION GVA(0x00665130)
+#define PHYSICS_ACTIVE_ARG GVA(0x0067A088)
+#define BRAIN_RESET_ARG GVA(0x00661758)
+#define NODE_FREE GVA(0x0066E794)
+#define NODE_NEXT GVA(0x0066E790)
+#define NODE_END GVA(0x0066E78C)
 #define NODE_BYTES 0xCu
-#define BOX_IN_USE 0x0069A138u
-#define BOX_STRIDE 0x1090u
+#define BOX_IN_USE GVA(0x0069A138)
+#define BOX_STRIDE GLAYOUT_BOX_POOL_STRIDE
 
-#define CTOR_VA 0x00419330u
-#define DTOR_VA 0x004195A0u
-#define ACTIVATE_VA 0x00419800u
-#define DEACTIVATE_VA 0x004199D0u
-#define DEACTIVATE_WITHIN_VA 0x00419C60u
-#define SEEN_BY_NEAREST_VA 0x00419CE0u
-#define HEARD_BY_NEAR_VA 0x00419DB0u
-#define THINK_NEXT_VA 0x00419E30u
-#define PROCESS_VA 0x0041A200u
-#define SAVE_VA 0x0041AE50u
-#define LOAD_VA 0x0041AF00u
-#define INFLUENCES_VA 0x004213F0u
-#define INFLUENCES_TAIL_VA 0x004218C0u
+#define CTOR_VA GVA(0x00419330)
+#define DTOR_VA GVA(0x004195A0)
+#define ACTIVATE_VA GVA(0x00419800)
+#define DEACTIVATE_VA GVA(0x004199D0)
+#define DEACTIVATE_WITHIN_VA GVA(0x00419C60)
+#define SEEN_BY_NEAREST_VA GVA(0x00419CE0)
+#define HEARD_BY_NEAR_VA GVA(0x00419DB0)
+#define THINK_NEXT_VA GVA(0x00419E30)
+#define PROCESS_VA GVA(0x0041A200)
+#define SAVE_VA GVA(0x0041AE50)
+#define LOAD_VA GVA(0x0041AF00)
+#define INFLUENCES_VA GVA(0x004213F0)
+#define INFLUENCES_TAIL_VA GVA(0x004218C0)
 
-#define OPERATOR_NEW 0x00626B8Cu
-#define SLOT_CTOR 0x0041CE10u
+#define OPERATOR_NEW GVA(0x00626B8C)
+#define SLOT_CTOR GVA(0x0041CE10)
 #define SLOT_BYTES 0x40u
 #define SLOT_NODES 0x32u
-#define NODE_GROW 0x0041BC00u
-#define BRAIN_ACTIVATE 0x00421080u
-#define BRAIN_DEACTIVATE 0x004211B0u
-#define BRAIN_RESET 0x004233D0u
-#define BRAIN_THINK 0x00421220u
-#define BRAIN_SEE 0x00424AB0u
-#define BRAIN_HEAR 0x00422650u
-#define THINK_TICK 0x0041A520u
-#define PHYSICS_OFF 0x00614A60u
-#define WRITE_HANDLE 0x00608150u
-#define READ_HANDLE 0x00608170u
+#define NODE_GROW GVA(0x0041BC00)
+#define BRAIN_ACTIVATE GVA(0x00421080)
+#define BRAIN_DEACTIVATE GVA(0x004211B0)
+#define BRAIN_RESET GVA(0x004233D0)
+#define BRAIN_THINK GVA(0x00421220)
+#define BRAIN_SEE GVA(0x00424AB0)
+#define BRAIN_HEAR GVA(0x00422650)
+#define THINK_TICK GVA(0x0041A520)
+#define PHYSICS_OFF GVA(0x00614A60)
+#define WRITE_HANDLE GVA(0x00608150)
+#define READ_HANDLE GVA(0x00608170)
 
 #define SYS_ENABLED 0x50u
 #define SYS_HALT_A 0x51u
@@ -652,7 +653,7 @@ void active_ai_configure(int enhanced) { A.enhanced = enhanced != 0; }
 int active_ai_installed(void) { return A.installed; }
 
 void active_ai_install(void) {
-    static const struct {
+    const struct {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;
@@ -678,7 +679,7 @@ void active_ai_install(void) {
         return;
     }
     for (size_t i = 0; i < n; i++)
-        if (o[i].va != active_ai_override_vas[i] || !guest_override_lifted(o[i].va)) {
+        if (o[i].va != active_ai_override_va((unsigned)i) || !guest_override_lifted(o[i].va)) {
             host_log("ce", "active AI: sub_%08X has no stable entry: original limit kept", o[i].va);
             return;
         }

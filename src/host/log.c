@@ -5,7 +5,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#define LOG_NAME "trespasser"
+#define LOG_NAME "trespasser_recomp"
+#define PREVIOUS_LOG_NAME "trespasser"
 #define MAX_LOG_NUMBER 99999
 
 static HANDLE s_file = INVALID_HANDLE_VALUE;
@@ -23,21 +24,30 @@ static HANDLE open_append(const char* path, DWORD disposition) {
                        FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
-/* The same numbering as tools\build.ps1: one past the highest trespasser_NNN.log in the folder. */
-static HANDLE create_numbered(const char* dir) {
+static unsigned highest_numbered(const char* dir, const char* name) {
     WIN32_FIND_DATAA found;
-    char pattern[MAX_PATH];
+    char pattern[MAX_PATH], format[64];
     unsigned highest = 0, n;
     HANDLE search;
-    _snprintf(pattern, sizeof pattern - 1, "%s\\" LOG_NAME "_*.log", dir);
+    _snprintf(pattern, sizeof pattern - 1, "%s\\%s_*.log", dir, name);
     pattern[sizeof pattern - 1] = 0;
+    _snprintf(format, sizeof format - 1, "%s_%%u.log", name);
+    format[sizeof format - 1] = 0;
     search = FindFirstFileA(pattern, &found);
     if (search != INVALID_HANDLE_VALUE) {
         do {
-            if (sscanf(found.cFileName, LOG_NAME "_%u.log", &n) == 1 && n > highest) highest = n;
+            if (sscanf(found.cFileName, format, &n) == 1 && n > highest) highest = n;
         } while (FindNextFileA(search, &found));
         FindClose(search);
     }
+    return highest;
+}
+
+/* The same numbering as tools\build.ps1: one past the highest trespasser_recomp_NNN.log in the folder, which carries on
+ * from the numbers of the earlier trespasser_NNN.log. */
+static HANDLE create_numbered(const char* dir) {
+    unsigned highest = highest_numbered(dir, LOG_NAME), n = highest_numbered(dir, PREVIOUS_LOG_NAME);
+    if (n > highest) highest = n;
     for (n = highest + 1; n <= MAX_LOG_NUMBER; n++) {
         HANDLE h;
         _snprintf(s_path, sizeof s_path - 1, "%s\\" LOG_NAME "_%03u.log", dir, n);

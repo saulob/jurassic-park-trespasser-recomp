@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "jpt_cheats.h"
+#include "jpt_game_version.h"
 #include "jpt_gamepad.h"
 #include "jpt_gpu.h"
 #include "jpt_l10n.h"
@@ -34,8 +35,10 @@ extern "C" {
 #define JPT_KEY_SKIP_INTRO "skip_intro"
 #define JPT_KEY_VIDEO_SUBTITLES "video_subtitles"
 #define JPT_KEY_SHOW_RESOLUTION_TITLE "show_resolution_title"
-/* A language code (jpt_l10n_languages): the game's text and subtitles where it has them, English elsewhere. */
+/* A language code (jpt_l10n_languages): the game's text and subtitles where it has them, English elsewhere. Each game
+ * version keeps its own choice under language_<id>; this key is the choice made before that (and --language). */
 #define JPT_KEY_LANGUAGE "language"
+#define JPT_KEY_LANGUAGE_PREFIX "language_"
 /* The two settings it replaced: read to choose the language, then removed. */
 #define JPT_KEY_LEGACY_GAME_TEXT_LANGUAGE "game_text_language"
 #define JPT_KEY_LEGACY_SUBTITLE_LANGUAGE "subtitle_language"
@@ -53,6 +56,8 @@ extern "C" {
 #define JPT_KEY_FOV "fov"
 /* Mouse-look factor for both axes, as Trespasser CE's MouseSensX/MouseSensY. */
 #define JPT_KEY_MOUSE_SENSITIVITY "mouse_sensitivity"
+/* The installed game version to play (jpt_game_version.h); empty or not installed: the first installed one. */
+#define JPT_KEY_GAME_VERSION "game_version"
 /* The cheats the launcher saves (jpt_cheats.h): the values F10 starts each session from. */
 /* Written with every change; a file without it was written by the first, experimental launcher. */
 #define JPT_KEY_SETTINGS_VERSION "settings_version"
@@ -132,6 +137,10 @@ typedef struct {
     float mouse_sensitivity;
     int cheat[JPT_CHEAT_COUNT]; /* a toggle's 0 or 1, a choice's index; only the saved cheats are read */
     char language[JPT_L10N_CODE_MAX];
+    char version_language[JPT_GAME_VERSION_COUNT][JPT_L10N_CODE_MAX]; /* "" until the version's own choice is stored */
+    char earlier_language[JPT_L10N_CODE_MAX];                           /* "" without a stored language_ before versions */
+    int language_forced;                                                /* --language: every version plays in it */
+    char game_version[JPT_GAME_VERSION_ID_MAX];
     uint32_t hotkey_vk[JPT_HOTKEY_COUNT];
     jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
@@ -141,7 +150,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (28 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (29 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);
@@ -152,6 +161,14 @@ int jpt_config_valid(const char* key, const char* value);
  * settings and no language gets the language they gave. */
 int jpt_config_load(const char* path, jpt_config_t* c);
 const char* jpt_default_value(const char* key);
+
+/* The key that stores the language chosen for a game version: language_<id>. 0 when it does not fit. */
+int jpt_language_key(const jpt_game_version_t* v, char* out, size_t cap);
+/* The language a version plays in: its own stored choice, else (English 1.0.116 only) the choice stored before choices
+ * were kept per version, else the language of the release itself. Either argument may be NULL or "". */
+const char* jpt_language_for(const jpt_game_version_t* v, const char* chosen, const char* earlier);
+/* Sets c->language for the version about to run (unchanged under --language). */
+void jpt_config_select_language(jpt_config_t* c, const jpt_game_version_t* v);
 
 /* One `key = value` line (also `# key = value` with allow_comment). The value stops at ` #`. */
 int jpt_ini_parse_line(const char* line, int allow_comment, char* key, size_t key_cap, char* value, size_t value_cap);

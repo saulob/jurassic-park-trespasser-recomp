@@ -7,6 +7,7 @@
  * The guest addresses the code uses live in g_window, which the fixed image base puts there.
  */
 #include <windows.h>
+#include "test_profile.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -652,6 +653,7 @@ static void test_mouse_sensitivity(void) {
 }
 
 int main(void) {
+    test_profile_activate();
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
     int from_exe;
     setvbuf(stdout, NULL, _IONBF, 0);

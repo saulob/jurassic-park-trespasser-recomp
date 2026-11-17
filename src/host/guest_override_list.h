@@ -1,7 +1,8 @@
 /*
- * Every lifted function the host may replace, sorted by guest address. tools/run_lift.py names each one's lifted body
- * lifted_sub_<va>; guest_overrides.c defines sub_<va>, the stable entry every direct call, alias entry and dispatch
- * reaches, so an override never depends on how the linker lays out or reaches the lifted code.
+ * Every lifted function the host may replace, sorted by 1.0.116 address (the other lifts' lists are these through their
+ * guest map). tools/run_lift.py names each one's lifted body <lift>_lifted_sub_<va>; guest_overrides.c defines
+ * <lift>_sub_<va>, the stable entry every direct call, alias entry and dispatch reaches, so an override never depends on
+ * how the linker lays out or reaches the lifted code.
  * REQUIRED: the port's behaviour depends on it. OPTIONAL: without it the game runs as retail (a host kernel the lifted
  * body replaces exactly, or a presentation layer).
  */

@@ -5,6 +5,7 @@
  * it. The "Loading Level" line the game writes on the front before a level change (0x00413040) gets a plaque the same
  * way. Whatever the layer cannot show is left to the game's own screen.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <stddef.h>
@@ -19,17 +20,17 @@
 #include "loading_hd.h"
 #include "save_preview.h"
 
-#define LEVEL_LOAD_VA 0x004142C0u
-#define LOADER_DRAW_VA 0x00415AD0u
-#define SCREEN_MESSAGE_VA 0x00413040u
+#define LEVEL_LOAD_VA GVA(0x004142C0)
+#define LOADER_DRAW_VA GVA(0x00415AD0)
+#define SCREEN_MESSAGE_VA GVA(0x00413040)
 #define LOADING_LEVEL_STRING 37u
-#define LOADER_VTABLE 0x006467A0u
-#define SCENE_NAME 0x0066E342u
-#define ART_TABLE 0x006610D0u
+#define LOADER_VTABLE GVA(0x006467A0)
+#define SCENE_NAME GVA(0x0066E342)
+#define ART_TABLE GVA(0x006610D0)
 #define ART_ROW 0x28u
 #define ART_IMAGE 0x14u
-#define GAME_INSTANCE 0x0066E05Cu
-#define SCREEN_RASTER 0x0073DC40u
+#define GAME_INSTANCE GVA(0x0066E05C)
+#define SCREEN_RASTER GVA(0x0073DC40)
 #define RASTER_DISPLAY_W 0x7Cu
 #define RASTER_DISPLAY_H 0x80u
 #define WND_CONTROLS_BEGIN 0x20u
@@ -39,9 +40,9 @@
 #define CTRL_VISIBLE 4u
 #define CTRL_ID 0x0Cu
 #define CTRL_RECT 0x10u
-#define VT_TEXTBOX 0x006457B8u
-#define VT_STATIC 0x006455B0u
-#define VT_PROGRESS 0x00645974u
+#define VT_TEXTBOX GVA(0x006457B8)
+#define VT_STATIC GVA(0x006455B0)
+#define VT_PROGRESS GVA(0x00645974)
 #define TEXT_STRING 0x28u
 #define TEXT_FG 0x30u
 #define BAR_MIN 0x20u
@@ -521,7 +522,7 @@ void loading_hd_ui_frame(void) {
 }
 
 void loading_hd_install(void) {
-    static const struct {
+    const struct {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;

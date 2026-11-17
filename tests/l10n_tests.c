@@ -378,6 +378,70 @@ static int has_line(const char* path, const char* key) {
     return found;
 }
 
+/* Each game version plays in its release's language until its own choice is stored; an explicit English is a choice. */
+static void test_version_language(void) {
+    static const struct {
+        const char* version;
+        const char* language;
+    } release[] = { { "en-116", "en" }, { "ru-116", "ru" }, { "es-117", "es" }, { "ptbr-117", "pt-BR" } };
+    char dir[MAX_PATH], path[MAX_PATH], key[64];
+    jpt_config_t c;
+    const jpt_game_version_t* v;
+    GetTempPathA(MAX_PATH, dir);
+    snprintf(path, sizeof path, "%sjpt_version_language_%lu.ini", dir, GetCurrentProcessId());
+    for (size_t i = 0; i < sizeof release / sizeof release[0]; i++) {
+        v = jpt_game_version_by_id(release[i].version);
+        CHECK(v && !strcmp(jpt_language_for(v, NULL, NULL), release[i].language) && !strcmp(jpt_language_for(v, "", ""), release[i].language));
+        jpt_config_defaults(&c);
+        jpt_config_select_language(&c, v);
+        CHECK(!strcmp(c.language, release[i].language));
+        write_file(path, "vsync = 1\n");
+        CHECK(jpt_config_load(path, &c));
+        jpt_config_select_language(&c, v);
+        CHECK(!strcmp(c.language, release[i].language));
+    }
+    v = jpt_game_version_by_id("ptbr-117");
+    CHECK(jpt_language_key(v, key, sizeof key) && !strcmp(key, "language_ptbr-117"));
+    CHECK(!jpt_language_key(NULL, key, sizeof key) && !jpt_language_key(v, key, 4));
+    write_file(path, "language_ptbr-117 = en\nlanguage_ru-116 = fr\n");
+    CHECK(jpt_config_load(path, &c));
+    jpt_config_select_language(&c, jpt_game_version_by_id("ptbr-117"));
+    CHECK(!strcmp(c.language, "en"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("ru-116"));
+    CHECK(!strcmp(c.language, "fr"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("es-117"));
+    CHECK(!strcmp(c.language, "es"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("en-116"));
+    CHECK(!strcmp(c.language, "en"));
+    write_file(path, "language_es-117 = klingon\nlanguage_nothing-1 = de\n");
+    CHECK(jpt_config_load(path, &c));
+    jpt_config_select_language(&c, jpt_game_version_by_id("es-117"));
+    CHECK(!strcmp(c.language, "es"));
+    write_file(path, "language = ru\n");
+    CHECK(jpt_config_load(path, &c));
+    jpt_config_select_language(&c, jpt_game_version_by_id("en-116"));
+    CHECK(!strcmp(c.language, "ru"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("es-117"));
+    CHECK(!strcmp(c.language, "es"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("ptbr-117"));
+    CHECK(!strcmp(c.language, "pt-BR"));
+    write_file(path, "language = en\n");
+    CHECK(jpt_config_load(path, &c));
+    jpt_config_select_language(&c, jpt_game_version_by_id("en-116"));
+    CHECK(!strcmp(c.language, "en"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("ru-116"));
+    CHECK(!strcmp(c.language, "ru"));
+    CHECK(!strcmp(jpt_language_for(jpt_game_version_by_id("en-116"), "de", "fr"), "de"));
+    CHECK(!strcmp(jpt_language_for(jpt_game_version_by_id("en-116"), "", "fr"), "fr"));
+    CHECK(!strcmp(jpt_language_for(jpt_game_version_by_id("es-117"), "", "fr"), "es"));
+    CHECK(!strcmp(jpt_language_for(NULL, NULL, NULL), "en"));
+    jpt_config_defaults(&c);
+    CHECK(jpt_config_apply(&c, JPT_KEY_LANGUAGE, "it"));
+    jpt_config_select_language(&c, jpt_game_version_by_id("ru-116"));
+    CHECK(!strcmp(c.language, "it"));
+    DeleteFileA(path);
+}
+
 static void test_config(void) {
     static const struct {
         const char* file;
@@ -703,6 +767,7 @@ int main(int argc, char** argv) {
     test_language_mapping();
     test_inferred_language();
     test_config();
+    test_version_language();
     test_embedded_text();
     test_embedded_formats();
     test_layout();

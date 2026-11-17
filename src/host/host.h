@@ -8,12 +8,7 @@
 #include "native32.h"
 #include "host_policy.h"
 
-/* Emitted by tools/run_lift.py into recomp_dispatch.c. */
-extern const uint32_t trespasser_entry_va;
-extern const uint32_t trespasser_image_base;
-extern const uint32_t trespasser_text_start, trespasser_text_end;
-extern const uint32_t trespasser_selfmod_start, trespasser_selfmod_end;
-extern const char trespasser_expected_sha256[];
+#include "lift_registry.h"
 
 /* A shim is entered with g_esp at [return slot][arg0][arg1]... */
 #define GUEST_ARG(n) MEM32(g_esp + 4 + 4 * (n))
@@ -28,7 +23,6 @@ void host_log_raw(const char* text, unsigned len);
 void host_perf_logging_enable(void);
 int host_perf_logging(void);
 
-int host_sha256_file(const char* path, char hex[65]);
 
 void guest_env_init(const char* game_dir, const char* guest_args);
 const char* guest_env_exe_path(void);
@@ -186,6 +180,8 @@ void present_set_graphics_card(const char* name);
 int d3dr_startup(void);
 /* The renderer d3dr_startup chose; it stays for the whole run. */
 int d3dr_hardware(void);
+/* The 3D view the game last drew a scene into, as fractions of the render target (x, y, w, h); 0 before any scene. */
+int d3dr_scene_view(float out[4]);
 const char* d3dr_name(void);
 /* One polygon the game rasterises itself into the surface, inside this box of its raster, whose first pixel is
  * origin_bytes into the surface; about to Lock it or already holding the Lock; reads: its primitive is not known to

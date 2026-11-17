@@ -4,6 +4,7 @@
  * choices) and Maximum object detail (the renderer's bDetailReduce cleared, as CE's ForceMaxObjectDetail). Always on:
  * collision sounds (footsteps) re-armed when a load sets the game time back.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <string.h>
@@ -11,32 +12,32 @@
 #include "ce_policy.h"
 #include "jpt_tr.h"
 
-#define APP 0x0066E338u
-#define WORLD 0x0073F444u
+#define APP GVA(0x0066E338)
+#define WORLD GVA(0x0073F444)
 #define WORLD_LOAD_PENDING 0x38u
-#define PLAYER 0x0066EF64u
+#define PLAYER GVA(0x0066EF64)
 #define PLAYER_DEAD_SLOT 0x1FCu
-#define GAME_WND_PAUSE 0x0040BCC0u
-#define GAME_WND_RESUME 0x0040BD70u
-#define SAVE_DIR 0x00411B30u
+#define GAME_WND_PAUSE GVA(0x0040BCC0)
+#define GAME_WND_RESUME GVA(0x0040BD70)
+#define SAVE_DIR GVA(0x00411B30)
 #define SAVE_DIR_SAVES 1u
-#define APP_SAVE_FILE 0x00414570u
-#define READ_SAVE_HEADER 0x00410420u
-#define APP_MENU_SOUNDS_OFF 0x00414D80u
-#define APP_LOAD_SAVE 0x004142C0u
-#define APP_LOAD_FAILED 0x00413160u
+#define APP_SAVE_FILE GVA(0x00414570)
+#define READ_SAVE_HEADER GVA(0x00410420)
+#define APP_MENU_SOUNDS_OFF GVA(0x00414D80)
+#define APP_LOAD_SAVE GVA(0x004142C0)
+#define APP_LOAD_FAILED GVA(0x00413160)
 #define MAIN_MENU_PLAY 2
 
-#define SAVE_LIST_VA 0x00410540u
-#define DISK_SPACE_CHECK_VA 0x0040DA00u
-#define SAVE_WND_VTABLE 0x006462A8u
+#define SAVE_LIST_VA GVA(0x00410540)
+#define DISK_SPACE_CHECK_VA GVA(0x0040DA00)
+#define SAVE_WND_VTABLE GVA(0x006462A8)
 #define SAVE_WND_LIST 0x3Cu
 #define SAVE_ENTRY_BYTES 0x54u
 #define SAVE_ENTRY_FILE 0x28u
 #define SAVE_ENTRY_SCENE 0x37u
 
-#define STOW_VA 0x004610D0u
-#define STOW_CHOOSER 0x0045ED80u
+#define STOW_VA GVA(0x004610D0)
+#define STOW_CHOOSER GVA(0x0045ED80)
 #define MSG_HELD 0x24u
 #define MSG_PRESSED 0x28u
 #define CMD_STOW 0x100u
@@ -51,14 +52,14 @@
 #define PLAYER_SLOT 0xE40u
 #define PLAYER_PHASE 0xE44u
 
-#define RENDER_SETTINGS 0x006D2224u
+#define RENDER_SETTINGS GVA(0x006D2224)
 #define SETTINGS_DETAIL_REDUCE 0x33u
 
-#define GAME_TIME 0x0073F34Cu
-#define AUDIO_DAEMON 0x0066E9F0u
+#define GAME_TIME GVA(0x0073F34C)
+#define AUDIO_DAEMON GVA(0x0066E9F0)
 #define DAEMON_EFFECTS 0xC4u
 #define EFFECTS_MAP 0x2Cu
-#define MAP_NIL 0x0066EB00u
+#define MAP_NIL GVA(0x0066EB00)
 #define NODE_PARENT 4u
 #define NODE_LEFT 8u
 #define NODE_RIGHT 0xCu

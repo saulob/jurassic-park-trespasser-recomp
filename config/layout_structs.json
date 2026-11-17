@@ -1,0 +1,1489 @@
+{
+ "rules": [
+  {
+   "names": [
+    "@0x4",
+    "@0x8"
+   ],
+   "files": [
+    "tutorial_prompts.c"
+   ],
+   "set": "TextLayout"
+  },
+  {
+   "names": [
+    "@0x4",
+    "@0x8",
+    "@0xc",
+    "@0x10"
+   ],
+   "files": [
+    "cheats.c"
+   ],
+   "set": "SInput"
+  },
+  {
+   "names": [
+    "@0x14"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CMessage"
+  },
+  {
+   "names": [
+    "@0xc",
+    "@0x10"
+   ],
+   "files": [
+    "cpu_polygons.c"
+   ],
+   "set": "RasterVertex"
+  },
+  {
+   "names": [
+    "@*"
+   ],
+   "files": [
+    "bump_spans.c"
+   ],
+   "set": "BumpPrimitives",
+   "kind": "code"
+  },
+  {
+   "names": [
+    "HOLDER_CAMERA"
+   ],
+   "files": [
+    "widescreen.c",
+    "terrain_quality.c"
+   ],
+   "set": "CWorld"
+  },
+  {
+   "names": [
+    "PLAYER_HOLDING",
+    "PLAYER_BELT",
+    "PLAYER_BACK",
+    "PLAYER_SLOT",
+    "PLAYER_PHASE"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "class": "CPlayer"
+  },
+  {
+   "names": [
+    "BOX_LAST",
+    "BOX_ACTIVE"
+   ],
+   "files": [
+    "patch117_physics.c"
+   ],
+   "set": "BoxObject"
+  },
+  {
+   "names": [
+    "PLAYER_HAND_PHASE",
+    "PLAYER_GRAB",
+    "PLAYER_REACH_CROUCH"
+   ],
+   "files": [
+    "physics_watch.c"
+   ],
+   "class": "CPlayer"
+  },
+  {
+   "names": [
+    "PLAYER_POSE_RETRIEVE",
+    "PLAYER_POSE_HAND"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "set": "PlayerPose",
+   "kind": "member"
+  },
+  {
+   "names": [
+    "BOX_STRIDE"
+   ],
+   "files": [
+    "active_ai.c",
+    "patch117_physics.c"
+   ],
+   "set": "BoxPool",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PAIR_B_BASE"
+   ],
+   "files": [
+    "patch117_physics.c"
+   ],
+   "set": "PairHook",
+   "kind": "code"
+  },
+  {
+   "names": [
+    "HELPER_ARGS"
+   ],
+   "files": [
+    "guest_env.c"
+   ],
+   "set": "SafemodeHelper",
+   "kind": "code"
+  },
+  {
+   "names": [
+    "WND_DONE_OFFSET",
+    "WND_OWNER"
+   ],
+   "files": [
+    "guest_ui.c",
+    "video_test.c"
+   ],
+   "class": "CUIWnd"
+  },
+  {
+   "names": [
+    "RASTER_W",
+    "RASTER_WIDTH"
+   ],
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c",
+    "loading_hd.c",
+    "game_text.c",
+    "tutorial_prompts.c",
+    "ui_canvas.c"
+   ],
+   "class": "CRaster"
+  },
+  {
+   "names": [
+    "CTRL_FLAGS"
+   ],
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c",
+    "loading_hd.c"
+   ],
+   "class": "CUICtrl"
+  },
+  {
+   "names": [
+    "SETTINGS_DETAIL_REDUCE"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "set": "RenderSettings"
+  },
+  {
+   "names": [
+    "SAVE_ENTRY_SCENE"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "set": "SaveHeader"
+  },
+  {
+   "names": [
+    "VF_TIMER_RESET"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CMessage",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_LOAD"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CRandom",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "SAFEMODE_PROMPT_TYPE"
+   ],
+   "files": [
+    "host_policy.h"
+   ],
+   "set": "SafemodeCallers",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "CARD_CATEGORY",
+    "HINT_CATEGORY"
+   ],
+   "files": [
+    "tutorial_prompts.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "overlay category ids the host picks; the game only compares them"
+  },
+  {
+   "names": [
+    "SLOT_NODES"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "the node count the host passes to the AI slot constructor"
+  },
+  {
+   "names": [
+    "WM_MOUSEHWHEEL_",
+    "POLICY_TIMER_ID",
+    "PAD_SCAN_CODE"
+   ],
+   "files": [
+    "window_host.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "a Windows message, a timer id and a scan code the host chooses"
+  },
+  {
+   "names": [
+    "LOCK_FLAG_DISCARDCONTENTS"
+   ],
+   "files": [
+    "host_policy.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "a DirectDraw lock flag"
+  },
+  {
+   "names": [
+    "PAGE"
+   ],
+   "files": [
+    "engine_heaps.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "the x86 page size"
+  },
+  {
+   "names": [
+    "VK_BACK_",
+    "VK_LEFT_",
+    "VK_UP_",
+    "VK_RIGHT_"
+   ],
+   "files": [
+    "debug_menu_policy.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "Windows virtual-key codes"
+  },
+  {
+   "names": [
+    "TSYNC_UNWRITTEN"
+   ],
+   "files": [
+    "target_sync.h"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "the colour the host fills a target with to tell an unwritten pixel"
+  },
+  {
+   "names": [
+    "PARTITION_CACHEABLE_VOLUME",
+    "PARTITION_CACHE_NEVER",
+    "PARTITION_SIMPLE_OBJECT",
+    "PARTITION_ALWAYS_FACE"
+   ],
+   "files": [
+    "host_policy.h"
+   ],
+   "set": "PartitionFlagOps",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "ART_ROW"
+   ],
+   "files": [
+    "loading_hd.c"
+   ],
+   "set": "ArtTable",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "BOX_SUB_EXTENTS",
+    "BOX_LAST",
+    "BOX_ACTIVE"
+   ],
+   "files": [
+    "patch117_physics.c"
+   ],
+   "set": "BoxPoolTable"
+  },
+  {
+   "names": [
+    "MGR_CURSOR_SHOWN"
+   ],
+   "files": [
+    "ui_canvas.c"
+   ],
+   "set": "CUIManager"
+  },
+  {
+   "names": [
+    "LINE_INCREMENT"
+   ],
+   "files": [
+    "bump_spans.c"
+   ],
+   "set": "BumpRaster"
+  },
+  {
+   "names": [
+    "CAPTION_STATE"
+   ],
+   "files": [
+    "l10n.c"
+   ],
+   "set": "CaptionFns"
+  },
+  {
+   "names": [
+    "ART_IMAGE"
+   ],
+   "files": [
+    "loading_hd.c"
+   ],
+   "set": "ArtTable"
+  },
+  {
+   "names": [
+    "QUALITY_DISTANCE_SCALE",
+    "QUALITY_PIXEL_TOL_ADJ",
+    "ROOT_QUALITY"
+   ],
+   "files": [
+    "terrain_quality.c"
+   ],
+   "set": "QualityTable"
+  },
+  {
+   "names": [
+    "QUALITY_STRIDE"
+   ],
+   "files": [
+    "terrain_quality.c"
+   ],
+   "set": "QualityTable",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PELVIS_KONTROL_STRIDE"
+   ],
+   "files": [
+    "physics_watch.c"
+   ],
+   "set": "Kontrol",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PELVIS_BIOTAG_STRIDE",
+    "BIOTAG_STRIDE"
+   ],
+   "files": [
+    "physics_fixes.c",
+    "physics_watch.c"
+   ],
+   "set": "BioTag",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PELVIS_DATA_STRIDE"
+   ],
+   "files": [
+    "physics_fixes.c",
+    "physics_watch.c"
+   ],
+   "set": "PelvisData",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PELVIS_STATE_STRIDE"
+   ],
+   "files": [
+    "physics_fixes.c",
+    "physics_watch.c"
+   ],
+   "set": "PelvisState",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "INFLUENCES_FRAME"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "set": "AIInfluences",
+   "kind": "frame"
+  },
+  {
+   "names": [
+    "SYS_SLOTS"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "set": "AISlots"
+  },
+  {
+   "names": [
+    "WORLD_LOAD_PENDING",
+    "WORLD_SAVE_PENDING"
+   ],
+   "files": [
+    "cheats.c",
+    "debug_menu.c",
+    "ce_gameplay.c"
+   ],
+   "set": "CWorldFlags"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c",
+    "loading_hd.c",
+    "ui_canvas.c",
+    "guest_ui.c",
+    "window_host.c"
+   ],
+   "names": [
+    "WND_RECT",
+    "WND_CONTROLS_BEGIN",
+    "WND_CONTROLS_END",
+    "WND_BACKGROUND",
+    "WND_RESULT_OFFSET"
+   ],
+   "class": "CUIWnd"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c",
+    "loading_hd.c",
+    "ui_canvas.c"
+   ],
+   "names": [
+    "CTRL_ID",
+    "CTRL_RECT"
+   ],
+   "class": "CUICtrl"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "ui_canvas.c"
+   ],
+   "names": [
+    "BUTTON_*"
+   ],
+   "class": "CUIButton"
+  },
+  {
+   "files": [
+    "frontend_hd.c"
+   ],
+   "names": [
+    "CHECK_*"
+   ],
+   "class": "CUICheckbox"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c"
+   ],
+   "names": [
+    "SLIDER_*"
+   ],
+   "class": "CUISlider"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "loading_hd.c"
+   ],
+   "names": [
+    "TEXT_*"
+   ],
+   "class": "CUITextbox"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c"
+   ],
+   "names": [
+    "EDIT_*"
+   ],
+   "class": "CUIEditbox"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "gamepad_menu.c"
+   ],
+   "names": [
+    "LIST_*"
+   ],
+   "class": "CUIListbox"
+  },
+  {
+   "files": [
+    "frontend_hd.c"
+   ],
+   "names": [
+    "STATIC_*"
+   ],
+   "class": "CUIStatic"
+  },
+  {
+   "files": [
+    "loading_hd.c"
+   ],
+   "names": [
+    "BAR_*"
+   ],
+   "class": "CUIProgressBar"
+  },
+  {
+   "files": [
+    "frontend_hd.c"
+   ],
+   "names": [
+    "SAVE_LIST",
+    "SAVE_ENTRIES"
+   ],
+   "class": "CSaveGameWnd"
+  },
+  {
+   "files": [
+    "frontend_hd.c"
+   ],
+   "names": [
+    "LOAD_LIST",
+    "LOAD_ENTRIES"
+   ],
+   "class": "CLoadGameWnd"
+  },
+  {
+   "files": [
+    "frontend_hd.c",
+    "loading_hd.c",
+    "ui_canvas.c",
+    "cpu_polygons.c",
+    "game_text.c",
+    "tutorial_prompts.c"
+   ],
+   "names": [
+    "RASTER_H",
+    "RASTER_HEIGHT",
+    "RASTER_BPP",
+    "RASTER_PITCH",
+    "RASTER_BITS"
+   ],
+   "class": "CRaster"
+  },
+  {
+   "files": [
+    "ui_canvas.c",
+    "cpu_polygons.c"
+   ],
+   "names": [
+    "RASTER_SURFACE"
+   ],
+   "class": "CRasterVid"
+  },
+  {
+   "files": [
+    "ui_canvas.c",
+    "loading_hd.c",
+    "cpu_polygons.c",
+    "game_text.c",
+    "tutorial_prompts.c"
+   ],
+   "names": [
+    "RASTER_DISPLAY_W",
+    "RASTER_DISPLAY_H",
+    "RASTER_WIN_ORIGIN",
+    "RASTER_LEFT",
+    "RASTER_TOP"
+   ],
+   "class": "CRasterWin"
+  },
+  {
+   "files": [
+    "ui_canvas.c"
+   ],
+   "names": [
+    "GAME_PAUSED"
+   ],
+   "class": "CGameWnd"
+  },
+  {
+   "files": [
+    "guest_ui.c"
+   ],
+   "names": [
+    "GAME_WND_STOPPED_OFFSET"
+   ],
+   "class": "CGameWnd"
+  },
+  {
+   "names": [
+    "VK_RETURN_",
+    "WM_DPICHANGED",
+    "FPU_PRECISION_MASK",
+    "STATE_TEX_UNUSABLE",
+    "SCRATCH_BYTES",
+    "NAME_BYTES",
+    "VIDEO_WND_STACK",
+    "SLOT_BYTES"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
+  },
+  {
+   "files": [
+    "polygon_submit.c"
+   ],
+   "names": [
+    "SET_RENDER_STATE",
+    "DRAW_PRIMITIVE",
+    "SET_STAGE_STATE"
+   ],
+   "category": "COM_VTABLE",
+   "reason": "slots of the system's IDirect3DDevice3 vtable"
+  },
+  {
+   "files": [
+    "stream_pack.c"
+   ],
+   "names": [
+    "TPA_*"
+   ],
+   "category": "FILE_FORMAT",
+   "reason": "the TPA file layout, read from the disc image"
+  },
+  {
+   "files": [
+    "video_hd.c"
+   ],
+   "names": [
+    "SMACK_*"
+   ],
+   "category": "DLL_STRUCT",
+   "reason": "the SMACK structure of SMACKW32.DLL, byte-identical in every version's manifest"
+  },
+  {
+   "names": [
+    "SYS_*",
+    "SLOT_ANIMAL"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CAISystem"
+  },
+  {
+   "names": [
+    "ANIMAL_PHYSICS"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CInstance"
+  },
+  {
+   "names": [
+    "ANIMAL_PARTS",
+    "ANIMAL_BRAIN"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CAnimal"
+  },
+  {
+   "names": [
+    "PHYSICS_INFO"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CInfo"
+  },
+  {
+   "names": [
+    "VF_PHYSICS_ON"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CPhysicsInfo",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_POSITION"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CInstance",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_DEAD",
+    "VF_RELEASE"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CAnimal",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "BOX_STRIDE"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "set": "BoxPool",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "SCRATCH"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "a host buffer size"
+  },
+  {
+   "names": [
+    "WORLD_*"
+   ],
+   "files": [
+    "cheats.c",
+    "debug_menu.c",
+    "physics_watch.c",
+    "ce_gameplay.c"
+   ],
+   "set": "CWorld"
+  },
+  {
+   "names": [
+    "CAMERA_PRESENCE",
+    "PRESENCE",
+    "INSTANCE_INFO"
+   ],
+   "files": [
+    "cheats.c",
+    "debug_menu.c",
+    "physics_watch.c"
+   ],
+   "class": "CInstance"
+  },
+  {
+   "names": [
+    "CAMERA_ATTACHED",
+    "CAMERA_ANIMATE",
+    "CAMERA_RELATIVE"
+   ],
+   "files": [
+    "cheats.c",
+    "debug_menu.c"
+   ],
+   "class": "CCamera"
+  },
+  {
+   "names": [
+    "ANIMATE_HP",
+    "ANIMATE_HP_MAX"
+   ],
+   "files": [
+    "cheats.c",
+    "physics_watch.c"
+   ],
+   "class": "CAnimate"
+  },
+  {
+   "names": [
+    "AI_FLAGS"
+   ],
+   "files": [
+    "cheats.c"
+   ],
+   "class": "CAnimal"
+  },
+  {
+   "names": [
+    "PLAYER_FLAGS"
+   ],
+   "files": [
+    "cheats.c"
+   ],
+   "class": "CPlayer"
+  },
+  {
+   "names": [
+    "INFO_PHYSICS"
+   ],
+   "files": [
+    "cheats.c"
+   ],
+   "class": "CInfo"
+  },
+  {
+   "names": [
+    "PHYSICS_SPEED"
+   ],
+   "files": [
+    "cheats.c"
+   ],
+   "class": "CPhysicsInfoSkeleton"
+  },
+  {
+   "names": [
+    "PLACEMENT_SLOT",
+    "MOVE_SLOT"
+   ],
+   "files": [
+    "debug_menu.c"
+   ],
+   "class": "CInstance",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "PLAYER_DEAD_SLOT"
+   ],
+   "files": [
+    "debug_menu.c",
+    "ce_gameplay.c"
+   ],
+   "class": "CPlayer",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "END_MODAL_SLOT"
+   ],
+   "files": [
+    "guest_ui.c"
+   ],
+   "class": "CUIWnd",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "MANAGER_*",
+    "STACK_*",
+    "MGR_*"
+   ],
+   "files": [
+    "guest_ui.c",
+    "frontend_hd.c"
+   ],
+   "set": "CUIManager"
+  },
+  {
+   "names": [
+    "SAVE_WND_LIST",
+    "SAVE_ENTRY_FILE"
+   ],
+   "files": [
+    "ce_gameplay.c",
+    "frontend_hd.c"
+   ],
+   "class": "CSaveGameWnd"
+  },
+  {
+   "names": [
+    "SAVE_ENTRY_BYTES",
+    "SAVE_ENTRY_SIZE"
+   ],
+   "files": [
+    "ce_gameplay.c",
+    "frontend_hd.c"
+   ],
+   "class": "CSaveGameWnd",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "MSG_HELD",
+    "MSG_PRESSED",
+    "CMD_ARM_OR_WRIST"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "class": "CMessageControl"
+  },
+  {
+   "names": [
+    "CMD_STOW"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "set": "CommandBits",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "DAEMON_EFFECTS",
+    "EFFECTS_MAP",
+    "NODE_RIGHT",
+    "NODE_EFFECT"
+   ],
+   "files": [
+    "ce_gameplay.c"
+   ],
+   "class": "CAudioDaemon"
+  },
+  {
+   "names": [
+    "SKY_*"
+   ],
+   "files": [
+    "ce_graphics.c"
+   ],
+   "set": "CSky"
+  },
+  {
+   "names": [
+    "PARTITION_*"
+   ],
+   "files": [
+    "engine_limits.c",
+    "host_policy.h"
+   ],
+   "class": "CPartition"
+  },
+  {
+   "names": [
+    "SINPUT_*"
+   ],
+   "files": [
+    "gamepad.c"
+   ],
+   "set": "SInput"
+  },
+  {
+   "names": [
+    "FONT_*",
+    "LAYOUT_BOTTOM",
+    "LAYOUT_RIGHT"
+   ],
+   "files": [
+    "game_text.c",
+    "tutorial_prompts.c"
+   ],
+   "set": "CFont"
+  },
+  {
+   "names": [
+    "NODE_*",
+    "OVERLAY_LIST"
+   ],
+   "files": [
+    "tutorial_prompts.c"
+   ],
+   "class": "CTextOverlay"
+  },
+  {
+   "names": [
+    "TEXT_ACTION_*"
+   ],
+   "files": [
+    "l10n.c"
+   ],
+   "class": "CTextAction"
+  },
+  {
+   "names": [
+    "ROOT_QUALITY",
+    "QUALITY_*"
+   ],
+   "files": [
+    "terrain_quality.c"
+   ],
+   "set": "CQuadRootTIN"
+  },
+  {
+   "names": [
+    "CAMERA_FAR"
+   ],
+   "files": [
+    "terrain_quality.c"
+   ],
+   "class": "CCamera"
+  },
+  {
+   "names": [
+    "PROP_*"
+   ],
+   "files": [
+    "widescreen.c"
+   ],
+   "set": "SProperties"
+  },
+  {
+   "names": [
+    "PROPS_IN_CAMERA"
+   ],
+   "files": [
+    "widescreen.c"
+   ],
+   "class": "CCamera"
+  },
+  {
+   "names": [
+    "RASTER_VERTEX_SIZE"
+   ],
+   "files": [
+    "cpu_polygons.c"
+   ],
+   "set": "RasterVertex",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "RASTER_OBJECT_SIZE"
+   ],
+   "files": [
+    "ui_canvas.c"
+   ],
+   "set": "RasterDCAlloc",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PELVIS_*",
+    "BIOTAG_*"
+   ],
+   "files": [
+    "physics_fixes.c",
+    "physics_watch.c"
+   ],
+   "set": "PelvisFns",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "WATER_ROOT",
+    "WATER_REQUIRED",
+    "WATER_RUNNING"
+   ],
+   "files": [
+    "physics_fixes.c"
+   ],
+   "class": "CEntityWater"
+  },
+  {
+   "names": [
+    "WAVE_STEP_MAX"
+   ],
+   "files": [
+    "physics_fixes.c"
+   ],
+   "class": "CSimWaveVar2D"
+  },
+  {
+   "names": [
+    "BRAIN_*"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "set": "AIBrain"
+  },
+  {
+   "names": [
+    "INFLUENCES_*"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "class": "CInfluence"
+  },
+  {
+   "names": [
+    "NODE_BYTES"
+   ],
+   "files": [
+    "active_ai.c"
+   ],
+   "set": "AIList",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "BOX_SUB_COUNT",
+    "BOX_SUB_ROTATED",
+    "BOX_SUB_EXTENTS",
+    "BOX_SUB_ROTATION",
+    "BOX_MOVABLE",
+    "BOX_STATE",
+    "BOX_SINCE",
+    "BOX_LAST",
+    "BOX_ACTIVE",
+    "BOX_EDGE_PENDING"
+   ],
+   "files": [
+    "patch117_physics.c"
+   ],
+   "set": "BoxObject"
+  },
+  {
+   "names": [
+    "BOX_SUB_STRIDE",
+    "BOX_ROTATION_STRIDE"
+   ],
+   "files": [
+    "patch117_physics.c"
+   ],
+   "set": "BoxBox",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PARTITION_CACHEABLE",
+    "PARTITION_CACHEABLE_VOLUME",
+    "PARTITION_CACHE_NEVER",
+    "PARTITION_SIMPLE_OBJECT",
+    "PARTITION_ALWAYS_FACE",
+    "PARTITION_USES_MESH"
+   ],
+   "files": [
+    "host_policy.h"
+   ],
+   "class": "CPartition",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "PLAYER_*"
+   ],
+   "files": [
+    "video_hd.c"
+   ],
+   "set": "VideoWnd"
+  },
+  {
+   "names": [
+    "PROPS_SIZE"
+   ],
+   "files": [
+    "widescreen.c"
+   ],
+   "set": "CCameraSet",
+   "kind": "size"
+  }
+ ],
+ "sets": {
+  "CWorld": {
+   "global": "0073F444"
+  },
+  "SProperties": {
+   "functions": [
+    "0051FD90"
+   ]
+  },
+  "CSky": {
+   "functions": [
+    "005242C0",
+    "00523D00",
+    "00524B70",
+    "00524C00",
+    "005223C0"
+   ]
+  },
+  "SInput": {
+   "functions": [
+    "005F80B0"
+   ]
+  },
+  "CUIManager": {
+   "functions": [
+    "00417300",
+    "00417380",
+    "00417410",
+    "004176F0",
+    "00417760",
+    "00417840"
+   ]
+  },
+  "CFont": {
+   "functions": [
+    "0050E750",
+    "0050E830",
+    "0050E8C0",
+    "0050EAF0"
+   ]
+  },
+  "AINodes": {
+   "functions": [
+    "0041BC00"
+   ]
+  },
+  "AIInfluences": {
+   "functions": [
+    "004213F0",
+    "004218C0"
+   ],
+   "frame": "004213F0"
+  },
+  "CommandBits": {
+   "functions": [
+    "004610D0",
+    "0045ED80"
+   ]
+  },
+  "RasterVertex": {
+   "functions": [
+    "0055F540"
+   ]
+  },
+  "RasterDCAlloc": {
+   "callers_of": "0040FD80"
+  },
+  "CQuadRootTIN": {
+   "class_prefix": "CQuadRootTIN"
+  },
+  "BoxBox": {
+   "functions": [
+    "004E85A0",
+    "004E86B0",
+    "004EDFA0",
+    "004EACCB"
+   ]
+  },
+  "BoxPool": {
+   "functions": [
+    "0045ED80"
+   ],
+   "strides": {
+    "base": "00699D40",
+    "length": 212000
+   }
+  },
+  "PelvisFns": {
+   "functions": [
+    "004F3FB0"
+   ]
+  },
+  "AIBrain": {
+   "classes": [
+    "CAISystem",
+    "CAnimal",
+    "CBrain"
+   ]
+  },
+  "AIList": {
+   "classes": [
+    "CAISystem"
+   ]
+  },
+  "VideoWnd": {
+   "functions": [
+    "00418AE0",
+    "00418700",
+    "00418760"
+   ]
+  },
+  "CCameraSet": {
+   "classes": [
+    "CCamera",
+    "CCameraPrime"
+   ]
+  },
+  "CWorldFlags": {
+   "functions": [
+    "00607E90",
+    "00607FD0",
+    "00607FE0",
+    "00607FF0",
+    "00608130",
+    "00608140"
+   ]
+  },
+  "AISlots": {
+   "classes": [
+    "CAISystem"
+   ],
+   "also": [
+    "00419800",
+    "004199D0"
+   ]
+  },
+  "BoxObject": {
+   "classes": [
+    "CPhysicsInfoBox"
+   ],
+   "also": [
+    "004DA5D0",
+    "004DC0B0",
+    "004DC600",
+    "004DDEB4",
+    "004DE3A0",
+    "004DF7D0",
+    "004E85A0",
+    "004E86B0",
+    "004E9000",
+    "004E9780",
+    "004E9BA5",
+    "004EACCB",
+    "004EDFA0"
+   ]
+  },
+  "PelvisState": {
+   "table": "006CF198",
+   "length": 6144
+  },
+  "PelvisData": {
+   "table": "006CEAB8",
+   "length": 1760
+  },
+  "BioTag": {
+   "table": "0067B0C0",
+   "length": 2048
+  },
+  "Kontrol": {
+   "table": "0067AE90",
+   "length": 192
+  },
+  "QualityTable": {
+   "table": "0066C4E8",
+   "length": 460,
+   "compare_bytes": true
+  },
+  "ArtTable": {
+   "table": "006610D0",
+   "length": 320,
+   "compare_bytes": true
+  },
+  "CaptionFns": {
+   "functions": [
+    "004395A0"
+   ]
+  },
+  "BoxPoolTable": {
+   "table": "00699D40",
+   "length": 212000
+  },
+  "PartitionFlagOps": {
+   "functions": [
+    "00405EC0",
+    "00406F40",
+    "004609F0",
+    "00468710",
+    "0046E7C0",
+    "0046EC70",
+    "0049C6E0",
+    "004A60E0",
+    "004A6120",
+    "004A6860",
+    "004D2D60",
+    "00437A60",
+    "00502D70",
+    "005042D0",
+    "006260C0",
+    "0047D780",
+    "0047DE30",
+    "0047DFD0",
+    "0049D0F0",
+    "0049D163",
+    "0049D313",
+    "00480ED0",
+    "00482340",
+    "00493960",
+    "0052F210",
+    "0062C280",
+    "0062C760",
+    "0049C980",
+    "0050C8A0"
+   ]
+  },
+  "BumpRaster": {
+   "table": "00737E40",
+   "length": 304
+  },
+  "SaveHeader": {
+   "functions": [
+    "00410420"
+   ]
+  },
+  "SafemodeHelper": {
+   "functions": [
+    "0040E4D0"
+   ]
+  },
+  "SafemodeCallers": {
+   "callers_of": "0040E4D0"
+  },
+  "PairHook": {
+   "functions": [
+    "004DDEB4"
+   ]
+  },
+  "RenderSettings": {
+   "functions": [
+    "00519AA0",
+    "00519B20"
+   ]
+  },
+  "PlayerPose": {
+   "functions": [
+    "00443BC0",
+    "00458ED0",
+    "00459170",
+    "004610D0"
+   ]
+  },
+  "BumpPrimitives": {
+   "functions": [
+    "0057B7B0",
+    "0057DB50"
+   ]
+  },
+  "TextLayout": {
+   "functions": [
+    "0050E8C0"
+   ]
+  }
+ }
+}

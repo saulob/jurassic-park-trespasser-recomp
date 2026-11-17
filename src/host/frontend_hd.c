@@ -4,6 +4,7 @@
  * hit tests, hover, values and callbacks stay in its objects, and its canvas is shown instead whenever a window or a
  * control is not one the frontend knows.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -20,7 +21,7 @@
 #include "l10n.h"
 #include "save_preview.h"
 
-#define MAIN_WINDOW_OBJECT 0x0066E010u
+#define MAIN_WINDOW_OBJECT GVA(0x0066E010)
 #define MANAGER_OFFSET 0x08u
 #define MGR_CURSOR_X 0x18u
 #define MGR_CURSOR_Y 0x1Cu
@@ -44,19 +45,19 @@
 #define RASTER_PITCH 0x14u
 #define RASTER_BITS 0x18u
 
-#define VT_BUTTON 0x0064554Cu
-#define VT_LISTBOX 0x00645650u
-#define VT_CHECKBOX 0x00645758u
-#define VT_TEXTBOX 0x006457B8u
-#define VT_SLIDER 0x00645864u
-#define VT_EDITBOX 0x006458DCu
-#define VT_STATIC 0x006455B0u
-#define VT_PROGRESS 0x00645974u
-#define VT_HOTSPOT 0x006459CCu
-#define VT_OPTIONS 0x00646A58u
-#define VT_AUDIO 0x00646C28u
-#define VT_DIRECT_LOAD 0x00646888u
-#define VT_CONTROLS_WND 0x00645F38u
+#define VT_BUTTON GVA(0x0064554C)
+#define VT_LISTBOX GVA(0x00645650)
+#define VT_CHECKBOX GVA(0x00645758)
+#define VT_TEXTBOX GVA(0x006457B8)
+#define VT_SLIDER GVA(0x00645864)
+#define VT_EDITBOX GVA(0x006458DC)
+#define VT_STATIC GVA(0x006455B0)
+#define VT_PROGRESS GVA(0x00645974)
+#define VT_HOTSPOT GVA(0x006459CC)
+#define VT_OPTIONS GVA(0x00646A58)
+#define VT_AUDIO GVA(0x00646C28)
+#define VT_DIRECT_LOAD GVA(0x00646888)
+#define VT_CONTROLS_WND GVA(0x00645F38)
 
 #define BUTTON_STATE 0x28u
 #define BUTTON_IMAGES 0x2Cu
@@ -132,20 +133,22 @@
 #define FOOTER_AREA FOOTER_LEFT, 452, FOOTER_RIGHT, 480
 
 typedef struct {
-    uint32_t vtable;
+    unsigned vtable_id;
     uint8_t kind;
 } window_class_t;
 
 static const window_class_t k_windows[] = {
-    { 0x00645C3Cu, FE_WND_GAME },    { 0x006466B8u, FE_WND_MAIN },    { VT_OPTIONS, FE_WND_OPTIONS },
-    { 0x00646B40u, FE_WND_GAME_MENU }, { VT_AUDIO, FE_WND_AUDIO },   { 0x00645F38u, FE_WND_CONTROLS },
-    { 0x006460D0u, FE_WND_LOAD },    { 0x006462A8u, FE_WND_SAVE },    { 0x00646970u, FE_WND_QUIT },
-    { 0x00645D34u, FE_WND_MESSAGE }, { 0x00645E24u, FE_WND_MESSAGE }, { 0x006461B8u, FE_WND_MESSAGE },
-    { 0x00646390u, FE_WND_MESSAGE }, { 0x00646480u, FE_WND_MESSAGE }, { 0x00646D10u, FE_WND_MESSAGE },
-    { VT_DIRECT_LOAD, FE_WND_DIRECT_LOAD },
+    { GVA_ID(0x00645C3C), FE_WND_GAME },    { GVA_ID(0x006466B8), FE_WND_MAIN },    { GVA_ID(0x00646A58), FE_WND_OPTIONS },
+    { GVA_ID(0x00646B40), FE_WND_GAME_MENU }, { GVA_ID(0x00646C28), FE_WND_AUDIO },   { GVA_ID(0x00645F38), FE_WND_CONTROLS },
+    { GVA_ID(0x006460D0), FE_WND_LOAD },    { GVA_ID(0x006462A8), FE_WND_SAVE },    { GVA_ID(0x00646970), FE_WND_QUIT },
+    { GVA_ID(0x00645D34), FE_WND_MESSAGE }, { GVA_ID(0x00645E24), FE_WND_MESSAGE }, { GVA_ID(0x006461B8), FE_WND_MESSAGE },
+    { GVA_ID(0x00646390), FE_WND_MESSAGE }, { GVA_ID(0x00646480), FE_WND_MESSAGE }, { GVA_ID(0x00646D10), FE_WND_MESSAGE },
+    { GVA_ID(0x00646888), FE_WND_DIRECT_LOAD },
 };
 
 #define PREVIEW_ID 1003
+#define AUDIO_SUBTITLES_CHECK 1024
+#define AUDIO_SUBTITLES_HOTSPOT 1104
 #define AUDIO_3D_CHECK 1025
 #define AUDIO_3D_HOTSPOT 1105
 #define AUDIO_FIRST_CHECK 1020
@@ -211,7 +214,7 @@ static int read_rect(uint32_t va, fe_rect_t* r) {
 
 static const window_class_t* window_class(uint32_t vtable) {
     for (size_t i = 0; i < sizeof k_windows / sizeof k_windows[0]; i++)
-        if (k_windows[i].vtable == vtable) return &k_windows[i];
+        if (jpt_gva[k_windows[i].vtable_id] == vtable) return &k_windows[i];
     return NULL;
 }
 
@@ -390,13 +393,13 @@ static void source_of(fa_source_t* s, const uint16_t* bits, int w, int h, int pi
     s->key = bits[0];
 }
 
-static void set_label(fe_scene_t* s, fe_widget_t* w, const label_entry_t* e, int slot, const char* key, uint8_t kind) {
+static void set_label(fe_scene_t* s, fe_widget_t* w, const label_entry_t* e, int slot, const char* text, uint8_t kind) {
     w->image = e->states[slot];
     w->image_pitch = e->plaque.w;
     w->image_hash = e->state_hash[slot];
     w->normal_image = NULL;
     w->label = kind;
-    w->text = fe_scene_text(s, jpt_tr_cp(key));
+    w->text = fe_scene_text(s, text);
     w->color = e->plaque.ink;
     w->label_box = fe_rect_offset(e->plaque.letters, w->rect.left, w->rect.top);
     w->label_room = fe_rect_offset(e->plaque.room, w->rect.left, w->rect.top);
@@ -418,9 +421,12 @@ static void relabel_button(reader_t* r, uint32_t c, fe_widget_t* w, uint32_t slo
     const uint16_t *normal, *hover, *own;
     int nw, nh, np, hw, hh, hp, ow, oh, op;
     const char* key = button_label(r->wc->kind, w->id, w->image_w, w->image_h);
+    const jpt_game_version_t* version = jpt_active_profile();
+    const char* text = fe_button_text(l10n_release_language(), key && jpt_tr_has(key) ? jpt_tr_cp(key) : NULL,
+                                      fe_release_label_fix(version ? version->id : NULL, r->wc->kind, w->id));
     label_entry_t* e;
     fa_source_t a, b;
-    if (!key || !jpt_tr_has(key) || slot >= LABEL_STATES) return;
+    if (!key || !text || slot >= LABEL_STATES) return;
     if (!read_image(peek32(c + BUTTON_IMAGES), &normal, &nw, &nh, &np) ||
         !read_image(peek32(c + BUTTON_IMAGES + 4), &hover, &hw, &hh, &hp) || hw != nw || hh != nh)
         return;
@@ -448,7 +454,7 @@ static void relabel_button(reader_t* r, uint32_t c, fe_widget_t* w, uint32_t slo
         e->state_hash[slot] = fe_hash(e->hash, &slot, sizeof slot);
     }
     w->image_key = e->plaque.clean[0];
-    set_label(r->s, w, e, (int)slot, key, FE_LABEL_STENCIL);
+    set_label(r->s, w, e, (int)slot, text, FE_LABEL_STENCIL);
 }
 
 /* A window background with an engraved English title. */
@@ -458,7 +464,7 @@ static void relabel_static(reader_t* r, fe_widget_t* w) {
     for (size_t i = 0; i < sizeof k_titles / sizeof k_titles[0]; i++) {
         const title_label_t* t = &k_titles[i];
         if (t->window != r->wc->kind || w->image_w != TITLE_PICTURE_W || w->image_h != TITLE_PICTURE_H ||
-            !jpt_tr_has(t->key))
+            l10n_release_language() || !jpt_tr_has(t->key))
             continue;
         e = label_entry(w->image, w->image_hash);
         if (!e->plaque.clean && !e->failed) {
@@ -470,7 +476,7 @@ static void relabel_static(reader_t* r, fe_widget_t* w) {
             }
             log_label(t->key, e);
         }
-        if (!e->failed) set_label(r->s, w, e, 0, t->key, FE_LABEL_ENGRAVED);
+        if (!e->failed) set_label(r->s, w, e, 0, jpt_tr_cp(t->key), FE_LABEL_ENGRAVED);
         return;
     }
 }
@@ -482,7 +488,7 @@ static void relabel_backdrop(fe_scene_t* s) {
                                         "All Rights Reserved.";
     label_entry_t* e;
     fa_source_t a;
-    if (!jpt_tr_has(k_footer)) return;
+    if (l10n_release_language() || !jpt_tr_has(k_footer)) return;
     e = label_entry(s->backdrop, s->backdrop_hash);
     if (!e->plaque.clean && !e->failed) {
         source_of(&a, s->backdrop, FE_CANVAS_W, FE_CANVAS_H, s->backdrop_pitch, 0);
@@ -531,6 +537,10 @@ static int add_check(reader_t* r, uint32_t c, uint32_t flags, int32_t id, fe_rec
     if (!w) return 0;
     w->state = (uint16_t)(((state & CHECK_HOVER) ? FE_ST_HOVER : 0) | ((state & CHECK_CHECKED) ? FE_ST_CHECKED : 0));
     if (!set_picture(w, peek32(c + CHECK_IMAGES + 4 * index), 0)) w->image = NULL;
+    if (!w->image && r->wc->kind == FE_WND_AUDIO && id == AUDIO_SUBTITLES_CHECK) {
+        uint32_t donor = find_control(r->window, AUDIO_SUBTITLES_CHECK - 1, VT_CHECKBOX);
+        if (!donor || !set_picture(w, peek32(donor + CHECK_IMAGES + 4 * index), 0)) w->image = NULL;
+    }
     return 1;
 }
 
@@ -555,6 +565,19 @@ static void text_shadow(fe_widget_t* w, uint32_t enabled, uint32_t color, uint32
     w->shadow_color = colorref_rgb(color);
 }
 
+/* The Spanish and Brazilian releases keep the subtitles row of the audio options in their menu file with no text and no
+ * pictures; the port shows it, as the English and Russian ones do. */
+static const char k_subtitles_label[] = "Audio::Show Subtitles";
+
+static int is_subtitles_label(const reader_t* r, fe_rect_t label) {
+    fe_rect_t check;
+    uint32_t c;
+    if (r->wc->kind != FE_WND_AUDIO) return 0;
+    c = find_control(r->window, AUDIO_SUBTITLES_CHECK, VT_CHECKBOX);
+    return c && read_rect(c + CTRL_RECT, &check) && label.left >= check.left && (label.top + label.bottom) / 2 >= check.top - 3 &&
+           (label.top + label.bottom) / 2 <= check.top + AUDIO_ROW_H + 3;
+}
+
 static int add_textbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
     char text[TEXT_CAP];
     uint8_t points = 12, transparent = 1;
@@ -565,6 +588,7 @@ static int add_textbox(reader_t* r, uint32_t c, int32_t id, fe_rect_t rect) {
         const char* label = l10n_label(text);
         if (label) snprintf(text, sizeof text, "%s", label);
     }
+    if ((!text[0] || !strcmp(text, "Show Subtitles")) && is_subtitles_label(r, rect)) snprintf(text, sizeof text, "%s", jpt_tr_cp(k_subtitles_label));
     read8(c + TEXT_POINTS, &points);
     read8(c + TEXT_TRANSPARENT, &transparent);
     w = fe_scene_widget(r->s, border ? FE_W_FIELD : FE_W_LABEL, id, rect);
@@ -673,18 +697,20 @@ static int add_control(reader_t* r, uint32_t c) {
     if (!read32(c, &vt) || !read32(c + CTRL_FLAGS, &flags) || !read32(c + CTRL_ID, &id) || !read_rect(c + CTRL_RECT, &rect))
         return 0;
     if (!(flags & CTRL_VISIBLE)) return 1;
-    switch (vt) {
-    case VT_BUTTON: return add_button(r, c, flags, (int32_t)id, rect);
-    case VT_CHECKBOX: return add_check(r, c, flags, (int32_t)id, rect);
-    case VT_SLIDER: return add_slider(r, c, (int32_t)id, rect);
-    case VT_TEXTBOX: return add_textbox(r, c, (int32_t)id, rect);
-    case VT_EDITBOX: return add_editbox(r, c, (int32_t)id, rect);
-    case VT_LISTBOX: return add_listbox(r, c, (int32_t)id, rect);
-    case VT_STATIC: return add_static(r, c, (int32_t)id, rect);
-    case VT_HOTSPOT: return 1;
-    case VT_PROGRESS: refuse("a progress bar"); return 0;
-    default: log_limited("a control the frontend does not know is not drawn: %s", "its window stays HD"); return 1;
+    if (vt == VT_BUTTON) return add_button(r, c, flags, (int32_t)id, rect);
+    if (vt == VT_CHECKBOX) return add_check(r, c, flags, (int32_t)id, rect);
+    if (vt == VT_SLIDER) return add_slider(r, c, (int32_t)id, rect);
+    if (vt == VT_TEXTBOX) return add_textbox(r, c, (int32_t)id, rect);
+    if (vt == VT_EDITBOX) return add_editbox(r, c, (int32_t)id, rect);
+    if (vt == VT_LISTBOX) return add_listbox(r, c, (int32_t)id, rect);
+    if (vt == VT_STATIC) return add_static(r, c, (int32_t)id, rect);
+    if (vt == VT_HOTSPOT) return 1;
+    if (vt == VT_PROGRESS) {
+        refuse("a progress bar");
+        return 0;
     }
+    log_limited("a control the frontend does not know is not drawn: %s", "its window stays HD");
+    return 1;
 }
 
 static int read_controls(uint32_t window, uint32_t* out, unsigned* count) {
@@ -705,7 +731,7 @@ static int read_controls(uint32_t window, uint32_t* out, unsigned* count) {
 #define SAVE_ENTRIES 0x3Cu
 #define SAVE_ENTRY_SIZE 0x54u
 #define SAVE_ENTRY_FILE 0x28u
-#define GAME_INSTANCE 0x0066E05Cu
+#define GAME_INSTANCE GVA(0x0066E05C)
 #define SAVE_NAME_STRING 10
 #define PREVIEW_SLOTS 2
 
@@ -1307,6 +1333,13 @@ static uint32_t row_label(uint32_t window, fe_rect_t check) {
     return 0;
 }
 
+/* A hotspot with no area (the release's emptied subtitles row) takes the area of the row above, one row down. */
+static void span_empty_hotspot(uint32_t hotspot, uint32_t above, int row_step) {
+    fe_rect_t r, a;
+    if (!hotspot || !above || !read_rect(hotspot + CTRL_RECT, &r) || r.right > r.left || !read_rect(above + CTRL_RECT, &a)) return;
+    write_rect(hotspot, fe_rect_offset(a, 0, row_step));
+}
+
 static void edit_audio(uint32_t window) {
     static int logged;
     uint32_t check3d = find_control(window, AUDIO_3D_CHECK, VT_CHECKBOX), first = find_control(window, AUDIO_FIRST_CHECK, VT_CHECKBOX);
@@ -1318,7 +1351,7 @@ static void edit_audio(uint32_t window) {
         hide(find_control(window, AUDIO_3D_HOTSPOT, VT_HOTSPOT));
         hide(check3d);
     }
-    fe_layout_rows(AUDIO_ROWS, r0.top, r3d.top + AUDIO_ROW_H, AUDIO_ROW_H, tops);
+    fe_layout_rows(AUDIO_ROWS, r0.top, r0.top + (AUDIO_ROWS + 1) * AUDIO_ROW_H, AUDIO_ROW_H, tops);
     {
         uint32_t checks[AUDIO_ROWS], labels[AUDIO_ROWS], hotspots[AUDIO_ROWS];
         int dy[AUDIO_ROWS];
@@ -1337,6 +1370,7 @@ static void edit_audio(uint32_t window) {
             move_by(hotspots[k], dy[k]);
             move_by(checks[k], dy[k]);
         }
+        span_empty_hotspot(hotspots[AUDIO_ROWS - 1], hotspots[AUDIO_ROWS - 2], tops[AUDIO_ROWS - 1] - tops[AUDIO_ROWS - 2]);
     }
     if (!logged++)
         host_log("frontend", "Audio: \"3D Audio Accel. Enabled\" is hidden (no hardware 3D voices since Windows Vista); "

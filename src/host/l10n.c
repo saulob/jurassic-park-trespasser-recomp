@@ -6,6 +6,7 @@
  * port's completion files only add what it lacks (captions: they replace the release's lines with the corrected timing).
  * Audio is never translated: the English voices keep playing, and stream_audio.c serves the TPA they come from.
  */
+#include "guest_va.h"
 #include "l10n.h"
 
 #include <stdio.h>
@@ -14,13 +15,14 @@
 
 #include "debug_menu_panel.h"
 #include "jpt_l10n.h"
+#include "jpt_string_table.h"
 #include "jpt_tr.h"
 #include "jpt_user_data.h"
 #include "l10n_assets.h"
 #include "stream_audio.h"
 
-#define CAPTIONS_VA 0x004395A0u
-#define TEXT_ACTION_VA 0x00472B60u
+#define CAPTIONS_VA GVA(0x004395A0)
+#define TEXT_ACTION_VA GVA(0x00472B60)
 #define CAPTION_STATE 0x20u        /* the sample's caption state: shown flag at +0, block at +4 */
 #define TEXT_ACTION_TEXT 0x14u
 #define TEXT_ACTION_ID 0x18u
@@ -52,6 +54,7 @@ typedef struct {
 static struct {
     int codepage;
     char text_code[JPT_L10N_CODE_MAX], subtitle_code[JPT_L10N_CODE_MAX];
+    int release_language;
     int release_strings, port_strings, release_samples, port_samples, interface_count;
     char cache_dir[MAX_PATH], game_dir[MAX_PATH];
     entry_t* strings;
@@ -61,9 +64,10 @@ static struct {
     uint64_t fp_key[FP_SLOTS];
     int fp_value[FP_SLOTS];
     volatile LONG captions_ready;
-    int hits_logged, misses_logged, truncations_logged, text_hits_logged, text_misses_logged;
+    int hits_logged, misses_logged, truncations_logged, text_hits_logged, text_misses_logged, unreadable_logged;
     menu_file_t menus[MENU_FILES];
     int menu_count;
+    char release_face[LF_FACESIZE];
 } L;
 
 static recomp_func_t s_captions_lifted, s_text_action_lifted;
@@ -263,11 +267,12 @@ static DWORD WINAPI scan_english_captions(LPVOID unused) {
     return 0;
 }
 
-static void load_strings(void) {
+static void load_strings(int release_text_loaded) {
     static int port = 1;
     const char* data;
     size_t n;
-    if (l10n_asset(L.text_code, JPT_L10N_STRINGS_ASSET, &data, &n)) jpt_l10n_read_strings(data, n, add_string, NULL);
+    if (!release_text_loaded && l10n_asset(L.text_code, JPT_L10N_STRINGS_ASSET, &data, &n))
+        jpt_l10n_read_strings(data, n, add_string, NULL);
     qsort(L.strings, (size_t)L.string_count, sizeof *L.strings, by_id);
     L.release_strings = L.string_count;
     if (l10n_asset(L.text_code, JPT_L10N_STRINGS_PORT_ASSET, &data, &n)) jpt_l10n_read_strings(data, n, add_string, &port);
@@ -296,6 +301,40 @@ static void load_interface(void) {
     if (L.interface_count <= 0) host_log("l10n", "no interface text for %s: English is used", L.text_code);
 }
 
+typedef struct {
+    int codepage, count;
+} release_load_t;
+
+static void add_release_string(void* user, uint32_t id, const char* bytes, uint32_t length) {
+    release_load_t* load = (release_load_t*)user;
+    char utf8[STRING_PROBE * 3];
+    if (!length || length >= STRING_PROBE) return;
+    if (jpt_cp_to_utf8(load->codepage, bytes, length, utf8, sizeof utf8) == (size_t)-1) return;
+    add_string(NULL, id, utf8);
+    load->count++;
+}
+
+static int load_release_strings(const char* game_dir, const char* relative, int codepage) {
+    char path[MAX_PATH];
+    release_load_t load = { codepage, 0 };
+    uint8_t* data;
+    long size;
+    FILE* f;
+    if (snprintf(path, sizeof path, "%s\\%s", game_dir, relative) >= (int)sizeof path) return 0;
+    f = fopen(path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END);
+    size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    data = size > 0 ? (uint8_t*)malloc((size_t)size) : NULL;
+    if (data && fread(data, 1, (size_t)size, f) == (size_t)size && jpt_string_table_read(data, (size_t)size, add_release_string, &load) < 0)
+        load.count = 0;
+    free(data);
+    fclose(f);
+    qsort(L.strings, (size_t)L.string_count, sizeof *L.strings, by_id);
+    return load.count;
+}
+
 static void use_unicode_fallback_font(void) {
     char font[MAX_PATH];
     UINT n = GetWindowsDirectoryA(font, MAX_PATH);
@@ -304,8 +343,20 @@ static void use_unicode_fallback_font(void) {
     if (GetFileAttributesA(font) != INVALID_FILE_ATTRIBUTES) dmp_set_fallback_font(font);
 }
 
-void l10n_init(const char* cache_dir, const char* game_dir, const char* language) {
+static void use_release_font(const char* game_dir, const jpt_game_version_t* version) {
+    char font[MAX_PATH];
+    if (!version->font_file) return;
+    snprintf(font, sizeof font, "%s\\%s", game_dir, version->font_file);
+    if (AddFontResourceExA(font, FR_PRIVATE, NULL) > 0) snprintf(L.release_face, sizeof L.release_face, "%s", version->font_face);
+    host_log("l10n", "the release's font %s %s", version->font_face,
+             L.release_face[0] ? "replaces the game's Arial" : "could not be loaded: Arial is kept");
+}
+
+/* The text a release shipped is the game's own in its language: only what it lacks comes from the port. A release whose
+ * strings the guest already holds (Spanish, Brazilian) needs no game text from the port at all. */
+void l10n_init(const char* cache_dir, const char* game_dir, const char* language, const jpt_game_version_t* version) {
     const jpt_l10n_language_t* chosen = jpt_l10n_language(language);
+    int own_language, release_text = 0;
     memset(&L, 0, sizeof L);
     for (uint32_t i = 0; i < FP_SLOTS; i++) L.fp_value[i] = -1;
     snprintf(L.cache_dir, sizeof L.cache_dir, "%s", cache_dir);
@@ -313,10 +364,19 @@ void l10n_init(const char* cache_dir, const char* game_dir, const char* language
     snprintf(L.text_code, sizeof L.text_code, "%s", chosen ? chosen->code : JPT_L10N_ENGLISH);
     snprintf(L.subtitle_code, sizeof L.subtitle_code, "%s", L.text_code);
     L.codepage = chosen ? chosen->codepage : 1252;
+    own_language = version && !strcmp(L.text_code, version->language_code);
+    L.release_language = own_language;
     use_unicode_fallback_font();
     jpt_tr_reset();
     if (strcmp(L.text_code, JPT_L10N_ENGLISH)) {
-        load_strings();
+        if (own_language && version->text_strings) {
+            L.release_strings = load_release_strings(game_dir, version->text_strings, version->text_codepage);
+            release_text = L.release_strings > 0;
+            host_log("l10n", "game text from the %s release's %s: %d strings in code page %d", version->language,
+                     version->text_strings, L.release_strings, version->text_codepage);
+            use_release_font(game_dir, version);
+        }
+        if (!own_language || version->text_strings) load_strings(release_text);
         load_subtitles();
         load_interface();
     }
@@ -339,6 +399,8 @@ void l10n_init(const char* cache_dir, const char* game_dir, const char* language
 }
 
 int l10n_active(void) { return L.codepage != 0; }
+
+int l10n_release_language(void) { return L.release_language; }
 
 const char* l10n_text(unsigned id) {
     entry_t* e = find_entry(id);
@@ -387,6 +449,11 @@ void shim_LoadStringA(void) {
     GUEST_RETURN_STDCALL(4);
 }
 
+/* The release's font replaces the game's only face, as the release's own executable does. */
+static const char* face_for(const char* requested) {
+    return L.release_face[0] && requested && !_stricmp(requested, "Arial") ? L.release_face : requested;
+}
+
 static DWORD charset_for(DWORD requested) {
     return L.codepage && (requested == ANSI_CHARSET || requested == DEFAULT_CHARSET)
                ? (DWORD)jpt_cp_charset(L.codepage)
@@ -397,7 +464,7 @@ void shim_CreateFontA(void) {
     g_eax = (uint32_t)(uintptr_t)CreateFontA((int)GUEST_ARG(0), (int)GUEST_ARG(1), (int)GUEST_ARG(2),
                                              (int)GUEST_ARG(3), (int)GUEST_ARG(4), GUEST_ARG(5), GUEST_ARG(6),
                                              GUEST_ARG(7), charset_for(GUEST_ARG(8)), GUEST_ARG(9), GUEST_ARG(10),
-                                             GUEST_ARG(11), GUEST_ARG(12), (LPCSTR)GUEST_PTR(13));
+                                             GUEST_ARG(11), GUEST_ARG(12), face_for((LPCSTR)GUEST_PTR(13)));
     GUEST_RETURN_STDCALL(14);
 }
 
@@ -409,6 +476,7 @@ void shim_CreateFontIndirectA(void) {
     } else {
         lf = *in;
         lf.lfCharSet = (BYTE)charset_for(lf.lfCharSet);
+        if (face_for(lf.lfFaceName) != lf.lfFaceName) snprintf(lf.lfFaceName, sizeof lf.lfFaceName, "%s", L.release_face);
         g_eax = (uint32_t)(uintptr_t)CreateFontIndirectA(&lf);
     }
     GUEST_RETURN_STDCALL(1);
@@ -429,7 +497,11 @@ static uint32_t block_extent(uint32_t block) {
 static const uint8_t* translated_block(uint32_t block) {
     uint32_t n;
     int slot;
-    if (!InterlockedCompareExchange(&L.captions_ready, 0, 0) || !(n = block_extent(block))) return NULL;
+    if (!InterlockedCompareExchange(&L.captions_ready, 0, 0)) return NULL;
+    if (!(n = block_extent(block))) {
+        if (L.unreadable_logged++ < LOG_LIMIT) host_log("l10n", "a sample's caption block is not readable: its captions are not shown");
+        return NULL;
+    }
     slot = fp_slot(jpt_caption_fingerprint((const uint8_t*)ADDR(block), n));
     if (slot >= 0 && L.fp_value[slot] >= 0) {
         if (L.hits_logged++ < LOG_LIMIT) host_log("l10n", "subtitle shown translated (%s)", L.subtitle_code);

@@ -3,9 +3,10 @@
  * Direct3D textures within a time window, measured with the performance counter instead of GetTickCount's 15.6 ms
  * steps.
  */
+#include "guest_va.h"
 #include "host.h"
 
-#define UPLOAD_POLYGONS_VA 0x0055A4E0u /* CScreenRenderAuxD3D::UploadPolygonArray(n, polygons) */
+#define UPLOAD_POLYGONS_VA GVA(0x0055A4E0) /* CScreenRenderAuxD3D::UploadPolygonArray(n, polygons) */
 
 static recomp_func_t s_upload_lifted;
 static int s_installed;

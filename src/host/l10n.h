@@ -4,10 +4,14 @@
 #define L10N_H
 
 #include "host.h"
+#include "jpt_game_version.h"
 
-/* Loads the embedded text of the chosen language (jpt_l10n.h); nothing changes for English. Before the guest runs. */
-void l10n_init(const char* cache_dir, const char* game_dir, const char* language);
+/* Loads the embedded text of the chosen language (jpt_l10n.h). With English, a version whose release translated the
+ * string table (version->text_strings) shows that text instead; otherwise nothing changes. Before the guest runs. */
+void l10n_init(const char* cache_dir, const char* game_dir, const char* language, const jpt_game_version_t* version);
 int l10n_active(void);
+/* The language in use is the one the game version was released in: its own menu pictures and text stay as they are. */
+int l10n_release_language(void);
 /* The translation of a string ID: in the display code page for the game, in UTF-8 for the port's own panels. */
 const char* l10n_text(unsigned id);
 const char* l10n_text_utf8(unsigned id);

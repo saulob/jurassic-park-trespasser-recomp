@@ -3,17 +3,18 @@
  * hooks (src/host/lift_hook_list.h) that change 116 state exactly where 117's code differs. Off leaves the 116 code
  * running untouched. The rules themselves are in patch117_rules.c.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <string.h>
 
 #include "patch117_rules.h"
 
-#define JUMP_HANDOFF_VA 0x004F0960u /* CPhysicsInfoPlayer jump/walk hand-off, thiscall (request, instance), ret 8 */
-#define JUMP_X 0x0067AFA0u
-#define JUMP_Y 0x0067AFA4u
-#define JUMP_Z 0x0067AFA8u
-#define JUMP_VOLUNTARY 0x0067AF5Du
+#define JUMP_HANDOFF_VA GVA(0x004F0960) /* CPhysicsInfoPlayer jump/walk hand-off, thiscall (request, instance), ret 8 */
+#define JUMP_X GVA(0x0067AFA0)
+#define JUMP_Y GVA(0x0067AFA4)
+#define JUMP_Z GVA(0x0067AFA8)
+#define JUMP_VOLUNTARY GVA(0x0067AF5D)
 #define REQUEST_AMOUNT 0x84u
 #define REQUEST_NEW 0x8Cu
 #define MSG_HELD 0x24u
@@ -38,17 +39,17 @@
 #define GRAB_HOLDING_LAST 5
 #define GRAB_MIN_HAND_STATE 3
 #define HELD_HAND 0x40u
-#define VIEW_YAW_MIN 0x0066ED8Cu
-#define VIEW_PITCH_MIN 0x0066ED90u
-#define VIEW_YAW_MAX 0x0066ED94u
-#define VIEW_PITCH_MAX 0x0066ED98u
-#define HOLDING_AIMS_CENTRE 0x0066ED67u
-#define EMPTY_REACH 0x0066ED28u
-#define PICKUP_HOLD 0x0066ED50u
-#define SHOULDER_HEIGHT 0x0066EF00u
-#define RAISE_PHASE 0x0066EF10u
-#define HEAD_RANGE 0x0066EF20u
-#define NOW 0x0073F34Cu
+#define VIEW_YAW_MIN GVA(0x0066ED8C)
+#define VIEW_PITCH_MIN GVA(0x0066ED90)
+#define VIEW_YAW_MAX GVA(0x0066ED94)
+#define VIEW_PITCH_MAX GVA(0x0066ED98)
+#define HOLDING_AIMS_CENTRE GVA(0x0066ED67)
+#define EMPTY_REACH GVA(0x0066ED28)
+#define PICKUP_HOLD GVA(0x0066ED50)
+#define SHOULDER_HEIGHT GVA(0x0066EF00)
+#define RAISE_PHASE GVA(0x0066EF10)
+#define HEAD_RANGE GVA(0x0066EF20)
+#define NOW GVA(0x0073F34C)
 /* 117's new tuning: the tucked hand's offset from the shoulder bone. */
 #define TUCK_X 0.3f
 #define TUCK_Y 0.1f
@@ -59,20 +60,20 @@
 #define OBSTACLE_RADIUS 0.3f
 #define OBSTACLE_NONE -100.0f
 /* 116 functions the raise uses. */
-#define ANGLES_OF_QUAT 0x00441DA0u /* cdecl (out[2], quat) */
-#define ANGLES_OF_DIR 0x00441D50u  /* cdecl (out[2], dir[3]) */
-#define DIR_OF_ANGLES 0x00442380u  /* cdecl (out[3], angles[2]) */
-#define RSQRT 0x0041E1D0u          /* cdecl (float), st0 */
-#define RSQRT_TABLE 0x006715A4u
-#define ROTATE 0x004CD090u         /* thiscall quat (out[3], v[3]) */
-#define ROTATION_TO 0x004CCCE0u    /* thiscall out quat (from[3], to[3]) */
-#define FORWARD_AXIS 0x00675A40u
-#define QUERY_OPEN 0x00487300u     /* thiscall (placement, radius, length): objects in a capsule */
-#define QUERY_NEXT 0x00487900u
-#define QUERY_CLOSE 0x004877F0u
-#define SET_HAND_POSE 0x0045F660u  /* thiscall (int) */
-#define HOLDS_FREE_GUN 0x0045FC10u /* thiscall, al */
-#define HAND_REACH 0x0045B470u     /* thiscall, st0 */
+#define ANGLES_OF_QUAT GVA(0x00441DA0) /* cdecl (out[2], quat) */
+#define ANGLES_OF_DIR GVA(0x00441D50)  /* cdecl (out[2], dir[3]) */
+#define DIR_OF_ANGLES GVA(0x00442380)  /* cdecl (out[3], angles[2]) */
+#define RSQRT GVA(0x0041E1D0)          /* cdecl (float), st0 */
+#define RSQRT_TABLE GVA(0x006715A4)
+#define ROTATE GVA(0x004CD090)         /* thiscall quat (out[3], v[3]) */
+#define ROTATION_TO GVA(0x004CCCE0)    /* thiscall out quat (from[3], to[3]) */
+#define FORWARD_AXIS GVA(0x00675A40)
+#define QUERY_OPEN GVA(0x00487300)     /* thiscall (placement, radius, length): objects in a capsule */
+#define QUERY_NEXT GVA(0x00487900)
+#define QUERY_CLOSE GVA(0x004877F0)
+#define SET_HAND_POSE GVA(0x0045F660)  /* thiscall (int) */
+#define HOLDS_FREE_GUN GVA(0x0045FC10) /* thiscall, al */
+#define HAND_REACH GVA(0x0045B470)     /* thiscall, st0 */
 #define SLOT_POSITION 0x20u
 #define SLOT_TERRAIN 0x54u
 #define SLOT_BOUNDS 0x120u
@@ -140,7 +141,7 @@ static void jump_handoff(void) {
 }
 
 /* CPlayer::Process after its hit-frame request: the request local is at [ebp-0x94], the control message at [ebp+8]. */
-void lift_hook_00455B6B(void) {
+void GHOOK(0x00455B6B)(void) {
     uint32_t msg;
     patch117_jump_request_t r;
     if (!s_on) return;
@@ -162,11 +163,11 @@ static void jump_impulse_written(void) {
     s_jump_ttl = j.ttl;
 }
 
-void lift_hook_004569C8(void) { jump_impulse_written(); }
-void lift_hook_00460CF5(void) { jump_impulse_written(); }
+void GHOOK(0x004569C8)(void) { jump_impulse_written(); }
+void GHOOK(0x00460CF5)(void) { jump_impulse_written(); }
 
 /* Foot_IDOF: a human, alive pelvis with a pending jump whose box/slope test failed; al = the box-support flag. */
-void lift_hook_004E78D2(void) {
+void GHOOK(0x004E78D2)(void) {
     patch117_jump_t j;
     if (!s_on || (g_eax & 0xFFu)) return;
     j = jump_read();
@@ -391,35 +392,35 @@ static void raise_hand(uint32_t self, uint32_t msg) {
 }
 
 /* CPlayer::Process, where 117 calls its hand raise: this at [ebp-0x1E68], the control message at [ebp+8]. */
-void lift_hook_0045125D(void) {
+void GHOOK(0x0045125D)(void) {
     if (s_on) raise_hand(MEM32(g_ebp - 0x1E68), MEM32(g_ebp + 8));
 }
 
 /* The 116 raising step (state 1 to 2 once the hand is in the view box) is replaced by the raise above; al = the raise
  * phase flag it tests. */
-void lift_hook_004512FF(void) {
+void GHOOK(0x004512FF)(void) {
     if (s_on) g_eax = 0;
 }
 
 /* The grab gate: the lowest hand state a grab accepts was just stored at [ebp-0x3FC]. */
-void lift_hook_0044CF9F(void) {
+void GHOOK(0x0044CF9F)(void) {
     if (s_on) MEM32(g_ebp - 0x3FC) = GRAB_MIN_HAND_STATE;
 }
 
 /* After PickUp: 117 lifts the hand's target at once. */
-void lift_hook_00451212(void) {
+void GHOOK(0x00451212)(void) {
     uint32_t z = MEM32(g_ebp - 0x1E68) + PLAYER_HAND_TARGET + 8;
     if (s_on) wrf(z, (float)((double)patch117_pickup_lift(1) + rdf(z)));
 }
 
 /* The mouse steers the hand when 0 (ecx) is below the hand state; 117 needs the hand raised. */
-void lift_hook_004519A1(void) {
+void GHOOK(0x004519A1)(void) {
     if (s_on && g_ecx == 0) g_ecx = 1;
 }
 
 /* Move, after the hand pushed the view (yaw [ebp-0x1C], pitch [ebp-0x18]; before: [ebp-0x38], [ebp-0x34]); this at
  * [ebp-0x59C]. The pushes ran only inside this gate, and the yaw push only at state 2. */
-void lift_hook_0044C1B2(void) {
+void GHOOK(0x0044C1B2)(void) {
     uint32_t self = MEM32(g_ebp - 0x59C), yaw = g_ebp - 0x1C, pitch = g_ebp - 0x18;
     int state = (int)MEM32(self + PLAYER_HAND_STATE), turned;
     if (!s_on || state < 2 || MEM32(self + PLAYER_E48) || MEM32(self + PLAYER_STOW) || MEM8(self + PLAYER_E56)) return;
@@ -453,14 +454,14 @@ static void head_range_back(void) {
     s_head_range_swapped = 0;
 }
 
-void lift_hook_004546D7(void) { head_range_off(); }
-void lift_hook_004546E2(void) { head_range_back(); }
-void lift_hook_0045472E(void) { head_range_off(); }
-void lift_hook_00454734(void) { head_range_back(); }
+void GHOOK(0x004546D7)(void) { head_range_off(); }
+void GHOOK(0x004546E2)(void) { head_range_back(); }
+void GHOOK(0x0045472E)(void) { head_range_off(); }
+void GHOOK(0x00454734)(void) { head_range_back(); }
 
 /* The reach function's last load ([0x0066ED28]), reached for an empty hand and for a held object without reach
  * information; 117 gives the empty hand a shorter reach. this at [ebp-0x114]. */
-void lift_hook_0045B916(void) {
+void GHOOK(0x0045B916)(void) {
     int grab;
     if (!s_on) return;
     grab = (int)MEM32(MEM32(g_ebp - 0x114) + PLAYER_GRAB);
@@ -470,19 +471,19 @@ void lift_hook_0045B916(void) {
     s_reach_swapped = 1;
 }
 
-void lift_hook_0045B91C(void) {
+void GHOOK(0x0045B91C)(void) {
     if (!s_reach_swapped) return;
     MEM32(EMPTY_REACH) = s_reach;
     s_reach_swapped = 0;
 }
 
 /* The stow handler's empty-hand target distance, just loaded into eax. */
-void lift_hook_00461491(void) {
+void GHOOK(0x00461491)(void) {
     if (s_on) g_eax = bits(patch117_empty_reach(1));
 }
 
 /* The tuning object was just built: 117 holds a picked-up object twice as long before carrying it. */
-void lift_hook_00441D1D(void) {
+void GHOOK(0x00441D1D)(void) {
     if (s_on && rdf(PICKUP_HOLD) == patch117_pickup_hold_seconds(0)) wrf(PICKUP_HOLD, patch117_pickup_hold_seconds(1));
 }
 
@@ -492,6 +493,7 @@ void patch117_player_configure(int on) {
 }
 
 void patch117_player_install(void) {
+    if (!JPT_P117_HAND_JUMP) return;
     if (!guest_override_install(JUMP_HANDOFF_VA, jump_handoff, &s_handoff_lifted))
         host_log("patch117", "warning: the jump hand-off could not be hooked: its official fix is off");
 }

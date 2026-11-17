@@ -3,18 +3,19 @@
  * game into the Direct3D frame through CScreenRenderDWI::DrawPolygon. Every primitive copies the polygon into
  * arvRasterVertices before its walker locks the screen, so each Lock call inside DrawPolygon names the polygon's box.
  */
+#include "guest_va.h"
 #include "host.h"
 
-#define DRAW_POLYGON_VA 0x0055F540u /* CScreenRenderDWIT<uint16>::DrawPolygon, vtable 0x0064E760 slot 10 */
-#define RASTER_LOCK_VA 0x00503400u  /* CRasterVid::Lock: locks the DirectDraw surface unless already locked */
+#define DRAW_POLYGON_VA GVA(0x0055F540) /* CScreenRenderDWIT<uint16>::DrawPolygon, vtable 0x0064E760 slot 10 */
+#define RASTER_LOCK_VA GVA(0x00503400)  /* CRasterVid::Lock: locks the DirectDraw surface unless already locked */
 #define RASTER_SURFACE 0x4Cu        /* CRasterVid: IDirectDrawSurface4* */
 /* CRasterWin::Lock (vtable 0x0064DB54) calls CRasterVid::Lock, then moves the pixel pointer by iOffsetPointer: the
  * game's view sits inside the surface, and polygon coordinates are relative to the view. */
-#define RASTER_WIN_LOCK_VA 0x00504D20u
-#define RASTER_WIN_VTABLE 0x0064DB54u
+#define RASTER_WIN_LOCK_VA GVA(0x00504D20)
+#define RASTER_WIN_VTABLE GVA(0x0064DB54)
 #define RASTER_WIN_ORIGIN 0x90u
-#define RASTER_VERTICES 0x00737438u /* arvRasterVertices: screen X at +0xC and Y at +0x10 */
-#define RASTER_VERTEX_COUNT 0x00737EECu
+#define RASTER_VERTICES GVA(0x00737438) /* arvRasterVertices: screen X at +0xC and Y at +0x10 */
+#define RASTER_VERTEX_COUNT GVA(0x00737EEC)
 #define RASTER_VERTEX_SIZE 0x28u
 #define MAX_VERTICES 64u
 #define BOX_MARGIN 2
@@ -22,12 +23,12 @@
 
 /* Primitives whose spans only store pixels (SelfMod 0x00640FE0, 0x006402F0, 0x0063DC60, 0x0063D020 and the flat fill
  * 0x00555450 each write [ebp+edi*2] and never read the screen). Any other primitive reads its box from the GPU. */
-static const uint32_t k_store_only[] = {
-    0x0057B7B0u, /* bump, linear */
-    0x0057DB50u, /* bump, perspective */
-    0x005668C0u, /* texture, linear */
-    0x00568EF0u, /* texture, perspective */
-    0x00563890u, /* flat */
+static const unsigned k_store_only[] = {
+    GVA_ID(0x0057B7B0), /* bump, linear */
+    GVA_ID(0x0057DB50), /* bump, perspective */
+    GVA_ID(0x005668C0), /* texture, linear */
+    GVA_ID(0x00568EF0), /* texture, perspective */
+    GVA_ID(0x00563890), /* flat */
 };
 #define STORE_ONLY_COUNT (sizeof k_store_only / sizeof k_store_only[0])
 
@@ -99,7 +100,7 @@ void cpu_polygons_install(void) {
                   guest_override_install(RASTER_LOCK_VA, raster_lock, &s_lock_lifted);
     if (!s_installed) return;
     for (unsigned i = 0; i < STORE_ONLY_COUNT; i++)
-        if (guest_override_install(k_store_only[i], entries[i], &s_store_only_lifted[i])) known++;
+        if (guest_override_install(GVA_AT(k_store_only[i]), entries[i], &s_store_only_lifted[i])) known++;
     host_log("renderer", "software polygons in Direct3D frames: Locks limited to each polygon's box, %u of %u "
              "store-only primitives known", known, (unsigned)STORE_ONLY_COUNT);
 }

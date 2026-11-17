@@ -1,0 +1,79 @@
+{
+  "id": "es-117",
+  "lift": "lift_es117",
+  "gen_dir": "gen_es117",
+  "sha256": "cfc95e60fcf8ea505ed586e24002858324308774cc5197bac85205633360f753",
+  "size": 2584576,
+  "file_version": "1.0.117",
+  "pe_timestamp": "1998-11-07T22:19:21Z",
+  "image_base": "0x00400000",
+  "size_of_image": "0x0034C000",
+  "entry_point": "0x0060D302",
+  "selfmod": {
+    "start": "0x0063D000",
+    "size": "0x0000A000"
+  },
+  "decoder_fixups": [
+    {
+      "va": "0x0053A7BD",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0053AA1D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0053ABAD",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0053ADAD",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0053AF3D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0053B08F",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0053B1A2",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x005F4964",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x005F4B05",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    }
+  ],
+  "extra_entries": [],
+  "patch117": {
+    "hand_jump": false,
+    "add_child": true,
+    "box_box": true,
+    "wake": false
+  }
+}

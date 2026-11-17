@@ -6,6 +6,7 @@
  * CEntityAttached link. Host-side cheats leave the game whenever it is not in a running level (menus, saves, loads).
  * The launcher's saved values start each session; F10 only records what it changed over them (jpt_cheats.h).
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -16,32 +17,32 @@
 #include "jpt_tr.h"
 #include "physics_watch.h"
 
-#define WORLD 0x0073F444u
+#define WORLD GVA(0x0073F444)
 #define WORLD_CAMERA 0x14u
 #define WORLD_LOAD_PENDING 0x38u
 #define WORLD_SAVE_PENDING 0x44u
-#define PLAYER 0x0066EF64u
+#define PLAYER GVA(0x0066EF64)
 #define PLAYER_FLAGS 0xDCu /* bPhysics, bInvulnerable, bControl */
 #define INVULNERABLE_SHIFT 8
 #define ANIMATE_HP 0x50u
 #define ANIMATE_HP_MAX 0x54u
 #define INSTANCE_INFO 0x28u
 #define INFO_PHYSICS 0x0Cu
-#define PHYSICS_PLAYER_VTABLE 0x0064D644u
+#define PHYSICS_PLAYER_VTABLE GVA(0x0064D644)
 #define PHYSICS_SPEED 0x70u
-#define AI_SYSTEM 0x0066E77Cu
+#define AI_SYSTEM GVA(0x0066E77C)
 #define AI_FLAGS 0x50u /* bActive, bSleep, bBoring: DINOS toggles the third byte */
-#define AMMO_FLAGS 0x0066ECC0u /* g_bUnlimitedAmmo is its second byte */
+#define AMMO_FLAGS GVA(0x0066ECC0) /* g_bUnlimitedAmmo is its second byte */
 #define AMMO_SHIFT 8
 #define CAMERA_PRESENCE 0x30u
 #define CAMERA_ATTACHED 0x50u
 #define CAMERA_ANIMATE 0x54u
 #define CAMERA_RELATIVE 0x58u
 #define PLACEMENT_BYTES 28u
-#define UPDATE_FROM_ATTACHED 0x00617F20u
-#define INSTANCE_MOVE 0x00614B10u
-#define PELVIS_JUMP_Z 0x0067AFA8u
-#define PELVIS_JUMP_VOLUNTARY 0x0067AF5Cu /* the flag is the dword's second byte */
+#define UPDATE_FROM_ATTACHED GVA(0x00617F20)
+#define INSTANCE_MOVE GVA(0x00614B10)
+#define PELVIS_JUMP_Z GVA(0x0067AFA8)
+#define PELVIS_JUMP_VOLUNTARY GVA(0x0067AF5C) /* the flag is the dword's second byte */
 #define VOLUNTARY_SHIFT 8
 #define FRAME_SECONDS_MAX 0.1f
 #define LOG_LIMIT 48

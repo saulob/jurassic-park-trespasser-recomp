@@ -13,6 +13,7 @@ struct ID3D11RenderTargetView;
 
 typedef struct {
     float view_w, view_h; /* the presentation surface, in its own pixels */
+    float scene_x, scene_y, scene_w, scene_h; /* the game's 3D view inside it; w 0: the whole surface */
     float dpi_scale;
     int menu;
     int objectives; /* the menu is Objectives: larger text */

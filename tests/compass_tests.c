@@ -7,6 +7,7 @@
 #include "cheats_policy.h"
 #include "compass_policy.h"
 #include "debug_menu_policy.h"
+#include "host_policy.h"
 #include "jpt_gamepad.h"
 
 static int g_checks, g_failures;
@@ -550,6 +551,137 @@ static void test_layout(void) {
     }
 }
 
+/* The strip is placed in the game's 3D view: the same fractions of the surface give the same place for every version,
+ * whatever the resolution, and a smaller view (a view-size setting) moves it into that view. */
+/* The 3D image the game draws for a view-size setting: the guest's own arithmetic (0x00412BC0 taking XView and YView from
+ * the registry, 0x005F7980 clamping, 0x00504CC0 centring) on a screen of w x h. */
+static void game_view(int w, int h, int xview, int yview, float out[4]) {
+    const int unit_w = (int)((double)w * 0.66f * 0.1f), unit_h = (int)((double)h * 0.66f * 0.1f);
+    int vw = (w - xview * unit_w + 2) & ~3, vh = h - yview * unit_h;
+    const int min_h = 240 * h / w;
+    vw = vw < 240 ? 240 : vw > w ? w : vw;
+    vh = vh < min_h ? min_h : vh > h ? h : vh;
+    out[0] = (float)((w - vw) / 2);
+    out[1] = (float)((h - vh) / 2);
+    out[2] = (float)vw;
+    out[3] = (float)vh;
+}
+
+/* The view-size settings each version's registry store holds: English 1 and 1, the other three 0 and 0. */
+static const struct {
+    const char* version;
+    int xview, yview;
+} k_views[] = { { "en-116", 1, 1 }, { "ru-116", 0, 0 }, { "es-117", 0, 0 }, { "ptbr-117", 0, 0 } };
+
+static void test_scene_layout(void) {
+    static const float sizes[][2] = { { 1920.0f, 1080.0f }, { 2560.0f, 1440.0f }, { 3840.0f, 2160.0f } };
+    float v[4];
+    game_view(3840, 2160, 1, 1, v);
+    CHECK(v[0] == 126.0f && v[1] == 71.0f && v[2] == 3588.0f && v[3] == 2018.0f, "XView 1 at 3840x2160: the English log's camera 3588x2018");
+    game_view(3840, 2160, 0, 0, v);
+    CHECK(v[0] == 0.0f && v[1] == 0.0f && v[2] == 3840.0f && v[3] == 2160.0f, "XView 0: the whole screen, as the Brazilian log's 3840x2160");
+    for (size_t s = 0; s < sizeof sizes / sizeof sizes[0]; s++) {
+        const float w = sizes[s][0], h = sizes[s][1];
+        cp_layout_t old_en = { 0 };
+        float rel_old_top[4], rel_new[4][4];
+        for (size_t p = 0; p < 4; p++) {
+            float view[4];
+            cp_layout_t old_layout, now;
+            game_view((int)w, (int)h, k_views[p].xview, k_views[p].yview, view);
+            cp_layout(w, h, &old_layout);
+            cp_layout_in(view[0], view[1], view[2], view[3], &now);
+            if (!p) old_en = old_layout;
+            CHECK(near(old_layout.left, old_en.left, 1e-3f) && near(old_layout.top, old_en.top, 1e-3f) &&
+                      near(old_layout.right, old_en.right, 1e-3f) && near(old_layout.height, old_en.height, 1e-3f),
+                  "%s %.0fx%.0f: the old layout depends on the surface only, the same for every version", k_views[p].version, w, h);
+            rel_old_top[p] = (old_layout.top - view[1]) / view[3];
+            rel_new[p][0] = (now.left - view[0]) / view[2];
+            rel_new[p][1] = (now.top - view[1]) / view[3];
+            rel_new[p][2] = (now.right - now.left) / view[2];
+            rel_new[p][3] = now.height / view[3];
+            CHECK(now.left >= view[0] && now.right <= view[0] + view[2] && now.top >= view[1] &&
+                      now.top + now.height <= view[1] + view[3] && near(now.centre, view[0] + view[2] * 0.5f, 1e-3f),
+                  "%s %.0fx%.0f: the strip lies in the 3D image, centred", k_views[p].version, w, h);
+            CHECK(near(now.top, view[1], 1e-3f), "%s %.0fx%.0f: glued to the image's top edge", k_views[p].version, w, h);
+        }
+        /* the cause: the same old strip sits at another place of the image, by the margin the game leaves around it */
+        CHECK(rel_old_top[0] < 0.0f && rel_old_top[1] > 0.0f && rel_old_top[2] == rel_old_top[1] && rel_old_top[3] == rel_old_top[1],
+              "%.0fx%.0f: old strip: above the English image's top edge, inside the others'", w, h);
+        {
+            float en[4];
+            game_view((int)w, (int)h, 1, 1, en);
+            CHECK(near(rel_old_top[1] - rel_old_top[0], en[1] / en[3] - 0.025f * (h / en[3] - 1.0f), 1e-4f) && rel_old_top[1] - rel_old_top[0] > 0.03f &&
+                      en[1] / h > 0.03f,
+                  "%.0fx%.0f: the others' strip sits %.1f%% of the image lower, from the English margin of %.1f%% of the height", w, h,
+                  100.0f * (rel_old_top[1] - rel_old_top[0]), 100.0f * en[1] / h);
+        }
+        for (size_t p = 1; p < 4; p++)
+            CHECK(near(rel_new[p][0], rel_new[0][0], 1e-3f) && near(rel_new[p][1], rel_new[0][1], 1e-4f) &&
+                      near(rel_new[p][2], rel_new[0][2], 1e-3f) && near(rel_new[p][3], rel_new[0][3], 1e-3f),
+                  "%.0fx%.0f: %s: the same place in the 3D image as in English", w, h, k_views[p].version);
+        {
+            float en[4];
+            cp_layout_t before, now;
+            game_view((int)w, (int)h, 1, 1, en);
+            cp_layout(w, h, &before);
+            cp_layout_in(en[0], en[1], en[2], en[3], &now);
+            CHECK(fabsf(now.top - before.top) / h < 0.01f && fabsf(now.centre - before.centre) < 1e-3f &&
+                      now.height / before.height > 0.9f && now.height / before.height <= 1.0f,
+                  "%.0fx%.0f: English moves by less than 1%% of the height", w, h);
+        }
+        {
+            cp_camera_t cam = camera_facing(0.0f);
+            cp_screen_t p;
+            float view[4], up[3];
+            up[0] = 0.0f;
+            up[1] = 10.0f;
+            up[2] = 5.0f;
+            for (size_t q = 0; q < 4; q++) {
+                game_view((int)w, (int)h, k_views[q].xview, k_views[q].yview, view);
+                CHECK(cp_project_in(&cam, view[0], view[1], view[2], view[3], 0.0f, up, &p) && near(p.x, view[0] + view[2] * 0.5f, 1e-2f) &&
+                          near(p.y, view[1], 1e-2f),
+                      "%.0fx%.0f: %s: the top of the camera's view is the top of the 3D image", w, h, k_views[q].version);
+            }
+        }
+    }
+}
+
+/* The English store still holds XView 1 and YView 1 from the legacy Video options; the host answers every version with the
+ * policy, so the game's 3D image is the launcher's resolution for all four and the compass sits the same in each. */
+static void test_view_margin_policy(void) {
+    static const int legacy[] = { 1, 0, 0, 0 };
+    static const float sizes[][2] = { { 1920.0f, 1080.0f }, { 2560.0f, 1440.0f }, { 3840.0f, 2160.0f } };
+    CHECK(registry_view_margin_name("XView") && registry_view_margin_name("YView") && registry_view_margin_name("xview"),
+          "both margins are answered by the policy");
+    CHECK(!registry_view_margin_name("Width") && !registry_view_margin_name("UseSubTitles") && !registry_view_margin_name(NULL),
+          "nothing else is");
+    CHECK(REGISTRY_VIEW_MARGIN == 0, "the policy is no margin");
+    for (size_t s = 0; s < sizeof sizes / sizeof sizes[0]; s++) {
+        const int w = (int)sizes[s][0], h = (int)sizes[s][1];
+        cp_layout_t first = { 0 };
+        for (size_t p = 0; p < 4; p++) {
+            float stored[4], used[4];
+            cp_layout_t l;
+            game_view(w, h, legacy[p], legacy[p], stored);
+            game_view(w, h, (int)REGISTRY_VIEW_MARGIN, (int)REGISTRY_VIEW_MARGIN, used);
+            CHECK(!k_views[p].xview == !legacy[p] && (legacy[p] ? stored[2] < (float)w : stored[2] == (float)w),
+                  "%s: the stored margin alone would shrink the image only in English", k_views[p].version);
+            CHECK(used[0] == 0.0f && used[1] == 0.0f && used[2] == (float)w && used[3] == (float)h,
+                  "%s %dx%d: the main camera is the whole resolution", k_views[p].version, w, h);
+            cp_layout_in(used[0], used[1], used[2], used[3], &l);
+            if (!p) first = l;
+            CHECK(near(l.left, first.left, 1e-3f) && near(l.top, first.top, 1e-3f) && near(l.right, first.right, 1e-3f) &&
+                      near(l.height, first.height, 1e-3f) && near(l.text_y, first.text_y, 1e-3f),
+                  "%s %dx%d: the compass sits where it does in English", k_views[p].version, w, h);
+        }
+    }
+    {
+        float v[4];
+        game_view(3840, 2160, (int)REGISTRY_VIEW_MARGIN, (int)REGISTRY_VIEW_MARGIN, v);
+        CHECK(v[2] == 3840.0f && v[3] == 2160.0f, "4K 16:9: main camera 3840x2160, not 3588x2018");
+    }
+}
+
 void compass_tests(int* checks, int* failures) {
     test_headings();
     test_wrap_and_ticks();
@@ -563,6 +695,8 @@ void compass_tests(int* checks, int* failures) {
     test_hud_text();
     test_menus();
     test_layout();
+    test_scene_layout();
+    test_view_margin_policy();
     *checks += g_checks;
     *failures += g_failures;
 }

@@ -17,6 +17,7 @@ external/
 # Regenerated analysis and lifted code: derived from the retail binary
 analysis/
 src/recomp/gen/
+src/recomp/gen_*/
 
 # Retail game files are never committed
 game/

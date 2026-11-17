@@ -2,8 +2,9 @@
 """Host hooks inside lifted functions (src/host/lift_hook_list.h).
 
 Each listed address gets `RECOMP_LIFT_HOOK(lift_hook_<va>);` in front of the instruction at that address, in every
-lifted body that holds it. The host defines lift_hook_<va>; it runs with the guest registers, flags and memory, may
-change them, and the lifted code then carries on with that instruction. Checking a generated folder (nothing written):
+lifted body that holds it. <va> is the 1.0.116 address of the site in every lift, so one host function serves all of
+them: the host defines lift_hook_<va>; it runs with the guest registers, flags and memory, may change them, and the
+lifted code then carries on with that instruction. Checking a generated folder (nothing written):
 
     py -3 tools/lift_hooks.py [src/recomp/gen]
 """
@@ -11,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-from common import GEN_DIR, ROOT
+from common import GEN_DIR, ROOT, guest_map, not_applied
 
 HOOK_LIST = ROOT / "src" / "host" / "lift_hook_list.h"
 LISTED = re.compile(r"^LIFT_HOOK\(([0-9A-F]{8})\)", re.M)
@@ -28,11 +29,24 @@ def listed_hooks(path=HOOK_LIST):
     vas = [int(m.group(1), 16) for m in LISTED.finditer(path.read_text(encoding="utf-8"))]
     if any(a >= b for a, b in zip(vas, vas[1:])):
         sys.exit(f"{path}: the list must be sorted by address and without repeats")
-    return vas
+    mapping = guest_map()
+    skipped = not_applied("hooks")
+    return vas if mapping is None else sorted(mapping[v] for v in vas if v in mapping and v not in skipped)
+
+
+def canonical_address(va):
+    """The 1.0.116 address of the site that is at `va` in the active lift."""
+    mapping = guest_map()
+    if mapping is None:
+        return va
+    sites = [site for site, mapped in mapping.items() if mapped == va]
+    if len(sites) != 1:
+        sys.exit(f"0x{va:08X} is not the address of exactly one 1.0.116 site in this lift")
+    return sites[0]
 
 
 def hook_name(va):
-    return f"lift_hook_{va:08X}"
+    return f"lift_hook_{canonical_address(va):08X}"
 
 
 def hook_call(va):

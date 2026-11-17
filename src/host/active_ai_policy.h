@@ -59,7 +59,7 @@ void active_ai_save_values(const uint32_t* active, int limit, uint32_t out[ACTIV
 int active_ai_load_activations(int limit);
 
 /* Every function the Enhanced limit replaces, sorted. */
-extern const uint32_t active_ai_override_vas[];
+uint32_t active_ai_override_va(unsigned i);
 extern const unsigned active_ai_override_count;
 int active_ai_overrides(uint32_t va);
 

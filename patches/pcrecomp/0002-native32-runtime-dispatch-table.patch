@@ -1,0 +1,49 @@
+native32: the dispatch table is chosen at run time
+
+- native32.c, native32.h: native32_set_dispatch gives recomp_lookup the sorted table of the lift to run, instead of the
+  link-time recomp_dispatch_table, so one executable can carry several lifts and pick one before any lifted code runs.
+
+Applied by tools/fetch_pcrecomp.py on top of the commit in config/target.json (series order).
+
+diff --git a/runtime/native32/native32.c b/runtime/native32/native32.c
+index 5c570c2..2225468 100644
+--- a/runtime/native32/native32.c
++++ b/runtime/native32/native32.c
+@@ -584,11 +584,20 @@ static void native_bridge(void) {
+     SetLastError(last_error);
+ }
+ 
++static const recomp_dispatch_entry_t* g_dispatch;
++static uint32_t g_dispatch_count;
++
++/* The lifted program's dispatch table: the host chooses it at run time, so one executable can carry several lifts. */
++void native32_set_dispatch(const recomp_dispatch_entry_t* table, uint32_t count) {
++    g_dispatch = table;
++    g_dispatch_count = count;
++}
++
+ static recomp_func_t dispatch_find(uint32_t va) {
+-    uint32_t lo = 0, hi = recomp_dispatch_count;
++    uint32_t lo = 0, hi = g_dispatch_count;
+     while (lo < hi) {
+-        uint32_t mid = lo + (hi - lo) / 2, m = recomp_dispatch_table[mid].address;
+-        if (m == va) return recomp_dispatch_table[mid].func;
++        uint32_t mid = lo + (hi - lo) / 2, m = g_dispatch[mid].address;
++        if (m == va) return g_dispatch[mid].func;
+         if (m < va) lo = mid + 1; else hi = mid;
+     }
+     return NULL;
+diff --git a/runtime/native32/native32.h b/runtime/native32/native32.h
+index 8314fa9..59cd04a 100644
+--- a/runtime/native32/native32.h
++++ b/runtime/native32/native32.h
+@@ -42,6 +42,9 @@ typedef struct { const char* name; recomp_func_t fn; uint32_t va; } native32_shi
+ /* Call once, before anything else. */
+ void native32_init(void);
+ 
++/* The dispatch table recomp_lookup searches (sorted by address); set before any lifted code runs. */
++void native32_set_dispatch(const recomp_dispatch_entry_t* table, uint32_t count);
++
+ /* Keep a guest image's range free from process start. The process's first
+  * thread stack (its /STACK reserve), heaps and the locale files are placed
+  * bottom-up before main() runs; with a 16 MB /STACK the stack alone is at

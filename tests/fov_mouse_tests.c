@@ -4,6 +4,7 @@
  * Headless: ninja -C <build dir> fov_mouse_tests && fov_mouse_tests.exe
  */
 #include <windows.h>
+#include "test_profile.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -316,6 +317,7 @@ static void test_sources(void) {
 }
 
 int main(void) {
+    test_profile_activate();
     setvbuf(stdout, NULL, _IONBF, 0);
     test_settings();
     test_migration();

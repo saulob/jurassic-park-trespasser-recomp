@@ -6,6 +6,7 @@
  * and skipping; the surface goes once the game's own picture is back on screen.
  */
 #define COBJMACROS
+#include "guest_va.h"
 #include "host.h"
 
 #include <d3d11.h>
@@ -17,14 +18,14 @@
 #include "ddraw/video_gpu.h"
 #include "video_layout.h"
 
-#define VIDEO_PLAY_VA 0x00418AE0u
+#define VIDEO_PLAY_VA GVA(0x00418AE0)
 #define PLAYER_SMACK 0x134u
 #define PLAYER_RASTER 0x13Cu
 #define PLAYER_TOP 0x144u
 #define PLAYER_LEFT 0x148u
 #define PLAYER_BUFFER_PATH 0x154u /* the decoder blits to the window: the screen had no lpSurface */
 #define PLAYER_FIRST_PENDING 0x155u
-#define NULL_RASTER 0x00669B90u
+#define NULL_RASTER GVA(0x00669B90)
 #define SMACK_WIDTH 0x04u
 #define SMACK_HEIGHT 0x08u
 #define SMACK_FRAMES 0x0Cu

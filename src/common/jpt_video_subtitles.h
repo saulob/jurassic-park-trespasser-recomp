@@ -18,25 +18,38 @@ typedef struct {
 
 #define JVS_FINGERPRINT_BYTES 65536u
 
+/* One accepted file: its size and the SHA-256 of its first JVS_FINGERPRINT_BYTES bytes (the whole file when shorter). */
+typedef struct {
+    const char* release; /* "en-116" */
+    uint64_t size;
+    const char* sha256;
+} jvs_fingerprint_t;
+
+/* The cues of one video, valid for every file in its fingerprint list: files whose speech windows are the same share
+ * one entry; a file with its own timing has an entry of its own (the same name, other fingerprints). */
 typedef struct {
     const char* name; /* "tpassintro.smk" */
-    uint64_t size;
-    const char* sha256; /* of the first JVS_FINGERPRINT_BYTES bytes (the whole file when shorter) */
     uint32_t frames;
     const jvs_cue_t* cues;
     int cue_count;
+    const jvs_fingerprint_t* fingerprints;
+    int fingerprint_count;
 } jvs_timeline_t;
 
 extern const jvs_timeline_t jvs_timelines[];
 extern const int jvs_timeline_count;
 
-/* By file name, case-insensitive; NULL for a video without dialogue or unknown. */
+/* By file name, case-insensitive: the first timeline of that name; NULL for a video without dialogue or unknown. */
 const jvs_timeline_t* jvs_timeline_named(const char* name);
-/* The retail file itself: same size and the same first bytes. */
+/* The file itself is one of the timeline's fingerprints: same size and the same first bytes. */
 int jvs_fingerprint_matches(const jvs_timeline_t* t, uint64_t size, const char* sha256_hex);
+/* The timeline of that name that accepts this file, searched in a table (jvs_timelines when table is NULL). */
+const jvs_timeline_t* jvs_timeline_find(const jvs_timeline_t* table, int count, const char* name, uint64_t size,
+                                        const char* sha256_hex);
 
 typedef enum { JVS_SELECTED, JVS_DISABLED, JVS_NO_DIALOGUE, JVS_NOT_RETAIL } jvs_choice_t;
-/* The timeline a playback uses: none when the option is Off, the video has no dialogue, or the file is not the retail one. */
+/* The timeline a playback uses: none when the option is Off, the video has no dialogue, or no timeline of that name
+ * accepts the file (never by name alone). */
 jvs_choice_t jvs_select(int enabled, const char* name, uint64_t size, const char* sha256_hex, const jvs_timeline_t** out);
 
 /* The cue showing on a frame, -1 between cues. */

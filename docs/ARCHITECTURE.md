@@ -2,9 +2,10 @@
 
 ## What runs where
 
-`build\trespasser.exe` is a 32-bit Windows process. It runs on Windows 11 x64 through WoW64,
-like any 32-bit program. It is not an emulator and it does not start the original executable:
-`game\trespass.exe` is read as a data file, mapped, and never executed as a program.
+`trespasser_recomp.exe` is a 32-bit Windows process, the only executable of the port: it carries every lifted build and runs the one the selected game version needs. It runs on Windows 11 x64 through WoW64,
+like any 32-bit program. It is not an emulator and it never opens an original executable: the guest's memory is laid out
+from `guest.img`, the image the launcher installed from the player's disc (the original executables are development
+inputs only), mapped as data and never executed as a program.
 
 | Part of the original | How it runs here | Kind |
 |---|---|---|
@@ -260,15 +261,16 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   that only wait for the GPU (`FlushBatch`, the hardware-water upload in `0x0060E590`) therefore read
   nothing back. GetDC and Blt still sync at once: GDI and the host access the pixels directly.
 - Host overrides: every lifted function the host may replace is listed in `src/host/guest_override_list.h`
-  (required or optional). `tools/run_lift.py` names its lifted body `lifted_sub_<va>`, and `guest_overrides.c` defines
-  `sub_<va>`, a stable entry that jumps through a pointer holding the lifted body until an override is installed.
-  Direct calls, alias entries and the dispatch table all name `sub_<va>`, so an override reaches them with or without
+  (required or optional). `tools/run_lift.py` names its lifted body `<lift>_lifted_sub_<va>` (every symbol of a lift carries
+  the lift's prefix, e.g. `lift116_`), and `guest_overrides.c` defines `<lift>_sub_<va>` for each of the three lifts' lists,
+  a stable entry that jumps through a pointer holding the lifted body until an override is installed. Direct calls, alias
+  entries and the dispatch table all name `<lift>_sub_<va>`, so an override reaches them with or without
   incremental linking; a list and a lift that disagree fail the link. Installs are refused until the executable's
   fingerprint is verified; one startup line counts them, and a required override that is missing stops the run
   (`tests/override_tests.c` links a fixture both ways).
 - Lift hooks: `src/host/lift_hook_list.h` lists guest addresses inside lifted functions; `tools/run_lift.py` puts
-  `RECOMP_LIFT_HOOK(lift_hook_<va>)` in front of the instruction at each one, in every lifted body that holds it, and
-  the host defines the function. A hook sees and may change the guest registers, flags and memory, then the instruction
+  `RECOMP_LIFT_HOOK(lift_hook_<va>)` in front of the instruction at each one, in every lifted body that holds it (`<va>` is
+  the 1.0.116 address in every lift), and the host defines the function once. A hook sees and may change the guest registers, flags and memory, then the instruction
   runs as lifted; a listed address no lifted body holds fails the lift. The official v1.1 fixes use them
   (`patch117_player.c`, `patch117_physics.c`).
 - `guest_overrides.c` also installs the host kernels: the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step (`0x00638670`, `water_kernels.c`),
@@ -474,7 +476,14 @@ window keeps a held LT, as before. `[input-hand]` lines record Move Hand against
 of the world drive the HUD: Anne is the camera's mover (the attached instance, or the one the Free Camera left), the
 heading is `dm_yaw` of the active camera's presence (`camera + 0x30`, as `CInstance::Move` reads it), the projection
 uses that presence and the main camera's vertical view (`widescreen.c`: stored tan(half width) over the 4:3 aspect).
-World units are metres.
+World units are metres. The HUD is laid out on the 3D image the game draws, not on the whole surface: the D3D11 renderer
+keeps the viewport of the last depth-tested scene (`d3dr_scene_view`), `cp_layout_in` sizes the strip by that image and glues it
+to its top edge, and `cp_project_in` projects the marker and the trail on it. The image is the surface less the game's own
+Screen Size margin (`XView`/`YView`, each step 6.6% of the size, centred: guest `0x00412BC0`, `0x005F7980`, `0x00504CC0`, the
+same in the four builds), so it fills the surface for 0 and is 3588x2018 inside 3840x2160 for 1. The port hides the game's
+legacy Video options, so the host answers both values 0 for every version (`registry_view_margin_name`) and a margin stored
+by an earlier build is ignored: the image is always the resolution the launcher chose. `compass_tests` reproduces that arithmetic against the logged camera sizes and checks the four versions at
+1920x1080, 2560x1440 and 3840x2160.
 
 Objectives (`objective_policy.c`, `objectives.c`) follow `CSetHintAction::iCurrentHint` (`0x0066F01C`), the value
 `CHintWnd` (`0x00416BF0`, opened by `CGameWnd::OnKey`'s F1 case `0x0040C002`) shows as `LoadString(g_hInst
@@ -837,8 +846,8 @@ What the code shows (1.0.116, `tpassp6.exe`):
 
 ## Failing loudly
 
-- The host hashes `game\trespass.exe` and refuses to run anything but the binary the C was
-  lifted from.
+- The host refuses a lift that is not the one this program was built to carry for the selected version (its embedded
+  metadata: lift id, source profile and build, generator format, image layout); no file of the player's is compared.
 - Any unresolved import stops the run before the entry point.
 - pcrecomp answers an unknown indirect target by printing a line and continuing with
   `eax = 0`. Here a target inside `.text` that has no lifted entry stops the run and names the

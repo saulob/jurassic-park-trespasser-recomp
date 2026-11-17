@@ -4,6 +4,7 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "test_profile.h"
 
 #include <d3d11.h>
 #include <math.h>
@@ -12,6 +13,7 @@
 #include <string.h>
 
 #include "ddraw/video_gpu.h"
+#include "guest_va.h"
 #include "video_layout.h"
 #include "video_test_panel.h"
 #include "video_test_state.h"
@@ -459,7 +461,7 @@ static void test_inventory(const char* root) {
     }
     for (int i = 0; i < VT_VIDEO_COUNT; i++) {
         char want[32];
-        const uint8_t* text = exe_at(vt_videos[i].name_va, 16);
+        const uint8_t* text = exe_at(GVA_AT(vt_videos[i].name_id), 16);
         snprintf(want, sizeof want, "menu\\%.*s", (int)(strlen(vt_videos[i].file) - 4), vt_videos[i].file);
         CHECK(text && !strcmp((const char*)text, want), "Video Test row %d plays the game's own string %s", i, want);
     }
@@ -1529,6 +1531,7 @@ static void test_gpu(void) {
 }
 
 int main(int argc, char** argv) {
+    test_profile_activate();
     const char* root = JPT_SOURCE_DIR;
     char path[MAX_PATH];
     HMODULE dll;

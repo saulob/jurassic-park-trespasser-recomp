@@ -1,3 +1,4 @@
+#include "guest_va.h"
 #include "occlusion_kernel.h"
 
 #include <string.h>
@@ -6,11 +7,11 @@
 #error "the kernel reproduces the x87 model the MSVC build lifts with: shifting (fp_push_impl) or the ring"
 #endif
 
-#define EPSILON_ON 0x0066CC98u
-#define EPSILON_VALUE 0x00651C20u
-#define EPSILON_USED 0x00741110u
-#define OCCLUDED_COUNT 0x007410F8u
-#define VISIBLE_COUNT 0x007410FCu
+#define EPSILON_ON GVA(0x0066CC98)
+#define EPSILON_VALUE GVA(0x00651C20)
+#define EPSILON_USED GVA(0x00741110)
+#define OCCLUDED_COUNT GVA(0x007410F8)
+#define VISIBLE_COUNT GVA(0x007410FC)
 
 recomp_func_t occlusion_test_lifted;
 

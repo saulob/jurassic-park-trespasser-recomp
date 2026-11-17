@@ -15,6 +15,8 @@
 #define MAX_NAME 64
 #define MAX_LINE 8192
 #define SAFEMODE_VALUE "Safemode"
+#define SUBTITLES_VALUE "UseSubTitles"
+#define SUBTITLES_MARKER "JPT UseSubTitles Default"
 
 typedef struct {
     char name[MAX_NAME];
@@ -148,6 +150,18 @@ static void load_store(void) {
     fclose(f);
 }
 
+static void migrate_subtitles_default(void) {
+    reg_value_t* marker = find_value(SUBTITLES_MARKER);
+    reg_value_t* value = find_value(SUBTITLES_VALUE);
+    DWORD on = 1, replacement;
+    int value_present = value && value->data && value->type == REG_DWORD && value->size == 4;
+    if (registry_subtitles_migration(marker && marker->data, value_present, value_present ? *(DWORD*)value->data : 0, &replacement)) {
+        set_value(SUBTITLES_VALUE, REG_DWORD, &replacement, 4);
+        host_log("registry", "stored \"" SUBTITLES_VALUE "\" was the game's own Off: On, the port's default");
+    }
+    if (!marker || !marker->data) set_value(SUBTITLES_MARKER, REG_DWORD, &on, 4);
+}
+
 void guest_registry_init(const char* game_dir, const char* user_dir) {
     char data_root[MAX_PATH], user_root[MAX_PATH];
     DWORD installed = 1;
@@ -164,6 +178,7 @@ void guest_registry_init(const char* game_dir, const char* user_dir) {
                  "Mode prompt");
     }
     if (!find_value("Installed")) set_value("Installed", REG_DWORD, &installed, 4);
+    migrate_subtitles_default();
     set_string("Installed Directory", user_root);
     set_string("Data Drive", data_root);
     save_store();
@@ -230,6 +245,10 @@ static int policy_value(const char* name, int stored, policy_t* p) {
                            "branch");
         return 1;
     }
+    if (name && !stored && !_stricmp(name, SUBTITLES_VALUE)) {
+        policy_dword(p, REGISTRY_SUBTITLES_ON, "host policy: On until the game's options store a choice");
+        return 1;
+    }
     if (name && !_stricmp(name, "AudioEnable3D")) {
         policy_dword(p, 0, "host policy: 0 (hardware 3D sound buffers are not supported)");
         return 1;
@@ -241,6 +260,11 @@ static int policy_value(const char* name, int stored, policy_t* p) {
                      hw ? "host policy: the D3D11 gameplay resolution (the launcher's Render Resolution and Aspect "
                           "Ratio; the in-game video options cannot change it)"
                         : "host policy: the software renderer's gameplay mode of the launcher's Aspect Ratio");
+        return 1;
+    }
+    if (registry_view_margin_name(name)) {
+        policy_dword(p, REGISTRY_VIEW_MARGIN, "host policy: 0 (the 3D image fills the launcher's resolution; a stored Screen "
+                                              "Size margin is ignored)");
         return 1;
     }
     if (!_stricmp(name, "DDrawCertIgnore")) {

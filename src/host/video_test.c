@@ -3,6 +3,7 @@
  * presentation or the HD one. A request waits for the main menu's next frame, then runs what the Options window's
  * Credits button runs (0x004163D5): menu music and its timer off, a CVideoWnd on the stack, Play, music and timer back.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -12,14 +13,14 @@
 #include "video_test_panel.h"
 #include "video_test_state.h"
 
-#define MENU_AUDIO 0x0066E338u
-#define MENU_MUSIC_OFF 0x00414EB0u
-#define MENU_MUSIC_ON 0x00414E80u
-#define MENU_TIMER_OFF 0x00415360u
-#define MENU_TIMER_ON 0x00415330u
-#define VIDEO_WND_CTOR 0x00418700u
-#define VIDEO_WND_PLAY 0x00418AE0u
-#define VIDEO_WND_DTOR 0x00418760u
+#define MENU_AUDIO GVA(0x0066E338)
+#define MENU_MUSIC_OFF GVA(0x00414EB0)
+#define MENU_MUSIC_ON GVA(0x00414E80)
+#define MENU_TIMER_OFF GVA(0x00415360)
+#define MENU_TIMER_ON GVA(0x00415330)
+#define VIDEO_WND_CTOR GVA(0x00418700)
+#define VIDEO_WND_PLAY GVA(0x00418AE0)
+#define VIDEO_WND_DTOR GVA(0x00418760)
 #define WND_OWNER 0x04u
 #define VIDEO_WND_STACK 0x200u
 
@@ -146,7 +147,7 @@ void video_test_ui_frame(void) {
         vt_finished(&s_state);
         return;
     }
-    name = vt_videos[video].name_va;
+    name = GVA_AT(vt_videos[video].name_id);
     g_esp -= VIDEO_WND_STACK;
     object = g_esp;
     call_guest(MENU_MUSIC_OFF, MENU_AUDIO, NULL);

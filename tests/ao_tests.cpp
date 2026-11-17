@@ -3,6 +3,7 @@
  * path, the stencil mask, multisampled depth, every aspect ratio, ordering before the UI and the failure paths. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "test_profile.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -586,6 +587,7 @@ static void test_failures() {
 }
 
 int main() {
+    test_profile_activate();
     test_setting();
     test_presets();
     test_projection();

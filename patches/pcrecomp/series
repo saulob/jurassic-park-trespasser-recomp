@@ -1,2 +1,4 @@
 # Applied in this order on the pcrecomp commit in config/target.json (tools/fetch_pcrecomp.py).
 0001-native32-x87-ring-names-site-cache.patch
+0002-native32-runtime-dispatch-table.patch
+0003-native32-hold-range.patch

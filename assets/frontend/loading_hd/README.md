@@ -2,7 +2,7 @@
 
 The game's loading screen shows one 640x480 render per level (`data\menu\li_*_0.tga`, 15-bit, 1998). The port draws
 that picture again at the screen's resolution (de-dithered, framed, over its own blurred surroundings) and can use a
-picture drawn for it instead: put `<slot>.png` or `<slot>.jpg` here and the build copies it next to `trespasser.exe`,
+picture drawn for it instead: put `<slot>.png` or `<slot>.jpg` here and the build copies it next to `trespasser_recomp.exe`,
 into `assets\frontend\loading_hd`. A missing or unreadable file only means the game's own picture is shown.
 
 | Slot       | Shown for (scene file)                        | Game picture               |

@@ -1,26 +1,28 @@
 <#
 .SYNOPSIS
-  Builds trespasser.exe incrementally (MSVC, CMake + Ninja). -Run starts the game after a successful build.
+  Builds trespasser_recomp.exe incrementally (MSVC, CMake + Ninja). -Run starts the game after a successful build.
 .DESCRIPTION
-  Reuses what is current and regenerates only what is stale, in this order: the pcrecomp checkout, the game
-  files extracted from the disc image, the analysis (function catalog, RTTI), the lifted C (src\recomp\gen) and the
-  CMake configuration. Each generated stage records a digest of its inputs; a stage runs only when that digest or
-  its outputs changed. The playable host is a 32-bit process on pcrecomp's native32 runtime (-Arch x86, the
-  default, with the x64-hosted x86 MSVC). -Arch x64 builds the 64-bit host groundwork only (docs\X64_MIGRATION.md):
-  it cannot run the game yet, so -Run is refused with it.
+  Reuses what is current and regenerates only what is stale, in this order: the pcrecomp checkout, the lifts (checked
+  against lifts\manifest.json), the launcher sources and the CMake configuration. No original game executable is
+  looked for, opened or needed: the three lifted builds (lift116 for English and Russian, lift_es117, lift_ptbr117) are
+  project artifacts, lifts\<lift>.tar.xz, unpacked by CMake into src\recomp at configuration, and one program,
+  trespasser_recomp.exe, carries all of them and runs the one the launcher's game version needs. The playable host is a
+  32-bit process on pcrecomp's native32 runtime (-Arch x86, the default, with the x64-hosted x86 MSVC). -Arch x64 builds
+  the 64-bit host groundwork only (docs\X64_MIGRATION.md): it cannot run the game yet, so -Run is refused with it.
+  Regenerating a lift from an original executable is a maintainer task: tools\generate-lift.ps1.
   Development configuration: RelWithDebInfo in build\cmake\msvc-<arch>; -Config Release uses build\cmake\msvc-<arch>-release.
   The development default compiles the lifted C with /Od (several times faster); Release uses /O2.
-  Each run writes one log, build\logs\trespasser_NNN.log (the next free number): the build and, with -Run, the
+  Each run writes one log, build\logs\trespasser_recomp_NNN.log (the next free number): the build and, with -Run, the
   game's own output after it and its exit code. The terminal shows progress and problems only.
 .PARAMETER Run
-  After a successful build, starts trespasser.exe --run and stays attached until it exits. Not started when the
+  After a successful build, starts trespasser_recomp.exe --run and stays attached until it exits. Not started when the
   build fails or when an instance is already running. Saves, settings, downloads and mods of development runs are
   kept in build\user_data (--user_data_root), never in the repository root. The game appends to the run's log (--log-file); the
   terminal stays concise, and an abnormal exit prints the log's path and its last lines.
 .PARAMETER VerboseRuntime
   With -Run, shows the runtime output in the terminal as well (it is always in the log).
 .PARAMETER Clean
-  Deletes the configuration's build folder first. The game, the disc image, analysis, lifted C, logs and
+  Deletes the configuration's build folder first. The game files, lifts\, logs and
   build\user_data are kept.
 .PARAMETER Arch
   x86 (default): the playable 32-bit host. x64: the 64-bit host groundwork and its headless tests, never run.
@@ -35,14 +37,8 @@
   Another build folder, relative to the repository root.
 .PARAMETER Jobs
   Parallel compile jobs (default: Ninja's choice).
-.PARAMETER Iso
-  English disc image to extract from, when the game files are missing (else TRESPASSER_ISO or config\local.json).
-.PARAMETER Reanalyze
-  Forces the analysis stage (about 15 minutes), and the lift if its output changed.
-.PARAMETER Relift
-  Forces the lift stage (about 1 minute).
 .PARAMETER GameArgs
-  Arguments for trespasser.exe (with -Run), in order, after --run and --log-file:
+  Arguments for trespasser_recomp.exe (with -Run), in order, after --run and --log-file:
   -GameArgs "--renderer","d3d11". Unnamed trailing tokens are collected after them.
 .EXAMPLE
   .\tools\build.ps1
@@ -64,9 +60,6 @@ param(
     [switch]$Trace,
     [string]$BuildDir = '',
     [int]$Jobs = 0,
-    [string]$Iso = '',
-    [switch]$Reanalyze,
-    [switch]$Relift,
     [string[]]$GameArgs = @(),
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$LoaderArgs = @()
 )
@@ -74,10 +67,7 @@ param(
 . (Join-Path $PSScriptRoot '_common.ps1')
 $root = $script:RepoRoot
 $target = Get-Content -LiteralPath (Join-Path $root 'config\target.json') -Raw | ConvertFrom-Json
-$guestExe = Join-Path $root "game\$($target.installed_name)"
 $pcrecomp = Join-Path $root 'external\pcrecomp'
-$genDir = Join-Path $root 'src\recomp\gen'
-$analysisDir = Join-Path $root 'analysis'
 $hostExitMeaning = @{
     1 = 'setup failed before the game started'
     2 = 'reached a function that is not lifted'
@@ -92,13 +82,13 @@ $hostExitMeaning = @{
 if (-not $BuildDir) { $BuildDir = if ($Config -eq 'Release') { "build\cmake\msvc-$Arch-release" } else { "build\cmake\msvc-$Arch" } }
 $buildDir = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 $buildDir = [IO.Path]::GetFullPath($buildDir)
-[string[]]$hostTargets = if ($Arch -eq 'x64') { 'trespasser_x64_probe', 'x64_tests' } else { 'trespasser' }
+[string[]]$hostTargets = if ($Arch -eq 'x64') { 'trespasser_x64_probe', 'x64_tests' } else { @('trespasser_recomp') }
 $hostExe = Join-Path $buildDir "$($hostTargets[0]).exe"
 
 trap { Stop-OnError $_ }
 
 function Get-RunningHost {
-    @(Get-Process -Name trespasser -ErrorAction SilentlyContinue |
+    @(Get-Process -Name trespasser_recomp -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -and $_.Path -ieq $hostExe })
 }
 
@@ -136,58 +126,6 @@ function Get-PcrecompProblem {
         return 'patches\pcrecomp are not applied as listed'
     }
     return $null
-}
-
-function Get-GameFilesProblem {
-    if (-not (Test-Path -LiteralPath $guestExe)) { return "no $($target.installed_name) yet" }
-    if ((Get-Sha256 $guestExe) -ne $target.sha256) { return "$($target.installed_name) is not the expected build" }
-    foreach ($file in 'MSVCIRT.DLL', 'SMACKW32.DLL', 'Processor.dll', 'data\menu\tpassintro.smk') {
-        if (-not (Test-Path -LiteralPath (Join-Path $root "game\$file"))) { return "game\$file is missing" }
-    }
-    return $null
-}
-
-function Get-AnalysisOutputsMissing {
-    foreach ($file in 'functions.json', 'rtti.json', 'rtti_seeds.json') {
-        if (-not (Test-Path -LiteralPath (Join-Path $analysisDir $file))) { return "analysis\$file is missing" }
-    }
-    return $null
-}
-
-# An analysis made before stamps existed is adopted when its recorded fingerprint matches and nothing was cut short.
-function Test-AnalysisAdoptable {
-    $fingerprint = Join-Path $analysisDir 'fingerprint.json'
-    if (-not (Test-Path -LiteralPath $fingerprint)) { return $false }
-    $recorded = Get-Content -LiteralPath $fingerprint -Raw | ConvertFrom-Json
-    $catalog = Get-Item -LiteralPath (Join-Path $analysisDir 'functions.json')
-    return ($recorded.sha256 -eq $target.sha256) -and ($recorded.pcrecomp_commit -eq $target.pcrecomp.commit) -and
-        ($catalog.LastWriteTimeUtc -ge (Get-Item -LiteralPath $fingerprint).LastWriteTimeUtc)
-}
-
-function Get-LiftOutputsMissing {
-    foreach ($file in 'recomp_dispatch.c', 'recomp_funcs.h', 'recomp_0000.c') {
-        if (-not (Test-Path -LiteralPath (Join-Path $genDir $file))) { return "src\recomp\gen\$file is missing" }
-    }
-    return $null
-}
-
-function Get-LiftInputs {
-    @('analysis\functions.json', 'analysis\rtti_seeds.json', 'config\decoder_fixups.json', 'config\extra_entries.json',
-        'tools\run_lift.py', 'tools\stable_entries.py', 'tools\lift_hooks.py', 'tools\lift_staging.py',
-        'src\host\guest_override_list.h', 'src\host\lift_hook_list.h') |
-        ForEach-Object { Join-Path $root $_ }
-}
-
-# A lift made before stamps existed is adopted when it is newer than every input and was made from this binary.
-function Test-LiftAdoptable {
-    $stats = Join-Path $analysisDir 'lift_stats.json'
-    if (-not (Test-Path -LiteralPath $stats)) { return $false }
-    if ((Get-Content -LiteralPath $stats -Raw | ConvertFrom-Json).target_sha256 -ne $target.sha256) { return $false }
-    $made = (Get-Item -LiteralPath $stats).LastWriteTimeUtc
-    foreach ($file in Get-LiftInputs) {
-        if ((Get-Item -LiteralPath $file).LastWriteTimeUtc -gt $made) { return $false }
-    }
-    return $true
 }
 
 function Get-PatchFingerprint($Patches) {
@@ -260,7 +198,7 @@ if ($Run -and $Arch -eq 'x64') {
 
 $running = @(Get-RunningHost)
 if ($running.Count -gt 0) {
-    Write-Warn "trespasser.exe is already running (PID $($running.Id -join ', ')); it cannot be rebuilt or started again."
+    Write-Warn "trespasser_recomp.exe is already running (PID $($running.Id -join ', ')); it cannot be rebuilt or started again."
     Write-Warn 'Close it and run this script again.'
     Close-RunLog
     if ($Run) { return }
@@ -290,51 +228,12 @@ if ($problem) {
     Write-Step 'pcrecomp: current'
 }
 
-$problem = Get-GameFilesProblem
-if ($problem) {
-    Write-Step "Extracting the game files from the disc image: $problem"
-    Assert-PythonModules @('json')
-    $extractArgs = @()
-    if ($Iso) { $extractArgs += @('--iso', $Iso) }
-    if ((Invoke-Python 'tools\extract_game.py' $extractArgs) -ne 0) { Stop-Tool 'Game file extraction failed' }
-} else {
-    Write-Step 'Game files: current'
-}
-
-$exeSha = $target.sha256
-$analysisFacts = @("exe $exeSha", "pcrecomp $($target.pcrecomp.commit)")
-$analysisDigest = Get-InputsDigest @() $analysisFacts
-$problem = Get-AnalysisOutputsMissing
-if (-not $problem -and -not $Reanalyze -and -not (Test-StampCurrent 'analyze' $analysisDigest) -and (Test-AnalysisAdoptable)) {
-    Set-Stamp 'analyze' $analysisDigest
-}
-if ($Reanalyze) { $problem = 'requested' }
-elseif (-not $problem -and -not (Test-StampCurrent 'analyze' $analysisDigest)) { $problem = 'its inputs changed' }
-if ($problem) {
-    Write-Step "Analysing trespass.exe (about 15 minutes): $problem"
-    Assert-PythonModules @('capstone', 'pefile')
-    Remove-Stamp 'analyze'
-    if ((Invoke-Python 'tools\analyze.py' @() { param($l) Show-PipelineLine $l }) -ne 0) { Stop-Tool 'Analysis failed' }
-    Set-Stamp 'analyze' $analysisDigest
-} else {
-    Write-Step 'Analysis: current'
-}
-
-$liftDigest = Get-InputsDigest (Get-LiftInputs) $analysisFacts
-$problem = Get-LiftOutputsMissing
-if (-not $problem -and -not $Relift -and -not (Test-StampCurrent 'lift' $liftDigest) -and (Test-LiftAdoptable)) {
-    Set-Stamp 'lift' $liftDigest
-}
-if ($Relift) { $problem = 'requested' }
-elseif (-not $problem -and -not (Test-StampCurrent 'lift' $liftDigest)) { $problem = 'its inputs changed' }
-if ($problem) {
-    Write-Step "Lifting .text to C: $problem"
-    Assert-PythonModules @('capstone', 'pefile')
-    Remove-Stamp 'lift'
-    if ((Invoke-Python 'tools\run_lift.py' @() { param($l) Show-PipelineLine $l }) -ne 0) { Stop-Tool 'Lift failed or is incomplete (see the messages above and analysis\lift_failure.json)' }
-    Set-Stamp 'lift' $liftDigest
-} else {
-    Write-Step 'Lifted C: current'
+if ($Arch -eq 'x86') {
+    if ((Invoke-Python 'tools\lifts.py' @('verify')) -ne 0) {
+        Show-LogTail
+        Stop-Tool 'The lifts do not match lifts\manifest.json: restore lifts\ from the source tree (maintainers regenerate them with tools\generate-lift.ps1).'
+    }
+    Write-Step 'Lifts: lifts\manifest.json matches lifts\*.tar.xz (CMake unpacks them)'
 }
 
 if ($Arch -eq 'x86') { Sync-LauncherDependencies }
@@ -399,13 +298,13 @@ $quiet = -not $VerboseRuntime
 $code = $null
 $startError = $null
 
-Write-Step 'Starting trespasser.exe --run'
+Write-Step 'Starting trespasser_recomp.exe --run'
 if ($quiet) { Write-Host 'Run output goes to the log only; -VerboseRuntime shows it here.' }
 $quotedArguments = @($runArguments | ForEach-Object {
     if ($_ -eq '' -or $_ -match '[\s"]') { '"' + ($_ -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"' } else { $_ }
 })
 Add-RunLog "> $hostExe $($quotedArguments -join ' ')"
-Add-RunLog '--- trespasser.exe appends to this file from here until it exits ---'
+Add-RunLog '--- trespasser_recomp.exe appends to this file from here until it exits ---'
 Suspend-RunLog
 Push-Location $root
 try {
@@ -429,16 +328,16 @@ finally {
 }
 
 if ($startError) {
-    Add-RunLog "trespasser.exe could not be started: $($startError.Exception.Message)"
+    Add-RunLog "trespasser_recomp.exe could not be started: $($startError.Exception.Message)"
     Close-RunLog
-    Write-Host "error: trespasser.exe could not be started: $($startError.Exception.Message)" -ForegroundColor Red
+    Write-Host "error: trespasser_recomp.exe could not be started: $($startError.Exception.Message)" -ForegroundColor Red
     Write-Host "Log: $($script:RunLogPath)"
     exit 1
 }
 $meaning = if ($code -eq 0) { 'normal exit' } elseif ($hostExitMeaning.ContainsKey($code)) { $hostExitMeaning[$code] } else { 'abnormal exit' }
-Add-RunLog "--- trespasser.exe exited with code $code ($meaning) ---"
+Add-RunLog "--- trespasser_recomp.exe exited with code $code ($meaning) ---"
 Close-RunLog
-Write-Host "trespasser.exe exit code $code"
+Write-Host "trespasser_recomp.exe exit code $code"
 Write-Host "Log: $($script:RunLogPath)"
 if ($code -ne 0) {
     Write-Warn "Exit ${code}: $meaning."

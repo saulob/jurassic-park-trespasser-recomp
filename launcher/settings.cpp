@@ -31,6 +31,13 @@ std::string LauncherSettings::Get(std::string_view key, std::string_view def) co
     return std::string(def);
 }
 
+bool LauncherSettings::Has(std::string_view key) const {
+    const std::string k(key);
+    if (const auto p = pending_.find(k); p != pending_.end()) return !p->second.empty();
+    const auto s = saved_.find(k);
+    return s != saved_.end() && !s->second.empty();
+}
+
 void LauncherSettings::Set(std::string_view key, std::string value) {
     const std::string k(key);
     const auto s = saved_.find(k);

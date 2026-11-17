@@ -2,6 +2,7 @@
  * Subtitles over the retail videos. The cue follows the Smacker frame the player shows, so it pauses, ends and skips
  * with the video. The text is drawn with the face of the game's own caption font at the target's resolution.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -14,7 +15,7 @@
 #include "video_layout.h"
 
 /* The face CreateFontA receives in the gameplay text font's constructor (0x0050E750). */
-#define GAME_TEXT_FACE_VA 0x0065F888u
+#define GAME_TEXT_FACE_VA GVA(0x0065F888)
 #define OUTLINE_OPACITY 235
 
 static struct {

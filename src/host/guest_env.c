@@ -5,7 +5,7 @@
 
 #include "l10n.h"
 
-#define GUEST_EXE_NAME "trespass.exe"
+#define GUEST_EXE_NAME JPT_GUEST_IMAGE
 
 static char s_guest_exe[MAX_PATH];
 static char s_command_line[2 * MAX_PATH];
@@ -32,14 +32,14 @@ static const char* text_or_placeholder(const char* s) { return s ? s : "(null)";
 /* The guest's hInstance must be its own image, not the host executable. */
 void shim_GetModuleHandleA(void) {
     const char* name = (const char*)GUEST_PTR(0);
-    g_eax = name ? (uint32_t)(uintptr_t)GetModuleHandleA(name) : trespasser_image_base;
+    g_eax = name ? (uint32_t)(uintptr_t)GetModuleHandleA(name) : JPT_GUEST_IMAGE_BASE;
     GUEST_RETURN_STDCALL(1);
 }
 
 void shim_GetModuleFileNameA(void) {
     uint32_t module = GUEST_ARG(0), size = GUEST_ARG(2);
     char* out = (char*)GUEST_PTR(1);
-    if (module == 0 || module == trespasser_image_base) {
+    if (module == 0 || module == JPT_GUEST_IMAGE_BASE) {
         uint32_t len = (uint32_t)strlen(s_guest_exe);
         if (size == 0) {
             len = 0;

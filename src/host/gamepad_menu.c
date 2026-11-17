@@ -3,6 +3,7 @@
  * each frame and the clicks its window gets. So focus is the game's own pointer placed on a control (the control
  * shows its own hover picture) and A is a click there; sliders are dragged and lists scrolled with their own arrows.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -21,14 +22,14 @@
 #define CTRL_VISIBLE 4u
 #define MAX_CONTROLS 160u
 
-#define VT_BUTTON 0x0064554Cu
-#define VT_LISTBOX 0x00645650u
-#define VT_CHECKBOX 0x00645758u
-#define VT_SLIDER 0x00645864u
-#define VT_EDITBOX 0x006458DCu
-#define VT_HOTSPOT 0x006459CCu
-#define VT_CONTROLS_WND 0x00645F38u
-#define VT_SAVE_WND 0x006462A8u
+#define VT_BUTTON GVA(0x0064554C)
+#define VT_LISTBOX GVA(0x00645650)
+#define VT_CHECKBOX GVA(0x00645758)
+#define VT_SLIDER GVA(0x00645864)
+#define VT_EDITBOX GVA(0x006458DC)
+#define VT_HOTSPOT GVA(0x006459CC)
+#define VT_CONTROLS_WND GVA(0x00645F38)
+#define VT_SAVE_WND GVA(0x006462A8)
 
 #define SLIDER_UNITS 0x2Cu
 #define SLIDER_VALUE 0x30u
@@ -211,28 +212,21 @@ static int scan_window(uint32_t window, scan_t* s) {
         int32_t id = (int32_t)peek32(c + CTRL_ID);
         pad_rect_t r;
         if (!(flags & CTRL_VISIBLE) || !read_rect(c + CTRL_RECT, &r)) continue;
-        switch (vt) {
-        case VT_BUTTON:
+        if (vt == VT_BUTTON) {
             if ((flags & CTRL_ENABLED) && !is_arrow(s, c)) add_target(s, T_BUTTON, c, r, 0);
-            break;
-        case VT_CHECKBOX:
+        } else if (vt == VT_CHECKBOX) {
             if (flags & CTRL_ENABLED) add_target(s, T_CHECK, c, r, 0);
-            break;
-        case VT_SLIDER:
+        } else if (vt == VT_SLIDER) {
             if (flags & CTRL_ENABLED) add_target(s, T_SLIDER, c, r, 0);
-            break;
-        case VT_EDITBOX: add_target(s, T_EDIT, c, r, 0); break;
-        case VT_HOTSPOT:
-            if (!(flags & CTRL_ENABLED) || covers_checkbox(controls, count, r)) break;
-            if (s->window_vt == VT_CONTROLS_WND && id >= REMAP_FIRST_ID && id <= REMAP_LAST_ID) break;
+        } else if (vt == VT_EDITBOX) {
+            add_target(s, T_EDIT, c, r, 0);
+        } else if (vt == VT_HOTSPOT) {
+            if (!(flags & CTRL_ENABLED) || covers_checkbox(controls, count, r)) continue;
+            if (s->window_vt == VT_CONTROLS_WND && id >= REMAP_FIRST_ID && id <= REMAP_LAST_ID) continue;
             add_target(s, T_HOTSPOT, c, r, 0);
-            break;
-        case VT_LISTBOX: {
+        } else if (vt == VT_LISTBOX) {
             const list_t* l = list_of(s, c);
             for (int k = 0; l && k < l->shown; k++) add_target(s, T_ROW, c, row_rect(l, l->top + k), l->top + k);
-            break;
-        }
-        default: break;
         }
     }
     return 1;

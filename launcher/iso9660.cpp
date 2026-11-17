@@ -7,6 +7,8 @@
 #include <cctype>
 #include <cstring>
 
+#include "jpt_hash.h"
+
 namespace jpt {
 namespace {
 
@@ -155,8 +157,22 @@ const IsoFile* IsoImage::Find(const std::string& path) const {
     return nullptr;
 }
 
+bool IsoImage::ReadAll(const IsoFile& file, std::vector<uint8_t>& out, std::string& error) {
+    const uint64_t start = uint64_t(file.extent) * kSector;
+    if (start > image_size_ || file.size > image_size_ - start || file.size > (1ull << 30)) {
+        error = file.path + " lies outside the image (truncated file?)";
+        return false;
+    }
+    out.resize(static_cast<size_t>(file.size));
+    if (!out.empty() && !Read(start, out.data(), out.size())) {
+        error = "cannot read " + file.path + " from the image";
+        return false;
+    }
+    return true;
+}
+
 bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, const Progress& progress,
-                       std::string& error) {
+                       std::string& error, std::string* sha256) {
     const uint64_t start = uint64_t(file.extent) * kSector;
     if (start > image_size_ || file.size > image_size_ - start) {
         error = file.path + " lies outside the image (truncated file?)";
@@ -172,6 +188,8 @@ bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, con
     std::vector<unsigned char> buffer(1 << 20);
     uint64_t done = 0;
     bool ok = true;
+    jpt_sha256_t digest;
+    jpt_sha256_init(&digest);
     while (ok && done < file.size) {
         const size_t n = static_cast<size_t>(std::min<uint64_t>(buffer.size(), file.size - done));
         DWORD written = 0;
@@ -182,6 +200,7 @@ bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, con
             error = "cannot write " + file.path + " (disk full?)";
             ok = false;
         } else {
+            if (sha256) jpt_sha256_update(&digest, buffer.data(), n);
             done += n;
             if (progress && !progress(n)) {
                 error = "cancelled";
@@ -195,6 +214,11 @@ bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, con
         ok = false;
     }
     if (!ok) DeleteFileW(part.c_str());
+    if (ok && sha256) {
+        char hex[65];
+        jpt_sha256_hex(&digest, hex);
+        *sha256 = hex;
+    }
     return ok;
 }
 

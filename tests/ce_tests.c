@@ -4,6 +4,7 @@
  * the F7 / F8 keys. Build: CMake target ce_tests.
  */
 #include <math.h>
+#include "test_profile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -702,6 +703,7 @@ static void test_interface_text(void) {
 }
 
 int main(void) {
+    test_profile_activate();
     test_quick_save();
     test_quick_load();
     test_missing_quick_save();

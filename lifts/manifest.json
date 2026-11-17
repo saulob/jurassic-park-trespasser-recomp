@@ -1,0 +1,40 @@
+{
+ "lifts": {
+  "lift116": {
+   "profile": "en-116",
+   "gen_dir": "gen",
+   "archive": "lift116.tar.xz",
+   "archive_sha256": "0c035e78e39cb20720febcacb98347cca72678b609c5ea751cb3cc1add4d886a",
+   "content_sha256": "74ec88de81fa8ef629ba2d5186580d1d3d074e8aaceceb9b1ac182cb2f3d7c83",
+   "files": 74,
+   "functions": 17767,
+   "format": 2,
+   "source_profile": "en-116",
+   "source_sha256": "d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed"
+  },
+  "lift_es117": {
+   "profile": "es-117",
+   "gen_dir": "gen_es117",
+   "archive": "lift_es117.tar.xz",
+   "archive_sha256": "1ac4db17d747d9dc6d93bcf7879fd01d684d76ed7215edf9cb4c56225dafeb13",
+   "content_sha256": "5ad0f673f01a6d90d363e4d597c54c367159a23af856922c3ff006be0fb79d5a",
+   "files": 74,
+   "functions": 17832,
+   "format": 2,
+   "source_profile": "es-117",
+   "source_sha256": "cfc95e60fcf8ea505ed586e24002858324308774cc5197bac85205633360f753"
+  },
+  "lift_ptbr117": {
+   "profile": "ptbr-117",
+   "gen_dir": "gen_ptbr117",
+   "archive": "lift_ptbr117.tar.xz",
+   "archive_sha256": "f0b63cdc994323540781884165ce8a7861c769ee07796afa7fc14536081c427f",
+   "content_sha256": "1949e6efc4b9121154a0db94fb48167eed0aad9dd6911d791838916e909951bc",
+   "files": 74,
+   "functions": 17850,
+   "format": 2,
+   "source_profile": "ptbr-117",
+   "source_sha256": "d5de43a68f57caf7644d8045bc8c27936f03357f453e326e846c1f745f1f0040"
+  }
+ }
+}

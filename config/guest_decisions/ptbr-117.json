@@ -1,0 +1,210 @@
+{
+ "profile": "ptbr-117",
+ "decisions": [
+  {
+   "va": "0040BCC0",
+   "to": "0040BFD0",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "49 instructions identical; only the object's two fields move: [obj+0xC] -> [obj+0x80], [obj+8] -> [obj+0x7C]"
+  },
+  {
+   "va": "00414100",
+   "to": "00414400",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "thiscall(this, level), ret 4 in both; same change as es-117: the data folder comes from a helper instead of 'Data Drive' + 'data\\'"
+  },
+  {
+   "va": "0050E750",
+   "to": "004F5B30",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CFont constructor; glyph widths stay at [font+0x10+4*c]; register allocation only (same change as es-117)"
+  },
+  {
+   "va": "0050E8C0",
+   "to": "004F5C90",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "text layout; frame 0xAC -> 0xB0; the width index is unsigned in this build (same change as es-117)"
+  },
+  {
+   "va": "0045ED80",
+   "to": "004428B0",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "80 instructions identical; the only change is the box pool stride 0x1090 -> 0x1064 (two imul constants)"
+  },
+  {
+   "va": "004F3FB0",
+   "to": "004DB0B0",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "Pelvic_IDOF: same code with the pelvis block stride changed and fields moved (+0xE0 -> +0xE4, +0xEC -> +0xF0); the host override depends on the layout descriptor of this build"
+  },
+  {
+   "va": "00559240",
+   "to": "00541210",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "first 772 instructions identical; the catalogue ends the function earlier, its tail is a separate entry"
+  },
+  {
+   "va": "0045B470",
+   "to": "0043EF90",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "hand reach: identical to the official 1.1 function, same role"
+  },
+  {
+   "va": "00732F1C",
+   "to": "0073703C",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "darppolyPolygons: its neighbours 0x732EFC, 0x732F34 and 0x732F4C all move by +0x4120 and 3 aligned references agree"
+  },
+  {
+   "va": "0067AF5C",
+   "to": "006D1A10",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the dword holding the voluntary-jump byte: the byte 0x0067AF5D pairs with 0x006D1A11 in 27 aligned references"
+  },
+  {
+   "va": "00475F60",
+   "category": "NO_EQUIVALENT",
+   "evidence": "CPartition::bAddChild: 0x0045B910 is identical to the official 1.1 function, so the fix is native and the override is not installed"
+  },
+  {
+   "va": "004F0960",
+   "category": "NO_EQUIVALENT",
+   "evidence": "jump hand-off: byte-identical to the official 1.1 function, native"
+  },
+  {
+   "va": "0066ED67",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning byte read only by the 116-to-1.1 hand port; this build has the 1.1 code natively"
+  },
+  {
+   "va": "0066EF20",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning field read only by the 116-to-1.1 hand port; this build has the 1.1 code natively"
+  },
+  {
+   "va": "0044C1B2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "0044CF9F",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "00451212",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "0045125D",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004512FF",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004519A1",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004546D7",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004546E2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "0045472E",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "00454734",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "00455B6B",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004569C8",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "0045B916",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "0045B91C",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "00460CF5",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004DDEFD",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004E78D2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EB46B",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EB781",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EBA7B",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EBD85",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EC07C",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EC386",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EC586",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "004EC5A2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  }
+ ]
+}

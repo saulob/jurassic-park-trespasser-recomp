@@ -868,6 +868,11 @@ static void test_call_sites(void) {
 
 /* The menus' pictures, the controls card and the F1 tutorial line exist in every language. */
 static void test_named_labels(void) {
+    static const struct {
+        const char* code;
+        const char* text;
+    } k_subtitle_labels[] = { { "en", "Subtitles" }, { "pt-BR", "Legendas" }, { "es", "Subt\xC3\xAD" "tulos" },
+                              { "ru", "\xD0\xA1\xD1\x83\xD0\xB1\xD1\x82\xD0\xB8\xD1\x82\xD1\x80\xD1\x8B" } };
     static const char* const menu[] = { "Menu::NEW GAME", "Menu::LOAD", "Menu::OPTIONS", "Menu::EXIT", "Menu::RESUME",
                                         "Menu::RESTART LEVEL", "Menu::SAVE", "Menu::QUIT", "Menu::CANCEL",
                                         "Menu::DESKTOP", "Menu::MAIN MENU", "Menu::YES", "Menu::NO", "Menu::OK",
@@ -880,6 +885,11 @@ static void test_named_labels(void) {
         CHECK(l10n_asset(k_languages[l], JPT_TR_ASSET, &data, &n) && jpt_tr_load(data, n, lang->codepage) > 150,
               "%s: interface loads", k_languages[l]);
         for (size_t i = 0; i < sizeof menu / sizeof menu[0]; i++) CHECK(jpt_tr_has(menu[i]), "%s: %s", k_languages[l], menu[i]);
+        CHECK(jpt_tr_has("Audio::Show Subtitles"), "%s: the Audio menu's subtitle row", k_languages[l]);
+        for (size_t i = 0; i < sizeof k_subtitle_labels / sizeof k_subtitle_labels[0]; i++)
+            if (!strcmp(k_subtitle_labels[i].code, k_languages[l]))
+                CHECK(!strcmp(jpt_tr("Audio::Show Subtitles"), k_subtitle_labels[i].text), "%s: subtitle row label \"%s\"",
+                      k_languages[l], jpt_tr("Audio::Show Subtitles"));
         for (int pad = 0; pad < 2; pad++) {
             const jpt_card_t* card = jpt_prompt_card(pad);
             CHECK(jpt_tr_has(card->title) && jpt_tr_has(jpt_prompt_hint_card(pad)->title), "%s: card title", k_languages[l]);

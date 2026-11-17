@@ -2,18 +2,19 @@
  * Enhanced sky: CSkyRender::DrawD3D draws the retail sky plane as it always did; the renderer gets what it needs to
  * fog that plane by view direction (ce_effects.h) for the draws in between.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include "ce_effects.h"
 #include "water_kernels.h"
 
-#define SKY_DRAW_D3D 0x005242C0u
+#define SKY_DRAW_D3D GVA(0x005242C0)
 #define SKY_FOG_HIGH 0x2Cu
 #define SKY_FOG_LOW 0x30u
 #define SKY_HEIGHT 0x44u
 #define SKY_SCROLL_U 0x48u
 #define SKY_SCROLL_V 0x4Cu
-#define CAMERA_POSITION 0x00732978u /* CSkyRender's copy, refreshed by 0x00523D00 before each draw */
+#define CAMERA_POSITION GVA(0x00732978) /* CSkyRender's copy, refreshed by 0x00523D00 before each draw */
 
 static recomp_func_t s_sky_lifted;
 

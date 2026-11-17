@@ -1,0 +1,54 @@
+native32: hold an explicit address range
+
+- native32_hold_range(base, span) keeps [base, base + span) free from process start like native32_hold_image, without
+  reading an image: a host that may map any of several builds, installed after it started, reserves the largest.
+  native32_hold_image reads the PE's SizeOfImage and calls it.
+
+Applied by tools/fetch_pcrecomp.py on top of the commit in config/target.json (series order).
+
+diff --git a/runtime/native32/native32.c b/runtime/native32/native32.c
+--- a/runtime/native32/native32.c
++++ b/runtime/native32/native32.c
+@@ -340,20 +340,21 @@ int native32_in_guest(uint32_t va) {
+ #define NATIVE32_HELD_ENV "NATIVE32_HELD"
+ 
+ int native32_hold_image(const char* path, uint32_t base) {
+-    char flag[16], me[MAX_PATH];
+-    if (GetEnvironmentVariableA(NATIVE32_HELD_ENV, flag, sizeof flag)) {
+-        SetEnvironmentVariableA(NATIVE32_HELD_ENV, NULL);  /* not passed on to what the guest starts */
+-        return 1;
+-    }
+     IMAGE_DOS_HEADER dos;
+     IMAGE_NT_HEADERS32 nt;
+     FILE* f = fopen(path, "rb");
+     int ok = f && fread(&dos, sizeof dos, 1, f) == 1 && fseek(f, dos.e_lfanew, SEEK_SET) == 0 &&
+              fread(&nt, sizeof nt, 1, f) == 1 && nt.Signature == IMAGE_NT_SIGNATURE;
+     if (f) fclose(f);
+-    if (!ok) return 0;
+-    uint32_t span = nt.OptionalHeader.SizeOfImage;
++    return ok ? native32_hold_range(base, nt.OptionalHeader.SizeOfImage) : 0;
++}
+ 
++int native32_hold_range(uint32_t base, uint32_t span) {
++    char flag[16], me[MAX_PATH];
++    if (GetEnvironmentVariableA(NATIVE32_HELD_ENV, flag, sizeof flag)) {
++        SetEnvironmentVariableA(NATIVE32_HELD_ENV, NULL);  /* not passed on to what the guest starts */
++        return 1;
++    }
+     STARTUPINFOA si = { sizeof si };
+     PROCESS_INFORMATION pi;
+     si.dwFlags = STARTF_USESTDHANDLES;
+diff --git a/runtime/native32/native32.h b/runtime/native32/native32.h
+--- a/runtime/native32/native32.h
++++ b/runtime/native32/native32.h
+@@ -59,6 +59,10 @@ void native32_set_dispatch(const recomp_dispatch_entry_t* table, uint32_t count)
+  * below base: run the lifted code on a thread with a large stack. */
+ int native32_hold_image(const char* path, uint32_t base);
+ 
++/* The same for an explicit range, for a host that does not know which image it will map when it starts (any of several
++ * builds, installed later): [base, base + span). */
++int native32_hold_range(uint32_t base, uint32_t span);
++
+ /* Map a PE at its preferred base (image_loader.c) and make its executable
+  * sections non-executable, so every entry comes through the dispatch table or
+  * the callback trampoline. Returns the mapped span, 0 on failure. */

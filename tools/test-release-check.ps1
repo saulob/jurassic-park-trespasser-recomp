@@ -12,7 +12,7 @@ $failures = 0
 function New-Release([string]$Name) {
     $dir = Join-Path $Scratch $Name
     New-Item -ItemType Directory -Force (Join-Path $dir 'assets\launcher') | Out-Null
-    Set-Content -LiteralPath (Join-Path $dir 'trespasser.exe') -Value 'program' -NoNewline
+    Set-Content -LiteralPath (Join-Path $dir 'trespasser_recomp.exe') -Value 'program' -NoNewline
     Set-Content -LiteralPath (Join-Path $dir 'README.txt') -Value 'readme' -NoNewline
     Set-Content -LiteralPath (Join-Path $dir 'assets\launcher\header-art.png') -Value 'png' -NoNewline
     return $dir

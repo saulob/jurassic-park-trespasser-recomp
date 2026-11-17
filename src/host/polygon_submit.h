@@ -1,9 +1,10 @@
 #ifndef TRESPASSER_POLYGON_SUBMIT_H
 #define TRESPASSER_POLYGON_SUBMIT_H
 
+#include "guest_va.h"
 #include "recomp_types.h"
 
-#define POLYGON_SUBMIT_VA 0x00559240u
+#define POLYGON_SUBMIT_VA GVA(0x00559240)
 
 /* Host equivalent of the per-polygon Direct3D submission (0x00559240, thiscall, one argument): the texture address
  * mode, a D3DTLVERTEX fan built on the guest stack (fog, lit colour, specular), three render states and DrawPrimitive,

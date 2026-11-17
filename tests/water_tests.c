@@ -6,6 +6,7 @@
  * The guest addresses the code uses live in g_window, which the fixed image base puts there.
  */
 #include <windows.h>
+#include "test_profile.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -1499,10 +1500,15 @@ static int water_dump(void) {
     return ok;
 }
 
+void sub_00626BA0(void);
+
 int main(int argc, char** argv) {
     int quick = argc > 1 && !strcmp(argv[1], "--quick"), alias, bump, paced, dump;
     unsigned long per_kind = quick ? 300 : 3000;
     uintptr_t lo = (uintptr_t)g_window, hi = lo + sizeof g_window;
+    test_profile_activate();
+    GSUB(0x00626BA0) = sub_00626BA0;
+    GSUB(0x0050C9C0) = sub_0050C9C0;
     setvbuf(stdout, NULL, _IONBF, 0);
     if (lo > P_MODE_TABLE || hi < REGION_HI) {
         printf("guest window 0x%08X-0x%08X does not cover 0x%08X-0x%08X: link at /BASE:0x00400000 /FIXED\n",

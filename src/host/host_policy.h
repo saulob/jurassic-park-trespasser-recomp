@@ -3,6 +3,7 @@
 
 /* Window-system-free decisions of the host, kept apart so tests can run them headless. */
 
+#include "guest_va.h"
 #include <stdint.h>
 
 typedef struct {
@@ -237,20 +238,20 @@ const char* readback_reason_name(readback_reason_t reason);
 /* Raster Locks that touch no pixel: CScreenRenderDWI::BeginFrame only hands the surface address to the
  * span rasterisers (which Lock again before drawing), CScreenRenderAuxD3D::FlushBatch locks to wait for
  * the hardware. */
-#define LOCK_CALLER_BEGIN_FRAME 0x0055F1D0u
-#define LOCK_CALLER_FLUSH_BATCH 0x00555AB0u
+#define LOCK_CALLER_BEGIN_FRAME GVA(0x0055F1D0)
+#define LOCK_CALLER_FLUSH_BATCH GVA(0x00555AB0)
 
 /* The gameplay text overlay's draws (0x0050EAF0, one line 0x0050E830): GetDC, then aliased TextOutA only (the host
  * makes their font non-antialiased), so nothing under the text is read. */
-#define GETDC_CALLER_TEXT_OVERLAY 0x0050EAF0u
+#define GETDC_CALLER_TEXT_OVERLAY GVA(0x0050EAF0)
 
 /* Whether a CPU access to a Direct3D render target needs the GPU's pixels in the CPU copy. The game
  * locks with DDLOCK_WAIT only, so write-only flags never come from it; callers decide instead. */
 /* MyFillRect (0x004121B0) fills its rectangle; RasterBlt (0x004128A0) copies its source over the rectangle and reads
  * the screen only when the screen is also its source (screen_blt_write_only says it is not). */
-#define LOCK_CALLER_FILL_RECT 0x004121B0u
-#define LOCK_CALLER_RASTER_BLT 0x004128A0u
-#define LOCK_CALLER_CLEAR 0x005035B0u /* CRasterVid::Clear without DirectDraw: fills every row */
+#define LOCK_CALLER_FILL_RECT GVA(0x004121B0)
+#define LOCK_CALLER_RASTER_BLT GVA(0x004128A0)
+#define LOCK_CALLER_CLEAR GVA(0x005035B0) /* CRasterVid::Clear without DirectDraw: fills every row */
 /* The pixels a rasterised polygon can write: its screen vertices' bounds widened by margin, inside width x height;
  * 0 when nothing is left or a coordinate is not finite. */
 int cpu_polygon_box(const float* x, const float* y, unsigned count, long width, long height, long margin, long box[4]);
@@ -262,7 +263,7 @@ int target_access_reads(cpu_access_t access, uint32_t lock_flags, uint32_t calle
  * and to 0 at its end, and a 1 at start-up makes sub_0040D780 ask through the string-table message
  * box sub_0040E4D0 (type 0x23, title 1, text 11). By default the value reads as 0 and is never stored,
  * and that one message answers No. */
-#define SAFEMODE_MSGBOX_HELPER 0x0040E4D0u
+#define SAFEMODE_MSGBOX_HELPER GVA(0x0040E4D0)
 #define SAFEMODE_PROMPT_TYPE 0x23u
 #define SAFEMODE_PROMPT_TITLE 1u
 #define SAFEMODE_PROMPT_TEXT 11u
@@ -349,11 +350,11 @@ float engine_full_3d_distance(float radius, float pixels_per_metre, float cache_
 
 /* By the partition's class (vtable): pure spatial groups, plain static instances, and everything with behaviour
  * (CEntity and its descendants: animals, the player, guns, triggers, water, backdrops...). */
-#define VTABLE_PARTITION 0x0064B3C8u
-#define VTABLE_PARTITION_SPACE 0x0064CAECu
-#define VTABLE_PARTITION_SPACE_QUERY 0x0064CC54u
-#define VTABLE_INSTANCE 0x0064B22Cu
-#define VTABLE_TERRAIN_OBJECT 0x0064CEA8u
+#define VTABLE_PARTITION GVA(0x0064B3C8)
+#define VTABLE_PARTITION_SPACE GVA(0x0064CAEC)
+#define VTABLE_PARTITION_SPACE_QUERY GVA(0x0064CC54)
+#define VTABLE_INSTANCE GVA(0x0064B22C)
+#define VTABLE_TERRAIN_OBJECT GVA(0x0064CEA8)
 typedef enum { ENGINE_PART_SPATIAL, ENGINE_PART_STATIC, ENGINE_PART_ENTITY } engine_part_kind_t;
 engine_part_kind_t engine_partition_kind(uint32_t vtable);
 /* The fMinDistanceToCache to store for one bShouldCache call, which multiplies it by the CacheMul again. Only static
@@ -453,6 +454,17 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim);
 /* "Max Recommended Tex Dim" and "RenderQuality" answers: 0 leaves the stored value or the game default. */
 uint32_t engine_texture_dim_policy(int modern);
 uint32_t engine_render_quality_policy(int hardware, int value_stored);
+
+/* The game's UseSubTitles registry value is On until a choice is stored. A store that holds the Off the game wrote at
+ * exit before the port kept this default becomes On once (marker absent); a stored choice after that is kept. Returns 1
+ * and the new value when the stored one is replaced. */
+#define REGISTRY_SUBTITLES_ON 0xFFFFFFFFu
+int registry_subtitles_migration(int marker_present, int value_present, uint32_t value, uint32_t* replacement);
+
+/* The game's own Screen Size margin (XView, YView: steps of its legacy Video options): never, the 3D image fills the
+ * resolution the launcher chose. */
+#define REGISTRY_VIEW_MARGIN 0u
+int registry_view_margin_name(const char* name);
 /* UploadPolygonArray (0x0055A4E0) uploads textures until GetTickCount() - start > 7 (a .text immediate); with the
  * 15.6 ms tick the window is anywhere from one upload to 15 ms. What GetTickCount answers inside it instead: the start
  * tick until budget_ms of real time have passed, then a tick past the game's limit. */

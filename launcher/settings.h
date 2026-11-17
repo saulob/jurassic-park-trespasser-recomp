@@ -32,6 +32,8 @@ public:
     // A missing or invalid value reads as the port's default for the key (the game reads it the same way).
     std::string Get(std::string_view key, std::string_view def = {}) const override;
     void Set(std::string_view key, std::string value) override;
+    // Whether the key holds a value, saved or pending (Get reads a missing key as its default).
+    bool Has(std::string_view key) const;
     bool Save() override;
     void ResetToDefaults() override;
     bool SaveNow(const Values& values);
@@ -55,6 +57,7 @@ public:
     // A hex(N) value's bytes, as the game's KeyMap is stored.
     bool GetBinary(const std::string& name, std::vector<uint8_t>& value) const;
     bool SetDword(const std::string& name, unsigned long value);
+    const std::filesystem::path& file() const { return file_; }
 
 private:
     std::filesystem::path file_;

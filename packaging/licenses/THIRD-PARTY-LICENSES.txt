@@ -3,7 +3,7 @@ the player's own disc. The port's source code is at https://github.com/saulob/ju
 
 
 ========================================================================
-Compiled into trespasser.exe
+Compiled into trespasser_recomp.exe
 ========================================================================
 
 pcrecomp                    MIT. Copyright (c) 2026 sp00nz.             https://github.com/sp00nznet/pcrecomp
@@ -90,7 +90,7 @@ drawn in code, no game asset).
 Launcher page icons
 ========================================================================
 
-The eight sidebar icons, compiled into trespasser.exe from assets/launcher/icons of the source. Each one is drawn in
+The eight sidebar icons, compiled into trespasser_recomp.exe from assets/launcher/icons of the source. Each one is drawn in
 the sidebar's colours; assets/launcher/icons/SOURCES.md records the source and every change made.
 
 display.svg, attribution required:

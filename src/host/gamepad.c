@@ -4,6 +4,7 @@
  * SInput (command bits, analog move) after the keyboard has written them, so every remapped key keeps working. Menus
  * are driven through the game's own pointer and clicks (gamepad_menu.c). Every SDL call happens on the guest thread.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -18,7 +19,7 @@
 #include "physics_watch.h"
 #include "tutorial_prompts.h"
 
-#define CINPUT_READ_VA 0x005F80B0u
+#define CINPUT_READ_VA GVA(0x005F80B0)
 #define SINPUT_IN_CINPUT 0x08u
 #define SINPUT_ROTATE_X 0x04u
 #define SINPUT_MOVE_X 0x0Cu
@@ -27,7 +28,7 @@
 #define SINPUT_HIT 0x18u
 #define SAMPLE_INTERVAL_SECONDS 0.001
 #define SWITCH_LOG_LIMIT 16
-#define INVERT_MOUSE_VA 0x006603D8u
+#define INVERT_MOUSE_VA GVA(0x006603D8)
 #define MOVE_COMMANDS (JPT_CMD_RUN | JPT_CMD_WALK | JPT_CMD_BACKUP | JPT_CMD_LEFT | JPT_CMD_RIGHT)
 #define NEUTRAL_LOG_LIMIT 24
 #define HAND_LOG_LIMIT 40

@@ -117,6 +117,19 @@ void cp_layout(float view_w, float view_h, cp_layout_t* out) {
     out->notice_y = out->objective_y + out->objective_px * 1.45f;
 }
 
+void cp_layout_in(float x, float y, float w, float h, cp_layout_t* out) {
+    float lift;
+    cp_layout(w, h, out);
+    lift = out->top;
+    out->left += x;
+    out->right += x;
+    out->centre += x;
+    out->top = y;
+    out->text_y += y - lift;
+    out->objective_y += y - lift;
+    out->notice_y += y - lift;
+}
+
 float cp_outline_px(const cp_layout_t* l) { return at_least(roundf(l->line_px), 1.0f); }
 
 float cp_strip_x(const cp_layout_t* l, float relative, int* side) {
@@ -192,6 +205,14 @@ int cp_project(const cp_camera_t* c, float view_w, float view_h, float margin, c
     out->x = cx + out->dir_x * t;
     out->y = cy + out->dir_y * t;
     return 1;
+}
+
+int cp_project_in(const cp_camera_t* c, float x, float y, float w, float h, float margin, const float world[3],
+                  cp_screen_t* out) {
+    int ok = cp_project(c, w, h, margin, world, out);
+    out->x += x;
+    out->y += y;
+    return ok;
 }
 
 int cp_route_next(const float route[][3], int count, const float at[3]) {

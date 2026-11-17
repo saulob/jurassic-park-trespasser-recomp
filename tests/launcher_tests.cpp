@@ -1,6 +1,8 @@
 // Headless checks of the launcher and display logic: settings, render sizes, Hor+, presentation, monitors, MSAA,
-// the ISO reader, disc identity, the installer's staging, rollback and Cancel, and the Play gate. Disc images are
-// synthetic and built in a temporary folder; TRESPASSER_TEST_ISO=<image> also identifies a real disc (read only).
+// the ISO and InstallShield readers, disc identity, the installer's staging, rollback, Cancel, re-import and repair,
+// the installed versions, the release string table, the importer on the shapes of the four profiles (no original
+// executable on the disc, then with it) and the Play gate. Disc images are synthetic and built in a temporary
+// folder; TRESPASSER_TEST_ISO=<image>[;<image>...] also identifies real discs (read only).
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
@@ -10,24 +12,32 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <regex>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "game_files.h"
 #include "game_install.h"
+#include "inflate.h"
+#include "is_cabinet.h"
 #include "iso9660.h"
+#include "jpt_game_version.h"
+#include "jpt_hash.h"
 #include "localization/ui_text.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_gamepad.h"
 #include "jpt_l10n.h"
 #include "jpt_prompt_text.h"
+#include "jpt_string_table.h"
 #include "jpt_user_data.h"
 #include "options.h"
 #include "user_data.h"
@@ -35,6 +45,7 @@
 #include "play_gate.h"
 #include "settings.h"
 #include "system_info.h"
+#include "utf8.h"
 
 namespace fs = std::filesystem;
 using namespace jpt;
@@ -179,32 +190,6 @@ static std::string ReadFile(const fs::path& path) {
 
 static void WriteImage(const fs::path& path, const std::vector<unsigned char>& bytes) {
     std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
-}
-
-// "abc" hashes to the FIPS 180-2 test vector.
-constexpr char kAbcSha256[] = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-
-constexpr DiscFile kTestDiscFiles[] = {
-    {"setup/tpassp6.exe", "trespass.exe"}, {"setup/msvcirt.dll", "MSVCIRT.DLL"}, {"setup/smackw32.dll", "SMACKW32.DLL"},
-    {"setup/processor.dll", "Processor.dll"}, {"readme.txt", "Readme.txt"},
-};
-constexpr ManifestEntry kTestManifest[] = {
-    {"trespass.exe", 3}, {"MSVCIRT.DLL", 1}, {"SMACKW32.DLL", 1}, {"Processor.dll", 1}, {"Readme.txt", 1},
-    {"data/be.scn", 7}, {"data/menu/tpassintro.smk", 5},
-};
-const GameProfile kTestProfile{"test", "Test Build", "TEST_DISC", "trespass.exe", kAbcSha256, 3, kTestDiscFiles,
-                               "data/", kTestManifest};
-const GameProfile kWrongHashProfile{"wrong", "Wrong Hash", "TEST_DISC", "trespass.exe",
-                                    "0000000000000000000000000000000000000000000000000000000000000000", 3,
-                                    kTestDiscFiles, "data/", kTestManifest};
-
-static std::vector<IsoInput> TestDisc(bool joliet) {
-    auto n = [joliet](const char* lower, const char* upper) { return std::string(joliet ? lower : upper); };
-    return {{n("setup/tpassp6.exe", "SETUP/TPASSP6.EXE"), "abc"}, {n("setup/msvcirt.dll", "SETUP/MSVCIRT.DLL"), "m"},
-            {n("setup/smackw32.dll", "SETUP/SMACKW32.DLL"), "s"}, {n("setup/processor.dll", "SETUP/PROCESSOR.DLL"), "p"},
-            {n("readme.txt", "README.TXT"), "r"},                  {n("data/be.scn", "DATA/BE.SCN"), "levelbe"},
-            {n("data/menu/tpassintro.smk", "DATA/MENU/TPASSINTRO.SMK"), "intro"},
-            {n("setup/directx/dsetup.dll", "SETUP/DIRECTX/DSETUP.DLL"), "not installed"}};
 }
 
 // ---- tests
@@ -550,6 +535,199 @@ static void TestPlayGate() {
     CHECK(!gate.starting());
 }
 
+// "abc" hashes to the FIPS 180-2 test vector.
+constexpr char kAbcSha256[] = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+static std::string Sha(const std::string& text) {
+    char hex[65];
+    jpt_sha256_buffer_hex(text.data(), text.size(), hex);
+    return hex;
+}
+
+// Synthetic versions the port never runs.
+const jpt_game_version_t kTestVersion = {"test", "Test Build", "English", "en", "test release", 116, "lift116",
+                                         nullptr, 1252, nullptr, nullptr, nullptr, nullptr};
+const jpt_game_version_t kOtherVersion = {"other", "Other Build", "Spanish", "es", "other release", 117,
+                                          "lift_other", nullptr, 1252, nullptr, nullptr, "versions\\other\\saves",
+                                          "needs another engine"};
+
+struct TestManifest {
+    std::vector<std::string> digests;
+    std::vector<InstallFile> files;
+};
+
+// The installed tree of TestDisc: the guest image, four more runtime files and data\, never setup\directx.
+static const std::vector<InstallFile>& TestFiles() {
+    static const TestManifest m = [] {
+        const std::vector<std::tuple<const char*, const char*, std::string>> rows = {
+            {"setup/tpassp6.exe", JPT_GUEST_IMAGE, "abc"}, {"setup/msvcirt.dll", "MSVCIRT.DLL", "m"},
+            {"setup/smackw32.dll", "SMACKW32.DLL", "s"},   {"setup/processor.dll", "Processor.dll", "p"},
+            {"readme.txt", "Readme.txt", "r"},             {"data/be.scn", "data/be.scn", "levelbe"},
+            {"data/menu/tpassintro.smk", "data/menu/tpassintro.smk", "intro"}};
+        TestManifest out;
+        out.digests.reserve(rows.size());
+        for (const auto& [src, dst, content] : rows) out.digests.push_back(Sha(content));
+        for (size_t i = 0; i < rows.size(); ++i)
+            out.files.push_back({SourceKind::kDisc, std::get<0>(rows[i]), std::get<1>(rows[i]), std::get<2>(rows[i]).size(),
+                                 out.digests[i].c_str(), i == 0 ? FileRole::kGuestImage : FileRole::kData});
+        return out;
+    }();
+    return m.files;
+}
+
+constexpr DiscIdentity kTestDiscs[] = {{"Test pressing", "TEST_DISC"}, {"Second pressing", "TEST_DISC_2"}};
+static GameProfile TestProfile() {
+    static const std::string identity = Sha("levelbe");
+    return {&kTestVersion, "data/be.scn", identity.c_str(), kTestDiscs, nullptr, TestFiles()};
+}
+
+// `with_exe` false: the same disc without the original executable (the guest image's source).
+static std::vector<IsoInput> TestDisc(bool joliet, bool with_exe = true) {
+    auto n = [joliet](const char* lower, const char* upper) { return std::string(joliet ? lower : upper); };
+    std::vector<IsoInput> files = {
+        {n("setup/msvcirt.dll", "SETUP/MSVCIRT.DLL"), "m"},   {n("setup/smackw32.dll", "SETUP/SMACKW32.DLL"), "s"},
+        {n("setup/processor.dll", "SETUP/PROCESSOR.DLL"), "p"}, {n("readme.txt", "README.TXT"), "r"},
+        {n("data/be.scn", "DATA/BE.SCN"), "levelbe"},          {n("data/menu/tpassintro.smk", "DATA/MENU/TPASSINTRO.SMK"), "intro"},
+        {n("setup/directx/dsetup.dll", "SETUP/DIRECTX/DSETUP.DLL"), "not installed"}};
+    if (with_exe) files.insert(files.begin(), {n("setup/tpassp6.exe", "SETUP/TPASSP6.EXE"), "abc"});
+    return files;
+}
+
+// ---- InstallShield 5 cabinet and DEFLATE
+
+// 443 bytes of "Trespasser " * 40 + "end", fixed Huffman codes.
+constexpr unsigned char kFixed[] = {11, 41, 74, 45, 46, 72, 44, 46, 78, 45, 82, 8, 25, 101, 14, 29, 102, 106, 94, 10, 0};
+// 3948 bytes of DynamicText(), dynamic Huffman codes.
+constexpr unsigned char kDynamic[] = {133,215,193,109,99,49,12,69,209,86,82,130,40,81,18,89,142,157,164,135,36,213,103,86,3,12,48,240,241,246,107,117,225,3,60,62,30,127,126,207,231,243,253,99,124,125,255,188,125,254,251,123,123,252,253,188,238,235,239,55,95,127,143,8,60,200,194,131,218,175,31,204,57,241,96,55,30,244,65,133,181,148,9,29,115,32,100,38,74,102,161,228,14,148,220,27,37,119,163,228,153,40,121,14,74,222,177,244,135,66,201,123,81,178,2,37,107,163,100,21,74,246,68,201,62,40,217,141,146,75,33,151,224,13,193,187,130,151,130,23,130,87,130,183,5,111,42,83,11,222,17,188,37,120,67,240,174,224,165,224,133,224,149,224,109,193,155,250,67,181,224,29,193,91,130,55,4,239,10,94,10,94,8,30,74,46,133,68,199,24,45,120,71,240,150,224,13,193,187,130,151,130,23,130,87,130,183,5,15,37,243,182,224,29,193,91,130,55,4,239,10,94,10,94,8,94,9,222,22,60,148,172,108,193,59,130,183,4,111,8,30,74,46,133,212,146,28,90,146,185,5,79,75,50,180,36,247,17,60,45,201,165,69,126,180,36,135,150,100,134,224,105,73,134,150,228,70,201,93,90,146,243,8,158,150,228,208,146,228,113,163,235,166,116,221,148,174,155,210,117,211,186,110,90,215,77,251,186,81,72,193,211,146,212,109,19,186,109,166,110,155,169,219,102,234,182,89,147,139,92,75,242,255,183,205,47};
+
+static std::string DynamicText() {
+    std::string out;
+    for (int i = 0; i < 120; ++i) out += "aaaaabbbcd" + std::to_string(i * 37 % 1000) + "xyz eeeeeeeeeeeeeee ";
+    return out;
+}
+
+static std::string Inflated(const unsigned char* data, size_t n, size_t max_out, bool& ok) {
+    std::vector<uint8_t> out;
+    ok = InflateRaw(data, n, out, max_out);
+    return std::string(out.begin(), out.end());
+}
+
+static void TestInflate() {
+    bool ok = false;
+    std::string fixed;
+    for (int i = 0; i < 40; ++i) fixed += "Trespasser ";
+    fixed += "end";
+    CHECK(Inflated(kFixed, sizeof kFixed, 1 << 20, ok) == fixed && ok);
+    CHECK(Inflated(kDynamic, sizeof kDynamic, 1 << 20, ok) == DynamicText() && ok);
+    const unsigned char stored[] = {1, 3, 0, 0xFC, 0xFF, 'a', 'b', 'c'};
+    CHECK(Inflated(stored, sizeof stored, 16, ok) == "abc" && ok);
+    Inflated(kDynamic, sizeof kDynamic, 100, ok);
+    CHECK(!ok);  // would decode past its recorded size
+    const unsigned char bad_lengths[] = {1, 3, 0, 0x00, 0x00, 'a', 'b', 'c'};
+    Inflated(bad_lengths, sizeof bad_lengths, 16, ok);
+    CHECK(!ok);
+    const unsigned char reserved_type[] = {7};
+    Inflated(reserved_type, sizeof reserved_type, 16, ok);
+    CHECK(!ok);
+    Inflated(kDynamic, 40, 1 << 20, ok);
+    CHECK(!ok);  // cut in the middle of a block
+}
+
+struct CabInput {
+    std::string folder, name;
+    std::string packed;  // as stored
+    size_t size;         // expanded
+    bool compressed;
+};
+
+// The layout of setup/data1.cab: common header, descriptor at 0x200, file table, then the data.
+static std::vector<uint8_t> BuildCabinet(const std::vector<CabInput>& files) {
+    std::vector<std::string> folders;
+    for (const CabInput& f : files)
+        if (std::find(folders.begin(), folders.end(), f.folder) == folders.end()) folders.push_back(f.folder);
+    std::vector<uint8_t> b(0x200 + 0x30, 0);
+    auto put32 = [&](size_t at, uint32_t v) { std::memcpy(&b[at], &v, 4); };
+    auto put16 = [&](size_t at, uint16_t v) { std::memcpy(&b[at], &v, 2); };
+    std::memcpy(b.data(), "ISc(", 4);
+    put32(4, 0x01000004);
+    put32(12, 0x200);
+    const size_t base = b.size();
+    put32(0x200 + 0x0C, uint32_t(base - 0x200));
+    put32(0x200 + 0x1C, uint32_t(folders.size()));
+    put32(0x200 + 0x28, uint32_t(files.size()));
+    const size_t table_n = folders.size() + files.size();
+    b.resize(base + 4 * table_n, 0);
+    std::vector<size_t> name_at;
+    auto add_name = [&](const std::string& s) {
+        const size_t at = b.size() - base;
+        b.insert(b.end(), s.begin(), s.end());
+        b.push_back(0);
+        return at;
+    };
+    for (size_t i = 0; i < folders.size(); ++i) put32(base + 4 * i, uint32_t(add_name(folders[i])));
+    std::vector<size_t> desc;
+    for (const CabInput& f : files) {
+        const size_t name = add_name(f.name);
+        desc.push_back(b.size() - base);
+        b.resize(b.size() + 0x2A, 0);
+        put32(base + desc.back(), uint32_t(name));
+    }
+    for (size_t i = 0; i < files.size(); ++i) {
+        const CabInput& f = files[i];
+        const size_t d = base + desc[i];
+        put32(base + 4 * (folders.size() + i), uint32_t(desc[i]));
+        put32(d + 4, uint32_t(std::find(folders.begin(), folders.end(), f.folder) - folders.begin()));
+        put16(d + 8, f.compressed ? 4 : 0);
+        put32(d + 10, uint32_t(f.size));
+        put32(d + 14, uint32_t(f.packed.size()));
+        put32(d + 0x26, uint32_t(b.size()));
+        b.insert(b.end(), f.packed.begin(), f.packed.end());
+    }
+    return b;
+}
+
+static void TestCabinet() {
+    std::string fixed;
+    for (int i = 0; i < 40; ++i) fixed += "Trespasser ";
+    fixed += "end";
+    const std::vector<CabInput> inputs = {
+        {"", "tpassp6.exe", "abc", 3, false},
+        {"menu", "Main_bg.tga", std::string(reinterpret_cast<const char*>(kFixed), sizeof kFixed), fixed.size(), true},
+        {"menu", "audio.ddf", std::string(reinterpret_cast<const char*>(kDynamic), sizeof kDynamic), DynamicText().size(), true},
+    };
+    Cabinet cab;
+    std::string error;
+    CHECK(cab.Open(BuildCabinet(inputs), error) && cab.files().size() == 3);
+    std::vector<uint8_t> out;
+    const CabinetFile* exe = cab.Find("TPASSP6.EXE");
+    CHECK(exe && cab.Read(*exe, out, error) && std::string(out.begin(), out.end()) == "abc");
+    const CabinetFile* tga = cab.Find("menu/main_bg.tga");
+    CHECK(tga && cab.Read(*tga, out, error) && std::string(out.begin(), out.end()) == fixed);
+    const CabinetFile* ddf = cab.Find("menu/audio.ddf");
+    CHECK(ddf && cab.Read(*ddf, out, error) && std::string(out.begin(), out.end()) == DynamicText());
+    CHECK(!cab.Find("menu/missing.tga"));
+
+    std::vector<CabInput> wrong_size = inputs;
+    wrong_size[1].size += 1;
+    Cabinet cut;
+    CHECK(cut.Open(BuildCabinet(wrong_size), error));
+    tga = cut.Find("menu/Main_bg.tga");
+    CHECK(tga && !cut.Read(*tga, out, error) && error.find("bytes, expected") != std::string::npos);
+
+    std::vector<uint8_t> bytes = BuildCabinet(inputs);
+    bytes[4] = 6;  // another InstallShield version
+    Cabinet other;
+    CHECK(!other.Open(bytes, error));
+    bytes = BuildCabinet(inputs);
+    bytes.resize(0x230);  // the table is gone
+    CHECK(!other.Open(bytes, error));
+    std::vector<CabInput> escape = inputs;
+    escape[0].folder = "..";
+    CHECK(!other.Open(BuildCabinet(escape), error));
+}
+
+// ---- disc identity, import, versions
+
 static void TestIsoReader(const fs::path& dir) {
     for (bool joliet : {false, true}) {
         const fs::path path = dir / (joliet ? "joliet.iso" : "plain.iso");
@@ -563,9 +741,12 @@ static void TestIsoReader(const fs::path& dir) {
         CHECK(iso.Find("SETUP/MSVCIRT.DLL") && !iso.Find("setup/missing.dll"));
         const fs::path out = dir / "out.bin";
         uint64_t seen = 0;
-        CHECK(exe && iso.Extract(*exe, out, [&](uint64_t n) { return seen += n, true; }, error));
-        CHECK(ReadFile(out) == "abc" && seen == 3 && !fs::exists(dir / "out.bin.part"));
+        std::string sha;
+        CHECK(exe && iso.Extract(*exe, out, [&](uint64_t n) { return seen += n, true; }, error, &sha));
+        CHECK(ReadFile(out) == "abc" && seen == 3 && !fs::exists(dir / "out.bin.part") && sha == kAbcSha256);
         CHECK(Sha256File(out) == kAbcSha256);
+        std::vector<uint8_t> all;
+        CHECK(exe && iso.ReadAll(*exe, all, error) && std::string(all.begin(), all.end()) == "abc");
     }
     std::string error;
     const fs::path junk = dir / "junk.iso";
@@ -579,102 +760,332 @@ static void TestIsoReader(const fs::path& dir) {
     IsoImage truncated;
     CHECK(truncated.Open(cut, error));
     const IsoFile* exe = truncated.Find("setup/tpassp6.exe");
+    std::vector<uint8_t> all;
     CHECK(exe && !truncated.Extract(*exe, dir / "cut.bin", nullptr, error) && !fs::exists(dir / "cut.bin"));
+    const IsoFile* level = truncated.Find("data/menu/tpassintro.smk");
+    CHECK(level && !truncated.ReadAll(*level, all, error));
 }
 
 static void TestIdentity(const fs::path& dir) {
-    const GameProfile profiles[] = {kTestProfile};
+    const GameProfile profiles[] = {TestProfile()};
     std::string why;
-    IsoImage good, other, version;
+    IsoImage good, second, other, version, damaged, partial;
     WriteImage(dir / "good.iso", IsoBuilder().Build("TEST_DISC", TestDisc(true), true));
     CHECK(good.Open(dir / "good.iso", why));
-    CHECK(IdentifyDisc(good, profiles, why) == &profiles[0]);
+    DiscMatch m = IdentifyDisc(good, profiles, why);
+    CHECK(m.profile == &profiles[0] && m.disc == &kTestDiscs[0]);
     std::string plan_error;
-    const std::vector<PlannedFile> plan = PlanInstall(good, profiles[0], plan_error);
-    CHECK(plan.size() == 7);  // five runtime files and data/, not setup/directx
+    CHECK(PlanInstall(good, nullptr, profiles[0], plan_error).size() == 7);  // five runtime files and data/
+
+    // The same disc without the original executable: recognised and planned, only the guest image has no source.
+    WriteImage(dir / "no-exe.iso", IsoBuilder().Build("TEST_DISC", TestDisc(true, false), true));
+    IsoImage no_exe;
+    CHECK(no_exe.Open(dir / "no-exe.iso", why));
+    m = IdentifyDisc(no_exe, profiles, why);
+    CHECK(m.profile == &profiles[0] && m.disc == &kTestDiscs[0]);
+    const std::vector<PlannedFile> bare = PlanInstall(no_exe, nullptr, profiles[0], plan_error);
+    size_t absent = 0;
+    for (const PlannedFile& f : bare) absent += !f.present() && f.file->role == FileRole::kGuestImage;
+    CHECK(bare.size() == 7 && absent == 1 && !bare[0].present() && bare[1].present());
+
+    // Another pressing of the version: told apart by the volume label, the label alone never identifies.
+    WriteImage(dir / "second.iso", IsoBuilder().Build("TEST_DISC_2", TestDisc(true), true));
+    CHECK(second.Open(dir / "second.iso", why));
+    m = IdentifyDisc(second, profiles, why);
+    CHECK(m.profile == &profiles[0] && m.disc == &kTestDiscs[1]);
+    WriteImage(dir / "renamed.iso", IsoBuilder().Build("RENAMED", TestDisc(true), true));
+    IsoImage renamed;
+    CHECK(renamed.Open(dir / "renamed.iso", why) && IdentifyDisc(renamed, profiles, why).profile == &profiles[0]);
+
     WriteImage(dir / "other.iso", IsoBuilder().Build("SOME_GAME", {{"game.exe", "x"}}, true));
     CHECK(other.Open(dir / "other.iso", why));
-    CHECK(!IdentifyDisc(other, profiles, why) && why.find("not a Trespasser") != std::string::npos);
+    m = IdentifyDisc(other, profiles, why);
+    CHECK(!m.profile && m.status == InstallStatus::kWrongDisc && why.find("not a Trespasser") != std::string::npos);
+
+    // A Trespasser disc no profile knows: refused, with the data file fingerprints needed to add it.
     std::vector<IsoInput> files = TestDisc(true);
-    files[0].content = "abcd";
+    files[5].content = "abcd";
     WriteImage(dir / "version.iso", IsoBuilder().Build("TEST_DISC", files, true));
     CHECK(version.Open(dir / "version.iso", why));
-    CHECK(!IdentifyDisc(version, profiles, why) && why.find("4-byte") != std::string::npos);
-}
+    m = IdentifyDisc(version, profiles, why);
+    CHECK(!m.profile && m.status == InstallStatus::kUnsupportedBuild && why.find("Unsupported Trespasser build") == 0);
+    bool fingerprint = false;
+    for (const std::string& line : m.diagnostics) fingerprint = fingerprint || line.find(Sha("abcd")) != std::string::npos;
+    CHECK(fingerprint);
 
-static fs::path MakeInstalled(const fs::path& game) {
-    fs::remove_all(game);
-    WriteFile(game / "trespass.exe", "old");
-    WriteFile(game / "SAVEGAME.000", "my save");
-    WriteFile(game / "data" / "old.scn", "old level");
-    return game;
+    for (const std::string& line : m.diagnostics) CHECK(line.find("tpassp6") == std::string::npos && line.find(".exe") == std::string::npos);
+
+    // The identity file, but another file of the version missing from the disc: not accepted as that version.
+    files = TestDisc(true);
+    files.erase(files.begin() + 6);
+    WriteImage(dir / "partial.iso", IsoBuilder().Build("TEST_DISC", files, true));
+    CHECK(partial.Open(dir / "partial.iso", why));
+    m = IdentifyDisc(partial, profiles, why);
+    CHECK(!m.profile && m.status == InstallStatus::kDamagedDisc && why.find("tpassintro.smk") != std::string::npos);
+
+    // An executable alone identifies nothing, whatever its bytes.
+    WriteImage(dir / "exe-only.iso", IsoBuilder().Build("TEST_DISC", {{"setup/tpassp6.exe", "abc"}}, true));
+    IsoImage exe_only;
+    CHECK(exe_only.Open(dir / "exe-only.iso", why));
+    m = IdentifyDisc(exe_only, profiles, why);
+    CHECK(!m.profile && m.status == InstallStatus::kWrongDisc);
 }
 
 static void TestInstaller(const fs::path& dir) {
     const fs::path iso = dir / "install.iso";
     WriteImage(iso, IsoBuilder().Build("TEST_DISC", TestDisc(true), true));
-    const GameProfile profiles[] = {kTestProfile};
-    const fs::path game = dir / "game", user = dir / "user";
+    const GameProfile profiles[] = {TestProfile()};
+    const fs::path root = dir / "game", target = root / "versions" / "test";
+    fs::remove_all(root);
     InstallHooks hooks;
     int phases = 0;
     hooks.phase = [&](const char*) { ++phases; };
 
-    // Fresh install.
-    InstallResult r = InstallFromIso(iso, game, user, hooks, profiles);
-    CHECK(r.ok() && r.files == 7 && r.profile == &profiles[0] && phases >= 3);
-    CHECK(CheckGameFolder(game, profiles).state == GameState::kReady);
-    CHECK(!fs::exists(StagingFolder(game)) && !fs::exists(BackupFolder(game)));
-    CHECK(ReadFile(game / "trespass.exe") == "abc" && !fs::exists(game / "setup"));
+    // Fresh install into versions\<id>.
+    InstallResult r = InstallFromIso(iso, root, hooks, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && r.files == 7 && r.profile == &profiles[0] && phases >= 4);
+    CHECK(r.dir == target && CheckGameFolder(target, profiles[0]).state == GameState::kReady);
+    CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
+    CHECK(ReadFile(target / JPT_GUEST_IMAGE) == "abc" && !fs::exists(target / "setup"));
+    CHECK(!fs::exists(target / "trespass.exe") && !fs::exists(target / "tpassp6.exe"));
 
-    // Reinstall over an older one: the old files go, the save is copied to the user folder first.
-    MakeInstalled(game);
-    r = InstallFromIso(iso, game, user, hooks, profiles);
-    CHECK(r.ok() && ReadFile(user / "SAVEGAME.000") == "my save" && !fs::exists(game / "data" / "old.scn"));
-    CHECK(CheckGameFolder(game, profiles).state == GameState::kReady);
+    // The same disc again: nothing is copied.
+    WriteFile(target / "marker.txt", "kept");
+    r = InstallFromIso(iso, root, hooks, profiles);
+    CHECK(r.status == InstallStatus::kUpToDate && r.ok() && r.dir == target && fs::exists(target / "marker.txt"));
 
-    // An executable no profile knows: refused after the copy, the current installation untouched.
-    MakeInstalled(game);
-    const GameProfile wrong[] = {kWrongHashProfile};
-    r = InstallFromIso(iso, game, user, hooks, wrong);
-    CHECK(r.status == InstallStatus::kValidationFailed && ReadFile(game / "trespass.exe") == "old");
-    CHECK(!fs::exists(StagingFolder(game)));
+    // A damaged installed copy is replaced only when asked to.
+    WriteFile(target / "data" / "be.scn", "x");
+    InstallHooks replace = hooks;
+    replace.replace = true;
+    r = InstallFromIso(iso, root, replace, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && ReadFile(target / "data" / "be.scn") == "levelbe");
+    CHECK(!fs::exists(target / "marker.txt"));
 
     // Another disc: refused before anything is copied.
     WriteImage(dir / "wrong.iso", IsoBuilder().Build("SOME_GAME", {{"game.exe", "x"}}, true));
-    r = InstallFromIso(dir / "wrong.iso", game, user, hooks, profiles);
-    CHECK(r.status == InstallStatus::kWrongDisc && ReadFile(game / "trespass.exe") == "old");
+    r = InstallFromIso(dir / "wrong.iso", root, replace, profiles);
+    CHECK(r.status == InstallStatus::kWrongDisc && ReadFile(target / JPT_GUEST_IMAGE) == "abc");
     WriteFile(dir / "notiso.iso", "hello");
-    r = InstallFromIso(dir / "notiso.iso", game, user, hooks, profiles);
+    r = InstallFromIso(dir / "notiso.iso", root, replace, profiles);
     CHECK(r.status == InstallStatus::kNotAnImage);
 
-    // Cancel during the copy.
-    InstallHooks cancel = hooks;
+    // Cancel during the copy: the installed version stays.
+    InstallHooks cancel = replace;
     cancel.progress = [](uint64_t done, uint64_t) { return done < 4; };
-    r = InstallFromIso(iso, game, user, cancel, profiles);
-    CHECK(r.status == InstallStatus::kCancelled && ReadFile(game / "trespass.exe") == "old");
-    CHECK(!fs::exists(StagingFolder(game)));
+    r = InstallFromIso(iso, root, cancel, profiles);
+    CHECK(r.status == InstallStatus::kCancelled && ReadFile(target / JPT_GUEST_IMAGE) == "abc");
+    CHECK(!fs::exists(StagingFolder(target)));
 
-    // The game folder cannot be moved aside (a file in it is open): rollback.
-    HANDLE held = CreateFileW((game / "trespass.exe").c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0,
+    // A disc without the guest image's source: refused before anything is staged, the installed version stays.
+    WriteImage(dir / "no-exe-install.iso", IsoBuilder().Build("TEST_DISC", TestDisc(true, false), true));
+    r = InstallFromIso(dir / "no-exe-install.iso", root, replace, profiles);
+    CHECK(r.status == InstallStatus::kNoGuestImageSource && !r.ok() && r.detail.find("the disc lacks setup/tpassp6.exe") == 0);
+    CHECK(ReadFile(target / JPT_GUEST_IMAGE) == "abc" && ReadFile(target / "data" / "be.scn") == "levelbe");
+    CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
+
+    // The version folder cannot be moved aside (a file in it is open): rollback.
+    HANDLE held = CreateFileW((target / JPT_GUEST_IMAGE).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0,
                               nullptr);
-    r = InstallFromIso(iso, game, user, hooks, profiles);
+    r = InstallFromIso(iso, root, replace, profiles);
     CloseHandle(held);
-    CHECK(r.status == InstallStatus::kActivateFailed && ReadFile(game / "trespass.exe") == "old");
-    CHECK(fs::exists(game / "data" / "old.scn") && !fs::exists(StagingFolder(game)) && !fs::exists(BackupFolder(game)));
+    CHECK(r.status == InstallStatus::kActivateFailed && ReadFile(target / JPT_GUEST_IMAGE) == "abc");
+    CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
 
-    // An image inside the game folder is refused (reinstalling would remove it).
-    fs::copy_file(iso, game / "inside.iso");
-    r = InstallFromIso(game / "inside.iso", game, user, hooks, profiles);
+    // An image inside the version folder is refused (reinstalling would remove it).
+    fs::copy_file(iso, target / "inside.iso");
+    r = InstallFromIso(target / "inside.iso", root, replace, profiles);
     CHECK(r.status == InstallStatus::kInsideGameFolder);
+    fs::remove(target / "inside.iso");
+
+    // The ISO is only read.
+    const auto stamp = fs::last_write_time(iso);
+    const std::string before = ReadFile(iso);
+    r = InstallFromIso(iso, root, replace, profiles);
+    CHECK(r.ok() && fs::last_write_time(iso) == stamp && ReadFile(iso) == before);
+
+    // A damaged copy of the disc: refused while no installed version has the pressed file...
+    std::vector<IsoInput> files = TestDisc(true);
+    files[6].content = "intrp";  // same size, other bytes
+    WriteImage(dir / "damaged.iso", IsoBuilder().Build("TEST_DISC", files, true));
+    const fs::path empty_root = dir / "empty";
+    fs::remove_all(empty_root);
+    r = InstallFromIso(dir / "damaged.iso", empty_root, hooks, profiles);
+    CHECK(r.status == InstallStatus::kDamagedDisc && r.detail.find("data/menu/tpassintro.smk") != std::string::npos);
+    CHECK(!fs::exists(empty_root / "versions" / "test") && !fs::exists(StagingFolder(empty_root / "versions" / "test")));
+    // ...and repaired from one that has it.
+    r = InstallFromIso(dir / "damaged.iso", root, replace, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && r.repaired == 1 && ReadFile(target / "data" / "menu" / "tpassintro.smk") == "intro");
 
     // Game file states.
-    CHECK(CheckGameFolder(dir / "nothing", profiles).state == GameState::kMissing);
-    CHECK(CheckGameFolder(game, profiles).state == GameState::kInvalid);
-    r = InstallFromIso(iso, game, user, hooks, profiles);
-    CHECK(r.ok());
-    fs::remove(game / "data" / "menu" / "tpassintro.smk");
-    const GameCheck missing = CheckGameFolder(game, profiles);
+    CHECK(CheckGameFolder(dir / "nothing", profiles[0]).state == GameState::kMissing);
+    fs::remove(target / "data" / "menu" / "tpassintro.smk");
+    const GameCheck missing = CheckGameFolder(target, profiles[0]);
     CHECK(missing.state == GameState::kInvalid && missing.detail.find("tpassintro.smk") != std::string::npos);
+    // An executable in a folder is no installation: only the guest image makes a version.
+    WriteFile(dir / "loose" / "trespass.exe", "zzz");
+    const GameCheck loose = CheckGameFolder(dir / "loose", profiles[0]);
+    CHECK(loose.state == GameState::kMissing && !loose.profile && loose.detail.find("no guest image") == 0);
+    WriteFile(dir / "loose" / JPT_GUEST_IMAGE, "zz");
+    const GameCheck partial = CheckGameFolder(dir / "loose", profiles[0]);
+    CHECK(partial.state == GameState::kInvalid && partial.profile == &profiles[0] &&
+          partial.detail.find("has 2 bytes, expected 3") != std::string::npos);
+}
+
+static void InstallTestTree(const fs::path& dir) {
+    for (const InstallFile& f : TestFiles()) WriteFile(dir / f.installed, std::string(static_cast<size_t>(f.size), 'x'));
+}
+
+static void TestVersions(const fs::path& dir) {
+    const std::vector<InstallFile>& files = TestFiles();
+    const GameProfile profiles[] = {TestProfile(), {&kOtherVersion, "data/be.scn", "", kTestDiscs, nullptr, files}};
+    const fs::path root = dir / "versions-game";
+    fs::remove_all(root);
+    CHECK(FindInstalledVersions(root, profiles).empty() && !ChooseVersion({}, "test"));
+
+    // Files directly in the game folder, an executable among them (an installation made before versions existed):
+    // not a version, never listed, never touched.
+    InstallTestTree(root);
+    WriteFile(root / "trespass.exe", "abc");
+    WriteFile(root / "SAVEGAME.000", "save");
+    std::vector<InstalledVersion> found = FindInstalledVersions(root, profiles);
+    CHECK(found.empty() && !ChooseVersion(found, ""));
+
+    // A version folder with the old executable name and no guest image: ignored, not an error, not ready.
+    InstallTestTree(root / "versions" / "other");
+    fs::remove(root / "versions" / "other" / JPT_GUEST_IMAGE);
+    WriteFile(root / "versions" / "other" / "trespass.exe", "ba7816bf");
+    CHECK(FindInstalledVersions(root, profiles).empty());
+    CHECK(CheckGameFolder(root / "versions" / "other", profiles[1]).state == GameState::kMissing);
+
+    // With its guest image the folder is a version; the old executable beside it is ignored. A file of another size
+    // keeps it from being ready, and Play never uses it.
+    WriteFile(root / "versions" / "other" / JPT_GUEST_IMAGE, "x");
+    found = FindInstalledVersions(root, profiles);
+    CHECK(found.size() == 1 && found[0].profile == &profiles[1] && found[0].check.state == GameState::kInvalid);
+    CHECK(found[0].check.detail.find(JPT_GUEST_IMAGE) == 0 && !ChooseVersion(found, "other"));
+    InstallTestTree(root / "versions" / "other");
+    found = FindInstalledVersions(root, profiles);
+    CHECK(found.size() == 1 && found[0].check.state == GameState::kReady && ChooseVersion(found, "other") == &found[0]);
+    CHECK(ReadFile(root / "versions" / "other" / "trespass.exe") == "ba7816bf");
+
+    // A second version in its own folder: both listed, the choice follows the setting, any ready one otherwise.
+    InstallTestTree(root / "versions" / "test");
+    found = FindInstalledVersions(root, profiles);
+    CHECK(found.size() == 2 && found[0].dir == root / "versions" / "test" && found[1].dir == root / "versions" / "other");
+    CHECK(ChooseVersion(found, "other") && ChooseVersion(found, "other")->profile == &profiles[1]);  // the setting wins
+    CHECK(ChooseVersion(found, "")->profile == &profiles[0]);  // else the first ready one the port can run
+    CHECK(ChooseVersion(found, "missing")->profile == &profiles[0]);
+    CHECK(ChooseVersion(found, "test")->profile == &profiles[0]);
+    WriteFile(root / "versions" / "test" / "data" / "be.scn", "short");
+    found = FindInstalledVersions(root, profiles);
+    CHECK(found.size() == 2 && found[0].check.state == GameState::kInvalid &&
+          ChooseVersion(found, "test") && ChooseVersion(found, "test")->profile == &profiles[1]);
+    InstallTestTree(root / "versions" / "test");
+    found = FindInstalledVersions(root, profiles);
+
+    // Removing a managed version deletes its folder only.
+    std::string error;
+    const InstalledVersion managed = *ChooseVersion(found, "test");
+    CHECK(RemoveVersion(managed, error) && !fs::exists(root / "versions" / "test"));
+    CHECK(fs::exists(root / "trespass.exe") && fs::exists(root / "data" / "be.scn") && ReadFile(root / "SAVEGAME.000") == "save");
+    CHECK(fs::exists(root / "versions" / "other" / JPT_GUEST_IMAGE));
+    found = FindInstalledVersions(root, profiles);
+    CHECK(found.size() == 1 && found[0].profile == &profiles[1]);
+
+    // A folder that is not a version folder is never removed.
+    InstalledVersion stray{&profiles[0], dir / "stray", {}};
+    fs::create_directories(stray.dir);
+    CHECK(!RemoveVersion(stray, error) && fs::exists(stray.dir));
+}
+
+static std::string Lower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](char c) { return char(std::tolower((unsigned char)c)); });
+    return text;
+}
+
+static void TestGameVersionTable() {
+    CHECK(jpt_game_version_by_id("en-116") == &jpt_game_versions[0] && jpt_game_version_by_id("EN-116"));
+    CHECK(!jpt_game_version_by_id("ja-116") && !jpt_game_version_by_id(nullptr));
+    std::set<std::string> ids;
+    for (const jpt_game_version_t& v : jpt_game_versions) {
+        ids.insert(v.id);
+        CHECK(jpt_game_version_playable(&v) == (v.unplayable == nullptr));
+        CHECK(std::string(v.lift).rfind("lift", 0) == 0);
+        CHECK((std::string(v.lift) == "lift116") == (v.build == 116));
+        CHECK(jpt_l10n_language(v.language_code) != nullptr);
+        CHECK(std::strlen(v.id) < JPT_GAME_VERSION_ID_MAX && (v.saves == nullptr) == (std::string(v.id) == "en-116"));
+    }
+    CHECK(ids == std::set<std::string>({"en-116", "ru-116", "es-117", "ptbr-117"}));
+    CHECK(jpt_game_version_playable(jpt_game_version_by_id("ru-116")));
+    CHECK(jpt_game_version_playable(jpt_game_version_by_id("es-117")) && jpt_game_version_playable(jpt_game_version_by_id("ptbr-117")));
+
+    // Profiles of the launcher: one per version, each manifest with one guest image, no installed executable, distinct
+    // names, and a data file on the disc that no other version has.
+    CHECK(KnownProfiles().size() == JPT_GAME_VERSION_COUNT);
+    std::set<std::string> identity_digests;
+    for (const GameProfile& p : KnownProfiles()) {
+        std::set<std::string> names;
+        int guest = 0, tables = 0;
+        const InstallFile* identity = nullptr;
+        for (const InstallFile& f : p.files) {
+            const std::string lower = Lower(f.installed);
+            CHECK(names.insert(lower).second && std::strlen(f.sha256) == 64);
+            CHECK(f.kind == SourceKind::kDisc || p.cabinet);
+            CHECK(lower.size() < 4 || lower.compare(lower.size() - 4, 4, ".exe") != 0);
+            CHECK(lower.find("trespass.exe") == std::string::npos && lower.find("tpassp") == std::string::npos);
+            CHECK((f.role == FileRole::kStringTable) == (f.source_sha256 != nullptr && f.source_size != 0));
+            if (f.role == FileRole::kGuestImage) {
+                ++guest;
+                CHECK(lower == JPT_GUEST_IMAGE && names.count(lower) == 1);
+            }
+            if (f.role == FileRole::kStringTable) {
+                ++tables;
+                CHECK(std::strlen(f.source_sha256) == 64 && f.size < f.source_size);
+                CHECK(p.version->text_strings && Lower(p.version->text_strings) == "text\\strings.dat" && lower == "text/strings.dat");
+            }
+            if (f.kind == SourceKind::kDisc && f.role == FileRole::kData && Lower(f.source) == Lower(p.identity_file))
+                identity = &f;
+        }
+        CHECK(guest == 1 && tables == (p.version->text_strings ? 1 : 0) && !p.discs.empty());
+        CHECK(identity && std::string(identity->sha256) == p.identity_sha256);
+        CHECK(std::string(p.identity_file).find(".exe") == std::string::npos);
+        CHECK(identity_digests.insert(p.identity_sha256).second);
+        for (const GameProfile& other : KnownProfiles())
+            if (&other != &p)
+                for (const InstallFile& f : other.files) CHECK(std::string(f.sha256) != p.identity_sha256);
+    }
+    char out[64];
+    CHECK(jpt_game_version_saves_dir("U", "U\\saves", jpt_game_version_by_id("en-116"), out, sizeof out) &&
+          std::string(out) == "U\\saves");
+    CHECK(jpt_game_version_saves_dir("U", "U\\saves", jpt_game_version_by_id("ru-116"), out, sizeof out) &&
+          std::string(out) == "U\\versions\\ru-116\\saves");
+
+    jpt_config_t c;
+    jpt_config_defaults(&c);
+    CHECK(c.game_version[0] == 0 && jpt_config_valid(JPT_KEY_GAME_VERSION, "ru-116"));
+    CHECK(jpt_config_valid(JPT_KEY_GAME_VERSION, "") && !jpt_config_valid(JPT_KEY_GAME_VERSION, "ja-116"));
+}
+
+static void TestHostResolution(const fs::path& dir) {
+    const fs::path root = dir / "resolve";
+    fs::remove_all(root);
+    char out[MAX_PATH];
+    const jpt_game_version_t* v = nullptr;
+    const std::string r = root.string();
+    CHECK(!jpt_game_version_resolve(r.c_str(), "", 1, out, sizeof out, &v));
+    // A Spanish folder is found as installed and, the version being playable, chosen to run.
+    WriteFile(root / "versions" / "es-117" / "trespass.exe", "x");  // an executable alone is not an installation
+    CHECK(!jpt_game_version_installed(r.c_str(), jpt_game_version_by_id("es-117"), out, sizeof out));
+    CHECK(!jpt_game_version_resolve(r.c_str(), "es-117", 1, out, sizeof out, &v));
+    WriteFile(root / "versions" / "es-117" / JPT_GUEST_IMAGE, "x");
+    CHECK(jpt_game_version_installed(r.c_str(), jpt_game_version_by_id("es-117"), out, sizeof out));
+    CHECK(jpt_game_version_resolve(r.c_str(), "es-117", 1, out, sizeof out, &v) && v == jpt_game_version_by_id("es-117"));
+    CHECK(std::string(out) == (root / "versions" / "es-117").string());
+    // A chosen version that is not installed falls back to the first installed one.
+    WriteFile(root / "versions" / "ru-116" / JPT_GUEST_IMAGE, "x");
+    CHECK(jpt_game_version_resolve(r.c_str(), "ptbr-117", 1, out, sizeof out, &v) && v == jpt_game_version_by_id("ru-116"));
+    CHECK(std::string(out) == (root / "versions" / "ru-116").string());
 }
 
 static void TestUserFiles(const fs::path& dir) {
@@ -682,45 +1093,390 @@ static void TestUserFiles(const fs::path& dir) {
     WriteFile(old / "SAVEGAME.000", "a");
     WriteFile(old / "SAVEGAME.001", "b");
     WriteFile(old / JPT_REGISTRY_FILE, "Gore=dword:00000000\n");
-    WriteFile(old / "trespass.exe", "x");
+    WriteFile(old / JPT_GUEST_IMAGE, "x");
     WriteFile(user / "SAVEGAME.001", "newer");
     CHECK(jpt_carry_user_files(old.string().c_str(), user.string().c_str(), nullptr) == 2);
     CHECK(ReadFile(user / "SAVEGAME.000") == "a" && ReadFile(user / "SAVEGAME.001") == "newer");
-    CHECK(fs::exists(user / JPT_REGISTRY_FILE) && !fs::exists(user / "trespass.exe") && fs::exists(old / "SAVEGAME.000"));
+    CHECK(fs::exists(user / JPT_REGISTRY_FILE) && !fs::exists(user / JPT_GUEST_IMAGE) && fs::exists(old / "SAVEGAME.000"));
     CHECK(jpt_is_user_file("savegame.003") && jpt_is_user_file("recomp-registry.txt"));
-    CHECK(!jpt_is_user_file("trespass.exe") && !jpt_is_user_file("be-130.swp"));
+    CHECK(!jpt_is_user_file(JPT_GUEST_IMAGE) && !jpt_is_user_file("be-130.swp"));
 }
 
-static void TestRealDisc() {
-    char path[1024];
-    if (!GetEnvironmentVariableA("TRESPASSER_TEST_ISO", path, sizeof path)) {
-        std::printf("real disc: skipped (TRESPASSER_TEST_ISO not set)\n");
+// ---- the release string table and the importer on the shapes of the four real profiles
+
+#define RT_STRING_W MAKEINTRESOURCEW(6)
+
+static std::vector<uint8_t> Bytes(const std::string& text) { return {text.begin(), text.end()}; }
+
+static bool SameStrings(const std::vector<ReleaseString>& a, const std::vector<ReleaseString>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i].id != b[i].id || a[i].bytes != b[i].bytes) return false;
+    return true;
+}
+
+static bool ReadTable(const std::vector<uint8_t>& table, std::vector<ReleaseString>& out) {
+    out.clear();
+    return jpt_string_table_read(table.data(), table.size(),
+                                 [](void* user, uint32_t id, const char* bytes, uint32_t length) {
+                                     static_cast<std::vector<ReleaseString>*>(user)->push_back({id, std::string(bytes, length)});
+                                 },
+                                 &out) >= 0;
+}
+
+// The 16 entries of one RT_STRING block: each a length in UTF-16 units and the units.
+static std::string StringBlock(const std::vector<std::pair<int, std::u16string>>& entries) {
+    std::string block;
+    for (int i = 0; i < 16; ++i) {
+        std::u16string text;
+        for (const auto& [index, value] : entries)
+            if (index == i) text = value;
+        const uint16_t length = static_cast<uint16_t>(text.size());
+        block.append(reinterpret_cast<const char*>(&length), 2);
+        block.append(reinterpret_cast<const char*>(text.data()), text.size() * 2);
+    }
+    return block;
+}
+
+// A PE file with only the given string blocks as resources: the test program's own copy, its resources replaced.
+// Never run; the importer reads its resources as data.
+static bool MakeResourcePe(const fs::path& path, const std::vector<std::pair<int, std::string>>& blocks, std::string& bytes) {
+    wchar_t self[MAX_PATH];
+    std::error_code ec;
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    fs::create_directories(path.parent_path(), ec);
+    fs::copy_file(self, path, fs::copy_options::overwrite_existing, ec);
+    if (ec) return false;
+    HANDLE update = BeginUpdateResourceW(path.c_str(), TRUE);
+    if (!update) return false;
+    bool ok = true;
+    for (const auto& [block, data] : blocks)
+        ok = ok && UpdateResourceW(update, RT_STRING_W, MAKEINTRESOURCEW(static_cast<WORD>(block)), MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+                                   const_cast<char*>(data.data()), static_cast<DWORD>(data.size())) != FALSE;
+    if (!EndUpdateResourceW(update, !ok)) return false;
+    bytes = ReadFile(path);
+    return ok && !bytes.empty();
+}
+
+static const std::vector<ReleaseString> kExpectedStrings = {
+    {0, "Hello"}, {2, "caf\xE9"}, {3, "A?"}, {21, "second"}, {65535, "edge"}};
+
+static std::vector<std::pair<int, std::string>> StringBlocks() {
+    return {{1, StringBlock({{0, u"Hello"}, {2, u"café"}, {3, u"AЖ"}})},
+            {2, StringBlock({{5, u"second"}})},
+            {4096, StringBlock({{15, u"edge"}})},
+            {4097, StringBlock({{0, u"beyond the id limit"}})}};
+}
+
+static void TestStringTable(const fs::path& dir) {
+    std::vector<uint8_t> table = BuildStringTable(kExpectedStrings);
+    std::vector<ReleaseString> back;
+    CHECK(table.size() == jpt_string_table_size(5, 5 + 4 + 2 + 6 + 4) && std::memcmp(table.data(), "JPTS", 4) == 0);
+    CHECK(ReadTable(table, back) && SameStrings(back, kExpectedStrings));
+    CHECK(ReadTable(BuildStringTable({}), back) && back.empty());
+    std::vector<uint8_t> cut = table;
+    cut.pop_back();
+    CHECK(!ReadTable(cut, back));
+    cut = table;
+    cut[0] = 'X';
+    CHECK(!ReadTable(cut, back) && !ReadTable({}, back));
+
+    const fs::path scratch = dir / "derive";
+    std::vector<uint8_t> derived;
+    std::string error;
+    CHECK(!DeriveStringTable(Bytes("MZ but not a program"), scratch, derived, error) && !error.empty());
+    CHECK(!fs::exists(scratch / "resources.tmp"));
+
+    std::string pe;
+    CHECK(MakeResourcePe(dir / "resources.bin", StringBlocks(), pe));
+    error.clear();
+    CHECK(DeriveStringTable(Bytes(pe), scratch, derived, error) && error.empty());
+    CHECK(ReadTable(derived, back) && SameStrings(back, kExpectedStrings) && derived == table);  // beyond 65535: dropped
+    CHECK(!fs::exists(scratch / "resources.tmp"));
+
+    std::string bare;
+    CHECK(MakeResourcePe(dir / "no-strings.bin", {}, bare));
+    CHECK(!DeriveStringTable(Bytes(bare), scratch, derived, error) && !error.empty());
+    CHECK(!fs::exists(scratch / "resources.tmp"));
+}
+
+// The manifest and disc of a synthetic version shaped like one of the real profiles: en, es and ptbr copy their guest
+// image from setup/tpassp6.exe on the disc; ru takes it from the cabinet and derives text/strings.dat from
+// setup/trespass.exe, with its data files on the disc and in the cabinet. No original game file is involved.
+struct Fixture {
+    struct Row {
+        SourceKind kind;
+        std::string source, installed, content;
+        FileRole role;
+    };
+    const jpt_game_version_t* version = nullptr;
+    std::string guest;
+    std::vector<Row> rows;
+    std::deque<std::string> keep;
+    std::vector<InstallFile> files;
+    std::vector<DiscIdentity> discs;
+    std::map<std::string, std::string> installed;  // what the version folder should hold, derived files aside
+    std::vector<ReleaseString> strings;
+    GameProfile profile{};
+
+    const char* Keep(const std::string& text) {
+        keep.push_back(text);
+        return keep.back().c_str();
+    }
+
+    bool ru() const { return std::string(version->id) == "ru-116"; }
+
+    // The pressed disc; the guest image's source and the text source are optional.
+    std::vector<IsoInput> Disc(bool guest_source, bool text_source) const {
+        std::vector<IsoInput> disc = {{"setup/directx/dsetup.dll", "not installed"}};
+        std::vector<CabInput> cabinet;
+        for (const Row& r : rows) {
+            if (r.role == FileRole::kGuestImage && !guest_source) continue;
+            if (r.role == FileRole::kStringTable && !text_source) continue;
+            if (r.kind == SourceKind::kDisc) {
+                disc.push_back({r.source, r.content});
+            } else {
+                const size_t slash = r.source.find('/');
+                cabinet.push_back({slash == std::string::npos ? "" : r.source.substr(0, slash),
+                                   slash == std::string::npos ? r.source : r.source.substr(slash + 1), r.content,
+                                   r.content.size(), false});
+            }
+        }
+        if (profile.cabinet) {
+            const std::vector<uint8_t> bytes = BuildCabinet(cabinet);
+            disc.push_back({profile.cabinet, std::string(bytes.begin(), bytes.end())});
+        }
+        return disc;
+    }
+};
+
+static std::unique_ptr<Fixture> MakeFixture(size_t index, const std::string& pe, const fs::path& scratch) {
+    auto fx = std::make_unique<Fixture>();
+    fx->version = &jpt_game_versions[index];
+    const std::string id = fx->version->id;
+    fx->guest = "guest image of " + id + std::string(37, '#');
+    const SourceKind disc = SourceKind::kDisc, cab = SourceKind::kCabinet;
+    std::string identity_file;
+    if (fx->ru()) {
+        fx->rows = {{cab, "tpassp6.exe", JPT_GUEST_IMAGE, fx->guest, FileRole::kGuestImage},
+                    {disc, "SETUP/MSVCIRT.DLL", "MSVCIRT.DLL", "m", FileRole::kData},
+                    {disc, "README.TXT", "Readme.txt", "r", FileRole::kData},
+                    {disc, "SETUP/TRESPASS.EXE", "text/strings.dat", pe, FileRole::kStringTable},
+                    {disc, "TRESP.TTF", "text/tresp.ttf", "font of " + id, FileRole::kData},
+                    {disc, "DATA/BE.SCN", "data/be.scn", "levelbe", FileRole::kData},
+                    {cab, "menu/loader.ddf", "data/menu/loader.ddf", "menu loader of " + id, FileRole::kData}};
+        identity_file = "tresp.ttf";
+    } else {
+        fx->rows = {{disc, "setup/tpassp6.exe", JPT_GUEST_IMAGE, fx->guest, FileRole::kGuestImage},
+                    {disc, "setup/msvcirt.dll", "MSVCIRT.DLL", "m", FileRole::kData},
+                    {disc, "readme.txt", "Readme.txt", "r", FileRole::kData},
+                    {disc, "data/be.scn", "data/be.scn", "levelbe", FileRole::kData},
+                    {disc, "data/menu/loader.ddf", "data/menu/loader.ddf", "loader of " + id, FileRole::kData}};
+        identity_file = "data/menu/loader.ddf";
+    }
+    std::string identity_sha;
+    for (const Fixture::Row& r : fx->rows) {
+        std::string content = r.content;
+        uint64_t source_size = 0;
+        const char* source_sha = nullptr;
+        if (r.role == FileRole::kStringTable) {
+            std::vector<uint8_t> table;
+            std::string error;
+            CHECK(DeriveStringTable(Bytes(pe), scratch, table, error));
+            CHECK(ReadTable(table, fx->strings));
+            content.assign(table.begin(), table.end());
+            source_size = r.content.size();
+            source_sha = fx->Keep(Sha(r.content));
+        } else {
+            fx->installed[r.installed] = content;
+        }
+        if (Lower(r.source) == identity_file) identity_sha = Sha(content);
+        fx->files.push_back({r.kind, fx->Keep(r.source), fx->Keep(r.installed), content.size(), fx->Keep(Sha(content)), r.role,
+                             source_size, source_sha});
+    }
+    if (index == 0) fx->discs = {{"English retail (UK)", "FX_UK"}, {"English retail (US)", "FX_US"}};
+    else fx->discs = {{"Synthetic pressing", "FX_DISC"}};
+    fx->profile = {fx->version, fx->Keep(identity_file), fx->Keep(identity_sha), fx->discs,
+                   fx->ru() ? "setup/data1.cab" : nullptr, fx->files};
+    return fx;
+}
+
+static std::vector<std::string> Tree(const fs::path& dir) {
+    std::vector<std::string> names;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+        if (it->is_regular_file(ec)) names.push_back(Lower(fs::relative(it->path(), dir).generic_string()));
+    return names;
+}
+
+static void TestImportShapes(const fs::path& dir) {
+    const fs::path scratch = dir / "fixture-scratch";
+    std::string pe;
+    CHECK(MakeResourcePe(dir / "fixture-source.bin", StringBlocks(), pe));
+    std::vector<std::unique_ptr<Fixture>> fixtures;
+    GameProfile all[JPT_GAME_VERSION_COUNT];
+    for (size_t i = 0; i < JPT_GAME_VERSION_COUNT; ++i) {
+        fixtures.push_back(MakeFixture(i, pe, scratch));
+        all[i] = fixtures[i]->profile;
+    }
+    CHECK(!fs::exists(scratch / "resources.tmp"));
+
+    for (size_t i = 0; i < JPT_GAME_VERSION_COUNT; ++i) {
+        const Fixture& fx = *fixtures[i];
+        const std::string id = fx.version->id;
+        const fs::path root = dir / ("shape-" + id), target = root / "versions" / id;
+        fs::remove_all(root);
+        std::string why;
+        InstallHooks hooks;
+        InstallHooks replace;
+        replace.replace = true;
+        CHECK(fx.profile.files.size() == fx.rows.size() && fx.strings.size() == (fx.ru() ? kExpectedStrings.size() : 0));
+
+        // The disc without any original executable: the profile is recognised among all four and every data file is
+        // validated; only the sources of the guest image (and the text) are absent, and nothing is installed.
+        const fs::path bare = dir / ("shape-" + id + "-bare.iso"), full = dir / ("shape-" + id + "-full.iso");
+        const std::string volume = fx.discs.back().volume_id;
+        WriteImage(bare, IsoBuilder().Build(volume, fx.Disc(false, false), true));
+        WriteImage(full, IsoBuilder().Build(volume, fx.Disc(true, true), true));
+        IsoImage image;
+        CHECK(image.Open(bare, why));
+        DiscMatch m = IdentifyDisc(image, all, why);
+        CHECK(m.profile == &all[i] && m.disc == &all[i].discs.back());
+        Cabinet cabinet;
+        CHECK(OpenCabinet(image, all[i], cabinet, why));
+        const std::vector<PlannedFile> plan = PlanInstall(image, all[i].cabinet ? &cabinet : nullptr, all[i], why);
+        size_t absent = 0;
+        for (const PlannedFile& f : plan) {
+            CHECK(f.present() != (f.file->role != FileRole::kData));
+            absent += !f.present();
+        }
+        CHECK(plan.size() == fx.rows.size() && absent == (fx.ru() ? 2u : 1u));
+        InstallResult r = InstallFromIso(bare, root, hooks, all);
+        CHECK(r.status == InstallStatus::kNoGuestImageSource && !r.ok() && r.detail.find("the disc lacks ") == 0);
+        CHECK(r.detail.find("the file the guest image is made from") != std::string::npos);
+        CHECK(!fs::exists(root) && !fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
+        CHECK(std::string(InstallStatusTitle(InstallStatus::kNoGuestImageSource)).find("lacks") != std::string::npos);
+        if (fx.ru()) {  // the guest image present, the release's text source absent
+            WriteImage(dir / "shape-ru-text.iso", IsoBuilder().Build(volume, fx.Disc(true, false), true));
+            r = InstallFromIso(dir / "shape-ru-text.iso", root, hooks, all);
+            CHECK(r.status == InstallStatus::kNoGuestImageSource && r.detail.find("the file the game text is made from") != std::string::npos);
+            CHECK(!fs::exists(root));
+        }
+
+        // With the executable: the guest image is its bytes, the tree holds no original executable.
+        IsoImage with_exe;
+        CHECK(with_exe.Open(full, why));
+        CHECK(IdentifyDisc(with_exe, all, why).profile == &all[i]);
+        r = InstallFromIso(full, root, hooks, all);
+        CHECK(r.status == InstallStatus::kInstalled && r.profile == &all[i] && r.dir == target && r.files == fx.rows.size());
+        CHECK(ReadFile(target / JPT_GUEST_IMAGE) == fx.guest && Sha256File(target / JPT_GUEST_IMAGE) == Sha(fx.guest));
+        CHECK(CheckGameFolder(target, all[i]).state == GameState::kReady);
+        for (const auto& [name, content] : fx.installed) CHECK(ReadFile(target / name) == content);
+        const std::vector<std::string> tree = Tree(target);
+        CHECK(tree.size() == fx.rows.size());
+        for (const std::string& name : tree)
+            CHECK(name.find(".exe") == std::string::npos && name.find("tpassp") == std::string::npos && name != "resources.tmp");
+        CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
+        if (fx.ru()) {
+            std::vector<ReleaseString> strings;
+            CHECK(ReadTable(Bytes(ReadFile(target / "text" / "strings.dat")), strings) && SameStrings(strings, kExpectedStrings));
+            CHECK(!fs::exists(target / "text" / "trespass.exe"));
+        }
+
+        // Importing it again, even from a disc without the executable, copies nothing; a replacement that cannot
+        // be made leaves the installed version byte for byte as it was.
+        WriteFile(target / "trespass.exe", "an old executable");
+        CHECK(InstallFromIso(full, root, hooks, all).status == InstallStatus::kUpToDate);
+        CHECK(InstallFromIso(bare, root, hooks, all).status == InstallStatus::kUpToDate);
+        CHECK(CheckGameFolder(target, all[i]).state == GameState::kReady && ReadFile(target / "trespass.exe") == "an old executable");
+        r = InstallFromIso(bare, root, replace, all);
+        CHECK(r.status == InstallStatus::kNoGuestImageSource && ReadFile(target / JPT_GUEST_IMAGE) == fx.guest);
+        CHECK(ReadFile(target / "trespass.exe") == "an old executable" && Tree(target).size() == fx.rows.size() + 1);
+        CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
+        std::string error;
+        const std::vector<InstalledVersion> found = FindInstalledVersions(root, all);
+        CHECK(found.size() == 1 && found[0].profile == &all[i] && RemoveVersion(found[0], error) && !fs::exists(target));
+
+        // Old executables are ignored: in the game folder (an installation made before versions existed), and in the
+        // version folder without a guest image. Neither is copied, neither makes a version.
+        const fs::path old_root = dir / ("shape-" + id + "-old"), old_target = old_root / "versions" / id;
+        fs::remove_all(old_root);
+        for (const Fixture::Row& row : fx.rows) {
+            if (row.role == FileRole::kData) {
+                WriteFile(old_root / row.installed, row.content);
+                WriteFile(old_target / row.installed, row.content);
+            }
+        }
+        WriteFile(old_root / "trespass.exe", "game folder executable");
+        WriteFile(old_target / "trespass.exe", "version folder executable");
+        CHECK(FindInstalledVersions(old_root, all).empty() && !ChooseVersion(FindInstalledVersions(old_root, all), id));
+        CHECK(CheckGameFolder(old_target, all[i]).state == GameState::kMissing);
+        r = InstallFromIso(full, old_root, hooks, all);
+        CHECK(r.status == InstallStatus::kInstalled && CheckGameFolder(old_target, all[i]).state == GameState::kReady);
+        CHECK(ReadFile(old_root / "trespass.exe") == "game folder executable" && fs::exists(old_root / "data" / "be.scn"));
+        for (const std::string& name : Tree(old_target)) CHECK(name.find(".exe") == std::string::npos);
+        CHECK(!fs::exists(BackupFolder(old_target)));
+    }
+
+    // The four pressings tell each other apart: no disc is taken for another profile's, with or without the executable.
+    for (size_t i = 0; i < JPT_GAME_VERSION_COUNT; ++i)
+        for (const bool exe : {false, true}) {
+            IsoImage image;
+            std::string why;
+            WriteImage(dir / "cross.iso", IsoBuilder().Build("ANY_LABEL", fixtures[i]->Disc(exe, exe), true));
+            CHECK(image.Open(dir / "cross.iso", why) && IdentifyDisc(image, all, why).profile == &all[i]);
+        }
+}
+
+// TRESPASSER_TEST_ISO=<image>[;<image>...]: each real disc is identified and planned in full (read only). With
+// TRESPASSER_TEST_INSTALL_ROOT=<folder> each one is also imported there, in order, and imported again.
+static void TestRealDiscs() {
+    char list[4096], install_root[MAX_PATH];
+    if (!GetEnvironmentVariableA("TRESPASSER_TEST_ISO", list, sizeof list)) {
+        std::printf("real discs: skipped (TRESPASSER_TEST_ISO not set)\n");
         return;
     }
-    IsoImage iso;
-    std::string why;
-    CHECK(iso.Open(path, why));
-    const GameProfile* profile = IdentifyDisc(iso, KnownProfiles(), why);
-    CHECK(profile != nullptr);
-    if (!profile) {
-        std::printf("real disc: %s\n", why.c_str());
-        return;
+    const bool install = GetEnvironmentVariableA("TRESPASSER_TEST_INSTALL_ROOT", install_root, sizeof install_root) != 0;
+    std::string rest = list;
+    while (!rest.empty()) {
+        const size_t semi = rest.find(';');
+        const std::string path = rest.substr(0, semi);
+        rest = semi == std::string::npos ? "" : rest.substr(semi + 1);
+        IsoImage iso;
+        std::string why;
+        CHECK(iso.Open(path, why));
+        const DiscMatch m = IdentifyDisc(iso, KnownProfiles(), why);
+        CHECK(m.profile != nullptr);
+        if (!m.profile) {
+            std::printf("real disc %s: %s\n", path.c_str(), why.c_str());
+            continue;
+        }
+        Cabinet cabinet;
+        CHECK(OpenCabinet(iso, *m.profile, cabinet, why));
+        const std::vector<PlannedFile> plan = PlanInstall(iso, m.profile->cabinet ? &cabinet : nullptr, *m.profile, why);
+        uint64_t bytes = 0;
+        for (const PlannedFile& f : plan) bytes += f.file->size;
+        CHECK(plan.size() == m.profile->files.size());
+        std::printf("real disc %s: volume \"%s\", %s: %s (%s), %zu files, %llu bytes\n", path.c_str(),
+                    iso.volume_id().c_str(), m.disc->edition, m.profile->label(), m.profile->id(), plan.size(),
+                    static_cast<unsigned long long>(bytes));
+        if (!install) continue;
+        InstallHooks hooks;
+        hooks.log = [](const std::string& line) { std::printf("  %s\n", line.c_str()); };
+        const InstallResult r = InstallFromIso(path, install_root, hooks);
+        CHECK(r.ok() && r.profile == m.profile);
+        std::printf("  import: %s (%s), %zu files, %zu repaired\n", InstallStatusTitle(r.status), r.detail.c_str(), r.files,
+                    r.repaired);
+        if (!r.ok()) continue;
+        CHECK(CheckGameFolder(r.dir, *m.profile).state == GameState::kReady);
+        const InstallResult again = InstallFromIso(path, install_root, InstallHooks{});
+        CHECK(again.status == InstallStatus::kUpToDate && again.dir == r.dir);
     }
-    const std::vector<PlannedFile> plan = PlanInstall(iso, *profile, why);
-    uint64_t bytes = 0;
-    for (const PlannedFile& f : plan) bytes += f.source->size;
-    CHECK(plan.size() == profile->manifest.size());
-    bool sizes = true;
-    for (const PlannedFile& f : plan) {
-        bool found = false;
-        for (const ManifestEntry& e : profile->manifest)
-            found = found || (_stricmp(e.path, f.installed.c_str()) == 0 && e.size == f.source->size);
-        sizes = sizes && found;
+    if (install) {
+        for (const InstalledVersion& v : FindInstalledVersions(install_root))
+            std::printf("installed: %s in %s: %s\n", v.profile ? v.profile->id() : "unknown", Utf8(v.dir).c_str(),
+                        GameStateTitle(v.check.state));
     }
-    CHECK(sizes);
-    std::printf("real disc: volume \"%s\", %s, %zu files to install, %llu bytes, profile %s\n", iso.volume_id().c_str(),
-                iso.joliet() ? "Joliet" : "ISO names", plan.size(), static_cast<unsigned long long>(bytes),
-                profile->label);
 }
 
 // ---- Language: one choice in Gameplay, the launcher in English except for Português Brasil
@@ -839,7 +1595,7 @@ static void TestUiCoverage() {
     };
     const std::set<std::string> kept = {"Create", "Start", "Nintendo", "Xbox", "PlayStation", "Steam Deck"};
     for (const PageId page : kPageOrder) require(PageName(page), "page");
-    for (const GameState state : {GameState::kReady, GameState::kMissing, GameState::kInvalid, GameState::kUnreadable})
+    for (const GameState state : {GameState::kReady, GameState::kMissing, GameState::kInvalid})
         require(GameStateTitle(state), "game state");
     for (int status = 0; status <= static_cast<int>(InstallStatus::kActivateFailed); ++status)
         require(InstallStatusTitle(static_cast<InstallStatus>(status)), "install status");
@@ -988,7 +1744,8 @@ static void TestNoLanguagePage() {
     const size_t controls = launcher.find("// ---- Controls");
     CHECK(gameplay != std::string::npos && controls != std::string::npos && gameplay < controls);
     const std::string body = launcher.substr(gameplay, controls - gameplay);
-    CHECK(body.find("ui.Combo(\"Language\"") != std::string::npos && body.find("JPT_KEY_LANGUAGE") != std::string::npos);
+    CHECK(body.find("ui.Combo(\"Language\"") != std::string::npos && body.find("LanguageKey()") != std::string::npos &&
+          body.find("EffectiveLanguage()") != std::string::npos);
     size_t combos = 0;
     for (size_t at = launcher.find("\"Language\""); at != std::string::npos; at = launcher.find("\"Language\"", at + 1)) ++combos;
     CHECK(combos == 1);
@@ -1440,9 +2197,16 @@ int main() {
     TestSettings(dir);
     TestAspectRatioChoice(dir);
     TestPlayGate();
+    TestInflate();
+    TestCabinet();
     TestIsoReader(dir);
     TestIdentity(dir);
     TestInstaller(dir);
+    TestStringTable(dir);
+    TestImportShapes(dir);
+    TestVersions(dir);
+    TestGameVersionTable();
+    TestHostResolution(dir);
     TestUserFiles(dir);
     TestMigration(dir);
     TestPages();
@@ -1459,7 +2223,7 @@ int main() {
     TestFovAndMouseSensitivity(dir);
     TestCheats(dir);
     TestEmbeddedOnly();
-    TestRealDisc();
+    TestRealDiscs();
     std::error_code ec;
     fs::remove_all(dir, ec);
     std::printf("launcher_tests: %d checks, %d failures\n", g_checks, g_failures);

@@ -4,6 +4,7 @@
  * renderer scales that canvas over the frame (d3dr_set_ui_layer). The frozen gameplay picture, the HUD and the
  * gameplay text stay on the game's screen, and so do the loading windows, which draw themselves straight to it.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <stdlib.h>
@@ -14,25 +15,25 @@
 #include "jpt_display.h"
 #include "loading_hd.h"
 
-#define SCREEN_RASTER 0x0073DC40u
+#define SCREEN_RASTER GVA(0x0073DC40)
 #define RASTER_WIDTH 0x08u
 #define RASTER_HEIGHT 0x0Cu
 #define RASTER_PITCH 0x14u
 #define RASTER_BITS 0x18u
 #define RASTER_SURFACE 0x4Cu             /* CRasterVid's IDirectDrawSurface */
 #define GAME_PAUSED 0x30u                /* CGameWnd::m_bPaused: DrawBackground shows the frozen picture */
-#define FROZEN_PICTURE 0x0066E338u       /* the DIB raster CaptureBackground fills */
+#define FROZEN_PICTURE GVA(0x0066E338)       /* the DIB raster CaptureBackground fills */
 #define RASTER_DISPLAY_W 0x7Cu
 #define RASTER_DISPLAY_H 0x80u
 #define RASTER_OBJECT_SIZE 0x74u
-#define RASTER_DC_CTOR 0x0040FD80u      /* (hdc, width, height, bpp), thiscall: the DIB raster class of the frozen picture */
-#define UI_FRAME_VA 0x00417300u         /* CUIWnd frame: draws every window and the cursor, then presents */
-#define UI_DRAW_WINDOWS_VA 0x00417380u  /* (raster, rect) */
-#define UI_DRAW_CURSOR_VA 0x00417410u   /* (raster, rect) */
-#define GAME_BACKGROUND_VA 0x0040C780u  /* CGameWnd::DrawBackground(raster, rect): the frozen picture */
-#define CENTRE_WINDOW_VA 0x00411EA0u    /* centres a window and its controls in the screen's display size */
-#define RASTER_BLT_VA 0x004128A0u       /* RasterBlt(source, rect, destination, ...): Locks both rasters */
-#define BUTTON_HIT_TEST_VA 0x00403520u  /* CUIButton hit test (x, y), thiscall: samples its picture under a masked rect */
+#define RASTER_DC_CTOR GVA(0x0040FD80)      /* (hdc, width, height, bpp), thiscall: the DIB raster class of the frozen picture */
+#define UI_FRAME_VA GVA(0x00417300)         /* CUIWnd frame: draws every window and the cursor, then presents */
+#define UI_DRAW_WINDOWS_VA GVA(0x00417380)  /* (raster, rect) */
+#define UI_DRAW_CURSOR_VA GVA(0x00417410)   /* (raster, rect) */
+#define GAME_BACKGROUND_VA GVA(0x0040C780)  /* CGameWnd::DrawBackground(raster, rect): the frozen picture */
+#define CENTRE_WINDOW_VA GVA(0x00411EA0)    /* centres a window and its controls in the screen's display size */
+#define RASTER_BLT_VA GVA(0x004128A0)       /* RasterBlt(source, rect, destination, ...): Locks both rasters */
+#define BUTTON_HIT_TEST_VA GVA(0x00403520)  /* CUIButton hit test (x, y), thiscall: samples its picture under a masked rect */
 #define CTRL_RECT 0x10u
 #define BUTTON_STYLE 0x28u
 #define BUTTON_MASKED 1u
@@ -294,7 +295,7 @@ static void button_hit_test(void) {
 }
 
 void ui_canvas_install(void) {
-    static const struct {
+    const struct {
         uint32_t va;
         recomp_func_t replacement;
         recomp_func_t* lifted;

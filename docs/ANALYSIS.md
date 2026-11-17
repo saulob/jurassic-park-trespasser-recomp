@@ -8,7 +8,7 @@ Nothing was installed, launched or opened. Reproduce with `tools/extract_game.py
 
 | | |
 |---|---|
-| File | `Trespasser_EN.iso`, 652,992,512 bytes |
+| File | `trespasser.iso` (a disc image of the UK retail release, volume `Trespass_UK_116`), 652,992,512 bytes |
 | SHA-256 | `04e26e7a8fc88bd3956e0854cc71335e408e064e9e56a907bb7a15b9373b6afd` |
 | Volume | `Trespass_UK_116`, created 1998-10-19, ISO 9660 with Joliet names |
 | Contents | 1,698 files, 650,641,485 bytes |

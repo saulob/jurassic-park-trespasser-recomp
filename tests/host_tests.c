@@ -4,6 +4,7 @@
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "test_profile.h"
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <ddraw.h>
@@ -2488,6 +2489,20 @@ static void test_terrain_settings(void) {
  * Direct3D right after creating its gameplay device). */
 /* The game ends its upload loop when GetTickCount() - start > 7: inside the budget the clock stands still, after it
  * the game's own test stops the loop. */
+/* UseSubTitles: absent reads as On; the game's own Off written before the port had a default becomes On once, and an
+ * Off stored after that stays Off. */
+static void test_subtitles_default_migration(void) {
+    uint32_t replacement = 7;
+    CHECK(registry_subtitles_migration(0, 1, 0, &replacement) && replacement == REGISTRY_SUBTITLES_ON);
+    replacement = 7;
+    CHECK(!registry_subtitles_migration(1, 1, 0, &replacement) && replacement == 7);
+    CHECK(!registry_subtitles_migration(0, 0, 0, &replacement));
+    CHECK(!registry_subtitles_migration(1, 0, 0, &replacement));
+    CHECK(!registry_subtitles_migration(0, 1, 1, &replacement));
+    CHECK(!registry_subtitles_migration(0, 1, REGISTRY_SUBTITLES_ON, &replacement));
+    CHECK(!registry_subtitles_migration(1, 1, 1, &replacement));
+}
+
 static void test_engine_upload_clock(void) {
     const uint32_t start = 0xFFFFFFF0u;
     CHECK(engine_upload_clock(start, 0.0, ENGINE_UPLOAD_BUDGET_MS) == start);
@@ -3087,6 +3102,7 @@ static void test_activation_during_load(void) {
 }
 
 int main(void) {
+    test_profile_activate();
     test_activation_during_load();
     test_window_title();
     test_hand_carrier_exact();
@@ -3167,6 +3183,7 @@ int main(void) {
     test_engine_texture_layout();
     test_terrain_settings();
     test_engine_upload_clock();
+    test_subtitles_default_migration();
     test_page_arena();
     test_expected_misses();
     printf("%d checks, %d failures\n", s_checks, s_failures);

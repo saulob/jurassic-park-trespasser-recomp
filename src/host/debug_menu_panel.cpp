@@ -547,11 +547,22 @@ void diamond(ImDrawList* dl, ImVec2 c, float k, float alpha, float line) {
     dl->AddQuad(p[0], p[1], p[2], p[3], colour(ImVec4(0.0f, 0.0f, 0.0f, 0.8f), alpha), line * 1.5f);
 }
 
+struct dmp_rect_t {
+    float x, y, w, h;
+};
+
+// The game's 3D image inside the surface; the whole surface until a scene has been drawn.
+dmp_rect_t picture(const dmp_frame_t* f) {
+    if (f->scene_w > 0.0f && f->scene_h > 0.0f) return { f->scene_x, f->scene_y, f->scene_w, f->scene_h };
+    return { 0.0f, 0.0f, f->view_w, f->view_h };
+}
+
 // On the picture: a diamond over the target; off it, an arrow at the edge pointing the way to turn.
 void world_marker(ImDrawList* dl, const dmp_frame_t* f, const cp_hud_t& h, const cp_layout_t& l) {
     const float k = l.height * 0.26f, margin = l.small_px * 2.5f;
     cp_screen_t p;
-    if (!cp_project(&h.camera, f->view_w, f->view_h, margin, h.target, &p)) return;
+    const dmp_rect_t r = picture(f);
+    if (!cp_project_in(&h.camera, r.x, r.y, r.w, r.h, margin, h.target, &p)) return;
     if (p.on_screen) {
         diamond(dl, ImVec2(p.x, p.y), k, h.alpha, l.line_px);
         if (h.distance[0]) outlined_text(dl, l.small_px, p.x, p.y + k * 1.4f, kObjective, h.alpha, h.distance, l);
@@ -569,12 +580,13 @@ void world_marker(ImDrawList* dl, const dmp_frame_t* f, const cp_hud_t& h, const
 // Chevrons over the next anchors on screen, each pointing at the one after it (the last at the target).
 void trail(ImDrawList* dl, const dmp_frame_t* f, const cp_hud_t& h, const cp_layout_t& l) {
     const float k = l.height * 0.2f;
+    const dmp_rect_t r = picture(f);
     cp_screen_t here, next;
     for (int i = 0; i < h.trail_count; i++) {
         const float* ahead = i + 1 < h.trail_count ? h.trail[i + 1] : h.target;
         float dx, dy, len, fade = h.alpha * (1.0f - 0.08f * (float)i);
-        if (!cp_project(&h.camera, f->view_w, f->view_h, 0.0f, h.trail[i], &here) || !here.on_screen) continue;
-        if (!cp_project(&h.camera, f->view_w, f->view_h, 0.0f, ahead, &next)) continue;
+        if (!cp_project_in(&h.camera, r.x, r.y, r.w, r.h, 0.0f, h.trail[i], &here) || !here.on_screen) continue;
+        if (!cp_project_in(&h.camera, r.x, r.y, r.w, r.h, 0.0f, ahead, &next)) continue;
         dx = next.x - here.x;
         dy = next.y - here.y;
         len = sqrtf(dx * dx + dy * dy);
@@ -598,7 +610,8 @@ void compass(const dmp_frame_t* f) {
     const cp_hud_t& h = *f->hud;
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
     cp_layout_t l;
-    cp_layout(f->view_w, f->view_h, &l);
+    const dmp_rect_t r = picture(f);
+    cp_layout_in(r.x, r.y, r.w, r.h, &l);
     if (h.compass && h.marker && h.view) {
         trail(dl, f, h, l);
         world_marker(dl, f, h, l);

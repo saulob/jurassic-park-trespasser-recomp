@@ -1,0 +1,8 @@
+{
+  "decisions": [
+    {"profile": "ptbr-117", "va": "004218C0", "verdict": "SAME",
+     "evidence": "thiscall, ecx = this ([ecx+0x32C]), plain ret; the instructions differ by register allocation (edi to esi) and the frame 0x7D8 to 0x7C8; the signature scan stops early on this build's catalogue split"},
+    {"profile": "ptbr-117", "va": "004E85A0", "verdict": "NOT_USED",
+     "evidence": "ret 0x1C in 116, ret 0x20 here (one more argument); only the box-box port of patch117_physics.c calls it, which this profile does not apply (patch117.box_box is false)"}
+  ]
+}

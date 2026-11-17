@@ -5,6 +5,7 @@
  * Headless: ninja -C <build dir> patch117_tests && patch117_tests.exe
  */
 #include <windows.h>
+#include "test_profile.h"
 #include <lzexpand.h>
 
 #include <float.h>
@@ -788,7 +789,7 @@ static void test_hook_wiring(void) {
     for (const char* p = strstr(list, "\nLIFT_HOOK("); p; p = strstr(p + 1, "\nLIFT_HOOK(")) {
         char name[64];
         const char *a, *b;
-        snprintf(name, sizeof name, "void lift_hook_%.8s(void)", p + 11);
+        snprintf(name, sizeof name, "void GHOOK(0x%.8s)(void)", p + 11);
         a = strstr(player, name);
         b = strstr(physics, name);
         CHECK((a != NULL) != (b != NULL), "%s defined once", name);
@@ -812,6 +813,7 @@ static void test_hook_wiring(void) {
 }
 
 int main(void) {
+    test_profile_activate();
     test_level_table();
     test_fix_terrain();
     test_modified_scenes();

@@ -1,0 +1,76 @@
+{
+ "offsets": [
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_WIDTHS",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x90",
+   "evidence": "width(c) is at font+0x90+4*(c-0x20) in 1.0.116 (CFont::CFont 0x0050E750: ebp=esi+0x90 for c=0x20..0xFE); the ES and PT-BR constructors store it at font+0x10+4*c from c=0 (lea ebx,[esi+0x10], add ebx,4) - the same address for every c the host writes"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_WIDTHS",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x90",
+   "evidence": "width(c) is at font+0x90+4*(c-0x20) in 1.0.116 (CFont::CFont 0x0050E750: ebp=esi+0x90 for c=0x20..0xFE); the ES and PT-BR constructors store it at font+0x10+4*c from c=0 (lea ebx,[esi+0x10], add ebx,4) - the same address for every c the host writes"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_FIRST_CHAR",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x20",
+   "evidence": "the first character the host measures; width(0x20) is at font+0x90 in 1.0.116 and at font+0x10+4*0x20 in ES and PT-BR (same address); lower characters are not read"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_FIRST_CHAR",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x20",
+   "evidence": "the first character the host measures; width(0x20) is at font+0x90 in 1.0.116 and at font+0x10+4*0x20 in ES and PT-BR (same address); lower characters are not read"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_END_CHAR",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0xFF",
+   "evidence": "the host stops before 0xFF (1.0.116 stores 0x20..0xFE, jb 0xFF); ES and PT-BR store 0..0xFF (jbe 0xFF), so every character the host reads exists in both layouts"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_END_CHAR",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0xFF",
+   "evidence": "the host stops before 0xFF (1.0.116 stores 0x20..0xFE, jb 0xFF); ES and PT-BR store 0..0xFF (jbe 0xFF), so every character the host reads exists in both layouts"
+  },
+  {
+   "file": "src/host/patch117_physics.c",
+   "name": "BOX_SUB_EXTENTS",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0xD8",
+   "evidence": "sub-box i keeps six floats at box+0xD8+0x18*i: 0x004E9780 and 0x004EACCB (BoxBox) read [i*0x18+0xDC] and [+0xE0] (y, z of the first triple) and [+0xE4]..[+0xEC] (the second), and 0x004DC0B0/0x004DE3A0/0x004DF7D0 take the second triple with lea [ebx+i*0x18+0xE4]; those functions are byte-identical in the ES executable. 1.0.116 has no access with displacement 0xD8 itself, so x is proven only through its triple"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_WIDTH_BASE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x10",
+   "evidence": "width(c) is at font+0x10+4*c in ES and PT-BR (CFont::CFont, lea ebx,[esi+0x10] then add ebx,4 for c=0..0xFF) and at font+0x90+4*(c-0x20) = font+0x10+4*c in 1.0.116 for c >= 0x20; the host reads printable characters"
+  },
+  {
+   "file": "src/host/game_text.c",
+   "name": "FONT_WIDTH_BASE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x10",
+   "evidence": "width(c) is at font+0x10+4*c in ES and PT-BR (CFont::CFont, lea ebx,[esi+0x10] then add ebx,4 for c=0..0xFF) and at font+0x90+4*(c-0x20) = font+0x10+4*c in 1.0.116 for c >= 0x20; the host reads printable characters"
+  }
+ ]
+}

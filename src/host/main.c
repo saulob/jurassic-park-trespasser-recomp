@@ -35,7 +35,6 @@
 /* Lifted frames are several times the original's, and they live on the host stack. */
 #define GUEST_THREAD_STACK (64u << 20)
 #define MAX_OVERRIDES 16
-#define RESTARTED_ENV "TRESPASSER_RESTARTED"
 
 typedef struct {
     const char* key;
@@ -119,7 +118,7 @@ static native32_shim_t s_shims[] = {
 
 
 static void usage(void) {
-    printf("usage: trespasser [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user_data_root DIR]\n"
+    printf("usage: trespasser_recomp [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user_data_root DIR]\n"
            "                  [--log-file FILE | --log-dir DIR] [--watchdog SECONDS] [--ddraw compat|system]\n"
            "                  [--native-trace] [--callbacks] [--renderer software|d3d11]\n"
            "                  [--render-resolution original|720p|1080p|1440p|4k|native|WxH]\n"
@@ -138,7 +137,7 @@ static void usage(void) {
            "  --user_data_root keeps saves and settings in DIR instead of user_data next to the\n"
            "    program\n"
            "  --dry-run maps, fingerprints and binds the image, and nothing executes\n"
-           "  --log-file appends to FILE; otherwise a new trespasser_NNN.log is created in the log directory\n"
+           "  --log-file appends to FILE; otherwise a new trespasser_recomp_NNN.log is created in the log directory\n"
            "  --ddraw system calls the system ddraw.dll instead of the compatibility layer (diagnostics only)\n"
            "  --texture-filter also takes point and trilinear (diagnostics); anisotropic means anisotropic16\n"
            "  --original-engine-limits keeps the 1998 draw distance, texture sizes and texture memory with d3d11\n"
@@ -258,25 +257,9 @@ static int parse_options(int argc, char** argv, options_t* o) {
     return 1;
 }
 
-static int verify_fingerprint(const char* exe) {
-    char actual[65];
-    if (!host_sha256_file(exe, actual)) {
-        host_log("target", "cannot read %s", exe);
-        return 0;
-    }
-    host_log("target", "%s", exe);
-    host_log("target", "sha256 %s", actual);
-    if (strcmp(actual, trespasser_expected_sha256)) {
-        host_log("target", "MISMATCH: the lifted code was generated from %s", trespasser_expected_sha256);
-        return 0;
-    }
-    host_log("target", "matches the binary the lifted code was generated from");
-    return 1;
-}
-
 static DWORD WINAPI guest_main(LPVOID unused) {
     (void)unused;
-    native32_call_guest(trespasser_entry_va, 0, NULL);
+    native32_call_guest(lift_entry_va, 0, NULL);
     host_log("guest", "entry point returned, eax=%08X", g_eax);
     return (DWORD)host_exit_code_for_guest_return((int)g_eax);
 }
@@ -298,30 +281,49 @@ static int run_guest(void) {
 
 static void log_line(const char* line) { host_log("launcher", "%s", line); }
 
-/* A process that could not reserve the guest's address range before anything loaded (no game installed yet) starts
- * again, once, as a game-only process continuing this log, and ends with its exit code. */
-static int restart_for_game(void) {
-    static char command[4 * MAX_PATH + 64];
-    char me[MAX_PATH];
-    STARTUPINFOA si;
-    PROCESS_INFORMATION pi;
-    DWORD code = HOST_EXIT_SETUP;
-    memset(&si, 0, sizeof si);
-    si.cb = sizeof si;
-    GetModuleFileNameA(NULL, me, MAX_PATH);
-    _snprintf(command, sizeof command - 1, "%s --skip-launcher --log-file \"%s\"", GetCommandLineA(), host_log_path());
-    command[sizeof command - 1] = 0;
-    host_log("host", "the game files were installed by this process: starting the game as a new process");
-    SetEnvironmentVariableA(RESTARTED_ENV, "1");
-    if (!CreateProcessA(me, command, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-        host_log("host", "cannot start the game process (error %lu)", GetLastError());
-        return HOST_EXIT_SETUP;
+/* The version's lifted build becomes the one this process runs, before any guest code does; a lift that is not the one
+ * this program was built to carry is refused here. */
+static int activate_profile(const jpt_game_version_t* version) {
+    char error[512];
+    if (!lift_activate(version, error, sizeof error)) {
+        host_log("game-version", "%s", error);
+        fprintf(stderr, "%s\n", error);
+        return 0;
     }
-    CloseHandle(pi.hThread);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    return (int)code;
+    host_log("game-version", "%s runs the lifted build %s: %u functions, generated from %s", version->id, version->lift,
+             (unsigned)lift_active_image()->meta->function_count, lift_active_image()->meta->source_profile);
+    return 1;
+}
+
+/* The version the guest runs: the setting's one when the port can run it, else the first installed one it can.
+ * A version other than English 1.0.116 keeps its own Installed Directory. */
+static const jpt_game_version_t* select_game_version(const char* game_root, const char* wanted, char* game_dir,
+                                                     jpt_user_data_t* user) {
+    const jpt_game_version_t* version = NULL;
+    char saves[JPT_USER_PATH_CAP];
+    if (!jpt_game_version_resolve(game_root, wanted, 1, game_dir, MAX_PATH, &version)) {
+        const jpt_game_version_t* chosen = jpt_game_version_by_id(wanted);
+        char dir[MAX_PATH];
+        if (chosen && jpt_game_version_installed(game_root, chosen, dir, sizeof dir))
+            host_log("game-version", "%s is installed but cannot run: %s", chosen->label, chosen->unplayable);
+        else
+            host_log("game-version", "no game version the port can run is installed in %s", game_root);
+        return NULL;
+    }
+    host_log("game-version", "%s, build %d, %s, profile %s, from %s", version->label, version->build, version->language,
+             version->id, game_dir);
+    if (wanted[0] && _stricmp(wanted, version->id))
+        host_log("game-version", "the selected version %s is not installed or cannot run: %s is used", wanted, version->id);
+    if (!jpt_game_version_saves_dir(user->root, user->saves_dir, version, saves, sizeof saves)) {
+        host_log("game-version", "the saves folder of %s does not fit in a path", version->id);
+        return NULL;
+    }
+    if (strcmp(saves, user->saves_dir)) {
+        strcpy(user->saves_dir, saves);
+        if (!jpt_make_dirs(user->saves_dir)) host_log("host", "cannot create the saves folder %s", user->saves_dir);
+    }
+    host_log("game-version", "saves and the game's registry store in %s", user->saves_dir);
+    return version;
 }
 
 static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, int monitor_h) {
@@ -380,7 +382,8 @@ static void renderer_filter(const jpt_config_t* c, int dev_filter, int* filter, 
 
 int main(int argc, char** argv) {
     options_t opt = { 0 };
-    char game_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH];
+    char game_root[MAX_PATH], game_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH];
+    const jpt_game_version_t* version;
     const char* settings_file;
     jpt_user_data_t user;
     jpt_config_t cfg;
@@ -393,27 +396,29 @@ int main(int argc, char** argv) {
         usage();
         return HOST_EXIT_SETUP;
     }
-    if (!GetFullPathNameA(opt.game_dir, MAX_PATH, game_dir, NULL) ||
+    if (!GetFullPathNameA(opt.game_dir, MAX_PATH, game_root, NULL) ||
         !GetFullPathNameA(opt.log_dir, MAX_PATH, log_dir, NULL) ||
         (opt.log_file && !GetFullPathNameA(opt.log_file, MAX_PATH, log_file, NULL))) {
         fprintf(stderr, "invalid --game, --log-dir or --log-file path\n");
         return HOST_EXIT_SETUP;
     }
-    guest_env_init(game_dir, opt.guest_args);
-
-    /* Restarts this process with the guest's address range reserved before anything else
-     * can land there; only the restarted copy continues past this call. */
-    held = native32_hold_image(guest_env_exe_path(), trespasser_image_base);
+    /* Restarts this process with the guest's address range reserved before anything else can land there; only the
+     * restarted copy continues past this call. The range fits the largest build the program carries, whatever is
+     * installed: a version imported by the launcher in this run maps into it. */
+    held = native32_hold_range(JPT_GUEST_IMAGE_BASE, jpt_guest_reservation_size());
 
     if (!host_log_open(log_dir, opt.log_file ? log_file : NULL)) {
         fprintf(stderr, "cannot open the log %s (error %lu)\n", opt.log_file ? log_file : log_dir, GetLastError());
         return HOST_EXIT_SETUP;
     }
-    host_log("host", "Trespasser recompilation host, %u lifted functions in the dispatch table",
-             recomp_dispatch_count);
+    host_log("host", "Trespasser recompilation host, one program with %d lifted builds", JPT_LIFT_COUNT);
     host_log("host", "log file %s", host_log_path());
-    host_log("host", "game directory %s", game_dir);
-    host_log("host", "guest address range %s", held ? "reserved at process start" : "NOT reserved in advance");
+    host_log("host", "game folder %s", game_root);
+    if (held)
+        host_log("host", "guest address range reserved 0x%08X-0x%08X for all supported builds", JPT_GUEST_IMAGE_BASE,
+                 JPT_GUEST_IMAGE_BASE + jpt_guest_reservation_size());
+    else
+        host_log("host", "guest address range NOT reserved in advance");
     if (!jpt_user_data_select(opt.user_data_root, TRESPASSER_LEGACY_USER_DIR, &user)) {
         host_log("host", "the user data folder's path is too long for the game (%u characters at most)",
                  JPT_USER_PATH_CAP - 1);
@@ -430,7 +435,7 @@ int main(int argc, char** argv) {
 
     window_host_init();
     if (!jpt_make_dirs(user.saves_dir)) host_log("host", "cannot create the saves folder %s", user.saves_dir);
-    jpt_carry_user_files(game_dir, user.saves_dir, log_line);
+    jpt_carry_user_files(game_root, user.saves_dir, log_line);
     switch (jpt_config_migrate(settings_file)) {
     case JPT_MIGRATED_EXPERIMENTAL:
         host_log("settings", "%s came from the experimental launcher: its display and graphics choices were reset "
@@ -447,12 +452,8 @@ int main(int argc, char** argv) {
 
     if (!opt.dry_run) {
         jpt_launcher_config_t launcher;
-        int had_game = GetFileAttributesA(guest_env_exe_path()) != INVALID_FILE_ATTRIBUTES;
-        char restarted[4];
-        int may_restart = !GetEnvironmentVariableA(RESTARTED_ENV, restarted, sizeof restarted);
-        SetEnvironmentVariableA(RESTARTED_ENV, NULL);
         memset(&launcher, 0, sizeof launcher);
-        launcher.game_dir = game_dir;
+        launcher.game_dir = game_root;
         launcher.user_dir = user.root;
         launcher.saves_dir = user.saves_dir;
         launcher.user_data_outcome = user.outcome;
@@ -465,8 +466,6 @@ int main(int argc, char** argv) {
             host_log("host", "the launcher was closed without starting the game");
             return 0;
         }
-        if (!held && !had_game && may_restart && GetFileAttributesA(guest_env_exe_path()) != INVALID_FILE_ATTRIBUTES)
-            return restart_for_game();
     }
 
     jpt_config_load(settings_file, &cfg);
@@ -474,6 +473,11 @@ int main(int argc, char** argv) {
         jpt_config_apply(&cfg, opt.overrides[i].key, opt.overrides[i].value);
         host_log("settings", "%s = %s (command line)", opt.overrides[i].key, opt.overrides[i].value);
     }
+    version = select_game_version(game_root, cfg.game_version, game_dir, &user);
+    if (!version) return HOST_EXIT_SETUP;
+    if (!activate_profile(version)) return HOST_EXIT_SETUP;
+    jpt_config_select_language(&cfg, version);
+    guest_env_init(game_dir, opt.guest_args);
     window_host_monitor_size(cfg.monitor, &monitor_w, &monitor_h);
     if (cfg.render_preset < 0) {
         box.width = cfg.render_w;
@@ -483,7 +487,7 @@ int main(int argc, char** argv) {
     }
     log_settings(&cfg, box, monitor_w, monitor_h);
     stream_audio_init();
-    l10n_init(user.cache_dir, game_dir, cfg.language);
+    l10n_init(user.cache_dir, game_dir, cfg.language, version);
     gamepad_configure(&cfg.gamepad);
     key_policy_set_quick_keys(cfg.hotkey_vk[JPT_HOTKEY_QUICK_SAVE], cfg.hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
     ce_gameplay_configure(cfg.dual_stow, cfg.max_object_detail);
@@ -492,7 +496,7 @@ int main(int argc, char** argv) {
     patch117_player_configure(cfg.official_patch_117);
     patch117_physics_configure(cfg.official_patch_117);
     cheats_start(cfg.cheat);
-    if (!verify_fingerprint(guest_env_exe_path()) || !guest_overrides_enable()) return HOST_EXIT_SETUP;
+    if (!guest_overrides_enable()) return HOST_EXIT_SETUP;
 
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
                           cfg.show_resolution_title,
@@ -502,28 +506,33 @@ int main(int argc, char** argv) {
     native32_init();
     /* Lifted .text always resolves to the same function (an override switches inside its stable entry), so call sites
      * keep it. */
-    g_recomp_site_lo = trespasser_text_start;
-    g_recomp_site_hi = trespasser_text_end;
+    g_recomp_site_lo = lift_text_start;
+    g_recomp_site_hi = lift_text_end;
     diagnostics_install(opt.dry_run ? 0 : opt.watchdog_seconds);
 
     if (!SetCurrentDirectoryA(game_dir) || !SetDllDirectoryA(game_dir)) {
         host_log("host", "cannot enter %s (error %lu)", game_dir, GetLastError());
         return HOST_EXIT_SETUP;
     }
-    span = native32_map(guest_env_exe_path(), trespasser_image_base);
+    span = native32_map(guest_env_exe_path(), JPT_GUEST_IMAGE_BASE);
     if (!span) {
-        host_log("loader", "cannot map the image at 0x%08X", trespasser_image_base);
+        host_log("loader", "cannot map the image at 0x%08X", JPT_GUEST_IMAGE_BASE);
+        return HOST_EXIT_SETUP;
+    }
+    if (held && span > jpt_guest_reservation_size()) {
+        host_log("loader", "the guest image spans 0x%X bytes, more than the 0x%X reserved at start", (unsigned)span,
+                 (unsigned)jpt_guest_reservation_size());
         return HOST_EXIT_SETUP;
     }
     host_log("loader", "image mapped at 0x%08X-0x%08X; no relocations exist, so the base is exact",
-             trespasser_image_base, trespasser_image_base + span);
+             JPT_GUEST_IMAGE_BASE, JPT_GUEST_IMAGE_BASE + span);
     host_log("loader", ".text 0x%08X-0x%08X is data to the CPU: it runs as lifted C",
-             trespasser_text_start, trespasser_text_end);
+             lift_text_start, lift_text_end);
     if (!selfmod_init()) return HOST_EXIT_SETUP;
 
     guest_registry_init(game_dir, user.saves_dir);
     io_trace_user_dir(user.saves_dir);
-    if (native32_bind(trespasser_image_base, s_shims, (int)(sizeof s_shims / sizeof s_shims[0]))) {
+    if (native32_bind(JPT_GUEST_IMAGE_BASE, s_shims, (int)(sizeof s_shims / sizeof s_shims[0]))) {
         host_log("imports", "unresolved imports (listed above as [bind] lines); refusing to run");
         return HOST_EXIT_SETUP;
     }
@@ -546,7 +555,7 @@ int main(int argc, char** argv) {
 
     if (opt.dry_run) {
         host_log("host", "dry run complete: nothing was executed; without --dry-run the game enters 0x%08X",
-                 trespasser_entry_va);
+                 lift_entry_va);
         return 0;
     }
     if (!opt.lifted_water) guest_kernels_install();
@@ -584,6 +593,6 @@ int main(int argc, char** argv) {
     l10n_install();
     if (!guest_overrides_check()) return HOST_EXIT_SETUP;
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
-    host_log("guest", "entering the CRT entry point 0x%08X", trespasser_entry_va);
+    host_log("guest", "entering the CRT entry point 0x%08X", lift_entry_va);
     return run_guest();
 }

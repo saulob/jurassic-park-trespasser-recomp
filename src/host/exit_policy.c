@@ -121,7 +121,7 @@ static void end_guest_crt(int run_atexit) {
 
 static void guest_exit(int code, const char* api) {
     int host_code;
-    if (g_cur_func == trespasser_entry_va) {
+    if (g_cur_func == lift_entry_va) {
         host_code = host_exit_code_for_guest_return(code);
     } else {
         host_log("exit", "%s(%d) called by the game from sub_%08X: an error exit, not WinMain's return", api, code,

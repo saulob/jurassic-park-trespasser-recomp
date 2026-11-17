@@ -22,6 +22,7 @@ Menu::YES	SIM
 Menu::NO	NÃO
 Title::QUIT	SAIR
 Title::SOUND	SOM
+Audio::Show Subtitles	Legendas
 Footer::© 1998 DreamWorks Interactive L.L.C. Trespasser is a trademark of UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin.  All Rights Reserved.	© 1998 DreamWorks Interactive L.L.C. Trespasser é marca registrada de UCS & Amblin.\nThe Lost World: Jurassic Park™ & © 1998 UCS & Amblin. Todos os direitos reservados.
 Select	Selecionar
 Back	Voltar

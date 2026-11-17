@@ -12,6 +12,7 @@
 #error "build through CMake: override_tests_incremental or override_tests_non_incremental"
 #endif
 
+#define OVERRIDE_LIFT fixture_lift_
 #define GUEST_OVERRIDE OVERRIDE_LIFTED_DECL
 #include "override_fixture_list.h"
 #undef GUEST_OVERRIDE
@@ -133,7 +134,7 @@ static void test_installed(void) {
     fixture_call_same_file();
     CHECK(ran(0xA0401000u));
     reset_log();
-    sub_00401000();
+    fixture_lift_sub_00401000();
     CHECK(ran(0xA0401000u));
     reset_log();
     cached();
@@ -143,7 +144,7 @@ static void test_installed(void) {
     CHECK(ran(0xA0401000u));
     reset_log();
     s_required_fallback = 1;
-    sub_00401000();
+    fixture_lift_sub_00401000();
     s_required_fallback = 0;
     CHECK(g_fixture_log_count == 2 && g_fixture_log[0] == 0xA0401000u && g_fixture_log[1] == 0x00401000u);
 

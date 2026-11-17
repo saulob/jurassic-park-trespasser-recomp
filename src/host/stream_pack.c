@@ -8,6 +8,7 @@
 
 #define TPA_DESCRIPTOR_FIELD 0x14u
 #define TPA_HEADER_FIELD 0x1Cu
+#define TPA_BLOCK_START 0x20u /* the descriptor's last field: 0x24 where a caption block follows it, 0 in a sample without one */
 #define TPA_COUNT_COPY 0x14u /* the sample count again: the game sizes the directory it reads from this one */
 #define TPA_PAYLOAD_LIMIT (64u << 20)
 #define TPA_FILE_LIMIT 0xFFFFFFF0ull
@@ -209,6 +210,7 @@ stream_pack_t* stream_pack_open(stream_read_fn read, void* ctx, uint64_t size, c
         if (!(chunk = own(p, JPT_TPA_DESCRIPTOR + c->size))) goto fail;
         memcpy(chunk, entry + TPA_DESCRIPTOR_FIELD, JPT_TPA_DESCRIPTOR);
         wr32(chunk + 8, (uint32_t)(JPT_TPA_DESCRIPTOR + c->size));
+        wr32(chunk + TPA_BLOCK_START, JPT_TPA_DESCRIPTOR);
         memcpy(chunk + JPT_TPA_DESCRIPTOR, c->block, c->size);
         placed[placed_count].id = c->id;
         placed[placed_count].index = index;

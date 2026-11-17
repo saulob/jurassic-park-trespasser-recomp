@@ -3,6 +3,7 @@
  * broad phase (0x004DC600): deep corners pushed out, contact normals in the sub-box frame, edge-edge contact (code 116
  * already holds but never reaches) and ignore-collision pairs waking each other. Off leaves the 116 code untouched.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <float.h>
@@ -10,11 +11,11 @@
 
 #include "patch117_rules.h"
 
-#define BOX_INIT_VA 0x004EDFA0u   /* thiscall, ecx = the box */
-#define KILL_VELOCITY_VA 0x004E85A0u /* thiscall (x, y, z, nx, ny, nz, other), ret 0x1C */
-#define APPLY_CONTACT_VA 0x004E86B0u /* thiscall (other, F[3], P_this[3], P_other[3], sub, other_sub), ret 0x30 */
-#define BOX_POOL 0x00699D40u
-#define BOX_STRIDE 0x1090u
+#define BOX_INIT_VA GVA(0x004EDFA0)   /* thiscall, ecx = the box */
+#define KILL_VELOCITY_VA GVA(0x004E85A0) /* thiscall (x, y, z, nx, ny, nz, other), ret 0x1C */
+#define APPLY_CONTACT_VA GVA(0x004E86B0) /* thiscall (other, F[3], P_this[3], P_other[3], sub, other_sub), ret 0x30 */
+#define BOX_POOL GVA(0x00699D40)
+#define BOX_STRIDE GLAYOUT_BOX_POOL_STRIDE
 #define BOX_COUNT 50u
 #define BOX_SUB_COUNT 0x80u   /* float */
 #define BOX_SUB_ROTATED 0xCDu /* byte per sub-box */
@@ -30,18 +31,18 @@
 #define BOX_LAST 0x438u
 #define BOX_ACTIVE 0x43Cu
 #define PAIR_B_BASE 0x104Cu
-#define STATE_AWAKE 0x0064D86Cu
-#define CONTACT_SAVE_TANGENTS 0x006CD960u
-#define CONTACT_TANGENT_X 0x006CD964u
-#define CONTACT_TANGENT_Y 0x006CD968u
-#define CONTACT_TANGENT_Z 0x006CD96Cu
-#define CONTACT_NORMAL_WORK 0x006CD974u
-#define CONTACT_FRICTION_WORK 0x006CD978u
-#define CONTACT_WORK 0x006CD97Cu
-#define CONTACT_STIFFNESS 0x006CD984u
-#define CONTACT_DAMPING 0x006CD988u
-#define CONTACT_FRICTION 0x006CD98Cu
-#define CONTACT_FACE_CODE 0x00668500u
+#define STATE_AWAKE GVA(0x0064D86C)
+#define CONTACT_SAVE_TANGENTS GVA(0x006CD960)
+#define CONTACT_TANGENT_X GVA(0x006CD964)
+#define CONTACT_TANGENT_Y GVA(0x006CD968)
+#define CONTACT_TANGENT_Z GVA(0x006CD96C)
+#define CONTACT_NORMAL_WORK GVA(0x006CD974)
+#define CONTACT_FRICTION_WORK GVA(0x006CD978)
+#define CONTACT_WORK GVA(0x006CD97C)
+#define CONTACT_STIFFNESS GVA(0x006CD984)
+#define CONTACT_DAMPING GVA(0x006CD988)
+#define CONTACT_FRICTION GVA(0x006CD98C)
+#define CONTACT_FACE_CODE GVA(0x00668500)
 
 static int s_on;
 static float s_min_half[BOX_COUNT];
@@ -86,12 +87,12 @@ static void kill_normal_in_box_frame(void) {
     for (int i = 0; i < 3; i++) wrf(g_esp + 0xC + 4u * i, n[i]);
 }
 
-void lift_hook_004EB46B(void) { kill_normal_in_box_frame(); }
-void lift_hook_004EB781(void) { kill_normal_in_box_frame(); }
-void lift_hook_004EBA7B(void) { kill_normal_in_box_frame(); }
-void lift_hook_004EBD85(void) { kill_normal_in_box_frame(); }
-void lift_hook_004EC07C(void) { kill_normal_in_box_frame(); }
-void lift_hook_004EC386(void) { kill_normal_in_box_frame(); }
+void GHOOK(0x004EB46B)(void) { kill_normal_in_box_frame(); }
+void GHOOK(0x004EB781)(void) { kill_normal_in_box_frame(); }
+void GHOOK(0x004EBA7B)(void) { kill_normal_in_box_frame(); }
+void GHOOK(0x004EBD85)(void) { kill_normal_in_box_frame(); }
+void GHOOK(0x004EC07C)(void) { kill_normal_in_box_frame(); }
+void GHOOK(0x004EC386)(void) { kill_normal_in_box_frame(); }
 
 static void save_tangents(int axis, const float f[3]) {
     if (!MEM8(CONTACT_SAVE_TANGENTS)) return;
@@ -103,7 +104,7 @@ static void save_tangents(int axis, const float f[3]) {
 /* Box-box, after the six face tests of one corner of the other sub-box (esi this box, edi the other, ebp/ebx their
  * sub-boxes). The frame holds the corner in this sub-box's frame, the sub-box half extents, the relative velocity
  * and the contact point in both boxes' frames, as the face tests used them. */
-void lift_hook_004EC586(void) {
+void GHOOK(0x004EC586)(void) {
     uint32_t self = g_esi, other = g_edi, sp = g_esp, sub = g_ebp, other_sub = g_ebx;
     float c[3], h[3], v[3];
     patch117_face_t faces[3];
@@ -143,7 +144,7 @@ void lift_hook_004EC586(void) {
 
 /* Box-box, at the edge-edge gate after the corners of a sub-box pair: ecx = the other box's index ([esp+0x68]),
  * [esp+0x118] = this box's. 116 runs the edge pass only when both pending bytes are negative, which they never are. */
-void lift_hook_004EC5A2(void) {
+void GHOOK(0x004EC5A2)(void) {
     uint32_t other = MEM32(g_esp + 0x68), self = MEM32(g_esp + 0x118);
     uint8_t run;
     if (!s_on || !s_box_init_hooked || other >= BOX_COUNT || self >= BOX_COUNT) return;
@@ -170,7 +171,7 @@ static void wake_write(uint32_t box, const patch117_wake_box_t* w) {
 
 /* Broad phase, an overlapping pair after the ignore-collision test (al): ebp = box A, ebx - 0x104C = box B; their
  * states at the start of the pass are behind [esp+0x1C] and [esp+0x50]. 116 skips the wake of an ignoring pair. */
-void lift_hook_004DDEFD(void) {
+void GHOOK(0x004DDEFD)(void) {
     uint32_t a = g_ebp, b = g_ebx - PAIR_B_BASE;
     patch117_wake_box_t wa, wb;
     if (!s_on || !(g_eax & 0xFFu)) return;
@@ -188,6 +189,7 @@ void patch117_physics_configure(int on) {
 }
 
 void patch117_physics_install(void) {
+    if (!JPT_P117_BOX_BOX) return;
     s_box_init_hooked = guest_override_install(BOX_INIT_VA, box_init, &s_box_init_lifted);
     if (!s_box_init_hooked)
         host_log("patch117", "warning: the physics box set-up could not be hooked: edge-edge contact stays off");

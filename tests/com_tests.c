@@ -4,6 +4,7 @@
  * so no window, device or game is involved. Build: CMake target com_tests (docs/BUILD.md, "Headless tests").
  */
 #include "ce_effects.h"
+#include "test_profile.h"
 #include "ddraw/d3d_legacy.h"
 #include "ddraw/page_guard.h"
 #include "host.h"
@@ -209,6 +210,7 @@ static void test_back_buffer_lock_waits_for_touch(IDirectDraw4* dd4) {
 }
 
 int main(void) {
+    test_profile_activate();
     IDirectDraw* dd = NULL;
     IDirectDraw4* dd4 = NULL;
     IDirect3D3* d3d = NULL;

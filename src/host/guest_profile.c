@@ -38,7 +38,7 @@ typedef struct {
     int exports_read;
 } module_range_t;
 
-/* A sample in a system DLL: the export it is in, and the nearest caller in trespasser.exe on the stack (a lifted
+/* A sample in a system DLL: the export it is in, and the nearest caller in the guest image on the stack (a lifted
  * function's guest address, or a host offset). */
 typedef struct {
     uint32_t key, caller;
@@ -233,7 +233,7 @@ static int export_of(module_range_t* mod, uintptr_t ip) {
     return (int)lo;
 }
 
-/* The first word on the stack that returns into trespasser.exe: its lifted function, or its host 32-byte block. */
+/* The first word on the stack that returns into the guest image: its lifted function, or its host 32-byte block. */
 static uint32_t stack_caller(const uint32_t* stack, unsigned words) {
     for (unsigned i = 0; i < words; i++) {
         uintptr_t v = stack[i];
@@ -273,7 +273,7 @@ static void record(profile_t* p, uintptr_t ip, const uint32_t* stack, unsigned w
                    uint32_t icall) {
     int fn = find_function(ip), m = -1, bucket, ex = -1;
     if (fn >= 0) bucket = BUCKET_LIFTED;
-    else if (ip >= trespasser_selfmod_start && ip < trespasser_selfmod_end) bucket = BUCKET_SELFMOD;
+    else if (ip >= lift_selfmod_start && ip < lift_selfmod_end) bucket = BUCKET_SELFMOD;
     else if (ip >= s_image_lo && ip < s_image_hi) bucket = BUCKET_HOST;
     else bucket = (m = module_of(ip)) < 0 ? BUCKET_OTHER : module_bucket(s_modules[m].name);
     if (bucket == BUCKET_SYSTEM) ex = export_of(&s_modules[m], ip);
@@ -314,7 +314,7 @@ static void sample_workers(void) {
             continue;
         AcquireSRWLockExclusive(&s_lock);
         s_window.worker_samples[i]++;
-        if (find_function(ip) >= 0 || (ip >= trespasser_selfmod_start && ip < trespasser_selfmod_end))
+        if (find_function(ip) >= 0 || (ip >= lift_selfmod_start && ip < lift_selfmod_end))
             s_window.worker_busy[i]++;
         ReleaseSRWLockExclusive(&s_lock);
     }
@@ -352,8 +352,9 @@ void guest_profile_start(HANDLE guest_thread) {
     HMODULE self = GetModuleHandleA(NULL);
     const IMAGE_NT_HEADERS* nt = (const IMAGE_NT_HEADERS*)((const BYTE*)self + ((const IMAGE_DOS_HEADER*)self)->e_lfanew);
     HANDLE thread;
+    const lift_image_t* image = lift_active_image();
     if (!host_perf_logging()) return;
-    s_fn_count = recomp_dispatch_count;
+    s_fn_count = image->meta->function_count;
     s_fns = (lifted_fn_t*)malloc(s_fn_count * sizeof *s_fns);
     s_window.fn_hits = (unsigned*)calloc(s_fn_count, sizeof(unsigned));
     s_session.fn_hits = (unsigned*)calloc(s_fn_count, sizeof(unsigned));
@@ -361,9 +362,9 @@ void guest_profile_start(HANDLE guest_thread) {
         !DuplicateHandle(GetCurrentProcess(), guest_thread, GetCurrentProcess(), &s_main, 0, FALSE, DUPLICATE_SAME_ACCESS))
         return;
     for (unsigned i = 0; i < s_fn_count; i++) {
-        recomp_func_t lifted = guest_override_lifted(recomp_dispatch_table[i].address);
-        s_fns[i].start = lifted ? (uintptr_t)lifted : function_body(recomp_dispatch_table[i].func);
-        s_fns[i].va = recomp_dispatch_table[i].address;
+        recomp_func_t lifted = guest_override_lifted(image->dispatch[i].address);
+        s_fns[i].start = lifted ? (uintptr_t)lifted : function_body(image->dispatch[i].func);
+        s_fns[i].va = image->dispatch[i].address;
     }
     qsort(s_fns, s_fn_count, sizeof *s_fns, by_start);
     s_lifted_lo = s_fns[0].start;
@@ -417,7 +418,7 @@ static void log_host_blocks(const profile_t* p, const char* when) {
         n += _snprintf(line + n, sizeof line - 1 - n, "%s+0x%07X %.1f%%", k ? ", " : "",
                        top_block[k] << HOST_BLOCK_SHIFT, share(top_hits[k], p->total));
     line[sizeof line - 1] = 0;
-    if (n) host_log("profile", "%s, hottest port code (32-byte blocks, offsets in trespasser.exe): %s", when, line);
+    if (n) host_log("profile", "%s, hottest port code (32-byte blocks, offsets in the guest image): %s", when, line);
 }
 
 static void describe_caller(uint32_t caller, char* out, size_t cap) {

@@ -47,18 +47,23 @@ if(NOT EXISTS "${PCRECOMP}/runtime/native32/native32.c")
   message(FATAL_ERROR "pcrecomp not found at ${PCRECOMP}: run `py -3 tools/fetch_pcrecomp.py`")
 endif()
 file(STRINGS "${PCRECOMP}/runtime/recomp32/recomp_types.h" JPT_PCRECOMP_PATCHED REGEX "RECOMP_X87_RING_DEPTH" LIMIT_COUNT 1)
-if(NOT JPT_PCRECOMP_PATCHED)
+file(STRINGS "${PCRECOMP}/runtime/native32/native32.h" JPT_PCRECOMP_DISPATCH REGEX "native32_set_dispatch" LIMIT_COUNT 1)
+file(STRINGS "${PCRECOMP}/runtime/native32/native32.h" JPT_PCRECOMP_HOLD REGEX "native32_hold_range" LIMIT_COUNT 1)
+if(NOT JPT_PCRECOMP_PATCHED OR NOT JPT_PCRECOMP_DISPATCH OR NOT JPT_PCRECOMP_HOLD)
   message(FATAL_ERROR "pcrecomp at ${PCRECOMP} lacks patches/pcrecomp: run `py -3 tools/fetch_pcrecomp.py`")
 endif()
-file(GLOB GEN_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_*.c")
-if(NOT GEN_SOURCES)
-  message(FATAL_ERROR "src/recomp/gen is empty: run `py -3 tools/run_lift.py` first")
-endif()
+
+# The one program carries every lifted build (English and Russian share lift116); each lift's symbols carry its prefix
+# so they link together and the host chooses one at run time (src/host/lift_registry.c). The lifts
+# are project artifacts (lifts/, tools/lifts.py): unpacked here, never generated from a game executable.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(JptLifts)
+jpt_unpack_lifts("${CMAKE_SOURCE_DIR}")
+set(GEN_SOURCES_116 ${lift116_SOURCES})
 
 set(HOST_SOURCES
   src/host/main.c
   src/host/log.c
-  src/host/fingerprint.c
   src/host/guest_env.c
   src/host/registry.c
   src/host/io_trace.c
@@ -120,6 +125,10 @@ set(HOST_SOURCES
   src/host/engine_limits.c
   src/host/engine_heaps.c
   src/host/guest_profile.c
+  src/host/active_profile.c
+  src/host/lift_registry.c
+  src/host/profiles/guest_profile_data.c
+  src/host/profiles/guest_gsub_tables.c
   src/host/texture_streaming.c
   src/host/terrain_quality.c
   src/host/cpu_polygons.c
@@ -163,7 +172,7 @@ set(PCRECOMP_SOURCES
 )
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
-add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
+add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c
   src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
@@ -216,7 +225,7 @@ add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
 
 # The port's launcher. The core (game files, disc image reader, installer, settings, page model, icons) needs no window;
 # the tests link only it.
-add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/game_files.cpp launcher/game_install.cpp
+add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp launcher/game_install.cpp
   launcher/settings.cpp launcher/system_info.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
   launcher/launcher_log.cpp launcher/user_data.cpp launcher/localization/ui_text.cpp
   launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
@@ -279,14 +288,13 @@ add_custom_command(OUTPUT ${JPT_RESTORED_AUDIO_SOURCE}
   DEPENDS ${JPT_RESTORED_AUDIO_LIST} ${JPT_RESTORED_AUDIO} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
   COMMENT "Embedding the restored audio")
 
-add_executable(trespasser ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
-target_include_directories(trespasser PRIVATE
+add_executable(trespasser_recomp ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
+target_include_directories(trespasser_recomp PRIVATE
   src/host
-  src/recomp/gen
   ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32
 )
-target_compile_definitions(trespasser PRIVATE
+target_compile_definitions(trespasser_recomp PRIVATE
   RECOMP_FLAT_MEMORY
   RECOMP_LOCAL_REGS
   RECOMP_ICALL_SITE_RANGE
@@ -296,11 +304,11 @@ target_compile_definitions(trespasser PRIVATE
   TRESPASSER_DEFAULT_LOG_DIR="${CMAKE_SOURCE_DIR}/logs"
 )
 if(TRESPASSER_TRACE)
-  target_compile_definitions(trespasser PRIVATE RECOMP_TRACE=1)
+  target_compile_definitions(trespasser_recomp PRIVATE RECOMP_TRACE=1)
 endif()
 
 # The launcher reads its images next to the executable; each copy depends on its source file, so an image-only change syncs.
-set(JPT_LAUNCHER_ASSET_DIR "$<TARGET_FILE_DIR:trespasser>/assets/launcher")
+set(JPT_LAUNCHER_ASSET_DIR "$<TARGET_FILE_DIR:trespasser_recomp>/assets/launcher")
 set(JPT_LAUNCHER_ASSET_COPIES)
 foreach(asset header-art.png sponsor-heart.png)
   set(asset_source "${CMAKE_SOURCE_DIR}/assets/launcher/${asset}")
@@ -314,7 +322,7 @@ foreach(asset header-art.png sponsor-heart.png)
   list(APPEND JPT_LAUNCHER_ASSET_COPIES "${asset_stamp}")
 endforeach()
 add_custom_target(jpt_launcher_assets DEPENDS ${JPT_LAUNCHER_ASSET_COPIES})
-add_dependencies(trespasser jpt_launcher_assets)
+add_dependencies(trespasser_recomp jpt_launcher_assets)
 
 # HD loading art drawn for the port (assets/frontend/loading_hd/README.md), read next to the executable.
 file(GLOB JPT_LOADING_ART CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/frontend/loading_hd/*.png
@@ -324,8 +332,8 @@ foreach(art_source IN LISTS JPT_LOADING_ART)
   get_filename_component(art_name "${art_source}" NAME)
   set(art_stamp "${CMAKE_BINARY_DIR}/loading-art/${art_name}.stamp")
   add_custom_command(OUTPUT "${art_stamp}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:trespasser>/assets/frontend/loading_hd"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${art_source}" "$<TARGET_FILE_DIR:trespasser>/assets/frontend/loading_hd/${art_name}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:trespasser_recomp>/assets/frontend/loading_hd"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${art_source}" "$<TARGET_FILE_DIR:trespasser_recomp>/assets/frontend/loading_hd/${art_name}"
     COMMAND ${CMAKE_COMMAND} -E touch "${art_stamp}"
     DEPENDS "${art_source}"
     VERBATIM)
@@ -333,20 +341,20 @@ foreach(art_source IN LISTS JPT_LOADING_ART)
 endforeach()
 if(JPT_LOADING_ART_COPIES)
   add_custom_target(jpt_loading_art DEPENDS ${JPT_LOADING_ART_COPIES})
-  add_dependencies(trespasser jpt_loading_art)
+  add_dependencies(trespasser_recomp jpt_loading_art)
 endif()
 
 # The guest image has no relocations and must sit at 0x00400000, so the host links high
 # and keeps its own first stack small; lifted code runs on a thread with a large stack.
 # Not /LARGEADDRESSAWARE: the original was a 2 GB process.
-target_link_options(trespasser PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPAT /STACK:0x40000)
+target_link_options(trespasser_recomp PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPAT /STACK:0x40000)
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
-target_link_options(trespasser PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser PRIVATE assao jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
+target_link_options(trespasser_recomp PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
+target_link_libraries(trespasser_recomp PRIVATE assao jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
   dxgi dxguid ole32 uuid windowscodecs delayimp)
 # ImGui's D3D11 renderer imports D3DCompile; the renderer loads d3dcompiler_47.dll itself, so start-up does not need it.
-target_link_options(trespasser PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
+target_link_options(trespasser_recomp PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
 
 # TRESPASSER_GEN_OPT alone sets the lifted sources' optimisation: the configuration's /O
 # options would only be overridden there (D9025), so they move to the other sources.
@@ -382,6 +390,21 @@ set_source_files_properties(${PCRECOMP}/runtime/native32/native32.c PROPERTIES
 set_source_files_properties(${HOST_SOURCES} PROPERTIES
   COMPILE_OPTIONS "/W3;${CONFIG_OPT}"
   COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS;TRESPASSER_LOG_DIR=\"${CMAKE_SOURCE_DIR}/build/logs\"")
+
+# The profile tables (guest addresses, patch groups, layouts, expected lift metadata) and the choice of the active
+# profile, for the tests that read guest addresses (they call test_profile_activate, tests/test_profile.h).
+add_library(jpt_profile STATIC src/host/active_profile.c src/host/profiles/guest_profile_data.c)
+target_include_directories(jpt_profile PUBLIC src/host)
+target_link_libraries(jpt_profile PUBLIC jpt_common)
+target_compile_definitions(jpt_profile PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_compile_options(jpt_profile PRIVATE /W3)
+
+# Which lift each profile runs, its guest addresses, patch groups and layout, and the refusal of a stale lift (headless):
+#   ninja -C <build dir> profile_dispatch_tests && profile_dispatch_tests.exe
+add_executable(profile_dispatch_tests EXCLUDE_FROM_ALL tests/profile_dispatch_tests.c)
+target_link_libraries(profile_dispatch_tests PRIVATE jpt_profile)
+target_compile_definitions(profile_dispatch_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_compile_options(profile_dispatch_tests PRIVATE /W4)
 
 # Headless checks of the host's logic and COM objects (no window, device or game):
 #   ninja -C <build dir> host_tests com_tests && host_tests.exe && com_tests.exe
@@ -527,7 +550,7 @@ add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/
   tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c tests/menu_layout_tests.c src/host/debug_menu_policy.c
   src/host/debug_menu_layout.c src/host/cheats_policy.c
   src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
-  tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
+  src/host/host_policy.c tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)
 target_compile_options(debug_menu_tests PRIVATE /W3)
 target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
@@ -589,17 +612,17 @@ foreach(copy IN ITEMS "lifted_|${WATER_LIFTED}" "lifted_alt_|${WATER_LIFTED_ALT}
   list(GET copy 0 prefix)
   list(GET copy 1 out)
   add_custom_command(OUTPUT ${out}
-    COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_0060E3F0;sub_00638670;sub_00630D90;sub_00559240"
+    COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DLIFT_PREFIX=lift116_" "-DFUNCS=sub_0060E3F0;sub_00638670;sub_00630D90;sub_00559240"
       "-DPREFIX=${prefix}" "-DOUT=${out}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
-    DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
+    DEPENDS ${GEN_SOURCES_116} tools/extract_lifted.cmake
     COMMENT "Copying the lifted water functions for water_tests")
 endforeach()
 # The lifted callees both copies call by name: _alloca_probe and the _ftol thunk.
 set(WATER_CALLEES "${CMAKE_BINARY_DIR}/water_callees.c")
 add_custom_command(OUTPUT ${WATER_CALLEES}
-  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_00626BA0;sub_00626B92"
+  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DLIFT_PREFIX=lift116_" "-DFUNCS=sub_00626BA0;sub_00626B92"
     "-DPREFIX=" "-DOUT=${WATER_CALLEES}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
-  DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
+  DEPENDS ${GEN_SOURCES_116} tools/extract_lifted.cmake
   COMMENT "Copying the lifted callees for water_tests")
 if(TRESPASSER_GEN_OPT STREQUAL "/Od")
   set(WATER_ALT_OPT "/O2")
@@ -627,9 +650,9 @@ target_link_options(water_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
 # by frame (headless): ninja -C <build dir> input_tests && input_tests.exe
 set(INPUT_LIFTED "${CMAKE_BINARY_DIR}/input_lifted.c")
 add_custom_command(OUTPUT ${INPUT_LIFTED}
-  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DFUNCS=sub_005F80B0"
+  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DLIFT_PREFIX=lift116_" "-DFUNCS=sub_005F80B0"
     "-DPREFIX=lifted_" "-DOUT=${INPUT_LIFTED}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
-  DEPENDS ${GEN_SOURCES} tools/extract_lifted.cmake
+  DEPENDS ${GEN_SOURCES_116} tools/extract_lifted.cmake
   COMMENT "Copying the lifted CInput read for input_tests")
 add_executable(input_tests EXCLUDE_FROM_ALL tests/input_tests.c src/host/gamepad_policy.c src/host/host_policy.c
   ${INPUT_LIFTED})
@@ -640,3 +663,9 @@ target_compile_definitions(input_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FL
 set_source_files_properties(tests/input_tests.c PROPERTIES COMPILE_OPTIONS "/W3")
 set_source_files_properties(${INPUT_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
 target_link_options(input_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
+
+foreach(host_test host_tests ce_tests fov_mouse_tests input_tests frontend_tests gamepad_tests debug_menu_tests video_tests
+        active_ai_tests patch117_tests water_tests com_tests ao_tests video_subtitle_tests)
+  target_link_libraries(${host_test} PRIVATE jpt_profile)
+  target_include_directories(${host_test} PRIVATE tests)
+endforeach()

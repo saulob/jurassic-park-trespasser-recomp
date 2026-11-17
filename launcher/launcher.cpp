@@ -230,36 +230,51 @@ ImTextureID LoadSponsorIcon(LauncherHost& host) {
 }
 
 std::string GameFilesHelp() {
-    return Tr("Select your own disc image (.iso). Supported: Trespasser UK 1.0.116. It is read directly: nothing is "
-              "mounted and no setup program runs. The game is copied into the game folder next to the program (about "
-              "600 MB) and checked before it replaces anything. No game files are included. Reinstalling keeps your "
-              "saves and settings.");
+    return Tr("Select your own disc image (.iso): English 1.0.116 (UK or US disc), Russian (Fargus), Spanish or "
+              "Brazilian Portuguese. The version is recognised from its files, never from the file name. The image is "
+              "only read: nothing is mounted and no setup program runs. Each version is copied into its own folder in "
+              "the game folder (about 600 MB) and every file is checked before it can be played. No game files are "
+              "included. Importing a version that is already installed copies nothing.");
 }
 
-std::string StatusDetail(const GameCheck& check) {
-    switch (check.state) {
-    case GameState::kReady:
-        return std::string(check.profile->executable) + "  \xC2\xB7  SHA-256 " + check.executable_sha256.substr(0, 16) +
-               "\xE2\x80\xA6";
-    case GameState::kMissing:
-        return Tr("Install the game from your Trespasser disc image.");
-    default:
-        return TrMessage(check.detail);
+constexpr char kGameVersionHelp[] =
+    "The installed version Play starts. Each version keeps its own saves; the launcher language is chosen in Gameplay.";
+constexpr char kRemoveVersionHelp[] =
+    "Deletes this version's copied game files. Your disc image, your saves and the other versions are not touched.";
+
+bool Playable(const InstalledVersion* v) {
+    return v && v->profile && v->check.state == GameState::kReady && jpt_game_version_playable(v->profile->version);
+}
+
+std::string VersionName(const InstalledVersion& v) {
+    std::string name = Tr(v.profile->label());
+    if (v.check.state != GameState::kReady) name += std::string(" (") + Tr(GameStateTitle(v.check.state)) + ")";
+    else if (!jpt_game_version_playable(v.profile->version)) name += Tr(" (not playable yet)");
+    return name;
+}
+
+std::string StatusDetail(const InstalledVersion* v, const GameCheck& check) {
+    if (v && v->profile && check.state == GameState::kReady) {
+        const jpt_game_version_t& g = *v->profile->version;
+        if (!jpt_game_version_playable(&g)) return TrMessage(g.unplayable);
+        return TrFormat("Game language: %s", Tr(g.language)) + "  \xC2\xB7  " + TrMessage(g.release);
     }
+    if (check.state == GameState::kMissing) return Tr("Import the game from your Trespasser disc image.");
+    return TrMessage(check.detail);
 }
 
 enum class Outcome { kRunning, kPlay, kQuit };
 
 class LauncherApp {
 public:
-    LauncherApp(const jpt_launcher_config_t& config, LauncherSettings& settings, GameCheck check)
+    LauncherApp(const jpt_launcher_config_t& config, LauncherSettings& settings)
         : config_(config),
           settings_(settings),
-          game_dir_(PathFromUtf8(config.game_dir)),
+          game_root_(PathFromUtf8(config.game_dir)),
           user_dir_(PathFromUtf8(config.user_dir)),
-          saves_dir_(PathFromUtf8(config.saves_dir)),
-          registry_(saves_dir_ / JPT_REGISTRY_FILE),
-          check_(std::move(check)) {}
+          registry_(PathFromUtf8(config.saves_dir) / JPT_REGISTRY_FILE) {
+        Recheck();
+    }
 
     // Runs the launcher window until Play or Quit. False when no window could be opened.
     bool Run(Outcome& outcome) {
@@ -276,7 +291,7 @@ public:
         ListGraphicsCards();
         Log("%zu monitor(s)", monitors_.size());
         ReadGameRegistry();
-        SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
+        SetLauncherLanguage(EffectiveLanguage());
         placement_ = PlacementTracker(host_.Restored());
         fonts_ = trg::LoadSystemFonts(trg::layout::kTextBody);
         if (LoadLauncherImage("header-art.png", header_art_image_)) {
@@ -317,10 +332,40 @@ public:
     }
 
 private:
-    bool Ready() const { return check_.state == GameState::kReady; }
+    bool Ready() const { return Playable(Selected()); }
+
+    const InstalledVersion* Selected() const { return selected_ >= 0 ? &versions_[size_t(selected_)] : nullptr; }
+
+    const jpt_game_version_t* SelectedVersion() const {
+        const InstalledVersion* v = Selected();
+        return v && v->profile ? v->profile->version : nullptr;
+    }
+
+    // Each game version keeps its own language; a version with no choice yet plays in its release's language.
+    std::string LanguageKey() const {
+        char key[JPT_GAME_VERSION_ID_MAX + 16];
+        return jpt_language_key(SelectedVersion(), key, sizeof key) ? std::string(key) : std::string(JPT_KEY_LANGUAGE);
+    }
+
+    std::string EffectiveLanguage() const {
+        const jpt_game_version_t* version = SelectedVersion();
+        const std::string key = LanguageKey();
+        if (!version) return settings_.Get(JPT_KEY_LANGUAGE);
+        const std::string chosen = settings_.Has(key) ? settings_.Get(key) : std::string();
+        const std::string earlier = settings_.Has(JPT_KEY_LANGUAGE) ? settings_.Get(JPT_KEY_LANGUAGE) : std::string();
+        return jpt_language_for(version, chosen.c_str(), earlier.c_str());
+    }
+
+    std::filesystem::path SavesDir(const InstalledVersion* v) const {
+        char dir[JPT_USER_PATH_CAP * 2];
+        if (!v || !v->profile ||
+            !jpt_game_version_saves_dir(config_.user_dir, config_.saves_dir, v->profile->version, dir, sizeof dir))
+            return PathFromUtf8(config_.saves_dir);
+        return PathFromUtf8(dir);
+    }
 
     Outcome Frame() {
-        SetLauncherLanguage(settings_.Get(JPT_KEY_LANGUAGE));
+        SetLauncherLanguage(EffectiveLanguage());
         NormalizeGraphicsCard();
         NormalizeCheats();
         TrackPlacement();
@@ -354,9 +399,31 @@ private:
         return Outcome::kRunning;
     }
 
+    // Lists the installed versions again and selects the setting's one, or another ready one when it is gone.
     void Recheck() {
-        check_ = CheckGameFolder(game_dir_);
-        Log("game files: %s%s%s", GameStateTitle(check_.state), check_.detail.empty() ? "" : ": ", check_.detail.c_str());
+        versions_ = FindInstalledVersions(game_root_);
+        const std::string wanted = settings_.Get(JPT_KEY_GAME_VERSION);
+        const InstalledVersion* chosen = ChooseVersion(versions_, wanted);
+        selected_ = chosen ? int(chosen - versions_.data()) : -1;
+        check_ = chosen ? chosen->check : versions_.empty() ? GameCheck{} : versions_.front().check;
+        if (!wanted.empty() && (!chosen || _stricmp(wanted.c_str(), chosen->profile->id()) != 0))
+            settings_.Set(JPT_KEY_GAME_VERSION, chosen ? chosen->profile->id() : "");
+        const std::filesystem::path registry = SavesDir(chosen) / JPT_REGISTRY_FILE;
+        if (registry != registry_.file()) {
+            registry_ = GameRegistry(registry);
+            invert_dirty_ = false;
+            ReadGameRegistry();
+        }
+        for (const InstalledVersion& v : versions_)
+            Log("game version %s%s in %s: %s%s%s", v.profile ? v.profile->id() : "unknown", &v == chosen ? " (selected)" : "",
+                Utf8(v.dir).c_str(), GameStateTitle(v.check.state), v.check.detail.empty() ? "" : ": ",
+                v.check.detail.c_str());
+        if (versions_.empty()) Log("game files: %s", GameStateTitle(check_.state));
+    }
+
+    void SelectVersion(const InstalledVersion& v) {
+        settings_.Set(JPT_KEY_GAME_VERSION, v.profile->id());
+        Recheck();
     }
 
     // PLAY saves the settings once here, then starts the transition. A failed save keeps the launcher open.
@@ -438,7 +505,7 @@ private:
                 return trg::PlayCheck{false, "Wait for the installation to finish.", 0};
             }
             if (!Ready()) {
-                return trg::PlayCheck{false, "The game files are not ready: see the Play page.", 0};
+                return trg::PlayCheck{false, "The selected game version cannot be played: see the Play page.", 0};
             }
             return trg::PlayCheck{};
         };
@@ -480,7 +547,8 @@ private:
         const std::string name(PageName(page));
         switch (page) {
         case PageId::kPlay:
-            return {name, "Install the game from your disc, and start it.", [this](trg::Ui& ui) { PagePlay(ui); },
+            return {name, "Import game versions from your discs, choose one and start it.",
+                    [this](trg::Ui& ui) { PagePlay(ui); },
                     [this] { return !Ready(); }, nullptr};
         case PageId::kDisplay:
             return {name, "Window, monitor, aspect ratio and presentation.", [this](trg::Ui& ui) { PageDisplay(ui); },
@@ -508,41 +576,85 @@ private:
     // ---- Play
 
     void PagePlay(trg::Ui& ui) {
+        const InstalledVersion* selected = Selected();
         const bool ready = Ready();
-        const std::string title = ready ? std::string(Tr(GameStateTitle(check_.state))) + " \xC2\xB7 " + check_.profile->label
-                                        : std::string(Tr(GameStateTitle(check_.state)));
-        const std::string detail = StatusDetail(check_);
-        ui.StatusCard(ready ? trg::Status::kReady : trg::Status::kAttention, title.c_str(), detail.c_str());
+        std::string title = Tr(GameStateTitle(check_.state));
+        if (selected && selected->profile) title += " \xC2\xB7 " + std::string(Tr(selected->profile->label()));
+        ui.StatusCard(ready ? trg::Status::kReady : trg::Status::kAttention, title.c_str(),
+                      StatusDetail(selected, check_).c_str());
         if (!install_failure_.empty()) {
             ui.Spacer(4);
             ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
             ImGui::TextUnformatted(Tr(install_failure_.c_str()));
             ImGui::PopStyleColor();
-            ui.Help((TrMessage(install_failure_text_) + Tr(". The current installation was not changed.")).c_str());
+            ui.Help((TrMessage(install_failure_text_) + Tr(". The installed versions were not changed.")).c_str());
             ui.Spacer(4);
+        }
+        if (versions_.size() > 1) {
+            ui.Row("Game version", kGameVersionHelp);
+            VersionCombo();
         }
         ui.Row("Game files");
         if (!ui.TaskProgress(install_)) {
-            const bool clicked = ready ? ImGui::Button(Tr("Reinstall game..."), ImVec2(-FLT_MIN, 0))
-                                       : ui.AccentButton("Install game...");
+            const bool repair = selected && selected->profile && selected->check.state != GameState::kReady;
+            const bool clicked = repair              ? ui.AccentButton("Reinstall game...")
+                                 : versions_.empty() ? ui.AccentButton("Import game...")
+                                                     : ImGui::Button(Tr("Import game..."), ImVec2(-FLT_MIN, 0));
             if (clicked) {
-                BrowseAndInstall();
+                BrowseAndInstall(repair);
             }
         }
         ui.EndRows();
         ui.Help(GameFilesHelp().c_str());
+        if (selected && selected->profile && !install_.running() &&
+            ui.ConfirmRow("Remove version", kRemoveVersionHelp, "Remove this version...",
+                          "Delete this version's game files? Saves, settings and your disc image are kept.", "Remove")) {
+            RemoveSelected();
+        }
         ui.Toggle("Show this launcher", kShowLauncherHelp, JPT_KEY_SHOW_LAUNCHER, true, "Off", "On");
         ui.EndRows();
     }
 
-    void BrowseAndInstall() {
+    void VersionCombo() {
+        const InstalledVersion* selected = Selected();
+        const std::string current = selected && selected->profile ? VersionName(*selected) : std::string();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::BeginCombo("##game_version", current.c_str())) {
+            for (size_t i = 0; i < versions_.size(); ++i) {
+                if (!versions_[i].profile) continue;
+                const bool is_selected = int(i) == selected_;
+                if (ImGui::Selectable(VersionName(versions_[i]).c_str(), is_selected) && !is_selected) {
+                    SelectVersion(versions_[i]);
+                    break;
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    void RemoveSelected() {
+        const InstalledVersion* selected = Selected();
+        if (!selected || !selected->profile || install_.running()) return;
+        const std::string id = selected->profile->id(), dir = Utf8(selected->dir);
+        std::string error;
+        const bool removed = RemoveVersion(*selected, error);
+        Log("remove %s from %s: %s%s%s", id.c_str(), dir.c_str(), removed ? "done" : "failed", error.empty() ? "" : ": ",
+            error.c_str());
+        Recheck();
+        launcher_->SetStatus(removed ? std::string(Tr("Version removed. Saves and settings were kept."))
+                                     : Tr("The version could not be removed: ") + TrMessage(error),
+                             8.0);
+    }
+
+    void BrowseAndInstall(bool replace) {
         if (install_.running()) {
             return;
         }
-        StartInstall(trg::BrowseForFile(Tr("Select your Trespasser disc image"), {{Tr("Disc images (*.iso)"), "*.iso"}}));
+        StartInstall(trg::BrowseForFile(Tr("Select your Trespasser disc image"), {{Tr("Disc images (*.iso)"), "*.iso"}}),
+                     replace);
     }
 
-    void StartInstall(const std::string& picked) {
+    void StartInstall(const std::string& picked, bool replace) {
         if (picked.empty() || install_.running() || play_.starting()) {
             return;
         }
@@ -551,8 +663,9 @@ private:
         outcome_ = std::make_shared<InstallResult>();
         const bool started = install_.Start(
             "Reading the disc image...",
-            [outcome = outcome_, iso = PathFromUtf8(picked), game = game_dir_, user = saves_dir_](trg::Task& task) {
+            [outcome = outcome_, iso = PathFromUtf8(picked), root = game_root_, replace](trg::Task& task) {
                 InstallHooks hooks;
+                hooks.replace = replace;
                 hooks.phase = [&task](const char* text) {
                     task.SetLabel(text);
                     task.Progress(0, 0);
@@ -562,11 +675,12 @@ private:
                     return !task.cancelled();
                 };
                 hooks.log = [](const std::string& line) { Log("%s", line.c_str()); };
-                *outcome = InstallFromIso(iso, game, user, hooks);
+                *outcome = InstallFromIso(iso, root, hooks);
                 return outcome->ok() ? std::string() : std::string(InstallStatusTitle(outcome->status));
             });
         if (started) {
-            Log("installing the game from %s into %s", picked.c_str(), Utf8(game_dir_).c_str());
+            Log("importing the game%s from %s into %s", replace ? " (reinstall)" : "", picked.c_str(),
+                Utf8(game_root_).c_str());
         }
     }
 
@@ -579,18 +693,29 @@ private:
         if (!outcome) {
             return;
         }
-        Recheck();
         if (outcome->ok()) {
-            Log("game installed: %zu files, %llu bytes, %s", outcome->files,
-                static_cast<unsigned long long>(outcome->bytes), outcome->detail.c_str());
-            launcher_->SetStatus(Tr("Game installed. Ready to play."), 6.0);
+            settings_.Set(JPT_KEY_GAME_VERSION, outcome->profile->id());
+            Recheck();
+            if (outcome->status == InstallStatus::kUpToDate) {
+                Log("game version already installed: %s", outcome->detail.c_str());
+                launcher_->SetStatus(Tr("This version is already installed: nothing was copied. It is now selected."), 8.0);
+                return;
+            }
+            Log("game installed: %s in %s, %zu files, %llu bytes, %zu repaired", outcome->detail.c_str(),
+                Utf8(outcome->dir).c_str(), outcome->files, static_cast<unsigned long long>(outcome->bytes),
+                outcome->repaired);
+            launcher_->SetStatus(Ready() ? Tr("Game installed. Ready to play.")
+                                         : Tr("Game installed. This version cannot be played yet: see the Play page."),
+                                 8.0);
             return;
         }
+        Recheck();
         if (outcome->status == InstallStatus::kCancelled) {
             Log("game install cancelled");
             launcher_->SetStatus(Tr("Installation cancelled. Nothing was changed."), 6.0);
             return;
         }
+        for (const std::string& line : outcome->diagnostics) Log("unsupported build diagnostics: %s", line.c_str());
         Log("game install failed: %s (%s)", InstallStatusTitle(outcome->status), outcome->detail.c_str());
         install_failure_ = InstallStatusTitle(outcome->status);
         install_failure_text_ = outcome->detail;
@@ -816,7 +941,7 @@ private:
             const jpt_l10n_language_t* language = jpt_l10n_language_listed(i);
             languages.push_back({language->code, language->name});
         }
-        ui.Combo("Language", kLanguageHelp, JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH, languages);
+        ui.Combo("Language", kLanguageHelp, LanguageKey().c_str(), EffectiveLanguage().c_str(), languages);
         ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
         ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
@@ -1097,8 +1222,9 @@ private:
                      "Original game by DreamWorks Interactive.");
         ui.Spacer(4);
         std::error_code ec;
-        if (std::filesystem::is_directory(game_dir_, ec)) {
-            ui.FolderRow("Game files", "Where the installed game is read from.", "Open game folder", Utf8(game_dir_));
+        if (const InstalledVersion* selected = Selected(); selected && std::filesystem::is_directory(selected->dir, ec)) {
+            ui.FolderRow("Game files", "Where the selected game version is read from.", "Open game folder",
+                         Utf8(selected->dir));
         }
         std::filesystem::create_directories(user_dir_, ec);
         ui.FolderRow("User data", UserDataFolderHelp(static_cast<UserDataOutcome>(config_.user_data_outcome)),
@@ -1131,7 +1257,8 @@ private:
         }
         const std::string renderer = settings_.Get(JPT_KEY_RENDERER) == "software" ? "Software" : "Direct3D 11";
         ui.InfoGrid({{"Port version", JPT_PORT_VERSION},
-                     {"Game", Ready() ? check_.profile->label : GameStateTitle(check_.state)},
+                     {"Game", Selected() && Selected()->profile ? Tr(Selected()->profile->label())
+                                                                : Tr(GameStateTitle(check_.state))},
                      {"Renderer", renderer},
                      {"Platform", "Windows x86"}});
         char libraries[96];
@@ -1156,8 +1283,10 @@ private:
 
     const jpt_launcher_config_t& config_;
     LauncherSettings& settings_;
-    std::filesystem::path game_dir_, user_dir_, saves_dir_;
+    std::filesystem::path game_root_, user_dir_;
     GameRegistry registry_;
+    std::vector<InstalledVersion> versions_;
+    int selected_ = -1;
     GameCheck check_;
     LauncherHost host_;
     Image header_art_image_;
@@ -1190,9 +1319,10 @@ extern "C" jpt_launcher_result_t jpt_launcher_run(const jpt_launcher_config_t* c
     using namespace jpt;
     SetLauncherLog(config->log);
     LauncherSettings settings(PathFromUtf8(config->settings_file));
-    GameCheck check = CheckGameFolder(PathFromUtf8(config->game_dir));
-    Log("game files: %s%s%s", GameStateTitle(check.state), check.detail.empty() ? "" : ": ", check.detail.c_str());
-    const bool ready = check.state == GameState::kReady;
+    const std::vector<InstalledVersion> versions = FindInstalledVersions(PathFromUtf8(config->game_dir));
+    const InstalledVersion* chosen = ChooseVersion(versions, settings.Get(JPT_KEY_GAME_VERSION));
+    const bool ready = Playable(chosen);
+    Log("game version: %s", chosen ? chosen->profile->label() : versions.empty() ? "none installed" : "none ready");
     const bool show_setting = settings.GetBool(JPT_KEY_SHOW_LAUNCHER, true);
     const bool shift = trg::ShiftHeld() || config->force_show != 0;
     if (!LauncherWanted(ready, show_setting, shift, config->skip_once != 0)) {
@@ -1202,7 +1332,7 @@ extern "C" jpt_launcher_result_t jpt_launcher_run(const jpt_launcher_config_t* c
     Log("settings file %s", Utf8(settings.file()).c_str());
     Log("opening: %s%s%s", ready ? "game ready" : "game files not ready", show_setting ? ", show_launcher on" : "",
         shift ? ", Shift held or --launcher" : "");
-    LauncherApp app(*config, settings, std::move(check));
+    LauncherApp app(*config, settings);
     Outcome outcome = Outcome::kRunning;
     if (!app.Run(outcome)) {
         Log("could not open its window; %s", ready ? "starting the game" : "game files are not ready");

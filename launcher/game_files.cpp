@@ -7,34 +7,62 @@
 
 #include <cstdio>
 #include <system_error>
-#include <vector>
 
 namespace jpt {
 namespace {
 
-constexpr ManifestEntry kUk116Manifest[] = {
-#include "game_manifest_uk_116.inc"
+namespace fs = std::filesystem;
+
+constexpr InstallFile kEn116[] = {
+#include "game_manifest_en_116.inc"
+};
+constexpr InstallFile kRu116[] = {
+#include "game_manifest_ru_116.inc"
+};
+constexpr InstallFile kEs117[] = {
+#include "game_manifest_es_117.inc"
+};
+constexpr InstallFile kPtBr117[] = {
+#include "game_manifest_ptbr_117.inc"
 };
 
-constexpr DiscFile kUk116DiscFiles[] = {
-    {"setup/tpassp6.exe", "trespass.exe"},
-    {"setup/msvcirt.dll", "MSVCIRT.DLL"},
-    {"setup/smackw32.dll", "SMACKW32.DLL"},
-    {"setup/processor.dll", "Processor.dll"},
-    {"readme.txt", "Readme.txt"},
+constexpr DiscIdentity kEn116Discs[] = {
+    {"English retail (UK)", "Trespass_UK_116"},
+    {"English retail (US)", "Trespasser_116d"},
+};
+constexpr DiscIdentity kRu116Discs[] = {
+    {"Russian (Fargus)", "TRESPASSER_116D"},
+};
+constexpr DiscIdentity kEs117Discs[] = {
+    {"Spanish (Spain)", "TRESPASSER_S"},
+};
+constexpr DiscIdentity kPtBr117Discs[] = {
+    {"Brazilian Portuguese (Brazil)", "Trespasser"},
 };
 
+// The smallest data file of each version whose digest no other version's disc has.
 const GameProfile kProfiles[] = {
-    {"uk-1.0.116", "Trespasser UK 1.0.116", "Trespass_UK_116", "trespass.exe",
-     "d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed", 2568192, kUk116DiscFiles, "data/",
-     kUk116Manifest},
+    {&jpt_game_versions[0], "data/menu/loader.ddf", "0ba6a442592880a407ff98fa2c1b6a703b5a842b94b330461aa4c6576390b0f7",
+     kEn116Discs, nullptr, kEn116},
+    {&jpt_game_versions[1], "tresp.ttf", "a7767c39415d46623146fad472e4e512185cb66bdc7497a7a3fb372ad191fa7b", kRu116Discs,
+     "setup/data1.cab", kRu116},
+    {&jpt_game_versions[2], "data/menu/loader.ddf", "7cb5236e3e02ff8cd73e642b2aad1316cc08abb6e1cc58a4d099c559ac146e5c",
+     kEs117Discs, nullptr, kEs117},
+    {&jpt_game_versions[3], "data/menu/loader.ddf", "d5c6f83dac5e6300bb6682a5770ee52f4aebd994a3ec5834c1401d3ba0af0916",
+     kPtBr117Discs, nullptr, kPtBr117},
 };
 
 }  // namespace
 
 std::span<const GameProfile> KnownProfiles() { return kProfiles; }
 
-std::string Sha256File(const std::filesystem::path& file) {
+const GameProfile* ProfileById(std::span<const GameProfile> profiles, const std::string& id) {
+    for (const GameProfile& p : profiles)
+        if (_stricmp(p.id(), id.c_str()) == 0) return &p;
+    return nullptr;
+}
+
+std::string Sha256File(const fs::path& file) {
     HANDLE h = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (h == INVALID_HANDLE_VALUE) return {};
@@ -61,38 +89,24 @@ std::string Sha256File(const std::filesystem::path& file) {
     return hex;
 }
 
-GameCheck CheckGameFolder(const std::filesystem::path& game_dir, std::span<const GameProfile> profiles) {
+GameCheck CheckGameFolder(const fs::path& dir, const GameProfile& expected) {
     GameCheck check;
     std::error_code ec;
-    if (profiles.empty()) return check;
-    const std::filesystem::path exe = game_dir / profiles.front().executable;
-    if (!std::filesystem::is_regular_file(exe, ec)) {
-        check.detail = "no game executable in " + Utf8(game_dir);
+    if (!fs::is_regular_file(dir / JPT_GUEST_IMAGE, ec)) {
+        check.detail = "no guest image in " + Utf8(dir);
         return check;
     }
-    check.executable_sha256 = Sha256File(exe);
-    if (check.executable_sha256.empty()) {
-        check.state = GameState::kUnreadable;
-        check.detail = "cannot read " + Utf8(exe);
-        return check;
-    }
-    for (const GameProfile& p : profiles)
-        if (check.executable_sha256 == p.executable_sha256) check.profile = &p;
     check.state = GameState::kInvalid;
-    if (!check.profile) {
-        check.detail = "unknown executable, SHA-256 " + check.executable_sha256;
-        return check;
-    }
-    for (const ManifestEntry& e : check.profile->manifest) {
-        const std::filesystem::path file = game_dir / PathFromUtf8(e.path);
-        const uintmax_t size = std::filesystem::file_size(file, ec);
+    check.profile = &expected;
+    for (const InstallFile& f : expected.files) {
+        const uintmax_t size = fs::file_size(dir / PathFromUtf8(f.installed), ec);
         if (ec) {
-            check.detail = std::string("missing ") + e.path;
+            check.detail = std::string("missing ") + f.installed;
             return check;
         }
-        if (size != e.size) {
-            check.detail = std::string(e.path) + " has " + std::to_string(size) + " bytes, expected " +
-                           std::to_string(e.size);
+        if (size != f.size) {
+            check.detail = std::string(f.installed) + " has " + std::to_string(size) + " bytes, expected " +
+                           std::to_string(f.size);
             return check;
         }
     }
@@ -100,12 +114,51 @@ GameCheck CheckGameFolder(const std::filesystem::path& game_dir, std::span<const
     return check;
 }
 
+std::vector<InstalledVersion> FindInstalledVersions(const fs::path& game_root, std::span<const GameProfile> profiles) {
+    std::vector<InstalledVersion> found;
+    std::error_code ec;
+    for (const GameProfile& p : profiles) {
+        const fs::path dir = game_root / JPT_VERSIONS_DIR / PathFromUtf8(p.id());
+        if (fs::is_regular_file(dir / JPT_GUEST_IMAGE, ec)) found.push_back({&p, dir, CheckGameFolder(dir, p)});
+    }
+    return found;
+}
+
+const InstalledVersion* ChooseVersion(const std::vector<InstalledVersion>& versions, const std::string& wanted) {
+    for (const InstalledVersion& v : versions)
+        if (v.profile && v.check.state == GameState::kReady && _stricmp(v.profile->id(), wanted.c_str()) == 0) return &v;
+    for (const InstalledVersion& v : versions)
+        if (v.profile && v.check.state == GameState::kReady && jpt_game_version_playable(v.profile->version)) return &v;
+    for (const InstalledVersion& v : versions)
+        if (v.profile && v.check.state == GameState::kReady) return &v;
+    return nullptr;
+}
+
+bool RemoveVersion(const InstalledVersion& version, std::string& error) {
+    std::error_code ec;
+    if (!version.profile || version.dir.filename() != PathFromUtf8(version.profile->id()) ||
+        version.dir.parent_path().filename() != JPT_VERSIONS_DIR) {
+        error = "not a version folder: " + Utf8(version.dir);
+        return false;
+    }
+    fs::path removing = version.dir;
+    removing += L".removing";
+    fs::remove_all(removing, ec);
+    fs::rename(version.dir, removing, ec);
+    if (ec) {
+        error = "the version folder is in use (close anything using " + Utf8(version.dir) + ")";
+        return false;
+    }
+    fs::remove_all(removing, ec);
+    if (ec) error = "some files could not be deleted: " + Utf8(removing);
+    return true;
+}
+
 const char* GameStateTitle(GameState state) {
     switch (state) {
     case GameState::kReady: return "Ready to play";
     case GameState::kMissing: return "Game not installed";
     case GameState::kInvalid: return "Invalid game files";
-    case GameState::kUnreadable: return "Game files unreadable";
     }
     return "";
 }

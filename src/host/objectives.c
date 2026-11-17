@@ -4,6 +4,7 @@
  * and route anchors are instances of the level found by name (u4Hash, CWorld::pinsFindInstance) and kept as positions
  * only, resolved again whenever the objective, the level or a load changes.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -14,11 +15,11 @@
 #include "objective_policy.h"
 #include "objectives.h"
 
-#define CURRENT_HINT 0x0066F01Cu
-#define GAME_INSTANCE 0x0066E05Cu
-#define WORLD 0x0073F444u
-#define U4_HASH 0x005F6100u
-#define FIND_INSTANCE 0x00607C10u
+#define CURRENT_HINT GVA(0x0066F01C)
+#define GAME_INSTANCE GVA(0x0066E05C)
+#define WORLD GVA(0x0073F444)
+#define U4_HASH GVA(0x005F6100)
+#define FIND_INSTANCE GVA(0x00607C10)
 #define NAME_BYTES 0x40u
 #define LOG_LIMIT 64
 #define TARGET_REFRESH_MS 1000u

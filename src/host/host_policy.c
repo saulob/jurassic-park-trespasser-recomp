@@ -1,3 +1,4 @@
+#include "guest_va.h"
 #include "host_policy.h"
 
 #include <math.h>
@@ -344,7 +345,7 @@ quit_action_t quit_action_for(guest_wnd_t top, int at_video_pump) {
 }
 
 int is_pixel_calibration_caller(uint32_t caller) {
-    return caller == 0x00513660u || caller == 0x00514150u || caller == 0x00514070u;
+    return caller == GVA(0x00513660) || caller == GVA(0x00514150) || caller == GVA(0x00514070);
 }
 
 readback_reason_t readback_classify(cpu_access_t access, int read_only, uint32_t caller) {
@@ -417,14 +418,14 @@ void cpu_polygon_to_surface(long box[4], uint32_t origin_bytes, long pitch) {
 }
 
 engine_heap_t engine_heap_for(uint32_t bytes) {
-    static const engine_heap_t k[] = {
+    const engine_heap_t k[] = {
         { 1758600u, 0, 0, TERRAIN_HEAP_SCALE },           /* CQuadRootTIN::AllocMemory(15000) */
         { 543400u, 0, 0, TERRAIN_HEAP_SCALE },            /* NMultiResolution's scaling arrays (22000 nodes) */
         { 160000u, 0, 0, TERRAIN_HEAP_SCALE },            /* CPolyIterator's 40000 triangles */
-        { 0x30D400u, 0x00732EFCu, 80000u, ENGINE_PIPELINE_HEAP_SCALE }, /* darvVertices: 80000 x 0x28 */
-        { 0x0004E200u, 0x00732F4Cu, 80000u, ENGINE_PIPELINE_HEAP_SCALE }, /* daprvVertices: 80000 x 4 */
-        { 0x0025D780u, 0x00732F34u, 20000u, ENGINE_PIPELINE_HEAP_SCALE }, /* darpolyPolygons: 20000 x 0x7C */
-        { 0x00013880u, 0x00732F1Cu, 20000u, ENGINE_PIPELINE_HEAP_SCALE }, /* darppolyPolygons: 20000 x 4 */
+        { 0x30D400u, GVA(0x00732EFC), 80000u, ENGINE_PIPELINE_HEAP_SCALE }, /* darvVertices: 80000 x 0x28 */
+        { 0x0004E200u, GVA(0x00732F4C), 80000u, ENGINE_PIPELINE_HEAP_SCALE }, /* daprvVertices: 80000 x 4 */
+        { 0x0025D780u, GVA(0x00732F34), 20000u, ENGINE_PIPELINE_HEAP_SCALE }, /* darpolyPolygons: 20000 x 0x7C */
+        { 0x00013880u, GVA(0x00732F1C), 20000u, ENGINE_PIPELINE_HEAP_SCALE }, /* darppolyPolygons: 20000 x 4 */
     };
     engine_heap_t none = { bytes, 0, 0, 1 };
     for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
@@ -465,14 +466,10 @@ float engine_full_3d_distance(float radius, float pixels_per_metre, float cache_
 }
 
 engine_part_kind_t engine_partition_kind(uint32_t vtable) {
-    switch (vtable) {
-    case VTABLE_PARTITION:
-    case VTABLE_PARTITION_SPACE:
-    case VTABLE_PARTITION_SPACE_QUERY: return ENGINE_PART_SPATIAL;
-    case VTABLE_INSTANCE:
-    case VTABLE_TERRAIN_OBJECT: return ENGINE_PART_STATIC;
-    default: return ENGINE_PART_ENTITY;
-    }
+    if (vtable == VTABLE_PARTITION || vtable == VTABLE_PARTITION_SPACE || vtable == VTABLE_PARTITION_SPACE_QUERY)
+        return ENGINE_PART_SPATIAL;
+    if (vtable == VTABLE_INSTANCE || vtable == VTABLE_TERRAIN_OBJECT) return ENGINE_PART_STATIC;
+    return ENGINE_PART_ENTITY;
 }
 
 float engine_cache_min_distance(int modern, int software, engine_part_kind_t kind, float radius, float pixels_per_metre,
@@ -624,6 +621,16 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim) {
 }
 
 uint32_t engine_texture_dim_policy(int modern) { return modern ? ENGINE_TEX_DIM_MODERN : 0u; }
+
+int registry_subtitles_migration(int marker_present, int value_present, uint32_t value, uint32_t* replacement) {
+    if (marker_present || !value_present || value) return 0;
+    *replacement = REGISTRY_SUBTITLES_ON;
+    return 1;
+}
+
+int registry_view_margin_name(const char* name) {
+    return name && (!_stricmp(name, "XView") || !_stricmp(name, "YView"));
+}
 
 uint32_t engine_render_quality_policy(int hardware, int value_stored) {
     return hardware && !value_stored ? ENGINE_RENDER_QUALITY_TOP : 0u;

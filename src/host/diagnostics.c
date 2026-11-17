@@ -82,8 +82,9 @@ static struct {
 } s_dispatch_cache[1u << DISPATCH_CACHE_BITS];
 static unsigned long long s_dispatch_hits, s_dispatch_misses;
 static int outside_dispatch(uint32_t va) {
-    return !recomp_dispatch_count || va < recomp_dispatch_table[0].address ||
-           va > recomp_dispatch_table[recomp_dispatch_count - 1].address;
+    const lift_image_t* image = lift_active_image();
+    return !image || !image->meta->function_count || va < image->dispatch[0].address ||
+           va > image->dispatch[image->meta->function_count - 1].address;
 }
 
 /* Calls out of the lifted code: what answers a target is decided at its first call (and again when the DirectDraw
@@ -180,7 +181,7 @@ recomp_func_t recomp_lookup_manual(uint32_t va) {
     recomp_func_t fn = selfmod_lookup(va);
     unsigned slot;
     if (fn) return fn;
-    if (va < trespasser_text_start || va >= trespasser_text_end) return outside_text(va);
+    if (va < lift_text_start || va >= lift_text_end) return outside_text(va);
     slot = (va * 2654435761u) >> (32 - DISPATCH_CACHE_BITS);
     if (s_dispatch_cache[slot].va == va) {
         s_dispatch_hits++;
@@ -273,8 +274,8 @@ void diagnostics_install(unsigned watchdog_seconds) {
     IMAGE_NT_HEADERS32* nt = (IMAGE_NT_HEADERS32*)((char*)self + ((IMAGE_DOS_HEADER*)self)->e_lfanew);
     s_host_lo = (uint32_t)(uintptr_t)self;
     s_host_hi = s_host_lo + nt->OptionalHeader.SizeOfImage;
-    s_guest_lo = trespasser_image_base;
-    s_guest_hi = trespasser_selfmod_end;
+    s_guest_lo = JPT_GUEST_IMAGE_BASE;
+    s_guest_hi = lift_selfmod_end;
     AddVectoredExceptionHandler(0, on_exception);
     SetUnhandledExceptionFilter(on_unhandled);
     s_watchdog_seconds = watchdog_seconds;

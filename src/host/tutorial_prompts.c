@@ -2,6 +2,7 @@
  * Button and key glyphs inside the game's text overlay. Subtitles are laid out again by the game's own routine with a
  * placeholder run as wide as each glyph; the controls card and its hint are panels laid out here.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -16,18 +17,18 @@
 #include "tutorial_prompts.h"
 
 /* (text, out, flags), thiscall on the font: word-wraps into {size, lines, {x, y, count, chars, 0}...}. */
-#define LAYOUT_VA 0x0050E8C0u
+#define LAYOUT_VA GVA(0x0050E8C0)
 /* CTextOverlay at [0x66F03C]: add(text, seconds, flags, colour, after, category) and find(category). */
-#define OVERLAY_PTR 0x0066F03Cu
-#define OVERLAY_ADD_VA 0x00468710u
-#define OVERLAY_FIND_VA 0x00468980u
-#define GAME_SECONDS 0x0073F350u
-#define RASTER_PTR 0x0073DC40u
+#define OVERLAY_PTR GVA(0x0066F03C)
+#define OVERLAY_ADD_VA GVA(0x00468710)
+#define OVERLAY_FIND_VA GVA(0x00468980)
+#define GAME_SECONDS GVA(0x0073F350)
+#define RASTER_PTR GVA(0x0073DC40)
 #define RASTER_WIDTH 0x08u
 #define RASTER_HEIGHT 0x0Cu
 #define RASTER_LEFT 0x88u
 #define RASTER_TOP 0x8Cu
-#define KEYMAP_VA 0x0066AE78u
+#define KEYMAP_VA GVA(0x0066AE78)
 #define FONT_HFONT 0x00u
 #define FONT_TALLEST 0x0Cu
 /* CTextOverlay: its entries, a ring from the sentinel at +0x54; an entry's laid-out text, flags and category. */

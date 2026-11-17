@@ -39,17 +39,18 @@ function Stop-OnError($Record) {
     Stop-Tool 'The script stopped on a PowerShell error.'
 }
 
-# One log per run of a tool: build\logs\trespasser_NNN.log, one past the highest number there (never
-# reused). trespasser.exe numbers its own logs the same way when it is started without --log-file.
+# One log per run of a tool: build\logs\trespasser_recomp_NNN.log, one past the highest number there, earlier
+# trespasser_NNN.log included (never reused). trespasser_recomp.exe numbers its own logs the same way when it is started
+# without --log-file.
 function Open-RunLog {
     $dir = Join-Path $script:RepoRoot 'build\logs'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $last = 0
     foreach ($file in @(Get-ChildItem -LiteralPath $dir -Filter 'trespasser_*.log')) {
-        if ($file.Name -match '^trespasser_(\d+)\.log$') { $last = [Math]::Max($last, [int]$Matches[1]) }
+        if ($file.Name -match '^trespasser_(?:recomp_)?(\d+)\.log$') { $last = [Math]::Max($last, [int]$Matches[1]) }
     }
     for ($number = $last + 1; $number -lt $last + 1000; $number++) {
-        $path = Join-Path $dir ('trespasser_{0:D3}.log' -f $number)
+        $path = Join-Path $dir ('trespasser_recomp_{0:D3}.log' -f $number)
         try {
             $stream = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
         }

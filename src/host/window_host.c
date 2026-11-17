@@ -12,6 +12,7 @@
  * Closing (Alt+F4, the X button, WM_CLOSE) leads the game out through its own quit path from inside
  * its message pump while the window stays up; WinMain then returns and exit_policy.c finishes.
  */
+#include "guest_va.h"
 #include "host.h"
 #include "gamepad.h"
 #include "host_policy.h"
@@ -62,10 +63,10 @@
 /* The game functions whose PeekMessageA calls take a quit step: CUIWnd's modal pump, the only one
  * that returns to a loop checking EndModal, and the Smacker player's frame loop. Lifted calls push
  * a dummy return address, so the caller is the current lifted function. */
-#define MODAL_PUMP 0x00417760u
-#define VIDEO_PLAYER 0x00418AE0u
+#define MODAL_PUMP GVA(0x00417760)
+#define VIDEO_PLAYER GVA(0x00418AE0)
 /* CUIWnd::DoModal's loop reads the pointer into its manager here before taking its messages, every frame. */
-#define UI_LOOP 0x00417840u
+#define UI_LOOP GVA(0x00417840)
 #define WM_HOST_PAD_MOUSE (WM_APP + 0x47)
 /* Gamepad keys are posted with a scan code no keyboard sends, so they never count as keyboard use. */
 #define PAD_SCAN_CODE 0xFEu

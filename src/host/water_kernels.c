@@ -1,3 +1,4 @@
+#include "guest_va.h"
 #include "water_kernels.h"
 
 #include <math.h>
@@ -7,14 +8,14 @@
 #error "the kernels reproduce the x87 model the MSVC build lifts with: shifting (fp_push_impl) or the ring"
 #endif
 
-#define INV_SQRT_TABLE 0x006715A4u
-#define ALPHA_OFFSET 0x0073F708u
-#define ALPHA_SCALE 0x0073F70Cu
-#define ALPHA_TABLE 0x0073F710u
+#define INV_SQRT_TABLE GVA(0x006715A4)
+#define ALPHA_OFFSET GVA(0x0073F708)
+#define ALPHA_SCALE GVA(0x0073F70C)
+#define ALPHA_TABLE GVA(0x0073F710)
 #define ONE_BITS 0x3F800000u
 #define FOUR_BITS 0x40800000u
-#define WAVE_DAMPING 0x006474D4u
-#define WAVE_NUMERATOR 0x00647B54u
+#define WAVE_DAMPING GVA(0x006474D4)
+#define WAVE_NUMERATOR GVA(0x00647B54)
 
 recomp_func_t water_rows_lifted, water_wave_step_lifted;
 void (*water_rows_observer)(uintptr_t texel, double right, double below);

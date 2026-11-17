@@ -5,12 +5,13 @@
 - Windows 10/11 x64
 - Visual Studio 2022 or later with "Desktop development with C++" (MSVC x86/x64 tools, the
   Windows SDK, and the bundled CMake and Ninja)
-- Python 3.10+ through the `py` launcher, with `capstone` and `pefile`
-  (`py -3 -m pip install capstone pefile`)
+- Python 3.10+ through the `py` launcher (it checks the lift archives)
 - Git
-- Your own English *Trespasser* disc image
 
-About 1.5 GB of disk: 565 MB of game data, 80 MB of generated C, the rest build output.
+No original game executable and no disc image are needed to build: the lifted builds are part of the source tree
+(`lifts\`). The game data comes from your own disc through the launcher, to play (`docs/LAUNCHER.md`).
+
+About 1.5 GB of disk: 230 MB of unpacked lifted C (three lifts), the rest build output.
 
 The host is a 32-bit process on pcrecomp's `native32` runtime, so the only toolchain is the
 x64-hosted x86 MSVC. `tools\build.ps1` finds the newest Visual Studio with those tools and
@@ -25,35 +26,30 @@ switches to it for the session.
 
 Neither needs another option: the configuration is MSVC x86, RelWithDebInfo, with the lifted C compiled at `/Od`
 for fast incremental builds. `.\tools\run.ps1` is an optional shortcut that starts the existing
-`build\cmake\msvc-x86\trespasser.exe` without building or checking anything; its arguments go to the game unchanged.
+`build\cmake\msvc-x86\trespasser_recomp.exe` without building or checking anything; its arguments go to the game unchanged.
 
-Point it at your disc image the first time, by `-Iso "E:\path\to\Trespasser_EN.iso"`, the
-`TRESPASSER_ISO` variable, or `config\local.json` (see `config\local.example.json`). The image
-is only read; `tools\extract_game.py` verifies the executable's SHA-256 and refuses a disc that
-carries a different build. (Players install from the launcher's Play page instead; the build script
-needs the files earlier, for the analysis.)
+The original executables are development inputs only; neither the build nor the launcher nor the game opens one (see
+"Regenerating a lift" below).
 
 ### What it does, in order
 
 | Stage | Output | Runs again when |
 |---|---|---|
 | pcrecomp | `external\pcrecomp` | the checkout is missing, not at the commit in `config\target.json`, or `patches\pcrecomp` (applied in `series` order, recorded in `external\pcrecomp.patches`) changed |
-| Game files | `game\` | `trespass.exe` is missing or has another SHA-256, or a DLL or `data\menu\tpassintro.smk` is missing |
-| Analysis (about 15 min) | `analysis\` | the executable's SHA-256 or the pcrecomp commit changed, an output is missing, or `-Reanalyze` |
-| Lift (about 1 min) | `src\recomp\gen\` | the catalog, the RTTI seeds, `config\decoder_fixups.json`, `config\extra_entries.json` or `tools\run_lift.py` changed (by content), an output is missing, or `-Relift` |
+| Lifts | `lifts\manifest.json`, `lifts\*.tar.xz` | always checked (a few hundred ms): each archive's SHA-256 against the manifest, its generator format and source metadata |
 | Launcher sources | `external\imgui`, `external\trg-launcher`, `external\SDL` | missing, at another commit than `config\launcher_deps.txt`, or `launcher\patches\` changed |
 | CMake configure | `build\cmake\msvc-x86\` | the cache is missing, or the configuration, `-GenOpt`, `-Trace` or the source folder changed |
-| Build | `build\cmake\msvc-x86\trespasser.exe` | always asked of Ninja, which compiles only what changed |
+| Build | `build\cmake\msvc-x86\trespasser_recomp.exe` | always asked of Ninja, which compiles only what changed |
 
-The analysis and the lift record a digest of their inputs in `analysis\stamps\`. Output made by
-an earlier manual run is adopted, not redone, when its recorded fingerprint matches. Ninja
-reruns CMake by itself when `CMakeLists.txt` changes.
+CMake unpacks the three lifts (`lift116` for English and Russian, `lift_es117`, `lift_ptbr117`) into `src\recomp\gen`, `gen_es117`
+and `gen_ptbr117` when a folder is missing or comes from another archive, then the one program, `trespasser_recomp.exe`,
+carries all of them. Nothing is lifted, analysed or read from a game installation. Ninja reruns CMake by itself when
+`CMakeLists.txt` or an archive changes.
 
-Nothing is cleaned or rebuilt in full unless asked. After `analyze.py` or `run_lift.py` change
-the generated C, every generated file is recompiled, as it must be.
+Nothing is cleaned or rebuilt in full unless asked. When an archive changes, every generated file is recompiled, as it must be.
 
-Each run of the script writes exactly one log, `build\logs\trespasser_NNN.log`, numbered one past
-the highest already there. It holds the configuration, every stage, CMake and Ninja output, and
+Each run of the script writes exactly one log, `build\logs\trespasser_recomp_NNN.log`, numbered one past
+the highest already there (earlier `trespasser_NNN.log` count). It holds the configuration, every stage, CMake and Ninja output, and
 with `-Run` the game's own output and its exit code. The terminal shows the stage lines, Ninja
 progress every 20 files, warnings and errors; a failure also prints the last 40 lines of the log
 and the script exits with Ninja's exit code. The game is never started when a stage fails. Logs
@@ -63,17 +59,15 @@ from before this layout stay in `logs\`.
 
 | Option | Effect |
 |---|---|
-| `-Run` | after a successful build, start `trespasser.exe --run` and wait for it |
+| `-Run` | after a successful build, start `trespasser_recomp.exe --run` and wait for it |
 | `-VerboseRuntime` | with `-Run`, show the runtime output in the terminal too |
 | `-Arch x86` / `-Arch x64` | `x86` (default) is the playable 32-bit host in `build\cmake\msvc-x86`. `x64` builds only the 64-bit host groundwork (`trespasser_x64_probe`, `x64_tests`) in `build\cmake\msvc-x64` with the native x64 tools; it cannot run the game, so `-Run` is refused (`docs\X64_MIGRATION.md`) |
-| `-Clean` | delete this configuration's build folder first; `game\`, the image, `analysis\`, `src\recomp\gen\` and `logs\` are kept |
+| `-Clean` | delete this configuration's build folder first; `game\`, `lifts\` and `logs\` are kept |
 | `-Config Release` | build `build\cmake\msvc-x86-release` instead of RelWithDebInfo |
 | `-GenOpt /O2` | advanced: optimisation of the lifted C (compiler flags only, it never regenerates the C, but changing it recompiles all of it). Default: what the build folder already uses, else `/Od` for RelWithDebInfo and `/O2` for Release. Every lifted file runs during gameplay, so with `/Od` each is still compiled with `/O2 /Ob1`; `/Ob1` is added to any other value |
 | `-Trace` | build with `RECOMP_TRACE` (`--calltrace`, `--firsthit`); default: what the build folder already uses |
 | `-BuildDir`, `-Jobs N` | another build folder (`-Clean` only removes folders under `build\`); parallel compile jobs |
-| `-Iso PATH` | disc image, when the game files must be extracted |
-| `-Reanalyze`, `-Relift` | force those stages |
-| `-GameArgs a,b,...` | with `-Run`, passed to `trespasser.exe` in order after `--run --log-file`, for example `-GameArgs "--renderer","d3d11"` |
+| `-GameArgs a,b,...` | with `-Run`, passed to `trespasser_recomp.exe` in order after `--run --log-file`, for example `-GameArgs "--renderer","d3d11"` |
 
 Equivalent manual build, from an "x64_x86 Cross Tools" developer prompt:
 
@@ -82,13 +76,19 @@ cmake -S . -B build\cmake\msvc-x86 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -D
 cmake --build build\cmake\msvc-x86
 ```
 
-The stages can also be run by hand: `py -3 tools\fetch_pcrecomp.py`,
-`tools\extract_game.py --iso ...`, `tools\analyze.py`, `tools\run_lift.py`.
+The stages can also be run by hand: `py -3 tools\fetch_pcrecomp.py`, `py -3 tools\lifts.py verify`.
+
+### Regenerating a lift (maintainers)
+
+A lift only changes when the lifter, the override or hook lists or a guest map do. Then, with the original executable of that
+build as a development input, `.\tools\generate-lift.ps1 -Profile es-117 -Source <path of its tpassp6.exe>` checks the executable's
+SHA-256 against `config\`, analyses it when needed, lifts it and packs `lifts\<lift>.tar.xz` and `lifts\manifest.json`, which
+are then committed. The original executables are not required to install or play the recomp, to build it or to make a release.
 
 ## Running
 
-`.\tools\build.ps1 -Run` is the development loop: it builds, then starts `trespasser.exe` and stays attached until the
-game exits. `.\tools\run.ps1` starts the current build without the build step. Neither starts a second copy if `trespasser.exe` from that build folder is
+`.\tools\build.ps1 -Run` is the development loop: it builds, then starts `trespasser_recomp.exe` and stays attached until the
+game exits. `.\tools\run.ps1` starts the current build without the build step. Neither starts a second copy if `trespasser_recomp.exe` from that build folder is
 already running, and it cannot rebuild while one is.
 
 The script closes its log, starts the game with `--log-file` naming that same file, and reopens
@@ -102,10 +102,10 @@ Without the script, from the repository root:
 
 ```powershell
 # Dry run: fingerprint, map, bind imports, then stop. Executes no game code, opens no window.
-.\build\cmake\msvc-x86\trespasser.exe --dry-run
+.\build\cmake\msvc-x86\trespasser_recomp.exe --dry-run
 
 # The launcher (docs/LAUNCHER.md), then the game. The desktop mode is never changed.
-.\build\cmake\msvc-x86\trespasser.exe
+.\build\cmake\msvc-x86\trespasser_recomp.exe
 ```
 
 Settings come from `user\trespasser.ini`, which the launcher writes; the options below override
@@ -160,7 +160,7 @@ py -3 -m unittest discover -s tests -p "test_lift_hooks.py"     # lift hooks: th
 py -3 -m unittest discover -s tests -p "test_lift_staging.py"    # staging, publishing changed files only, cleanup retries when a scanner holds a file (TRESPASSER_TEST_LIFT=1 also lifts a small closure twice)
 py -3 -m unittest discover -s tests -p "test_renderer_fixed.py"  # no runtime renderer switch: the renderer is set once at start, F5 is only the Video Test
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
-$env:TRESPASSER_TEST_ISO = 'D:\images\Trespasser_EN.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
+$env:TRESPASSER_TEST_ISO = 'D:\images\trespasser.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation
 .\build\cmake\msvc-x86\gamepad_tests.exe  # last device used, deadzones and drift, controller families, glyph styles, bindings and prompts (keys and gamepad), hotplug, gameplay input for CInput, menu focus
 .\build\cmake\msvc-x86\com_tests.exe    # DirectDraw/Direct3D 6 COM objects through their vtables, against stubs
@@ -194,9 +194,9 @@ are in `user_data\launcher\trespasser.ini`. Development runs (`build.ps1 -Run`, 
 
 | Log says | Do |
 |---|---|
-| `indirect transfer to 0x........, inside .text but not a lifted entry` | add the address to `config\extra_entries.json`, then run `.\tools\build.ps1` (it relifts and rebuilds) |
-| `reached sub_........, which is not lifted` | `.\tools\build.ps1 -Relift` |
-| `MISMATCH` under `target` | `game\trespass.exe` is not the binary the C was lifted from; delete it and run `.\tools\build.ps1` to extract again |
+| `indirect transfer to 0x........, inside .text but not a lifted entry` | add the address to `config\extra_entries.json` and regenerate the lift (above) |
+| `reached sub_........, which is not lifted` | regenerate that lift (above) |
+| `stale lift` | the lift in this program is not the one the version needs; run `.\tools\build.ps1` (it checks `lifts\`) |
 | `[bind] ... unresolved` | a DLL or export is missing on this machine; the line names it |
 | `=== fault ... ===` | a real defect; the report below it is the starting point |
 

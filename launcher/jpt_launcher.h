@@ -33,9 +33,9 @@ typedef struct {
 int jpt_user_data_select(const char* explicit_root, const char* legacy_dir, jpt_user_data_t* out);
 
 typedef struct {
-    const char* game_dir;      /* the installed game (trespass.exe, its DLLs, data\) */
+    const char* game_dir;      /* the game folder: versions\<id>, or an older installation directly in it */
     const char* user_dir;      /* the user data root */
-    const char* saves_dir;     /* saves and the game's registry store */
+    const char* saves_dir;     /* the English 1.0.116 saves and registry store; other versions keep theirs apart */
     const char* logs_dir;
     const char* settings_file; /* <user_dir>\launcher\trespasser.ini */
     int user_data_outcome;

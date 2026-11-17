@@ -1,13 +1,14 @@
 #ifndef TRESPASSER_BUMP_SPANS_H
 #define TRESPASSER_BUMP_SPANS_H
 
+#include "guest_va.h"
 #include <stdint.h>
 
 /* The software renderer's bump-mapped scanlines (TBumpLinear, SelfMod 0x00640FE0) as span records: the per-pixel
  * colour, the texel index walk and the scanline loop, in the integer arithmetic a pixel shader repeats. */
-#define BUMP_LINEAR_SCANLINE_VA 0x00640FE0u
+#define BUMP_LINEAR_SCANLINE_VA GVA(0x00640FE0)
 /* TTextureLinear (8-bit palettised): the same scanline loop and walk, a byte texel looked up in the CLUT. */
-#define TEXTURE_LINEAR_SCANLINE_VA 0x0063DC60u
+#define TEXTURE_LINEAR_SCANLINE_VA GVA(0x0063DC60)
 
 typedef struct {
     const uint16_t* clut;  /* CClut table, 16-bit screen pixels */

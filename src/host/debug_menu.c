@@ -4,6 +4,7 @@
  * change of the game's triggers) and the Direct Load sequence of the main menu. Retail compiled TELE out; Teleport is
  * its body built from TNEXT's own calls. Everything runs in the game's modal UI loop, before it reads its cursor.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -19,30 +20,30 @@
 #include "objectives.h"
 #include "tutorial_prompts.h"
 
-#define WORLD 0x0073F444u
+#define WORLD GVA(0x0073F444)
 #define WORLD_CAMERA 0x14u
 #define WORLD_LOAD_PENDING 0x38u
 #define CAMERA_PRESENCE 0x30u
 #define CAMERA_ATTACHED 0x50u
-#define PLAYER 0x0066EF64u
+#define PLAYER GVA(0x0066EF64)
 #define PLAYER_DEAD_SLOT 0x1FCu
 #define PLACEMENT_SLOT 0x18u
 #define MOVE_SLOT 0x38u
 #define PLACEMENT_BYTES 28u
-#define PURGE_RENDER_CACHES 0x00548150u
-#define SET_NO_PAGE_FRAMES 0x006264D0u
-#define TELEPORT_NEXT 0x0060CB70u
-#define TELEPORT_LIST_HEAD 0x0073F600u
-#define TELEPORT_ITERATOR 0x0073F614u
-#define APP 0x0066E338u
-#define APP_SCENE 0x0066E342u
-#define APP_RESTART 0x00414480u
-#define APP_MENU_SOUNDS_OFF 0x00414D80u
-#define APP_LOAD_LEVEL 0x00414100u
-#define APP_LOAD_FAILED 0x00413160u
-#define GAME_WND_PAUSE 0x0040BCC0u
-#define GAME_WND_RESUME 0x0040BD70u
-#define WORLD_DEFERRED_LOAD 0x00607E90u
+#define PURGE_RENDER_CACHES GVA(0x00548150)
+#define SET_NO_PAGE_FRAMES GVA(0x006264D0)
+#define TELEPORT_NEXT GVA(0x0060CB70)
+#define TELEPORT_LIST_HEAD GVA(0x0073F600)
+#define TELEPORT_ITERATOR GVA(0x0073F614)
+#define APP GVA(0x0066E338)
+#define APP_SCENE GVA(0x0066E342)
+#define APP_RESTART GVA(0x00414480)
+#define APP_MENU_SOUNDS_OFF GVA(0x00414D80)
+#define APP_LOAD_LEVEL GVA(0x00414100)
+#define APP_LOAD_FAILED GVA(0x00413160)
+#define GAME_WND_PAUSE GVA(0x0040BCC0)
+#define GAME_WND_RESUME GVA(0x0040BD70)
+#define WORLD_DEFERRED_LOAD GVA(0x00607E90)
 #define MAIN_MENU_PLAY 2 /* the main menu's EndModal code after New Game and Direct Load */
 #define SCRATCH_BYTES 0x100u
 
@@ -554,6 +555,16 @@ static float dpi_scale(void) {
     return scale;
 }
 
+/* The compass sits in the 3D picture the game draws, which its view-size setting can leave smaller than the surface. */
+static void scene_view(dmp_frame_t* f) {
+    float v[4];
+    if (!d3dr_scene_view(v) || v[0] < 0.0f || v[1] < 0.0f || v[0] + v[2] > 1.001f || v[1] + v[3] > 1.001f) return;
+    f->scene_x = v[0] * f->view_w;
+    f->scene_y = v[1] * f->view_h;
+    f->scene_w = v[2] * f->view_w;
+    f->scene_h = v[3] * f->view_h;
+}
+
 static void coordinate_lines(dmp_frame_t* f) {
     const dm_world_t* w = &D.world;
     if (!D.state.show_coords || w->place != DM_PLACE_LEVEL) return;
@@ -577,6 +588,7 @@ void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext*
     f.view_w = (float)(view.right - view.left);
     f.view_h = (float)(view.bottom - view.top);
     f.dpi_scale = dpi_scale();
+    scene_view(&f);
     f.menu = D.state.open;
     f.objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
     if (hud_on_screen()) f.hud = &D.hud;

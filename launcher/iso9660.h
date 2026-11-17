@@ -34,8 +34,12 @@ public:
 
     // Called with the bytes just copied; returning false cancels.
     using Progress = std::function<bool(uint64_t bytes)>;
-    // Copies one file through `<to>.part`. False with a reason; "cancelled" when Progress said so.
-    bool Extract(const IsoFile& file, const std::filesystem::path& to, const Progress& progress, std::string& error);
+    // Copies one file through `<to>.part`, with its SHA-256 when sha256 is given. False with a reason; "cancelled" when
+    // Progress said so.
+    bool Extract(const IsoFile& file, const std::filesystem::path& to, const Progress& progress, std::string& error,
+                 std::string* sha256 = nullptr);
+    // The whole file in memory (a cabinet); false with a reason.
+    bool ReadAll(const IsoFile& file, std::vector<uint8_t>& out, std::string& error);
 
 private:
     bool Read(uint64_t offset, void* out, size_t size);

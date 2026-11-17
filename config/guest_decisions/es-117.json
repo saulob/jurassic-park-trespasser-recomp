@@ -1,0 +1,141 @@
+{
+ "profile": "es-117",
+ "decisions": [
+  {
+   "va": "0040BCC0",
+   "to": "0040BDE0",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "49 instructions identical; only the object's two fields move: [obj+0xC] -> [obj+0x80], [obj+8] -> [obj+0x7C]"
+  },
+  {
+   "va": "00414100",
+   "to": "00414220",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "thiscall(this, level), ret 4 in both; builds the level path from the data folder helper (116: registry 'Data Drive' + 'data\\'; ES: helper 0x411C60) and calls the load function with it"
+  },
+  {
+   "va": "0050E750",
+   "to": "004F46E0",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CFont constructor; glyph widths stay at [font+0x10+4*c] (116 fills c=0x20..0xFE at +0x90, ES c=0..0xFE from +0x10); register allocation only"
+  },
+  {
+   "va": "0050E8C0",
+   "to": "004F4840",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "text layout; frame 0xAC -> 0xB0 and stack slots shift; the width index is a signed char in 116 (movsx) and unsigned in ES (and 0xFF)"
+  },
+  {
+   "va": "0044C1B2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'Move, the view and the raised hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "0044CF9F",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process grab gate': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "00451212",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process after a pick-up': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "0045125D",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process hand raise': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004512FF",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process 116 raising step': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004519A1",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process hand steering gate': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004546D7",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004546E2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "0045472E",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "00454734",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "00455B6B",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'held jump key': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004569C8",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'player impulse jump lifetime': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "0045B916",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'hand reach empty hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "0045B91C",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'hand reach empty hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "00460CF5",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'player impulse jump lifetime': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004DDEFD",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'broad phase pair wake': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004E78D2",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'Foot_IDOF failed jump check': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it"
+  },
+  {
+   "va": "004F0960",
+   "category": "NO_EQUIVALENT",
+   "evidence": "jump hand-off: es-117 0x004D6650 is byte-identical (masked) to the official 1.1 function, so the 117 behaviour is native and the override that ports it to 116 is not installed"
+  },
+  {
+   "va": "0045B470",
+   "to": "0043ED60",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "hand reach (thiscall, st0): byte-identical (masked) to the official 1.1 function; same role"
+  },
+  {
+   "va": "0067AF5C",
+   "to": "006D0260",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the dword holding the voluntary-jump byte: the byte 0x0067AF5D pairs with 0x006D0261 in 27 aligned references"
+  },
+  {
+   "va": "0066ED67",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning byte read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B8C"
+  },
+  {
+   "va": "0066EF20",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning field read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B98"
+  }
+ ]
+}

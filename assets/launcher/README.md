@@ -13,7 +13,7 @@ py -3 tools\make-header-art.py
 
 The launcher draws it over the header gradient at the header's full height, flush with the header's top, right and
 bottom; a narrow window cuts it from the left (`launcher/header_art.h`). Without the file it keeps the gradient alone.
-The build copies it next to `trespasser.exe`, into `assets\launcher`.
+The build copies it next to `trespasser_recomp.exe`, into `assets\launcher`.
 
 # Sponsor heart
 

@@ -5,6 +5,7 @@
  * Build: CMake target active_ai_tests.
  */
 #include <math.h>
+#include "test_profile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -173,7 +174,7 @@ static void test_save_block(void) {
 }
 
 static void test_override_table(void) {
-    for (unsigned i = 1; i < active_ai_override_count; i++) CHECK(active_ai_override_vas[i - 1] < active_ai_override_vas[i]);
+    for (unsigned i = 1; i < active_ai_override_count; i++) CHECK(active_ai_override_va(i - 1) < active_ai_override_va(i));
     for (size_t i = 0; i < LIMIT_FUNCTIONS; i++) CHECK(active_ai_overrides(k_limit_functions[i]));
     CHECK(active_ai_overrides(0x004218C0u) && !active_ai_overrides(0x00419720u) && !active_ai_overrides(0x00419AA0u));
 }
@@ -346,6 +347,7 @@ static void test_retail_lint(const char* root) {
 }
 
 int main(void) {
+    test_profile_activate();
     test_limits();
     test_think_scheduler();
     test_activate_choice();

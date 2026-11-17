@@ -4,6 +4,7 @@
  * Build: CMake target gamepad_tests.
  */
 #include <ctype.h>
+#include "test_profile.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1665,6 +1666,7 @@ static void test_launcher_controller(void) {
 }
 
 int main(void) {
+    test_profile_activate();
     test_last_device();
     test_activity_filter();
     test_deadzones();

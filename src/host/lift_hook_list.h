@@ -1,6 +1,7 @@
 /*
  * Host hooks inside lifted functions, sorted by guest address. tools/run_lift.py puts RECOMP_LIFT_HOOK(lift_hook_<va>)
- * in front of the instruction at each address, in every lifted body that holds it; the host defines lift_hook_<va>.
+ * in front of the instruction at each address, in every lifted body that holds it, <va> being this list's address in every
+ * lift; the host defines lift_hook_<va> once.
  * A hook runs with the guest's registers, flags and memory and may change them; the instruction then runs as lifted.
  */
 LIFT_HOOK(00441D1D) /* player tuning built, pick-up hold time (patch117_player.c) */

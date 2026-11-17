@@ -3,6 +3,7 @@
  * camera, with the render cameras copied from it, keeps the vertical field of view of the 4:3 view (Hor+). The camera
  * projects, clips and culls before anything becomes a D3DTLVERTEX or a software span, so both renderers follow.
  */
+#include "guest_va.h"
 #include "host.h"
 #include "host_policy.h"
 
@@ -13,9 +14,10 @@
 #include "jpt_config.h"
 #include "jpt_display.h"
 
-#define ENUM_MODES_VA 0x00502970u          /* fills the mode table; its byte argument lifts the 800-pixel width cap */
-#define CAMERA_SET_PROPERTIES_VA 0x0051FD90u /* CCamera::SetProperties(const SProperties&), thiscall */
-#define MAIN_CAMERA_HOLDER 0x0073F444u     /* [[holder] + 0x14] is the main camera */
+#define ENUM_MODES_VA GVA(0x00502970)          /* fills the mode table; its byte argument lifts the 800-pixel width cap */
+#define CAMERA_SET_PROPERTIES_VA GVA(0x0051FD90) /* CCamera::SetProperties(const SProperties&), thiscall */
+#define MAIN_CAMERA_HOLDER GVA(0x0073F444)     /* [[holder] + HOLDER_CAMERA] is the main camera */
+#define HOLDER_CAMERA 0x14u
 #define PROPS_SIZE 0x58u
 #define PROPS_IN_CAMERA 0x74u
 #define PROP_PERSPECTIVE 0x34u
@@ -39,7 +41,7 @@ static void enum_modes_uncapped(void) {
 
 static uint32_t main_camera(void) {
     uint32_t holder = MEM32(MAIN_CAMERA_HOLDER);
-    return holder ? MEM32(holder + 0x14) : 0;
+    return holder ? MEM32(holder + HOLDER_CAMERA) : 0;
 }
 
 /* The renderer draws each frame through cameras built from the main camera's stored properties (CRenderDB paint:

@@ -4,11 +4,12 @@
  * capacity, so a request past the reservation marks pages committed that are not: the next allocation that fits
  * writes into them. Requests are kept inside the reservation, and the heaps that modern scenes fill grow.
  */
+#include "guest_va.h"
 #include "host.h"
 #include "host_policy.h"
 
-#define HEAP_RESERVE_VA 0x005F8A20u /* pHeapAlloc(bytes), cdecl: VirtualAlloc reserve */
-#define HEAP_COMMIT_VA 0x005F8B10u  /* pvCommitMem(pv, bytes), cdecl: returns pv plus the page-rounded size */
+#define HEAP_RESERVE_VA GVA(0x005F8A20) /* pHeapAlloc(bytes), cdecl: VirtualAlloc reserve */
+#define HEAP_COMMIT_VA GVA(0x005F8B10)  /* pvCommitMem(pv, bytes), cdecl: returns pv plus the page-rounded size */
 #define POLYGON_HEAP_BYTES 0x0025D780u /* darpolyPolygons */
 #define VERTEX_HEAP_BYTES 0x30D400u    /* darvVertices */
 #define PAGE 0x1000u

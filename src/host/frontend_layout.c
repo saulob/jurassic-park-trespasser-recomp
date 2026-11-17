@@ -299,6 +299,15 @@ void fe_layout_options(const int32_t* ids, const int* widths, const int* heights
     }
 }
 
+const char* fe_release_label_fix(const char* version_id, int window_kind, int button_id) {
+    if (version_id && !strcmp(version_id, "ptbr-117") && window_kind == FE_WND_OPTIONS && button_id == 1003) return "CR\xC9" "DITOS";
+    return NULL;
+}
+
+const char* fe_button_text(int release_language, const char* translated, const char* release_fix) {
+    return release_language || !translated ? release_fix : translated;
+}
+
 void fe_layout_rows(int count, int top, int bottom, int row_h, int* row_tops) {
     int span = bottom - top - row_h;
     if (span < 0) span = 0;

@@ -4,51 +4,292 @@
 
 #define CUES(a) a, (int)(sizeof a / sizeof a[0])
 
+#define K_INTRO_0 "Video::My name is John Parker Hammond. I was born on March 14, 1928."
+#define K_INTRO_1 "Video::What follows is a record of certain events"
+#define K_INTRO_2 "Video::in which I took part, between the years 1980 and 1997,"
+#define K_INTRO_3 "Video::on an island I will call Site B."
+#define K_INTRO_4 "Video::Site B was not to be a theme park, but a research station."
+#define K_INTRO_5 "Video::This was where we did the real work."
+#define K_INTRO_6 "Video::By 1989, International Genetic Technologies had succeeded in their design,"
+#define K_INTRO_7 "Video::to genetically recreate the dinosaurs."
+#define K_INTRO_8 "Video::It was an unprecedented accomplishment, the pinnacle of 20th century science,"
+#define K_INTRO_9 "Video::a work to rank with the achievements of Galileo, or Einstein."
+#define K_INTRO_10 "Video::But it was not all so easy or so simple as it appeared."
+#define K_INTRO_11 "Video::One seldom hears the true history of such events,"
+#define K_INTRO_12 "Video::what happened at the place where the world changed."
+#define K_INTRO_13 "Video::How it began..."
+#define K_INTRO_14 "Video::...what were the reasons..."
+#define K_INTRO_15 "Video::...what was the cost."
+
+#define K_NEW_GAME_0 "Video::The person you're trying to reach is unavailable."
+#define K_NEW_GAME_1 "Video::Please leave a message after the tone."
+#define K_NEW_GAME_2 "Video::Anne? Anne, are you there?"
+#define K_NEW_GAME_3 "Video::It's Jill, pick up the phone!"
+#define K_NEW_GAME_4 "Video::God, don't tell me your mom was serious? You're in Costa Rica?"
+#define K_NEW_GAME_5 "Video::Visiting the natives, huh? Sun, sand and adventure."
+#define K_NEW_GAME_6 "Video::My little Indiana Anne, world traveler extraordinaire."
+#define K_NEW_GAME_7 "Video::Well, give me a call when you get back, okay?"
+#define K_NEW_GAME_8 "Video::By the way, I thought you hated flying?"
+
+#define K_WIN_0 "Video::The person you're trying to reach is unavailable."
+#define K_WIN_1 "Video::Please leave a message after the tone."
+#define K_WIN_2 "Video::Anne! It's Jill. This is like the eighth message I'm leaving you."
+#define K_WIN_3 "Video::I'm sensing some sort of pattern here..."
+#define K_WIN_4 "Video::Come on, Anne. Quit being antisocial and pick up the phone sometime."
+#define K_WIN_5 "Video::Oh, and by the way, don't even bother calling me"
+#define K_WIN_6 "Video::unless you have a damn good excuse."
+
+#define K_INTRO_0 "Video::My name is John Parker Hammond. I was born on March 14, 1928."
+#define K_INTRO_1 "Video::What follows is a record of certain events"
+#define K_INTRO_2 "Video::in which I took part, between the years 1980 and 1997,"
+#define K_INTRO_3 "Video::on an island I will call Site B."
+#define K_INTRO_4 "Video::Site B was not to be a theme park, but a research station."
+#define K_INTRO_5 "Video::This was where we did the real work."
+#define K_INTRO_6 "Video::By 1989, International Genetic Technologies had succeeded in their design,"
+#define K_INTRO_7 "Video::to genetically recreate the dinosaurs."
+#define K_INTRO_8 "Video::It was an unprecedented accomplishment, the pinnacle of 20th century science,"
+#define K_INTRO_9 "Video::a work to rank with the achievements of Galileo, or Einstein."
+#define K_INTRO_10 "Video::But it was not all so easy or so simple as it appeared."
+#define K_INTRO_11 "Video::One seldom hears the true history of such events,"
+#define K_INTRO_12 "Video::what happened at the place where the world changed."
+#define K_INTRO_13 "Video::How it began..."
+#define K_INTRO_14 "Video::...what were the reasons..."
+#define K_INTRO_15 "Video::...what was the cost."
+
+#define K_NEW_GAME_0 "Video::The person you're trying to reach is unavailable."
+#define K_NEW_GAME_1 "Video::Please leave a message after the tone."
+#define K_NEW_GAME_2 "Video::Anne? Anne, are you there?"
+#define K_NEW_GAME_3 "Video::It's Jill, pick up the phone!"
+#define K_NEW_GAME_4 "Video::God, don't tell me your mom was serious? You're in Costa Rica?"
+#define K_NEW_GAME_5 "Video::Visiting the natives, huh? Sun, sand and adventure."
+#define K_NEW_GAME_6 "Video::My little Indiana Anne, world traveler extraordinaire."
+#define K_NEW_GAME_7 "Video::Well, give me a call when you get back, okay?"
+#define K_NEW_GAME_8 "Video::By the way, I thought you hated flying?"
+
+#define K_WIN_0 "Video::The person you're trying to reach is unavailable."
+#define K_WIN_1 "Video::Please leave a message after the tone."
+#define K_WIN_2 "Video::Anne! It's Jill. This is like the eighth message I'm leaving you."
+#define K_WIN_3 "Video::I'm sensing some sort of pattern here..."
+#define K_WIN_4 "Video::Come on, Anne. Quit being antisocial and pick up the phone sometime."
+#define K_WIN_5 "Video::Oh, and by the way, don't even bother calling me"
+#define K_WIN_6 "Video::unless you have a damn good excuse."
+
 static const jvs_cue_t k_intro[] = {
-    { 0, 82, "Video::My name is John Parker Hammond. I was born on March 14, 1928." },
-    { 89, 124, "Video::What follows is a record of certain events" },
-    { 125, 194, "Video::in which I took part, between the years 1980 and 1997," },
-    { 197, 245, "Video::on an island I will call Site B." },
-    { 251, 314, "Video::Site B was not to be a theme park, but a research station." },
-    { 315, 364, "Video::This was where we did the real work." },
-    { 447, 535, "Video::By 1989, International Genetic Technologies had succeeded in their design," },
-    { 536, 587, "Video::to genetically recreate the dinosaurs." },
-    { 621, 707, "Video::It was an unprecedented accomplishment, the pinnacle of 20th century science," },
-    { 708, 775, "Video::a work to rank with the achievements of Galileo, or Einstein." },
-    { 848, 910, "Video::But it was not all so easy or so simple as it appeared." },
-    { 919, 973, "Video::One seldom hears the true history of such events," },
-    { 974, 1030, "Video::what happened at the place where the world changed." },
-    { 1035, 1057, "Video::How it began..." },
-    { 1061, 1090, "Video::...what were the reasons..." },
-    { 1095, 1139, "Video::...what was the cost." },
+    { 0, 82, K_INTRO_0 },
+    { 89, 124, K_INTRO_1 },
+    { 125, 194, K_INTRO_2 },
+    { 197, 245, K_INTRO_3 },
+    { 251, 314, K_INTRO_4 },
+    { 315, 364, K_INTRO_5 },
+    { 447, 535, K_INTRO_6 },
+    { 536, 587, K_INTRO_7 },
+    { 621, 707, K_INTRO_8 },
+    { 708, 775, K_INTRO_9 },
+    { 848, 910, K_INTRO_10 },
+    { 919, 973, K_INTRO_11 },
+    { 974, 1030, K_INTRO_12 },
+    { 1035, 1057, K_INTRO_13 },
+    { 1061, 1090, K_INTRO_14 },
+    { 1095, 1139, K_INTRO_15 },
+};
+
+static const jvs_cue_t k_intro_ru[] = {
+    { 0, 94, K_INTRO_0 },
+    { 95, 128, K_INTRO_1 },
+    { 153, 215, K_INTRO_2 },
+    { 216, 261, K_INTRO_3 },
+    { 262, 319, K_INTRO_4 },
+    { 320, 360, K_INTRO_5 },
+    { 442, 530, K_INTRO_6 },
+    { 531, 596, K_INTRO_7 },
+    { 605, 691, K_INTRO_8 },
+    { 692, 788, K_INTRO_9 },
+    { 833, 936, K_INTRO_10 },
+    { 942, 998, K_INTRO_11 },
+    { 999, 1032, K_INTRO_12 },
+    { 1066, 1090, K_INTRO_13 },
+    { 1101, 1123, K_INTRO_14 },
+    { 1132, 1146, K_INTRO_15 },
+};
+
+static const jvs_cue_t k_intro_es[] = {
+    { 0, 80, K_INTRO_0 },
+    { 81, 127, K_INTRO_1 },
+    { 128, 196, K_INTRO_2 },
+    { 197, 235, K_INTRO_3 },
+    { 236, 312, K_INTRO_4 },
+    { 313, 360, K_INTRO_5 },
+    { 449, 541, K_INTRO_6 },
+    { 542, 585, K_INTRO_7 },
+    { 628, 712, K_INTRO_8 },
+    { 713, 767, K_INTRO_9 },
+    { 852, 918, K_INTRO_10 },
+    { 919, 967, K_INTRO_11 },
+    { 968, 1019, K_INTRO_12 },
+    { 1020, 1042, K_INTRO_13 },
+    { 1043, 1070, K_INTRO_14 },
+    { 1075, 1102, K_INTRO_15 },
+};
+
+static const jvs_cue_t k_intro_ptbr[] = {
+    { 0, 93, K_INTRO_0 },
+    { 94, 135, K_INTRO_1 },
+    { 136, 214, K_INTRO_2 },
+    { 215, 256, K_INTRO_3 },
+    { 257, 329, K_INTRO_4 },
+    { 330, 364, K_INTRO_5 },
+    { 449, 551, K_INTRO_6 },
+    { 552, 593, K_INTRO_7 },
+    { 627, 709, K_INTRO_8 },
+    { 710, 773, K_INTRO_9 },
+    { 852, 901, K_INTRO_10 },
+    { 905, 962, K_INTRO_11 },
+    { 963, 1008, K_INTRO_12 },
+    { 1009, 1031, K_INTRO_13 },
+    { 1032, 1069, K_INTRO_14 },
+    { 1070, 1119, K_INTRO_15 },
 };
 
 static const jvs_cue_t k_new_game[] = {
-    { 368, 399, "Video::The person you're trying to reach is unavailable." },
-    { 400, 433, "Video::Please leave a message after the tone." },
-    { 435, 460, "Video::Anne? Anne, are you there?" },
-    { 461, 493, "Video::It's Jill, pick up the phone!" },
-    { 500, 539, "Video::God, don't tell me your mom was serious? You're in Costa Rica?" },
-    { 545, 586, "Video::Visiting the natives, huh? Sun, sand and adventure." },
-    { 591, 634, "Video::My little Indiana Anne, world traveler extraordinaire." },
-    { 639, 671, "Video::Well, give me a call when you get back, okay?" },
-    { 678, 730, "Video::By the way, I thought you hated flying?" },
+    { 368, 399, K_NEW_GAME_0 },
+    { 400, 433, K_NEW_GAME_1 },
+    { 435, 460, K_NEW_GAME_2 },
+    { 461, 493, K_NEW_GAME_3 },
+    { 500, 539, K_NEW_GAME_4 },
+    { 545, 586, K_NEW_GAME_5 },
+    { 591, 634, K_NEW_GAME_6 },
+    { 639, 671, K_NEW_GAME_7 },
+    { 678, 730, K_NEW_GAME_8 },
+};
+
+static const jvs_cue_t k_new_game_ru[] = {
+    { 372, 404, K_NEW_GAME_0 },
+    { 405, 435, K_NEW_GAME_1 },
+    { 436, 457, K_NEW_GAME_2 },
+    { 458, 478, K_NEW_GAME_3 },
+    { 487, 523, K_NEW_GAME_4 },
+    { 526, 561, K_NEW_GAME_5 },
+    { 580, 632, K_NEW_GAME_6 },
+    { 646, 673, K_NEW_GAME_7 },
+    { 678, 719, K_NEW_GAME_8 },
+};
+
+static const jvs_cue_t k_new_game_es[] = {
+    { 359, 401, K_NEW_GAME_0 },
+    { 402, 436, K_NEW_GAME_1 },
+    { 440, 467, K_NEW_GAME_2 },
+    { 468, 501, K_NEW_GAME_3 },
+    { 502, 555, K_NEW_GAME_4 },
+    { 556, 608, K_NEW_GAME_5 },
+    { 609, 657, K_NEW_GAME_6 },
+    { 658, 689, K_NEW_GAME_7 },
+    { 690, 723, K_NEW_GAME_8 },
+};
+
+static const jvs_cue_t k_new_game_ptbr[] = {
+    { 357, 413, K_NEW_GAME_0 },
+    { 414, 433, K_NEW_GAME_1 },
+    { 442, 471, K_NEW_GAME_2 },
+    { 472, 497, K_NEW_GAME_3 },
+    { 498, 552, K_NEW_GAME_4 },
+    { 553, 603, K_NEW_GAME_5 },
+    { 604, 659, K_NEW_GAME_6 },
+    { 660, 692, K_NEW_GAME_7 },
+    { 693, 722, K_NEW_GAME_8 },
 };
 
 static const jvs_cue_t k_win[] = {
-    { 278, 314, "Video::The person you're trying to reach is unavailable." },
-    { 315, 344, "Video::Please leave a message after the tone." },
-    { 354, 406, "Video::Anne! It's Jill. This is like the eighth message I'm leaving you." },
-    { 413, 439, "Video::I'm sensing some sort of pattern here..." },
-    { 443, 487, "Video::Come on, Anne. Quit being antisocial and pick up the phone sometime." },
-    { 491, 524, "Video::Oh, and by the way, don't even bother calling me" },
-    { 525, 550, "Video::unless you have a damn good excuse." },
+    { 278, 314, K_WIN_0 },
+    { 315, 344, K_WIN_1 },
+    { 354, 406, K_WIN_2 },
+    { 413, 439, K_WIN_3 },
+    { 443, 487, K_WIN_4 },
+    { 491, 524, K_WIN_5 },
+    { 525, 550, K_WIN_6 },
+};
+
+static const jvs_cue_t k_win_ru[] = {
+    { 272, 315, K_WIN_0 },
+    { 316, 337, K_WIN_1 },
+    { 338, 391, K_WIN_2 },
+    { 392, 433, K_WIN_3 },
+    { 438, 488, K_WIN_4 },
+    { 492, 526, K_WIN_5 },
+    { 527, 555, K_WIN_6 },
+};
+
+static const jvs_cue_t k_win_es[] = {
+    { 273, 315, K_WIN_0 },
+    { 316, 351, K_WIN_1 },
+    { 356, 408, K_WIN_2 },
+    { 409, 432, K_WIN_3 },
+    { 433, 475, K_WIN_4 },
+    { 476, 512, K_WIN_5 },
+    { 513, 554, K_WIN_6 },
+};
+
+static const jvs_cue_t k_win_ptbr[] = {
+    { 272, 317, K_WIN_0 },
+    { 318, 346, K_WIN_1 },
+    { 357, 409, K_WIN_2 },
+    { 410, 431, K_WIN_3 },
+    { 435, 479, K_WIN_4 },
+    { 480, 515, K_WIN_5 },
+    { 516, 553, K_WIN_6 },
+};
+
+static const jvs_fingerprint_t k_intro_files[] = {
+    { "en-116", 29473692u, "8df7c0d6c0e809cf17c644b81c4e1ba40fde487227d35dfccb1e22323c1cc915" },
+};
+static const jvs_fingerprint_t k_intro_ru_files[] = {
+    { "ru-116", 27176048u, "e04b66166d33e113f71b2a71c25518a7e6b929c4a133bac14b82066e7df1d616" },
+};
+static const jvs_fingerprint_t k_intro_es_files[] = {
+    { "es-117", 29403480u, "ca8d85c9aa12982193a0fecc76df64381e2124d383be074bb46f8760b0a80c2d" },
+};
+static const jvs_fingerprint_t k_intro_ptbr_files[] = {
+    { "ptbr-117", 29453916u, "1a013e0994f1e6f5b9d0ac755ce06329fb0d0b558d112ee0622823b607f575d7" },
+};
+
+static const jvs_fingerprint_t k_new_game_files[] = {
+    { "en-116", 15502788u, "98a379a48847e603c54ea84ee95c872eafdadbbd49e9a4a8e7d75e6a218b7770" },
+};
+static const jvs_fingerprint_t k_new_game_ru_files[] = {
+    { "ru-116", 13974292u, "d45e2314d561c18851bcd9e2c31df3a3c1ff4ec93fc86b57b7623c6cc6b32798" },
+};
+static const jvs_fingerprint_t k_new_game_es_files[] = {
+    { "es-117", 15510172u, "447bc9f34d11a785a850f7ebb5b4afe06f223decda2f6e6344114210a6dde92a" },
+};
+static const jvs_fingerprint_t k_new_game_ptbr_files[] = {
+    { "ptbr-117", 15496048u, "3c13a9c2e9495a55dbca840bd149cf051933417356f04093d282d261234787a0" },
+};
+
+static const jvs_fingerprint_t k_win_files[] = {
+    { "en-116", 13227104u, "fbe95bb588dc4b639e4b7a3177b25623482dcbb1d6661db5780bf5346bc01ab9" },
+};
+static const jvs_fingerprint_t k_win_ru_files[] = {
+    { "ru-116", 12286452u, "c99528607bf25e2e2812c71ba2a857475a874003256c78c0a38a9acaf2eb18a8" },
+};
+static const jvs_fingerprint_t k_win_es_files[] = {
+    { "es-117", 13247472u, "6a48b4c62a5a08fa6012d67e61effab53e941b8fbe3c03f04073744f4dc70449" },
+};
+static const jvs_fingerprint_t k_win_ptbr_files[] = {
+    { "ptbr-117", 13274428u, "23075ee5cc85eaa46858aaa09cbee6bce2acac2db13d5ac73b63803832605e0e" },
 };
 
 const jvs_timeline_t jvs_timelines[] = {
-    { "tpassintro.smk", 29473692u, "8df7c0d6c0e809cf17c644b81c4e1ba40fde487227d35dfccb1e22323c1cc915", 1585u, CUES(k_intro) },
-    { "newgame.smk", 15502788u, "98a379a48847e603c54ea84ee95c872eafdadbbd49e9a4a8e7d75e6a218b7770", 1085u, CUES(k_new_game) },
-    { "win.smk", 13227104u, "fbe95bb588dc4b639e4b7a3177b25623482dcbb1d6661db5780bf5346bc01ab9", 606u, CUES(k_win) },
+    { "tpassintro.smk", 1585u, CUES(k_intro), CUES(k_intro_files) },
+    { "tpassintro.smk", 1585u, CUES(k_intro_ru), CUES(k_intro_ru_files) },
+    { "tpassintro.smk", 1585u, CUES(k_intro_es), CUES(k_intro_es_files) },
+    { "tpassintro.smk", 1585u, CUES(k_intro_ptbr), CUES(k_intro_ptbr_files) },
+    { "newgame.smk", 1085u, CUES(k_new_game), CUES(k_new_game_files) },
+    { "newgame.smk", 1085u, CUES(k_new_game_ru), CUES(k_new_game_ru_files) },
+    { "newgame.smk", 1085u, CUES(k_new_game_es), CUES(k_new_game_es_files) },
+    { "newgame.smk", 1085u, CUES(k_new_game_ptbr), CUES(k_new_game_ptbr_files) },
+    { "win.smk", 606u, CUES(k_win), CUES(k_win_files) },
+    { "win.smk", 606u, CUES(k_win_ru), CUES(k_win_ru_files) },
+    { "win.smk", 606u, CUES(k_win_es), CUES(k_win_es_files) },
+    { "win.smk", 606u, CUES(k_win_ptbr), CUES(k_win_ptbr_files) },
 };
 const int jvs_timeline_count = (int)(sizeof jvs_timelines / sizeof jvs_timelines[0]);
 
@@ -68,17 +309,30 @@ const jvs_timeline_t* jvs_timeline_named(const char* name) {
 }
 
 int jvs_fingerprint_matches(const jvs_timeline_t* t, uint64_t size, const char* sha256_hex) {
-    return t && sha256_hex && size == t->size && same_name(sha256_hex, t->sha256);
+    if (!t || !sha256_hex) return 0;
+    for (int i = 0; i < t->fingerprint_count; i++)
+        if (size == t->fingerprints[i].size && same_name(sha256_hex, t->fingerprints[i].sha256)) return 1;
+    return 0;
+}
+
+const jvs_timeline_t* jvs_timeline_find(const jvs_timeline_t* table, int count, const char* name, uint64_t size,
+                                        const char* sha256_hex) {
+    if (!table) {
+        table = jvs_timelines;
+        count = jvs_timeline_count;
+    }
+    if (!name) return NULL;
+    for (int i = 0; i < count; i++)
+        if (same_name(name, table[i].name) && jvs_fingerprint_matches(&table[i], size, sha256_hex)) return &table[i];
+    return NULL;
 }
 
 jvs_choice_t jvs_select(int enabled, const char* name, uint64_t size, const char* sha256_hex, const jvs_timeline_t** out) {
-    const jvs_timeline_t* t = jvs_timeline_named(name);
     *out = NULL;
     if (!enabled) return JVS_DISABLED;
-    if (!t) return JVS_NO_DIALOGUE;
-    if (!jvs_fingerprint_matches(t, size, sha256_hex)) return JVS_NOT_RETAIL;
-    *out = t;
-    return JVS_SELECTED;
+    if (!jvs_timeline_named(name)) return JVS_NO_DIALOGUE;
+    *out = jvs_timeline_find(NULL, 0, name, size, sha256_hex);
+    return *out ? JVS_SELECTED : JVS_NOT_RETAIL;
 }
 
 int jvs_cue_at(const jvs_timeline_t* t, int32_t frame) {

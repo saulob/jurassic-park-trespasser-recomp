@@ -1,0 +1,2229 @@
+{
+ "profile": "es-117",
+ "sha256": "cfc95e60fcf8ea505ed586e24002858324308774cc5197bac85205633360f753",
+ "addresses": {
+  "00403520": {
+   "class": "identical",
+   "to": "00403560",
+   "function": "00403520",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:8"
+  },
+  "0040BCC0": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "49 instructions identical; only the object's two fields move: [obj+0xC] -> [obj+0x80], [obj+8] -> [obj+0x7C]",
+   "was": "candidate",
+   "to": "0040BDE0",
+   "where": "src/host/ce_gameplay.c:20"
+  },
+  "0040BD70": {
+   "class": "identical",
+   "to": "0040BEA0",
+   "function": "0040BD70",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:21"
+  },
+  "0040C780": {
+   "class": "identical",
+   "to": "0040C8A0",
+   "function": "0040C780",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:9"
+  },
+  "0040DA00": {
+   "class": "identical",
+   "to": "0040DB20",
+   "function": "0040DA00",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:32"
+  },
+  "0040E4D0": {
+   "class": "identical",
+   "to": "0040E5F0",
+   "function": "0040E4D0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:266"
+  },
+  "0040FD80": {
+   "class": "identical",
+   "to": "0040FE80",
+   "function": "0040FD80",
+   "via": "hash",
+   "where": "src/host/ui_canvas.c:29"
+  },
+  "00410420": {
+   "class": "identical",
+   "to": "00410530",
+   "function": "00410420",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:25"
+  },
+  "00410540": {
+   "class": "identical",
+   "to": "00410650",
+   "function": "00410540",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:31"
+  },
+  "00411B30": {
+   "class": "identical",
+   "to": "00411C60",
+   "function": "00411B30",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:22"
+  },
+  "00411EA0": {
+   "class": "identical",
+   "to": "00411FC0",
+   "function": "00411EA0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:12"
+  },
+  "004121B0": {
+   "class": "identical",
+   "to": "004122D0",
+   "function": "004121B0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:252"
+  },
+  "004128A0": {
+   "class": "identical",
+   "to": "004129C0",
+   "function": "004128A0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:13"
+  },
+  "00413040": {
+   "class": "identical",
+   "to": "00413160",
+   "function": "00413040",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:14"
+  },
+  "00413160": {
+   "class": "identical",
+   "to": "00413280",
+   "function": "00413160",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:28"
+  },
+  "00414100": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "thiscall(this, level), ret 4 in both; builds the level path from the data folder helper (116: registry 'Data Drive' + 'data\\'; ES: helper 0x411C60) and calls the load function with it",
+   "was": "candidate",
+   "to": "00414220",
+   "where": "src/host/debug_menu.c:42"
+  },
+  "004142C0": {
+   "class": "aligned",
+   "to": "004143B0",
+   "function": "004142C0",
+   "via": "call",
+   "where": "src/host/ce_gameplay.c:27"
+  },
+  "00414480": {
+   "class": "identical",
+   "to": "00414580",
+   "function": "00414480",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:40"
+  },
+  "00414570": {
+   "class": "identical",
+   "to": "00414670",
+   "function": "00414570",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:24"
+  },
+  "00414D80": {
+   "class": "identical",
+   "to": "00414E80",
+   "function": "00414D80",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:26"
+  },
+  "00414E80": {
+   "class": "identical",
+   "to": "00414F80",
+   "function": "00414E80",
+   "via": "hash",
+   "where": "src/host/video_test.c:18"
+  },
+  "00414EB0": {
+   "class": "identical",
+   "to": "00414FB0",
+   "function": "00414EB0",
+   "via": "hash",
+   "where": "src/host/video_test.c:17"
+  },
+  "00415330": {
+   "class": "identical",
+   "to": "00415430",
+   "function": "00415330",
+   "via": "hash",
+   "where": "src/host/video_test.c:20"
+  },
+  "00415360": {
+   "class": "identical",
+   "to": "00415460",
+   "function": "00415360",
+   "via": "hash",
+   "where": "src/host/video_test.c:19"
+  },
+  "00415AD0": {
+   "class": "identical",
+   "to": "00415BD0",
+   "function": "00415AD0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:16"
+  },
+  "00417300": {
+   "class": "identical",
+   "to": "00417420",
+   "function": "00417300",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:17"
+  },
+  "00417380": {
+   "class": "identical",
+   "to": "004174A0",
+   "function": "00417380",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:18"
+  },
+  "00417410": {
+   "class": "identical",
+   "to": "00417530",
+   "function": "00417410",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:19"
+  },
+  "004176F0": {
+   "class": "identical",
+   "to": "00417810",
+   "function": "004176F0",
+   "via": "hash",
+   "where": "src/host/guest_ui.c:25"
+  },
+  "00417760": {
+   "class": "identical",
+   "to": "00417880",
+   "function": "00417760",
+   "via": "hash",
+   "where": "src/host/window_host.c:66"
+  },
+  "00417840": {
+   "class": "identical",
+   "to": "00417960",
+   "function": "00417840",
+   "via": "hash",
+   "where": "src/host/window_host.c:69"
+  },
+  "00418700": {
+   "class": "identical",
+   "to": "00418760",
+   "function": "00418700",
+   "via": "hash",
+   "where": "src/host/video_test.c:21"
+  },
+  "00418760": {
+   "class": "identical",
+   "to": "004187C0",
+   "function": "00418760",
+   "via": "hash",
+   "where": "src/host/video_test.c:23"
+  },
+  "00418AE0": {
+   "class": "identical",
+   "to": "00418B40",
+   "function": "00418AE0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:20"
+  },
+  "00419330": {
+   "class": "identical",
+   "to": "0060D880",
+   "function": "00419330",
+   "via": "hash",
+   "where": "src/host/active_ai.c:29"
+  },
+  "004195A0": {
+   "class": "identical",
+   "to": "0060DAC0",
+   "function": "004195A0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:30"
+  },
+  "00419800": {
+   "class": "identical",
+   "to": "0060DD20",
+   "function": "00419800",
+   "via": "hash",
+   "where": "src/host/active_ai.c:31"
+  },
+  "004199D0": {
+   "class": "identical",
+   "to": "0060DEF0",
+   "function": "004199D0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:32"
+  },
+  "00419C60": {
+   "class": "identical",
+   "to": "0060E180",
+   "function": "00419C60",
+   "via": "hash",
+   "where": "src/host/active_ai.c:33"
+  },
+  "00419CE0": {
+   "class": "identical",
+   "to": "0060E200",
+   "function": "00419CE0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:34"
+  },
+  "00419DB0": {
+   "class": "identical",
+   "to": "0060E2D0",
+   "function": "00419DB0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:35"
+  },
+  "00419E30": {
+   "class": "identical",
+   "to": "0060E350",
+   "function": "00419E30",
+   "via": "hash",
+   "where": "src/host/active_ai.c:36"
+  },
+  "0041A200": {
+   "class": "identical",
+   "to": "0060E720",
+   "function": "0041A200",
+   "via": "hash",
+   "where": "src/host/active_ai.c:37"
+  },
+  "0041A520": {
+   "class": "identical",
+   "to": "0060EA40",
+   "function": "0041A520",
+   "via": "hash",
+   "where": "src/host/active_ai.c:54"
+  },
+  "0041AE50": {
+   "class": "identical",
+   "to": "0060F2D0",
+   "function": "0041AE50",
+   "via": "hash",
+   "where": "src/host/active_ai.c:38"
+  },
+  "0041AF00": {
+   "class": "identical",
+   "to": "0060F380",
+   "function": "0041AF00",
+   "via": "hash",
+   "where": "src/host/active_ai.c:39"
+  },
+  "0041BC00": {
+   "class": "aligned",
+   "to": "00610070",
+   "function": "0041BC00",
+   "via": "call",
+   "where": "src/host/active_ai.c:47"
+  },
+  "0041CE10": {
+   "class": "identical",
+   "to": "00615300",
+   "function": "0041CE10",
+   "via": "hash",
+   "where": "src/host/active_ai.c:44"
+  },
+  "0041E1D0": {
+   "class": "identical",
+   "to": "00426FE0",
+   "function": "0041E1D0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:72"
+  },
+  "00421080": {
+   "class": "identical",
+   "to": "00612C60",
+   "function": "00421080",
+   "via": "hash",
+   "where": "src/host/active_ai.c:48"
+  },
+  "004211B0": {
+   "class": "identical",
+   "to": "00612D90",
+   "function": "004211B0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:49"
+  },
+  "00421220": {
+   "class": "identical",
+   "to": "00612E00",
+   "function": "00421220",
+   "via": "hash",
+   "where": "src/host/active_ai.c:51"
+  },
+  "004213F0": {
+   "class": "identical",
+   "to": "00612FB0",
+   "function": "004213F0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:40"
+  },
+  "004218C0": {
+   "class": "identical",
+   "to": "00613400",
+   "function": "004218C0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:41"
+  },
+  "00422650": {
+   "class": "identical",
+   "to": "00613DD0",
+   "function": "00422650",
+   "via": "hash",
+   "where": "src/host/active_ai.c:53"
+  },
+  "004233D0": {
+   "class": "identical",
+   "to": "00614A60",
+   "function": "004233D0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:50"
+  },
+  "00424AB0": {
+   "class": "identical",
+   "to": "00617C90",
+   "function": "00424AB0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:52"
+  },
+  "004395A0": {
+   "class": "identical",
+   "to": "0041D4A0",
+   "function": "004395A0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:34"
+  },
+  "00441D1D": {
+   "class": "identical",
+   "to": "00425FBD",
+   "function": "00441D10",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:6"
+  },
+  "00441D50": {
+   "class": "identical",
+   "to": "00425FF0",
+   "function": "00441D50",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:70"
+  },
+  "00441DA0": {
+   "class": "identical",
+   "to": "00426040",
+   "function": "00441DA0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:69"
+  },
+  "00442380": {
+   "class": "identical",
+   "to": "00426620",
+   "function": "00442380",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:71"
+  },
+  "0044C1B2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'Move, the view and the raised hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:7"
+  },
+  "0044CF9F": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process grab gate': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:8"
+  },
+  "00451212": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process after a pick-up': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:9"
+  },
+  "0045125D": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process hand raise': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:10"
+  },
+  "004512FF": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process 116 raising step': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:11"
+  },
+  "004519A1": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'CPlayer::Process hand steering gate': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:12"
+  },
+  "004546D7": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:13"
+  },
+  "004546E2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:14"
+  },
+  "0045472E": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:15"
+  },
+  "00454734": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'mouse look body turn': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:16"
+  },
+  "00455B6B": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'held jump key': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:17"
+  },
+  "004569C8": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'player impulse jump lifetime': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:18"
+  },
+  "0045B470": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "hand reach (thiscall, st0): byte-identical (masked) to the official 1.1 function; same role",
+   "was": "candidate",
+   "to": "0043ED60",
+   "where": "src/host/patch117_player.c:82"
+  },
+  "0045B916": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'hand reach empty hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:19"
+  },
+  "0045B91C": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'hand reach empty hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:20"
+  },
+  "0045ED80": {
+   "class": "identical",
+   "to": "00442680",
+   "function": "0045ED80",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:40"
+  },
+  "0045F660": {
+   "class": "identical",
+   "to": "00442F60",
+   "function": "0045F660",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:80"
+  },
+  "0045FC10": {
+   "class": "identical",
+   "to": "00443510",
+   "function": "0045FC10",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:81"
+  },
+  "00460CF5": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'player impulse jump lifetime': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:21"
+  },
+  "004610D0": {
+   "class": "identical",
+   "to": "00445B20",
+   "function": "004610D0",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:39"
+  },
+  "00461491": {
+   "class": "identical",
+   "to": "00445EE1",
+   "function": "004610D0",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:22"
+  },
+  "00468710": {
+   "class": "identical",
+   "to": "0044DDD0",
+   "function": "00468710",
+   "via": "hash",
+   "where": "src/host/tutorial_prompts.c:23"
+  },
+  "00468980": {
+   "class": "identical",
+   "to": "0044E040",
+   "function": "00468980",
+   "via": "hash",
+   "where": "src/host/tutorial_prompts.c:24"
+  },
+  "00472B60": {
+   "class": "identical",
+   "to": "004581A0",
+   "function": "00472B60",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:36"
+  },
+  "00475F60": {
+   "class": "identical",
+   "to": "0045B6F0",
+   "function": "00475F60",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:37"
+  },
+  "00477A40": {
+   "class": "identical",
+   "to": "0045D1A0",
+   "function": "00477A40",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:26"
+  },
+  "00477E00": {
+   "class": "identical",
+   "to": "0045D550",
+   "function": "00477E00",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:24"
+  },
+  "00478A30": {
+   "class": "identical",
+   "to": "0045E180",
+   "function": "00478A30",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:28"
+  },
+  "00487300": {
+   "class": "identical",
+   "to": "00461810",
+   "function": "00487300",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:77"
+  },
+  "004877F0": {
+   "class": "identical",
+   "to": "00461D00",
+   "function": "004877F0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:79"
+  },
+  "00487900": {
+   "class": "identical",
+   "to": "00461E10",
+   "function": "00487900",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:78"
+  },
+  "00492200": {
+   "class": "identical",
+   "to": "00470B70",
+   "function": "00492200",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:18"
+  },
+  "0049E530": {
+   "class": "identical",
+   "to": "0047D180",
+   "function": "0049E530",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:42"
+  },
+  "004A24B0": {
+   "class": "identical",
+   "to": "00481280",
+   "function": "004A24B0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:25"
+  },
+  "004CCCE0": {
+   "class": "identical",
+   "to": "004B2850",
+   "function": "004CCCE0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:75"
+  },
+  "004CD090": {
+   "class": "identical",
+   "to": "004B2C00",
+   "function": "004CD090",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:74"
+  },
+  "004DDEFD": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'broad phase pair wake': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:23"
+  },
+  "004E78D2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site 'Foot_IDOF failed jump check': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:24"
+  },
+  "004E85A0": {
+   "class": "identical",
+   "to": "004B75D0",
+   "function": "004E85A0",
+   "via": "hash",
+   "where": "src/host/patch117_physics.c:21"
+  },
+  "004E86B0": {
+   "class": "identical",
+   "to": "004B76E0",
+   "function": "004E86B0",
+   "via": "hash",
+   "where": "src/host/patch117_physics.c:22"
+  },
+  "004EB46B": {
+   "class": "identical",
+   "to": "004BA49B",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:25"
+  },
+  "004EB781": {
+   "class": "identical",
+   "to": "004BA7B1",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:26"
+  },
+  "004EBA7B": {
+   "class": "identical",
+   "to": "004BAAAB",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:27"
+  },
+  "004EBD85": {
+   "class": "identical",
+   "to": "004BADB5",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:28"
+  },
+  "004EC07C": {
+   "class": "identical",
+   "to": "004BB0AC",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:29"
+  },
+  "004EC386": {
+   "class": "identical",
+   "to": "004BB3B6",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:30"
+  },
+  "004EC586": {
+   "class": "identical",
+   "to": "004BB5B6",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:31"
+  },
+  "004EC5A2": {
+   "class": "identical",
+   "to": "004BB5D2",
+   "function": "004EACCB",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:32"
+  },
+  "004EDFA0": {
+   "class": "identical",
+   "to": "004BCFD0",
+   "function": "004EDFA0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:43"
+  },
+  "004F0960": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "jump hand-off: es-117 0x004D6650 is byte-identical (masked) to the official 1.1 function, so the 117 behaviour is native and the override that ports it to 116 is not installed",
+   "was": "candidate",
+   "where": "src/host/guest_override_list.h:44"
+  },
+  "004F3FB0": {
+   "class": "identical",
+   "to": "004D9CF0",
+   "function": "004F3FB0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:45"
+  },
+  "00502970": {
+   "class": "identical",
+   "to": "004E8820",
+   "function": "00502970",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:46"
+  },
+  "00503400": {
+   "class": "identical",
+   "to": "004E92B0",
+   "function": "00503400",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:10"
+  },
+  "005035B0": {
+   "class": "identical",
+   "to": "004E9460",
+   "function": "005035B0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:254"
+  },
+  "00504D20": {
+   "class": "identical",
+   "to": "004EABD0",
+   "function": "00504D20",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:14"
+  },
+  "00504D40": {
+   "class": "identical",
+   "to": "004EABF0",
+   "function": "00504D40",
+   "via": "hash",
+   "where": "src/host/ddraw/d3d11_renderer.c:43"
+  },
+  "00506270": {
+   "class": "identical",
+   "to": "004EC150",
+   "function": "00506270",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:19"
+  },
+  "00506C00": {
+   "class": "identical",
+   "to": "004ECAE0",
+   "function": "00506C00",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:21"
+  },
+  "00506EB0": {
+   "class": "identical",
+   "to": "004ECD90",
+   "function": "00506EB0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:20"
+  },
+  "005072D0": {
+   "class": "identical",
+   "to": "004ED1B0",
+   "function": "005072D0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:16"
+  },
+  "0050C9C0": {
+   "class": "identical",
+   "to": "004F2950",
+   "function": "0050C9C0",
+   "via": "hash",
+   "where": "src/host/polygon_submit.c:36"
+  },
+  "0050E750": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CFont constructor; glyph widths stay at [font+0x10+4*c] (116 fills c=0x20..0xFE at +0x90, ES c=0..0xFE from +0x10); register allocation only",
+   "was": "candidate",
+   "to": "004F46E0",
+   "where": "src/host/game_text.c:15"
+  },
+  "0050E830": {
+   "class": "identical",
+   "to": "004F47B0",
+   "function": "0050E830",
+   "via": "hash",
+   "where": "src/host/game_text.c:17"
+  },
+  "0050E8C0": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "text layout; frame 0xAC -> 0xB0 and stack slots shift; the width index is a signed char in 116 (movsx) and unsigned in ES (and 0xFF)",
+   "was": "candidate",
+   "to": "004F4840",
+   "where": "src/host/game_text.c:18"
+  },
+  "0050EAF0": {
+   "class": "identical",
+   "to": "004F4A80",
+   "function": "0050EAF0",
+   "via": "hash",
+   "where": "src/host/game_text.c:16"
+  },
+  "00513660": {
+   "class": "identical",
+   "to": "004F9620",
+   "function": "00513660",
+   "via": "hash",
+   "where": "src/host/host_policy.c:348"
+  },
+  "00514070": {
+   "class": "identical",
+   "to": "004FA030",
+   "function": "00514070",
+   "via": "hash",
+   "where": "src/host/host_policy.c:348"
+  },
+  "00514150": {
+   "class": "identical",
+   "to": "004FA110",
+   "function": "00514150",
+   "via": "hash",
+   "where": "src/host/host_policy.c:348"
+  },
+  "00514FE0": {
+   "class": "identical",
+   "to": "004FAFA0",
+   "function": "00514FE0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:23"
+  },
+  "0051FD90": {
+   "class": "aligned",
+   "to": "00505D60",
+   "function": "0051FD90",
+   "via": "call",
+   "where": "src/host/guest_override_list.h:57"
+  },
+  "005242C0": {
+   "class": "identical",
+   "to": "0050A2B0",
+   "function": "005242C0",
+   "via": "hash",
+   "where": "src/host/ce_graphics.c:11"
+  },
+  "00543830": {
+   "class": "identical",
+   "to": "00529810",
+   "function": "00543830",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:27"
+  },
+  "00547710": {
+   "class": "identical",
+   "to": "0052D6F0",
+   "function": "00547710",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:22"
+  },
+  "005477E0": {
+   "class": "identical",
+   "to": "0052D7C0",
+   "function": "005477E0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:17"
+  },
+  "00548150": {
+   "class": "identical",
+   "to": "0052E130",
+   "function": "00548150",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:33"
+  },
+  "00555AB0": {
+   "class": "identical",
+   "to": "0053BB70",
+   "function": "00555AB0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:242"
+  },
+  "00559240": {
+   "class": "identical",
+   "to": "0053F300",
+   "function": "00559240",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:62"
+  },
+  "0055A4E0": {
+   "class": "identical",
+   "to": "005405A0",
+   "function": "0055A4E0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:63"
+  },
+  "0055F1D0": {
+   "class": "identical",
+   "to": "00545290",
+   "function": "0055F1D0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:241"
+  },
+  "0055F540": {
+   "class": "aligned",
+   "to": "00545610",
+   "function": "0055F540",
+   "via": "vtable",
+   "where": "src/host/cpu_polygons.c:9"
+  },
+  "00563890": {
+   "class": "identical",
+   "to": "00549960",
+   "function": "00563890",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:31"
+  },
+  "005668C0": {
+   "class": "identical",
+   "to": "0054C990",
+   "function": "005668C0",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:29"
+  },
+  "00568EF0": {
+   "class": "identical",
+   "to": "0054EFC0",
+   "function": "00568EF0",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:30"
+  },
+  "0057B7B0": {
+   "class": "identical",
+   "to": "00561880",
+   "function": "0057B7B0",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:27"
+  },
+  "0057DB50": {
+   "class": "identical",
+   "to": "00563C20",
+   "function": "0057DB50",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:28"
+  },
+  "005F6100": {
+   "class": "identical",
+   "to": "005DC040",
+   "function": "005F6100",
+   "via": "hash",
+   "where": "src/host/objectives.c:21"
+  },
+  "005F80B0": {
+   "class": "identical",
+   "to": "005DE210",
+   "function": "005F80B0",
+   "via": "hash",
+   "where": "src/host/gamepad.c:22"
+  },
+  "005F8A20": {
+   "class": "identical",
+   "to": "005DEFA0",
+   "function": "005F8A20",
+   "via": "hash",
+   "where": "src/host/engine_heaps.c:11"
+  },
+  "005F8B10": {
+   "class": "identical",
+   "to": "005DF090",
+   "function": "005F8B10",
+   "via": "hash",
+   "where": "src/host/engine_heaps.c:12"
+  },
+  "00607C10": {
+   "class": "identical",
+   "to": "005EDC40",
+   "function": "00607C10",
+   "via": "hash",
+   "where": "src/host/objectives.c:22"
+  },
+  "00607E90": {
+   "class": "identical",
+   "to": "005EDEC0",
+   "function": "00607E90",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:46"
+  },
+  "00608150": {
+   "class": "identical",
+   "to": "005EE180",
+   "function": "00608150",
+   "via": "hash",
+   "where": "src/host/active_ai.c:56"
+  },
+  "00608170": {
+   "class": "identical",
+   "to": "005EE1A0",
+   "function": "00608170",
+   "via": "hash",
+   "where": "src/host/active_ai.c:57"
+  },
+  "0060CB70": {
+   "class": "identical",
+   "to": "005F3040",
+   "function": "0060CB70",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:35"
+  },
+  "0060E3F0": {
+   "class": "identical",
+   "to": "005F4970",
+   "function": "0060E3F0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:73"
+  },
+  "0060FC10": {
+   "class": "identical",
+   "to": "005F6190",
+   "function": "0060FC10",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:74"
+  },
+  "00614A60": {
+   "class": "identical",
+   "to": "005FAFE0",
+   "function": "00614A60",
+   "via": "hash",
+   "where": "src/host/active_ai.c:55"
+  },
+  "00614B10": {
+   "class": "identical",
+   "to": "005FB090",
+   "function": "00614B10",
+   "via": "hash",
+   "where": "src/host/cheats.c:43"
+  },
+  "00617F20": {
+   "class": "identical",
+   "to": "005FE4E0",
+   "function": "00617F20",
+   "via": "hash",
+   "where": "src/host/cheats.c:42"
+  },
+  "006264D0": {
+   "class": "identical",
+   "to": "0060CBF0",
+   "function": "006264D0",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:34"
+  },
+  "00626B8C": {
+   "class": "identical",
+   "to": "0060D2AC",
+   "function": "00626B8C",
+   "via": "hash",
+   "where": "src/host/active_ai.c:43"
+  },
+  "00626BA0": {
+   "class": "identical",
+   "to": "0060D2C0",
+   "function": "00626BA0",
+   "via": "hash",
+   "where": "src/host/polygon_submit.c:35"
+  },
+  "00630D90": {
+   "class": "identical",
+   "to": "00631FA0",
+   "function": "00630D90",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:75"
+  },
+  "00638670": {
+   "class": "identical",
+   "to": "00639970",
+   "function": "00638670",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:76"
+  },
+  "0063DC60": {
+   "class": "identical",
+   "to": "0063FC60",
+   "function": "0063DC60",
+   "via": "hash",
+   "where": "src/host/bump_spans.h:11"
+  },
+  "00640FE0": {
+   "class": "identical",
+   "to": "00642FE0",
+   "function": "00640FE0",
+   "via": "hash",
+   "where": "src/host/bump_spans.h:9"
+  },
+  "0064506C": {
+   "class": "data",
+   "to": "0064706C",
+   "votes": 6,
+   "where": "src/host/game_text.c:31"
+  },
+  "0064554C": {
+   "class": "data",
+   "to": "0064754C",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:48"
+  },
+  "006455B0": {
+   "class": "data",
+   "to": "006475B0",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:54"
+  },
+  "00645650": {
+   "class": "data",
+   "to": "00647650",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:49"
+  },
+  "00645758": {
+   "class": "data",
+   "to": "00647758",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:50"
+  },
+  "006457B8": {
+   "class": "data",
+   "to": "006477B8",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:51"
+  },
+  "00645864": {
+   "class": "data",
+   "to": "00647864",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:52"
+  },
+  "006458DC": {
+   "class": "data",
+   "to": "006478DC",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:53"
+  },
+  "00645974": {
+   "class": "data",
+   "to": "00647974",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:55"
+  },
+  "006459CC": {
+   "class": "data",
+   "to": "006479CC",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:56"
+  },
+  "00645B4C": {
+   "class": "data",
+   "to": "00647B4C",
+   "votes": 35002,
+   "where": "src/host/guest_ui.c:53"
+  },
+  "00645C34": {
+   "class": "data",
+   "to": "00647C34",
+   "votes": 7519,
+   "where": "src/host/polygon_submit.c:23"
+  },
+  "00645C3C": {
+   "class": "data",
+   "to": "00647C3C",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:141"
+  },
+  "00645D34": {
+   "class": "data",
+   "to": "00647D34",
+   "votes": 10,
+   "where": "src/host/frontend_hd.c:144"
+  },
+  "00645E24": {
+   "class": "data",
+   "to": "00647E24",
+   "votes": 3,
+   "where": "src/host/frontend_hd.c:144"
+  },
+  "00645F38": {
+   "class": "data",
+   "to": "00647F38",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:60"
+  },
+  "006460D0": {
+   "class": "data",
+   "to": "006480D0",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:143"
+  },
+  "006461B8": {
+   "class": "data",
+   "to": "006481B8",
+   "votes": 3,
+   "where": "src/host/frontend_hd.c:144"
+  },
+  "006462A8": {
+   "class": "data",
+   "to": "006482A8",
+   "votes": 35002,
+   "where": "src/host/ce_gameplay.c:33"
+  },
+  "00646390": {
+   "class": "data",
+   "to": "00648390",
+   "votes": 3,
+   "where": "src/host/frontend_hd.c:145"
+  },
+  "00646480": {
+   "class": "data",
+   "to": "00648480",
+   "votes": 2,
+   "where": "src/host/frontend_hd.c:145"
+  },
+  "00646570": {
+   "class": "data",
+   "to": "00648570",
+   "votes": 468,
+   "where": "src/host/polygon_submit.c:25"
+  },
+  "006466B8": {
+   "class": "data",
+   "to": "006486B8",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:141"
+  },
+  "006467A0": {
+   "class": "data",
+   "to": "006487A0",
+   "votes": 35002,
+   "where": "src/host/guest_ui.c:47"
+  },
+  "00646888": {
+   "class": "data",
+   "to": "00648888",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:59"
+  },
+  "00646970": {
+   "class": "data",
+   "to": "00648970",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:143"
+  },
+  "00646A58": {
+   "class": "data",
+   "to": "00648A58",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:57"
+  },
+  "00646B40": {
+   "class": "data",
+   "to": "00648B40",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:142"
+  },
+  "00646C28": {
+   "class": "data",
+   "to": "00648C28",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:58"
+  },
+  "00646D10": {
+   "class": "data",
+   "to": "00648D10",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:145"
+  },
+  "00646FC8": {
+   "class": "data",
+   "to": "00648FC8",
+   "votes": 35002,
+   "where": "src/host/guest_ui.c:48"
+  },
+  "006474D0": {
+   "class": "data",
+   "to": "0064A854",
+   "votes": 6180,
+   "where": "src/host/polygon_submit.c:21"
+  },
+  "006474D4": {
+   "class": "data",
+   "to": "0064ACB0",
+   "votes": 1603,
+   "where": "src/host/polygon_submit.c:22"
+  },
+  "00647B54": {
+   "class": "data",
+   "to": "0064EB30",
+   "votes": 27,
+   "where": "src/host/water_kernels.c:18"
+  },
+  "00647F58": {
+   "class": "data",
+   "to": "0064EB70",
+   "votes": 41,
+   "where": "src/host/physics_fixes.c:31"
+  },
+  "0064B22C": {
+   "class": "data",
+   "to": "0064C490",
+   "votes": 35006,
+   "where": "src/host/host_policy.h:356"
+  },
+  "0064B3C8": {
+   "class": "data",
+   "to": "0064C62C",
+   "votes": 35002,
+   "where": "src/host/host_policy.h:353"
+  },
+  "0064B9B0": {
+   "class": "data",
+   "to": "0064CC18",
+   "votes": 4,
+   "where": "src/host/physics_fixes.c:33"
+  },
+  "0064C49C": {
+   "class": "data",
+   "to": "0064DBA8",
+   "votes": 646,
+   "where": "src/host/polygon_submit.c:24"
+  },
+  "0064CAEC": {
+   "class": "data",
+   "to": "0064DDA8",
+   "votes": 35003,
+   "where": "src/host/host_policy.h:354"
+  },
+  "0064CC54": {
+   "class": "data",
+   "to": "0064DF10",
+   "votes": 35002,
+   "where": "src/host/host_policy.h:355"
+  },
+  "0064CEA8": {
+   "class": "data",
+   "to": "0064E164",
+   "votes": 35002,
+   "where": "src/host/host_policy.h:357"
+  },
+  "0064D644": {
+   "class": "data",
+   "to": "0064E7A0",
+   "votes": 35001,
+   "where": "src/host/cheats.c:31"
+  },
+  "0064D86C": {
+   "class": "data",
+   "to": "0064E650",
+   "votes": 5,
+   "where": "src/host/patch117_physics.c:40"
+  },
+  "0064D970": {
+   "class": "data",
+   "to": "0064EC68",
+   "votes": 1,
+   "where": "src/host/physics_fixes.c:32"
+  },
+  "0064DB54": {
+   "class": "data",
+   "to": "0064EE54",
+   "votes": 35002,
+   "where": "src/host/cpu_polygons.c:15"
+  },
+  "0064DBCC": {
+   "class": "data",
+   "to": "0064EECC",
+   "votes": 102,
+   "where": "src/host/polygon_submit.c:28"
+  },
+  "0064E458": {
+   "class": "data",
+   "to": "0064F760",
+   "votes": 1,
+   "where": "src/host/engine_limits.c:13"
+  },
+  "0064E708": {
+   "class": "data",
+   "to": "0064FA18",
+   "votes": 150,
+   "where": "src/host/polygon_submit.c:29"
+  },
+  "0064E70C": {
+   "class": "data",
+   "to": "0064FA1C",
+   "votes": 34,
+   "where": "src/host/polygon_submit.c:26"
+  },
+  "0064E710": {
+   "class": "data",
+   "to": "0064FA20",
+   "votes": 66,
+   "where": "src/host/polygon_submit.c:27"
+  },
+  "00651C20": {
+   "class": "data",
+   "to": "00653C50",
+   "votes": 3,
+   "where": "src/host/occlusion_kernel.c:11"
+  },
+  "0065F888": {
+   "class": "data",
+   "to": "0066177C",
+   "votes": 1,
+   "where": "src/host/video_subtitles.c:18"
+  },
+  "006603D8": {
+   "class": "data",
+   "to": "006622C0",
+   "votes": 4,
+   "where": "src/host/gamepad.c:31"
+  },
+  "00660B88": {
+   "class": "data",
+   "to": "006629B0",
+   "votes": 1,
+   "where": "src/host/video_test_state.c:5"
+  },
+  "00660B98": {
+   "class": "data",
+   "to": "006629C0",
+   "votes": 4,
+   "where": "src/host/video_test_state.c:7"
+  },
+  "00660BA8": {
+   "class": "data",
+   "to": "006629D0",
+   "votes": 3,
+   "where": "src/host/video_test_state.c:8"
+  },
+  "006610D0": {
+   "class": "data",
+   "to": "00662F00",
+   "votes": 1,
+   "where": "src/host/loading_hd.c:29"
+  },
+  "00661298": {
+   "class": "data",
+   "to": "006630C8",
+   "votes": 1,
+   "where": "src/host/video_test_state.c:6"
+  },
+  "00661570": {
+   "class": "data",
+   "to": "0066DAD4",
+   "votes": 4,
+   "where": "src/host/active_ai.c:17"
+  },
+  "00661758": {
+   "class": "data",
+   "to": "0066DB30",
+   "votes": 1,
+   "where": "src/host/active_ai.c:21"
+  },
+  "006634EC": {
+   "class": "data",
+   "to": "00664614",
+   "votes": 3,
+   "where": "src/host/engine_limits.c:14"
+  },
+  "0066424C": {
+   "class": "data",
+   "to": "00664FCC",
+   "votes": 4,
+   "where": "src/host/terrain_quality.c:24"
+  },
+  "006648F4": {
+   "class": "data",
+   "to": "006656A4",
+   "votes": 5,
+   "where": "src/host/engine_limits.c:43"
+  },
+  "00665130": {
+   "class": "data",
+   "to": "00666324",
+   "votes": 18,
+   "where": "src/host/active_ai.c:19"
+  },
+  "00668500": {
+   "class": "data",
+   "to": "00669530",
+   "votes": 69,
+   "where": "src/host/patch117_physics.c:51"
+  },
+  "006699F8": {
+   "class": "data",
+   "to": "0066AC50",
+   "votes": 461,
+   "where": "src/host/bump_spans.c:5"
+  },
+  "00669B90": {
+   "class": "data",
+   "to": "0066ADE8",
+   "votes": 3490,
+   "where": "src/host/guest_ui.c:22"
+  },
+  "0066AE78": {
+   "class": "data",
+   "to": "0066C0D0",
+   "votes": 8,
+   "where": "src/host/tutorial_prompts.c:31"
+  },
+  "0066C4E8": {
+   "class": "data",
+   "to": "0066D740",
+   "votes": 1,
+   "where": "src/host/terrain_quality.c:17"
+  },
+  "0066CC98": {
+   "class": "data",
+   "to": "0066EAE0",
+   "votes": 11,
+   "where": "src/host/occlusion_kernel.c:10"
+  },
+  "0066DE4C": {
+   "class": "data",
+   "to": "0066FC94",
+   "votes": 2,
+   "where": "src/host/guest_ui.c:29"
+  },
+  "0066E010": {
+   "class": "data",
+   "to": "0066FE58",
+   "votes": 31,
+   "where": "src/host/frontend_hd.c:24"
+  },
+  "0066E05C": {
+   "class": "data",
+   "to": "0066FEA4",
+   "votes": 32,
+   "where": "src/host/frontend_hd.c:709"
+  },
+  "0066E338": {
+   "class": "data",
+   "to": "00670180",
+   "votes": 62,
+   "where": "src/host/ce_gameplay.c:15"
+  },
+  "0066E342": {
+   "class": "data",
+   "to": "0067018A",
+   "votes": 1,
+   "where": "src/host/debug_menu.c:39"
+  },
+  "0066E77C": {
+   "class": "data",
+   "to": "00743534",
+   "votes": 306,
+   "where": "src/host/active_ai.c:15"
+  },
+  "0066E78C": {
+   "class": "data",
+   "to": "00743538",
+   "votes": 9,
+   "where": "src/host/active_ai.c:24"
+  },
+  "0066E790": {
+   "class": "data",
+   "to": "0074353C",
+   "votes": 16,
+   "where": "src/host/active_ai.c:23"
+  },
+  "0066E794": {
+   "class": "data",
+   "to": "00743540",
+   "votes": 22,
+   "where": "src/host/active_ai.c:22"
+  },
+  "0066E9F0": {
+   "class": "data",
+   "to": "00670568",
+   "votes": 29,
+   "where": "src/host/ce_gameplay.c:59"
+  },
+  "0066EB00": {
+   "class": "data",
+   "to": "00670688",
+   "votes": 107,
+   "where": "src/host/ce_gameplay.c:62"
+  },
+  "0066ECC0": {
+   "class": "data",
+   "to": "00670848",
+   "votes": 1,
+   "where": "src/host/cheats.c:35"
+  },
+  "0066ED28": {
+   "class": "data",
+   "to": "006708B4",
+   "votes": 20,
+   "where": "src/host/patch117_player.c:53"
+  },
+  "0066ED50": {
+   "class": "data",
+   "to": "006708DC",
+   "votes": 29,
+   "where": "src/host/patch117_player.c:54"
+  },
+  "0066ED67": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning byte read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B8C",
+   "was": "unresolved",
+   "where": "src/host/patch117_player.c:52"
+  },
+  "0066ED8C": {
+   "class": "data",
+   "to": "00670918",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:48"
+  },
+  "0066ED90": {
+   "class": "data",
+   "to": "0067091C",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:49"
+  },
+  "0066ED94": {
+   "class": "data",
+   "to": "00670920",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:50"
+  },
+  "0066ED98": {
+   "class": "data",
+   "to": "00670924",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:51"
+  },
+  "0066EF00": {
+   "class": "data",
+   "to": "00670A8C",
+   "votes": 30,
+   "where": "src/host/patch117_player.c:55"
+  },
+  "0066EF10": {
+   "class": "data",
+   "to": "00670AA8",
+   "votes": 14,
+   "where": "src/host/patch117_player.c:56"
+  },
+  "0066EF20": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning field read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B98",
+   "was": "unresolved",
+   "where": "src/host/patch117_player.c:57"
+  },
+  "0066EF64": {
+   "class": "data",
+   "to": "00670B04",
+   "votes": 48,
+   "where": "src/host/active_ai.c:16"
+  },
+  "0066F01C": {
+   "class": "data",
+   "to": "00670BCC",
+   "votes": 4,
+   "where": "src/host/objectives.c:18"
+  },
+  "0066F03C": {
+   "class": "data",
+   "to": "00670BEC",
+   "votes": 10,
+   "where": "src/host/tutorial_prompts.c:22"
+  },
+  "0066F510": {
+   "class": "data",
+   "to": "006710C0",
+   "votes": 2,
+   "where": "src/host/engine_limits.c:45"
+  },
+  "0066F9B0": {
+   "class": "data",
+   "to": "00671408",
+   "votes": 1,
+   "where": "src/host/terrain_quality.c:27"
+  },
+  "0066F9C4": {
+   "class": "data",
+   "to": "0067141C",
+   "votes": 18,
+   "where": "src/host/terrain_quality.c:26"
+  },
+  "0066FAD8": {
+   "class": "data",
+   "to": "00671530",
+   "votes": 12,
+   "where": "src/host/terrain_quality.c:15"
+  },
+  "0066FB68": {
+   "class": "data",
+   "to": "006715C0",
+   "votes": 10,
+   "where": "src/host/terrain_quality.c:16"
+  },
+  "0066FB78": {
+   "class": "data",
+   "to": "006715D0",
+   "votes": 10,
+   "where": "src/host/terrain_quality.c:14"
+  },
+  "006715A4": {
+   "class": "data",
+   "to": "0067314C",
+   "votes": 112,
+   "where": "src/host/patch117_player.c:73"
+  },
+  "00675A40": {
+   "class": "data",
+   "to": "006775E8",
+   "votes": 256,
+   "where": "src/host/patch117_player.c:76"
+  },
+  "0067A088": {
+   "class": "data",
+   "to": "006D00F8",
+   "votes": 9,
+   "where": "src/host/active_ai.c:20"
+  },
+  "0067AE68": {
+   "class": "data",
+   "to": "006D016C",
+   "votes": 26,
+   "where": "src/host/physics_watch.c:49"
+  },
+  "0067AE90": {
+   "class": "data",
+   "to": "006D0194",
+   "votes": 83,
+   "where": "src/host/physics_watch.c:47"
+  },
+  "0067AF5C": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the dword holding the voluntary-jump byte: the byte 0x0067AF5D pairs with 0x006D0261 in 27 aligned references",
+   "was": "unresolved",
+   "to": "006D0260",
+   "where": "src/host/cheats.c:45"
+  },
+  "0067AF5D": {
+   "class": "data",
+   "to": "006D0261",
+   "votes": 27,
+   "where": "src/host/patch117_player.c:23"
+  },
+  "0067AFA0": {
+   "class": "data",
+   "to": "006D02AC",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:20"
+  },
+  "0067AFA4": {
+   "class": "data",
+   "to": "006D02B0",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:21"
+  },
+  "0067AFA8": {
+   "class": "data",
+   "to": "006D02B4",
+   "votes": 73,
+   "where": "src/host/cheats.c:44"
+  },
+  "0067B0C0": {
+   "class": "data",
+   "to": "0067BCA8",
+   "votes": 9,
+   "where": "src/host/physics_fixes.c:28"
+  },
+  "00699D40": {
+   "class": "data",
+   "to": "0069A928",
+   "votes": 169,
+   "where": "src/host/patch117_physics.c:23"
+  },
+  "0069A138": {
+   "class": "data",
+   "to": "0069AD20",
+   "votes": 7,
+   "where": "src/host/active_ai.c:26"
+  },
+  "006CD960": {
+   "class": "data",
+   "to": "006CE548",
+   "votes": 82,
+   "where": "src/host/patch117_physics.c:41"
+  },
+  "006CD964": {
+   "class": "data",
+   "to": "006CE54C",
+   "votes": 54,
+   "where": "src/host/patch117_physics.c:42"
+  },
+  "006CD968": {
+   "class": "data",
+   "to": "006CE550",
+   "votes": 54,
+   "where": "src/host/patch117_physics.c:43"
+  },
+  "006CD96C": {
+   "class": "data",
+   "to": "006CE554",
+   "votes": 55,
+   "where": "src/host/patch117_physics.c:44"
+  },
+  "006CD974": {
+   "class": "data",
+   "to": "006CE55C",
+   "votes": 75,
+   "where": "src/host/patch117_physics.c:45"
+  },
+  "006CD978": {
+   "class": "data",
+   "to": "006CE560",
+   "votes": 69,
+   "where": "src/host/patch117_physics.c:46"
+  },
+  "006CD97C": {
+   "class": "data",
+   "to": "006CE564",
+   "votes": 146,
+   "where": "src/host/patch117_physics.c:47"
+  },
+  "006CD984": {
+   "class": "data",
+   "to": "006CE56C",
+   "votes": 79,
+   "where": "src/host/patch117_physics.c:48"
+  },
+  "006CD988": {
+   "class": "data",
+   "to": "006CE570",
+   "votes": 79,
+   "where": "src/host/patch117_physics.c:49"
+  },
+  "006CD98C": {
+   "class": "data",
+   "to": "006CE574",
+   "votes": 222,
+   "where": "src/host/patch117_physics.c:50"
+  },
+  "006CE290": {
+   "class": "data",
+   "to": "006D0BD8",
+   "votes": 53,
+   "where": "src/host/physics_fixes.c:15"
+  },
+  "006CEAB8": {
+   "class": "data",
+   "to": "006D1400",
+   "votes": 1,
+   "where": "src/host/physics_fixes.c:24"
+  },
+  "006CF198": {
+   "class": "data",
+   "to": "006D1AE0",
+   "votes": 220,
+   "where": "src/host/physics_fixes.c:17"
+  },
+  "006D0A80": {
+   "class": "data",
+   "to": "006D33E8",
+   "votes": 5,
+   "where": "src/host/physics_watch.c:53"
+  },
+  "006D0A84": {
+   "class": "data",
+   "to": "006D33EC",
+   "votes": 1,
+   "where": "src/host/physics_watch.c:54"
+  },
+  "006D0E98": {
+   "class": "data",
+   "to": "006D3808",
+   "votes": 43,
+   "where": "src/host/engine_limits.c:30"
+  },
+  "006D0E99": {
+   "class": "data",
+   "to": "006D3809",
+   "votes": 94,
+   "where": "src/host/active_ai.c:18"
+  },
+  "006D0E9C": {
+   "class": "data",
+   "to": "006D380C",
+   "votes": 695,
+   "where": "src/host/polygon_submit.c:11"
+  },
+  "006D0F1C": {
+   "class": "data",
+   "to": "006D388C",
+   "votes": 4,
+   "where": "src/host/engine_limits.c:15"
+  },
+  "006D1461": {
+   "class": "data",
+   "to": "006D3DD1",
+   "votes": 14,
+   "where": "src/host/terrain_quality.c:25"
+  },
+  "006D2040": {
+   "class": "data",
+   "to": "006D49B0",
+   "votes": 21,
+   "where": "src/host/engine_limits.c:33"
+  },
+  "006D2101": {
+   "class": "data",
+   "to": "006D4A71",
+   "votes": 245,
+   "where": "src/host/polygon_submit.c:14"
+  },
+  "006D2103": {
+   "class": "data",
+   "to": "006D4A73",
+   "votes": 202,
+   "where": "src/host/polygon_submit.c:15"
+  },
+  "006D2104": {
+   "class": "data",
+   "to": "006D4A74",
+   "votes": 238,
+   "where": "src/host/polygon_submit.c:16"
+  },
+  "006D2108": {
+   "class": "data",
+   "to": "006D4A78",
+   "votes": 67,
+   "where": "src/host/polygon_submit.c:12"
+  },
+  "006D2109": {
+   "class": "data",
+   "to": "006D4A79",
+   "votes": 66,
+   "where": "src/host/polygon_submit.c:13"
+  },
+  "006D2224": {
+   "class": "data",
+   "to": "006D4B94",
+   "votes": 27,
+   "where": "src/host/ce_gameplay.c:55"
+  },
+  "00732874": {
+   "class": "data",
+   "to": "007351E4",
+   "votes": 174,
+   "where": "src/host/polygon_submit.c:17"
+  },
+  "00732878": {
+   "class": "data",
+   "to": "007351E8",
+   "votes": 172,
+   "where": "src/host/polygon_submit.c:18"
+  },
+  "00732978": {
+   "class": "data",
+   "to": "007352E8",
+   "votes": 26,
+   "where": "src/host/ce_graphics.c:17"
+  },
+  "00732EFC": {
+   "class": "data",
+   "to": "0073586C",
+   "votes": 3,
+   "where": "src/host/host_policy.c:425"
+  },
+  "00732F1C": {
+   "class": "data",
+   "to": "0073588C",
+   "votes": 6,
+   "where": "src/host/host_policy.c:428"
+  },
+  "00732F34": {
+   "class": "data",
+   "to": "007358A4",
+   "votes": 7,
+   "where": "src/host/host_policy.c:427"
+  },
+  "00732F4C": {
+   "class": "data",
+   "to": "007358BC",
+   "votes": 3,
+   "where": "src/host/host_policy.c:426"
+  },
+  "00737190": {
+   "class": "data",
+   "to": "00739B00",
+   "votes": 1,
+   "where": "src/host/engine_limits.c:44"
+  },
+  "007371A0": {
+   "class": "data",
+   "to": "00739B10",
+   "votes": 12,
+   "where": "src/host/engine_limits.c:29"
+  },
+  "00737438": {
+   "class": "data",
+   "to": "00739DA8",
+   "votes": 11249,
+   "where": "src/host/cpu_polygons.c:17"
+  },
+  "00737E40": {
+   "class": "data",
+   "to": "0073A7B0",
+   "votes": 7792,
+   "where": "src/host/bump_spans.c:8"
+  },
+  "00737E90": {
+   "class": "data",
+   "to": "0073A800",
+   "votes": 7792,
+   "where": "src/host/bump_spans.c:7"
+  },
+  "00737EA0": {
+   "class": "data",
+   "to": "0073A810",
+   "votes": 2939,
+   "where": "src/host/bump_spans.c:4"
+  },
+  "00737EC4": {
+   "class": "data",
+   "to": "0073A834",
+   "votes": 32,
+   "where": "src/host/bump_spans.c:10"
+  },
+  "00737EEC": {
+   "class": "data",
+   "to": "0073A85C",
+   "votes": 2459,
+   "where": "src/host/cpu_polygons.c:18"
+  },
+  "00737F34": {
+   "class": "data",
+   "to": "0073A8A4",
+   "votes": 986,
+   "where": "src/host/bump_spans.c:6"
+  },
+  "00737F68": {
+   "class": "data",
+   "to": "0073A8D8",
+   "votes": 316,
+   "where": "src/host/bump_spans.c:9"
+  },
+  "007382B8": {
+   "class": "data",
+   "to": "0073AC28",
+   "votes": 144,
+   "where": "src/host/polygon_submit.c:19"
+  },
+  "007382BC": {
+   "class": "data",
+   "to": "0073AC2C",
+   "votes": 144,
+   "where": "src/host/polygon_submit.c:20"
+  },
+  "0073DC40": {
+   "class": "data",
+   "to": "007405B0",
+   "votes": 242,
+   "where": "src/host/game_text.c:19"
+  },
+  "0073F34C": {
+   "class": "data",
+   "to": "00741CBC",
+   "votes": 147,
+   "where": "src/host/ce_gameplay.c:58"
+  },
+  "0073F350": {
+   "class": "data",
+   "to": "00741CC0",
+   "votes": 29,
+   "where": "src/host/tutorial_prompts.c:25"
+  },
+  "0073F444": {
+   "class": "data",
+   "to": "00741DB4",
+   "votes": 250,
+   "where": "src/host/ce_gameplay.c:16"
+  },
+  "0073F600": {
+   "class": "data",
+   "to": "00741F70",
+   "votes": 17,
+   "where": "src/host/debug_menu.c:36"
+  },
+  "0073F614": {
+   "class": "data",
+   "to": "00741F84",
+   "votes": 8,
+   "where": "src/host/debug_menu.c:37"
+  },
+  "0073F708": {
+   "class": "data",
+   "to": "00742068",
+   "votes": 4,
+   "where": "src/host/water_kernels.c:12"
+  },
+  "0073F70C": {
+   "class": "data",
+   "to": "0074206C",
+   "votes": 3,
+   "where": "src/host/water_kernels.c:13"
+  },
+  "0073F710": {
+   "class": "data",
+   "to": "00742070",
+   "votes": 4,
+   "where": "src/host/water_kernels.c:14"
+  },
+  "007410F8": {
+   "class": "data",
+   "to": "00743D18",
+   "votes": 21,
+   "where": "src/host/occlusion_kernel.c:13"
+  },
+  "007410FC": {
+   "class": "data",
+   "to": "00743D1C",
+   "votes": 8,
+   "where": "src/host/occlusion_kernel.c:14"
+  },
+  "00741110": {
+   "class": "data",
+   "to": "00743D30",
+   "votes": 18,
+   "where": "src/host/occlusion_kernel.c:12"
+  }
+ }
+}

@@ -2,6 +2,7 @@
  * DEBUG_SAULO: temporary telemetry of Anne's body and hand, read from memory only. The pelvis state is
  * Pel[pelvis][dof][value, velocity, acceleration] (OT pelvis_def.h: BODY 0, BODY_EULER 3, MOUTH 21, RIGHT_HAND 25).
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <math.h>
@@ -14,10 +15,10 @@
 #include "physics_watch.h"
 #include "physics_watch_policy.h"
 
-#define PLAYER 0x0066EF64u
-#define CURRENT_HINT 0x0066F01Cu
-#define APP_SCENE 0x0066E342u
-#define WORLD 0x0073F444u
+#define PLAYER GVA(0x0066EF64)
+#define CURRENT_HINT GVA(0x0066F01C)
+#define APP_SCENE GVA(0x0066E342)
+#define WORLD GVA(0x0073F444)
 #define WORLD_CAMERA 0x14u
 #define PRESENCE 0x30u
 #define PLACEMENT_BYTES 28u
@@ -27,11 +28,11 @@
 #define PLAYER_GRAB 0xE30u
 #define PLAYER_REACH_CROUCH 0xE55u
 #define PELVIS_COUNT 8u
-#define PELVIS_USAGE 0x006CE290u
+#define PELVIS_USAGE GVA(0x006CE290)
 #define PELVIS_HUMAN 1u
-#define PELVIS_STATE 0x006CF198u
+#define PELVIS_STATE GVA(0x006CF198)
 #define PELVIS_STATE_STRIDE 0x300u
-#define PELVIS_DATA 0x006CEAB8u
+#define PELVIS_DATA GVA(0x006CEAB8)
 #define PELVIS_DATA_STRIDE 0xDCu
 #define PELVIS_ALIVE (49u * 4u)
 #define PELVIS_HIP (13u * 4u)
@@ -43,16 +44,16 @@
 #define DOF_BODY_EULER 3u
 #define DOF_MOUTH 21u
 #define DOF_RIGHT_HAND 25u
-#define PELVIS_KONTROL 0x0067AE90u
+#define PELVIS_KONTROL GVA(0x0067AE90)
 #define PELVIS_KONTROL_STRIDE 0x18u
-#define PELVIS_KROUCH 0x0067AE68u
-#define BIOTAG 0x0067B0C0u
+#define PELVIS_KROUCH GVA(0x0067AE68)
+#define BIOTAG GVA(0x0067B0C0)
 #define BIOTAG_STRIDE 0x100u
 #define BIOTAG_RIGHT_FOOT_Z (9u * 4u)
-#define CONTROL_ARM_URGENCY 0x006D0A80u
-#define CONTROL_ARM_POSITION 0x006D0A84u
-#define PELVIS_JUMP 0x0067AFA0u
-#define PELVIS_JUMP_VOLUNTARY 0x0067AF5Du
+#define CONTROL_ARM_URGENCY GVA(0x006D0A80)
+#define CONTROL_ARM_POSITION GVA(0x006D0A84)
+#define PELVIS_JUMP GVA(0x0067AFA0)
+#define PELVIS_JUMP_VOLUNTARY GVA(0x0067AF5D)
 #define INVALID_LOG_MAX 4
 
 static struct {

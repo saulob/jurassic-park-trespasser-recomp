@@ -5,13 +5,14 @@ for it and no second mode.
 
 ```
 JurassicParkTrespasser\
-    trespasser.exe
+    trespasser_recomp.exe
     assets\
     game\                       the installed game, read only at run time
     logs\
     user_data\
         launcher\               trespasser.ini: the launcher's and the port's settings
-        saves\                  the game's own files (its "Installed Directory"):
+        versions\<id>\saves\    the same for each other game version (Russian, Spanish, Brazilian Portuguese)
+        saves\                  the English 1.0.116 game's own files (its "Installed Directory"):
                                   SAVEGAME.NNN, previews\ (HD save pictures),
                                   recomp-registry.txt (the game's own options),
                                   level swap files (*-130.swp, temp.scx) and the game's screenshots (TPassNNN.BMP)
@@ -34,7 +35,7 @@ had that option) loads normally: the line is ignored and never written again.
 
 | System | `user_data` is in |
 | --- | --- |
-| Windows | next to the executable: the folder that holds `trespasser.exe` |
+| Windows | next to the executable: the folder that holds `trespasser_recomp.exe` |
 | Linux AppImage (future; not built yet) | next to the original AppImage file, never inside its read-only mount |
 
 This is `PortFolder()` in `launcher/user_data.cpp`. No other location is ever chosen automatically: not

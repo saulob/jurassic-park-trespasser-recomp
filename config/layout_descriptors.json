@@ -1,0 +1,10 @@
+{
+ "descriptors": [
+  {
+   "name": "BOX_POOL_STRIDE",
+   "struct": "CPhysicsInfoBox pool (0x00699D40, 50 boxes)",
+   "field": "bytes from one box to the next",
+   "value": "0x1090"
+  }
+ ]
+}

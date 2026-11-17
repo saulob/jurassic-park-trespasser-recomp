@@ -4,6 +4,7 @@
  * (patch117_policy.c) and served to that handle, so every load starts from the retail file and the fixes are applied
  * exactly once. Saved games are never changed.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <lzexpand.h>
@@ -14,7 +15,7 @@
 
 #define MAX_VIEWS 4
 #define EXPAND_CHUNK (1 << 20)
-#define ADD_CHILD_VA 0x00475F60u /* CPartition::bAddChild(child, test_priority), thiscall, every partition class */
+#define ADD_CHILD_VA GVA(0x00475F60) /* CPartition::bAddChild(child, test_priority), thiscall, every partition class */
 
 typedef struct {
     INT handle;
@@ -51,6 +52,7 @@ static void add_child(void) {
 }
 
 void patch117_install(void) {
+    if (!JPT_P117_ADD_CHILD) return;
     if (!guest_override_install(ADD_CHILD_VA, add_child, &s_add_child_lifted))
         host_log("patch117", "warning: CPartition::bAddChild could not be hooked: its official fix is off");
 }

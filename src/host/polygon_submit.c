@@ -1,3 +1,4 @@
+#include "guest_va.h"
 #include "polygon_submit.h"
 
 #include <stdio.h>
@@ -7,32 +8,29 @@
 #error "the host path reproduces the x87 model the MSVC build lifts with: shifting (fp_push_impl) or the ring"
 #endif
 
-#define DEVICE 0x006D0E9Cu /* IDirect3DDevice3* */
-#define WRAP_U 0x006D2108u /* the stage-0 address modes last sent: 1 wrap, 0 clamp */
-#define WRAP_V 0x006D2109u
-#define FOG_SENT 0x006D2101u
-#define SHADE_SENT 0x006D2103u
-#define SPECULAR_SENT 0x006D2104u
-#define FOG_ENTRIES 0x00732874u
-#define FOG_TABLE 0x00732878u
-#define OFFSET_X 0x007382B8u
-#define OFFSET_Y 0x007382BCu
-#define K_ZERO 0x006474D0u
-#define K_HALF 0x006474D4u
-#define K_ONE 0x00645C34u
-#define K_BELOW_ONE 0x0064C49Cu
-#define K_ONE_DOUBLE 0x00646570u
-#define FOG_SATURATED 0x0064E70Cu
-#define FOG_SCALE 0x0064E710u
-#define K_255 0x0064DBCCu
-#define Z_LIMIT 0x0064E708u
+#define DEVICE GVA(0x006D0E9C) /* IDirect3DDevice3* */
+#define WRAP_U GVA(0x006D2108) /* the stage-0 address modes last sent: 1 wrap, 0 clamp */
+#define WRAP_V GVA(0x006D2109)
+#define FOG_SENT GVA(0x006D2101)
+#define SHADE_SENT GVA(0x006D2103)
+#define SPECULAR_SENT GVA(0x006D2104)
+#define FOG_ENTRIES GVA(0x00732874)
+#define FOG_TABLE GVA(0x00732878)
+#define OFFSET_X GVA(0x007382B8)
+#define OFFSET_Y GVA(0x007382BC)
+#define K_ZERO GVA(0x006474D0)
+#define K_HALF GVA(0x006474D4)
+#define K_ONE GVA(0x00645C34)
+#define K_BELOW_ONE GVA(0x0064C49C)
+#define K_ONE_DOUBLE GVA(0x00646570)
+#define FOG_SATURATED GVA(0x0064E70C)
+#define FOG_SCALE GVA(0x0064E710)
+#define K_255 GVA(0x0064DBCC)
+#define Z_LIMIT GVA(0x0064E708)
 #define SET_RENDER_STATE 0x58u
 #define DRAW_PRIMITIVE 0x70u
 #define SET_STAGE_STATE 0xA0u
 #define MAX_VERTICES 4096u
-
-void sub_00626BA0(void); /* _alloca_probe */
-void sub_0050C9C0(void); /* allocates the material's lighting table */
 
 recomp_func_t polygon_submit_lifted;
 
@@ -258,7 +256,7 @@ void polygon_submit(void) {
     low8(&c.ebx, 0);
     set_flags(&c, FK_TEST, (n << 5) + 3, 0xFFFFFFFCu, 0);
     wr8(c.ebp - 0x2C, 0);
-    call(&c, sub_00626BA0);
+    call(&c, GSUB(0x00626BA0)); /* _alloca_probe */
     buf = c.esp;
     c.edi = n - 1;
     set_flags(&c, FK_TEST, c.edi, c.edi, 0);
@@ -278,7 +276,7 @@ void polygon_submit(void) {
             if (!rd32(mat + 0x54)) {
                 c.eax = 0, c.ecx = mat, c.edx = mat;
                 set_flags(&c, FK_TEST, 0, 0, 0);
-                call(&c, sub_0050C9C0);
+                call(&c, GSUB(0x0050C9C0)); /* allocates the material's lighting table */
             }
             threshold = rd32(mat + 0x2C);
             intensity = *(const float*)ADDR(vtx + 0x18);

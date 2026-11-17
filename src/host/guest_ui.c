@@ -4,64 +4,65 @@
  * Every pointer is checked first, so a half-built stack reads as "none". The only writes are the
  * game's own EndModal and quit flags, used by the host's close path.
  */
+#include "guest_va.h"
 #include "host.h"
 
 #include <string.h>
 
-#define MAIN_WINDOW_OBJECT 0x0066E010u
+#define MAIN_WINDOW_OBJECT GVA(0x0066E010)
 #define MANAGER_OFFSET 0x08u
 #define MANAGER_ACTIVE_OFFSET 0x04u
 #define MANAGER_MENU_FLAG_OFFSET 0x20u
 #define STACK_BEGIN_OFFSET 0x38u
 #define STACK_END_OFFSET 0x3Cu
-#define GAME_WND_VTABLE 0x00645C3Cu
+#define GAME_WND_VTABLE GVA(0x00645C3C)
 #define GAME_WND_STOPPED_OFFSET 0x30u
 #define MAX_STACK 32u
-#define DISPLAY_OBJECT 0x0073DC40u
-#define DISPLAY_RELEASED 0x00669B90u
+#define DISPLAY_OBJECT GVA(0x0073DC40)
+#define DISPLAY_RELEASED GVA(0x00669B90)
 /* CUIWnd::EndModal(code) sets the done byte at +8 and the result at +0xC; every window class uses it. */
 #define END_MODAL_SLOT 0x4Cu
-#define END_MODAL_FN 0x004176F0u
+#define END_MODAL_FN GVA(0x004176F0)
 #define WND_DONE_OFFSET 0x08u
 #define WND_RESULT_OFFSET 0x0Cu
 /* Set by the in-game Quit's "to Windows" answer: CGameWnd's close then skips the menu's display mode. */
-#define QUITTING_TO_WINDOWS 0x0066DE4Cu
+#define QUITTING_TO_WINDOWS GVA(0x0066DE4C)
 
 static const struct {
-    uint32_t vtable;
+    unsigned vtable_id;
     const char* name;
     guest_wnd_t kind;
 } k_classes[] = {
-    { 0x00645C3Cu, "CGameWnd", GUEST_WND_GAME },
-    { 0x00646B40u, "CInGameOptionsWnd", GUEST_WND_INGAME_OPTIONS },
-    { 0x00646D10u, "CHintWnd", GUEST_WND_OTHER },
-    { 0x00645F38u, "CControlsWnd", GUEST_WND_OTHER },
-    { 0x00646970u, "CQuitWnd", GUEST_WND_QUIT },
-    { 0x00645E24u, "CYesNoMsgDlg", GUEST_WND_OTHER },
-    { 0x00645D34u, "CYesNo", GUEST_WND_OTHER },
-    { 0x006461B8u, "CYesNoTextDlg", GUEST_WND_OTHER },
-    { 0x00646390u, "COKDlg", GUEST_WND_OTHER },
-    { 0x00646480u, "CMsgOkDlg", GUEST_WND_OTHER },
-    { 0x006466B8u, "CMainScreenWnd", GUEST_WND_MAIN_MENU },
-    { 0x006467A0u, "CLoaderWnd", GUEST_WND_LOADER },
-    { 0x00646FC8u, "CVideoWnd", GUEST_WND_VIDEO },
-    { 0x00646A58u, "COptionsWnd", GUEST_WND_OTHER },
-    { 0x006462A8u, "CSaveGameWnd", GUEST_WND_OTHER },
-    { 0x006460D0u, "CLoadGameWnd", GUEST_WND_OTHER },
-    { 0x00646C28u, "CAudioWnd", GUEST_WND_OTHER },
-    { 0x00645B4Cu, "CRenderWnd", GUEST_WND_OTHER },
-    { 0x00646888u, "CDirectLoadWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x00645C3C), "CGameWnd", GUEST_WND_GAME },
+    { GVA_ID(0x00646B40), "CInGameOptionsWnd", GUEST_WND_INGAME_OPTIONS },
+    { GVA_ID(0x00646D10), "CHintWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x00645F38), "CControlsWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x00646970), "CQuitWnd", GUEST_WND_QUIT },
+    { GVA_ID(0x00645E24), "CYesNoMsgDlg", GUEST_WND_OTHER },
+    { GVA_ID(0x00645D34), "CYesNo", GUEST_WND_OTHER },
+    { GVA_ID(0x006461B8), "CYesNoTextDlg", GUEST_WND_OTHER },
+    { GVA_ID(0x00646390), "COKDlg", GUEST_WND_OTHER },
+    { GVA_ID(0x00646480), "CMsgOkDlg", GUEST_WND_OTHER },
+    { GVA_ID(0x006466B8), "CMainScreenWnd", GUEST_WND_MAIN_MENU },
+    { GVA_ID(0x006467A0), "CLoaderWnd", GUEST_WND_LOADER },
+    { GVA_ID(0x00646FC8), "CVideoWnd", GUEST_WND_VIDEO },
+    { GVA_ID(0x00646A58), "COptionsWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x006462A8), "CSaveGameWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x006460D0), "CLoadGameWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x00646C28), "CAudioWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x00645B4C), "CRenderWnd", GUEST_WND_OTHER },
+    { GVA_ID(0x00646888), "CDirectLoadWnd", GUEST_WND_OTHER },
 };
 
 const char* guest_ui_class_name(uint32_t vtable) {
     for (size_t i = 0; i < sizeof k_classes / sizeof k_classes[0]; i++)
-        if (k_classes[i].vtable == vtable) return k_classes[i].name;
+        if (jpt_gva[k_classes[i].vtable_id] == vtable) return k_classes[i].name;
     return "a window of the game";
 }
 
 static guest_wnd_t class_kind(uint32_t vtable) {
     for (size_t i = 0; i < sizeof k_classes / sizeof k_classes[0]; i++)
-        if (k_classes[i].vtable == vtable) return k_classes[i].kind;
+        if (jpt_gva[k_classes[i].vtable_id] == vtable) return k_classes[i].kind;
     return GUEST_WND_OTHER;
 }
 
@@ -82,16 +83,16 @@ static int image_readable(uintptr_t lo, uintptr_t hi) {
     static uintptr_t s_lo, s_hi;
     static int s_checked;
     if (!s_checked) {
-        const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)(uintptr_t)trespasser_image_base;
+        const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)(uintptr_t)JPT_GUEST_IMAGE_BASE;
         const IMAGE_NT_HEADERS32* nt = (const IMAGE_NT_HEADERS32*)((const BYTE*)dos + dos->e_lfanew);
-        uintptr_t at = (uintptr_t)trespasser_image_base, end = at + nt->OptionalHeader.SizeOfImage;
+        uintptr_t at = (uintptr_t)JPT_GUEST_IMAGE_BASE, end = at + nt->OptionalHeader.SizeOfImage;
         MEMORY_BASIC_INFORMATION mi;
         s_checked = 1;
         while (at < end && VirtualQuery((const void*)at, &mi, sizeof mi) && mi.State == MEM_COMMIT &&
                !(mi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) && (mi.Protect & READABLE_PAGES))
             at = (uintptr_t)mi.BaseAddress + mi.RegionSize;
         if (at >= end) {
-            s_lo = (uintptr_t)trespasser_image_base;
+            s_lo = (uintptr_t)JPT_GUEST_IMAGE_BASE;
             s_hi = end;
         }
     }

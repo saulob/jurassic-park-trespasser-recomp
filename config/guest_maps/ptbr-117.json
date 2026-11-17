@@ -1,0 +1,2234 @@
+{
+ "profile": "ptbr-117",
+ "sha256": "d5de43a68f57caf7644d8045bc8c27936f03357f453e326e846c1f745f1f0040",
+ "addresses": {
+  "00403520": {
+   "class": "identical",
+   "to": "00403530",
+   "function": "00403520",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:8"
+  },
+  "0040BCC0": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "49 instructions identical; only the object's two fields move: [obj+0xC] -> [obj+0x80], [obj+8] -> [obj+0x7C]",
+   "was": "candidate",
+   "to": "0040BFD0",
+   "where": "src/host/ce_gameplay.c:20"
+  },
+  "0040BD70": {
+   "class": "identical",
+   "to": "0040C090",
+   "function": "0040BD70",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:21"
+  },
+  "0040C780": {
+   "class": "identical",
+   "to": "0040CAC0",
+   "function": "0040C780",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:9"
+  },
+  "0040DA00": {
+   "class": "identical",
+   "to": "0040DD40",
+   "function": "0040DA00",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:32"
+  },
+  "0040E4D0": {
+   "class": "identical",
+   "to": "0040E810",
+   "function": "0040E4D0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:266"
+  },
+  "0040FD80": {
+   "class": "identical",
+   "to": "00410090",
+   "function": "0040FD80",
+   "via": "hash",
+   "where": "src/host/ui_canvas.c:29"
+  },
+  "00410420": {
+   "class": "identical",
+   "to": "00410740",
+   "function": "00410420",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:25"
+  },
+  "00410540": {
+   "class": "identical",
+   "to": "00410860",
+   "function": "00410540",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:31"
+  },
+  "00411B30": {
+   "class": "identical",
+   "to": "00411E40",
+   "function": "00411B30",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:22"
+  },
+  "00411EA0": {
+   "class": "identical",
+   "to": "004121A0",
+   "function": "00411EA0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:12"
+  },
+  "004121B0": {
+   "class": "identical",
+   "to": "004124B0",
+   "function": "004121B0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:252"
+  },
+  "004128A0": {
+   "class": "identical",
+   "to": "00412BA0",
+   "function": "004128A0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:13"
+  },
+  "00413040": {
+   "class": "identical",
+   "to": "00413340",
+   "function": "00413040",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:14"
+  },
+  "00413160": {
+   "class": "identical",
+   "to": "00413460",
+   "function": "00413160",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:28"
+  },
+  "00414100": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "thiscall(this, level), ret 4 in both; same change as es-117: the data folder comes from a helper instead of 'Data Drive' + 'data\\'",
+   "was": "candidate",
+   "to": "00414400",
+   "where": "src/host/debug_menu.c:42"
+  },
+  "004142C0": {
+   "class": "aligned",
+   "to": "00414590",
+   "function": "004142C0",
+   "via": "call",
+   "where": "src/host/ce_gameplay.c:27"
+  },
+  "00414480": {
+   "class": "identical",
+   "to": "00414760",
+   "function": "00414480",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:40"
+  },
+  "00414570": {
+   "class": "identical",
+   "to": "00414850",
+   "function": "00414570",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:24"
+  },
+  "00414D80": {
+   "class": "identical",
+   "to": "00415060",
+   "function": "00414D80",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:26"
+  },
+  "00414E80": {
+   "class": "identical",
+   "to": "00415160",
+   "function": "00414E80",
+   "via": "hash",
+   "where": "src/host/video_test.c:18"
+  },
+  "00414EB0": {
+   "class": "identical",
+   "to": "00415190",
+   "function": "00414EB0",
+   "via": "hash",
+   "where": "src/host/video_test.c:17"
+  },
+  "00415330": {
+   "class": "identical",
+   "to": "00415610",
+   "function": "00415330",
+   "via": "hash",
+   "where": "src/host/video_test.c:20"
+  },
+  "00415360": {
+   "class": "identical",
+   "to": "00415640",
+   "function": "00415360",
+   "via": "hash",
+   "where": "src/host/video_test.c:19"
+  },
+  "00415AD0": {
+   "class": "identical",
+   "to": "00415DB0",
+   "function": "00415AD0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:16"
+  },
+  "00417300": {
+   "class": "identical",
+   "to": "00417600",
+   "function": "00417300",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:17"
+  },
+  "00417380": {
+   "class": "identical",
+   "to": "00417680",
+   "function": "00417380",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:18"
+  },
+  "00417410": {
+   "class": "identical",
+   "to": "00417710",
+   "function": "00417410",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:19"
+  },
+  "004176F0": {
+   "class": "identical",
+   "to": "004179F0",
+   "function": "004176F0",
+   "via": "hash",
+   "where": "src/host/guest_ui.c:25"
+  },
+  "00417760": {
+   "class": "identical",
+   "to": "00417A60",
+   "function": "00417760",
+   "via": "hash",
+   "where": "src/host/window_host.c:66"
+  },
+  "00417840": {
+   "class": "identical",
+   "to": "00417B40",
+   "function": "00417840",
+   "via": "hash",
+   "where": "src/host/window_host.c:69"
+  },
+  "00418700": {
+   "class": "identical",
+   "to": "00418950",
+   "function": "00418700",
+   "via": "hash",
+   "where": "src/host/video_test.c:21"
+  },
+  "00418760": {
+   "class": "identical",
+   "to": "004189B0",
+   "function": "00418760",
+   "via": "hash",
+   "where": "src/host/video_test.c:23"
+  },
+  "00418AE0": {
+   "class": "identical",
+   "to": "00418D30",
+   "function": "00418AE0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:20"
+  },
+  "00419330": {
+   "class": "identical",
+   "to": "0060FD90",
+   "function": "00419330",
+   "via": "hash",
+   "where": "src/host/active_ai.c:29"
+  },
+  "004195A0": {
+   "class": "aligned",
+   "to": "0060FFD0",
+   "function": "004195A0",
+   "via": "call",
+   "where": "src/host/active_ai.c:30"
+  },
+  "00419800": {
+   "class": "identical",
+   "to": "00610230",
+   "function": "00419800",
+   "via": "hash",
+   "where": "src/host/active_ai.c:31"
+  },
+  "004199D0": {
+   "class": "identical",
+   "to": "00610400",
+   "function": "004199D0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:32"
+  },
+  "00419C60": {
+   "class": "identical",
+   "to": "00610690",
+   "function": "00419C60",
+   "via": "hash",
+   "where": "src/host/active_ai.c:33"
+  },
+  "00419CE0": {
+   "class": "identical",
+   "to": "00610710",
+   "function": "00419CE0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:34"
+  },
+  "00419DB0": {
+   "class": "identical",
+   "to": "006107E0",
+   "function": "00419DB0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:35"
+  },
+  "00419E30": {
+   "class": "identical",
+   "to": "00610860",
+   "function": "00419E30",
+   "via": "hash",
+   "where": "src/host/active_ai.c:36"
+  },
+  "0041A200": {
+   "class": "identical",
+   "to": "00610C30",
+   "function": "0041A200",
+   "via": "hash",
+   "where": "src/host/active_ai.c:37"
+  },
+  "0041A520": {
+   "class": "identical",
+   "to": "00610F50",
+   "function": "0041A520",
+   "via": "hash",
+   "where": "src/host/active_ai.c:54"
+  },
+  "0041AE50": {
+   "class": "identical",
+   "to": "006117E0",
+   "function": "0041AE50",
+   "via": "hash",
+   "where": "src/host/active_ai.c:38"
+  },
+  "0041AF00": {
+   "class": "identical",
+   "to": "00611890",
+   "function": "0041AF00",
+   "via": "hash",
+   "where": "src/host/active_ai.c:39"
+  },
+  "0041BC00": {
+   "class": "identical",
+   "to": "00612580",
+   "function": "0041BC00",
+   "via": "call",
+   "where": "src/host/active_ai.c:47"
+  },
+  "0041CE10": {
+   "class": "identical",
+   "to": "00617900",
+   "function": "0041CE10",
+   "via": "hash",
+   "where": "src/host/active_ai.c:44"
+  },
+  "0041E1D0": {
+   "class": "identical",
+   "to": "004271C0",
+   "function": "0041E1D0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:72"
+  },
+  "00421080": {
+   "class": "identical",
+   "to": "00615110",
+   "function": "00421080",
+   "via": "hash",
+   "where": "src/host/active_ai.c:48"
+  },
+  "004211B0": {
+   "class": "identical",
+   "to": "00615240",
+   "function": "004211B0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:49"
+  },
+  "00421220": {
+   "class": "identical",
+   "to": "006152B0",
+   "function": "00421220",
+   "via": "hash",
+   "where": "src/host/active_ai.c:51"
+  },
+  "004213F0": {
+   "class": "identical",
+   "to": "00615460",
+   "function": "004213F0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:40"
+  },
+  "004218C0": {
+   "class": "aligned",
+   "to": "006158B0",
+   "function": "004218C0",
+   "via": "call",
+   "where": "src/host/active_ai.c:41"
+  },
+  "00422650": {
+   "class": "identical",
+   "to": "00616400",
+   "function": "00422650",
+   "via": "hash",
+   "where": "src/host/active_ai.c:53"
+  },
+  "004233D0": {
+   "class": "identical",
+   "to": "00617090",
+   "function": "004233D0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:50"
+  },
+  "00424AB0": {
+   "class": "identical",
+   "to": "0061A280",
+   "function": "00424AB0",
+   "via": "hash",
+   "where": "src/host/active_ai.c:52"
+  },
+  "004395A0": {
+   "class": "identical",
+   "to": "0041D6B0",
+   "function": "004395A0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:34"
+  },
+  "00441D1D": {
+   "class": "identical",
+   "to": "0042619D",
+   "function": "00441D10",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:6"
+  },
+  "00441D50": {
+   "class": "identical",
+   "to": "004261D0",
+   "function": "00441D50",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:70"
+  },
+  "00441DA0": {
+   "class": "identical",
+   "to": "00426220",
+   "function": "00441DA0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:69"
+  },
+  "00442380": {
+   "class": "identical",
+   "to": "00426800",
+   "function": "00442380",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:71"
+  },
+  "0044C1B2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:7"
+  },
+  "0044CF9F": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:8"
+  },
+  "00451212": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:9"
+  },
+  "0045125D": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:10"
+  },
+  "004512FF": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:11"
+  },
+  "004519A1": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:12"
+  },
+  "004546D7": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:13"
+  },
+  "004546E2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:14"
+  },
+  "0045472E": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:15"
+  },
+  "00454734": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:16"
+  },
+  "00455B6B": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:17"
+  },
+  "004569C8": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:18"
+  },
+  "0045B470": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "hand reach: identical to the official 1.1 function, same role",
+   "was": "candidate",
+   "to": "0043EF90",
+   "where": "src/host/patch117_player.c:82"
+  },
+  "0045B916": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:19"
+  },
+  "0045B91C": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:20"
+  },
+  "0045ED80": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "80 instructions identical; the only change is the box pool stride 0x1090 -> 0x1064 (two imul constants)",
+   "was": "candidate",
+   "to": "004428B0",
+   "where": "src/host/ce_gameplay.c:40"
+  },
+  "0045F660": {
+   "class": "identical",
+   "to": "00443190",
+   "function": "0045F660",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:80"
+  },
+  "0045FC10": {
+   "class": "identical",
+   "to": "00443740",
+   "function": "0045FC10",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:81"
+  },
+  "00460CF5": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:21"
+  },
+  "004610D0": {
+   "class": "identical",
+   "to": "00445D60",
+   "function": "004610D0",
+   "via": "hash",
+   "where": "src/host/ce_gameplay.c:39"
+  },
+  "00461491": {
+   "class": "identical",
+   "to": "00446121",
+   "function": "004610D0",
+   "via": "hash",
+   "where": "src/host/lift_hook_list.h:22"
+  },
+  "00468710": {
+   "class": "identical",
+   "to": "0044DF90",
+   "function": "00468710",
+   "via": "hash",
+   "where": "src/host/tutorial_prompts.c:23"
+  },
+  "00468980": {
+   "class": "identical",
+   "to": "0044E200",
+   "function": "00468980",
+   "via": "hash",
+   "where": "src/host/tutorial_prompts.c:24"
+  },
+  "00472B60": {
+   "class": "identical",
+   "to": "00458380",
+   "function": "00472B60",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:36"
+  },
+  "00475F60": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "CPartition::bAddChild: 0x0045B910 is identical to the official 1.1 function, so the fix is native and the override is not installed",
+   "was": "candidate",
+   "where": "src/host/guest_override_list.h:37"
+  },
+  "00477A40": {
+   "class": "identical",
+   "to": "0045D490",
+   "function": "00477A40",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:26"
+  },
+  "00477E00": {
+   "class": "identical",
+   "to": "0045D840",
+   "function": "00477E00",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:24"
+  },
+  "00478A30": {
+   "class": "identical",
+   "to": "0045E470",
+   "function": "00478A30",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:28"
+  },
+  "00487300": {
+   "class": "identical",
+   "to": "00461B00",
+   "function": "00487300",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:77"
+  },
+  "004877F0": {
+   "class": "identical",
+   "to": "00461FF0",
+   "function": "004877F0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:79"
+  },
+  "00487900": {
+   "class": "identical",
+   "to": "00462100",
+   "function": "00487900",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:78"
+  },
+  "00492200": {
+   "class": "identical",
+   "to": "00470EA0",
+   "function": "00492200",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:18"
+  },
+  "0049E530": {
+   "class": "identical",
+   "to": "0047D760",
+   "function": "0049E530",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:42"
+  },
+  "004A24B0": {
+   "class": "identical",
+   "to": "00481900",
+   "function": "004A24B0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:25"
+  },
+  "004CCCE0": {
+   "class": "identical",
+   "to": "004B41E0",
+   "function": "004CCCE0",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:75"
+  },
+  "004CD090": {
+   "class": "identical",
+   "to": "004B4590",
+   "function": "004CD090",
+   "via": "hash",
+   "where": "src/host/patch117_player.c:74"
+  },
+  "004DDEFD": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:23"
+  },
+  "004E78D2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "candidate",
+   "where": "src/host/lift_hook_list.h:24"
+  },
+  "004E85A0": {
+   "class": "aligned",
+   "to": "004B9040",
+   "function": "004E85A0",
+   "via": "call",
+   "where": "src/host/patch117_physics.c:21"
+  },
+  "004E86B0": {
+   "class": "aligned",
+   "to": "004B91D0",
+   "function": "004E86B0",
+   "via": "call",
+   "where": "src/host/patch117_physics.c:22"
+  },
+  "004EB46B": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:25"
+  },
+  "004EB781": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:26"
+  },
+  "004EBA7B": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:27"
+  },
+  "004EBD85": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:28"
+  },
+  "004EC07C": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:29"
+  },
+  "004EC386": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:30"
+  },
+  "004EC586": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:31"
+  },
+  "004EC5A2": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies",
+   "was": "unresolved",
+   "where": "src/host/lift_hook_list.h:32"
+  },
+  "004EDFA0": {
+   "class": "aligned",
+   "to": "004BE780",
+   "function": "004EDFA0",
+   "via": "call",
+   "where": "src/host/guest_override_list.h:43"
+  },
+  "004F0960": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "jump hand-off: byte-identical to the official 1.1 function, native",
+   "was": "candidate",
+   "where": "src/host/guest_override_list.h:44"
+  },
+  "004F3FB0": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "Pelvic_IDOF: same code with the pelvis block stride changed and fields moved (+0xE0 -> +0xE4, +0xEC -> +0xF0); the host override depends on the layout descriptor of this build",
+   "was": "candidate",
+   "to": "004DB0B0",
+   "where": "src/host/guest_override_list.h:45"
+  },
+  "00502970": {
+   "class": "identical",
+   "to": "004E9C60",
+   "function": "00502970",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:46"
+  },
+  "00503400": {
+   "class": "identical",
+   "to": "004EA6F0",
+   "function": "00503400",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:10"
+  },
+  "005035B0": {
+   "class": "identical",
+   "to": "004EA8A0",
+   "function": "005035B0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:254"
+  },
+  "00504D20": {
+   "class": "identical",
+   "to": "004EC010",
+   "function": "00504D20",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:14"
+  },
+  "00504D40": {
+   "class": "identical",
+   "to": "004EC030",
+   "function": "00504D40",
+   "via": "hash",
+   "where": "src/host/ddraw/d3d11_renderer.c:43"
+  },
+  "00506270": {
+   "class": "identical",
+   "to": "004ED580",
+   "function": "00506270",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:19"
+  },
+  "00506C00": {
+   "class": "identical",
+   "to": "004EDF10",
+   "function": "00506C00",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:21"
+  },
+  "00506EB0": {
+   "class": "identical",
+   "to": "004EE1C0",
+   "function": "00506EB0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:20"
+  },
+  "005072D0": {
+   "class": "identical",
+   "to": "004EE5E0",
+   "function": "005072D0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:16"
+  },
+  "0050C9C0": {
+   "class": "identical",
+   "to": "004F3DA0",
+   "function": "0050C9C0",
+   "via": "hash",
+   "where": "src/host/polygon_submit.c:36"
+  },
+  "0050E750": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CFont constructor; glyph widths stay at [font+0x10+4*c]; register allocation only (same change as es-117)",
+   "was": "candidate",
+   "to": "004F5B30",
+   "where": "src/host/game_text.c:15"
+  },
+  "0050E830": {
+   "class": "identical",
+   "to": "004F5C00",
+   "function": "0050E830",
+   "via": "hash",
+   "where": "src/host/game_text.c:17"
+  },
+  "0050E8C0": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "text layout; frame 0xAC -> 0xB0; the width index is unsigned in this build (same change as es-117)",
+   "was": "candidate",
+   "to": "004F5C90",
+   "where": "src/host/game_text.c:18"
+  },
+  "0050EAF0": {
+   "class": "identical",
+   "to": "004F5ED0",
+   "function": "0050EAF0",
+   "via": "hash",
+   "where": "src/host/game_text.c:16"
+  },
+  "00513660": {
+   "class": "identical",
+   "to": "004FAA70",
+   "function": "00513660",
+   "via": "hash",
+   "where": "src/host/host_policy.c:348"
+  },
+  "00514070": {
+   "class": "identical",
+   "to": "004FB480",
+   "function": "00514070",
+   "via": "hash",
+   "where": "src/host/host_policy.c:348"
+  },
+  "00514150": {
+   "class": "identical",
+   "to": "004FB560",
+   "function": "00514150",
+   "via": "hash",
+   "where": "src/host/host_policy.c:348"
+  },
+  "00514FE0": {
+   "class": "identical",
+   "to": "004FC3F0",
+   "function": "00514FE0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:23"
+  },
+  "0051FD90": {
+   "class": "aligned",
+   "to": "005073A0",
+   "function": "0051FD90",
+   "via": "call",
+   "where": "src/host/guest_override_list.h:57"
+  },
+  "005242C0": {
+   "class": "identical",
+   "to": "0050B920",
+   "function": "005242C0",
+   "via": "hash",
+   "where": "src/host/ce_graphics.c:11"
+  },
+  "00543830": {
+   "class": "identical",
+   "to": "0052B740",
+   "function": "00543830",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:27"
+  },
+  "00547710": {
+   "class": "identical",
+   "to": "0052F6E0",
+   "function": "00547710",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:22"
+  },
+  "005477E0": {
+   "class": "identical",
+   "to": "0052F7B0",
+   "function": "005477E0",
+   "via": "hash",
+   "where": "src/host/engine_limits.c:17"
+  },
+  "00548150": {
+   "class": "identical",
+   "to": "00530120",
+   "function": "00548150",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:33"
+  },
+  "00555AB0": {
+   "class": "identical",
+   "to": "0053DA80",
+   "function": "00555AB0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:242"
+  },
+  "00559240": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "first 772 instructions identical; the catalogue ends the function earlier, its tail is a separate entry",
+   "was": "candidate",
+   "to": "00541210",
+   "where": "src/host/guest_override_list.h:62"
+  },
+  "0055A4E0": {
+   "class": "identical",
+   "to": "005424B0",
+   "function": "0055A4E0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:63"
+  },
+  "0055F1D0": {
+   "class": "identical",
+   "to": "005471A0",
+   "function": "0055F1D0",
+   "via": "hash",
+   "where": "src/host/host_policy.h:241"
+  },
+  "0055F540": {
+   "class": "aligned",
+   "to": "005474F0",
+   "function": "0055F540",
+   "via": "vtable",
+   "where": "src/host/cpu_polygons.c:9"
+  },
+  "00563890": {
+   "class": "identical",
+   "to": "0054B840",
+   "function": "00563890",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:31"
+  },
+  "005668C0": {
+   "class": "identical",
+   "to": "0054E870",
+   "function": "005668C0",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:29"
+  },
+  "00568EF0": {
+   "class": "identical",
+   "to": "00550EA0",
+   "function": "00568EF0",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:30"
+  },
+  "0057B7B0": {
+   "class": "identical",
+   "to": "00563760",
+   "function": "0057B7B0",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:27"
+  },
+  "0057DB50": {
+   "class": "identical",
+   "to": "00565B00",
+   "function": "0057DB50",
+   "via": "hash",
+   "where": "src/host/cpu_polygons.c:28"
+  },
+  "005F6100": {
+   "class": "identical",
+   "to": "005DDF30",
+   "function": "005F6100",
+   "via": "hash",
+   "where": "src/host/objectives.c:21"
+  },
+  "005F80B0": {
+   "class": "identical",
+   "to": "005E00E0",
+   "function": "005F80B0",
+   "via": "hash",
+   "where": "src/host/gamepad.c:22"
+  },
+  "005F8A20": {
+   "class": "identical",
+   "to": "005E0E60",
+   "function": "005F8A20",
+   "via": "hash",
+   "where": "src/host/engine_heaps.c:11"
+  },
+  "005F8B10": {
+   "class": "identical",
+   "to": "005E0F50",
+   "function": "005F8B10",
+   "via": "hash",
+   "where": "src/host/engine_heaps.c:12"
+  },
+  "00607C10": {
+   "class": "identical",
+   "to": "005F02A0",
+   "function": "00607C10",
+   "via": "hash",
+   "where": "src/host/objectives.c:22"
+  },
+  "00607E90": {
+   "class": "identical",
+   "to": "005F0520",
+   "function": "00607E90",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:46"
+  },
+  "00608150": {
+   "class": "identical",
+   "to": "005F07E0",
+   "function": "00608150",
+   "via": "hash",
+   "where": "src/host/active_ai.c:56"
+  },
+  "00608170": {
+   "class": "identical",
+   "to": "005F0800",
+   "function": "00608170",
+   "via": "hash",
+   "where": "src/host/active_ai.c:57"
+  },
+  "0060CB70": {
+   "class": "identical",
+   "to": "005F5640",
+   "function": "0060CB70",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:35"
+  },
+  "0060E3F0": {
+   "class": "identical",
+   "to": "005F6F70",
+   "function": "0060E3F0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:73"
+  },
+  "0060FC10": {
+   "class": "identical",
+   "to": "005F8750",
+   "function": "0060FC10",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:74"
+  },
+  "00614A60": {
+   "class": "identical",
+   "to": "005FD5A0",
+   "function": "00614A60",
+   "via": "hash",
+   "where": "src/host/active_ai.c:55"
+  },
+  "00614B10": {
+   "class": "identical",
+   "to": "005FD650",
+   "function": "00614B10",
+   "via": "hash",
+   "where": "src/host/cheats.c:43"
+  },
+  "00617F20": {
+   "class": "identical",
+   "to": "00600AE0",
+   "function": "00617F20",
+   "via": "hash",
+   "where": "src/host/cheats.c:42"
+  },
+  "006264D0": {
+   "class": "identical",
+   "to": "0060F100",
+   "function": "006264D0",
+   "via": "hash",
+   "where": "src/host/debug_menu.c:34"
+  },
+  "00626B8C": {
+   "class": "identical",
+   "to": "0060F7BC",
+   "function": "00626B8C",
+   "via": "hash",
+   "where": "src/host/active_ai.c:43"
+  },
+  "00626BA0": {
+   "class": "identical",
+   "to": "0060F7D0",
+   "function": "00626BA0",
+   "via": "hash",
+   "where": "src/host/polygon_submit.c:35"
+  },
+  "00630D90": {
+   "class": "identical",
+   "to": "00634620",
+   "function": "00630D90",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:75"
+  },
+  "00638670": {
+   "class": "identical",
+   "to": "0063BEF0",
+   "function": "00638670",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:76"
+  },
+  "0063DC60": {
+   "class": "identical",
+   "to": "00641C60",
+   "function": "0063DC60",
+   "via": "hash",
+   "where": "src/host/bump_spans.h:11"
+  },
+  "00640FE0": {
+   "class": "identical",
+   "to": "00644FE0",
+   "function": "00640FE0",
+   "via": "hash",
+   "where": "src/host/bump_spans.h:9"
+  },
+  "0064506C": {
+   "class": "data",
+   "to": "0064906C",
+   "votes": 6,
+   "where": "src/host/game_text.c:31"
+  },
+  "0064554C": {
+   "class": "data",
+   "to": "0064954C",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:48"
+  },
+  "006455B0": {
+   "class": "data",
+   "to": "006495B0",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:54"
+  },
+  "00645650": {
+   "class": "data",
+   "to": "00649650",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:49"
+  },
+  "00645758": {
+   "class": "data",
+   "to": "00649758",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:50"
+  },
+  "006457B8": {
+   "class": "data",
+   "to": "006497B8",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:51"
+  },
+  "00645864": {
+   "class": "data",
+   "to": "00649864",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:52"
+  },
+  "006458DC": {
+   "class": "data",
+   "to": "006498DC",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:53"
+  },
+  "00645974": {
+   "class": "data",
+   "to": "00649974",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:55"
+  },
+  "006459CC": {
+   "class": "data",
+   "to": "006499CC",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:56"
+  },
+  "00645B4C": {
+   "class": "data",
+   "to": "00649B4C",
+   "votes": 35002,
+   "where": "src/host/guest_ui.c:53"
+  },
+  "00645C34": {
+   "class": "data",
+   "to": "00649C34",
+   "votes": 7332,
+   "where": "src/host/polygon_submit.c:23"
+  },
+  "00645C3C": {
+   "class": "data",
+   "to": "00649C3C",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:141"
+  },
+  "00645D34": {
+   "class": "data",
+   "to": "00649D34",
+   "votes": 35011,
+   "where": "src/host/frontend_hd.c:144"
+  },
+  "00645E24": {
+   "class": "data",
+   "to": "00649E24",
+   "votes": 35003,
+   "where": "src/host/frontend_hd.c:144"
+  },
+  "00645F38": {
+   "class": "data",
+   "to": "00649F38",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:60"
+  },
+  "006460D0": {
+   "class": "data",
+   "to": "0064A0D0",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:143"
+  },
+  "006461B8": {
+   "class": "data",
+   "to": "0064A1B8",
+   "votes": 35003,
+   "where": "src/host/frontend_hd.c:144"
+  },
+  "006462A8": {
+   "class": "data",
+   "to": "0064A2A8",
+   "votes": 35002,
+   "where": "src/host/ce_gameplay.c:33"
+  },
+  "00646390": {
+   "class": "data",
+   "to": "0064A390",
+   "votes": 35003,
+   "where": "src/host/frontend_hd.c:145"
+  },
+  "00646480": {
+   "class": "data",
+   "to": "0064A480",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:145"
+  },
+  "00646570": {
+   "class": "data",
+   "to": "0064A570",
+   "votes": 246,
+   "where": "src/host/polygon_submit.c:25"
+  },
+  "006466B8": {
+   "class": "data",
+   "to": "0064A6B8",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:141"
+  },
+  "006467A0": {
+   "class": "data",
+   "to": "0064A7A0",
+   "votes": 35002,
+   "where": "src/host/guest_ui.c:47"
+  },
+  "00646888": {
+   "class": "data",
+   "to": "0064A888",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:59"
+  },
+  "00646970": {
+   "class": "data",
+   "to": "0064A970",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:143"
+  },
+  "00646A58": {
+   "class": "data",
+   "to": "0064AA58",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:57"
+  },
+  "00646B40": {
+   "class": "data",
+   "to": "0064AB40",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:142"
+  },
+  "00646C28": {
+   "class": "data",
+   "to": "0064AC28",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:58"
+  },
+  "00646D10": {
+   "class": "data",
+   "to": "0064AD10",
+   "votes": 35002,
+   "where": "src/host/frontend_hd.c:145"
+  },
+  "00646FC8": {
+   "class": "data",
+   "to": "0064AFC8",
+   "votes": 35002,
+   "where": "src/host/guest_ui.c:48"
+  },
+  "006474D0": {
+   "class": "data",
+   "to": "0064C854",
+   "votes": 5551,
+   "where": "src/host/polygon_submit.c:21"
+  },
+  "006474D4": {
+   "class": "data",
+   "to": "0064CCB0",
+   "votes": 1501,
+   "where": "src/host/polygon_submit.c:22"
+  },
+  "00647B54": {
+   "class": "data",
+   "to": "00650B30",
+   "votes": 27,
+   "where": "src/host/water_kernels.c:18"
+  },
+  "00647F58": {
+   "class": "data",
+   "to": "00650B70",
+   "votes": 41,
+   "where": "src/host/physics_fixes.c:31"
+  },
+  "0064B22C": {
+   "class": "data",
+   "to": "0064E490",
+   "votes": 35006,
+   "where": "src/host/host_policy.h:356"
+  },
+  "0064B3C8": {
+   "class": "data",
+   "to": "0064E62C",
+   "votes": 35002,
+   "where": "src/host/host_policy.h:353"
+  },
+  "0064B9B0": {
+   "class": "data",
+   "to": "0064EC18",
+   "votes": 4,
+   "where": "src/host/physics_fixes.c:33"
+  },
+  "0064C49C": {
+   "class": "data",
+   "to": "0064FBA8",
+   "votes": 644,
+   "where": "src/host/polygon_submit.c:24"
+  },
+  "0064CAEC": {
+   "class": "data",
+   "to": "0064FDA8",
+   "votes": 35003,
+   "where": "src/host/host_policy.h:354"
+  },
+  "0064CC54": {
+   "class": "data",
+   "to": "0064FF10",
+   "votes": 35002,
+   "where": "src/host/host_policy.h:355"
+  },
+  "0064CEA8": {
+   "class": "data",
+   "to": "00650164",
+   "votes": 35002,
+   "where": "src/host/host_policy.h:357"
+  },
+  "0064D644": {
+   "class": "data",
+   "to": "006507A0",
+   "votes": 35001,
+   "where": "src/host/cheats.c:31"
+  },
+  "0064D86C": {
+   "class": "data",
+   "to": "00650650",
+   "votes": 1,
+   "where": "src/host/patch117_physics.c:40"
+  },
+  "0064D970": {
+   "class": "data",
+   "to": "00650C68",
+   "votes": 1,
+   "where": "src/host/physics_fixes.c:32"
+  },
+  "0064DB54": {
+   "class": "data",
+   "to": "00650E54",
+   "votes": 35002,
+   "where": "src/host/cpu_polygons.c:15"
+  },
+  "0064DBCC": {
+   "class": "data",
+   "to": "00650ECC",
+   "votes": 103,
+   "where": "src/host/polygon_submit.c:28"
+  },
+  "0064E458": {
+   "class": "data",
+   "to": "00651760",
+   "votes": 1,
+   "where": "src/host/engine_limits.c:13"
+  },
+  "0064E708": {
+   "class": "data",
+   "to": "00651A18",
+   "votes": 148,
+   "where": "src/host/polygon_submit.c:29"
+  },
+  "0064E70C": {
+   "class": "data",
+   "to": "00651A1C",
+   "votes": 34,
+   "where": "src/host/polygon_submit.c:26"
+  },
+  "0064E710": {
+   "class": "data",
+   "to": "00651A20",
+   "votes": 66,
+   "where": "src/host/polygon_submit.c:27"
+  },
+  "00651C20": {
+   "class": "data",
+   "to": "00655C50",
+   "votes": 3,
+   "where": "src/host/occlusion_kernel.c:11"
+  },
+  "0065F888": {
+   "class": "data",
+   "to": "0066377C",
+   "votes": 1,
+   "where": "src/host/video_subtitles.c:18"
+  },
+  "006603D8": {
+   "class": "data",
+   "to": "006642C0",
+   "votes": 4,
+   "where": "src/host/gamepad.c:31"
+  },
+  "00660B88": {
+   "class": "data",
+   "to": "006649B0",
+   "votes": 1,
+   "where": "src/host/video_test_state.c:5"
+  },
+  "00660B98": {
+   "class": "data",
+   "to": "006649C0",
+   "votes": 4,
+   "where": "src/host/video_test_state.c:7"
+  },
+  "00660BA8": {
+   "class": "data",
+   "to": "006649D0",
+   "votes": 3,
+   "where": "src/host/video_test_state.c:8"
+  },
+  "006610D0": {
+   "class": "data",
+   "to": "00664F00",
+   "votes": 1,
+   "where": "src/host/loading_hd.c:29"
+  },
+  "00661298": {
+   "class": "data",
+   "to": "006650C8",
+   "votes": 1,
+   "where": "src/host/video_test_state.c:6"
+  },
+  "00661570": {
+   "class": "data",
+   "to": "0066FB04",
+   "votes": 4,
+   "where": "src/host/active_ai.c:17"
+  },
+  "00661758": {
+   "class": "data",
+   "to": "0066FB60",
+   "votes": 1,
+   "where": "src/host/active_ai.c:21"
+  },
+  "006634EC": {
+   "class": "data",
+   "to": "00666614",
+   "votes": 3,
+   "where": "src/host/engine_limits.c:14"
+  },
+  "0066424C": {
+   "class": "data",
+   "to": "00666FFC",
+   "votes": 4,
+   "where": "src/host/terrain_quality.c:24"
+  },
+  "006648F4": {
+   "class": "data",
+   "to": "006676D4",
+   "votes": 5,
+   "where": "src/host/engine_limits.c:43"
+  },
+  "00665130": {
+   "class": "data",
+   "to": "00668354",
+   "votes": 18,
+   "where": "src/host/active_ai.c:19"
+  },
+  "00668500": {
+   "class": "data",
+   "to": "0066B564",
+   "votes": 3,
+   "where": "src/host/patch117_physics.c:51"
+  },
+  "006699F8": {
+   "class": "data",
+   "to": "0066CC88",
+   "votes": 465,
+   "where": "src/host/bump_spans.c:5"
+  },
+  "00669B90": {
+   "class": "data",
+   "to": "0066CE20",
+   "votes": 3306,
+   "where": "src/host/guest_ui.c:22"
+  },
+  "0066AE78": {
+   "class": "data",
+   "to": "0066E108",
+   "votes": 8,
+   "where": "src/host/tutorial_prompts.c:31"
+  },
+  "0066C4E8": {
+   "class": "data",
+   "to": "0066F778",
+   "votes": 1,
+   "where": "src/host/terrain_quality.c:17"
+  },
+  "0066CC98": {
+   "class": "data",
+   "to": "00670B10",
+   "votes": 11,
+   "where": "src/host/occlusion_kernel.c:10"
+  },
+  "0066DE4C": {
+   "class": "data",
+   "to": "00671CC4",
+   "votes": 2,
+   "where": "src/host/guest_ui.c:29"
+  },
+  "0066E010": {
+   "class": "data",
+   "to": "00671E88",
+   "votes": 31,
+   "where": "src/host/frontend_hd.c:24"
+  },
+  "0066E05C": {
+   "class": "data",
+   "to": "00671ED4",
+   "votes": 32,
+   "where": "src/host/frontend_hd.c:709"
+  },
+  "0066E338": {
+   "class": "data",
+   "to": "006721B0",
+   "votes": 62,
+   "where": "src/host/ce_gameplay.c:15"
+  },
+  "0066E342": {
+   "class": "data",
+   "to": "006721BA",
+   "votes": 1,
+   "where": "src/host/debug_menu.c:39"
+  },
+  "0066E77C": {
+   "class": "data",
+   "to": "00744CEC",
+   "votes": 303,
+   "where": "src/host/active_ai.c:15"
+  },
+  "0066E78C": {
+   "class": "data",
+   "to": "00744CF0",
+   "votes": 11,
+   "where": "src/host/active_ai.c:24"
+  },
+  "0066E790": {
+   "class": "data",
+   "to": "00744CF4",
+   "votes": 19,
+   "where": "src/host/active_ai.c:23"
+  },
+  "0066E794": {
+   "class": "data",
+   "to": "00744CF8",
+   "votes": 20,
+   "where": "src/host/active_ai.c:22"
+  },
+  "0066E9F0": {
+   "class": "data",
+   "to": "00672598",
+   "votes": 29,
+   "where": "src/host/ce_gameplay.c:59"
+  },
+  "0066EB00": {
+   "class": "data",
+   "to": "006726B8",
+   "votes": 107,
+   "where": "src/host/ce_gameplay.c:62"
+  },
+  "0066ECC0": {
+   "class": "data",
+   "to": "00672878",
+   "votes": 1,
+   "where": "src/host/cheats.c:35"
+  },
+  "0066ED28": {
+   "class": "data",
+   "to": "006728E4",
+   "votes": 20,
+   "where": "src/host/patch117_player.c:53"
+  },
+  "0066ED50": {
+   "class": "data",
+   "to": "0067290C",
+   "votes": 29,
+   "where": "src/host/patch117_player.c:54"
+  },
+  "0066ED67": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning byte read only by the 116-to-1.1 hand port; this build has the 1.1 code natively",
+   "was": "unresolved",
+   "where": "src/host/patch117_player.c:52"
+  },
+  "0066ED8C": {
+   "class": "data",
+   "to": "00672948",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:48"
+  },
+  "0066ED90": {
+   "class": "data",
+   "to": "0067294C",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:49"
+  },
+  "0066ED94": {
+   "class": "data",
+   "to": "00672950",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:50"
+  },
+  "0066ED98": {
+   "class": "data",
+   "to": "00672954",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:51"
+  },
+  "0066EF00": {
+   "class": "data",
+   "to": "00672ABC",
+   "votes": 31,
+   "where": "src/host/patch117_player.c:55"
+  },
+  "0066EF10": {
+   "class": "data",
+   "to": "00672AD8",
+   "votes": 14,
+   "where": "src/host/patch117_player.c:56"
+  },
+  "0066EF20": {
+   "class": "absent",
+   "category": "NO_EQUIVALENT",
+   "evidence": "tuning field read only by the 116-to-1.1 hand port; this build has the 1.1 code natively",
+   "was": "unresolved",
+   "where": "src/host/patch117_player.c:57"
+  },
+  "0066EF64": {
+   "class": "data",
+   "to": "00672B38",
+   "votes": 48,
+   "where": "src/host/active_ai.c:16"
+  },
+  "0066F01C": {
+   "class": "data",
+   "to": "00672C04",
+   "votes": 4,
+   "where": "src/host/objectives.c:18"
+  },
+  "0066F03C": {
+   "class": "data",
+   "to": "00672C24",
+   "votes": 10,
+   "where": "src/host/tutorial_prompts.c:22"
+  },
+  "0066F510": {
+   "class": "data",
+   "to": "006730F8",
+   "votes": 2,
+   "where": "src/host/engine_limits.c:45"
+  },
+  "0066F9B0": {
+   "class": "data",
+   "to": "00673448",
+   "votes": 1,
+   "where": "src/host/terrain_quality.c:27"
+  },
+  "0066F9C4": {
+   "class": "data",
+   "to": "0067345C",
+   "votes": 18,
+   "where": "src/host/terrain_quality.c:26"
+  },
+  "0066FAD8": {
+   "class": "data",
+   "to": "00673570",
+   "votes": 12,
+   "where": "src/host/terrain_quality.c:15"
+  },
+  "0066FB68": {
+   "class": "data",
+   "to": "00673600",
+   "votes": 10,
+   "where": "src/host/terrain_quality.c:16"
+  },
+  "0066FB78": {
+   "class": "data",
+   "to": "00673610",
+   "votes": 10,
+   "where": "src/host/terrain_quality.c:14"
+  },
+  "006715A4": {
+   "class": "data",
+   "to": "0067518C",
+   "votes": 113,
+   "where": "src/host/patch117_player.c:73"
+  },
+  "00675A40": {
+   "class": "data",
+   "to": "00679628",
+   "votes": 256,
+   "where": "src/host/patch117_player.c:76"
+  },
+  "0067A088": {
+   "class": "data",
+   "to": "006D18A8",
+   "votes": 9,
+   "where": "src/host/active_ai.c:20"
+  },
+  "0067AE68": {
+   "class": "data",
+   "to": "006D191C",
+   "votes": 26,
+   "where": "src/host/physics_watch.c:49"
+  },
+  "0067AE90": {
+   "class": "data",
+   "to": "006D1944",
+   "votes": 64,
+   "where": "src/host/physics_watch.c:47"
+  },
+  "0067AF5C": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the dword holding the voluntary-jump byte: the byte 0x0067AF5D pairs with 0x006D1A11 in 27 aligned references",
+   "was": "unresolved",
+   "to": "006D1A10",
+   "where": "src/host/cheats.c:45"
+  },
+  "0067AF5D": {
+   "class": "data",
+   "to": "006D1A11",
+   "votes": 27,
+   "where": "src/host/patch117_player.c:23"
+  },
+  "0067AFA0": {
+   "class": "data",
+   "to": "006D1A5C",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:20"
+  },
+  "0067AFA4": {
+   "class": "data",
+   "to": "006D1A60",
+   "votes": 50,
+   "where": "src/host/patch117_player.c:21"
+  },
+  "0067AFA8": {
+   "class": "data",
+   "to": "006D1A64",
+   "votes": 73,
+   "where": "src/host/cheats.c:44"
+  },
+  "0067B0C0": {
+   "class": "data",
+   "to": "0067DCF0",
+   "votes": 9,
+   "where": "src/host/physics_fixes.c:28"
+  },
+  "00699D40": {
+   "class": "data",
+   "to": "0069C970",
+   "votes": 15,
+   "where": "src/host/patch117_physics.c:23"
+  },
+  "0069A138": {
+   "class": "data",
+   "to": "0069CD6C",
+   "votes": 5,
+   "where": "src/host/active_ai.c:26"
+  },
+  "006CD960": {
+   "class": "data",
+   "to": "006CFCF8",
+   "votes": 10,
+   "where": "src/host/patch117_physics.c:41"
+  },
+  "006CD964": {
+   "class": "data",
+   "to": "006CFCFC",
+   "votes": 6,
+   "where": "src/host/patch117_physics.c:42"
+  },
+  "006CD968": {
+   "class": "data",
+   "to": "006CFD00",
+   "votes": 6,
+   "where": "src/host/patch117_physics.c:43"
+  },
+  "006CD96C": {
+   "class": "data",
+   "to": "006CFD04",
+   "votes": 7,
+   "where": "src/host/patch117_physics.c:44"
+  },
+  "006CD974": {
+   "class": "data",
+   "to": "006CFD0C",
+   "votes": 11,
+   "where": "src/host/patch117_physics.c:45"
+  },
+  "006CD978": {
+   "class": "data",
+   "to": "006CFD10",
+   "votes": 5,
+   "where": "src/host/patch117_physics.c:46"
+  },
+  "006CD97C": {
+   "class": "data",
+   "to": "006CFD14",
+   "votes": 11,
+   "where": "src/host/patch117_physics.c:47"
+  },
+  "006CD984": {
+   "class": "data",
+   "to": "006CFD1C",
+   "votes": 4,
+   "where": "src/host/patch117_physics.c:48"
+  },
+  "006CD988": {
+   "class": "data",
+   "to": "006CFD20",
+   "votes": 4,
+   "where": "src/host/patch117_physics.c:49"
+  },
+  "006CD98C": {
+   "class": "data",
+   "to": "006CFD24",
+   "votes": 7,
+   "where": "src/host/patch117_physics.c:50"
+  },
+  "006CE290": {
+   "class": "data",
+   "to": "006D2388",
+   "votes": 21,
+   "where": "src/host/physics_fixes.c:15"
+  },
+  "006CEAB8": {
+   "class": "data",
+   "to": "006D2BB0",
+   "votes": 1,
+   "where": "src/host/physics_fixes.c:24"
+  },
+  "006CF198": {
+   "class": "data",
+   "to": "006D3290",
+   "votes": 208,
+   "where": "src/host/physics_fixes.c:17"
+  },
+  "006D0A80": {
+   "class": "data",
+   "to": "006D4B98",
+   "votes": 5,
+   "where": "src/host/physics_watch.c:53"
+  },
+  "006D0A84": {
+   "class": "data",
+   "to": "006D4B9C",
+   "votes": 1,
+   "where": "src/host/physics_watch.c:54"
+  },
+  "006D0E98": {
+   "class": "data",
+   "to": "006D4FB8",
+   "votes": 43,
+   "where": "src/host/engine_limits.c:30"
+  },
+  "006D0E99": {
+   "class": "data",
+   "to": "006D4FB9",
+   "votes": 95,
+   "where": "src/host/active_ai.c:18"
+  },
+  "006D0E9C": {
+   "class": "data",
+   "to": "006D4FBC",
+   "votes": 642,
+   "where": "src/host/polygon_submit.c:11"
+  },
+  "006D0F1C": {
+   "class": "data",
+   "to": "006D503C",
+   "votes": 4,
+   "where": "src/host/engine_limits.c:15"
+  },
+  "006D1461": {
+   "class": "data",
+   "to": "006D5581",
+   "votes": 14,
+   "where": "src/host/terrain_quality.c:25"
+  },
+  "006D2040": {
+   "class": "data",
+   "to": "006D6160",
+   "votes": 25,
+   "where": "src/host/engine_limits.c:33"
+  },
+  "006D2101": {
+   "class": "data",
+   "to": "006D6221",
+   "votes": 241,
+   "where": "src/host/polygon_submit.c:14"
+  },
+  "006D2103": {
+   "class": "data",
+   "to": "006D6223",
+   "votes": 181,
+   "where": "src/host/polygon_submit.c:15"
+  },
+  "006D2104": {
+   "class": "data",
+   "to": "006D6224",
+   "votes": 202,
+   "where": "src/host/polygon_submit.c:16"
+  },
+  "006D2108": {
+   "class": "data",
+   "to": "006D6228",
+   "votes": 70,
+   "where": "src/host/polygon_submit.c:12"
+  },
+  "006D2109": {
+   "class": "data",
+   "to": "006D6229",
+   "votes": 70,
+   "where": "src/host/polygon_submit.c:13"
+  },
+  "006D2224": {
+   "class": "data",
+   "to": "006D6344",
+   "votes": 28,
+   "where": "src/host/ce_gameplay.c:55"
+  },
+  "00732874": {
+   "class": "data",
+   "to": "00736994",
+   "votes": 168,
+   "where": "src/host/polygon_submit.c:17"
+  },
+  "00732878": {
+   "class": "data",
+   "to": "00736998",
+   "votes": 172,
+   "where": "src/host/polygon_submit.c:18"
+  },
+  "00732978": {
+   "class": "data",
+   "to": "00736A98",
+   "votes": 26,
+   "where": "src/host/ce_graphics.c:17"
+  },
+  "00732EFC": {
+   "class": "data",
+   "to": "0073701C",
+   "votes": 3,
+   "where": "src/host/host_policy.c:425"
+  },
+  "00732F1C": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "darppolyPolygons: its neighbours 0x732EFC, 0x732F34 and 0x732F4C all move by +0x4120 and 3 aligned references agree",
+   "was": "unresolved",
+   "to": "0073703C",
+   "where": "src/host/host_policy.c:428"
+  },
+  "00732F34": {
+   "class": "data",
+   "to": "00737054",
+   "votes": 4,
+   "where": "src/host/host_policy.c:427"
+  },
+  "00732F4C": {
+   "class": "data",
+   "to": "0073706C",
+   "votes": 3,
+   "where": "src/host/host_policy.c:426"
+  },
+  "00737190": {
+   "class": "data",
+   "to": "0073B2B0",
+   "votes": 1,
+   "where": "src/host/engine_limits.c:44"
+  },
+  "007371A0": {
+   "class": "data",
+   "to": "0073B2C0",
+   "votes": 12,
+   "where": "src/host/engine_limits.c:29"
+  },
+  "00737438": {
+   "class": "data",
+   "to": "0073B558",
+   "votes": 11453,
+   "where": "src/host/cpu_polygons.c:17"
+  },
+  "00737E40": {
+   "class": "data",
+   "to": "0073BF60",
+   "votes": 7714,
+   "where": "src/host/bump_spans.c:8"
+  },
+  "00737E90": {
+   "class": "data",
+   "to": "0073BFB0",
+   "votes": 7714,
+   "where": "src/host/bump_spans.c:7"
+  },
+  "00737EA0": {
+   "class": "data",
+   "to": "0073BFC0",
+   "votes": 2941,
+   "where": "src/host/bump_spans.c:4"
+  },
+  "00737EC4": {
+   "class": "data",
+   "to": "0073BFE4",
+   "votes": 32,
+   "where": "src/host/bump_spans.c:10"
+  },
+  "00737EEC": {
+   "class": "data",
+   "to": "0073C00C",
+   "votes": 2481,
+   "where": "src/host/cpu_polygons.c:18"
+  },
+  "00737F34": {
+   "class": "data",
+   "to": "0073C054",
+   "votes": 1007,
+   "where": "src/host/bump_spans.c:6"
+  },
+  "00737F68": {
+   "class": "data",
+   "to": "0073C088",
+   "votes": 317,
+   "where": "src/host/bump_spans.c:9"
+  },
+  "007382B8": {
+   "class": "data",
+   "to": "0073C3D8",
+   "votes": 143,
+   "where": "src/host/polygon_submit.c:19"
+  },
+  "007382BC": {
+   "class": "data",
+   "to": "0073C3DC",
+   "votes": 143,
+   "where": "src/host/polygon_submit.c:20"
+  },
+  "0073DC40": {
+   "class": "data",
+   "to": "00741D60",
+   "votes": 240,
+   "where": "src/host/game_text.c:19"
+  },
+  "0073F34C": {
+   "class": "data",
+   "to": "0074346C",
+   "votes": 147,
+   "where": "src/host/ce_gameplay.c:58"
+  },
+  "0073F350": {
+   "class": "data",
+   "to": "00743470",
+   "votes": 29,
+   "where": "src/host/tutorial_prompts.c:25"
+  },
+  "0073F444": {
+   "class": "data",
+   "to": "00743564",
+   "votes": 256,
+   "where": "src/host/ce_gameplay.c:16"
+  },
+  "0073F600": {
+   "class": "data",
+   "to": "00743720",
+   "votes": 17,
+   "where": "src/host/debug_menu.c:36"
+  },
+  "0073F614": {
+   "class": "data",
+   "to": "00743734",
+   "votes": 8,
+   "where": "src/host/debug_menu.c:37"
+  },
+  "0073F708": {
+   "class": "data",
+   "to": "007437C0",
+   "votes": 4,
+   "where": "src/host/water_kernels.c:12"
+  },
+  "0073F70C": {
+   "class": "data",
+   "to": "007437C4",
+   "votes": 3,
+   "where": "src/host/water_kernels.c:13"
+  },
+  "0073F710": {
+   "class": "data",
+   "to": "007437C8",
+   "votes": 4,
+   "where": "src/host/water_kernels.c:14"
+  },
+  "007410F8": {
+   "class": "data",
+   "to": "007454D0",
+   "votes": 21,
+   "where": "src/host/occlusion_kernel.c:13"
+  },
+  "007410FC": {
+   "class": "data",
+   "to": "007454D4",
+   "votes": 8,
+   "where": "src/host/occlusion_kernel.c:14"
+  },
+  "00741110": {
+   "class": "data",
+   "to": "007454E8",
+   "votes": 18,
+   "where": "src/host/occlusion_kernel.c:12"
+  }
+ }
+}

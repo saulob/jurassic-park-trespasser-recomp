@@ -3,6 +3,7 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "test_profile.h"
 
 #include <d3d11.h>
 #include <math.h>
@@ -1354,6 +1355,7 @@ void menu_l10n_tests(int* checks, int* failures);
 void menu_layout_tests(int* checks, int* failures);
 
 int main(void) {
+    test_profile_activate();
     test_f5();
     test_input_capture();
     test_navigation_and_pad();

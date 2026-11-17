@@ -1,6 +1,6 @@
 # Launcher, display and graphics
 
-`trespasser.exe` opens the launcher before the game, in the same process. Pages: Play, Display, Graphics, Gameplay,
+`trespasser_recomp.exe` opens the launcher before the game, in the same process, and runs the lifted build of the version you play. Pages: Play, Display, Graphics, Gameplay,
 Controls, Cheats, Bug Report (coming later) and About. There is no online or multiplayer page.
 
 ## Architecture
@@ -25,9 +25,9 @@ online page.
 | `launcher/launcher.cpp` | pages, Play flow, start-up decision, `jpt_launcher_run` (C entry, `jpt_launcher.h`) |
 | `launcher/host.cpp`, `displays.h`, `placement.h` | the launcher window: SDL3, SDL renderer, Dear ImGui, F11, placement |
 | `launcher/header_art.cpp`, `page_icons.cpp`, `options.cpp` | header art placement, sidebar icons (nanosvg), page model and labels |
-| `launcher/iso9660.cpp` | the disc image reader |
-| `launcher/game_files.cpp`, `game_manifest_uk_116.inc` | supported builds, the readiness check, SHA-256 (CNG) |
-| `launcher/game_install.cpp` | Install game: identity, plan, staging, check, activation, rollback |
+| `launcher/iso9660.cpp`, `is_cabinet.cpp`, `inflate.cpp` | the disc image reader, the InstallShield 5 cabinet of the Russian disc, raw DEFLATE |
+| `launcher/game_files.cpp`, `game_manifest_<id>.inc` | the game versions ([GAME_VERSIONS](GAME_VERSIONS.md)), their files and digests, the installed versions, Remove, SHA-256 (CNG) |
+| `launcher/game_install.cpp` | Import game: identity, plan, staging, digest check, repair, activation, rollback |
 | `launcher/settings.cpp` | the pending view of `trespasser.ini`; the game's registry value InvertMouse |
 | `launcher/user_data.cpp` | the portable `user_data` root, `PortFolder()`, the migration of the old `user` folder ([user-data](user-data.md)) |
 | `launcher/system_info.cpp` | the graphics cards (`src/common/jpt_gpu.c`) and their real MSAA levels |
@@ -40,13 +40,14 @@ online page.
 
 | Folder | Holds | Default |
 |---|---|---|
-| game | the installed game, never written by the port at run time | `game\` (`--game`, `TRESPASSER_GAME_DIR`) |
+| game | the installed versions in `versions\<id>\` (an installation made before versions existed stays directly in it), never written by the port at run time | `game\` (`--game`, `TRESPASSER_GAME_DIR`) |
 | user data | `launcher\trespasser.ini`; `saves\`: `recomp-registry.txt` (the game's registry), `SAVEGAME.*`, level swap files ([user-data](user-data.md)) | `user_data\` next to the program (`--user_data_root`, `TRESPASSER_USER_DATA_ROOT`; `build\user_data` with `tools\build.ps1 -Run`) |
-| logs | one `trespasser_NNN.log` per run | `build\logs\` (`--log-dir`, `--log-file`) |
+| logs | one `trespasser_recomp_NNN.log` per run | `build\logs\` (`--log-dir`, `--log-file`) |
 
 The game builds its save and swap paths from the registry value `Installed Directory` and reads its data from
-`Data Drive`\data. The host answers `Installed Directory` with `user_data\saves` and `Data Drive` with the game folder,
-so saves never land in the installed game. At start, the old flat `user\` folder is moved into `user_data`
+`Data Drive`\data. The host answers `Installed Directory` with the selected version's saves folder
+(`user_data\saves` for English 1.0.116, `user_data\versions\<id>\saves` for the others) and `Data Drive` with the
+selected version's folder, so saves never land in the installed game. At start, the old flat `user\` folder is moved into `user_data`
 ([user-data](user-data.md)), and `recomp-registry.txt` and `SAVEGAME.*` of an even older layout are copied (not moved)
 from `game\` to `user_data\saves` when it has no file of that name.
 
@@ -63,9 +64,9 @@ from `game\` to `user_data\saves` when it has no file of that name.
 `--dry-run` never opens it. When its window cannot be opened, the game starts if the files are ready.
 
 The host reserves the game's fixed address range by restarting itself before anything loads
-(`native32_hold_image`), which needs `game\trespass.exe`. When the game is installed by this very run, the process
-could not reserve it, so after PLAY it starts the game as a new process (`--skip-launcher`, same log) and returns its
-exit code.
+(`native32_hold_range`): `0x00400000` up to the largest guest image of any lift the program carries (their `SizeOfImage`
+in `config/`, generated into `src/host/profiles`), whatever is installed, so a version imported in the same run maps. The
+range is held even with nothing installed, so no second process is started after an import.
 
 ## Pages
 
@@ -75,7 +76,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 
 | Page | Rows |
 |---|---|
-| Play | status card, Game files (Install / Reinstall, progress and Cancel), Show this launcher |
+| Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
@@ -86,45 +87,62 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 
 ## Play
 
-The card shows **Ready to play · Trespasser UK 1.0.116** (with `trespass.exe` and its SHA-256), **Game not installed**
-or **Invalid game files** with the reason. PLAY saves the pending settings once ("Settings saved. Starting game..."),
+The card shows **Ready to play · English · Build 116** with the game's language and its release; **Game not installed**, **Invalid game files** with the reason, or, for a version the port cannot run
+yet, why (see [GAME_VERSIONS](GAME_VERSIONS.md)). With more than one version installed, **Game version** chooses which
+one Play starts (setting `game_version`; empty: the first ready one the port runs). A selected version that is removed
+or broken is replaced by another ready one. The launcher's own language stays the one chosen in Gameplay. PLAY saves the pending settings once ("Settings saved. Starting game..."),
 closes the launcher and the game starts. It is refused, with the reason, while the files are not ready or an install
 runs; a failed save keeps the launcher open. **Save** writes without starting; **Quit** (Alt+F4) closes without saving.
 
-## Install game
+## Import game
 
-**Install game...** / **Reinstall game...** opens the file dialog for the player's own disc image (`.iso`). Example
-image: `Trespasser_EN.iso`, 652,992,512 bytes, volume `Trespass_UK_116`.
+**Import game...** opens the file dialog for the player's own disc image (`.iso`); **Reinstall game...** replaces a
+selected version whose files are no longer valid. The disc is recognised by the SHA-256 of one data file that differs in every version (never an executable) and by the
+presence of every file of that version, never by its file name or volume label ([GAME_VERSIONS](GAME_VERSIONS.md)).
 
-**The disc format.** Plain ISO 9660 with a Joliet supplementary tree (long names). The original installer
-(`setup95.exe`) does not use CAB or InstallShield archives: every file the game needs is stored uncompressed.
+| Disc | Version | Installed into |
+|---|---|---|
+| English retail, UK (`Trespass_UK_116`) or US (`Trespasser_116d`) | English · Build 116 | `game\versions\en-116` |
+| Russian, Fargus (`TRESPASSER_116D`, InstallShield 5) | Russian · Build 116 | `game\versions\ru-116` |
+| Spanish (`TRESPASSER_S`) | Spanish · Build 117 | `game\versions\es-117` |
+| Brazilian Portuguese | Brazilian Portuguese · Build 117 | `game\versions\ptbr-117` |
 
-| On the disc | Installed as |
-|---|---|
-| `setup/tpassp6.exe` (Pentium Pro/II build, 1.0.116) | `trespass.exe` |
-| `setup/msvcirt.dll`, `setup/smackw32.dll`, `setup/processor.dll` | `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` |
-| `readme.txt` | `Readme.txt` |
-| `data/` (251 files) | `data\` |
-
-`setup/tpassp5.exe`, `setup/tpassk6.exe`, the installer and `setup/DirectX` are not installed. That is exactly the
-256-file, 594,182,171-byte tree that `tools/extract_game.py` lays out for development.
+Each version installs `guest.img` (the guest image, made from the disc's `tpassp6.exe` and checked against its pressed
+SHA-256; no file named like an executable is installed), `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll`, `Readme.txt` and
+`data\`. The Russian disc keeps its menu art and `tpassp6.exe` in `setup/data1.cab`, read natively (`is_cabinet.cpp`,
+`inflate.cpp`), restores its 8.3 names (`tpassi~1.smk` is `tpassintro.smk`) and adds `text\strings.dat` (the string table of
+its `SETUP/TRESPASS.EXE`, read as resources only) and `text\tresp.ttf`. The original executables are import inputs only,
+are not required to play, and are never copied, hashed or looked for afterwards; the installers, `setup/DirectX`, EA
+registration and help files are never copied. A disc without the file the guest image is made from is refused
+(nothing is installed). The manifests are
+generated by `tools/make_game_manifests.py` from the discs (names, sizes and digests only).
 
 **Steps** (on a worker thread, with progress and Cancel):
 
 1. Read the volume descriptors and the whole directory tree (Joliet when present). Damaged records, unsafe names,
    loops and extents outside the file are refused. No mounting, no setup program, no external tool.
-2. Identify the disc: the volume identifier and the size of `setup/tpassp6.exe` must match a known profile;
-   another disc, or another version of it, is refused before anything is copied.
-3. Check the free space, then copy each planned file into `<game>.install-temp` through a `.part` file.
-4. Check the staging folder like an installed game: `trespass.exe` SHA-256
-   `d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed`, then every file of the profile's manifest
-   present with its size. An unknown executable is refused.
-5. Activate: copy the old folder's saves and registry store to `user_data\saves` (when missing there), rename `game` to
-   `game.install-backup`, rename the staging folder to `game`, delete the backup.
+2. Identify: the profile's identity data file with its digest, and every file of that version present with its size (and its
+   cabinet readable). A Trespasser disc no version matches is **Unsupported Trespasser build**: nothing is copied and
+   its fingerprints (volume, executables with size, SHA-256 and what they are when known) go to the log.
+3. A version that is already installed and ready is **Already installed**: nothing is copied and it is selected.
+4. Check the free space, then copy each file into `versions\<id>.install-temp` through a `.part` file, computing its
+   SHA-256 on the way. A file whose digest differs from the pressed one is damaged: it is taken from another installed
+   version that has the identical file with the pressed digest, or the import stops as **Damaged disc image** with
+   the files named. (The Brazilian image has five level files with one flipped bit each; importing English first
+   repairs them.)
+5. Check the staging folder like an installed version, then activate: rename the current `versions\<id>` aside, move
+   the staging folder in, delete the old one.
 
-Any failure or Cancel before step 5 deletes the staging folder and leaves the current installation as it was. If
-the second rename fails, the backup is renamed back. An image stored inside the game folder is refused. Profiles are
-a table (`game_files.cpp`): another version is one more entry with its own hash and manifest.
+Any failure or Cancel before step 5 deletes the staging folder and leaves every installed version as it was. If the
+second rename fails, the backup is renamed back. The image is opened for reading only and never written.
+
+**Remove version** (with confirmation) deletes the selected version's folder; for an installation made before versions
+existed, only the files of its manifest are deleted from `game\`. Disc images, saves, settings and other versions are
+never touched.
+
+**Older installations.** A `trespass.exe` left in `game\` or `game\versions\<id>` by an earlier launcher is ignored
+(not listed, not deleted, not copied): import the version again to install its `guest.img`. Importing a version that is
+already installed finds it and copies nothing.
 
 ## Settings
 
@@ -163,7 +181,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `cheat_movement_speed` | 0.5, 1, 1.5, 2, 3, 5, 7.5, 10 | 1 |
 | `cheat_jump_height` | 0.5, 1, 1.5, 2, 3, 5 | 1 |
 | `cheat_invulnerability`, `cheat_infinite_ammo`, `cheat_freeze_dinosaurs`, `cheat_super_health` | 1, 0 | 0 |
-| `language` | `en`, `pt-BR`, `fr`, `de`, `es`, `ru`, `it` | `en` |
+| `language`, `language_<version id>` | `en`, `pt-BR`, `fr`, `de`, `es`, `ru`, `it` | the language of the game version |
 | `launcher_x`, `_y`, `_width`, `_height`, `_maximized`, `_fullscreen` | the launcher window | |
 | `settings_version` | 3 | written with every change |
 
@@ -183,7 +201,12 @@ options menu also changes. The launcher does not touch the game's other options.
 
 ## Language
 
-**Gameplay > Language** is the one language setting (`language`). Languages are built into the port: there is nothing to
+**Gameplay > Language** is the one language setting. Each installed game version keeps its own choice under
+`language_<version id>` (`language_ptbr-117 = en`); a version with no choice yet plays in the language of its release
+(English, Russian, Spanish or Brazilian Portuguese), and choosing English is stored like any other choice. The key
+`language` of earlier builds still counts for English 1.0.116 and for `--language`, and never changes another version's
+default. The release's own text (Russian strings and font, the Spanish and Brazilian Portuguese string tables) is kept;
+the port's translation only fills what the release lacks. Languages are built into the port: there is nothing to
 download, install or choose a folder for. Every language has the game's text, the words on its menu pictures, subtitles
 and the port's own panels; voices, effects, music and videos always stay the English game files.
 
@@ -200,7 +223,13 @@ and the port's own panels; voices, effects, music and videos always stay the Eng
 The combo lists English, Brazilian Portuguese, French, German, Spanish, Russian and Italian; with the launcher in
 Brazilian Portuguese the same labels read Inglês, Português Brasil, Francês, Alemão, Espanhol, Russo and Italiano.
 
-The game's own Show Subtitles option (Options > Audio) turns subtitles on and off.
+A game version released in the chosen language keeps its own menu pictures and text: only the Brazilian Credits button
+(lettered Area de Trabalho in the release) is corrected. Another language relabels the pictures with the port's labels.
+The game's own Show Subtitles option (Options > Audio) turns the captions on and off in every version; the Russian,
+Spanish and Brazilian Portuguese releases hide the row, so the port draws it (Subtitles, Субтитры, Subtítulos,
+Legendas). The option is On until a choice is stored, an Off chosen afterwards stays, and the choice belongs to each
+version's own settings. The Spanish and Brazilian Portuguese Stream.tpa carry no caption text at all: the port gives them the captions
+(and marks each sample's descriptor as having a block, as the game requires), translated into the language chosen.
 
 **The launcher in Português Brasil.** Only Português Brasil translates the launcher; every other language leaves it in
 English. The launcher follows the setting every frame, so choosing Português Brasil changes the whole launcher at once
@@ -557,7 +586,7 @@ A dedicated ultrawide HUD, an uncapped frame rate and the x64 host (its own bran
 
 ## Manual test
 
-1. Start the game: the launcher opens on Play with "Ready to play · Trespasser UK 1.0.116", the header art, the sidebar
+1. Start the game: the launcher opens on Play with "Ready to play · English · Build 116", the header art, the sidebar
    icons and Sponsor on GitHub left of Quit; compare it with Dragon's Crown Pro PC and 13 Sentinels side by side.
 2. Graphics: Render resolution follows Display > Aspect ratio (16:9 1440p: 2560 × 1440; 21:9: 3440 × 1440).
 3. 4:3, 16:9, 21:9, 32:9 in turn: more world to the sides, the same height, no stretching, text readable.
