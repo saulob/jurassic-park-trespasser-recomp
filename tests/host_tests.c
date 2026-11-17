@@ -155,11 +155,10 @@ static void test_keys(void) {
     CHECK(key_policy(0x101, 0x7A, 0, 0, 0) == KEY_DROP);
     CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x101, 0x7A, 0, 1, 0) == KEY_TO_GAME);
-    /* F5 is the host's in every state (gameplay, menus, dialogs): the Debug Menu, which acts in a level or the main
-     * menu. */
+    /* F5 is the host's in every state (gameplay, menus, dialogs): the minimap toggle, which acts in gameplay only. */
     for (int mods = 0; mods < 4; mods++) {
-        CHECK(key_policy(0x100, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_DEBUG_MENU);
-        CHECK(key_policy(0x104, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_DEBUG_MENU);
+        CHECK(key_policy(0x100, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_MINIMAP);
+        CHECK(key_policy(0x104, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_MINIMAP);
         CHECK(key_policy(0x100, 0x74, 1, mods & 1, mods >> 1) == KEY_DROP);
         CHECK(key_policy(0x101, 0x74, 0, mods & 1, mods >> 1) == KEY_DROP);
     }
@@ -167,7 +166,7 @@ static void test_keys(void) {
         int others = 0;
         for (unsigned vk = 0; vk < 256; vk++)
             for (unsigned msg = 0x100; msg <= 0x105; msg++)
-                others += vk != 0x74 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_DEBUG_MENU;
+                others += vk != 0x74 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_MINIMAP;
         CHECK(others == 0);
     }
     /* F10 is Cheats; Windows sends it as a system key and opens the menu bar on its key-up unless that is kept. */
@@ -242,7 +241,7 @@ static void test_keys(void) {
         CHECK(others == 0);
     }
     /* F1, F5, F11, Ctrl+F11, Esc and Alt+F4 keep what they did */
-    CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x74, 0, 0, 0) == KEY_HOST_DEBUG_MENU);
+    CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x74, 0, 0, 0) == KEY_HOST_MINIMAP);
     CHECK(key_policy(0x100, 0x7A, 0, 0, 0) == KEY_HOST_FULLSCREEN && key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x100, 0x1B, 0, 0, 0) == KEY_TO_GAME && key_policy(0x104, 0x73, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(0x100, 0x57, 1, 0, 0) == KEY_TO_GAME);

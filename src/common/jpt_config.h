@@ -48,6 +48,7 @@ extern "C" {
 #define JPT_KEY_ACTIVE_AI "active_ai"
 #define JPT_KEY_WATER_REFRACTION "water_refraction"
 #define JPT_KEY_ENHANCED_SKY "enhanced_sky"
+#define JPT_KEY_MINIMAP "minimap"
 #define JPT_KEY_QUICK_SAVE "quick_save_key"
 #define JPT_KEY_QUICK_LOAD "quick_load_key"
 /* DreamWorks Interactive's official v1.1 build 117 fixes reimplemented natively; Off is the retail 1.0 build 116. */
@@ -132,6 +133,7 @@ typedef struct {
     int active_ai_enhanced; /* 0: the retail 3 active animals, 1: 6 */
     int water_refraction;
     int enhanced_sky;
+    int minimap;
     int official_patch_117;
     int fov;
     float mouse_sensitivity;
@@ -150,7 +152,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (29 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (30 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

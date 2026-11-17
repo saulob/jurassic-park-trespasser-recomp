@@ -8,9 +8,11 @@
 #include "guest_va.h"
 #include "host.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "active_ai_policy.h"
+#include "minimap.h"
 
 #define AI_SYSTEM GVA(0x0066E77C)
 #define PLAYER GVA(0x0066EF64)
@@ -181,6 +183,47 @@ static uint32_t position(uint32_t object, uint32_t buf) {
     uint32_t r = 0;
     guest_call_virtual(object, VF_POSITION, &buf, 1, &r);
     return r;
+}
+
+static float s_player[3];
+static int s_player_ready;
+
+static float dist3(const float a[3], const float b[3]) {
+    const float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+    return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+static uint32_t brain_of(uint32_t animal);
+
+static int note_animal(uint32_t animal, int active, uint32_t scratch, host_animal_t* out, int n) {
+    float at[3];
+    if (!animal || !guest_readable(animal, ANIMAL_BRAIN + 4u) || dead(animal)) return n;
+    read_vec(position(animal, scratch), at);
+    out[n].x = at[0];
+    out[n].y = at[1];
+    out[n].engaged = minimap_creature_engaged(active, s_player_ready,
+                                              dist3(at, s_player), rdf(brain_of(animal) + BRAIN_KEEP_RADIUS));
+    return n + 1;
+}
+
+int active_ai_animals(uint32_t scratch, host_animal_t* out, int max) {
+    uint32_t sys = MEM32(AI_SYSTEM), head, node, player_va;
+    int n = 0, guard = 0;
+    if (!sys || !guest_readable(sys, SYS_THINK_DUE + 4u) || !out) return 0;
+    player_va = MEM32(PLAYER);
+    s_player_ready = 0;
+    if (player_va && guest_readable(player_va, 8u)) {
+        read_vec(position(player_va, scratch + 0x20u), s_player);
+        s_player_ready = 1;
+    }
+    for (int i = 1; i <= limit_of(sys) && n < max; i++) n = note_animal(active_at(sys, i), 1, scratch, out, n);
+    head = MEM32(sys + SYS_LIST);
+    if (!head || !guest_readable(head, 12u)) return n;
+    for (node = MEM32(head); node != head && node && guard < 64 && n < max; node = MEM32(node), guard++) {
+        if (!guest_readable(node, 12u)) break;
+        n = note_animal(MEM32(node + 8u), 0, scratch, out, n);
+    }
+    return n;
 }
 
 static uint32_t brain_of(uint32_t animal) { return MEM32(animal + ANIMAL_BRAIN); }

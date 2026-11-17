@@ -158,7 +158,7 @@ ninja -C build\cmake\msvc-x86 launcher_tests host_tests gamepad_tests com_tests 
 py -3 -m unittest discover -s tests -p "test_stable_entries.py"  # the lift's stable-entry renaming and check
 py -3 -m unittest discover -s tests -p "test_lift_hooks.py"     # lift hooks: the list, their place in front of an instruction, the check
 py -3 -m unittest discover -s tests -p "test_lift_staging.py"    # staging, publishing changed files only, cleanup retries when a scanner holds a file (TRESPASSER_TEST_LIFT=1 also lifts a small closure twice)
-py -3 -m unittest discover -s tests -p "test_renderer_fixed.py"  # no runtime renderer switch: the renderer is set once at start, F5 is only the Video Test
+py -3 -m unittest discover -s tests -p "test_renderer_fixed.py"  # no runtime renderer switch: the renderer is set once at start, F5 is only the minimap toggle
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
 $env:TRESPASSER_TEST_ISO = 'D:\images\trespasser.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation

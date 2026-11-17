@@ -53,24 +53,15 @@ Replay voice	Réécouter la voix
 Raise and move the hand	Lever et bouger la main
 Grab	Saisir
 Drop	Lâcher
-Debug Menu	Menu de débogage
+Toggle Minimap	Basculer la mini-carte
 Cheats	Codes de triche
 Fullscreen	Plein écran
-Debug / Test Menu	Menu de débogage / test
 Level Select	Choix du niveau
 Current level	Niveau actuel
-Restart Level	Relancer le niveau
-Reload Current Level	Recharger le niveau
 X	X
 Y	Y
 Z	Z
 Teleport	Téléporter
-Previous Key Point	Point clé précédent
-Next Key Point	Point clé suivant
-Set Checkpoint	Placer un point de contrôle
-Return to Checkpoint	Retour au point de contrôle
-Show Coordinates	Afficher les coordonnées
-Copy Coordinates	Copier les coordonnées
 Freeze AI	Geler l'IA
 Freeze Dinosaurs	Geler les dinosaures
 Movement Speed	Vitesse de déplacement
@@ -80,51 +71,23 @@ Infinite Ammo	Munitions infinies
 Heal	Soigner
 Super Health	Super santé
 Fly / Free Camera	Vol / caméra libre
-Compass	Boussole
-Ambient Occlusion	Occlusion ambiante
-Water Refraction	Réfraction de l'eau
-Enhanced Sky	Ciel amélioré
-Field of View	Champ de vision (FOV)
-Default	Par défaut
 Close	Fermer
 Off	Désactivé
 On	Activé
-Low	Faible
-Medium	Moyenne
-High	Élevée
-Ultra	Ultra
-Unavailable	Indisponible
 unavailable	indisponible
 none	aucun
 none (main menu)	aucun (menu principal)
 Level	Niveau
 Player	Joueuse
-Navigation	Navigation
-Debug	Débogage
-Graphics	Graphismes
 No scene files in the data folder	Aucun fichier de niveau dans le dossier data
 Objectives unavailable for this level	Objectifs indisponibles pour ce niveau
-Checkpoint set	Point de contrôle placé
-Coordinates shown	Coordonnées affichées
-Coordinates hidden	Coordonnées masquées
-Coordinates copied	Coordonnées copiées
-Coordinates unavailable	Coordonnées indisponibles
-Compass off	Boussole désactivée
-Compass on	Boussole activée
 Not available here	Indisponible ici
+Minimap On	Mini-carte activée
+Minimap Off	Mini-carte désactivée
 Not available	Indisponible
 Level Select failed	Échec du choix du niveau
-Reload failed	Échec du rechargement
-Restart failed	Échec du redémarrage
 Teleport failed	Échec de la téléportation
-Returned to checkpoint	Retour au point de contrôle effectué
-Return to Checkpoint failed	Échec du retour au point de contrôle
-Next Key Point failed	Échec du point clé suivant
-Previous Key Point failed	Échec du point clé précédent
-The clipboard could not be opened	Impossible d'ouvrir le presse-papiers
-Ambient Occlusion is unavailable (see the log)	Occlusion ambiante indisponible (voir le journal)
 Freeze AI failed	Échec du gel de l'IA
-Key point %d / %d	Point clé %d / %d
 No objective	Aucun objectif
 Objective updated	Objectif mis à jour
 Quick Save	Sauvegarde rapide
@@ -140,7 +103,6 @@ Fill health to maximum	Remplit la santé au maximum
 Camera	Caméra
 Normal	Normale
 Free Camera	Caméra libre
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Haut/Bas choisir | Entrée/A utiliser | Gauche/Droite régler (Maj 10, Ctrl 0.1, LB/RB 10) | chiffres modifier | Échap/B retour | F5 fermer
 Esc/B or F3 close	Échap/B ou F3 fermer
 Beach	Plage
 Jungle Road	Route de la jungle

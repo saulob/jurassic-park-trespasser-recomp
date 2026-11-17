@@ -1,4 +1,4 @@
-/* The geometry of the F5 / F10 panel without windows or fonts: where the header, its close button, the rows and the
+/* The geometry of the F10 / F3 panels without windows or fonts: where the header, its close button, the rows and the
  * footer go for a given view and text size, the columns of a table, and which row a pointer is over. */
 #ifndef DEBUG_MENU_LAYOUT_H
 #define DEBUG_MENU_LAYOUT_H

@@ -53,24 +53,15 @@ Replay voice	Replay voice
 Raise and move the hand	Raise and move the hand
 Grab	Grab
 Drop	Drop
-Debug Menu	Debug Menu
+Toggle Minimap	Toggle Minimap
 Cheats	Cheats	keep=de
 Fullscreen	Fullscreen
-Debug / Test Menu	Debug / Test Menu
 Level Select	Level Select
 Current level	Current level
-Restart Level	Restart Level
-Reload Current Level	Reload Current Level
 X	X	keep=*
 Y	Y	keep=*
 Z	Z	keep=*
 Teleport	Teleport
-Previous Key Point	Previous Key Point
-Next Key Point	Next Key Point
-Set Checkpoint	Set Checkpoint
-Return to Checkpoint	Return to Checkpoint
-Show Coordinates	Show Coordinates
-Copy Coordinates	Copy Coordinates
 Freeze AI	Freeze AI
 Freeze Dinosaurs	Freeze Dinosaurs
 Movement Speed	Movement Speed
@@ -80,51 +71,23 @@ Infinite Ammo	Infinite Ammo
 Heal	Heal
 Super Health	Super Health
 Fly / Free Camera	Fly / Free Camera
-Compass	Compass
-Ambient Occlusion	Ambient Occlusion
-Water Refraction	Water Refraction
-Enhanced Sky	Enhanced Sky
-Field of View	Field of View
-Default	Default
 Close	Close
 Off	Off
 On	On
-Low	Low
-Medium	Medium
-High	High
-Ultra	Ultra	keep=pt-BR,fr,de,es,it
-Unavailable	Unavailable
 unavailable	unavailable
 none	none
 none (main menu)	none (main menu)
 Level	Level	keep=de
 Player	Player
-Navigation	Navigation	keep=fr,de
-Debug	Debug	keep=de,it
-Graphics	Graphics
 No scene files in the data folder	No scene files in the data folder
 Objectives unavailable for this level	Objectives unavailable for this level
-Checkpoint set	Checkpoint set
-Coordinates shown	Coordinates shown
-Coordinates hidden	Coordinates hidden
-Coordinates copied	Coordinates copied
-Coordinates unavailable	Coordinates unavailable
-Compass off	Compass off
-Compass on	Compass on
 Not available here	Not available here
+Minimap On	Minimap On
+Minimap Off	Minimap Off
 Not available	Not available
 Level Select failed	Level Select failed
-Reload failed	Reload failed
-Restart failed	Restart failed
 Teleport failed	Teleport failed
-Returned to checkpoint	Returned to checkpoint
-Return to Checkpoint failed	Return to Checkpoint failed
-Next Key Point failed	Next Key Point failed
-Previous Key Point failed	Previous Key Point failed
-The clipboard could not be opened	The clipboard could not be opened
-Ambient Occlusion is unavailable (see the log)	Ambient Occlusion is unavailable (see the log)
 Freeze AI failed	Freeze AI failed
-Key point %d / %d	Key point %d / %d
 No objective	No objective
 Objective updated	Objective updated
 Quick Save	Quick Save
@@ -140,7 +103,6 @@ Fill health to maximum	Fill health to maximum
 Camera	Camera	keep=it
 Normal	Normal	keep=pt-BR,de,es
 Free Camera	Free Camera
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close
 Esc/B or F3 close	Esc/B or F3 close
 Beach	Beach
 Jungle Road	Jungle Road

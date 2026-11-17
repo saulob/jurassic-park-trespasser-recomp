@@ -53,24 +53,15 @@ Replay voice	Повторить реплику
 Raise and move the hand	Поднять и двигать руку
 Grab	Взять
 Drop	Бросить
-Debug Menu	Меню отладки
+Toggle Minimap	Переключить миникарту
 Cheats	Читы
 Fullscreen	Полный экран
-Debug / Test Menu	Меню отладки / тестов
 Level Select	Выбор уровня
 Current level	Текущий уровень
-Restart Level	Перезапустить уровень
-Reload Current Level	Перезагрузить уровень
 X	X
 Y	Y
 Z	Z
 Teleport	Телепорт
-Previous Key Point	Предыдущая точка
-Next Key Point	Следующая точка
-Set Checkpoint	Поставить контрольную точку
-Return to Checkpoint	Вернуться к контрольной точке
-Show Coordinates	Показать координаты
-Copy Coordinates	Копировать координаты
 Freeze AI	Заморозить ИИ
 Freeze Dinosaurs	Заморозить динозавров
 Movement Speed	Скорость движения
@@ -80,51 +71,23 @@ Infinite Ammo	Бесконечные патроны
 Heal	Лечение
 Super Health	Суперздоровье
 Fly / Free Camera	Полёт / свободная камера
-Compass	Компас
-Ambient Occlusion	Фоновое затенение
-Water Refraction	Преломление воды
-Enhanced Sky	Улучшенное небо
-Field of View	Поле зрения (FOV)
-Default	По умолчанию
 Close	Закрыть
 Off	Выкл.
 On	Вкл.
-Low	Низкое
-Medium	Среднее
-High	Высокое
-Ultra	Ультра
-Unavailable	Недоступно
 unavailable	недоступно
 none	нет
 none (main menu)	нет (главное меню)
 Level	Уровень
 Player	Игрок
-Navigation	Навигация
-Debug	Отладка
-Graphics	Графика
 No scene files in the data folder	В папке data нет файлов уровней
 Objectives unavailable for this level	Задачи для этого уровня недоступны
-Checkpoint set	Контрольная точка поставлена
-Coordinates shown	Координаты показаны
-Coordinates hidden	Координаты скрыты
-Coordinates copied	Координаты скопированы
-Coordinates unavailable	Координаты недоступны
-Compass off	Компас выкл.
-Compass on	Компас вкл.
 Not available here	Здесь недоступно
+Minimap On	Миникарта включена
+Minimap Off	Миникарта выключена
 Not available	Недоступно
 Level Select failed	Не удалось выбрать уровень
-Reload failed	Не удалось перезагрузить
-Restart failed	Не удалось перезапустить
 Teleport failed	Не удалось телепортироваться
-Returned to checkpoint	Возврат к контрольной точке
-Return to Checkpoint failed	Не удалось вернуться к контрольной точке
-Next Key Point failed	Не удалось перейти к следующей точке
-Previous Key Point failed	Не удалось перейти к предыдущей точке
-The clipboard could not be opened	Не удалось открыть буфер обмена
-Ambient Occlusion is unavailable (see the log)	Фоновое затенение недоступно (см. журнал)
 Freeze AI failed	Не удалось заморозить ИИ
-Key point %d / %d	Точка %d / %d
 No objective	Нет задачи
 Objective updated	Задача обновлена
 Quick Save	Быстрое сохранение
@@ -140,7 +103,6 @@ Fill health to maximum	Восполняет здоровье до максиму
 Camera	Камера
 Normal	Обычная
 Free Camera	Свободная камера
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Вверх/Вниз выбор | Enter/A применить | Влево/Вправо изменить (Shift 10, Ctrl 0.1, LB/RB 10) | цифры ввод | Esc/B назад | F5 закрыть
 Esc/B or F3 close	Esc/B или F3 закрыть
 Beach	Пляж
 Jungle Road	Дорога в джунглях

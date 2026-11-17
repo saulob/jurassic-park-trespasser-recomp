@@ -53,24 +53,15 @@ Replay voice	Riascolta la voce
 Raise and move the hand	Alza e muovi la mano
 Grab	Prendi
 Drop	Lascia
-Debug Menu	Menu di debug
+Toggle Minimap	Attiva/disattiva minimappa
 Cheats	Trucchi
 Fullscreen	Schermo intero
-Debug / Test Menu	Menu di debug / test
 Level Select	Selezione livello
 Current level	Livello attuale
-Restart Level	Riavvia livello
-Reload Current Level	Ricarica livello attuale
 X	X
 Y	Y
 Z	Z
 Teleport	Teletrasporto
-Previous Key Point	Punto chiave precedente
-Next Key Point	Punto chiave successivo
-Set Checkpoint	Imposta checkpoint
-Return to Checkpoint	Torna al checkpoint
-Show Coordinates	Mostra coordinate
-Copy Coordinates	Copia coordinate
 Freeze AI	Congela IA
 Freeze Dinosaurs	Congela i dinosauri
 Movement Speed	Velocità di movimento
@@ -80,51 +71,23 @@ Infinite Ammo	Munizioni infinite
 Heal	Cura
 Super Health	Supersalute
 Fly / Free Camera	Volo / camera libera
-Compass	Bussola
-Ambient Occlusion	Occlusione ambientale
-Water Refraction	Rifrazione dell'acqua
-Enhanced Sky	Cielo migliorato
-Field of View	Campo visivo (FOV)
-Default	Predefinito
 Close	Chiudi
 Off	Disattivato
 On	Attivato
-Low	Bassa
-Medium	Media
-High	Alta
-Ultra	Ultra
-Unavailable	Non disponibile
 unavailable	non disponibile
 none	nessuno
 none (main menu)	nessuno (menu principale)
 Level	Livello
 Player	Giocatrice
-Navigation	Navigazione
-Debug	Debug
-Graphics	Grafica
 No scene files in the data folder	Nessun file di livello nella cartella data
 Objectives unavailable for this level	Obiettivi non disponibili per questo livello
-Checkpoint set	Checkpoint impostato
-Coordinates shown	Coordinate visibili
-Coordinates hidden	Coordinate nascoste
-Coordinates copied	Coordinate copiate
-Coordinates unavailable	Coordinate non disponibili
-Compass off	Bussola disattivata
-Compass on	Bussola attivata
 Not available here	Non disponibile qui
+Minimap On	Minimappa attivata
+Minimap Off	Minimappa disattivata
 Not available	Non disponibile
 Level Select failed	Selezione livello non riuscita
-Reload failed	Ricaricamento non riuscito
-Restart failed	Riavvio non riuscito
 Teleport failed	Teletrasporto non riuscito
-Returned to checkpoint	Tornata al checkpoint
-Return to Checkpoint failed	Ritorno al checkpoint non riuscito
-Next Key Point failed	Punto chiave successivo non riuscito
-Previous Key Point failed	Punto chiave precedente non riuscito
-The clipboard could not be opened	Impossibile aprire gli appunti
-Ambient Occlusion is unavailable (see the log)	Occlusione ambientale non disponibile (vedi il log)
 Freeze AI failed	Congelamento IA non riuscito
-Key point %d / %d	Punto chiave %d / %d
 No objective	Nessun obiettivo
 Objective updated	Obiettivo aggiornato
 Quick Save	Salvataggio rapido
@@ -140,7 +103,6 @@ Fill health to maximum	Riempie la salute fino al massimo
 Camera	Camera
 Normal	Normale
 Free Camera	Camera libera
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Su/Giù scegli | Invio/A usa | Sinistra/Destra regola (Maiusc 10, Ctrl 0.1, LB/RB 10) | cifre modifica | Esc/B indietro | F5 chiudi
 Esc/B or F3 close	Esc/B o F3 chiude
 Beach	Spiaggia
 Jungle Road	Strada nella giungla

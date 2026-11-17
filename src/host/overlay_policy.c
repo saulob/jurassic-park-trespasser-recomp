@@ -3,7 +3,7 @@
 #include <string.h>
 
 const char* ov_name(ov_kind_t kind) {
-    static const char* const names[] = { "none", "controls", "objectives", "debug menu", "cheats", "hint" };
+    static const char* const names[] = { "none", "controls", "objectives", "cheats", "hint" };
     return kind >= OV_NONE && kind <= OV_HINT ? names[kind] : "?";
 }
 

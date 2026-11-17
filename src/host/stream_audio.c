@@ -112,6 +112,18 @@ static int is_stream_tpa(const char* path) {
     return name && !_stricmp(name, "Stream.tpa");
 }
 
+/* DEBUG_SAULO: Stream.tpa handles alive at each open and close, with the guest workers. */
+static void stream_trace(const char* event) {
+    char text[96];
+    int live = 0;
+    EnterCriticalSection(&S.lock);
+    for (int i = 0; i < MAX_VIRTUAL_FILES; i++) live += S.files[i].handle != NULL;
+    LeaveCriticalSection(&S.lock);
+    _snprintf(text, sizeof text - 1, "%s, %d virtual handle%s live", event, live, live == 1 ? "" : "s");
+    text[sizeof text - 1] = 0;
+    guest_threads_trace(text);
+}
+
 void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flags) {
     LARGE_INTEGER size;
     stream_pack_stats_t stats;
@@ -140,6 +152,7 @@ void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flag
     }
     host_log("audio", "Stream.tpa: %d captions corrected, %d restored samples added, %d replaced, %d left as in the player's file", stats.captions_applied,
              stats.audio_added, stats.audio_replaced, stats.audio_kept);
+    stream_trace("Stream.tpa opened");
 }
 
 void stream_audio_detach(HANDLE file) {
@@ -153,6 +166,7 @@ void stream_audio_detach(HANDLE file) {
     }
     LeaveCriticalSection(&S.lock);
     stream_pack_close(pack);
+    if (pack) stream_trace("Stream.tpa closed");
 }
 
 static virtual_file_t* find_file(HANDLE file) {

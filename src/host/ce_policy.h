@@ -18,7 +18,7 @@ typedef struct {
     qs_place_t place;
     int player_alive;
     int load_pending; /* a level change of the game's triggers is under way */
-    int host_panel;   /* a host overlay or the Debug Menu is open */
+    int host_panel;   /* a host overlay is open */
     int file_exists;
 } qs_world_t;
 

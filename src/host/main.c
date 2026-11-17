@@ -547,7 +547,7 @@ int main(int argc, char** argv) {
     renderer_filter(&cfg, opt.dev_filter, &filter, &anisotropy);
     d3dr_configure(cfg.hardware && !opt.system_ddraw, (unsigned)box.width, (unsigned)box.height, filter, anisotropy,
                    cfg.msaa);
-    d3dr_configure_ambient_occlusion(cfg.ambient_occlusion, settings_file);
+    d3dr_configure_ambient_occlusion(cfg.ambient_occlusion);
     d3dr_configure_effects(cfg.water_refraction, cfg.enhanced_sky);
     window_host_set_mouse_sensitivity(cfg.mouse_sensitivity);
     host_log("input", "mouse sensitivity %.2f (both axes)", cfg.mouse_sensitivity);
@@ -576,6 +576,7 @@ int main(int argc, char** argv) {
     video_hd_install();
     video_hd_skip_intro(cfg.skip_intro);
     video_subtitles_configure(cfg.video_subtitles, game_dir);
+    minimap_configure(cfg.minimap);
     physics_fixes_install();
     ce_gameplay_install();
     active_ai_install();

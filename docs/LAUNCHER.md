@@ -359,8 +359,7 @@ asks for by `fov / 75` before the Hor+ widening, so 75 is the retail camera bit 
 its ratio. The range stops at 60 (the 4:3 vertical view 47 degrees) and 110 (4:3 vertical 94 degrees, 125 degrees
 across at 16:9, 151 at 32:9): wide enough for modern screens while the projection stays well short of 180 degrees
 (the angle is also capped at 170). There is no Vert-: every aspect ratio keeps the 4:3 vertical view of the chosen
-field of view. The F5 Debug Menu
-changes it for the session: the host calls `SetProperties` on the main camera again with its own stored properties
+field of view. The host sets it by calling `SetProperties` on the main camera again with its own stored properties
 from the game's UI loop, which changes only its projection (never its position, rotation, speed or the save).
 
 This happens before anything is projected, so the D3D TLVERTEX path, the software rasteriser and culling all see the
@@ -396,7 +395,7 @@ is not part of this work.
 - **Ambient occlusion**: Off, Low, Medium, High, Ultra (key `ambient_occlusion`, Medium by default; `--ambient-occlusion`
   for one run). Intel ASSAO over the D3D11 3D scene only: Low, Medium, High and Ultra are ASSAO's quality levels 0-3
   (Ultra is its adaptive level). It needs feature level 11.0; without it, or if the effect cannot be created, it stays
-  Off and the log says why. F5's Debug Menu changes it while playing and saves the choice here.
+  Off and the log says why.
 - **Water refraction** (key `water_refraction`, On by default; Direct3D 11 only, greyed out with Software and kept):
   after Trespasser CE's refractive water. The game writes CEntityWater's rows (`water_rows`, 0x0060E3F0, from
   `FillWaterTexture`, 0x0060E590) into the system-memory source surface of its water raster (the pointer
@@ -420,9 +419,8 @@ is not part of this work.
   write` when the link is first made, `first water batch` with the texture's and vertices' alpha, the texture blend and
   the batch's distances and fade at the first refracted draw, and at exit the water batches, scene copies, the largest
   wave difference and the shift in pixels of the water's pixels (average, p95, p99, largest, with the wave and distance
-  of the largest), sampled per triangle and weighted by area. F5's Debug Menu switches it while playing for that session only; the
-  next start uses the setting again. With Software, the launcher greys it out ("Available with the Direct3D 11
-  renderer") and keeps its value, and F5 shows it as Unavailable.
+  of the largest), sampled per triangle and weighted by area. With Software, the launcher greys it out ("Available with the Direct3D 11
+  renderer") and keeps its value.
 - **Enhanced sky** (key `enhanced_sky`, On by default; Direct3D 11 only): the retail hardware sky (`CSkyRender::DrawD3D`,
   0x005242C0) is one textured plane fogged per vertex by depth, so its horizon haze ignores the level's sky fog band.
   CE's enhanced sky fogs by view direction instead: with v the horizontal length of the unit view direction (0 straight
@@ -430,7 +428,7 @@ is not part of this work.
   linear between; equal or inverted edges give a step and never a division, and unusable values (NaN, infinite, far
   out of range) keep the retail sky. The port draws the same retail plane and texture and takes v per pixel from the
   plane point the texture coordinates give (u = x · 1e-4 + 1.5 + scroll, v = y · 1e-4 + scroll) against the camera.
-  Object, terrain and water fog are unchanged. F5 switches it like Water refraction.
+  Object, terrain and water fog are unchanged.
 - **Maximum object detail** (key `max_object_detail`, On by default): as Trespasser CE's `ForceMaxObjectDetail`, the
   renderer's `bDetailReduce` (render settings `[[0x006D2224]]+0x33`) is cleared, so the object pipeline (0x00519B20)
   and the terrain shadow pass always take an object's top mesh instead of the lower-detail one 0x004A7F10 would pick
@@ -475,7 +473,7 @@ while playing to open the Cheats menu; what it changes applies only to the curre
 - **F10 only.** Heal, Teleport and Level Select are actions, not settings. Fly / Free Camera is a mode of the level in
   play (it needs the camera's link to Anne's head, which exists only in a running level, and it takes the controls from
   her), so it is never saved or started On: F10 turns it on, and another level or the main menu turns it off.
-- **Removed from F10.** Show Coordinates (still in F5's Debug Menu) and Third Person.
+- **Removed from F10.** Show Coordinates and Third Person.
 
 ## Gameplay > Trespasser CE
 
@@ -508,7 +506,7 @@ Quick Save and Quick Load are not options: they are always available, with their
   physics when they run out, so an animal whose boxes do not fit (in use, less the one it replaces) stays inactive; the
   log says so once. Saves keep the retail layout: the active list is a fixed block of 10 handles, which already holds 6,
   so a save is byte-identical to retail's while 3 or fewer are active, and retail saves load unchanged. Read when the
-  game starts: a change applies at the next start. Not in F5.
+  game starts: a change applies at the next start.
 
 - **Patch 1.1 fixes** (key `official_patch_117`, On by default; Gameplay > Official Patch 1.1): DreamWorks
   Interactive's official v1.1 build 117 patch, studied against the retail build 116 and its levels; the patch is never
@@ -591,5 +589,4 @@ A dedicated ultrawide HUD, an uncapped frame rate and the x64 host (its own bran
 2. Graphics: Render resolution follows Display > Aspect ratio (16:9 1440p: 2560 × 1440; 21:9: 3440 × 1440).
 3. 4:3, 16:9, 21:9, 32:9 in turn: more world to the sides, the same height, no stretching, text readable.
 4. Render resolution 1440p, then 4K: the log's `3D render target WxH` lines show the real size.
-5. F11, Esc, F1, F2 (controls card in a level), Alt+F4 as before (F5 only opens the Video Test in the main menu; F12
-   does nothing); F11's choice is kept for the next start.
+5. F11, Esc, F1, F2 (controls card in a level), Alt+F4 as before (F12 does nothing; F5 toggles the minimap); F11's choice is kept for the next start.

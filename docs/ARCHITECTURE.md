@@ -306,14 +306,14 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   the shader); frames drawn only by the CPU (menus, video) are presented from the DIB, scaled.
 - Ambient occlusion (`ambient_occlusion`, Off by default; `third_party/assao`, `assao_host.cpp`, `ao_policy.c`):
   Intel ASSAO, applied at `Flip` on the back buffer right after the 3D picture is copied there and before the game's
-  UI layer, the HD menus and the host's ImGui overlays (HUD, Debug Menu, Cheats), so none of those is darkened. With
+  UI layer, the HD menus and the host's ImGui overlays (HUD, Cheats), so none of those is darkened. With
   feature level 11.0 the depth buffer is `R24G8_TYPELESS` (DSV `D24_UNORM_S8_UINT`, as before, plus depth and
   stencil views). ASSAO gets the depth as the game wrote it (`sz` = 0.1 / metres, `CCamera::SetProperties`
   `0x0051FF0B`) with the matching projection (the main camera's vertical tangent, Hor+, divided by its zoom; the
   target's own aspect) and reconstructs normals itself. While AO is on, the stencil marks every pixel without a depth
   of its own: CPU composites (game text, subtitles, CPU polygons), colour fills and draws without depth writes; only
   pixels left by depth-writing draws are darkened, and only on gameplay frames that drew 3D. Off creates nothing and
-  draws nothing. The Debug Menu changes the level at run time; a failure (shaders, resources, device) logs and turns
+  draws nothing. A failure (shaders, resources, device) logs and turns
   it Off.
 - If the D3D11 device, feature level 10.0 or `d3dcompiler_47.dll` is missing, the host logs it and
   falls back to the software renderer before the game starts.
@@ -346,7 +346,7 @@ restores 640x480 before the ending plays). The registry value `NoVideo` skips th
 returns 1 without opening the file. Skip Intro (`skip_intro`) answers `NoVideo` with 1 for the `tpassintro` and
 `newgame` calls only (`video_hd.c` wraps `Play`; `registry.c` answers), so their callers go on to the main menu and to
 the level load as after the video; the credits, the ending and the Video Test's requests are never skipped (the Video
-Test panel has no key since F5 became the Debug Menu).
+Test panel has no key).
 
 The player opens the file with every audio track (`SMACKFILEHANDLE | SMACKNEEDVOLUME | SMACKTRACKS`), checks that the
 primary has an `lpSurface` (always, here), decodes each frame with `SmackToBuffer(..., SMACKBUFFER565)` into a cleared
@@ -379,8 +379,8 @@ The player's three black clears come before its first frame; after the last one 
 surface has presented and the compositor has shown it (`DwmFlush`), then the surface is hidden and released. A failure
 logs one line and leaves the rest to the game's own playback, as does the software renderer.
 
-Video Test (development, `src/host/video_test.c`): F5 with the main menu alone in front opens an ImGui panel (drawn
-into the back buffer before Present; elsewhere F5 does nothing) listing the four files with Original and HD. A click is a request; the main menu's next frame (`0x00417300`, before the game draws it) runs what the Options
+Video Test (development, `src/host/video_test.c`; no key opens it now): an ImGui panel with the main menu alone in front (drawn
+into the back buffer before Present) listing the four files with Original and HD. A click is a request; the main menu's next frame (`0x00417300`, before the game draws it) runs what the Options
 window's Credits button runs (`0x004163D5`): menu music and its timer off, a `CVideoWnd` on the game's stack, `Play`
 with the game's own name string, music and timer back. The request forces that one `Play`: ORIGINAL starts no HD
 session (every present is the game's own), HD the normal one; the next `Play` is AUTO again.
@@ -423,7 +423,7 @@ window procedure still receives the messages it received before.
 
 ### Keys
 
-`F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Debug Menu | F10 Cheats | F11 Fullscreen | Esc Menu`
+`F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F10 Cheats | F11 Fullscreen | Esc Menu`
 (logged once as `[hotkeys]`). F2, F3, F4, F5, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
 game (F10's key-up included, which would open the window's menu bar); F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
 table at `0x0040C220` gives F2, F3 and F4 no action: only Esc, Space, F1, F11, F12, `=` and `-` have one). F4 alone is
@@ -436,31 +436,31 @@ next key-down decides again, so a second Esc closes the menu normally, and a key
 already flushed while opening (`sub_004131D0`) cannot make a later one disappear. Auto-repeated
 key-downs are dropped so a held key cannot open, close and reopen it. Key lines are capped.
 
-### Debug / Test Menu
+### Host menus and the HUD
 
-`debug_menu.c` (policy in `debug_menu_policy.c`, ImGui panel in `debug_menu_panel.cpp`) puts the game's own debug paths
-behind F5. The retail cheat table (`0x00660180`, dispatcher `0x0040B6A0`, jump table `0x0040B8DC`) keeps `LOC`
-(toggles `0x0066DE50`; `CGameWnd` then prints the active camera's presence, `CWorld + 0x14`, vtable `+ 0x10`), `TNEXT`
-(`PlayerTeleportToNextLocation`, `0x0060CB70`) and `DINOS` (`CAISystem::bBoring`, `[0x0066E77C] + 0x52`); `TELE`'s case
-returns without acting (its body is `#if 0` in the source). Teleport is that body built from TNEXT's own calls:
-`PurgeRenderCaches` `0x00548150`, `p3Placement` (vtable `+ 0x18`) and `Move` (`+ 0x38`) on the camera's attached mover
-(`camera + 0x50`), `SetNoPageFrames(2)` `0x006264D0`. Previous Key Point puts TNEXT's iterator (`0x0073F614`, list
-sentinel at `0x0073F600`, nodes `{next, prev, CTeleport*}`) on the node before the last one reached and runs TNEXT
-itself. Restart Level is the death and pause-menu sequence (`0x0040BCC0` pause, `0x00414480` on `0x0066E338`: scene
-reloaded in place by `bLoadScene`, `0x0040BD70(1)` resume). Reload and Level Select in a level are
-`CWorld::DeferredLoad` (`0x00607E90`), the game's own level change: `CGameWnd`'s frame (`0x0040C4AD`) shows "Loading
-Level" and runs the full load `0x00414100` (display reset, loading screen). From the main menu Level Select runs what
-Direct Load's OK and New Game run (`0x00414D80`, `0x00414100`, the main menu's EndModal(2)); its list is Direct Load's,
-`data\*.scn`. Requests run in the modal UI loop before it reads its cursor (`0x004178B5`); while the menu is open in a
-level the `CInput` result is emptied after each read. Coordinates are the mover's `CPlacement3`; yaw is the heading of
-`(0, 1, 0)` turned as LOC's `0x004CD090` turns it. The checkpoint holds a level id and a placement, never a guest
-pointer, and is dropped when another level or the main menu is seen.
+`debug_menu.c` (policy in `debug_menu_policy.c`, ImGui panel in `debug_menu_panel.cpp`) holds the F10 Cheats and F3
+Objectives menus and samples the world for the compass, the objective markers and the minimap. The retail cheat table
+(`0x00660180`, dispatcher `0x0040B6A0`, jump table `0x0040B8DC`) keeps `LOC` (toggles `0x0066DE50`; `CGameWnd` then
+prints the active camera's presence, `CWorld + 0x14`, vtable `+ 0x10`), `TNEXT` (`PlayerTeleportToNextLocation`,
+`0x0060CB70`) and `DINOS` (`CAISystem::bBoring`, `[0x0066E77C] + 0x52`); `TELE`'s case returns without acting (its body
+is `#if 0` in the source). Teleport is that body built from TNEXT's own calls: `PurgeRenderCaches` `0x00548150`,
+`p3Placement` (vtable `+ 0x18`) and `Move` (`+ 0x38`) on the camera's attached mover (`camera + 0x50`),
+`SetNoPageFrames(2)` `0x006264D0`. Level Select in a level is `CWorld::DeferredLoad` (`0x00607E90`), the game's own
+level change: `CGameWnd`'s frame (`0x0040C4AD`) shows "Loading Level" and runs the full load `0x00414100` (display
+reset, loading screen). From the main menu it runs what Direct Load's OK and New Game run (`0x00414D80`, `0x00414100`,
+the main menu's EndModal(2)); its list is Direct Load's, `data\*.scn`. Requests run in the modal UI loop before it reads
+its cursor (`0x004178B5`); while a menu is open in a level the `CInput` result is emptied after each read. Coordinates
+are the mover's `CPlacement3`; yaw is the heading of `(0, 1, 0)` turned as LOC's `0x004CD090` turns it.
+
+The minimap (`minimap.c`, drawn by the panel) is a circle at a fixed 2x zoom. F5 (`KEY_HOST_MINIMAP`) and the L3 + R3
+chord (`gamepad.c`, `minimap_chord_pressed`) both call `window_host_toggle_minimap`, which flips the one state, saves
+`minimap` to `trespasser.ini` and posts the HUD notice.
 
 ### One interface at a time
 
 `overlay.c` (policy in `overlay_policy.c`) owns the host's interfaces over gameplay: the controls card (an entry of the
 game's `CTextOverlay`, category `0x4A50`, so it stays on the frozen frame under any window unless it is expired
-first), Objectives, the Debug Menu and Cheats. F2, F3, F5, F10, View, D-pad Left/Right are requests, run in the UI
+first), Objectives and Cheats. F2, F3, F10, View, D-pad Left/Right are requests, run in the UI
 loop: the interface up closes, then the next opens; the game's Hint (F1, or D-pad Left posting the game's own F1) is let
 through one pass after the card has left the overlay. Keys a host interface used are kept from the game until released.
 While any interface is up the CInput result (look, move, held commands, presses) is emptied, which the game reads as
@@ -472,7 +472,7 @@ window keeps a held LT, as before. `[input-hand]` lines record Move Hand against
 
 ### Compass and objectives
 
-`compass_policy.c` (angles, distance, layout, the camera projection, the trail's progress) and the Debug Menu's sample
+`compass_policy.c` (angles, distance, layout, the camera projection, the trail's progress) and `debug_menu.c`'s sample
 of the world drive the HUD: Anne is the camera's mover (the attached instance, or the one the Free Camera left), the
 heading is `dm_yaw` of the active camera's presence (`camera + 0x30`, as `CInstance::Move` reads it), the projection
 uses that presence and the main camera's vertical view (`widescreen.c`: stored tan(half width) over the 4:3 aspect).
@@ -506,8 +506,7 @@ the port's hint and any other top text hide it.
 
 ### Cheats
 
-F10 (`cheats.c`, policy in `cheats_policy.c`) is a second item list of the Debug Menu's policy: Teleport, Level Select
-and Freeze Dinosaurs are the Debug Menu's items and actions. Its rows, labels and choices are the cheats of
+F10 (`cheats.c`, policy in `cheats_policy.c`) is the item list of `debug_menu_policy.c`. Its rows, labels and choices are the cheats of
 `src/common/jpt_cheats.c`, the one list the launcher's Cheats page and the settings table read too. The launcher's
 saved values start each session (`cheats_start`, from `jpt_config_t.cheat`); F10 only records its changes over them
 (`jpt_cheat_session_t`) and never writes the settings file. The game's own flags (INVUL, WOO, DINOS) take the effective

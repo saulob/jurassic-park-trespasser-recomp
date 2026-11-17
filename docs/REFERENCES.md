@@ -21,7 +21,7 @@ licence allows and it says so in the file; everything else listed here was a ref
 | [TresCom](https://www.trescom.org/) | community documentation | the tutorial's voice-overs and subtitles, and how players describe using the arm |
 | Community DualSense layout (2026) | ergonomics evidence | a tested layout: left stick move, right stick look, L1 raise arm, R1 grab, L2 throw, R2 use/fire, Cross crouch toggle, Circle stow/retrieve, Square jump. Taken only as evidence that the triggers and shoulders suit the arm; this port keeps its own layout (LT/L2 raises the hand, RT/R2 uses) so that every action stays bound to the button the game's own Controls screen and tutorial name. Not copied; its link is not recorded here. |
 
-## Debug / Test Menu and Cheats
+## Cheats
 
 | Reference | Kind | Used for |
 |---|---|---|

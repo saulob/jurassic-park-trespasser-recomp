@@ -17,6 +17,7 @@
 #include "gamepad.h"
 #include "host_policy.h"
 #include "loading_hd.h"
+#include "minimap.h"
 #include "overlay_policy.h"
 #include "physics_watch.h"
 #include "tutorial_prompts.h"
@@ -29,6 +30,7 @@
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_monitors.h"
+#include "jpt_tr.h"
 #include "recomp_trace.h"
 
 #ifndef WM_DPICHANGED
@@ -644,6 +646,27 @@ static void save_display_mode(void) {
         host_log("window", "could not save display_mode to %s", s.cfg.settings_path);
 }
 
+static void save_minimap(int on) {
+    const char* key = JPT_KEY_MINIMAP;
+    const char* value = on ? "1" : "0";
+    if (!s.cfg.settings_path[0]) return;
+    if (jpt_ini_set(s.cfg.settings_path, &key, &value, 1))
+        host_log("window", "minimap = %s saved to %s", value, s.cfg.settings_path);
+    else
+        host_log("window", "could not save minimap to %s", s.cfg.settings_path);
+}
+
+void window_host_toggle_minimap(const char* source) {
+    guest_ui_view_t g;
+    int on;
+    guest_ui_probe(&g);
+    if (!minimap_toggle_allowed(g.ui == GUEST_UI_GAMEPLAY, debug_menu_open_menu(), tutorial_prompts_card_shown())) return;
+    on = minimap_toggle();
+    save_minimap(on);
+    debug_menu_notice(jpt_tr(on ? "Minimap On" : "Minimap Off"));
+    host_log("minimap", "%s: %s", source, on ? "on" : "off");
+}
+
 static void toggle_fullscreen(void) {
     if (shutdown_active(&s.shutdown)) return;
     s.transition = 1;
@@ -1031,11 +1054,11 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "host overlay");
         return 0;
     }
-    if (action != KEY_HOST_DEBUG_MENU && action != KEY_HOST_CHEATS && action != KEY_HOST_OBJECTIVES &&
+    if (action != KEY_HOST_MINIMAP && action != KEY_HOST_CHEATS && action != KEY_HOST_OBJECTIVES &&
         action != KEY_HOST_CONTROLS && action != KEY_HOST_FULLSCREEN &&
         action != KEY_HOST_CLOSE && action != KEY_HOST_SHOW_OBJECTIVE &&
         debug_menu_key(msg, wparam, lparam)) {
-        if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "Debug Menu");
+        if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "host menu");
         return 0;
     }
     if (msg == WM_KEYDOWN || msg == WM_KEYUP) guest_ui_probe(&g);
@@ -1054,8 +1077,8 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         log_key(msg, wparam, lparam, "host full screen toggle");
         toggle_fullscreen();
         return 0;
-    case KEY_HOST_DEBUG_MENU:
-        overlay_request(OV_DEBUG, "F5");
+    case KEY_HOST_MINIMAP:
+        window_host_toggle_minimap("F5");
         return 0;
     case KEY_HOST_CHEATS:
         overlay_request(OV_CHEATS, "F10");
@@ -1307,7 +1330,7 @@ static void attach(HWND window) {
     layout_surface();
     host_log("window", "game window 0x%08X: resizable, centered, F11 toggles borderless full screen; "
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
-    host_log("hotkeys", "F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Debug Menu | F10 Cheats | "
+    host_log("hotkeys", "F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F10 Cheats | "
              "F11 Fullscreen | Esc Menu");
     register_raw_input(window);
     if (s.cfg.borderless) {

@@ -128,7 +128,7 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
     case VK_F11_:
         if (ctrl) return KEY_TO_GAME;
         return down && !repeat ? KEY_HOST_FULLSCREEN : KEY_DROP;
-    case VK_F5_: return down && !repeat ? KEY_HOST_DEBUG_MENU : KEY_DROP;
+    case VK_F5_: return down && !repeat ? KEY_HOST_MINIMAP : KEY_DROP;
     /* F10 alone is Windows' menu-bar key: its key-up must never reach DefWindowProc either. */
     case VK_F10_: return down && !repeat ? KEY_HOST_CHEATS : KEY_DROP;
     case VK_F4_:

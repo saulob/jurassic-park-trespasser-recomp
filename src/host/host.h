@@ -196,18 +196,10 @@ float widescreen_pixels_per_metre(void);
 float widescreen_tan_half_height(void);
 /* The same with the camera's zoom: the projection its Direct3D vertices were made with. */
 float widescreen_view_tan_half_height(void);
-/* Ambient occlusion (JPT_AO_*), from trespasser.ini before d3dr_startup; the Debug Menu changes it while running and
- * saves it to settings_path. d3dr_ambient_occlusion: -1 when the renderer cannot draw it. */
-void d3dr_configure_ambient_occlusion(int level, const char* settings_path);
-int d3dr_ambient_occlusion(void);
-int d3dr_set_ambient_occlusion(int level);
-/* Water refraction and Enhanced sky: the settings start them; the F5 menu changes only the running state (never the
- * settings). The getters give the running state, -1 when the renderer is not Direct3D 11. */
+/* Ambient occlusion (JPT_AO_*), from trespasser.ini before d3dr_startup. */
+void d3dr_configure_ambient_occlusion(int level);
+/* Water refraction and Enhanced sky, from trespasser.ini. */
 void d3dr_configure_effects(int water_refraction, int enhanced_sky);
-int d3dr_water_refraction(void);
-int d3dr_enhanced_sky(void);
-int d3dr_set_water_refraction(int on);
-int d3dr_set_enhanced_sky(int on);
 /* sky: camera u, camera v, plane height above the camera (texture units), fog low, fog high. */
 void d3dr_sky_begin(const float sky[5]);
 void d3dr_sky_end(void);
@@ -228,8 +220,8 @@ int guest_overrides_check(void);
 /* widescreen.c: lifts the mode table's width cap and makes the main camera Hor+; 0 when a site is missing. */
 int widescreen_install(int aspect);
 int widescreen_active(void);
-/* Field of view in degrees across the 4:3 view (JPT_FOV_*): set from the settings or F5's session value; the main
- * camera takes a change at widescreen_apply_fov, run from the game's UI loop. */
+/* Field of view in degrees across the 4:3 view (JPT_FOV_*), set from the settings; the main camera takes a change at
+ * widescreen_apply_fov, run from the game's UI loop. */
 void widescreen_set_fov(int degrees);
 int widescreen_fov(void);
 void widescreen_apply_fov(void);
@@ -317,7 +309,7 @@ struct ID3D11RenderTargetView;
 /* Hardware renderer: the image drawn over a render target. */
 void d3dr_draw_video_subtitle(struct ID3D11RenderTargetView* target, int width, int height,
                               const video_subtitle_image_t* image);
-/* video_test.c: the Video Test panel, with the main menu alone in front. No key opens it since F5 is the Debug Menu. */
+/* video_test.c: the Video Test panel, with the main menu alone in front. No key opens it. */
 void video_test_f5(void);
 int video_test_visible(void);
 struct ID3D11Device;
@@ -331,15 +323,13 @@ int video_test_mouse(UINT msg, WPARAM wparam, LPARAM lparam);
 /* In the menu frame, before the game draws it: a requested playback runs here. */
 void video_test_ui_frame(void);
 void video_test_release(void);
-/* debug_menu.c: F5 Debug / Test Menu and F10 Cheats in a level or with the main menu alone in front, one at a time. */
-void debug_menu_f5(void);
+/* debug_menu.c: F10 Cheats in a level or with the main menu alone in front, and F3 Objectives in a level, one at a time. */
 void debug_menu_f10(void);
-/* F3: the Objectives list in a level, a third panel of the Debug Menu's policy. */
 void debug_menu_f3(void);
 void debug_menu_show_objective(void);
 /* A short line on the HUD under the compass, in a level. */
 void debug_menu_notice(const char* text);
-/* 0 closed, 1 Debug Menu, 2 Cheats, 3 Objectives. */
+/* 0 closed, 1 Cheats, 2 Objectives. */
 int debug_menu_open_menu(void);
 void debug_menu_close(void);
 /* overlay.c: the one owner of the host's interfaces over gameplay (overlay_policy.h kinds). */
@@ -347,6 +337,11 @@ void overlay_request(int kind, const char* source);
 void overlay_ui_loop(void);
 int overlay_blocks_gameplay(void);
 
+
+/* minimap.c: the minimap's world bounds and projection; key minimap (default on). */
+void minimap_configure(int enabled);
+/* F5 and L3 + R3: flips the minimap in gameplay, saves it to trespasser.ini and says so on the HUD. */
+void window_host_toggle_minimap(const char* source);
 
 /* ce_gameplay.c: Quick Save / Quick Load, Dual stow and Maximum object detail. Requests run in the game's UI loop. */
 void ce_gameplay_configure(int dual_stow, int max_object_detail);
@@ -356,6 +351,12 @@ void quick_save_request(void);
 void quick_load_request(void);
 /* active_ai.c: Active AI (CE's MaxActiveAi), 6 animals active instead of 3; Original installs nothing. */
 void active_ai_configure(int enhanced);
+/* The living animals the game's AI holds, awake (engaged) or not, with their world position; read-only. */
+typedef struct {
+    float x, y;
+    int engaged;
+} host_animal_t;
+int active_ai_animals(uint32_t scratch, host_animal_t* out, int max);
 
 /* patch117.c: the official v1.1 build 117 level fixes, applied to retail level scenes as the game reads them. */
 void patch117_configure(int on);
@@ -440,6 +441,8 @@ void guest_profile_window(void);
 void guest_profile_summary(void);
 /* "[shutdown] guest threads <when>: N" and one line per worker still running. */
 void guest_threads_log(const char* when);
+/* DEBUG_SAULO: one line with the guest workers alive, for the audio and level lifecycle events. */
+void guest_threads_trace(const char* event);
 
 /* registry.c / guest_env.c: the legacy "unstable last time, Safe Mode?" prompt. */
 void registry_legacy_safemode_dialog(void);

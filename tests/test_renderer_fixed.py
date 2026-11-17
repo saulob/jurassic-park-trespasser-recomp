@@ -34,12 +34,12 @@ class RendererFixed(unittest.TestCase):
             if path.name != "d3d11_renderer.c":
                 self.assertIsNone(HARDWARE_WRITE.search(other), str(path.relative_to(ROOT)))
 
-    def test_f5_is_only_the_debug_menu(self):
+    def test_f5_is_only_the_minimap_toggle(self):
         policy = (HOST / "host_policy.c").read_text(encoding="utf-8")
-        self.assertIn("case VK_F5_: return down && !repeat ? KEY_HOST_DEBUG_MENU : KEY_DROP;", policy)
+        self.assertIn("case VK_F5_: return down && !repeat ? KEY_HOST_MINIMAP : KEY_DROP;", policy)
         window = (HOST / "window_host.c").read_text(encoding="utf-8")
-        self.assertRegex(window, r"case KEY_HOST_DEBUG_MENU:\s*debug_menu_f5\(\);\s*return 0;")
-        self.assertEqual(window.count("case KEY_HOST_DEBUG_MENU:"), 1)
+        self.assertRegex(window, r"case KEY_HOST_MINIMAP:\s*window_host_toggle_minimap\(\"F5\"\);\s*return 0;")
+        self.assertEqual(window.count("case KEY_HOST_MINIMAP:"), 1)
         for path, other in host_sources():
             self.assertNotIn("KEY_HOST_VIDEO_TEST", other, str(path.relative_to(ROOT)))
 

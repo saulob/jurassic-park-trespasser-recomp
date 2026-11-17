@@ -154,6 +154,18 @@ uint32_t pad_edges_update(pad_edges_t* e, uint32_t held, uint32_t* pressed);
  * meanwhile waits for its release. */
 void pad_edges_resume(pad_edges_t* e, uint32_t held_now);
 
+/* A chord of two buttons that must not also act alone. A button of it that goes down waits PAD_CHORD_WINDOW_MS for the
+ * other; a lone press is then passed on, a quick tap is kept PAD_CHORD_TAP_MS so the game still sees it. */
+#define PAD_CHORD_WINDOW_MS 50u
+#define PAD_CHORD_TAP_MS 80u
+typedef struct {
+    uint32_t down, pending, passed, consumed, tap, since, tap_since;
+} pad_chord_t;
+
+/* *out is raw without the buttons held back; 1 when the chord was completed by this update. Both buttons must be
+ * released before it can fire again. */
+int pad_chord_update(pad_chord_t* c, uint32_t mask, uint32_t raw, uint32_t now_ms, uint32_t* out);
+
 /* What the previous gameplay read was to this one. */
 typedef enum {
     PAD_READ_NEXT,    /* the last frame */

@@ -43,39 +43,24 @@ game's own save writer: a normal retail save that the Load screen lists as "Quic
 out, so a normal save can never overwrite it by accident). It works in a level with Anne alive and no host panel open;
 a line under the compass says "Quick saved". Quick Load loads that file only, in a level (also after death) or from
 the main menu; without a Quick Save it says "No Quick Save yet" and loads nothing. F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
-bindings and the hotkeys below), F3 Objectives, F4 Show Objective, F5 the Debug / Test Menu, F10 Cheats, F11 windowed
+bindings and the hotkeys below), F3 Objectives, F4 Show Objective, F5 the minimap, F10 Cheats, F11 windowed
 / borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 Hint. The card lists F1 Hint, F2 Controls, F3
-Objectives, F4 Show Objective, F5 Debug Menu, F10 Cheats, F11 Fullscreen and Esc Menu. On a gamepad, D-pad Left opens the
+Objectives, F4 Show Objective, F5 Toggle Minimap, F10 Cheats, F11 Fullscreen and Esc Menu. The gamepad card adds L3 + R3 Toggle Minimap. On a gamepad, D-pad Left opens the
 game's Hint (its own F1 path), D-pad Right Objectives and D-pad Down Show Objective, each only while no action is bound
-to that direction (the gamepad has no Replay voice over; R on the keyboard still replays it); B closes the first two. Only one of Controls, Objectives, the Debug Menu, Cheats and the game's Hint is ever up: opening one
+to that direction (the gamepad has no Replay voice over; R on the keyboard still replays it); B closes the first two. Only one of Controls, Objectives, Cheats and the game's Hint is ever up: opening one
 closes the other first, and while any is up Anne gets no input at all. Controls closes with F2, Esc, View, B or Menu
 (Esc and Menu then do not also open the pause menu). Whatever was held when one of them opened or closed (a key, a
 mouse button, a gamepad button, a trigger, a stick) does nothing until it is released. A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the
 start of a level.
 
-### Debug / Test Menu
+### Minimap
 
-F5 opens and closes it in a level or with the main menu in front (elsewhere F5 does nothing). While it is open Anne
-does not move or look and the game gets no keys; Esc (or B) closes it first, or goes back from Level Select.
-
-| Item | What it does |
-|---|---|
-| Level Select | the scene files of `data` (the game's own Level Select list) as `BE - Beach` ... `SUM - Summit`, the two test scenes, then any other scene by file name; loads one the way the game changes level |
-| Restart Level | the game's Restart Level (as after death or from the pause menu) |
-| Reload Current Level | loads the current level again from its files, with the loading screen |
-| X, Y, Z, Teleport | starts at Anne's position; type a value, or Left/Right (Shift 10, Ctrl 0.1; gamepad D-pad 1, LB/RB 10) |
-| Previous / Next Key Point | the level's teleport points, as the TNEXT cheat walks them |
-| Set / Return to Checkpoint | a position kept for this run only, in this level only |
-| Compass | the compass at the top of the picture (on at every start) |
-| Show Coordinates | level, X, Y, Z and yaw in the top-left corner (off at every start) |
-| Copy Coordinates | `Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570` to the clipboard |
-| Freeze AI | the DINOS cheat: dinosaurs sleep and stop updating until it is turned off |
-| Field of View | Graphics: the session's field of view in degrees across the 4:3 view (60-110), with a bar; Left/Right 1, Shift or LB/RB 10, Enter puts back the Default 75. Applies at once (the main camera is set again from the game's UI loop). For this session only: `trespasser.ini` keeps the launcher's value and the next start uses it. The log says `[debug] field of view: N (this session only)` |
-| Ambient Occlusion | Graphics: Off, Low, Medium, High, Ultra (Enter cycles, Left/Right step); applies from the next frame and is saved to `trespasser.ini`. Unavailable with the Software renderer or without feature level 11.0 |
-| Water Refraction, Enhanced Sky | Graphics: On / Off (Enter switches, Right On, Left Off), the state in use, from the next draw: for A/B comparison of the same view. For this session only: `trespasser.ini` keeps the launcher's choice, and the next start uses it. The log says `[debug] water refraction: on` / `off` (and `enhanced sky`) when it changes. Unavailable with the Software renderer |
-
-Keyboard: Up/Down, Enter. Gamepad: D-pad, A to use, B back, Menu to close. Yaw is in radians, counter-clockwise from
-+Y, the game's facing axis. Nothing here writes a save or the game's progress.
+A circular map of the level sits in the bottom-left corner of the picture, centred on Anne, with north up and a fixed
+2x zoom. **F5**, or **L3 + R3** together on a gamepad (one toggle per press of the pair; hold it and nothing repeats),
+shows or hides it in gameplay and saves the choice to `minimap` in `trespasser.ini`; the launcher's Gameplay page
+shows the same setting as **Enable Minimap** (on by default). A line under the compass says "Minimap On" or "Minimap
+Off". F5 and L3 + R3 do nothing in a host panel or the controls card. M, + and - belong to the game again. L3 or R3
+alone act as bound, 50 ms after the press: the pair is waited for that long so the chord never also crouches.
 
 ### Compass and objectives
 
@@ -93,14 +78,15 @@ Objectives are the game's own hints: whatever F1's Hint shows, the objective is 
 on when the level's trigger sets the next hint, also after loading a save. F3 (or D-pad Right) lists the level's
 objectives: those done, the current one with the game's hint text under it, and `???` for the rest. Levels other than
 the eight of the campaign say "Objectives unavailable for this level"; the compass still works there. The HUD shows
-only in gameplay: F1, F2, F3, F5, F10, the pause menu, dialogs, videos and loading screens hide all of it, and so does
+only in gameplay: F1, F2, F3, F10, the pause menu, dialogs, videos and loading screens hide all of it, and so does
 a tutorial prompt or the port's own hint at the top of the picture. The voice subtitles at the bottom do not: the
 compass, the markers and the trail stay while Anne speaks.
 
 ### Cheats
 
-F10 opens and closes it where F5 works; F5 and F10 replace each other, so only one is ever shown. The game's own
-console (Ctrl+F11) still works.
+F10 opens and closes it in a level or with the main menu in front; F10 and F3 replace each other, so only one is ever
+shown. The game's own console (Ctrl+F11) still works. It has no teleport key points, checkpoints, coordinates or
+level restart: the panel holds only the cheats below.
 
 The panel has a header with the title and an X button (top right), the rows, and a fixed help area under them that
 says what the selected row does (Heal: "Fill health to maximum") or why something could not be done; a change that
@@ -116,10 +102,10 @@ value). The panel is kept inside the screen; its rows scroll when the screen is 
 | Jump Height | 0.5x to 5.0x of how high Anne's own jumps go; gravity and falls are unchanged |
 | Invulnerability | the game's INVUL: no damage from hits, bites, shots or falls; level-scripted deaths still happen |
 | Infinite Ammo | the game's WOO: guns do not use up ammunition |
-| Freeze Dinosaurs | the game's DINOS, the same switch as the Debug Menu's Freeze AI |
+| Freeze Dinosaurs | the game's DINOS: dinosaurs sleep and stop updating until it is turned off |
 | Heal | shows her health as `90 / 100` and, once used, fills it to her maximum (not after death); an action, not a submenu |
 | Super Health | four times the normal maximum, full; off brings the maximum back without taking health below it |
-| Teleport, Level Select | the Debug Menu's own |
+| Teleport, Level Select | Teleport: type X, Y, Z (starting at Anne's position) or step them with Left/Right (Shift 10, Ctrl 0.1; gamepad D-pad 1, LB/RB 10). Level Select: the scene files of `data` (`BE - Beach` ... `SUM - Summit`, the two test scenes, then any other scene by file name), loaded the way the game changes level, also from the main menu |
 | Fly / Free Camera | a camera that moves on its own while Anne stays where she is |
 
 Free Camera: WASD or the left stick moves, the mouse or the right stick looks, Space or A goes up, Ctrl or B goes

@@ -1,5 +1,5 @@
-/* Headless checks of the F5 Debug / Test Menu: its policy (input, items, checkpoint, formatting, key points), the
- * retail sites it reuses (game/trespass.exe 1.0.116) and its panel, compass included, on a WARP device. */
+/* Headless checks of the F10 Cheats and F3 Objectives menus: their policy (input, items, teleport, level select), the
+ * retail sites they reuse (game/trespass.exe 1.0.116) and their panel, compass included, on a WARP device. */
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -45,8 +45,6 @@ static dm_world_t level_world(const char* scene) {
     w.at.pos[1] = 20.0f;
     w.at.pos[2] = 30.0f;
     w.at.rot[0] = 1.0f;
-    w.key_count = 4;
-    w.key_index = -1;
     w.ai = 0;
     w.hp = 80.0f;
     w.hp_max = 100.0f;
@@ -60,7 +58,6 @@ static dm_world_t main_menu_world(void) {
     memset(&w, 0, sizeof w);
     w.place = DM_PLACE_MAIN_MENU;
     w.ai = w.invulnerable = w.ammo = -1;
-    w.key_index = -1;
     w.speed = w.jump = CH_MULTIPLIER_DEFAULT;
     return w;
 }
@@ -78,20 +75,29 @@ static void go_to(dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     for (int i = 0; i < DM_ITEM_COUNT * 2 && s->cursor != (int)item; i++) press(s, w, VK_DOWN);
 }
 
-static void test_f5(void) {
+static int open_cheats(dm_state_t* s, const dm_world_t* w) { return dm_toggle(s, w, DM_MENU_CHEATS); }
+
+static void open_teleport(dm_state_t* s, const dm_world_t* w) {
+    open_cheats(s, w);
+    go_to(s, w, DM_TELEPORT_PAGE);
+    press(s, w, VK_RETURN);
+}
+
+static void test_open_close(void) {
     dm_state_t s;
     dm_world_t none, menu = main_menu_world(), level = level_world("be.scn");
     memset(&none, 0, sizeof none);
     dm_init(&s);
-    CHECK(!dm_f5(&s, &none) && !s.open, "F5 with no level and no main menu does nothing");
-    CHECK(dm_f5(&s, &menu) && s.open, "F5 in the main menu opens");
+    CHECK(!open_cheats(&s, &none) && !s.open, "F10 with no level and no main menu does nothing");
+    CHECK(open_cheats(&s, &menu) && s.open, "F10 in the main menu opens");
     CHECK(s.cursor == DM_LEVEL_SELECT, "the main menu starts on Level Select");
-    CHECK(dm_f5(&s, &menu) && !s.open, "F5 again closes");
-    CHECK(dm_f5(&s, &level) && s.open && s.cursor == DM_TELEPORT, "F5 in a level opens on Teleport");
+    CHECK(open_cheats(&s, &menu) && !s.open, "F10 again closes");
+    CHECK(open_cheats(&s, &level) && s.open && s.cursor == DM_MOVE_SPEED, "F10 in a level opens on Movement Speed");
     CHECK(s.field[0] == 10.0f && s.field[1] == 20.0f && s.field[2] == 30.0f, "the fields start at the player");
-    CHECK(dm_f5(&s, &level) && !s.open, "F5 closes in a level");
+    CHECK(open_cheats(&s, &level) && !s.open, "F10 closes in a level");
     level.player = 0;
-    CHECK(dm_f5(&s, &level) && s.cursor == DM_LEVEL_SELECT && s.fill_fields,
+    CHECK(open_cheats(&s, &level) && s.cursor != DM_MOVE_SPEED && dm_item_enabled(&s, &level, (dm_item_t)s.cursor) &&
+              s.fill_fields,
           "no player: the first enabled item, the fields wait");
     level.player = 1;
     dm_world_seen(&s, &level);
@@ -103,7 +109,7 @@ static void test_input_capture(void) {
     dm_world_t w = level_world("be.scn");
     dm_init(&s);
     CHECK(!key(&s, &w, 'W', DOWN), "a closed menu takes no key");
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     CHECK(!key(&s, &w, 'W', UP), "the key-up of a key the game saw goes to the game");
     CHECK(key(&s, &w, 'W', DOWN) && key(&s, &w, VK_F1, DOWN) && key(&s, &w, VK_SPACE, DOWN), "an open menu takes keys");
     CHECK(key(&s, &w, 'W', UP) && key(&s, &w, VK_F1, UP) && key(&s, &w, VK_SPACE, UP), "and their key-ups");
@@ -114,9 +120,9 @@ static void test_input_capture(void) {
     CHECK(key(&s, &w, VK_ESCAPE, UP), "and its key-up: no window of the game sees a lone Esc key-up");
     CHECK(!key(&s, &w, VK_ESCAPE, DOWN) && !key(&s, &w, VK_ESCAPE, UP), "the next Esc is the game's again");
     CHECK(!dm_char(&s, &w, 'a'), "characters are the game's again");
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     key(&s, &w, VK_RETURN, DOWN);
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     CHECK(!dm_key(&s, &w, VK_RETURN, DOWN, 0, 0, 0, 0), "a fresh press after a lost key-up is the game's");
     CHECK(!key(&s, &w, VK_RETURN, UP), "with its key-up");
 }
@@ -126,21 +132,24 @@ static void test_navigation_and_pad(void) {
     dm_world_t w = level_world("be.scn");
     dm_action_t a;
     dm_init(&s);
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     press(&s, &w, VK_UP);
-    CHECK(s.cursor == DM_FIELD_Z, "Up moves to the item above");
+    CHECK(s.cursor == DM_CLOSE, "Up from the first item wraps to Close");
+    press(&s, &w, VK_DOWN);
+    CHECK(s.cursor == DM_MOVE_SPEED, "Down wraps back to the first item");
     w.player = 0;
     dm_world_seen(&s, &w);
-    CHECK(s.cursor == DM_LEVEL_SELECT, "a disabled item gives the cursor to the first enabled one");
+    CHECK(s.cursor != DM_MOVE_SPEED && dm_item_enabled(&s, &w, (dm_item_t)s.cursor),
+          "a disabled item gives the cursor to an enabled one");
     for (int i = 0; i < 6; i++) press(&s, &w, VK_DOWN);
     CHECK(dm_item_enabled(&s, &w, (dm_item_t)s.cursor), "Down skips disabled items (%d)", s.cursor);
     w.player = 1;
     dm_pad(&s, &w, PAD(DPAD_DOWN), 0);
     dm_pad(&s, &w, PAD(EAST), 0);
     CHECK(!s.open, "B closes the main page");
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     dm_pad(&s, &w, PAD(SOUTH), 0);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_TELEPORT, "A uses the item");
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_SPEED, "A uses the item");
     CHECK(!dm_take(&s, &a), "an action is taken once");
     dm_pad(&s, &w, PAD(START), 0);
     CHECK(!s.open, "Start closes");
@@ -178,7 +187,7 @@ static void test_levels(void) {
           "the campaign in play order");
     dm_init(&s);
     dm_set_levels(&s, &l);
-    dm_f5(&s, &menu);
+    open_cheats(&s, &menu);
     press(&s, &menu, VK_RETURN);
     CHECK(s.page == DM_PAGE_LEVELS && s.level_cursor == 0, "Level Select lists the levels");
     press(&s, &menu, VK_ESCAPE);
@@ -189,7 +198,7 @@ static void test_levels(void) {
     press(&s, &menu, VK_RETURN);
     CHECK(!s.open && dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "sum.scn"),
           "a level is loaded by its file name and the menu closes");
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     go_to(&s, &w, DM_LEVEL_SELECT);
     press(&s, &w, VK_RETURN);
     CHECK(s.level_cursor == 1, "in a level the list starts on the current one");
@@ -262,7 +271,7 @@ static void test_level_names(void) {
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "lab.scn"),
           "choosing \"LAB - InGen Lab\" sends lab.scn, the file name the backend loads");
-    dm_toggle(&s, &menu, DM_MENU_DEBUG);
+    dm_toggle(&s, &menu, DM_MENU_CHEATS);
     press(&s, &menu, VK_RETURN);
     n = dm_rows(&s, &menu, rows, DM_ROWS_MAX);
     for (int i = 0; i < n; i++)
@@ -272,33 +281,14 @@ static void test_level_names(void) {
     press(&s, &menu, VK_DOWN);
     press(&s, &menu, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "ij.scn"),
-          "the Debug Menu sends the same file");
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
+          "the main menu sends the same file");
+    dm_toggle(&s, &w, DM_MENU_CHEATS);
     go_to(&s, &w, DM_LEVEL_SELECT);
     press(&s, &w, VK_RETURN);
     for (int i = 0; i < 7; i++) press(&s, &w, VK_DOWN);
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "alpha.scn"),
           "a custom scene is loaded by its own file name");
-}
-
-static void test_restart_reload(void) {
-    dm_state_t s;
-    dm_world_t w = level_world("be.scn"), menu = main_menu_world();
-    dm_action_t a;
-    dm_init(&s);
-    CHECK(!dm_item_enabled(&s, &menu, DM_RESTART) && !dm_item_enabled(&s, &menu, DM_RELOAD), "no level: no restart");
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_RESTART);
-    press(&s, &w, VK_RETURN);
-    CHECK(!s.open && dm_take(&s, &a) && a.kind == DM_ACT_RESTART, "Restart Level is routed and closes the menu");
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_RELOAD);
-    press(&s, &w, VK_RETURN);
-    CHECK(!s.open && dm_take(&s, &a) && a.kind == DM_ACT_RELOAD && !strcmp(a.scene, "be.scn"),
-          "Reload Current Level loads the current scene");
-    w.scene[0] = 0;
-    CHECK(!dm_item_enabled(&s, &w, DM_RELOAD) && dm_item_enabled(&s, &w, DM_RESTART), "no scene name: no reload");
 }
 
 static void test_teleport(void) {
@@ -309,8 +299,8 @@ static void test_teleport(void) {
     float ok_pos[3] = { -5.5f, 1e4f, 0.0f };
     CHECK(!dm_teleport_valid(nan_pos) && !dm_teleport_valid(far_pos) && dm_teleport_valid(ok_pos), "teleport targets");
     dm_init(&s);
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_FIELD_X);
+    open_teleport(&s, &w);
+    CHECK(s.page == DM_PAGE_TELEPORT && s.cursor == DM_FIELD_X, "Teleport opens its page on X");
     dm_char(&s, &w, '-');
     dm_char(&s, &w, '1');
     dm_char(&s, &w, '2');
@@ -351,59 +341,6 @@ static void test_teleport(void) {
     CHECK(!dm_item_enabled(&s, &w, DM_TELEPORT) && !dm_item_enabled(&s, &w, DM_FIELD_X), "no player: no teleport");
 }
 
-static void test_checkpoint(void) {
-    dm_state_t s;
-    dm_world_t w = level_world("be.scn"), other = level_world("it.scn"), menu = main_menu_world();
-    dm_action_t a;
-    dm_init(&s);
-    CHECK(!dm_item_enabled(&s, &w, DM_RETURN_CHECKPOINT), "no checkpoint: Return disabled");
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_SET_CHECKPOINT);
-    w.at.rot[0] = 0.0f;
-    w.at.rot[3] = 1.0f;
-    press(&s, &w, VK_RETURN);
-    CHECK(s.checkpoint.set && !strcmp(s.checkpoint.level, "BE") && s.checkpoint.at.pos[1] == 20.0f &&
-              s.checkpoint.at.rot[3] == 1.0f,
-          "Set Checkpoint keeps the level, position and orientation");
-    CHECK(!strcmp(dm_feedback_text(&s, 1000), "Checkpoint set") && !dm_feedback_text(&s, 1000 + DM_FEEDBACK_MS),
-          "with short feedback");
-    w.at.pos[1] = 99.0f;
-    go_to(&s, &w, DM_RETURN_CHECKPOINT);
-    press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_RETURN_CHECKPOINT && a.to.pos[1] == 20.0f && a.to.rot[3] == 1.0f,
-          "Return to Checkpoint asks for the saved placement");
-    dm_world_seen(&s, &w);
-    CHECK(s.checkpoint.set, "the same level (a restart) keeps it");
-    CHECK(!dm_item_enabled(&s, &other, DM_RETURN_CHECKPOINT), "never restored in another level");
-    dm_world_seen(&s, &other);
-    CHECK(!s.checkpoint.set && !dm_item_enabled(&s, &w, DM_RETURN_CHECKPOINT), "a level change clears it");
-    s.checkpoint.set = 1;
-    strcpy(s.checkpoint.level, "BE");
-    dm_world_seen(&s, &menu);
-    CHECK(!s.checkpoint.set, "so does the main menu");
-}
-
-static void test_coordinates(void) {
-    dm_placement_t p;
-    char out[128];
-    double half = 1.570 / 2.0;
-    memset(&p, 0, sizeof p);
-    p.pos[0] = 123.456f;
-    p.pos[1] = 78.9f;
-    p.pos[2] = -45.12f;
-    p.rot[0] = (float)cos(half);
-    p.rot[3] = (float)sin(half);
-    CHECK(dm_format_coords(out, sizeof out, "BE", &p) &&
-              !strcmp(out, "Level=BE X=123.456 Y=78.900 Z=-45.120 Yaw=1.570"),
-          "clipboard text: %s", out);
-    memset(&p, 0, sizeof p);
-    p.pos[0] = -0.0001f;
-    p.rot[0] = 1.0f;
-    CHECK(dm_format_coords(out, sizeof out, "", &p) && !strcmp(out, "Level=- X=0.000 Y=0.000 Z=0.000 Yaw=0.000"),
-          "no level, no negative zero: %s", out);
-    CHECK(!dm_format_coords(out, 10, "BE", &p), "a short buffer is refused");
-}
-
 /* 0x004CD090, vector by CRotate3 (LOC's Facing line), term by term as its x87 code computes it. */
 static void retail_rotate(const float q[4], const float v[3], float out[3]) {
     float a = q[0], b = q[1], c = q[2], d = q[3], k = a * a - 0.5f;
@@ -437,110 +374,12 @@ static void test_yaw(void) {
     }
 }
 
-/* A std::list<CTeleport*> in a fake guest memory: sentinel at 0x1000, nodes at 0x1100 + 0x10 * i. */
-static uint32_t g_mem[0x200];
-
-static int fake_read(uint32_t va, uint32_t* out) {
-    if (va < 0x1000 || va >= 0x1000 + sizeof g_mem || (va & 3)) return 0;
-    *out = g_mem[(va - 0x1000) / 4];
-    return 1;
-}
-
-static void fake_put(uint32_t va, uint32_t v) { g_mem[(va - 0x1000) / 4] = v; }
-
-static uint32_t node(int i) { return 0x1100u + 0x10u * (uint32_t)i; }
-
-static void fake_list(int n) {
-    memset(g_mem, 0, sizeof g_mem);
-    fake_put(0x1000, n ? node(0) : 0x1000);
-    fake_put(0x1004, n ? node(n - 1) : 0x1000);
-    for (int i = 0; i < n; i++) {
-        fake_put(node(i), i + 1 < n ? node(i + 1) : 0x1000);
-        fake_put(node(i) + 4, i ? node(i - 1) : 0x1000);
-        fake_put(node(i) + 8, 0xC0DE0000u + (uint32_t)i);
-    }
-}
-
-/* CTeleport::NextTeleport (0x0060C990): wraps at the end, answers the iterator's node and advances it. */
-static int fake_tnext(uint32_t* iterator) {
-    uint32_t at = *iterator, next;
-    if (at == 0x1000) fake_read(0x1000, &at);
-    if (at == 0x1000) return -1;
-    fake_read(at, &next);
-    *iterator = next;
-    return (int)((at - 0x1100u) / 0x10u);
-}
-
-static void test_key_points(void) {
-    dm_keys_t k;
-    uint32_t it;
-    int reached[8], ok = 1;
-    fake_list(4);
-    CHECK(dm_keys_walk(fake_read, 0x1000, node(0), &k) && k.count == 4 && k.index == -1 && k.prev_target == node(3),
-          "before any TNEXT: 4 key points, none reached, Previous goes to the last");
-    CHECK(dm_keys_walk(fake_read, 0x1000, node(2), &k) && k.index == 1 && k.prev_target == node(0),
-          "after reaching the second, Previous goes to the first");
-    CHECK(dm_keys_walk(fake_read, 0x1000, 0x1000, &k) && k.index == 3 && k.prev_target == node(2),
-          "after the last, Previous goes to the third");
-    CHECK(dm_keys_walk(fake_read, 0x1000, node(1), &k) && k.index == 0 && k.prev_target == node(3),
-          "Previous from the first wraps to the last");
-    it = node(0);
-    for (int i = 0; i < 6; i++) reached[i] = fake_tnext(&it);
-    CHECK(reached[0] == 0 && reached[3] == 3 && reached[4] == 0 && reached[5] == 1, "TNEXT walks and wraps");
-    for (int step = 0; step < 6; step++) {
-        int before;
-        dm_keys_walk(fake_read, 0x1000, it, &k);
-        before = k.index;
-        it = k.prev_target;
-        if (fake_tnext(&it) != dm_prev_key_index(4, before)) ok = 0;
-        dm_keys_walk(fake_read, 0x1000, it, &k);
-        if (k.index != dm_prev_key_index(4, before)) ok = 0;
-    }
-    CHECK(ok, "Previous = the iterator on the node before, then TNEXT itself");
-    CHECK(dm_prev_key_index(0, -1) == -1 && dm_prev_key_index(1, 0) == 0 && dm_prev_key_index(5, 3) == 2, "indices");
-    fake_list(0);
-    CHECK(dm_keys_walk(fake_read, 0x1000, 0x1000, &k) && k.count == 0 && k.index == -1, "an empty list");
-    fake_list(4);
-    CHECK(!dm_keys_walk(fake_read, 0x1000, 0x1234, &k) && k.count == 0, "an iterator outside the list is refused");
-    fake_put(node(2) + 4, node(0));
-    CHECK(!dm_keys_walk(fake_read, 0x1000, node(0), &k), "a broken back link is refused");
-    fake_list(4);
-    fake_put(node(3), node(1));
-    CHECK(!dm_keys_walk(fake_read, 0x1000, node(0), &k), "a cycle is refused");
-    CHECK(!dm_keys_walk(fake_read, 0, 0, &k), "no list");
-    {
-        dm_state_t s;
-        dm_world_t w = level_world("be.scn");
-        dm_action_t a;
-        dm_init(&s);
-        dm_f5(&s, &w);
-        go_to(&s, &w, DM_NEXT_KEY);
-        press(&s, &w, VK_RETURN);
-        CHECK(dm_take(&s, &a) && a.kind == DM_ACT_NEXT_KEY && s.open, "Next Key Point is routed");
-        go_to(&s, &w, DM_PREV_KEY);
-        press(&s, &w, VK_RETURN);
-        CHECK(dm_take(&s, &a) && a.kind == DM_ACT_PREV_KEY, "Previous Key Point is routed");
-        w.key_count = 0;
-        CHECK(!dm_item_enabled(&s, &w, DM_NEXT_KEY) && !dm_item_enabled(&s, &w, DM_PREV_KEY),
-              "no key points: disabled");
-    }
-}
-
 static void test_toggles(void) {
     dm_state_t s;
     dm_world_t w = level_world("be.scn"), menu = main_menu_world();
     dm_action_t a;
     dm_init(&s);
-    CHECK(!s.show_coords, "Show Coordinates starts off");
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_SHOW_COORDS);
-    press(&s, &w, VK_RETURN);
-    CHECK(s.show_coords && s.open, "Show Coordinates toggles on");
-    press(&s, &w, VK_RETURN);
-    CHECK(!s.show_coords, "and off");
-    go_to(&s, &w, DM_COPY_COORDS);
-    press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_COPY, "Copy Coordinates is routed");
+    open_cheats(&s, &w);
     go_to(&s, &w, DM_FREEZE_AI);
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_FREEZE_AI && a.on == 1, "Freeze AI on");
@@ -550,33 +389,28 @@ static void test_toggles(void) {
     w.ai = -1;
     CHECK(!dm_item_enabled(&s, &w, DM_FREEZE_AI) && !dm_item_enabled(&s, &menu, DM_FREEZE_AI),
           "no AI system: disabled");
-    CHECK(!dm_item_enabled(&s, &menu, DM_COPY_COORDS) && dm_item_enabled(&s, &menu, DM_SHOW_COORDS),
-          "no player: nothing to copy");
 }
 
 static void test_stale_state(void) {
     dm_state_t s;
     dm_world_t w = level_world("be.scn"), none;
     dm_row_t rows[DM_ROWS_MAX];
-    int n, disabled_return = 0, titled = 0;
+    int n, disabled_teleport = 0, titled = 0;
     memset(&none, 0, sizeof none);
     dm_init(&s);
-    dm_f5(&s, &w);
+    open_teleport(&s, &w);
     go_to(&s, &w, DM_FIELD_Y);
     dm_char(&s, &w, '5');
     dm_world_seen(&s, &none);
     CHECK(!s.open && !s.editing && s.page == DM_PAGE_MAIN, "a load or a dialog in front closes the menu");
     w.player = 0;
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     for (int i = 0; i < n; i++) {
-        if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_RETURN_CHECKPOINT && !rows[i].enabled)
-            disabled_return = 1;
-        if (rows[i].kind == DM_ROW_TITLE && !strcmp(rows[i].text, "Debug / Test Menu")) titled = 1;
-        if (rows[i].kind == DM_ROW_INFO && !strcmp(rows[i].text, "Player"))
-            CHECK(!strcmp(rows[i].value, "unavailable"), "coordinates unavailable without a player");
+        if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_TELEPORT_PAGE && !rows[i].enabled) disabled_teleport = 1;
+        if (rows[i].kind == DM_ROW_TITLE && !strcmp(rows[i].text, "Cheats")) titled = 1;
     }
-    CHECK(titled && disabled_return && n > 15 && n < DM_ROWS_MAX, "rows: title, disabled items (%d rows)", n);
+    CHECK(titled && disabled_teleport && n > 8 && n < DM_ROWS_MAX, "rows: title, disabled items (%d rows)", n);
 }
 
 static const dm_row_t* row_of(const dm_row_t* rows, int n, int item) {
@@ -602,10 +436,9 @@ static void test_cheats_menu(void) {
     CHECK(!dm_toggle(&s, &none, DM_MENU_CHEATS) && !s.open, "F10 needs a level or the main menu");
     CHECK(dm_toggle(&s, &w, DM_MENU_CHEATS) && s.open && s.menu == DM_MENU_CHEATS && s.cursor == DM_MOVE_SPEED,
           "F10 opens Cheats on Movement Speed");
-    CHECK(dm_toggle(&s, &w, DM_MENU_DEBUG) && s.open && s.menu == DM_MENU_DEBUG && s.page == DM_PAGE_MAIN,
-          "F5 over Cheats replaces it: one menu at a time");
-    CHECK(dm_toggle(&s, &w, DM_MENU_CHEATS) && s.open && s.menu == DM_MENU_CHEATS,
-          "F10 over the Debug Menu replaces it");
+    CHECK(dm_toggle(&s, &w, DM_MENU_OBJECTIVES) && s.open && s.menu == DM_MENU_OBJECTIVES && s.page == DM_PAGE_MAIN,
+          "F3 over Cheats replaces it: one menu at a time");
+    CHECK(dm_toggle(&s, &w, DM_MENU_CHEATS) && s.open && s.menu == DM_MENU_CHEATS, "F10 over Objectives replaces it");
     CHECK(dm_toggle(&s, &w, DM_MENU_CHEATS) && !s.open, "F10 again closes");
     dm_toggle(&s, &w, DM_MENU_CHEATS);
     CHECK(key(&s, &w, 'W', DOWN) && key(&s, &w, 'W', UP), "Cheats takes the keys");
@@ -643,16 +476,11 @@ static void test_cheats_menu(void) {
     press(&s, &w, VK_DOWN);
     press(&s, &w, VK_RETURN);
     CHECK(s.cursor == DM_FREEZE_AI && dm_take(&s, &a) && a.kind == DM_ACT_FREEZE_AI && a.on == 1,
-          "Freeze Dinosaurs asks for the Debug Menu's Freeze AI action");
+          "Freeze Dinosaurs asks for the Freeze AI action");
     w.ai = 1;
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     r = row_of(rows, n, DM_FREEZE_AI);
     CHECK(r && !strcmp(r->text, "Freeze Dinosaurs") && !strcmp(r->value, "On"), "Cheats shows the DINOS flag");
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    r = row_of(rows, n, DM_FREEZE_AI);
-    CHECK(r && !strcmp(r->text, "Freeze AI") && !strcmp(r->value, "On"), "and so does the Debug Menu: one flag");
-    dm_toggle(&s, &w, DM_MENU_CHEATS);
     go_to(&s, &w, DM_HEAL);
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_HEAL, "Heal");
@@ -679,22 +507,22 @@ static void test_cheats_menu(void) {
     press(&s, &w, VK_DOWN);
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_TELEPORT && a.to.pos[0] == 5.0f && a.to.pos[2] == 30.0f,
-          "and the Debug Menu's Teleport action");
+          "and the Teleport action");
     press(&s, &w, VK_ESCAPE);
     CHECK(s.open && s.page == DM_PAGE_MAIN && s.cursor == DM_TELEPORT_PAGE, "Esc goes back to Cheats");
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
-    CHECK(s.field[0] == 10.0f, "each opening starts the fields at the player");
     dm_toggle(&s, &w, DM_MENU_CHEATS);
+    dm_toggle(&s, &w, DM_MENU_CHEATS);
+    CHECK(s.field[0] == 10.0f, "each opening starts the fields at the player");
     go_to(&s, &w, DM_LEVEL_SELECT);
     press(&s, &w, VK_RETURN);
     CHECK(s.page == DM_PAGE_LEVELS, "Level Select: the same list");
     press(&s, &w, VK_ESCAPE);
     CHECK(s.page == DM_PAGE_MAIN && s.cursor == DM_LEVEL_SELECT, "and back");
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(!row_of(rows, n, DM_SHOW_COORDS), "Show Coordinates is not a cheat");
     for (int i = 0; i < n; i++)
-        CHECK(strcmp(rows[i].text, "Show Coordinates") && strcmp(rows[i].text, "Third Person"),
-              "no Show Coordinates or Third Person row: %s", rows[i].text);
+        CHECK(strcmp(rows[i].text, "Show Coordinates") && strcmp(rows[i].text, "Third Person") &&
+                  strcmp(rows[i].text, "Debug / Test Menu"),
+              "no Show Coordinates, Third Person or Debug row: %s", rows[i].text);
     go_to(&s, &w, DM_FREE_CAMERA);
     CHECK(s.cursor == DM_FREE_CAMERA, "Fly / Free Camera is in the list");
     press(&s, &w, VK_RETURN);
@@ -711,189 +539,13 @@ static void test_cheats_menu(void) {
     CHECK(rows[0].kind == DM_ROW_TITLE && !strcmp(rows[0].text, "Cheats") && row_says(rows, n, DM_MOVE_SPEED, "1.0x") &&
               row_says(rows, n, DM_TELEPORT_PAGE, ">") && row_of(rows, n, DM_CLOSE),
           "Cheats rows");
-    CHECK(!row_of(rows, n, DM_RESTART) && !row_of(rows, n, DM_COPY_COORDS), "only the Cheats items");
     dm_toggle(&s, &w, DM_MENU_CHEATS);
     dm_toggle(&s, &menu, DM_MENU_CHEATS);
     CHECK(s.open && s.cursor == DM_LEVEL_SELECT, "in the main menu Cheats offers Level Select");
     for (int i = 0; i < DM_ITEM_COUNT; i++)
-        if (i != DM_LEVEL_SELECT && i != DM_SHOW_COORDS && i != DM_AMBIENT_OCCLUSION && i != DM_WATER_REFRACTION &&
-            i != DM_ENHANCED_SKY && i != DM_BACK && i != DM_CLOSE)
+        if (i != DM_LEVEL_SELECT && i != DM_BACK && i != DM_CLOSE)
             CHECK(!dm_item_enabled(&s, &menu, (dm_item_t)i), "no level: %s disabled",
                   dm_item_label(DM_MENU_CHEATS, (dm_item_t)i));
-}
-
-static void test_ambient_occlusion(void) {
-    dm_state_t s;
-    dm_world_t w = level_world("be.scn"), menu = main_menu_world();
-    dm_action_t a;
-    dm_row_t rows[DM_ROWS_MAX];
-    int n, graphics = -1, at = -1;
-    dm_init(&s);
-    w.ambient_occlusion = 0;
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_AMBIENT_OCCLUSION);
-    CHECK(s.cursor == DM_AMBIENT_OCCLUSION, "the Debug Menu reaches Ambient Occlusion");
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    for (int i = 0; i < n; i++) {
-        if (rows[i].kind == DM_ROW_SECTION && !strcmp(rows[i].text, "Graphics")) graphics = i;
-        if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_AMBIENT_OCCLUSION) at = i;
-    }
-    CHECK(graphics >= 0 && at == graphics + 2 && rows[graphics + 1].item == DM_FIELD_OF_VIEW &&
-              row_says(rows, n, DM_AMBIENT_OCCLUSION, "Off") && rows[at].selected &&
-              !strcmp(rows[at].text, "Ambient Occlusion"),
-          "a Graphics section holds Field of View, then Ambient Occlusion: Off");
-    CHECK(rows[n - 1].item == DM_CLOSE, "Close stays last");
-    press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_AMBIENT_OCCLUSION && a.value == 1, "Enter: Off -> Low");
-    w.ambient_occlusion = 4;
-    press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.value == 0, "Enter wraps Ultra -> Off");
-    press(&s, &w, VK_RIGHT);
-    CHECK(!dm_take(&s, &a), "Right stops at Ultra");
-    press(&s, &w, VK_LEFT);
-    CHECK(dm_take(&s, &a) && a.value == 3, "Left: Ultra -> High");
-    w.ambient_occlusion = 0;
-    press(&s, &w, VK_LEFT);
-    CHECK(!dm_take(&s, &a), "Left stops at Off");
-    dm_pad(&s, &w, JPT_PAD_BIT(JPT_PAD_DPAD_RIGHT), 1000);
-    CHECK(dm_take(&s, &a) && a.value == 1, "D-pad Right: Off -> Low");
-    w.ambient_occlusion = 3;
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(row_says(rows, n, DM_AMBIENT_OCCLUSION, "High"), "the row shows the renderer's level");
-    w.ambient_occlusion = -1;
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(!dm_item_enabled(&s, &w, DM_AMBIENT_OCCLUSION) && row_says(rows, n, DM_AMBIENT_OCCLUSION, "Unavailable"),
-          "software renderer or no feature level 11.0: Unavailable");
-    menu.ambient_occlusion = 2;
-    CHECK(dm_item_enabled(&s, &menu, DM_AMBIENT_OCCLUSION), "it can be changed from the main menu too");
-    dm_toggle(&s, &w, DM_MENU_CHEATS);
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(!row_of(rows, n, DM_AMBIENT_OCCLUSION), "not in Cheats");
-}
-
-/* Field of View: the session's value, stepped by 1 (Shift, LB/RB: 10) inside the setting's range; Enter is Default. */
-static void test_field_of_view(void) {
-    dm_state_t s;
-    dm_world_t w = level_world("be.scn"), menu = main_menu_world();
-    dm_action_t a;
-    dm_row_t rows[DM_ROWS_MAX];
-    const dm_row_t* r;
-    int n;
-    dm_init(&s);
-    w.fov = JPT_FOV_DEFAULT;
-    w.ambient_occlusion = 2;
-    dm_f5(&s, &w);
-    go_to(&s, &w, DM_FIELD_OF_VIEW);
-    CHECK(s.cursor == DM_FIELD_OF_VIEW, "the Debug Menu reaches Field of View");
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    r = row_of(rows, n, DM_FIELD_OF_VIEW);
-    CHECK(r && !strcmp(r->text, "Field of View") && !strcmp(r->value, "75 (Default)") && r->selected,
-          "Field of View 75 (Default)");
-    CHECK(r && fabsf(r->bar - 0.3f) < 1e-6f, "its bar sits at 75 of 60..110");
-    for (int i = 0; i < n; i++) CHECK(rows[i].item == DM_FIELD_OF_VIEW || rows[i].bar < 0.0f, "only Field of View has a bar");
-    press(&s, &w, VK_RIGHT);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_FIELD_OF_VIEW && a.value == 76, "Right: 76");
-    press(&s, &w, VK_LEFT);
-    CHECK(dm_take(&s, &a) && a.value == 74, "Left: 74");
-    dm_key(&s, &w, VK_RIGHT, 1, 0, 1, 0, 1000);
-    dm_key(&s, &w, VK_RIGHT, 0, 0, 1, 0, 1000);
-    CHECK(dm_take(&s, &a) && a.value == 85, "Shift+Right: 85");
-    dm_key(&s, &w, VK_LEFT, 1, 0, 0, 1, 1000);
-    dm_key(&s, &w, VK_LEFT, 0, 0, 0, 1, 1000);
-    CHECK(dm_take(&s, &a) && a.value == 74, "Ctrl+Left still moves a whole degree");
-    dm_pad(&s, &w, JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER), 1000);
-    CHECK(dm_take(&s, &a) && a.value == 85, "RB: +10");
-    w.fov = 105;
-    dm_pad(&s, &w, JPT_PAD_BIT(JPT_PAD_RIGHT_SHOULDER), 2000);
-    CHECK(dm_take(&s, &a) && a.value == JPT_FOV_MAX, "RB stops at the maximum");
-    w.fov = JPT_FOV_MAX;
-    press(&s, &w, VK_RIGHT);
-    CHECK(!dm_take(&s, &a), "Right at the maximum: nothing");
-    w.fov = JPT_FOV_MIN;
-    press(&s, &w, VK_LEFT);
-    CHECK(!dm_take(&s, &a), "Left at the minimum: nothing");
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(row_says(rows, n, DM_FIELD_OF_VIEW, "60") && fabsf(row_of(rows, n, DM_FIELD_OF_VIEW)->bar) < 1e-6f,
-          "the row follows the session's value");
-    w.fov = 98;
-    press(&s, &w, VK_RETURN);
-    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_FIELD_OF_VIEW && a.value == JPT_FOV_DEFAULT, "Enter: Default 75");
-    w.fov = 0;
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(!dm_item_enabled(&s, &w, DM_FIELD_OF_VIEW) && row_says(rows, n, DM_FIELD_OF_VIEW, "-") &&
-              row_of(rows, n, DM_FIELD_OF_VIEW)->bar < 0.0f,
-          "no value: disabled");
-    menu.fov = 90;
-    CHECK(dm_item_enabled(&s, &menu, DM_FIELD_OF_VIEW), "it can be changed from the main menu too");
-    w.fov = 90;
-    dm_toggle(&s, &w, DM_MENU_CHEATS);
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(!row_of(rows, n, DM_FIELD_OF_VIEW), "not in Cheats");
-}
-
-/* Water Refraction and Enhanced Sky: the running state, switched for the session only (the renderer keeps the setting). */
-static void test_effect_switches(void) {
-    static const struct {
-        dm_item_t item;
-        dm_action_kind_t kind;
-        const char* label;
-    } k[] = { { DM_WATER_REFRACTION, DM_ACT_WATER_REFRACTION, "Water Refraction" },
-              { DM_ENHANCED_SKY, DM_ACT_ENHANCED_SKY, "Enhanced Sky" } };
-    for (int e = 0; e < 2; e++) {
-        dm_state_t s;
-        dm_world_t w = level_world("be.scn"), menu = main_menu_world();
-        dm_action_t a;
-        dm_row_t rows[DM_ROWS_MAX];
-        int n, graphics = -1, ao = -1, at = -1, close = -1;
-        int* state = e ? &w.enhanced_sky : &w.water_refraction;
-        dm_init(&s);
-        w.ambient_occlusion = 2;
-        w.water_refraction = w.enhanced_sky = 1;
-        dm_f5(&s, &w);
-        go_to(&s, &w, k[e].item);
-        CHECK(s.cursor == (int)k[e].item, "the Debug Menu reaches %s", k[e].label);
-        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-        for (int i = 0; i < n; i++) {
-            if (rows[i].kind == DM_ROW_SECTION && !strcmp(rows[i].text, "Graphics")) graphics = i;
-            if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_AMBIENT_OCCLUSION) ao = i;
-            if (rows[i].kind == DM_ROW_ITEM && rows[i].item == (int)k[e].item) at = i;
-            if (rows[i].kind == DM_ROW_ITEM && rows[i].item == DM_CLOSE) close = i;
-        }
-        CHECK(graphics >= 0 && ao == graphics + 2 && at == ao + 1 + e && close == n - 1 && close > at,
-              "Graphics: Field of View, Ambient Occlusion, Water Refraction, Enhanced Sky, then Close");
-        CHECK(!strcmp(rows[at].text, k[e].label) && row_says(rows, n, k[e].item, "On") && rows[at].selected,
-              "%s shows the state in use: On", k[e].label);
-        press(&s, &w, VK_RETURN);
-        CHECK(dm_take(&s, &a) && a.kind == k[e].kind && a.on == 0, "Enter: On -> Off");
-        *state = 0;
-        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-        CHECK(row_says(rows, n, k[e].item, "Off"), "the row follows the running state: Off");
-        press(&s, &w, VK_RETURN);
-        CHECK(dm_take(&s, &a) && a.kind == k[e].kind && a.on == 1, "Enter: Off -> On");
-        press(&s, &w, VK_LEFT);
-        CHECK(!dm_take(&s, &a), "Left on Off: nothing");
-        press(&s, &w, VK_RIGHT);
-        CHECK(dm_take(&s, &a) && a.on == 1, "Right: On");
-        *state = 1;
-        press(&s, &w, VK_RIGHT);
-        CHECK(!dm_take(&s, &a), "Right on On: nothing");
-        press(&s, &w, VK_LEFT);
-        CHECK(dm_take(&s, &a) && a.on == 0, "Left: Off");
-        for (int i = 0; i < 6; i++) {
-            *state = i & 1;
-            press(&s, &w, VK_RETURN);
-            CHECK(dm_take(&s, &a) && a.kind == k[e].kind && a.on == !(i & 1), "repeated switches alternate");
-        }
-        *state = -1;
-        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-        CHECK(!dm_item_enabled(&s, &w, k[e].item) && row_says(rows, n, k[e].item, "Unavailable"),
-              "the Software renderer: Unavailable");
-        menu.water_refraction = menu.enhanced_sky = 0;
-        CHECK(dm_item_enabled(&s, &menu, k[e].item), "available from the main menu too");
-        dm_toggle(&s, &w, DM_MENU_CHEATS);
-        n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-        CHECK(!row_of(rows, n, k[e].item), "not in Cheats");
-    }
 }
 
 /* ---- retail sites (game/trespass.exe 1.0.116) ---- */
@@ -1009,12 +661,6 @@ static void test_retail(const char* root) {
               calls(0x0040C500u, 0x00413040u) && calls(0x0040C563u, 0x00414100u),
           "CGameWnd's frame turns a pending load into Loading Level and the full load 0x00414100");
     CHECK(calls(0x004702B1u, 0x00607E90u), "the game's own level-change action uses DeferredLoad");
-    CHECK(calls(0x0040BF0Cu, 0x0040BCC0u) && bytes_at(0x0040BF44u, "B938E36600") && calls(0x0040BF49u, 0x00414480u) &&
-              bytes_at(0x0040BF4Eu, "6A01") && calls(0x0040BF52u, 0x0040BD70u),
-          "death Restart: pause, Restart Level 0x00414480 on 0x0066E338, resume(1)");
-    CHECK(bytes_at(0x004165AFu, "B938E36600") && calls(0x004165B4u, 0x00414480u), "options Restart: the same call");
-    CHECK(bytes_at(0x004144A4u, "8D7E0A") && calls(0x004144DCu, 0x00606630u),
-          "Restart reloads the scene named at 0x0066E342 in place (bLoadScene)");
     CHECK(calls(0x0041418Eu, 0x004142C0u) && bytes_at(0x00414337u, "8D550A"),
           "the full load keeps the scene name at 0x0066E338 + 0x0A");
     CHECK(bytes_at(0x0040BEEAu, "8B0D64EF6600") && bytes_at(0x0040BEF2u, "FF90FC010000"),
@@ -1095,7 +741,7 @@ static void test_panel(void) {
     dm_row_t rows[DM_ROWS_MAX];
     dmp_frame_t f;
     cp_hud_t hud;
-    int lit[3] = { 0, 0, 0 }, low[3] = { 0, 0, 0 }, amber = 0;
+    int lit[2] = { 0, 0 }, low[2] = { 0, 0 }, amber = 0;
     if (FAILED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_WARP, NULL, 0, levels, 3, D3D11_SDK_VERSION, &dev, NULL,
                                  &ctx))) {
         printf("debug_menu_tests: no WARP device, panel skipped\n");
@@ -1116,7 +762,7 @@ static void test_panel(void) {
     d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     if (FAILED(ID3D11Device_CreateTexture2D(dev, &d, NULL, &staging))) goto done;
     dm_init(&s);
-    dm_f5(&s, &w);
+    open_cheats(&s, &w);
     memset(&f, 0, sizeof f);
     f.view_w = 960.0f;
     f.view_h = 720.0f;
@@ -1135,16 +781,13 @@ static void test_panel(void) {
     strcpy(hud.objective, "Reach the monorail");
     hud.objective_alpha = 1.0f;
     strcpy(hud.notice, "Objective updated");
-    for (int pass = 0; pass < 3; pass++) {
+    for (int pass = 0; pass < 2; pass++) {
         f.menu = pass == 0;
         f.rows = rows;
         f.row_count = f.menu ? dm_rows(&s, &w, rows, DM_ROWS_MAX) : 0;
-        f.feedback = "Checkpoint set";
+        f.feedback = "Heal";
         f.help = "help";
-        f.coord_lines = pass < 2 ? 2 : 0;
-        f.hud = pass == 2 ? &hud : NULL;
-        strcpy(f.coords[0], "Level BE");
-        strcpy(f.coords[1], "X 10.000");
+        f.hud = pass == 1 ? &hud : NULL;
         for (int frame = 0; frame < 3; frame++) {
             ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, black);
             dmp_draw(dev, ctx, rtv, 1280, 960, &f);
@@ -1160,16 +803,15 @@ static void test_panel(void) {
                             lit[pass]++;
                             low[pass] += y > 960 / 5;
                         }
-                        amber += pass == 2 && r > 200 && g > 150 && b < 110;
+                        amber += pass == 1 && r > 200 && g > 150 && b < 110;
                     }
             ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
         }
     }
-    CHECK(lit[0] > 4 * lit[1] && lit[1] > 50, "the menu and the coordinates line are drawn (%d, %d samples)", lit[0],
-          lit[1]);
-    CHECK(lit[2] > 100 && low[2] > 0 && low[2] < lit[2] / 2,
+    CHECK(lit[0] > 50, "the menu is drawn (%d samples)", lit[0]);
+    CHECK(lit[1] > 100 && low[1] > 0 && low[1] < lit[1] / 2,
           "the compass, objective line and notice along the top, the world marker and trail in the picture (%d, %d below)",
-          lit[2], low[2]);
+          lit[1], low[1]);
     CHECK(amber > 10, "objective text and markers are amber (%d samples)", amber);
     {
         /* the title alone over a bright sky: amber letters inside one thin dark outline, every pixel read */
@@ -1184,7 +826,7 @@ static void test_panel(void) {
         g = f;
         g.menu = 0;
         g.rows = NULL;
-        g.row_count = g.coord_lines = 0;
+        g.row_count = 0;
         g.hud = &title;
         for (int frame = 0; frame < 3; frame++) {
             ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, sky);
@@ -1337,6 +979,68 @@ static void test_panel(void) {
               "Dear ImGui reported no layout error drawing the main page (every row, with and without help), Teleport, "
               "Level Select and the Debug Menu (%d)", dmp_imgui_errors());
     }
+    {
+        /* the drawn minimap: bottom-left, the player marker fixed, the map sliding under it as the player walks */
+        static uint32_t shot[2][960][1280];
+        const minimap_bounds_t* mb = minimap_bounds("BE");
+        const minimap_level_map_t* mm = minimap_map("BE");
+        const minimap_run_t* best = NULL;
+        cp_hud_t mh;
+        dmp_frame_t g;
+        minimap_frame_t expect;
+        minimap_rect_t pic = { 0.0f, 0.0f, 1280.0f, 960.0f };
+        float x0, s0, x1, n0, px, py;
+        for (int i = 0; mm && i < mm->count; i++)
+            if (mm->runs[i].kind == MM_KIND_LAND && (!best || mm->runs[i].len > best->len)) best = &mm->runs[i];
+        if (mb && mm && best && minimap_run_world(mb, mm, best, &x0, &s0, &x1, &n0)) {
+            px = (x0 + x1) * 0.5f;
+            py = (s0 + n0) * 0.5f;
+            memset(&g, 0, sizeof g);
+            g.view_w = 1280.0f;
+            g.view_h = 960.0f;
+            g.dpi_scale = 1.0f;
+            g.hud = &mh;
+            for (int shot_i = 0; shot_i < 2; shot_i++) {
+                memset(&mh, 0, sizeof mh);
+                mh.minimap = 1;
+                strcpy(mh.minimap_level, "BE");
+                mh.player_pos[0] = px + 40.0f * (float)shot_i;
+                mh.player_pos[1] = py;
+                minimap_place(&pic, mh.player_pos[0], mh.player_pos[1], MM_ZOOM, &expect);
+                for (int frame = 0; frame < 3; frame++) {
+                    ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, black);
+                    dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+                }
+                ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource*)staging, (ID3D11Resource*)tex);
+                if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
+                    for (int y = 0; y < 960; y++)
+                        memcpy(shot[shot_i][y], (const uint8_t*)m.pData + (size_t)y * m.RowPitch, 1280 * 4);
+                    ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
+                }
+            }
+            {
+                int outside = 0, inside = 0, moved = 0, white[2] = { 0, 0 };
+                const int cx = (int)expect.cx, cy = (int)expect.cy, r = (int)expect.radius;
+                for (int y = 0; y < 960; y++)
+                    for (int x = 0; x < 1280; x++) {
+                        const int in_box = x >= cx - r - 4 && x <= cx + r + 4 && y >= cy - r - 4 && y <= cy + r + 4;
+                        if ((shot[0][y][x] & 0xFFFFFFu) && !in_box) outside++;
+                        if ((shot[0][y][x] & 0xFFFFFFu) && in_box) inside++;
+                        if (in_box && shot[0][y][x] != shot[1][y][x]) moved++;
+                    }
+                for (int k = 0; k < 2; k++) {
+                    const uint32_t px_ = shot[k][cy][cx];
+                    white[k] = ((px_ >> 16) & 0xFF) > 200 && ((px_ >> 8) & 0xFF) > 200 && (px_ & 0xFF) > 200;
+                }
+                CHECK(cx < 640 && cy > 480 && expect.cx - expect.radius < 40.0f && 960.0f - (expect.cy + expect.radius) < 40.0f,
+                      "the drawn minimap sits in the bottom-left corner");
+                CHECK(inside > 2000 && outside == 0, "only the bottom-left circle is drawn (%d inside, %d outside)", inside,
+                      outside);
+                CHECK(white[0] && white[1], "the white player marker is at the circle centre before and after walking");
+                CHECK(moved > 300, "the drawn map changes when the player walks (%d pixels)", moved);
+            }
+        }
+    }
     dmp_release();
 done:
     if (staging) ID3D11Texture2D_Release(staging);
@@ -1348,6 +1052,7 @@ done:
 
 void cheats_tests(int* checks, int* failures);
 void compass_tests(int* checks, int* failures);
+void minimap_tests(int* checks, int* failures);
 void objective_tests(int* checks, int* failures);
 void overlay_tests(int* checks, int* failures);
 void physics_watch_tests(int* checks, int* failures);
@@ -1356,25 +1061,19 @@ void menu_layout_tests(int* checks, int* failures);
 
 int main(void) {
     test_profile_activate();
-    test_f5();
+    test_open_close();
     test_input_capture();
     test_navigation_and_pad();
     test_levels();
     test_level_names();
-    test_restart_reload();
     test_teleport();
-    test_checkpoint();
-    test_coordinates();
     test_yaw();
-    test_key_points();
     test_toggles();
     test_stale_state();
     test_cheats_menu();
-    test_ambient_occlusion();
-    test_field_of_view();
-    test_effect_switches();
     cheats_tests(&g_checks, &g_failures);
     compass_tests(&g_checks, &g_failures);
+    minimap_tests(&g_checks, &g_failures);
     objective_tests(&g_checks, &g_failures);
     overlay_tests(&g_checks, &g_failures);
     physics_watch_tests(&g_checks, &g_failures);

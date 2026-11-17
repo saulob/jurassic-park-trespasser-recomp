@@ -112,6 +112,7 @@ set(HOST_SOURCES
   src/host/debug_menu_layout.c
   src/host/debug_menu_panel.cpp
   src/host/compass_policy.c
+  src/host/minimap.c
   src/host/objective_policy.c
   src/host/objectives.c
   src/host/overlay_policy.c
@@ -544,13 +545,13 @@ target_include_directories(fov_mouse_tests PRIVATE src/host)
 target_link_libraries(fov_mouse_tests PRIVATE jpt_common)
 target_compile_options(fov_mouse_tests PRIVATE /W3)
 target_compile_definitions(fov_mouse_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-# The F5 Debug / Test Menu, F10 Cheats, F3 Objectives and the compass: their policies, the retail sites and level data
+# F10 Cheats, F3 Objectives, the compass and the minimap: their policies, the retail sites and level data
 # they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
 add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c
-  tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c tests/menu_layout_tests.c src/host/debug_menu_policy.c
+  tests/minimap_tests.c tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c tests/menu_layout_tests.c src/host/debug_menu_policy.c
   src/host/debug_menu_layout.c src/host/cheats_policy.c
   src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
-  src/host/host_policy.c tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
+  src/host/minimap.c src/host/host_policy.c tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)
 target_compile_options(debug_menu_tests PRIVATE /W3)
 target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")

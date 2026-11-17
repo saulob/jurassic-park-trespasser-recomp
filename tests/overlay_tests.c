@@ -36,8 +36,7 @@ static void test_transitions(void) {
     CHECK(plan_is(OV_OBJECTIVES, OV_HINT, 0, OV_OBJECTIVES, OV_HINT), "Objectives -> Hint");
     CHECK(plan_is(OV_NONE, OV_OBJECTIVES, 0, OV_NONE, OV_OBJECTIVES), "Hint closed -> Objectives");
     CHECK(plan_is(OV_OBJECTIVES, OV_CONTROLS, 0, OV_OBJECTIVES, OV_CONTROLS), "Objectives -> Controls");
-    CHECK(plan_is(OV_CONTROLS, OV_DEBUG, 0, OV_CONTROLS, OV_DEBUG), "Controls -> Debug");
-    CHECK(plan_is(OV_DEBUG, OV_OBJECTIVES, 0, OV_DEBUG, OV_OBJECTIVES), "Debug -> Objectives");
+    CHECK(plan_is(OV_CONTROLS, OV_CHEATS, 0, OV_CONTROLS, OV_CHEATS), "Controls -> Cheats");
     CHECK(plan_is(OV_CHEATS, OV_OBJECTIVES, 0, OV_CHEATS, OV_OBJECTIVES), "Cheats -> Objectives");
     CHECK(plan_is(OV_OBJECTIVES, OV_OBJECTIVES, 0, OV_OBJECTIVES, OV_NONE), "F3 again closes Objectives");
     CHECK(plan_is(OV_CONTROLS, OV_CONTROLS, 0, OV_CONTROLS, OV_NONE), "F2 again closes Controls");
@@ -100,7 +99,7 @@ static void test_objectives_capture(void) {
 
 static void test_hud_hidden(void) {
     static const char* const why[] = { "Hint, pause menu, dialogs, videos, main menu (no level in front)",
-                                       "Controls", "Objectives, Debug Menu, Cheats", "loading",
+                                       "Controls", "Objectives, Cheats", "loading",
                                        "a tutorial line or any game text" };
     cp_scene_t on;
     memset(&on, 0, sizeof on);

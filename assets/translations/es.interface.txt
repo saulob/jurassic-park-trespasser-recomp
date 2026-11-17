@@ -53,24 +53,15 @@ Replay voice	Repetir voz
 Raise and move the hand	Levantar y mover la mano
 Grab	Tomar
 Drop	Soltar
-Debug Menu	Menú de depuración
+Toggle Minimap	Alternar minimapa
 Cheats	Trucos
 Fullscreen	Pantalla completa
-Debug / Test Menu	Menú de depuración / pruebas
 Level Select	Selección de nivel
 Current level	Nivel actual
-Restart Level	Reiniciar nivel
-Reload Current Level	Recargar nivel actual
 X	X
 Y	Y
 Z	Z
 Teleport	Teletransportar
-Previous Key Point	Punto clave anterior
-Next Key Point	Siguiente punto clave
-Set Checkpoint	Fijar punto de control
-Return to Checkpoint	Volver al punto de control
-Show Coordinates	Mostrar coordenadas
-Copy Coordinates	Copiar coordenadas
 Freeze AI	Congelar IA
 Freeze Dinosaurs	Congelar dinosaurios
 Movement Speed	Velocidad de movimiento
@@ -80,51 +71,23 @@ Infinite Ammo	Munición infinita
 Heal	Curar
 Super Health	Supersalud
 Fly / Free Camera	Vuelo / cámara libre
-Compass	Brújula
-Ambient Occlusion	Oclusión ambiental
-Water Refraction	Refracción del agua
-Enhanced Sky	Cielo mejorado
-Field of View	Campo de visión (FOV)
-Default	Predeterminado
 Close	Cerrar
 Off	Desactivado
 On	Activado
-Low	Baja
-Medium	Media
-High	Alta
-Ultra	Ultra
-Unavailable	No disponible
 unavailable	no disponible
 none	ninguno
 none (main menu)	ninguno (menú principal)
 Level	Nivel
 Player	Jugadora
-Navigation	Navegación
-Debug	Depuración
-Graphics	Gráficos
 No scene files in the data folder	No hay archivos de nivel en la carpeta data
 Objectives unavailable for this level	Objetivos no disponibles en este nivel
-Checkpoint set	Punto de control fijado
-Coordinates shown	Coordenadas visibles
-Coordinates hidden	Coordenadas ocultas
-Coordinates copied	Coordenadas copiadas
-Coordinates unavailable	Coordenadas no disponibles
-Compass off	Brújula desactivada
-Compass on	Brújula activada
 Not available here	No disponible aquí
+Minimap On	Minimapa activado
+Minimap Off	Minimapa desactivado
 Not available	No disponible
 Level Select failed	Error al seleccionar el nivel
-Reload failed	Error al recargar
-Restart failed	Error al reiniciar
 Teleport failed	Error al teletransportar
-Returned to checkpoint	De vuelta al punto de control
-Return to Checkpoint failed	Error al volver al punto de control
-Next Key Point failed	Error al ir al siguiente punto clave
-Previous Key Point failed	Error al ir al punto clave anterior
-The clipboard could not be opened	No se pudo abrir el portapapeles
-Ambient Occlusion is unavailable (see the log)	Oclusión ambiental no disponible (ver el registro)
 Freeze AI failed	Error al congelar la IA
-Key point %d / %d	Punto clave %d / %d
 No objective	Ningún objetivo
 Objective updated	Objetivo actualizado
 Quick Save	Guardado rápido
@@ -140,7 +103,6 @@ Fill health to maximum	Rellena la salud hasta el máximo
 Camera	Cámara
 Normal	Normal
 Free Camera	Cámara libre
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Arriba/Abajo elegir | Intro/A usar | Izquierda/Derecha ajustar (Mayús 10, Ctrl 0.1, LB/RB 10) | dígitos editar | Esc/B volver | F5 cerrar
 Esc/B or F3 close	Esc/B o F3 cierra
 Beach	Playa
 Jungle Road	Carretera de la jungla

@@ -54,6 +54,10 @@ int cp_format_distance(float metres, char* out, size_t cap) {
 
 int cp_hud_allowed(const cp_scene_t* s) { return s->level && !s->menu && !s->card && !s->loading && !s->game_text; }
 
+int cp_minimap_allowed(const cp_scene_t* s) { return s->level && !s->menu && !s->card && !s->loading; }
+
+int cp_world_marker_allowed(const cp_scene_t* s) { return cp_minimap_allowed(s); }
+
 cp_text_kind_t cp_text_kind(uint32_t category, int host_prompt, int first_y, int raster_h) {
     if (category == CP_TEXT_CATEGORY_SUBTITLE) return CP_TEXT_SUBTITLE;
     if (host_prompt) return CP_TEXT_HOST_PROMPT;

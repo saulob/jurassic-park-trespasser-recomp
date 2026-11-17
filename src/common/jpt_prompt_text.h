@@ -26,7 +26,8 @@ typedef enum {
     JPT_TOKEN_HINT,      /* the game's Hint: F1, or the D-pad shortcut */
     JPT_TOKEN_OBJECTIVES, /* the port's Objectives: F3, or the D-pad shortcut */
     JPT_TOKEN_SHOW_OBJECTIVE, /* the port's Show Objective: F4, or the D-pad shortcut */
-    JPT_TOKEN_KEY        /* a fixed key of the port (F5, F10, F11) */
+    JPT_TOKEN_KEY,       /* a fixed key of the port (F5, F10, F11) */
+    JPT_TOKEN_PAD        /* a fixed gamepad control of the port (L3, R3) */
 } jpt_token_kind_t;
 
 typedef struct {

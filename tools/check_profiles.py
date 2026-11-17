@@ -24,7 +24,7 @@ PROVEN = ("identical", "aligned", "data", "decided")
 
 FEATURES = [
     ("Patch 1.1", ("patch117", "lift_hook_list")), ("Cheats and F10", ("cheats",)),
-    ("Debug menu F5", ("debug_menu",)), ("Trespasser CE", ("ce_", "active_ai")),
+    ("Host menus F3 and F10", ("debug_menu",)), ("Trespasser CE", ("ce_", "active_ai")),
     ("FOV and aspect ratio", ("widescreen", "fov_policy")), ("Physics and water", ("physics", "water_kernels", "bump_spans")),
     ("Gamepad and controls", ("gamepad", "guest_ui", "pad_", "tutorial_prompts")),
     ("Text and fonts", ("game_text", "l10n", "text_layout")), ("Front end and loading", ("frontend", "loading", "ui_canvas")),

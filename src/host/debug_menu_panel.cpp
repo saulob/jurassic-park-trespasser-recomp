@@ -1,4 +1,4 @@
-// The Debug / Test Menu, Cheats, Objectives, the coordinates line, the compass and the objective markers: Dear ImGui on the game's own D3D11 device, drawn into the back buffer
+// Cheats, Objectives, the compass, the objective markers and the minimap: Dear ImGui on the game's own D3D11 device, drawn into the back buffer
 // before its Present. Input never reaches ImGui: the menu's state is debug_menu_policy.c's.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -34,7 +34,7 @@ const ImVec4 kSection(0.95f, 0.72f, 0.30f, 1.0f);
 const ImVec4 kSelected(1.0f, 1.0f, 1.0f, 1.0f);
 const ImVec4 kFeedback(0.55f, 0.90f, 0.55f, 1.0f);
 const ImVec4 kNorth(1.0f, 0.42f, 0.36f, 1.0f);
-const ImVec4 kObjective(1.0f, 0.84f, 0.22f, 1.0f);
+const ImVec4 kObjective(MM_COLOR_OBJECTIVE, 1.0f);
 const ImVec4 kDone(0.55f, 0.80f, 0.55f, 1.0f);
 const float kObjectivesFont = 1.25f;
 const float kCurrentFont = 1.2f;
@@ -117,21 +117,6 @@ void goal_mark(dm_goal_status_t status) {
     ImGui::SameLine();
 }
 
-float unit(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
-
-void value_bar(const dm_row_t& r) {
-    const float h = ImGui::GetFontSize(), w = h * 6.0f, t = unit(r.bar);
-    const ImVec2 at = ImGui::GetCursorScreenPos();
-    const float y = at.y + h * 0.5f;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImU32 track = ImGui::GetColorU32(ImGuiCol_FrameBg), fill = ImGui::ColorConvertFloat4ToU32(r.selected ? kSelected : kSection);
-    dl->AddRectFilled(ImVec2(at.x, y - h * 0.12f), ImVec2(at.x + w, y + h * 0.12f), track, h * 0.12f);
-    dl->AddRectFilled(ImVec2(at.x, y - h * 0.12f), ImVec2(at.x + w * t, y + h * 0.12f), fill, h * 0.12f);
-    dl->AddCircleFilled(ImVec2(at.x + w * t, y), h * 0.3f, fill);
-    ImGui::Dummy(ImVec2(w + h * 0.5f, h));
-    ImGui::SameLine();
-}
-
 void row(const dm_row_t& r) {
     switch (r.kind) {
     case DM_ROW_TITLE: break;
@@ -169,7 +154,6 @@ void row(const dm_row_t& r) {
         ImGui::Selectable(r.text, r.selected != 0);
         if (r.value[0]) {
             ImGui::SameLine(ImGui::GetFontSize() * 14.0f);
-            if (r.bar >= 0.0f) value_bar(r);
             if (r.selected) ImGui::TextColored(kSelected, "%s", r.value);
             else ImGui::TextUnformatted(r.value);
         }
@@ -191,7 +175,7 @@ void legacy_menu(const dmp_frame_t* f) {
     const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav;
     char title[DM_TEXT_MAX + 16];
-    snprintf(title, sizeof title, "%s###menu", f->title ? f->title : "Debug / Test Menu");
+    snprintf(title, sizeof title, "%s###menu", f->title ? f->title : "Cheats");
     if (ImGui::Begin(title, nullptr, flags)) {
         for (int i = 0; i < f->row_count; i++) row(f->rows[i]);
         ImGui::Separator();
@@ -246,7 +230,7 @@ float row_height(const dm_row_t& r) {
 
 float value_width(const dm_row_t& r) {
     if (!r.value[0]) return 0.0f;
-    return ImGui::CalcTextSize(r.value).x + (r.bar >= 0.0f ? ImGui::GetFontSize() * 6.5f : 0.0f);
+    return ImGui::CalcTextSize(r.value).x;
 }
 
 struct Table {
@@ -317,7 +301,6 @@ void table_row(const dm_row_t& r, int id, float value_x, float pad, ImVec2* lo, 
         }
         if (r.value[0]) {
             ImGui::SameLine(pad + value_x);
-            if (r.bar >= 0.0f) value_bar(r);
             if (r.selected) ImGui::TextColored(kSelected, "%s", r.value);
             else ImGui::TextUnformatted(r.value);
         }
@@ -352,7 +335,7 @@ void close_button(const dml_rect_t& c, bool hot) {
 void panel(const dmp_frame_t* f) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float em = ImGui::GetFontSize(), pad = style.WindowPadding.x, gap = em * 1.5f;
-    const char* title_text = f->title ? f->title : "Debug / Test Menu";
+    const char* title_text = f->title ? f->title : "Cheats";
     Table t = measure(f);
     float widths[2] = { t.label_w, t.value_w }, content_w;
     const float title_w = ImGui::CalcTextSize(title_text).x;
@@ -432,19 +415,6 @@ void panel(const dmp_frame_t* f) {
 void menu(const dmp_frame_t* f) {
     if (f->objectives) legacy_menu(f);
     else panel(f);
-}
-
-void coords(const dmp_frame_t* f) {
-    const float pad = ImGui::GetFontSize() * 0.6f;
-    ImGui::SetNextWindowPos(ImVec2(pad, pad), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.45f);
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
-    if (ImGui::Begin("##coordinates", nullptr, flags)) {
-        for (int i = 0; i < f->coord_lines; i++) ImGui::TextUnformatted(f->coords[i]);
-    }
-    ImGui::End();
 }
 
 // The menu keeps the font ImGui would choose; the compass needs one that scales.
@@ -612,7 +582,7 @@ void compass(const dmp_frame_t* f) {
     cp_layout_t l;
     const dmp_rect_t r = picture(f);
     cp_layout_in(r.x, r.y, r.w, r.h, &l);
-    if (h.compass && h.marker && h.view) {
+    if (h.marker && h.view) {
         trail(dl, f, h, l);
         world_marker(dl, f, h, l);
     }
@@ -624,7 +594,119 @@ void compass(const dmp_frame_t* f) {
 }
 
 bool hud_shown(const dmp_frame_t* f) {
-    return f->hud && (f->hud->compass || f->hud->objective[0] || f->hud->notice[0]);
+    return f->hud && (f->hud->compass || f->hud->marker || f->hud->objective[0] || f->hud->notice[0] || f->hud->minimap);
+}
+
+void fill_polygon(ImDrawList* dl, const minimap_point_t* pts, int n, ImU32 col) {
+    for (int i = 0; i < n; i++) dl->PathLineTo(ImVec2(pts[i].x, pts[i].y));
+    dl->PathFillConvex(col);
+}
+
+void objective_arrow(ImDrawList* dl, const minimap_point_t* t, float alpha, float line) {
+    const ImVec2 tip(t[0].x, t[0].y), a(t[1].x, t[1].y), b(t[2].x, t[2].y);
+    dl->AddTriangleFilled(a, tip, b, colour(kObjective, alpha));
+    dl->AddTriangle(a, tip, b, colour(ImVec4(0.0f, 0.0f, 0.0f, 0.8f), alpha), line * 1.5f);
+}
+
+struct layer_fill {
+    ImDrawList* dl;
+    ImU32 colour;
+};
+
+void fill_layer(void* user, const minimap_point_t* pts, int n) {
+    const layer_fill* fill = static_cast<const layer_fill*>(user);
+    fill_polygon(fill->dl, pts, n, fill->colour);
+}
+
+ImU32 landmark_colour(int kind) {
+    switch (kind) {
+    case MM_LM_ROAD: return colour(ImVec4(MM_COLOR_ROAD, 1.0f), 1.0f);
+    case MM_LM_WALL:
+    case MM_LM_GATE: return colour(ImVec4(MM_COLOR_WALL, 1.0f), 1.0f);
+    default: return colour(ImVec4(MM_COLOR_BUILDING, 1.0f), 1.0f);
+    }
+}
+
+void minimap_waypoint_marker(ImDrawList* dl, const minimap_frame_t& fr, const cp_hud_t& h) {
+    minimap_marker_t m;
+    minimap_waypoint(&fr, h.waypoint_pos[0], h.waypoint_pos[1], &m);
+    if (m.icon == MM_ICON_DIAMOND) {
+        diamond(dl, ImVec2(m.x, m.y), fr.radius * MM_WAYPOINT_K, 1.0f, 1.0f);
+        return;
+    }
+    minimap_point_t t[3];
+    minimap_arrow(m.x, m.y, m.dir_x, m.dir_y, fr.radius * MM_EDGE_ARROW_K, t);
+    objective_arrow(dl, t, 1.0f, 1.0f);
+}
+
+void minimap_creature_markers(ImDrawList* dl, const minimap_frame_t& fr, const cp_hud_t& h) {
+    const float k = fr.radius * MM_CREATURE_K;
+    for (int i = 0; i < h.creature_count; i++) {
+        float x, y;
+        if (!minimap_creature_place(&fr, &h.creatures[i], &x, &y)) continue;
+        dl->AddCircleFilled(ImVec2(x, y), k + 1.0f, colour(ImVec4(0.0f, 0.0f, 0.0f, 0.85f), 1.0f), 12);
+        dl->AddCircleFilled(ImVec2(x, y), k, colour(h.creatures[i].threat ? ImVec4(MM_COLOR_THREAT, 1.0f)
+                                                                          : ImVec4(MM_COLOR_PASSIVE, 1.0f), 1.0f), 12);
+    }
+}
+
+void minimap(const dmp_frame_t* f) {
+    const cp_hud_t& h = *f->hud;
+    const minimap_bounds_t* b;
+    const minimap_level_map_t* m;
+    if (!h.minimap) return;
+    b = minimap_bounds(h.minimap_level);
+    m = minimap_map(h.minimap_level);
+    if (!b || !m) return;
+    const dmp_rect_t r = picture(f);
+    const minimap_rect_t pic = { r.x, r.y, r.w, r.h };
+    minimap_frame_t fr;
+    if (!minimap_place(&pic, h.player_pos[0], h.player_pos[1], MM_ZOOM, &fr)) return;
+    const float radius = fr.radius, cx = fr.cx, cy = fr.cy;
+
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    dl->AddCircleFilled(ImVec2(cx, cy), radius, colour(ImVec4(0.04f, 0.06f, 0.05f, 0.62f), 1.0f), MM_CLIP_SIDES);
+
+    const ImDrawListFlags flags = dl->Flags;
+    dl->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+    layer_fill layer = { dl, colour(ImVec4(MM_COLOR_LAND, 1.0f), 1.0f) };
+    minimap_layer_visit(&fr, b, m, MM_KIND_LAND, fill_layer, &layer);
+    layer.colour = colour(ImVec4(MM_COLOR_WATER, 1.0f), 1.0f);
+    minimap_layer_visit(&fr, b, m, MM_KIND_WATER, fill_layer, &layer);
+    dl->Flags = flags;
+    static const int kDrawOrder[4] = { MM_LM_ROAD, MM_LM_BUILDING, MM_LM_WALL, MM_LM_GATE };
+    for (int order = 0; order < 4; order++) {
+        const int kind = kDrawOrder[order];
+        for (int i = 0; i < m->landmark_count; i++) {
+            minimap_point_t pts[MM_CLIP_MAX];
+            if (m->landmarks[i].kind != kind) continue;
+            const int n = minimap_landmark_polygon(&fr, &m->landmarks[i], pts);
+            if (n < 3) continue;
+            dl->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+            fill_polygon(dl, pts, n, landmark_colour(kind));
+            dl->Flags = flags;
+            if (kind == MM_LM_ROAD) continue;
+            for (int k = 0; k < n; k++) dl->PathLineTo(ImVec2(pts[k].x, pts[k].y));
+            dl->PathStroke(colour(ImVec4(MM_COLOR_LANDMARK_EDGE, 0.85f), 1.0f), ImDrawFlags_Closed, 1.0f);
+        }
+    }
+
+    minimap_creature_markers(dl, fr, h);
+    if (h.waypoint) minimap_waypoint_marker(dl, fr, h);
+
+    float dx, dy;
+    minimap_point_t t[4];
+    minimap_heading_dir(h.heading, &dx, &dy);
+    minimap_player_shape(cx, cy, dx, dy, radius * MM_PLAYER_K, t);
+    const ImVec2 tip(t[0].x, t[0].y), left(t[1].x, t[1].y), notch(t[2].x, t[2].y), right(t[3].x, t[3].y);
+    const ImU32 fill = colour(ImVec4(MM_COLOR_PLAYER, 1.0f), 1.0f);
+    dl->AddTriangleFilled(tip, left, notch, fill);
+    dl->AddTriangleFilled(tip, notch, right, fill);
+    const ImVec2 outline[4] = { tip, left, notch, right };
+    dl->AddPolyline(outline, 4, colour(ImVec4(0.0f, 0.0f, 0.0f, 0.95f), 1.0f), ImDrawFlags_Closed, 1.6f);
+
+    dl->AddCircle(ImVec2(cx, cy), radius, colour(ImVec4(0.03f, 0.04f, 0.03f, 0.95f), 1.0f), MM_CLIP_SIDES, 3.0f);
+    dl->AddCircle(ImVec2(cx, cy), radius - 1.5f, colour(ImVec4(0.78f, 0.84f, 0.72f, 0.55f), 1.0f), MM_CLIP_SIDES, 1.0f);
 }
 
 }  // namespace
@@ -636,7 +718,7 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
     if (!device || !context || !target || bb_w <= 0 || bb_h <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return;
-    if (!f->menu && !f->coord_lines && !hud_shown(f)) return;
+    if (!f->menu && !hud_shown(f)) return;
     if (!start(device, context)) return;
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(f->view_w, f->view_h);
@@ -646,8 +728,10 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     fonts();
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
-    if (hud_shown(f)) compass(f);
-    if (f->coord_lines) coords(f);
+    if (hud_shown(f)) {
+        compass(f);
+        minimap(f);
+    }
     if (f->menu) menu(f);
     ImGui::Render();
     context->OMGetRenderTargets(1, &previous, &previous_depth);

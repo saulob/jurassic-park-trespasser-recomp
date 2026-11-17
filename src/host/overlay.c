@@ -1,6 +1,6 @@
 /*
  * The one owner of the host's interfaces over gameplay: the controls card (an entry of the game's text overlay),
- * Objectives, the Debug Menu and Cheats. Requests from keys and the gamepad run in the game's UI loop, the previous
+ * Objectives and Cheats. Requests from keys and the gamepad run in the game's UI loop, the previous
  * interface closed first; the game's Hint (F1) is let through only once nothing of the host is left on the picture.
  */
 #include "host.h"
@@ -31,16 +31,15 @@ void overlay_request(int kind, const char* source) {
 
 static ov_kind_t menu_kind(void) {
     switch (debug_menu_open_menu()) {
-    case 1: return OV_DEBUG;
-    case 2: return OV_CHEATS;
-    case 3: return OV_OBJECTIVES;
+    case 1: return OV_CHEATS;
+    case 2: return OV_OBJECTIVES;
     default: return OV_NONE;
     }
 }
 
 static void close_kind(ov_kind_t kind) {
     if (kind == OV_CONTROLS) tutorial_prompts_hide_card();
-    else if (kind == OV_OBJECTIVES || kind == OV_DEBUG || kind == OV_CHEATS) debug_menu_close();
+    else if (kind == OV_OBJECTIVES || kind == OV_CHEATS) debug_menu_close();
 }
 
 static void open_kind(ov_kind_t kind) {
@@ -48,8 +47,6 @@ static void open_kind(ov_kind_t kind) {
         if (O.level) tutorial_prompts_show_card();
     } else if (kind == OV_OBJECTIVES) {
         debug_menu_f3();
-    } else if (kind == OV_DEBUG) {
-        debug_menu_f5();
     } else if (kind == OV_CHEATS) {
         debug_menu_f10();
     }

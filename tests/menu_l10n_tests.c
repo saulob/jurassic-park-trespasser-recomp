@@ -53,12 +53,10 @@ static int load(const char* code) {
 static int shared(const char* code, const char* english) {
     static const struct {
         const char *code, *text;
-    } k[] = { { "de", "Level" }, { "de", "Cheats" }, { "de", "Navigation" }, { "fr", "Navigation" }, { "de", "Debug" },
-              { "it", "Debug" }, { "it", "Camera" }, { "pt-BR", "Normal" }, { "de", "Normal" }, { "es", "Normal" } };
+    } k[] = { { "de", "Level" }, { "de", "Cheats" }, { "it", "Camera" }, { "pt-BR", "Normal" }, { "de", "Normal" }, { "es", "Normal" } };
     for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
         if (!strcmp(k[i].code, code) && !strcmp(k[i].text, english)) return 1;
-    return !strcmp(english, "X") || !strcmp(english, "Y") || !strcmp(english, "Z") || !strcmp(english, "Ultra") ||
-           !strcmp(english, "HD");
+    return !strcmp(english, "X") || !strcmp(english, "Y") || !strcmp(english, "Z") || !strcmp(english, "HD");
 }
 
 void menu_l10n_tests(int* checks, int* failures) {
@@ -71,20 +69,19 @@ void menu_l10n_tests(int* checks, int* failures) {
     jpt_tr_reset();
     for (size_t s = 0; s < sizeof scenes / sizeof scenes[0]; s++)
         snprintf(english_levels[s], sizeof english_levels[s], "%s", dm_level_name(scenes[s]));
-    for (int i = 0; i < DM_ITEM_COUNT; i++) snprintf(english_items[i], sizeof english_items[i], "%s", dm_item_label(DM_MENU_DEBUG, (dm_item_t)i));
+    for (int i = 0; i < DM_ITEM_COUNT; i++) snprintf(english_items[i], sizeof english_items[i], "%s", dm_item_label(DM_MENU_CHEATS, (dm_item_t)i));
     for (size_t l = 0; l < sizeof languages / sizeof languages[0]; l++) {
         const char* code = languages[l];
         char text[128];
         CHECK(load(code), "%s: interface table", code);
         for (int i = 0; i < DM_ITEM_COUNT; i++) {
-            const char* label = dm_item_label(DM_MENU_DEBUG, (dm_item_t)i);
-            CHECK(strcmp(label, english_items[i]) || shared(code, english_items[i]), "%s F5 item %d \"%s\" English", code, i, label);
+            const char* label = dm_item_label(DM_MENU_CHEATS, (dm_item_t)i);
+            CHECK(strcmp(label, english_items[i]) || shared(code, english_items[i]), "%s menu item %d \"%s\" English", code, i, label);
         }
         CHECK(strcmp(dm_item_label(DM_MENU_CHEATS, DM_FREEZE_AI), "Freeze Dinosaurs"), "%s F10 Freeze Dinosaurs", code);
         for (int i = 0; i < JPT_CHEAT_COUNT; i++)
             CHECK(jpt_tr_has(jpt_cheats[i].label), "%s F10 has a translation of %s", code, jpt_cheats[i].label);
-        CHECK(strcmp(dm_menu_title(DM_MENU_DEBUG), "Debug / Test Menu") && strcmp(dm_menu_title(DM_MENU_OBJECTIVES), "Objectives"),
-              "%s titles", code);
+        CHECK(strcmp(dm_menu_title(DM_MENU_OBJECTIVES), "Objectives"), "%s titles", code);
         CHECK(strcmp(dm_menu_title(DM_MENU_CHEATS), "Cheats") || !strcmp(code, "de"), "%s Cheats title", code);
         for (size_t s = 0; s < sizeof scenes / sizeof scenes[0]; s++)
             CHECK(dm_level_name(scenes[s]) && strcmp(dm_level_name(scenes[s]), english_levels[s]), "%s level name of %s", code,
@@ -110,5 +107,5 @@ void menu_l10n_tests(int* checks, int* failures) {
         }
     }
     jpt_tr_reset();
-    CHECK(!strcmp(dm_item_label(DM_MENU_DEBUG, DM_CLOSE), "Close") && !strcmp(cp_direction_name(0), "N"), "English again");
+    CHECK(!strcmp(dm_item_label(DM_MENU_CHEATS, DM_CLOSE), "Close") && !strcmp(cp_direction_name(0), "N"), "English again");
 }

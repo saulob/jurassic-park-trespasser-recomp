@@ -1370,13 +1370,13 @@ static void test_controls_card(void) {
     {
         /* the hotkeys on the cards: no waypoint any more; Hint and Objectives on their D-pad directions while free */
         static const char* const keys[] = { "[F1] Hint",       "[F2] Controls", "[F3] Objectives",  "[F4] Show Objective",
-                                            "[F5] Debug Menu", "[F10] Cheats",  "[F11] Fullscreen", "[Esc] Menu" };
+                                            "[F5] Toggle Minimap", "[F10] Cheats",  "[F11] Fullscreen", "[Esc] Menu" };
         const int key_count = (int)(sizeof keys / sizeof keys[0]);
         const jpt_card_t* kb = jpt_prompt_card(0);
         const jpt_card_t* pad = jpt_prompt_card(1);
         char line[160];
         int found[8] = { 0 }, next_key = 0, hint = 0, objectives = 0, view = 0, waypoint = 0, show = 0, stow = 0,
-            replay = 0, keyboard_replay = 0;
+            replay = 0, keyboard_replay = 0, minimap = 0;
         c = prompt_context(0, JPT_FAMILY_XBOX, &cfg, map);
         for (int i = 0; i < kb->count; i++) {
             snprintf(line, sizeof line, "%s %s", kb->rows[i].binding, kb->rows[i].action);
@@ -1400,8 +1400,12 @@ static void test_controls_card(void) {
             show |= !strcmp(out, "[D-pad down] Show Objective");
             stow |= !strcmp(out, "[D-pad up] Stow / retrieve");
             replay |= strstr(out, "Replay") != NULL || strstr(line, "REPLAY") != NULL;
+            minimap |= !strcmp(out, "[Left stick click (LS)] + [Right stick click (RS)] Toggle Minimap");
         }
-        CHECK(hint && objectives && view && show && stow && !replay);
+        CHECK(hint && objectives && view && show && stow && !replay && minimap);
+        c = prompt_context(1, JPT_FAMILY_PLAYSTATION, &cfg, map);
+        CHECK(plain_is("<PAD_L3> + <PAD_R3> Toggle Minimap", &c, "[L3] + [R3] Toggle Minimap"));
+        c = prompt_context(1, JPT_FAMILY_XBOX, &cfg, map);
         CHECK(jpt_pad_control_free(&cfg, JPT_PAD_HINT_CONTROL) && jpt_pad_control_free(&cfg, JPT_PAD_OBJECTIVES_CONTROL) &&
                   jpt_pad_control_free(&cfg, JPT_PAD_SHOW_OBJECTIVE_CONTROL) && !jpt_pad_control_free(&cfg, JPT_PAD_DPAD_UP) &&
                   JPT_PAD_SHOW_OBJECTIVE_CONTROL == JPT_PAD_DPAD_DOWN);
@@ -1665,8 +1669,67 @@ static void test_launcher_controller(void) {
     CHECK(jpt_glyph_family(JPT_GLYPHS_AUTOMATIC, 0, JPT_FAMILY_PLAYSTATION) == JPT_FAMILY_XBOX);
 }
 
+#define L3 JPT_PAD_BIT(JPT_PAD_LEFT_STICK)
+#define R3 JPT_PAD_BIT(JPT_PAD_RIGHT_STICK)
+
+static int chord_step(pad_chord_t* c, uint32_t raw, uint32_t ms, uint32_t* out) {
+    return pad_chord_update(c, L3 | R3, raw, ms, out);
+}
+
+static void test_chord(void) {
+    pad_chord_t c;
+    uint32_t out;
+    const uint32_t other = JPT_PAD_BIT(JPT_PAD_SOUTH);
+    memset(&c, 0, sizeof c);
+    CHECK(!chord_step(&c, other, 0, &out) && out == other);
+    /* L3 alone: held back for the window, then passed on and held */
+    CHECK(!chord_step(&c, L3, 100, &out) && out == 0);
+    CHECK(!chord_step(&c, L3, 100 + PAD_CHORD_WINDOW_MS - 1, &out) && out == 0);
+    CHECK(!chord_step(&c, L3, 100 + PAD_CHORD_WINDOW_MS, &out) && out == L3);
+    CHECK(!chord_step(&c, L3, 1000, &out) && out == L3);
+    CHECK(!chord_step(&c, 0, 1010, &out) && out == 0);
+    /* R3 alone */
+    CHECK(!chord_step(&c, R3, 2000, &out) && out == 0);
+    CHECK(!chord_step(&c, R3, 2000 + PAD_CHORD_WINDOW_MS, &out) && out == R3);
+    CHECK(!chord_step(&c, 0, 2100, &out) && out == 0);
+    /* a tap shorter than the window is still seen, for the tap time */
+    CHECK(!chord_step(&c, L3, 3000, &out) && out == 0);
+    CHECK(!chord_step(&c, 0, 3020, &out) && out == L3);
+    CHECK(!chord_step(&c, 0, 3020 + PAD_CHORD_TAP_MS - 1, &out) && out == L3);
+    CHECK(!chord_step(&c, 0, 3020 + PAD_CHORD_TAP_MS, &out) && out == 0);
+    /* L3 then R3 inside the window: one toggle, nothing of either reaches the game */
+    CHECK(!chord_step(&c, L3 | other, 4000, &out) && out == other);
+    CHECK(chord_step(&c, L3 | R3 | other, 4030, &out) && out == other);
+    CHECK(!chord_step(&c, L3 | R3, 4100, &out) && out == 0);
+    CHECK(!chord_step(&c, L3 | R3, 9000, &out) && out == 0);
+    /* releasing one and pressing it again does not toggle: both must go up */
+    CHECK(!chord_step(&c, R3, 9010, &out) && out == 0);
+    CHECK(!chord_step(&c, L3 | R3, 9020, &out) && out == 0);
+    CHECK(!chord_step(&c, 0, 9030, &out) && out == 0);
+    /* R3 then L3 inside the window, after releasing both */
+    CHECK(!chord_step(&c, R3, 10000, &out) && out == 0);
+    CHECK(chord_step(&c, L3 | R3, 10049, &out) && out == 0);
+    CHECK(!chord_step(&c, 0, 10100, &out) && out == 0);
+    /* both in the same sample, and again after a release */
+    CHECK(chord_step(&c, L3 | R3, 11000, &out) && out == 0);
+    CHECK(!chord_step(&c, 0, 11100, &out) && out == 0);
+    CHECK(chord_step(&c, L3 | R3, 11200, &out) && out == 0);
+    CHECK(!chord_step(&c, 0, 11300, &out) && out == 0);
+    /* R3 long after L3: two single presses, no chord */
+    CHECK(!chord_step(&c, L3, 12000, &out) && out == 0);
+    CHECK(!chord_step(&c, L3, 12000 + PAD_CHORD_WINDOW_MS, &out) && out == L3);
+    CHECK(!chord_step(&c, L3 | R3, 12500, &out) && out == (L3 | R3));
+    CHECK(!chord_step(&c, L3 | R3, 12500 + PAD_CHORD_WINDOW_MS, &out) && out == (L3 | R3));
+    CHECK(!chord_step(&c, 0, 13000, &out) && out == 0);
+    /* a clock that wrapped */
+    CHECK(!chord_step(&c, L3, 0xFFFFFFF0u, &out) && out == 0);
+    CHECK(chord_step(&c, L3 | R3, 5, &out) && out == 0);
+    CHECK(!chord_step(&c, 0, 100, &out) && out == 0);
+}
+
 int main(void) {
     test_profile_activate();
+    test_chord();
     test_last_device();
     test_activity_filter();
     test_deadzones();

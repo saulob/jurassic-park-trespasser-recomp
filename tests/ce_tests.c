@@ -651,7 +651,7 @@ static void test_keys(void) {
     CHECK(key_policy(WM_KEYDOWN_, VK_F8_, 0, 0, 0) == KEY_HOST_QUICK_LOAD);
     CHECK(key_policy(WM_KEYDOWN_, VK_F7_, 1, 0, 0) == KEY_DROP && key_policy(WM_KEYUP_, VK_F7_, 0, 0, 0) == KEY_DROP);
     CHECK(key_policy(WM_SYSKEYDOWN_, VK_F8_, 0, 0, 1) == KEY_DROP);
-    CHECK(key_policy(WM_KEYDOWN_, VK_F5_, 0, 0, 0) == KEY_HOST_DEBUG_MENU);
+    CHECK(key_policy(WM_KEYDOWN_, VK_F5_, 0, 0, 0) == KEY_HOST_MINIMAP);
     CHECK(key_policy(WM_KEYDOWN_, VK_F10_, 0, 0, 0) == KEY_HOST_CHEATS);
     CHECK(key_policy(WM_KEYDOWN_, VK_F9_, 0, 0, 0) == KEY_HOST_SNAPSHOT);
     key_policy_set_quick_keys(VK_F9_, VK_F7_);

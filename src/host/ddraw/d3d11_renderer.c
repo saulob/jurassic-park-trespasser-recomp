@@ -344,7 +344,6 @@ static struct {
         ID3D11DepthStencilState* depth[2][2][9];
         ID3D11DepthStencilState* cpu;
         d3dr_target_t* frame;
-        char settings[MAX_PATH];
     } ao;
 } R;
 
@@ -452,37 +451,17 @@ static int ao_start(void) {
     return 0;
 }
 
-void d3dr_configure_ambient_occlusion(int level, const char* settings_path) {
+void d3dr_configure_ambient_occlusion(int level) {
     R.ao.level = level > JPT_AO_OFF && level < JPT_AO_COUNT ? level : JPT_AO_OFF;
     assao_set_quality(R.ao.level);
-    _snprintf(R.ao.settings, sizeof R.ao.settings - 1, "%s", settings_path ? settings_path : "");
 }
 
-int d3dr_ambient_occlusion(void) { return R.hardware && R.ao.capable ? R.ao.level : -1; }
-
-/* From the Debug Menu: takes effect at the next frame and is saved to trespasser.ini. */
 void d3dr_configure_effects(int water_refraction, int enhanced_sky) {
     const char* scope = R.hardware ? "" : " (Direct3D 11 only: the Software renderer draws water and sky as the original)";
     fx_switch_start(&R.fx.water, water_refraction);
     fx_switch_start(&R.fx.sky, enhanced_sky);
     host_log("video", "water refraction: %s%s", R.fx.water.setting ? "on" : "off", scope);
     host_log("video", "enhanced sky: %s%s", R.fx.sky.setting ? "on" : "off", scope);
-}
-
-int d3dr_water_refraction(void) { return R.hardware && !R.fx.water_failed ? R.fx.water.running : -1; }
-
-int d3dr_enhanced_sky(void) { return R.hardware ? R.fx.sky.running : -1; }
-
-int d3dr_set_water_refraction(int on) {
-    if (!R.hardware) return 0;
-    if (R.nindices) flush();
-    return fx_switch_set(&R.fx.water, on);
-}
-
-int d3dr_set_enhanced_sky(int on) {
-    if (!R.hardware) return 0;
-    if (R.nindices) flush();
-    return fx_switch_set(&R.fx.sky, on);
 }
 
 /* CSkyRender::DrawD3D's draws, between these two: the sky's own batch. */
@@ -498,22 +477,6 @@ void d3dr_sky_end(void) {
     if (!R.hardware) return;
     if (R.nindices) flush();
     R.fx.sky_drawing = 0;
-}
-
-int d3dr_set_ambient_occlusion(int level) {
-    const char* key = JPT_KEY_AMBIENT_OCCLUSION;
-    const char* value;
-    if (d3dr_ambient_occlusion() < 0 || level < JPT_AO_OFF || level >= JPT_AO_COUNT) return 0;
-    if (level == R.ao.level) return 1;
-    R.ao.level = level;
-    assao_set_quality(level);
-    if (level == JPT_AO_OFF) ao_stop();
-    else if (!ao_start()) return 0;
-    host_log("graphics", "Ambient Occlusion %s (changed in game)", jpt_ao_names[level]);
-    value = jpt_ao_keys[level];
-    if (R.ao.settings[0] && !jpt_ini_set(R.ao.settings, &key, &value, 1))
-        host_log("graphics", "could not save %s to %s", key, R.ao.settings);
-    return 1;
 }
 
 static int compile_shaders(void) {

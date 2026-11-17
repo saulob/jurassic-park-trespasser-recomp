@@ -29,7 +29,7 @@ const jpt_cheat_info_t jpt_cheats[JPT_CHEAT_COUNT] = {
     { JPT_CHEAT_AMMO, JPT_CHEAT_TOGGLE, JPT_KEY_CHEAT_INFINITE_AMMO, "Infinite Ammo",
       "Guns do not use up ammunition.", 0, NULL, 0 },
     { JPT_CHEAT_FREEZE_AI, JPT_CHEAT_TOGGLE, JPT_KEY_CHEAT_FREEZE_DINOSAURS, "Freeze Dinosaurs",
-      "Dinosaurs sleep and stop updating, as with the Debug Menu's Freeze AI.", 0, NULL, 0 },
+      "Dinosaurs sleep and stop updating.", 0, NULL, 0 },
     { JPT_CHEAT_HEAL, JPT_CHEAT_ACTION, NULL, "Heal", "Anne's health back to her maximum, once.", 0, NULL, 0 },
     { JPT_CHEAT_SUPER_HEALTH, JPT_CHEAT_TOGGLE, JPT_KEY_CHEAT_SUPER_HEALTH, "Super Health",
       "Four times Anne's normal maximum health, and full. Saves keep the normal maximum.", 0, NULL, 0 },

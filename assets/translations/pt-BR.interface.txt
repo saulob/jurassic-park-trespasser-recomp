@@ -53,24 +53,15 @@ Replay voice	Repetir fala
 Raise and move the hand	Erguer e mover a mão
 Grab	Pegar
 Drop	Soltar
-Debug Menu	Menu de depuração
+Toggle Minimap	Alternar minimapa
 Cheats	Trapaças
 Fullscreen	Tela cheia
-Debug / Test Menu	Menu de depuração / testes
 Level Select	Seleção de fase
 Current level	Fase atual
-Restart Level	Reiniciar fase
-Reload Current Level	Recarregar fase atual
 X	X
 Y	Y
 Z	Z
 Teleport	Teleportar
-Previous Key Point	Ponto-chave anterior
-Next Key Point	Próximo ponto-chave
-Set Checkpoint	Marcar checkpoint
-Return to Checkpoint	Voltar ao checkpoint
-Show Coordinates	Mostrar coordenadas
-Copy Coordinates	Copiar coordenadas
 Freeze AI	Congelar IA
 Freeze Dinosaurs	Congelar dinossauros
 Movement Speed	Velocidade de movimento
@@ -80,51 +71,23 @@ Infinite Ammo	Munição infinita
 Heal	Curar
 Super Health	Supervida
 Fly / Free Camera	Voo / câmera livre
-Compass	Bússola
-Ambient Occlusion	Oclusão de ambiente
-Water Refraction	Refração da água
-Enhanced Sky	Céu aprimorado
-Field of View	Campo de visão (FOV)
-Default	Padrão
 Close	Fechar
 Off	Desligado
 On	Ligado
-Low	Baixa
-Medium	Média
-High	Alta
-Ultra	Ultra
-Unavailable	Indisponível
 unavailable	indisponível
 none	nenhum
 none (main menu)	nenhuma (menu principal)
 Level	Fase
 Player	Jogadora
-Navigation	Navegação
-Debug	Depuração
-Graphics	Gráficos
 No scene files in the data folder	Nenhum arquivo de fase na pasta data
 Objectives unavailable for this level	Objetivos indisponíveis nesta fase
-Checkpoint set	Checkpoint marcado
-Coordinates shown	Coordenadas visíveis
-Coordinates hidden	Coordenadas ocultas
-Coordinates copied	Coordenadas copiadas
-Coordinates unavailable	Coordenadas indisponíveis
-Compass off	Bússola desligada
-Compass on	Bússola ligada
 Not available here	Indisponível aqui
+Minimap On	Minimapa ligado
+Minimap Off	Minimapa desligado
 Not available	Indisponível
 Level Select failed	A seleção de fase falhou
-Reload failed	Falha ao recarregar
-Restart failed	Falha ao reiniciar
 Teleport failed	Falha ao teleportar
-Returned to checkpoint	De volta ao checkpoint
-Return to Checkpoint failed	Falha ao voltar ao checkpoint
-Next Key Point failed	Falha ao ir ao próximo ponto-chave
-Previous Key Point failed	Falha ao ir ao ponto-chave anterior
-The clipboard could not be opened	Não foi possível abrir a área de transferência
-Ambient Occlusion is unavailable (see the log)	Oclusão de ambiente indisponível (veja o log)
 Freeze AI failed	Falha ao congelar a IA
-Key point %d / %d	Ponto-chave %d / %d
 No objective	Nenhum objetivo
 Objective updated	Objetivo atualizado
 Quick Save	Salvamento rápido
@@ -140,7 +103,6 @@ Fill health to maximum	Enche a vida até o máximo
 Camera	Câmera
 Normal	Normal
 Free Camera	Câmera livre
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Cima/Baixo seleciona | Enter/A usa | Esquerda/Direita ajusta (Shift 10, Ctrl 0.1, LB/RB 10) | números editam | Esc/B volta | F5 fecha
 Esc/B or F3 close	Esc/B ou F3 fecha
 Beach	Praia
 Jungle Road	Estrada da selva

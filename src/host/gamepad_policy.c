@@ -237,6 +237,42 @@ void pad_edges_resume(pad_edges_t* e, uint32_t held_now) {
     e->blocked = held_now & ~e->previous;
 }
 
+static int elapsed(uint32_t now, uint32_t since, uint32_t ms) { return (int32_t)(now - since) >= (int32_t)ms; }
+
+int pad_chord_update(pad_chord_t* c, uint32_t mask, uint32_t raw, uint32_t now_ms, uint32_t* out) {
+    const uint32_t down = raw & mask, pressed = down & ~c->down, released = c->pending & ~down;
+    int fire = 0;
+    c->down = down;
+    c->consumed &= down;
+    c->passed &= down;
+    c->pending &= down;
+    if (released) {
+        c->tap |= released;
+        c->tap_since = now_ms;
+    }
+    if (c->tap && elapsed(now_ms, c->tap_since, PAD_CHORD_TAP_MS)) c->tap = 0;
+    if (pressed) {
+        if (c->consumed) {
+            c->consumed |= pressed;
+        } else if (pressed == mask || (c->pending && (pressed | c->pending) == mask)) {
+            c->consumed = mask;
+            c->pending = 0;
+            fire = 1;
+        } else if (down & ~pressed & c->passed) {
+            c->passed |= pressed;
+        } else {
+            c->pending |= pressed;
+            c->since = now_ms;
+        }
+    }
+    if (c->pending && elapsed(now_ms, c->since, PAD_CHORD_WINDOW_MS)) {
+        c->passed |= c->pending;
+        c->pending = 0;
+    }
+    *out = (raw & ~mask) | c->passed | c->tap;
+    return fire;
+}
+
 pad_read_t pad_read_kind(int first, int left_gameplay, int focused, double since_last) {
     if (first || !focused || since_last > PAD_READ_GAP_SECONDS) return PAD_READ_RESTART;
     return left_gameplay ? PAD_READ_RESUME : PAD_READ_NEXT;

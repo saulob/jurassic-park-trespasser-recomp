@@ -73,6 +73,30 @@ unsigned guest_threads_alive(void) {
     return alive;
 }
 
+/* DEBUG_SAULO: the guest workers alive at an audio or level lifecycle event, grouped by entry point. */
+void guest_threads_trace(const char* event) {
+    uint32_t entry[8];
+    unsigned count[8], kinds = 0;
+    char text[160];
+    int n = 0;
+    for (LONG i = 0; i < s_thread_count; i++) {
+        unsigned k;
+        if (!worker_running(i)) continue;
+        for (k = 0; k < kinds && entry[k] != s_threads[i].entry; k++) {}
+        if (k == kinds && kinds < 8) {
+            entry[kinds] = s_threads[i].entry;
+            count[kinds++] = 0;
+        }
+        if (k < kinds) count[k]++;
+    }
+    text[0] = 0;
+    for (unsigned k = 0; k < kinds && n < (int)sizeof text - 24; k++)
+        n += _snprintf(text + n, sizeof text - 1 - n, "%ssub_%08X x%u", k ? ", " : "", entry[k], count[k]);
+    text[sizeof text - 1] = 0;
+    host_log("audio", "DEBUG_SAULO %s: guest workers alive (%ld created so far): %s", event, (long)s_thread_count,
+             kinds ? text : "none");
+}
+
 void guest_threads_log(const char* when) {
     unsigned alive = guest_threads_alive();
     host_log("shutdown", "guest threads %s: %u (the main thread and %u worker%s)", when, alive, alive - 1,

@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-typedef enum { OV_NONE, OV_CONTROLS, OV_OBJECTIVES, OV_DEBUG, OV_CHEATS, OV_HINT } ov_kind_t;
+typedef enum { OV_NONE, OV_CONTROLS, OV_OBJECTIVES, OV_CHEATS, OV_HINT } ov_kind_t;
 
 const char* ov_name(ov_kind_t kind);
 

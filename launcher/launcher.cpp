@@ -78,7 +78,7 @@ constexpr char kRenderResolutionHelp[] =
 constexpr char kFieldOfViewHelp[] =
     "How much of the world the 3D view shows, in degrees across a 4:3 picture, as Trespasser CE's FOV. 75 is the "
     "original view. Wider aspect ratios add view to the sides (Hor+) without stretching; menus, HUD, subtitles and "
-    "videos stay the same. F5's Debug Menu changes it while playing, for this session only.";
+    "videos stay the same.";
 constexpr char kAntiAliasingHelp[] =
     "Multisample anti-aliasing of the 3D world. Only the levels this graphics card supports are listed.";
 constexpr char kTextureFilteringHelp[] =
@@ -86,10 +86,13 @@ constexpr char kTextureFilteringHelp[] =
     "world. Original uses the game's own filtering without them; Bilinear smooths every texture.";
 constexpr char kAmbientOcclusionHelp[] =
     "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
-    "Higher levels look smoother and cost more. Direct3D 11 only; F5's Debug Menu changes it while playing.";
+    "Higher levels look smoother and cost more. Direct3D 11 only.";
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title.";
 constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution in the window title.";
+constexpr char kMinimapHelp[] =
+    "Shows a circular map of the current level in the bottom-left corner, centred on Anne, with the direction she "
+    "faces. North is always up. F5, or L3 + R3 on a gamepad, shows or hides it while playing.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
 constexpr char kVideoSubtitlesHelp[] =
@@ -99,11 +102,10 @@ constexpr char kMaxObjectDetailHelp[] =
     "game swap distant objects for simpler models, as the original did.";
 constexpr char kWaterRefractionHelp[] =
     "Distorts the scene behind water using the game's wave data, based on the refractive water effect from Trespasser "
-    "CE. Off draws water as the original. F5's Debug Menu switches it while playing, for this session only.";
+    "CE. Off draws water as the original.";
 constexpr char kEnhancedSkyHelp[] =
     "Fades the sky into the level's fog colour towards the horizon by view direction, with the level's own sky fog "
-    "band, as Trespasser CE's enhanced sky. Off keeps the original sky fog. F5's Debug Menu switches it while playing, "
-    "for this session only.";
+    "band, as Trespasser CE's enhanced sky. Off keeps the original sky fog.";
 constexpr char kActiveAiHelp[] =
     "Controls how many AI creatures can be active at once. Original uses the retail limit of 3; Enhanced uses 6, as "
     "supported by Trespasser CE. Applies the next time the game starts.";
@@ -946,6 +948,7 @@ private:
         ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
         ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
+        ui.Toggle("Enable Minimap", kMinimapHelp, JPT_KEY_MINIMAP, true, "Off", "On");
         ui.EndRows();
         ui.Heading("Trespasser CE");
         ui.Help(kTrespasserCeHelp);

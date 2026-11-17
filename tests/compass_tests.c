@@ -45,8 +45,6 @@ static dm_world_t level_world(const char* scene) {
     w.at.rot[0] = 1.0f;
     w.eye = 1;
     w.eye_at.rot[0] = 1.0f;
-    w.key_count = 5;
-    w.key_index = -1;
     w.ai = 0;
     w.camera_head = 1;
     w.speed = w.jump = CH_MULTIPLIER_DEFAULT;
@@ -287,7 +285,7 @@ static void test_hud(void) {
     CHECK(hud.compass && hud.marker, "back when it closes");
     scene.game_text = 1;
     dm_navigate(&s, &w, &scene, &goal, 1000, &hud);
-    CHECK(!hud.compass && !hud.marker && !hud.trail_count, "hidden under a gameplay prompt");
+    CHECK(!hud.compass && hud.marker && hud.view, "a gameplay prompt hides the compass, not the world marker");
     scene.game_text = 0;
     yaw_rotation(-PI_F / 2, w.eye_at.rot);
     dm_navigate(&s, &w, &scene, &goal, 1000, &hud);
@@ -325,10 +323,6 @@ static void test_hud(void) {
     goal.target = 0;
     dm_navigate(&s, &w, &scene, &goal, 1000, &hud);
     CHECK(!hud.marker && !hud.objective[0] && hud.compass, "no target: the compass alone");
-    s.compass_off = 1;
-    dm_navigate(&s, &w, &scene, &goal, 1000, &hud);
-    CHECK(!hud.compass && hud.alpha == 1.0f, "Compass off: nothing of the strip");
-    s.compass_off = 0;
     dm_notice(&s, "Objective updated", 2000);
     dm_navigate(&s, &w, &scene, &goal, 2000, &hud);
     CHECK(!strcmp(hud.notice, "Objective updated"), "notice");
@@ -418,7 +412,8 @@ static void test_hud_text(void) {
     CHECK(hud.compass && hud.marker && hud.trail_count == 1 && hud.distance[0], "a subtitle: compass, marker, trail stay");
     scene.game_text = cp_text_hides_hud(cp_text_kind(3, 0, 10, 480));
     dm_navigate(&s, &w, &scene, &goal, 1000, &hud);
-    CHECK(!hud.compass && !hud.marker && !hud.trail_count && !hud.distance[0], "a tutorial prompt: all of it hidden");
+    CHECK(!hud.compass && hud.marker && hud.trail_count == 1 && hud.distance[0],
+          "a tutorial prompt hides the compass only: marker, trail and distance stay");
     scene.game_text = 0;
     dm_navigate(&s, &w, &scene, &goal, 1000, &hud);
     CHECK(hud.compass && hud.marker && hud.trail_count == 1, "and back when it goes");
@@ -442,21 +437,12 @@ static void test_menus(void) {
     dm_state_t s;
     dm_world_t w = level_world("be.scn"), menu;
     dm_row_t rows[DM_ROWS_MAX];
-    int n, nav = -1, waypoint = 0, goals = 0, notes = 0, unknown = 0, current = -1;
+    int n, waypoint = 0, goals = 0, notes = 0, unknown = 0, current = -1;
     dm_init(&s);
-    dm_f5(&s, &w);
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    for (int i = 0; i < n; i++) {
-        if (rows[i].kind == DM_ROW_SECTION && !strcmp(rows[i].text, "Navigation")) nav = i;
-        waypoint |= strstr(rows[i].text, "aypoint") != NULL;
-    }
-    CHECK(nav > 0 && rows[nav + 1].item == DM_COMPASS && !strcmp(rows[nav + 1].value, "On") && !waypoint,
-          "F5 Navigation: Compass only, no waypoint item");
     dm_toggle(&s, &w, DM_MENU_CHEATS);
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    nav = 0;
-    for (int i = 0; i < n; i++) nav |= rows[i].item == DM_COMPASS && rows[i].kind == DM_ROW_ITEM;
-    CHECK(!nav, "nothing of the compass in F10 Cheats");
+    for (int i = 0; i < n; i++) waypoint |= strstr(rows[i].text, "aypoint") != NULL || strstr(rows[i].text, "Compass") != NULL;
+    CHECK(!waypoint, "nothing of the compass or a waypoint in F10 Cheats");
     w.goals.available = 1;
     w.goals.count = 3;
     w.goals.item[0].status = DM_GOAL_DONE;

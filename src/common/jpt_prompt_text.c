@@ -37,6 +37,8 @@ static const token_def_t k_tokens[] = {
     { "KEY_F5", JPT_TOKEN_KEY, 0x74, -1 },
     { "KEY_F10", JPT_TOKEN_KEY, 0x79, -1 },
     { "KEY_F11", JPT_TOKEN_KEY, 0x7A, -1 },
+    { "PAD_L3", JPT_TOKEN_PAD, JPT_PAD_LEFT_STICK, -1 },
+    { "PAD_R3", JPT_TOKEN_PAD, JPT_PAD_RIGHT_STICK, -1 },
 };
 
 /* The tutorial's subtitles (Stream.tpa) and BE's TrigTutorHint text name keys in a few fixed phrases; NULL keeps the
@@ -112,6 +114,7 @@ static const jpt_card_row_t k_rows_gamepad[] = {
     { "<HINT>", "Hint" },
     { "<OBJECTIVES>", "Objectives" },
     { "<SHOW_OBJECTIVE>", "Show Objective" },
+    { "<PAD_L3> + <PAD_R3>", "Toggle Minimap" },
 };
 
 static const jpt_card_row_t k_rows_keyboard[] = {
@@ -135,7 +138,7 @@ static const jpt_card_row_t k_rows_keyboard[] = {
     { "<CONTROLS>", "Controls" },
     { "<OBJECTIVES>", "Objectives" },
     { "<SHOW_OBJECTIVE>", "Show Objective" },
-    { "<KEY_F5>", "Debug Menu" },
+    { "<KEY_F5>", "Toggle Minimap" },
     { "<KEY_F10>", "Cheats" },
     { "<KEY_F11>", "Fullscreen" },
     { "<PAUSE>", "Menu" },
@@ -424,6 +427,7 @@ static void resolve(const token_def_t* def, const jpt_prompt_context_t* c, jpt_p
         break;
     }
     case JPT_TOKEN_KEY: key_token(def->command, t); break;
+    case JPT_TOKEN_PAD: pad_token(c, (int)def->command, JPT_DIR_NONE, 0, t); break;
     }
 }
 

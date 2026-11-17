@@ -30,7 +30,7 @@ original game. These are part of the normal Direct3D 11 renderer; there is nothi
 - **Native high resolutions**: the 3D world is drawn at the monitor's resolution (or 720p to 4K), not upscaled.
 - **True widescreen**: 16:9 to 32:9 show more of the world to the sides (Hor+), with no stretching and no holes.
 - **Field of view**: 60-110 degrees across the 4:3 view (75, the original, by default), as Trespasser CE's `FOV`;
-  wider screens add to the sides. F5's Debug Menu changes it while playing, for the session.
+  wider screens add to the sides.
 - **Scaled UI**: menus and dialogs keep their original 4:3 layout, scaled to the screen.
 - **Modern texture filtering**: anisotropic filtering up to 16x, and MSAA up to 8x where the card supports it.
 - **Generated mipmaps**: the 3D world's textures get full mip chains made from the originals at load time (the files

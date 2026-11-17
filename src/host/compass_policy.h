@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "minimap.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,7 +45,7 @@ int cp_format_distance(float metres, char* out, size_t cap);
 /* What is in front of the player this frame. */
 typedef struct {
     int level;     /* a running level, no window of the game over it */
-    int menu;      /* F3, F5 or F10 open */
+    int menu;      /* F3 or F10 open */
     int card;      /* the F2 controls card */
     int loading;   /* a level load is pending */
     int player;    /* Anne found and alive */
@@ -62,6 +64,11 @@ cp_text_kind_t cp_text_kind(uint32_t category, int host_prompt, int first_y, int
 int cp_text_hides_hud(cp_text_kind_t kind);
 
 int cp_hud_allowed(const cp_scene_t* s);
+/* The minimap and its waypoint: gameplay only, but unlike the compass they survive gameplay text (subtitles, narration,
+ * tutorial prompts, messages). */
+int cp_minimap_allowed(const cp_scene_t* s);
+/* The objective marker in the 3D picture (diamond, arrow, trail): the same rule as the minimap, so it also survives text. */
+int cp_world_marker_allowed(const cp_scene_t* s);
 
 /* The active camera as the renderer uses it: CPlacement3 (rotation scalar first) and tan of half the vertical view. */
 typedef struct {
@@ -86,6 +93,13 @@ typedef struct {
     int trail_count;
     float trail[CP_TRAIL_MAX][3];
     char notice[CP_TEXT_MAX];
+    int minimap;                     /* draw the minimap this frame */
+    char minimap_level[MM_LEVEL_ID_MAX];
+    float player_pos[3];
+    int waypoint;                    /* draw the active objective on the minimap */
+    float waypoint_pos[3];
+    int creature_count;              /* living creatures near the player, nearest first */
+    minimap_creature_t creatures[MM_CREATURES_MAX];
 } cp_hud_t;
 
 /* The current objective as the objectives module resolved it: where it is and the real anchors leading there. */

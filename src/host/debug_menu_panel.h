@@ -8,7 +8,6 @@ struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11RenderTargetView;
 
-#define DMP_COORD_LINES 5
 #define DMP_HELP_LINES 2
 
 typedef struct {
@@ -27,8 +26,6 @@ typedef struct {
     int menu_id, page;        /* dm_menu_t and dm_page_t of the rows: the hit table's stamp */
     int pointer;              /* the pointer is over the view */
     float pointer_x, pointer_y;
-    int coord_lines;
-    char coords[DMP_COORD_LINES][DM_TEXT_MAX];
     const cp_hud_t* hud; /* the compass and its notice; NULL when the HUD is not on screen */
 } dmp_frame_t;
 

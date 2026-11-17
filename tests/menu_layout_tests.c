@@ -125,7 +125,6 @@ static dm_world_t world(const char* scene, const char* level) {
     w.hp_max = 100.0f;
     w.camera_head = 1;
     w.speed = w.jump = CH_MULTIPLIER_DEFAULT;
-    w.key_index = -1;
     return w;
 }
 
@@ -226,9 +225,6 @@ static void test_main_menu_rows(void) {
     r = find_text(rows, n, "Current level");
     CHECK(r && !strcmp(r->value, "ZZ"), "an unknown level shows its id: %s", r ? r->value : "none");
     dm_close(&s);
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    CHECK(has_coordinates(rows, n), "the Debug Menu keeps its coordinates line");
 }
 
 static void test_heal_row(void) {
@@ -256,9 +252,9 @@ static void test_heal_row(void) {
     s.cursor = DM_MOVE_SPEED;
     CHECK(!dm_help_text(&s, &w), "other rows add no help line");
     s.cursor = DM_HEAL;
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
-    s.cursor = DM_FREEZE_AI;
-    CHECK(!dm_help_text(&s, &w), "the Debug Menu adds none");
+    dm_toggle(&s, &w, DM_MENU_OBJECTIVES);
+    s.cursor = DM_CLOSE;
+    CHECK(!dm_help_text(&s, &w), "Objectives adds none");
     dm_close(&s);
     dm_toggle(&s, &w, DM_MENU_CHEATS);
     s.cursor = DM_HEAL;
@@ -604,7 +600,7 @@ static void test_no_echo(void) {
     }
     CHECK(menu && !strstr(menu, "Teleported to") && !strstr(menu, "F10 close") && !strstr(menu, "Free Camera ("),
           "no teleport echo, no key instructions, no Free Camera instructions in the menu");
-    CHECK(menu && strstr(menu, "if (D.state.menu != DM_MENU_CHEATS)"), "the key help is the Debug Menu's alone");
+    CHECK(menu && strstr(menu, "if (D.state.menu == DM_MENU_OBJECTIVES) f.help"), "the key help is Objectives' alone");
     free(cheats);
     free(menu);
 }

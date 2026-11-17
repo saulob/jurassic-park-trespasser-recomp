@@ -53,24 +53,15 @@ Replay voice	Stimme wiederholen
 Raise and move the hand	Hand heben und bewegen
 Grab	Aufnehmen
 Drop	Ablegen
-Debug Menu	Debug-Menü
+Toggle Minimap	Minikarte umschalten
 Cheats	Cheats
 Fullscreen	Vollbild
-Debug / Test Menu	Debug-/Testmenü
 Level Select	Levelauswahl
 Current level	Aktuelles Level
-Restart Level	Level neu starten
-Reload Current Level	Aktuellen Level neu laden
 X	X
 Y	Y
 Z	Z
 Teleport	Teleportieren
-Previous Key Point	Vorheriger Wegpunkt
-Next Key Point	Nächster Wegpunkt
-Set Checkpoint	Kontrollpunkt setzen
-Return to Checkpoint	Zum Kontrollpunkt
-Show Coordinates	Koordinaten anzeigen
-Copy Coordinates	Koordinaten kopieren
 Freeze AI	KI einfrieren
 Freeze Dinosaurs	Dinosaurier einfrieren
 Movement Speed	Bewegungstempo
@@ -80,51 +71,23 @@ Infinite Ammo	Unendlich Munition
 Heal	Heilen
 Super Health	Supergesundheit
 Fly / Free Camera	Flug / freie Kamera
-Compass	Kompass
-Ambient Occlusion	Umgebungsverdeckung
-Water Refraction	Wasserbrechung
-Enhanced Sky	Verbesserter Himmel
-Field of View	Sichtfeld (FOV)
-Default	Standard
 Close	Schließen
 Off	Aus
 On	An
-Low	Niedrig
-Medium	Mittel
-High	Hoch
-Ultra	Ultra
-Unavailable	Nicht verfügbar
 unavailable	nicht verfügbar
 none	keiner
 none (main menu)	keiner (Hauptmenü)
 Level	Level
 Player	Spielerin
-Navigation	Navigation
-Debug	Debug
-Graphics	Grafik
 No scene files in the data folder	Keine Leveldateien im Ordner data
 Objectives unavailable for this level	Für diesen Level sind keine Ziele verfügbar
-Checkpoint set	Kontrollpunkt gesetzt
-Coordinates shown	Koordinaten eingeblendet
-Coordinates hidden	Koordinaten ausgeblendet
-Coordinates copied	Koordinaten kopiert
-Coordinates unavailable	Koordinaten nicht verfügbar
-Compass off	Kompass aus
-Compass on	Kompass an
 Not available here	Hier nicht verfügbar
+Minimap On	Minikarte an
+Minimap Off	Minikarte aus
 Not available	Nicht verfügbar
 Level Select failed	Levelauswahl fehlgeschlagen
-Reload failed	Neu laden fehlgeschlagen
-Restart failed	Neustart fehlgeschlagen
 Teleport failed	Teleport fehlgeschlagen
-Returned to checkpoint	Zum Kontrollpunkt zurückgekehrt
-Return to Checkpoint failed	Rückkehr zum Kontrollpunkt fehlgeschlagen
-Next Key Point failed	Nächster Wegpunkt fehlgeschlagen
-Previous Key Point failed	Vorheriger Wegpunkt fehlgeschlagen
-The clipboard could not be opened	Die Zwischenablage konnte nicht geöffnet werden
-Ambient Occlusion is unavailable (see the log)	Umgebungsverdeckung nicht verfügbar (siehe Log)
 Freeze AI failed	KI einfrieren fehlgeschlagen
-Key point %d / %d	Wegpunkt %d / %d
 No objective	Kein Ziel
 Objective updated	Ziel aktualisiert
 Quick Save	Schnellspeichern
@@ -140,7 +103,6 @@ Fill health to maximum	Füllt die Gesundheit bis zum Maximum auf
 Camera	Kamera
 Normal	Normal
 Free Camera	Freie Kamera
-Up/Down select | Enter/A use | Left/Right adjust (Shift 10, Ctrl 0.1, LB/RB 10) | digits edit | Esc/B back | F5 close	Auf/Ab wählen | Enter/A benutzen | Links/Rechts ändern (Umschalt 10, Strg 0.1, LB/RB 10) | Ziffern eingeben | Esc/B zurück | F5 schließen
 Esc/B or F3 close	Esc/B oder F3 schließt
 Beach	Strand
 Jungle Road	Dschungelstraße

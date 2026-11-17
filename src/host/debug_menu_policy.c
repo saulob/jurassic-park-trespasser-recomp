@@ -24,19 +24,10 @@
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 static const char* const k_labels[DM_ITEM_COUNT] = {
-    "Level Select", "Restart Level", "Reload Current Level", "X", "Y", "Z", "Teleport", "Previous Key Point",
-    "Next Key Point", "Set Checkpoint", "Return to Checkpoint", "Show Coordinates", "Copy Coordinates", "Freeze AI",
-    "Movement Speed", "Jump Height", "Invulnerability", "Infinite Ammo", "Heal", "Super Health", "Teleport",
-    "Fly / Free Camera", "Compass", "Field of View", "Ambient Occlusion", "Water Refraction", "Enhanced Sky", "Back", "Close",
+    "Level Select", "X", "Y", "Z", "Teleport", "Freeze AI", "Movement Speed", "Jump Height", "Invulnerability",
+    "Infinite Ammo", "Heal", "Super Health", "Teleport", "Fly / Free Camera", "Back", "Close",
 };
 
-static const char* const k_ao_levels[DM_AO_LEVELS] = { "Off", "Low", "Medium", "High", "Ultra" };
-
-static const dm_item_t k_debug_main[] = {
-    DM_LEVEL_SELECT, DM_RESTART,  DM_RELOAD,   DM_FIELD_X,        DM_FIELD_Y,           DM_FIELD_Z, DM_TELEPORT,
-    DM_PREV_KEY,     DM_NEXT_KEY, DM_SET_CHECKPOINT, DM_RETURN_CHECKPOINT, DM_COMPASS, DM_SHOW_COORDS, DM_COPY_COORDS,
-    DM_FREEZE_AI,    DM_FIELD_OF_VIEW, DM_AMBIENT_OCCLUSION, DM_WATER_REFRACTION, DM_ENHANCED_SKY, DM_CLOSE,
-};
 static const dm_item_t k_cheat_item[JPT_CHEAT_COUNT] = {
     [JPT_CHEAT_SPEED] = DM_MOVE_SPEED,       [JPT_CHEAT_JUMP] = DM_JUMP_HEIGHT,
     [JPT_CHEAT_INVULNERABLE] = DM_INVULNERABLE, [JPT_CHEAT_AMMO] = DM_INFINITE_AMMO,
@@ -82,63 +73,44 @@ const char* dm_item_label(dm_menu_t menu, dm_item_t item) {
 }
 
 const char* dm_menu_title(dm_menu_t menu) {
-    return jpt_tr(menu == DM_MENU_CHEATS ? "Cheats" : menu == DM_MENU_OBJECTIVES ? "Objectives" : "Debug / Test Menu");
+    return jpt_tr(menu == DM_MENU_OBJECTIVES ? "Objectives" : "Cheats");
 }
 
 static int is_field(int item) { return item == DM_FIELD_X || item == DM_FIELD_Y || item == DM_FIELD_Z; }
 
 static int is_multiplier(int item) { return item == DM_MOVE_SPEED || item == DM_JUMP_HEIGHT; }
 
-static int fields_shown(const dm_state_t* s) {
-    return s->page == DM_PAGE_TELEPORT || (s->page == DM_PAGE_MAIN && s->menu == DM_MENU_DEBUG);
-}
-
-static int same_level(const char* a, const char* b) { return a[0] && b[0] && !strcmp(a, b); }
+static int fields_shown(const dm_state_t* s) { return s->page == DM_PAGE_TELEPORT; }
 
 static int page_items(const dm_state_t* s, const dm_item_t** items) {
     if (s->page == DM_PAGE_TELEPORT) {
         *items = k_teleport_page;
         return COUNT(k_teleport_page);
     }
-    if (s->menu == DM_MENU_CHEATS) return cheats_items(items);
     if (s->menu == DM_MENU_OBJECTIVES) {
         *items = k_objectives_page;
         return COUNT(k_objectives_page);
     }
-    *items = k_debug_main;
-    return COUNT(k_debug_main);
+    return cheats_items(items);
 }
 
 int dm_item_enabled(const dm_state_t* s, const dm_world_t* w, dm_item_t item) {
     int level = w->place == DM_PLACE_LEVEL, player = level && w->player;
     switch (item) {
     case DM_LEVEL_SELECT: return w->place != DM_PLACE_NONE;
-    case DM_RESTART: return level;
-    case DM_RELOAD: return level && dm_scene_valid(w->scene);
     case DM_FIELD_X:
     case DM_FIELD_Y:
     case DM_FIELD_Z:
     case DM_TELEPORT_PAGE: return player;
     case DM_TELEPORT: return player && dm_teleport_valid(s->field);
-    case DM_PREV_KEY:
-    case DM_NEXT_KEY: return player && w->key_count > 0;
-    case DM_SET_CHECKPOINT:
-    case DM_COPY_COORDS:
     case DM_MOVE_SPEED:
     case DM_JUMP_HEIGHT: return player;
-    case DM_RETURN_CHECKPOINT: return player && s->checkpoint.set && same_level(s->checkpoint.level, w->level);
     case DM_FREEZE_AI: return level && w->ai >= 0;
     case DM_INVULNERABLE: return player && w->invulnerable >= 0;
     case DM_INFINITE_AMMO: return level && w->ammo >= 0;
     case DM_HEAL: return player && w->hp > 0.0f && w->hp_max > 0.0f;
     case DM_SUPER_HEALTH: return player && (w->super_health || (w->hp > 0.0f && w->hp_max > 0.0f));
     case DM_FREE_CAMERA: return player && w->camera_head;
-    case DM_COMPASS: return level;
-    case DM_FIELD_OF_VIEW: return w->fov > 0;
-    case DM_AMBIENT_OCCLUSION: return w->ambient_occlusion >= 0 && w->ambient_occlusion < DM_AO_LEVELS;
-    case DM_WATER_REFRACTION: return w->water_refraction >= 0;
-    case DM_ENHANCED_SKY: return w->enhanced_sky >= 0;
-    case DM_SHOW_COORDS:
     case DM_BACK:
     case DM_CLOSE: return 1;
     default: return 0;
@@ -182,14 +154,11 @@ int dm_toggle(dm_state_t* s, const dm_world_t* w, dm_menu_t menu) {
     s->repeat.bit = 0;
     s->fill_fields = 1;
     if (menu == DM_MENU_OBJECTIVES) s->cursor = DM_CLOSE;
-    else if (menu == DM_MENU_CHEATS) s->cursor = w->place == DM_PLACE_LEVEL ? DM_MOVE_SPEED : DM_LEVEL_SELECT;
-    else s->cursor = w->place == DM_PLACE_LEVEL ? DM_TELEPORT : DM_LEVEL_SELECT;
+    else s->cursor = w->place == DM_PLACE_LEVEL ? DM_MOVE_SPEED : DM_LEVEL_SELECT;
     if (w->player) dm_fill_fields(s, &w->at);
     settle_cursor(s, w);
     return 1;
 }
-
-int dm_f5(dm_state_t* s, const dm_world_t* w) { return dm_toggle(s, w, DM_MENU_DEBUG); }
 
 void dm_fill_fields(dm_state_t* s, const dm_placement_t* at) {
     for (int i = 0; i < 3; i++) s->field[i] = at->pos[i];
@@ -257,34 +226,11 @@ static void step_multiplier(dm_state_t* s, const dm_world_t* w, int step) {
 static void toggle(dm_state_t* s, dm_action_kind_t kind, int on);
 static void back(dm_state_t* s);
 
-static void step_ambient_occlusion(dm_state_t* s, const dm_world_t* w, int step) {
-    int next = w->ambient_occlusion + step;
-    if (next >= 0 && next < DM_AO_LEVELS) request_value(s, DM_ACT_AMBIENT_OCCLUSION, next);
-}
-
-static void step_field_of_view(dm_state_t* s, const dm_world_t* w, float step) {
-    int by = fabsf(step) >= 1.0f ? (int)step : step > 0.0f ? 1 : -1, next = jpt_fov_clamp(w->fov + by);
-    if (next != w->fov) request_value(s, DM_ACT_FIELD_OF_VIEW, next);
-}
-
 static void adjust(dm_state_t* s, const dm_world_t* w, float step) {
     float* f;
     if (s->page == DM_PAGE_LEVELS || !dm_item_enabled(s, w, (dm_item_t)s->cursor)) return;
-    if (s->cursor == DM_FIELD_OF_VIEW) {
-        step_field_of_view(s, w, step);
-        return;
-    }
     if (is_multiplier(s->cursor)) {
         step_multiplier(s, w, step > 0.0f ? 1 : -1);
-        return;
-    }
-    if (s->cursor == DM_AMBIENT_OCCLUSION) {
-        step_ambient_occlusion(s, w, step > 0.0f ? 1 : -1);
-        return;
-    }
-    if (s->cursor == DM_WATER_REFRACTION || s->cursor == DM_ENHANCED_SKY) {
-        int on = step > 0.0f, now = s->cursor == DM_WATER_REFRACTION ? w->water_refraction : w->enhanced_sky;
-        if (on != now) toggle(s, s->cursor == DM_WATER_REFRACTION ? DM_ACT_WATER_REFRACTION : DM_ACT_ENHANCED_SKY, on);
         return;
     }
     if (!fields_shown(s) || !is_field(s->cursor)) return;
@@ -331,36 +277,10 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
         s->page = DM_PAGE_TELEPORT;
         s->cursor = DM_FIELD_X;
         break;
-    case DM_RESTART:
-        request(s, DM_ACT_RESTART);
-        dm_close(s);
-        break;
-    case DM_RELOAD:
-        request(s, DM_ACT_RELOAD);
-        snprintf(s->pending.scene, sizeof s->pending.scene, "%s", w->scene);
-        dm_close(s);
-        break;
     case DM_TELEPORT:
         request(s, DM_ACT_TELEPORT);
         for (int i = 0; i < 3; i++) s->pending.to.pos[i] = s->field[i];
         break;
-    case DM_PREV_KEY: request(s, DM_ACT_PREV_KEY); break;
-    case DM_NEXT_KEY: request(s, DM_ACT_NEXT_KEY); break;
-    case DM_SET_CHECKPOINT:
-        s->checkpoint.set = 1;
-        snprintf(s->checkpoint.level, sizeof s->checkpoint.level, "%s", w->level);
-        s->checkpoint.at = w->at;
-        dm_feedback(s, jpt_tr("Checkpoint set"), now_ms);
-        break;
-    case DM_RETURN_CHECKPOINT:
-        request(s, DM_ACT_RETURN_CHECKPOINT);
-        s->pending.to = s->checkpoint.at;
-        break;
-    case DM_SHOW_COORDS:
-        s->show_coords = !s->show_coords;
-        dm_feedback(s, jpt_tr(s->show_coords ? "Coordinates shown" : "Coordinates hidden"), now_ms);
-        break;
-    case DM_COPY_COORDS: request(s, DM_ACT_COPY); break;
     case DM_FREEZE_AI: toggle(s, DM_ACT_FREEZE_AI, w->ai == 0); break;
     case DM_MOVE_SPEED: request_value(s, DM_ACT_SPEED, (w->speed + 1) % CH_SPEED_COUNT); break;
     case DM_JUMP_HEIGHT: request_value(s, DM_ACT_JUMP, (w->jump + 1) % CH_MULTIPLIER_COUNT); break;
@@ -371,16 +291,6 @@ static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
     case DM_FREE_CAMERA:
         request_value(s, DM_ACT_CAMERA, w->camera == CH_CAMERA_FREE ? CH_CAMERA_NORMAL : CH_CAMERA_FREE);
         break;
-    case DM_COMPASS:
-        s->compass_off = !s->compass_off;
-        dm_feedback(s, jpt_tr(s->compass_off ? "Compass off" : "Compass on"), now_ms);
-        break;
-    case DM_FIELD_OF_VIEW: request_value(s, DM_ACT_FIELD_OF_VIEW, JPT_FOV_DEFAULT); break;
-    case DM_AMBIENT_OCCLUSION:
-        request_value(s, DM_ACT_AMBIENT_OCCLUSION, (w->ambient_occlusion + 1) % DM_AO_LEVELS);
-        break;
-    case DM_WATER_REFRACTION: toggle(s, DM_ACT_WATER_REFRACTION, !w->water_refraction); break;
-    case DM_ENHANCED_SKY: toggle(s, DM_ACT_ENHANCED_SKY, !w->enhanced_sky); break;
     case DM_BACK: back(s); break;
     case DM_CLOSE: dm_close(s); break;
     default: break;
@@ -503,9 +413,6 @@ uint32_t dm_pad_repeat(dm_repeat_t* r, uint32_t held, uint32_t pressed, uint32_t
 }
 
 void dm_world_seen(dm_state_t* s, const dm_world_t* w) {
-    if (s->checkpoint.set && (w->place == DM_PLACE_MAIN_MENU ||
-                              (w->place == DM_PLACE_LEVEL && w->level[0] && strcmp(w->level, s->checkpoint.level))))
-        memset(&s->checkpoint, 0, sizeof s->checkpoint);
     if (!s->open) return;
     if (w->place == DM_PLACE_NONE || (s->menu == DM_MENU_OBJECTIVES && w->place != DM_PLACE_LEVEL)) {
         dm_close(s);
@@ -613,46 +520,6 @@ float dm_yaw(const float rot[4]) {
 
 static double tidy(double v) { return fabs(v) < 0.0005 ? 0.0 : v; }
 
-int dm_format_coords(char* out, size_t cap, const char* level, const dm_placement_t* at) {
-    int n = snprintf(out, cap, "Level=%s X=%.3f Y=%.3f Z=%.3f Yaw=%.3f", level && level[0] ? level : "-",
-                     tidy(at->pos[0]), tidy(at->pos[1]), tidy(at->pos[2]), tidy(dm_yaw(at->rot)));
-    return n > 0 && (size_t)n < cap;
-}
-
-int dm_keys_walk(dm_read32_t read32, uint32_t head, uint32_t iterator, dm_keys_t* out) {
-    uint32_t node, next, prev, at = 0;
-    int count = 0, it_pos = -1, target;
-    memset(out, 0, sizeof *out);
-    out->index = -1;
-    if (!head || !read32(head, &node)) return 0;
-    prev = head;
-    while (node != head) {
-        uint32_t back_link;
-        if (count >= DM_KEYS_MAX || !node || !read32(node, &next) || !read32(node + 4, &back_link) || back_link != prev)
-            return 0;
-        if (node == iterator) it_pos = count;
-        prev = node;
-        node = next;
-        count++;
-    }
-    if (iterator == head) it_pos = count;
-    if (it_pos < 0) return 0;
-    out->count = count;
-    out->index = it_pos > 0 ? it_pos - 1 : -1;
-    if (!count) return 1;
-    target = dm_prev_key_index(count, out->index);
-    read32(head, &at);
-    for (int i = 0; i < target; i++) read32(at, &at);
-    out->prev_target = at;
-    return 1;
-}
-
-int dm_prev_key_index(int count, int index) {
-    if (count <= 0) return -1;
-    if (index <= 0 || index >= count) return count - 1;
-    return index - 1;
-}
-
 int dm_level_display(const dm_world_t* w, char* out, size_t cap) {
     const char* name = dm_level_name(w->scene);
     int n;
@@ -675,7 +542,6 @@ static void add_row(dm_row_t* rows, int max, int* n, dm_row_kind_t kind, int ite
     r->selected = selected;
     snprintf(r->text, sizeof r->text, "%s", text);
     snprintf(r->value, sizeof r->value, "%s", value ? value : "");
-    r->bar = -1.0f;
 }
 
 static const char* on_off(int v) { return v < 0 ? "-" : jpt_tr(v ? "On" : "Off"); }
@@ -689,7 +555,6 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
         return;
     }
     switch (item) {
-    case DM_SHOW_COORDS: snprintf(value, cap, "%s", on_off(s->show_coords)); break;
     case DM_FREEZE_AI: snprintf(value, cap, "%s", on_off(w->ai)); break;
     case DM_INVULNERABLE: snprintf(value, cap, "%s", on_off(w->invulnerable)); break;
     case DM_INFINITE_AMMO: snprintf(value, cap, "%s", on_off(w->ammo)); break;
@@ -701,45 +566,17 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
         if (enabled) snprintf(value, cap, "%.0f / %.0f", w->hp, w->hp_max);
         break;
     case DM_TELEPORT_PAGE: snprintf(value, cap, ">"); break;
-    case DM_COMPASS: snprintf(value, cap, "%s", on_off(!s->compass_off)); break;
-    case DM_FIELD_OF_VIEW:
-        if (!enabled) snprintf(value, cap, "-");
-        else if (w->fov == JPT_FOV_DEFAULT) snprintf(value, cap, "%d (%s)", w->fov, jpt_tr("Default"));
-        else snprintf(value, cap, "%d", w->fov);
-        break;
-    case DM_AMBIENT_OCCLUSION:
-        snprintf(value, cap, "%s", jpt_tr(enabled ? k_ao_levels[w->ambient_occlusion] : "Unavailable"));
-        break;
-    case DM_WATER_REFRACTION: snprintf(value, cap, "%s", enabled ? on_off(w->water_refraction) : jpt_tr("Unavailable")); break;
-    case DM_ENHANCED_SKY: snprintf(value, cap, "%s", enabled ? on_off(w->enhanced_sky) : jpt_tr("Unavailable")); break;
-    case DM_LEVEL_SELECT:
-        if (s->menu == DM_MENU_CHEATS) snprintf(value, cap, ">");
-        break;
-    case DM_RETURN_CHECKPOINT:
-        if (s->checkpoint.set)
-            snprintf(value, cap, "%s %.1f %.1f %.1f", s->checkpoint.level, s->checkpoint.at.pos[0],
-                     s->checkpoint.at.pos[1], s->checkpoint.at.pos[2]);
-        break;
-    case DM_PREV_KEY:
-    case DM_NEXT_KEY:
-        if (w->place != DM_PLACE_LEVEL) break;
-        if (w->key_count <= 0) snprintf(value, cap, "%s", jpt_tr("none"));
-        else if (item == DM_NEXT_KEY && w->key_index >= 0)
-            snprintf(value, cap, "%d / %d", w->key_index + 1, w->key_count);
-        else if (item == DM_NEXT_KEY) snprintf(value, cap, "- / %d", w->key_count);
-        break;
+    case DM_LEVEL_SELECT: snprintf(value, cap, ">"); break;
     default: break;
     }
 }
 
 static void item_row(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n, dm_item_t item) {
     char value[DM_TEXT_MAX];
-    int enabled = dm_item_enabled(s, w, item), at = *n;
+    int enabled = dm_item_enabled(s, w, item);
     item_value(s, w, item, enabled, value, sizeof value);
     add_row(rows, max, n, DM_ROW_ITEM, (int)item, enabled, s->page != DM_PAGE_LEVELS && s->cursor == (int)item,
             dm_item_label(s->menu, item), value);
-    if (item == DM_FIELD_OF_VIEW && enabled && *n > at)
-        rows[at].bar = (float)(w->fov - JPT_FOV_MIN) / (float)(JPT_FOV_MAX - JPT_FOV_MIN);
 }
 
 static void items_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n,
@@ -757,14 +594,29 @@ void dm_notice(dm_state_t* s, const char* text, uint32_t now_ms) { dm_notice_for
 void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* scene, const cp_goal_t* goal,
                  uint32_t now_ms, cp_hud_t* hud) {
     int next;
+    int hud_ok, world_ok;
+    float heading;
     memset(hud, 0, sizeof *hud);
-    if (!cp_hud_allowed(scene)) return;
-    if (s->notice[0] && (int32_t)(s->notice_until - now_ms) > 0)
-        snprintf(hud->notice, sizeof hud->notice, "%s", s->notice);
+    hud_ok = cp_hud_allowed(scene);
+    world_ok = cp_world_marker_allowed(scene);
+    if (!hud_ok && !world_ok) return;
+    if (cp_minimap_allowed(scene) && minimap_enabled() && w->player) {
+        hud->minimap = 1;
+        snprintf(hud->minimap_level, sizeof hud->minimap_level, "%s", w->level);
+        memcpy(hud->player_pos, w->at.pos, sizeof hud->player_pos);
+        if (w->eye) hud->heading = cp_heading(dm_yaw(w->eye_at.rot));
+        if (goal && goal->set && goal->target) {
+            hud->waypoint = 1;
+            memcpy(hud->waypoint_pos, goal->pos, sizeof hud->waypoint_pos);
+        }
+    }
     hud->alpha = 1.0f;
-    if (s->compass_off || !w->eye) return;
-    hud->compass = 1;
-    hud->heading = cp_heading(dm_yaw(w->eye_at.rot));
+    if (hud_ok && s->notice[0] && (int32_t)(s->notice_until - now_ms) > 0)
+        snprintf(hud->notice, sizeof hud->notice, "%s", s->notice);
+    if (!w->eye) return;
+    heading = cp_heading(dm_yaw(w->eye_at.rot));
+    hud->compass = hud_ok;
+    hud->heading = heading;
     hud->view = w->tan_half_h > 0.0f;
     memcpy(hud->camera.pos, w->eye_at.pos, sizeof hud->camera.pos);
     memcpy(hud->camera.rot, w->eye_at.rot, sizeof hud->camera.rot);
@@ -772,7 +624,7 @@ void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* sce
     if (!goal || !goal->set || !goal->target) return;
     hud->marker = 1;
     memcpy(hud->target, goal->pos, sizeof hud->target);
-    hud->relative = cp_relative(cp_bearing(w->eye_at.pos, goal->pos), hud->heading);
+    hud->relative = cp_relative(cp_bearing(w->eye_at.pos, goal->pos), heading);
     if (w->player) cp_format_distance(cp_distance_m(w->at.pos, goal->pos), hud->distance, sizeof hud->distance);
     if (!w->player) return;
     for (next = cp_route_next(goal->route, goal->route_count, w->at.pos);
@@ -815,11 +667,10 @@ const char* dm_help_text(const dm_state_t* s, const dm_world_t* w) {
 
 static void info_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n) {
     char line[DM_TEXT_MAX];
-    const int readable = s->menu == DM_MENU_CHEATS || s->page == DM_PAGE_LEVELS;
-    if (s->menu == DM_MENU_CHEATS && s->page == DM_PAGE_MAIN) return;
-    if (readable) dm_level_display(w, line, sizeof line);
+    if (s->page == DM_PAGE_MAIN) return;
+    dm_level_display(w, line, sizeof line);
     add_row(rows, max, n, DM_ROW_INFO, -1, 1, 0, jpt_tr(s->page == DM_PAGE_LEVELS ? "Current level" : "Level"),
-            w->place == DM_PLACE_LEVEL ? (readable ? line : w->level[0] ? w->level : "?")
+            w->place == DM_PLACE_LEVEL ? line
                                        : jpt_tr(w->place == DM_PLACE_MAIN_MENU ? "none (main menu)" : "none"));
     if (s->page == DM_PAGE_LEVELS) return;
     if (w->place == DM_PLACE_LEVEL && w->player) {
@@ -856,22 +707,8 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
         items_rows(s, w, rows, max, &n, k_teleport_page, COUNT(k_teleport_page));
         return n;
     }
-    if (s->menu == DM_MENU_CHEATS) {
-        count = cheats_items(&items);
-        items_rows(s, w, rows, max, &n, items, count);
-        return n;
-    }
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Level"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main, 3);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Teleport"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main + 3, 8);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Navigation"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main + 11, 1);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Debug"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main + 12, 3);
-    add_row(rows, max, &n, DM_ROW_SECTION, -1, 1, 0, jpt_tr("Graphics"), NULL);
-    items_rows(s, w, rows, max, &n, k_debug_main + 15, 4);
-    items_rows(s, w, rows, max, &n, k_debug_main + 19, 1);
+    count = cheats_items(&items);
+    items_rows(s, w, rows, max, &n, items, count);
     return n;
 }
 

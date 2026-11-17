@@ -10,8 +10,8 @@
 extern "C" {
 #endif
 
-/* The setting chooses the state a run starts with; F5 changes only the running state, which takes effect at the next
- * draw of that effect (never inside a batch). */
+/* The setting chooses the state a run starts with; a change of the running state takes effect at the next draw of that
+ * effect (never inside a batch). */
 typedef struct {
     int setting, running;
 } fx_switch_t;

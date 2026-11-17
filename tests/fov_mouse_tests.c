@@ -260,8 +260,7 @@ static void test_no_controls_row(void) {
         char* text;
         snprintf(path, sizeof path, "assets/translations/%s.interface.txt", tables[i]);
         text = read_source(path);
-        CHECK(text && !strstr(text, "Mouse sensitivity\t") && strstr(text, "\nDefault\t"),
-              "%s: no in-game Mouse sensitivity string, Default kept for F5's Field of View", tables[i]);
+        CHECK(text && !strstr(text, "Mouse sensitivity\t"), "%s: no in-game Mouse sensitivity string", tables[i]);
         free(text);
     }
 }
@@ -276,9 +275,9 @@ static void test_sources(void) {
     if (!debug || !wide || !window || !launcher || !policy) return;
     CHECK(!strstr(debug, "jpt_ini_set") && !strstr(debug, "JPT_KEY_FOV") && !strstr(wide, "jpt_ini_set") &&
               !strstr(policy, "jpt_ini_set"),
-          "F5's Field of View is for the session only: nothing writes the settings file");
-    CHECK(strstr(debug, "widescreen_set_fov(a->value)") && strstr(debug, "widescreen_apply_fov()"),
-          "F5 applies its value at once");
+          "no host menu writes the settings file for the field of view");
+    CHECK(!strstr(debug, "widescreen_set_fov") && !strstr(debug, "widescreen_apply_fov"),
+          "no host menu changes the field of view: it comes from the settings");
     CHECK(strstr(window, "widescreen_apply_fov();") != NULL, "the UI loop applies a change on the next safe frame");
     CHECK(strstr(window, "void window_host_pad_relative(int dx, int dy) { add_relative(dx, dy); }") != NULL,
           "the gamepad's look keeps its own sensitivity");

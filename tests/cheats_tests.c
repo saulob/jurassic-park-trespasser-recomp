@@ -262,7 +262,7 @@ static void test_f10_uses_the_list(void) {
     dm_state_t s;
     dm_world_t w;
     dm_row_t rows[DM_ROWS_MAX];
-    int n, at = 0, shown = 0;
+    int n, at = 0;
     memset(&w, 0, sizeof w);
     w.place = DM_PLACE_LEVEL;
     snprintf(w.scene, sizeof w.scene, "be.scn");
@@ -285,17 +285,11 @@ static void test_f10_uses_the_list(void) {
         at++;
     }
     CHECK(at == JPT_CHEAT_COUNT + 1, "F10 lists every cheat of the list and Close: %d rows", at);
-    for (int i = 0; i < n; i++) {
-        CHECK(rows[i].item != DM_SHOW_COORDS, "Show Coordinates is not in Cheats");
+    for (int i = 0; i < n; i++)
         CHECK(strcmp(rows[i].text, "Show Coordinates") && strcmp(rows[i].text, "Third Person"),
               "no Show Coordinates or Third Person row: %s", rows[i].text);
-    }
     for (int d = 0; d < DM_ITEM_COUNT; d++) CHECK(strcmp(dm_item_label(DM_MENU_CHEATS, (dm_item_t)d), "Third Person"), "no item");
     dm_close(&s);
-    dm_toggle(&s, &w, DM_MENU_DEBUG);
-    n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
-    for (int i = 0; i < n; i++) shown |= rows[i].item == DM_SHOW_COORDS && rows[i].kind == DM_ROW_ITEM;
-    CHECK(shown, "Show Coordinates stays in the Debug Menu");
 }
 
 static void test_saved_and_session(void) {

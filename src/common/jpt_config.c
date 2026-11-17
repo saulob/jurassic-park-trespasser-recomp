@@ -61,6 +61,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_ACTIVE_AI, "enhanced" },
     { JPT_KEY_WATER_REFRACTION, "1" },
     { JPT_KEY_ENHANCED_SKY, "1" },
+    { JPT_KEY_MINIMAP, "1" },
     { JPT_KEY_QUICK_SAVE, "F7" },
     { JPT_KEY_QUICK_LOAD, "F8" },
     { JPT_KEY_OFFICIAL_PATCH_117, "1" },
@@ -164,6 +165,7 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_MAX_OBJECT_DETAIL)) return jpt_parse_bool(value, &c->max_object_detail);
     if (!strcmp(key, JPT_KEY_WATER_REFRACTION)) return jpt_parse_bool(value, &c->water_refraction);
     if (!strcmp(key, JPT_KEY_ENHANCED_SKY)) return jpt_parse_bool(value, &c->enhanced_sky);
+    if (!strcmp(key, JPT_KEY_MINIMAP)) return jpt_parse_bool(value, &c->minimap);
     if (!strcmp(key, JPT_KEY_OFFICIAL_PATCH_117)) return jpt_parse_bool(value, &c->official_patch_117);
     if (!strcmp(key, JPT_KEY_ACTIVE_AI))
         return (n = parse_choice(value, jpt_active_ai_keys, JPT_ACTIVE_AI_COUNT)) >= 0 ? (c->active_ai_enhanced = n, 1) : 0;

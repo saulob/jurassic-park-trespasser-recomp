@@ -15,6 +15,7 @@
 
 #include "cheats.h"
 #include "gamepad.h"
+#include "minimap.h"
 #include "overlay_policy.h"
 #include "physics_watch.h"
 #include "tutorial_prompts.h"
@@ -56,6 +57,8 @@ static struct {
     } hand;
     int frame_ready, frame_looked;
     int hint_shown;
+    pad_chord_t chord;
+    int chord_fire;
     uint8_t triggers_held[2];
     ui_mode_t ui_mode;
     uint32_t ui_top;
@@ -276,6 +279,8 @@ static void sample(int64_t now) {
         }
         if (slot == G.roster.active && focused) G.state = st;
     }
+    G.chord_fire |= pad_chord_update(&G.chord, MM_PAD_CHORD, G.state.buttons,
+                                     (uint32_t)(seconds_between(0, now) * 1000.0), &G.state.buttons);
 }
 
 void gamepad_idle(void) { sample(now_qpc()); }
@@ -468,6 +473,7 @@ void gamepad_ui_loop(void) {
     guest_ui_view_t v;
     int64_t now = now_qpc();
     uint32_t buttons, held, pressed, released, before;
+    int chord;
     double dt = G.last_ui ? seconds_between(G.last_ui, now) : 0.0;
     ui_mode_t mode;
     G.last_ui = now;
@@ -484,9 +490,11 @@ void gamepad_ui_loop(void) {
     before = G.ui_edges.previous;
     held = pad_edges_update(&G.ui_edges, buttons, &pressed);
     released = before & ~held;
+    chord = G.chord_fire;
+    G.chord_fire = 0;
     if (debug_menu_visible() && mode != MODE_NONE) {
         if (mode == MODE_MENU) G.left_gameplay = 1;
-        if (debug_menu_open_menu() == 3 && shortcut(JPT_PAD_HINT_CONTROL, pressed))
+        if (debug_menu_open_menu() == 2 && shortcut(JPT_PAD_HINT_CONTROL, pressed))
             overlay_request(OV_HINT, "D-pad Left");
         else debug_menu_pad(held, pressed);
     } else if (mode == MODE_GAMEPLAY && tutorial_prompts_card_shown()) {
@@ -502,6 +510,7 @@ void gamepad_ui_loop(void) {
         if (shortcut(JPT_PAD_HINT_CONTROL, pressed)) overlay_request(OV_HINT, "D-pad Left");
         else if (shortcut(JPT_PAD_OBJECTIVES_CONTROL, pressed)) overlay_request(OV_OBJECTIVES, "D-pad Right");
         else if (shortcut(JPT_PAD_SHOW_OBJECTIVE_CONTROL, pressed)) debug_menu_show_objective();
+        if (chord) window_host_toggle_minimap("L3 + R3");
     } else {
         G.left_gameplay = 1;
         if (mode == MODE_MENU)
