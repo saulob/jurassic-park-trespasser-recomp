@@ -6,6 +6,7 @@
  * counted too. Every other miss is logged.
  */
 #include "host.h"
+#include "ce_policy.h"
 
 #include <fcntl.h>
 #include <lzexpand.h>
@@ -194,6 +195,20 @@ void shim_GetFileAttributesA(void) {
     report("GetFileAttributesA", path, attributes != INVALID_FILE_ATTRIBUTES, GetLastError());
     g_eax = attributes;
     GUEST_RETURN_STDCALL(1);
+}
+
+void shim_GetDiskFreeSpaceA(void) {
+    const char* root = (const char*)GUEST_PTR(0);
+    ULARGE_INTEGER available, total, free_total;
+    uint32_t geometry[4];
+    BOOL ok = GetDiskFreeSpaceExA(root, &available, &total, &free_total);
+    legacy_disk_geometry(ok ? available.QuadPart : 0x7FFFF000ull, ok ? total.QuadPart : 0xFFFFF000ull, geometry);
+    if (GUEST_ARG(1)) MEM32(GUEST_ARG(1)) = geometry[0];
+    if (GUEST_ARG(2)) MEM32(GUEST_ARG(2)) = geometry[1];
+    if (GUEST_ARG(3)) MEM32(GUEST_ARG(3)) = geometry[2];
+    if (GUEST_ARG(4)) MEM32(GUEST_ARG(4)) = geometry[3];
+    g_eax = 1;
+    GUEST_RETURN_STDCALL(5);
 }
 
 void shim_FindFirstFileA(void) {

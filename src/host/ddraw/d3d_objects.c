@@ -5,6 +5,7 @@
  * surface, sharing their reference counts as the aggregated Direct3D 6 objects did.
  */
 #include "d3d_legacy.h"
+#include "d3d_translate.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -367,7 +368,7 @@ static HRESULT STDMETHODCALLTYPE vp_GetViewport(IDirect3DViewport3* This, LPD3DV
 }
 
 static void viewport_changed(d3d_viewport_t* v) {
-    if (v->device && v->device->current == v) d3dr_state_will_change(v->device);
+    if (v->device && v->device->current == v) d3dr_state_will_change(v->device, D3DR_CHANGE_VIEWPORT, 0, 0);
 }
 
 static HRESULT STDMETHODCALLTYPE vp_SetViewport(IDirect3DViewport3* This, LPD3DVIEWPORT data) {
@@ -565,7 +566,7 @@ static HRESULT STDMETHODCALLTYPE dv_DeleteViewport(IDirect3DDevice3* This, LPDIR
     d3d_viewport_t* v = viewport_from(viewport);
     D3D_METHOD("IDirect3DDevice3::DeleteViewport");
     if (!v || v->device != dev) D3D_RETURN(DDERR_INVALIDPARAMS);
-    d3dr_state_will_change(dev);
+    d3dr_state_will_change(dev, D3DR_CHANGE_VIEWPORT, 0, 0);
     drop_viewport(dev, v);
     D3D_RETURN(DD_OK);
 }
@@ -642,7 +643,7 @@ static HRESULT STDMETHODCALLTYPE dv_SetCurrentViewport(IDirect3DDevice3* This, L
     d3d_viewport_t* v = viewport_from(viewport);
     D3D_METHOD("IDirect3DDevice3::SetCurrentViewport");
     if (!v || v->device != dev) D3D_RETURN(DDERR_INVALIDPARAMS);
-    d3dr_state_will_change(dev);
+    if (dev->current != v) d3dr_state_will_change(dev, D3DR_CHANGE_VIEWPORT, 0, 0);
     dev->current = v;
     D3D_RETURN(DD_OK);
 }
@@ -771,7 +772,10 @@ static HRESULT STDMETHODCALLTYPE dv_SetRenderState(IDirect3DDevice3* This, D3DRE
         D3D_RETURN(DDERR_INVALIDPARAMS);
     }
     if (dev->render[state] != value) {
-        d3dr_state_will_change(dev);
+        if (d3dt_render_change_flushes((uint32_t)state, dev->render[state], value))
+            d3dr_state_will_change(dev, D3DR_CHANGE_RENDER, (DWORD)state, value);
+        else
+            d3dr_state_kept_batch(dev);
         dev->render[state] = value;
         switch (state) {
         case D3DRENDERSTATE_TEXTUREADDRESS:
@@ -971,7 +975,7 @@ static HRESULT STDMETHODCALLTYPE dv_SetTextureStageState(IDirect3DDevice3* This,
         D3D_RETURN(DDERR_INVALIDPARAMS);
     }
     if (dev->stage[stage][type] != value) {
-        if (!stage && !address_joins(dev, type, value)) d3dr_state_will_change(dev);
+        if (!stage && !address_joins(dev, type, value)) d3dr_state_will_change(dev, D3DR_CHANGE_STAGE, (DWORD)type, 0);
         dev->stage[stage][type] = value;
         if (type == D3DTSS_ADDRESS) dev->stage[stage][D3DTSS_ADDRESSU] = dev->stage[stage][D3DTSS_ADDRESSV] = value;
     }

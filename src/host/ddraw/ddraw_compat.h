@@ -96,9 +96,13 @@ struct dd_palette {
     PALETTEENTRY entries[256];
 };
 
-typedef struct {
+typedef struct dd_method {
     const char* name;
     unsigned long calls;
+    /* DEBUG_SAULO: one call in eight is timed (from dd_begin, before the layer's lock, to the return). */
+    long long started;
+    double sampled_ms;
+    struct dd_method* next;
 } dd_method_t;
 
 void dd_lock(void);
@@ -108,6 +112,8 @@ HRESULT dd_done(dd_method_t* m, HRESULT hr);
 void dd_returned(dd_method_t* m, HRESULT hr);
 HRESULT dd_unsupported(dd_method_t* m, const char* reason, HRESULT hr);
 void dd_log(const char* fmt, ...);
+/* DEBUG_SAULO: the layer's methods by time (sampled), once at exit. */
+void dd_methods_summary(unsigned long long hardware_frames);
 
 /* A method body runs under the layer's lock; the macros keep begin, unlock and done paired. */
 #define DD_BEGIN(method) dd_method_t* dd_method_ = (method); dd_begin(dd_method_); dd_lock()

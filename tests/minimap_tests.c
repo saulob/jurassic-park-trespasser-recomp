@@ -169,6 +169,75 @@ static void test_heading(void) {
     }
 }
 
+/* Player-up: compass heading h faces world (sin h, cos h) (north +y, headings clockwise); that direction is drawn up. */
+static void test_player_up(void) {
+    static const struct {
+        float heading;
+        const char* north;
+        float n_dx, n_dy; /* where a marker due north lands, as a screen direction from the player */
+    } turns[] = { { 0.0f, "up", 0.0f, -1.0f }, { 90.0f, "left", -1.0f, 0.0f }, { 180.0f, "down", 0.0f, 1.0f },
+                  { 270.0f, "right", 1.0f, 0.0f } };
+    const float px = -120.0f, py = 340.0f, d = 30.0f;
+    for (int i = 0; i < COUNT(turns); i++) {
+        const float h = turns[i].heading, rad = h * 0.017453292f;
+        const float fx = sinf(rad), fy = cosf(rad), rx = cosf(rad), ry = -sinf(rad);
+        const struct {
+            const char* what;
+            float wx, wy, sdx, sdy;
+        } marks[] = { { "ahead", px + fx * d, py + fy * d, 0.0f, -1.0f }, { "behind", px - fx * d, py - fy * d, 0.0f, 1.0f },
+                      { "right", px + rx * d, py + ry * d, 1.0f, 0.0f }, { "left", px - rx * d, py - ry * d, -1.0f, 0.0f },
+                      { "north", px, py + d, turns[i].n_dx, turns[i].n_dy },
+                      { "south", px, py - d, -turns[i].n_dx, -turns[i].n_dy },
+                      { "east", px + d, py, -turns[i].n_dy, turns[i].n_dx },
+                      { "west", px - d, py, turns[i].n_dy, -turns[i].n_dx } };
+        minimap_frame_t f;
+        float sx, sy;
+        frame_at(&f, px, py, MM_ZOOM);
+        minimap_face(&f, h);
+        minimap_to_screen(&f, px, py, &sx, &sy);
+        CHECK(near(sx, CX, 1e-3f) && near(sy, CY, 1e-3f), "heading %g: the player stays at the centre", h);
+        for (int m = 0; m < COUNT(marks); m++) {
+            minimap_to_screen(&f, marks[m].wx, marks[m].wy, &sx, &sy);
+            CHECK(near(sx - CX, marks[m].sdx * d * f.scale, 1e-2f) && near(sy - CY, marks[m].sdy * d * f.scale, 1e-2f),
+                  "heading %g: a marker %s of the player is drawn %s", h, marks[m].what,
+                  marks[m].sdy < 0.0f ? "above" : marks[m].sdy > 0.0f ? "below" : marks[m].sdx > 0.0f ? "to the right" : "to the left");
+        }
+        {
+            minimap_marker_t w;
+            minimap_creature_t c = { px + fx * 10.0f, py + fy * 10.0f, 0 };
+            minimap_waypoint(&f, px + fx * 5000.0f, py + fy * 5000.0f, &w);
+            CHECK(w.icon == MM_ICON_ARROW && near(w.dir_x, 0.0f, 1e-3f) && near(w.dir_y, -1.0f, 1e-3f) && w.y < CY,
+                  "heading %g: a far objective straight ahead is the edge arrow at the top", h);
+            minimap_waypoint(&f, px - rx * 5000.0f, py - ry * 5000.0f, &w);
+            CHECK(near(w.dir_x, -1.0f, 1e-3f) && near(w.dir_y, 0.0f, 1e-3f), "heading %g: one to the left is on the left edge", h);
+            CHECK(minimap_creature_place(&f, &c, &sx, &sy) && near(sx, CX, 1e-2f) && sy < CY,
+                  "heading %g: a creature ahead is above the player", h);
+        }
+        {
+            minimap_point_t out[MM_CLIP_MAX];
+            int n = minimap_clip_rect(&f, CX - 400.0f, CY - 10.0f, CX + 400.0f, CY + 10.0f, out);
+            CHECK(n >= 3, "heading %g: a long shape across the circle is clipped, not dropped", h);
+            for (int k = 0; k < n; k++)
+                CHECK(hypotf(out[k].x - CX, out[k].y - CY) <= RADIUS + 1e-2f, "heading %g: clipped inside the circle", h);
+        }
+    }
+    {
+        minimap_frame_t a, b;
+        float ax, ay, bx, by;
+        frame_at(&a, 0.0f, 0.0f, 2.0f);
+        frame_at(&b, 0.0f, 0.0f, 4.0f);
+        minimap_face(&a, 37.0f);
+        minimap_face(&b, 37.0f);
+        minimap_to_screen(&a, 12.0f, -7.0f, &ax, &ay);
+        minimap_to_screen(&b, 12.0f, -7.0f, &bx, &by);
+        CHECK(near(bx - CX, 2.0f * (ax - CX), 1e-3f) && near(by - CY, 2.0f * (ay - CY), 1e-3f),
+              "player-up: doubling the zoom still doubles every offset");
+        frame_at(&a, 0.0f, 0.0f, MM_ZOOM);
+        minimap_face(&a, NAN);
+        CHECK(a.up_x == 0.0f && a.up_y == 1.0f, "a heading that is not finite leaves the map north-up");
+    }
+}
+
 static void test_zoom_geometry(void) {
     minimap_frame_t a, b;
     float ax, ay, bx, by, cx, cy;
@@ -361,7 +430,7 @@ static void hud_frame(cp_hud_t* hud, float px, float py, float yaw, int goal_set
 static int hud_project(const cp_hud_t* hud, float wx, float wy, float* sx, float* sy, minimap_frame_t* fr) {
     minimap_rect_t pic;
     picture_rect(&pic, 0, 0, 1920, 1080);
-    if (!minimap_place(&pic, hud->player_pos[0], hud->player_pos[1], MM_ZOOM, fr)) return 0;
+    if (!minimap_place_facing(&pic, hud->player_pos[0], hud->player_pos[1], hud->heading, MM_ZOOM, fr)) return 0;
     minimap_to_screen(fr, wx, wy, sx, sy);
     return 1;
 }
@@ -403,17 +472,17 @@ static void test_live_pipeline(void) {
         hud_frame(&b, 100.0f, 100.0f, 1.0f, 0, 0.0f, 0.0f, 0);
         hud_project(&a, landmark[0], landmark[1], &ax, &ay, &fa);
         hud_project(&b, landmark[0], landmark[1], &bx, &by, &fb);
-        CHECK(ax == bx && ay == by && fa.cx == fb.cx && fa.cy == fb.cy,
-              "turning without walking neither moves nor rotates the map");
+        CHECK(fa.cx == fb.cx && fa.cy == fb.cy, "turning keeps the player at the centre");
+        CHECK(!near(ax, bx, 0.5f) || !near(ay, by, 0.5f), "turning without walking rotates the map");
+        CHECK(near(hypotf(ax - fa.cx, ay - fa.cy), hypotf(bx - fb.cx, by - fb.cy), 1e-2f),
+              "the map turns around the player: distances on it stay the same");
         CHECK(fabsf(a.heading - b.heading) > 1.0f, "turning changes the heading");
-        minimap_heading_dir(a.heading, &dxa, &dya);
-        minimap_heading_dir(b.heading, &dxb, &dyb);
+        minimap_heading_dir(0.0f, &dxa, &dya);
+        minimap_heading_dir(0.0f, &dxb, &dyb);
         minimap_arrow(fa.cx, fa.cy, dxa, dya, fa.radius * MM_PLAYER_K, ta);
         minimap_arrow(fb.cx, fb.cy, dxb, dyb, fb.radius * MM_PLAYER_K, tb);
-        CHECK(!near(ta[0].x, tb[0].x, 0.5f) || !near(ta[0].y, tb[0].y, 0.5f), "turning rotates the player triangle");
-        CHECK(near((tb[0].x + tb[1].x + tb[2].x) / 3.0f, fb.cx, 1e-3f) &&
-                  near((tb[0].y + tb[1].y + tb[2].y) / 3.0f, fb.cy, 1e-3f),
-              "the rotated triangle stays centred");
+        CHECK(near(ta[0].x, tb[0].x, 1e-3f) && near(ta[0].y, tb[0].y, 1e-3f) && tb[0].y < fb.cy,
+              "the player arrow points up whatever the heading");
     }
 
     {
@@ -1171,6 +1240,7 @@ void minimap_tests(int* checks, int* failures) {
     test_player_centred();
     test_map_moves_under_player();
     test_heading();
+    test_player_up();
     test_zoom_geometry();
     test_waypoint();
     test_place();

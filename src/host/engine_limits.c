@@ -16,6 +16,9 @@
 #define LARGE_MEM_ALLOC_VA GVA(0x005072D0)      /* CDirect3D::iLargeMemAllocMB */
 #define CACHE_PARAMETERS_VA GVA(0x005477E0)     /* CRenderCache::SetParameters */
 #define TERRAIN_TEXTURE_MEM_VA GVA(0x00492200)  /* CTextureNode::SetTextureMemSize(KB) */
+#define TERRAIN_PAGE_SIZE GVA(0x0066424C)       /* iMaxTexturePageSize, set by SetTextureMemSize */
+#define TERRAIN_TEXTURE_MEM_BYTES 0xD0u
+#define FLOAT_ONE_BITS 0x3F800000u
 #define ALLOCATE_TEXTURE_MEM_VA GVA(0x00506270) /* CDirect3D::AllocateTextureMemory */
 #define ALLOCATE_NON_LOCAL_VA GVA(0x00506EB0)   /* CDirect3D::bAllocateNonLocalMemory: the split */
 #define ALLOCATE_MANAGED_VA GVA(0x00506C00)     /* the same split for managed textures */
@@ -58,6 +61,15 @@ static struct {
 /* Objects (instances, not spatial groups) that stayed 3D this frame: their parts stay 3D with them. */
 #define OBJECT_SLOTS 4096u
 static engine_frame_slot_t s_kept_3d[OBJECT_SLOTS];
+#define IMPOSTOR_STATE_SLOTS 16384u
+#define REBUILD_FRAMES 120u
+static engine_impostor_state_t s_impostors[IMPOSTOR_STATE_SLOTS], s_hidden[IMPOSTOR_STATE_SLOTS];
+static struct { /* DEBUG_SAULO: what makes a drawn object appear, vanish or change */
+    unsigned long long requests, impostor_answers, became, dropped, rebuilt, group_became, group_dropped;
+    unsigned long long distance_culled, distance_restored, subpixel_rejects, subpixel_hidden;
+    uint32_t frame;
+    unsigned in_frame, peak;
+} s_cache_stats;
 #define OBJECT_DEPTH 16
 /* Partitions holding a mesh the CPU draws into the Direct3D frame (a bump map makes it so). */
 static uint32_t s_software[SOFTWARE_SLOTS];
@@ -68,8 +80,6 @@ void engine_limits_keep_original(void) { s_keep_original = 1; }
 int engine_limits_original(void) { return s_keep_original; }
 
 int engine_limits_modern(void) { return s_modern; }
-
-static float object_cull_combined(void) { return ENGINE_OBJECT_DISTANCE_SCALE * ENGINE_OBJECT_DISTANCE_SCALE; }
 
 static float read_float(uint32_t va) { return *(volatile float*)ADDR(va); }
 
@@ -102,7 +112,8 @@ static void apply_data(void) {
     if (read_float(CACHE_MIN_DISTANCE) != ENGINE_CACHE_DISTANCE_ORIGINAL)
         write_float(CACHE_MIN_DISTANCE, ENGINE_CACHE_DISTANCE_ORIGINAL);
     /* 0 before the first level: SetGlobalPartitionData sets it through set_combined_culling. */
-    if (read_float(CULL_COMBINED) != 0.0f) set_float(CULL_COMBINED, 1.0f, object_cull_combined(), "object cull factor");
+    if (read_float(CULL_COMBINED) != 0.0f)
+        set_float(CULL_COMBINED, engine_object_cull_combined(0), engine_object_cull_combined(1), "object cull factor");
 }
 
 /* The engine divides this budget with signed 32-bit products: a value it cannot divide is never handed to it. */
@@ -226,6 +237,30 @@ static void flag_cacheable(void) {
     if (lifted) MEM32(partition + PARTITION_FLAGS) |= PARTITION_CACHE_NEVER;
 }
 
+/* Reallocated right after SetTextureMemSize, which has just purged every node texture and emptied this pool. */
+static void enlarge_terrain_shadow_pool(void) {
+    uint32_t page = MEM32(TERRAIN_PAGE_SIZE), kb = engine_terrain_shadow_kb(page), pool_va, alloc_va, pool, eax = g_eax;
+    uint32_t args[5];
+    if (kb <= ENGINE_TERRAIN_SHADOW_KB_ORIGINAL) return;
+    if (!terrain_shadow_pool_call((const uint8_t*)ADDR(TERRAIN_TEXTURE_MEM_VA), TERRAIN_TEXTURE_MEM_VA,
+                                  TERRAIN_TEXTURE_MEM_BYTES, &pool_va, &alloc_va) ||
+        !(pool = MEM32(pool_va))) {
+        host_log("graphics", "terrain moving-shadow pool left at %u KB: SetTextureMemSize differs from 1.0.116",
+                 ENGINE_TERRAIN_SHADOW_KB_ORIGINAL);
+        return;
+    }
+    args[0] = kb * 1024u;
+    args[1] = 0;
+    args[2] = FLOAT_ONE_BITS;
+    args[3] = page;
+    args[4] = 0;
+    if (guest_call(alloc_va, pool, args, 5, 0, NULL))
+        host_log("graphics", "terrain moving-shadow pool %u KB (%u pages of %u px; the game's %u KB held %u)", kb,
+                 ENGINE_TERRAIN_SHADOW_PAGES, page, ENGINE_TERRAIN_SHADOW_KB_ORIGINAL,
+                 ENGINE_TERRAIN_SHADOW_KB_ORIGINAL * 1024u / (page * page * 2u));
+    g_eax = eax;
+}
+
 /* With 128 px pages a node texture is at most 128 px and a larger base texture keeps only its top-left corner, drawn
  * over the whole map; 256 px is the most its packed pages can address. The pool grows to hold them. */
 static void terrain_texture_mem(void) {
@@ -236,6 +271,7 @@ static void terrain_texture_mem(void) {
     }
     if (kb < ENGINE_TERRAIN_TEXTURE_KB_MODERN) GUEST_ARG(0) = ENGINE_TERRAIN_TEXTURE_KB_MODERN;
     s_terrain_mem_lifted();
+    enlarge_terrain_shadow_pool();
 }
 
 /* SetGlobalPartitionData sets 1 for objects and shadows; the image cache doubles and restores whatever is there. */
@@ -243,7 +279,7 @@ static void set_combined_culling(void) {
     if (!g_alias_entry && g_cur_func == SET_GLOBAL_PARTITION_DATA_VA) {
         memset(s_software, 0, sizeof s_software);
         s_software_count = 0;
-        if (s_modern) *(float*)ADDR(g_esp + 4) *= object_cull_combined();
+        if (s_modern) *(float*)ADDR(g_esp + 4) *= engine_object_cull_combined(1);
     }
     s_combined_lifted();
 }
@@ -294,20 +330,41 @@ static engine_partition_t partition_view(uint32_t partition) {
 static uint32_t frame_key(void) { return MEM32(PARTITION_FRAME) + 1u; }
 
 /* bInRange(distance squared): a static mesh too small to cover a pixel or two is left out as well. */
+/* DEBUG_SAULO */
+static void note_visibility(uint32_t partition, int drawn, int subpixel) {
+    uint32_t frame = frame_key(), since;
+    int known = engine_impostor_known(s_hidden, IMPOSTOR_STATE_SLOTS, partition, frame);
+    engine_impostor_change_t change = engine_impostor_note(s_hidden, IMPOSTOR_STATE_SLOTS, partition, frame, !drawn, &since);
+    if (subpixel) s_cache_stats.subpixel_rejects++;
+    if (!known) return;
+    if (change == ENGINE_IMPOSTOR_BECAME) {
+        if (subpixel)
+            s_cache_stats.subpixel_hidden++;
+        else
+            s_cache_stats.distance_culled++;
+    } else if (change == ENGINE_IMPOSTOR_DROPPED) {
+        s_cache_stats.distance_restored++;
+    }
+}
+
 static void in_range(void) {
-    int alias = g_alias_entry != 0;
+    int alias = g_alias_entry != 0, in_view, subpixel = 0;
     uint32_t partition = g_ecx, bits = alias ? 0 : GUEST_ARG(0), flags;
     float distance_squared;
     s_in_range_lifted();
     if (alias) return;
     memcpy(&distance_squared, &bits, sizeof distance_squared);
     flags = MEM32(partition + PARTITION_FLAGS);
-    if (s_modern && (g_eax & 0xFFu) &&
+    in_view = (g_eax & 0xFFu) != 0;
+    if (s_modern && in_view &&
         engine_projected_cull(engine_partition_kind(MEM32(partition)), (flags & PARTITION_USES_MESH) != 0,
                               sqrtf(short_float(partition + PARTITION_SPHERE_SQR)), distance_squared,
-                              widescreen_pixels_per_metre()))
+                              widescreen_pixels_per_metre())) {
         g_eax &= ~0xFFu;
+        subpixel = 1;
+    }
     if (s_modern && software_mesh(partition)) mark_software(partition);
+    if (s_modern && (flags & PARTITION_USES_MESH)) note_visibility(partition, in_view && !subpixel, subpixel);
 }
 
 static cache_refusal_t refusal(const engine_partition_t* p, float distance_squared) {
@@ -327,6 +384,29 @@ static int object_kept_3d(uint32_t partition, uint32_t frame) {
     return 0;
 }
 
+static void note_cache_answer(uint32_t partition, uint32_t frame, int impostor, int group) {
+    uint32_t since;
+    engine_impostor_change_t change = engine_impostor_note(s_impostors, IMPOSTOR_STATE_SLOTS, partition, frame, impostor, &since);
+    s_cache_stats.requests++;
+    if (s_cache_stats.frame != frame) {
+        s_cache_stats.frame = frame;
+        s_cache_stats.in_frame = 0;
+    }
+    if (!impostor) {
+        if (change == ENGINE_IMPOSTOR_DROPPED) {
+            s_cache_stats.dropped++;
+            s_cache_stats.group_dropped += (unsigned long long)group;
+        }
+        return;
+    }
+    s_cache_stats.impostor_answers++;
+    if (++s_cache_stats.in_frame > s_cache_stats.peak) s_cache_stats.peak = s_cache_stats.in_frame;
+    if (change != ENGINE_IMPOSTOR_BECAME) return;
+    s_cache_stats.became++;
+    s_cache_stats.group_became += (unsigned long long)group;
+    if (since && since <= REBUILD_FRAMES) s_cache_stats.rebuilt++;
+}
+
 /* The distance is read only here, so each call sees its own: by the object's projected size; 1998's for entities,
  * meshes the CPU draws and the groups holding them; never while the object it is part of stays 3D. */
 static void should_cache(void) {
@@ -334,6 +414,7 @@ static void should_cache(void) {
     engine_partition_t p;
     engine_part_kind_t kind;
     float distance_squared;
+    int held;
     if (g_alias_entry) {
         s_should_cache_lifted();
         return;
@@ -344,17 +425,36 @@ static void should_cache(void) {
     p = partition_view(partition);
     kind = engine_partition_kind(MEM32(partition));
     frame = frame_key();
+    held = engine_impostor_held(s_impostors, IMPOSTOR_STATE_SLOTS, partition, frame);
     if (s_modern && s_cache_distance_writable) {
         int software = holds_software(partition) || software_mesh(partition);
         float distance = object_kept_3d(partition, frame)
                              ? ENGINE_CACHE_DISTANCE_NEVER
-                             : engine_cache_min_distance(1, software, kind, sqrtf(p.sphere_sqr),
-                                                         widescreen_pixels_per_metre(), p.cache_mul);
+                             : engine_cache_min_distance_held(1, software, kind, sqrtf(p.sphere_sqr),
+                                                              widescreen_pixels_per_metre(), p.cache_mul, held);
         *(float*)ADDR(CACHE_MIN_DISTANCE) = distance;
     }
     s_should_cache_lifted();
+    note_cache_answer(partition, frame, (g_eax & 0xFFu) != 0, kind == ENGINE_PART_SPATIAL);
     if (!(g_eax & 0xFFu) && kind != ENGINE_PART_SPATIAL && engine_refusal_holds_parts(refusal(&p, distance_squared)))
         engine_frame_set_add(s_kept_3d, OBJECT_SLOTS, partition, frame);
+}
+
+void engine_limits_cache_summary(void) {
+    if (!s_cache_stats.requests) return;
+    host_log("perf-detail", "DEBUG_SAULO image cache: %llu bShouldCache answers, %llu impostor | 3D -> impostor %llu, "
+             "impostor -> 3D %llu (switch %.0f px, back to 3D %.0f px), impostors rebuilt within %u frames of being "
+             "dropped %llu | peak impostors in a frame %u | an impostor is built when it is chosen, never shown unready",
+             s_cache_stats.requests, s_cache_stats.impostor_answers, s_cache_stats.became, s_cache_stats.dropped,
+             ENGINE_IMPOSTOR_SWITCH_PX, ENGINE_IMPOSTOR_RETURN_PX, REBUILD_FRAMES, s_cache_stats.rebuilt,
+             s_cache_stats.peak);
+    host_log("perf-detail", "DEBUG_SAULO pop-in sources (meshes seen in consecutive frames): 3D -> impostor %llu (of "
+             "them group impostors %llu), impostor -> 3D %llu (groups %llu) | culled by distance %llu, back within "
+             "distance %llu | hidden under %.1f px %llu (%llu sub-pixel answers) | LOD transitions: not visible to the "
+             "host (the mesh LOD choice has no override)", s_cache_stats.became, s_cache_stats.group_became,
+             s_cache_stats.dropped, s_cache_stats.group_dropped, s_cache_stats.distance_culled,
+             s_cache_stats.distance_restored, ENGINE_CULL_PIXELS, s_cache_stats.subpixel_hidden,
+             s_cache_stats.subpixel_rejects);
 }
 
 static void engine_limits_apply(int hardware) {
@@ -411,11 +511,13 @@ void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsyn
         unsigned mb = s_fixed_split ? ENGINE_TEXTURE_MB_MODERN : ENGINE_TEXTURE_MB_SAFE;
         engine_texture_layout_t layout = engine_texture_layout(mb, 0xFFFFFFFFu, s_fixed_split);
         host_log("graphics", "  draw distance: every object stays drawn %.1fx as far (its level's Culling included), up "
-                 "to the far clip; an object stays 3D while its bounding sphere spans more than %.0f px (%.0f-%.0f m, "
-                 "times its CacheMul, never nearer than 1998), then the image cache may draw it as an impostor; at "
-                 "1440 lines radius 2/4/6/10/16 m: %.0f/%.0f/%.0f/%.0f/%.0f m; an object's parts switch with it; "
-                 "entities and meshes drawn by the CPU %.0f m as in 1998; static meshes under %.1f px are not drawn",
-                 ENGINE_OBJECT_DISTANCE_SCALE, ENGINE_IMPOSTOR_SWITCH_PX, ENGINE_FULL_3D_MIN, ENGINE_FULL_3D_MAX,
+                 "to the level's far clip, which the host reaches out to %.0f m at most (terrain textures); an object "
+                 "stays 3D while its bounding sphere spans more than %.0f px (%.0f-%.0f m, times its CacheMul, never "
+                 "nearer than 1998), then the image cache may draw it as an impostor; at 1440 lines "
+                 "radius 2/4/6/10/16 m: %.0f/%.0f/%.0f/%.0f/%.0f m; an object's parts switch with it; entities and "
+                 "meshes drawn by the CPU %.0f m as in 1998; static meshes under %.1f px are not drawn",
+                 ENGINE_OBJECT_DISTANCE_SCALE, ENGINE_FAR_CLIP_MAX, ENGINE_IMPOSTOR_SWITCH_PX, ENGINE_FULL_3D_MIN,
+                 ENGINE_FULL_3D_MAX,
                  engine_full_3d_distance(2.0f, 0.0f, 1.0f), engine_full_3d_distance(4.0f, 0.0f, 1.0f),
                  engine_full_3d_distance(6.0f, 0.0f, 1.0f), engine_full_3d_distance(10.0f, 0.0f, 1.0f),
                  engine_full_3d_distance(16.0f, 0.0f, 1.0f), ENGINE_CACHE_DISTANCE_ORIGINAL, ENGINE_CULL_PIXELS);
@@ -424,12 +526,15 @@ void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsyn
         host_log("graphics", "  image cache: a static instance the level marks CacheNever is cached like its "
                  "neighbours when nothing in it prevents it (animated or alpha-colour mesh, backdrop, water); up to %d "
                  "objects share a group impostor (1998: 10-20 by quality)", ENGINE_CACHE_GROUP_OBJECTS_MODERN);
+        int32_t regular = engine_regular_texture_bytes(&layout, 1);
         host_log("graphics", "  textures: up to %u px (was %u), texture memory %u MB (was %u MB, split in 64-bit "
-                 "arithmetic%s): regular textures %ld KB (evicted above %ld KB), impostors up to %u px in %ld KB; "
-                 "terrain pages at %u px in %u KB", ENGINE_TEX_DIM_MODERN, ENGINE_TEX_DIM_ORIGINAL, mb,
-                 ENGINE_TEXTURE_MB_ORIGINAL, s_fixed_split ? "" : " unavailable", (long)layout.regular / 1024,
-                 (long)layout.high_water_95 / 1024, ENGINE_TEX_DIM_MODERN, (long)layout.image_cache / 1024,
-                 ENGINE_TEX_DIM_MODERN, ENGINE_TERRAIN_TEXTURE_KB_MODERN);
+                 "arithmetic%s): regular textures %ld KB (evicted above %ld KB), impostors up to %u px in %ld KB, "
+                 "terrain pages at %u px in %u KB, water %ld KB; terrain moving shadows %u KB besides",
+                 ENGINE_TEX_DIM_MODERN, ENGINE_TEX_DIM_ORIGINAL, mb, ENGINE_TEXTURE_MB_ORIGINAL,
+                 s_fixed_split ? "" : " unavailable", (long)regular / 1024, (long)((int64_t)regular * 95 / 100) / 1024,
+                 ENGINE_TEX_DIM_MODERN, (long)layout.image_cache / 1024, ENGINE_TEX_DIM_MODERN,
+                 ENGINE_TERRAIN_TEXTURE_KB_MODERN, (long)layout.water / 1024,
+                 engine_terrain_shadow_kb(ENGINE_TEX_DIM_MODERN));
         texture_streaming_log();
         terrain_quality_log();
         engine_heaps_log();

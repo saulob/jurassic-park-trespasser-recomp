@@ -14,9 +14,11 @@
 #include <string.h>
 
 #include "bump_spans.h"
+#include "texture_gpu_policy.h"
 #include "ddraw/d3d11_shaders.h"
 #include "ddraw/d3d_translate.h"
 #include "ddraw/page_arena.h"
+#include "ddraw/perf_stat.h"
 #include "ddraw/target_sync.h"
 #include "host_policy.h"
 #include "jpt_display.h"
@@ -1904,6 +1906,443 @@ static void test_coverage_selection(void) {
     CHECK(levels == 280 && mismatches == 0);
 }
 
+/* The alpha-weighted downsample as it was first written, with divisions and a loop over the footprint. */
+static void reference_downsample(const uint32_t* src, unsigned w, unsigned h, int kind, uint32_t* dst) {
+    unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1, fx = w > 1 ? 2 : 1, fy = h > 1 ? 2 : 1, n = fx * fy;
+    unsigned long hist[5] = { 0, 0, 0, 0, 0 }, covered = 0;
+    for (unsigned y = 0; y < dh; y++)
+        for (unsigned x = 0; x < dw; x++) {
+            uint32_t sa = 0, sr = 0, sg = 0, sb = 0, ur = 0, ug = 0, ub = 0, opaque = 0, r, g, b;
+            for (unsigned j = 0; j < fy; j++)
+                for (unsigned i = 0; i < fx; i++) {
+                    uint32_t t = src[(size_t)(y * fy + j) * w + x * fx + i], a = t >> 24;
+                    sa += a, sr += ((t >> 16) & 0xFF) * a, sg += ((t >> 8) & 0xFF) * a, sb += (t & 0xFF) * a;
+                    ur += (t >> 16) & 0xFF, ug += (t >> 8) & 0xFF, ub += t & 0xFF;
+                    opaque += a >= 128;
+                }
+            if (sa) r = (sr + sa / 2) / sa, g = (sg + sa / 2) / sa, b = (sb + sa / 2) / sa;
+            else r = (ur + n / 2) / n, g = (ug + n / 2) / n, b = (ub + n / 2) / n;
+            if (kind == D3DT_ALPHA_OPAQUE) dst[(size_t)y * dw + x] = 255u << 24 | r << 16 | g << 8 | b;
+            else if (kind == D3DT_ALPHA_BLENDED) dst[(size_t)y * dw + x] = ((sa + n / 2) / n) << 24 | r << 16 | g << 8 | b;
+            else dst[(size_t)y * dw + x] = opaque << 24 | r << 16 | g << 8 | b, hist[opaque]++;
+        }
+    if (kind != D3DT_ALPHA_BINARY) return;
+    for (unsigned y = 0; y < dh * fy; y++)
+        for (unsigned x = 0; x < dw * fx; x++) covered += (src[(size_t)y * w + x] >> 24) >= 128;
+    reference_keep_coverage(dst, dw, dh, n, hist, (unsigned long)(((double)covered / n) + 0.5));
+}
+
+/* The GPU path of the perspective-textured primitive: the span's row loop, the planes it is replaced by and the
+ * texel index its pixel shader computes. */
+static void test_texture_gpu(void) {
+    tgpu_steps_t d = { 0x18000, 0x6000, { 1.0f, 2.0f, 0.5f }, { 0.25f, -0.5f, 0.125f }, 640 };
+    tgpu_scan_t s = { 10 << 16, 0xF000, 3.0f, 4.0f, 2.0f };
+    tgpu_rows_t r = { 5, 9, 3200, 20 << 16, 1 << 16 };
+    int32_t x0, x1;
+    CHECK(tgpu_row_span(&s, &r, &x0, &x1) && x0 == 10 && x1 == 30);
+    tgpu_next_row(&s, &r, &d);
+    /* 0xF000 + 0x6000 passes 0x10000: the remainder wraps and the carry extra is added */
+    CHECK(s.rem == 0x5000 && s.fx == (10 << 16) + 0x18000 && r.y == 6 && r.line == 3840 && r.len == 21 << 16);
+    CHECK(s.uz == 4.25f && s.vz == 5.5f && s.wz == 2.625f);
+    tgpu_next_row(&s, &r, &d);
+    CHECK(s.rem == 0xB000 && s.uz == 5.25f && s.vz == 7.5f && s.wz == 3.125f);
+    s.rem = 0xA000;
+    tgpu_next_row(&s, &r, &d);
+    CHECK(s.rem == 0x10000 && s.uz == 6.25f);
+    d.rem_inc = -0x2000;
+    s.rem = 0x1000;
+    tgpu_next_row(&s, &r, &d);
+    CHECK(s.rem == 0xF000 && s.uz == 7.5f && s.vz == 11.0f);
+    r.len = 0;
+    CHECK(!tgpu_row_span(&s, &r, &x0, &x1));
+
+    {
+        uint32_t seed = 99u;
+        int ok = 1;
+        for (int k = 0; k < 500; k++) {
+            float a[3], gx[3], gy[3], s0[3], s1[3];
+            float xa, ya, xb, yb;
+            tgpu_plane_t pl;
+            for (int i = 0; i < 3; i++) {
+                seed = seed * 1664525u + 1013904223u;
+                a[i] = (float)(seed >> 8) / 65536.0f;
+                seed = seed * 1664525u + 1013904223u;
+                gx[i] = ((float)(seed >> 8) / 16777216.0f - 0.5f) * 0.1f;
+                seed = seed * 1664525u + 1013904223u;
+                gy[i] = ((float)(seed >> 8) / 16777216.0f - 0.5f) * 0.1f;
+            }
+            xa = (float)(k % 300);
+            ya = (float)(k % 200);
+            xb = xa + (float)(k % 7) - 3.0f;
+            yb = ya + 1.0f + (float)(k % 3);
+            for (int i = 0; i < 3; i++) {
+                s0[i] = a[i] + gx[i] * xa + gy[i] * ya;
+                s1[i] = a[i] + gx[i] * xb + gy[i] * yb;
+            }
+            tgpu_plane(&pl, xa, ya, s0, xb, yb, s1, gx);
+            for (int i = 0; i < 3; i++) {
+                const float* q = i == 0 ? pl.u : i == 1 ? pl.v : pl.w;
+                float px = xa + 37.0f, py = ya + 11.0f;
+                float want = a[i] + gx[i] * px + gy[i] * py, got = q[0] + q[1] * (px - pl.origin_x) + q[2] * (py - pl.origin_y);
+                ok &= fabsf(want - got) < 1e-3f * (1.0f + fabsf(want));
+            }
+        }
+        CHECK(ok);
+    }
+    {
+        tgpu_plane_t pl;
+        float a[3] = { 1, 2, 3 }, gx[3] = { 0.5f, 0.25f, 0.0f };
+        tgpu_plane(&pl, 4, 7, a, 9, 7, a, gx);
+        CHECK(pl.u[2] == 0.0f && pl.u[1] == 0.5f && pl.origin_x == 4.0f && pl.origin_y == 7.0f);
+    }
+    {
+        tgpu_texture_t c = { 1, 0.2f, 63.8f, 31.8f, 64, 0xFFFFFFFFu, 0xFFFFFFFFu };
+        tgpu_texture_t w = { 0, 0.2f, 0.0f, 0.0f, 512, 63, (31u << 9) | 63u };
+        CHECK(tgpu_texel_index(&c, 5.7f, 2.3f) == 2u * 64u + 5u);
+        CHECK(tgpu_texel_index(&c, -4.0f, -9.0f) == 0u);
+        CHECK(tgpu_texel_index(&c, 900.0f, 900.0f) == 31u * 64u + 63u);
+        CHECK(tgpu_texture_bytes(&c) == 31u * 64u + 63u + 1u);
+        CHECK(tgpu_texel_index(&c, 900.0f, 900.0f) < tgpu_texture_bytes(&c));
+        CHECK(tgpu_texel_index(&w, 65.5f, 2.0f) == (2u << 9) + 1u);
+        CHECK(tgpu_texel_index(&w, -1.0f, -1.0f) == ((31u << 9) | 63u));
+        CHECK(tgpu_texel_index(&w, 63.0f, 32.0f) == 63u);
+        CHECK(tgpu_texture_bytes(&w) == ((31u << 9) | 63u) + 1u);
+        w.tile_mask = 0xFFFFFFFFu;
+        CHECK(tgpu_texture_bytes(&w) == 0u);
+        c.vmax = 1e6f;
+        CHECK(tgpu_texture_bytes(&c) == 0u);
+        c.vmax = 31.8f;
+        c.tile_mask = 0x7FFu;
+        CHECK(tgpu_texture_bytes(&c) == 0x800u);
+        c.tile_mask = 0xFFFFFFu;
+        CHECK(tgpu_texture_bytes(&c) == 31u * 64u + 63u + 1u);
+        c.clamped = 0;
+        CHECK(tgpu_texture_bytes(&c) == 0u);
+        w.tile_mask = (3u << 9) | 63u;
+        CHECK(tgpu_texture_bytes(&w) == ((3u << 9) | 63u) + 1u);
+    }
+}
+
+/* The span's row epilogue at the flag level: add eax, fx_inc; add ebx, rem_inc; jge (SF == OF); the negative branch
+ * adds 0x10000, the other compares with 0x10000; a carry adds the extras before the three fstp. */
+static void reference_next_row(tgpu_scan_t* s, tgpu_rows_t* r, const tgpu_steps_t* d) {
+    uint32_t ebx = (uint32_t)s->rem + (uint32_t)d->rem_inc;
+    int sf = (int)(ebx >> 31), of = (int)((((uint32_t)s->rem ^ ebx) & ((uint32_t)d->rem_inc ^ ebx)) >> 31), carry = 0;
+    double st[3] = { s->uz, s->vz, s->wz };
+    if (sf != of) {
+        ebx += 0x10000u;
+        carry = 1;
+    } else if ((int32_t)ebx > 0x10000) {
+        ebx -= 0x10000u;
+        carry = 1;
+    }
+    for (int i = 0; i < 3; i++) {
+        st[i] += d->step[i];
+        if (carry) st[i] += d->carry[i];
+    }
+    s->fx = (int32_t)((uint32_t)s->fx + (uint32_t)d->fx_inc);
+    s->rem = (int32_t)ebx;
+    s->uz = (float)st[0];
+    s->vz = (float)st[1];
+    s->wz = (float)st[2];
+    r->len = (int32_t)((uint32_t)r->len + (uint32_t)r->dlen);
+    r->line = (int32_t)((uint32_t)r->line + (uint32_t)d->line_pixels);
+    r->y++;
+}
+
+/* Only what the native span writes back changes: pscan's edge and u/z, v/z, 1/z, pdtri's y, line and length. */
+static void test_texture_gpu_rows(void) {
+    uint32_t seed = 7u;
+    int same = 1, untouched = 1;
+    for (int k = 0; k < 20000; k++) {
+        tgpu_scan_t a, b;
+        tgpu_rows_t ra, rb;
+        tgpu_steps_t d, d0;
+        float f[9];
+        for (int i = 0; i < 9; i++) {
+            seed = seed * 1664525u + 1013904223u;
+            f[i] = ((float)(seed >> 8) / 16777216.0f - 0.5f) * (i < 3 ? 4096.0f : 8.0f);
+        }
+        seed = seed * 1664525u + 1013904223u;
+        a.fx = (int32_t)(seed & 0x0FFFFFFFu);
+        seed = seed * 1664525u + 1013904223u;
+        a.rem = k % 7 == 0 ? (int32_t)seed : (int32_t)(seed % 0x10001u);
+        a.uz = f[0], a.vz = f[1], a.wz = f[2];
+        seed = seed * 1664525u + 1013904223u;
+        d.fx_inc = (int32_t)(seed % 0x40000u) - 0x20000;
+        seed = seed * 1664525u + 1013904223u;
+        d.rem_inc = k % 5 == 0 ? (int32_t)seed : (int32_t)(seed % 0x20000u) - 0x10000;
+        d.step[0] = f[3], d.step[1] = f[4], d.step[2] = f[5];
+        d.carry[0] = f[6], d.carry[1] = f[7], d.carry[2] = f[8];
+        d.line_pixels = 3840 + k % 3;
+        ra.y = k % 2160;
+        ra.y_end = ra.y + 1 + k % 9;
+        ra.line = ra.y * 3840;
+        seed = seed * 1664525u + 1013904223u;
+        ra.len = (int32_t)(seed % 0x2000000u);
+        ra.dlen = (int32_t)(seed % 0x40000u) - 0x20000;
+        b = a;
+        rb = ra;
+        d0 = d;
+        do {
+            tgpu_next_row(&a, &ra, &d);
+            reference_next_row(&b, &rb, &d);
+        } while (ra.y < ra.y_end);
+        same &= a.fx == b.fx && a.rem == b.rem && !memcmp(&a.uz, &b.uz, sizeof(float)) &&
+                !memcmp(&a.vz, &b.vz, sizeof(float)) && !memcmp(&a.wz, &b.wz, sizeof(float)) && ra.y == rb.y &&
+                ra.line == rb.line && ra.len == rb.len;
+        untouched &= ra.y_end == rb.y_end && ra.dlen == rb.dlen && !memcmp(&d, &d0, sizeof d);
+    }
+    CHECK(same);
+    CHECK(untouched);
+}
+
+/* A polygon is GPU or CPU from its first Lock on; an unforeseen state after the GPU choice turns the path off once. */
+static void test_texture_gpu_session(void) {
+    tgpu_session_t s;
+    tgpu_session_init(&s, 0);
+    CHECK(tgpu_polygon_begin(&s) == TGPU_OFF);
+    CHECK(tgpu_polygon_lock(&s, TGPU_REASON_NONE) == TGPU_OFF);
+    CHECK(!tgpu_polygon_end(&s, 1) && s.gpu == 0 && s.cpu == 0);
+
+    tgpu_session_init(&s, 1);
+    CHECK(tgpu_polygon_begin(&s) == TGPU_PENDING);
+    CHECK(tgpu_polygon_lock(&s, TGPU_REASON_TEXTURE_UNBOUNDED) == TGPU_CPU);
+    CHECK(tgpu_polygon_lock(&s, TGPU_REASON_NONE) == TGPU_CPU);
+    tgpu_polygon_unsafe(&s);
+    CHECK(!s.unsafe);
+    CHECK(!tgpu_polygon_end(&s, 0) && s.cpu == 1 && s.enabled);
+    CHECK(s.reason[TGPU_REASON_TEXTURE_UNBOUNDED] == 1 && s.reason[TGPU_REASON_MEMORY_RASTER] == 0);
+
+    /* never Locked: a memory raster */
+    CHECK(tgpu_polygon_begin(&s) == TGPU_PENDING);
+    CHECK(!tgpu_polygon_end(&s, 0) && s.cpu == 2 && s.mode == TGPU_OFF);
+    CHECK(s.reason[TGPU_REASON_MEMORY_RASTER] == 1);
+
+    CHECK(tgpu_polygon_begin(&s) == TGPU_PENDING);
+    CHECK(tgpu_polygon_lock(&s, TGPU_REASON_NONE) == TGPU_GPU);
+    CHECK(tgpu_polygon_lock(&s, TGPU_REASON_RASTER_LOCKED) == TGPU_GPU);
+    CHECK(!tgpu_polygon_end(&s, 1) && s.gpu == 1 && s.enabled && s.reason[TGPU_REASON_RASTER_LOCKED] == 0);
+
+    CHECK(tgpu_polygon_begin(&s) == TGPU_PENDING);
+    CHECK(tgpu_polygon_lock(&s, TGPU_REASON_NONE) == TGPU_GPU);
+    tgpu_polygon_unsafe(&s);
+    CHECK(tgpu_polygon_end(&s, 1) && s.dropped == 1 && s.gpu == 1 && !s.enabled && s.disabled_after_failure);
+    CHECK(tgpu_polygon_begin(&s) == TGPU_OFF);
+    CHECK(!tgpu_polygon_end(&s, 0) && s.dropped == 1);
+
+    tgpu_session_init(&s, 1);
+    tgpu_polygon_begin(&s);
+    tgpu_polygon_lock(&s, TGPU_REASON_NONE);
+    CHECK(tgpu_polygon_end(&s, 0) && s.dropped == 1 && !s.enabled);
+
+    tgpu_session_init(&s, 1);
+    for (unsigned r = 1; r < TGPU_REASON_COUNT; r++) {
+        tgpu_polygon_begin(&s);
+        tgpu_polygon_lock(&s, (tgpu_reason_t)r);
+        tgpu_polygon_end(&s, 0);
+    }
+    tgpu_polygon_begin(&s);
+    tgpu_polygon_lock(&s, (tgpu_reason_t)(TGPU_REASON_COUNT + 5));
+    tgpu_polygon_end(&s, 0);
+    CHECK(s.cpu == TGPU_REASON_COUNT && s.reason[TGPU_REASON_OTHER] == 2 && s.reason[TGPU_REASON_RASTER_LOCKED] == 1);
+    CHECK(!strcmp(tgpu_reason_name(TGPU_REASON_RASTER_LOCKED), "raster_locked") &&
+          !strcmp(tgpu_reason_name(TGPU_REASON_MEMORY_RASTER), "memory_raster") &&
+          !strcmp(tgpu_reason_name((tgpu_reason_t)99), "other"));
+}
+
+/* A screen the game holds locked no longer keeps its polygons on the CPU. */
+static void test_texture_gpu_run(void) {
+    /* locked, run_active, lock_untouched, run_captured, overlaps */
+    CHECK(tgpu_run_action(0, 0, 0, 0, 0) == TGPU_RUN_FRESH);
+    CHECK(tgpu_run_action(0, 1, 1, 1, 1) == TGPU_RUN_FRESH);
+    CHECK(tgpu_run_action(1, 1, 0, 1, 0) == TGPU_RUN_KEEP);
+    CHECK(tgpu_run_action(1, 1, 0, 1, 1) == TGPU_RUN_SPLIT);
+    CHECK(tgpu_run_action(1, 1, 0, 0, 0) == TGPU_RUN_SPLIT);
+    CHECK(tgpu_run_action(1, 1, 1, 0, 1) == TGPU_RUN_SPLIT);
+    CHECK(tgpu_run_action(1, 0, 1, 0, 0) == TGPU_RUN_ADOPT);
+    CHECK(tgpu_run_action(1, 0, 1, 1, 1) == TGPU_RUN_ADOPT);
+    CHECK(tgpu_run_action(1, 0, 0, 1, 0) == TGPU_RUN_BUSY);
+    CHECK(tgpu_run_action(1, 0, 0, 0, 1) == TGPU_RUN_BUSY);
+}
+
+static tgpu_texture_cache_t s_tex_cache;
+static tgpu_clut_cache_t s_clut_cache;
+
+/* Device and level changes empty the caches; one address may hold another texture or CLUT afterwards. */
+static void test_texture_gpu_cache(void) {
+    static uint8_t tex[2][4096];
+    static uint16_t clut[3][TGPU_CLUT_ENTRIES];
+    int up;
+    int64_t a, b, c;
+    uint32_t s0, s1;
+    for (int i = 0; i < 4096; i++) tex[0][i] = (uint8_t)i, tex[1][i] = (uint8_t)(i * 7);
+    for (unsigned i = 0; i < TGPU_CLUT_ENTRIES; i++) clut[0][i] = (uint16_t)i, clut[1][i] = (uint16_t)(i ^ 0xF81F),
+        clut[2][i] = (uint16_t)(i * 3);
+    tgpu_texture_cache_reset(&s_tex_cache, 1u << 16);
+    tgpu_clut_cache_reset(&s_clut_cache);
+
+    a = tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 1, &up);
+    CHECK(a == 0 && up);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 1, &up) == a && !up);
+    tex[0][100] ^= 0xFF;
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 1, &up) == a && !up);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 2, &up) == a && up);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 3, &up) == a && !up);
+    b = tgpu_texture_cache_find(&s_tex_cache, tex[0], 2048, 3, &up);
+    CHECK(b >= 0 && b != a && up);
+    c = tgpu_texture_cache_find(&s_tex_cache, tex[1], 4096, 3, &up);
+    CHECK(c >= 0 && c != a && c != b && up && (c & 15) == 0);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[1], 0, 3, &up) == -1 && !up);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[1], (1u << 16) / 4u + 1u, 3, &up) == -1 && !up);
+    for (int i = 0; i < 20; i++) tgpu_texture_cache_find(&s_tex_cache, tex[0] + 16 * (i + 1), 4096, 3, &up);
+    CHECK(s_tex_cache.top <= s_tex_cache.pool);
+
+    tgpu_texture_cache_reset(&s_tex_cache, 1u << 16);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 3, &up) == 0 && up);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[1], 4096, 3, &up) == 4096 && up);
+    memcpy(tex[0], tex[1], sizeof tex[0]);
+    tgpu_texture_cache_reset(&s_tex_cache, 1u << 16);
+    CHECK(tgpu_texture_cache_find(&s_tex_cache, tex[0], 4096, 3, &up) == 0 && up);
+
+    s0 = tgpu_clut_cache_find(&s_clut_cache, clut[0], &up);
+    CHECK(up && s0 < TGPU_CLUT_SLOTS);
+    CHECK(tgpu_clut_cache_find(&s_clut_cache, clut[0], &up) == s0 && !up);
+    s1 = tgpu_clut_cache_find(&s_clut_cache, clut[1], &up);
+    CHECK(up && s1 != s0);
+    memcpy(clut[0], clut[2], sizeof clut[0]);
+    CHECK(tgpu_clut_cache_find(&s_clut_cache, clut[0], &up) == s0 && up);
+    CHECK(s_clut_cache.slot[s0].copy[5] == 15);
+    CHECK(tgpu_clut_cache_find(&s_clut_cache, clut[1], &up) == s1 && !up);
+    tgpu_clut_cache_reset(&s_clut_cache);
+    CHECK(tgpu_clut_cache_find(&s_clut_cache, clut[1], &up) == s1 && up);
+}
+
+/* The bump perspective span's pixel as its inner loop computes it, against the model the linear bump span is proven by,
+ * and what the GPU path derives from the table. */
+static void test_texture_gpu_bump(void) {
+    static uint8_t table[TGPU_BUMP_TABLE_BYTES];
+    static uint16_t clut[64 * 256];
+    static uint8_t cache_a[2][4096];
+    uint32_t seed = 31u;
+    int same = 1, bounded = 1, differs = 0;
+    int up;
+    bump_pixel_t c;
+    tgpu_texture_cache_t cache;
+    for (unsigned i = 0; i < TGPU_BUMP_TABLE_BYTES; i++) table[i] = (uint8_t)((i * 7u) % 23u);
+    for (unsigned i = 0; i < sizeof clut / sizeof clut[0]; i++) clut[i] = (uint16_t)(i * 2654435761u >> 11);
+    CHECK(tgpu_bump_clut_entries(table) == 23u * 64u);
+    table[5] = 255;
+    CHECK(tgpu_bump_clut_entries(table) == 256u * 64u);
+    table[5] = 0;
+    CHECK(tgpu_bump_clut_entries(table) == 23u * 64u);
+    c.clut = clut;
+    c.clut_base = 0;
+    c.bump = table;
+    for (int k = 0; k < 100000; k++) {
+        uint16_t out;
+        uint32_t texel, theta, index;
+        seed = seed * 1664525u + 1013904223u;
+        texel = seed >> 16;
+        theta = (seed >> 4) & 0x3F0u;
+        c.light_theta = theta;
+        index = tgpu_bump_clut_index(texel, theta, table);
+        same &= bump_texel_rgb565(&c, (uint16_t)texel, 0, &out) && out == clut[index];
+        bounded &= index < tgpu_bump_clut_entries(table);
+        differs |= (tgpu_bump_clut_index(texel, 0, table) != index);
+    }
+    CHECK(same);
+    CHECK(bounded);
+    CHECK(differs);
+    CHECK(tgpu_bump_clut_index(0xFFFFu, 0x3F0u, table) == (uint32_t)table[(0xFFFFu - 0x3F0u) & 0x3FFu] * 64u + 63u);
+    CHECK(tgpu_bump_clut_index(0u, 0x10u, table) == (uint32_t)table[0x3F0u] * 64u);
+
+    /* a table rewritten in place inside a frame is seen at the next use, a texture only at the next frame */
+    tgpu_texture_cache_reset(&cache, 1u << 16);
+    for (int i = 0; i < 4096; i++) cache_a[0][i] = (uint8_t)i;
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[0], 1024, &up) == 0 && up);
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[0], 1024, &up) == 0 && !up);
+    cache_a[0][700] ^= 1;
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[0], 1024, &up) == 0 && up);
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[0], 1024, &up) == 0 && !up);
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[0], 512, &up) > 0 && up);
+    CHECK(tgpu_texture_cache_find_checked(&cache, NULL, 512, &up) == -1);
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[1], (1u << 16) / 4u + 1u, &up) == -1);
+    tgpu_texture_cache_reset(&cache, 1u << 16);
+    CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[1], 1024, &up) == 0 && up);
+}
+
+static void test_fill_runs(void) {
+    static uint16_t copy[4 * 96], reference[4 * 96];
+    for (long left = 0; left < 12; left++)
+        for (long width = 0; width < 70; width++) {
+            d3dt_rect_t r = { left, 1, left + width, 3 };
+            int ok = 1;
+            for (unsigned i = 0; i < 4 * 96; i++) copy[i] = reference[i] = 0x1111;
+            tsync_fill((uint8_t*)copy, 96 * 2, reference, 96, &r, 0xF81F);
+            for (long y = 0; y < 4; y++)
+                for (long x = 0; x < 96; x++) {
+                    uint16_t want = y >= 1 && y < 3 && x >= left && x < left + width ? 0xF81F : 0x1111;
+                    ok &= copy[y * 96 + x] == want && reference[y * 96 + x] == want;
+                }
+            CHECK(ok);
+        }
+}
+
+static void test_overlay_row_sync(void) {
+    uint32_t seed = 12345u;
+    for (unsigned density = 0; density < 5; density++)
+        for (unsigned count = 0; count < 70; count++) {
+            uint16_t cur[80], old[80], keep[80], keep_ref[80];
+            uint32_t out[80], out_ref[80];
+            unsigned long black = 7, black_ref = 7;
+            unsigned changed, changed_ref;
+            for (unsigned i = 0; i < 80; i++) {
+                seed = seed * 1664525u + 1013904223u;
+                cur[i] = (uint16_t)(seed >> 8);
+                seed = seed * 1664525u + 1013904223u;
+                old[i] = ((seed >> 16) % 5u) < density ? (uint16_t)(seed >> 4) : cur[i];
+                if ((seed & 7u) == 0) cur[i] = 0;
+                keep[i] = keep_ref[i] = old[i];
+                out[i] = out_ref[i] = 0xDEADBEEFu;
+            }
+            changed = d3dt_overlay_row_sync(cur, keep, count, out, &black);
+            changed_ref = d3dt_overlay_row(cur, keep_ref, count, out_ref);
+            black_ref += d3dt_black_over_content(cur, keep_ref, count);
+            memcpy(keep_ref, cur, count * 2u);
+            CHECK(changed == changed_ref);
+            CHECK(black == black_ref);
+            CHECK(!memcmp(out, out_ref, sizeof out));
+            CHECK(!memcmp(keep, keep_ref, sizeof keep));
+        }
+}
+
+static void test_mip_downsample_exact(void) {
+    static uint32_t src[256 * 256], fast[128 * 128], slow[128 * 128];
+    static const unsigned sizes[][2] = { { 256, 256 }, { 64, 128 }, { 8, 8 }, { 1, 32 }, { 32, 1 }, { 2, 2 }, { 2, 1 } };
+    uint32_t seed = 0xC0FFEEu;
+    unsigned long mismatches = 0, cases = 0;
+    for (int kind = D3DT_ALPHA_OPAQUE; kind <= D3DT_ALPHA_BLENDED; kind++)
+        for (int round = 0; round < 24; round++)
+            for (unsigned s = 0; s < sizeof sizes / sizeof sizes[0]; s++) {
+                unsigned w = sizes[s][0], h = sizes[s][1], dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1;
+                for (unsigned i = 0; i < w * h; i++) {
+                    uint32_t a;
+                    seed = seed * 1664525u + 1013904223u;
+                    a = (seed >> 24) & 0xFFu;
+                    if (round % 4 == 0) a = 0xFFu;                         /* all opaque */
+                    else if (round % 4 == 1) a = (seed >> 20) & 1u ? 0xFFu : 0u; /* binary */
+                    else if (round % 4 == 2) a = (seed >> 22) % 5u ? 0xFFu : a;  /* mostly opaque */
+                    src[i] = a << 24 | ((seed * 2654435761u) >> 8 & 0xFFFFFFu);
+                }
+                d3dt_mip_downsample(src, w, h, kind, fast);
+                reference_downsample(src, w, h, kind, slow);
+                mismatches += memcmp(fast, slow, (size_t)dw * dh * 4) != 0;
+                cases++;
+            }
+    CHECK(cases == 3 * 24 * 7 && mismatches == 0);
+}
+
 static void test_dynamic_textures(void) {
     d3dt_upload_history_t water, terrain, burst;
     memset(&water, 0, sizeof water);
@@ -2001,16 +2440,26 @@ static void test_projected_size_policy(void) {
      * view, so only the line count matters. */
     CHECK(engine_full_3d_distance(4.0f, ppm1080, 1.0f) < engine_full_3d_distance(4.0f, ppm1440, 1.0f));
     CHECK(engine_full_3d_distance(4.0f, ppm1440, 1.0f) < engine_full_3d_distance(4.0f, ppm2160, 1.0f));
-    /* The impostor (256 px) at 1:1 when it takes over. Log 030's meshes are 4 m and up in radius: at 3440x1440,
-     * 2 m 25 (the minimum), 4 m ~39, 6 m ~59, 10 m ~98, 16 m 150 (the maximum). */
-    CHECK(ENGINE_IMPOSTOR_SWITCH_PX == 256.0f && ENGINE_FULL_3D_MIN == 25.0f && ENGINE_FULL_3D_MAX == 150.0f);
+    /* The impostor (256 px) takes over at 256 px, never magnified. At 1440 lines: 2 m 25 (the minimum), 4 m 39.1,
+     * 6 m 58.6, 10 m 97.7, 16 m 150 (the maximum); at 2160 lines 29.3, 58.6, 88.0, 146.6, 150. */
+    CHECK(ENGINE_IMPOSTOR_SWITCH_PX == 256.0f && ENGINE_IMPOSTOR_RETURN_PX == 288.0f && ENGINE_FULL_3D_MAX == 150.0f);
+    CHECK(ENGINE_FULL_3D_MIN == 25.0f);
     CHECK(engine_full_3d_distance(0.5f, ppm1440, 1.0f) == ENGINE_FULL_3D_MIN);
     CHECK(engine_full_3d_distance(2.0f, ppm1440, 1.0f) == ENGINE_FULL_3D_MIN);
-    CHECK(fabs(engine_full_3d_distance(4.0f, ppm1440, 1.0f) - 39.1f) < 0.5f);
-    CHECK(fabs(engine_full_3d_distance(6.0f, ppm1440, 1.0f) - 58.6f) < 0.5f);
-    CHECK(fabs(engine_full_3d_distance(10.0f, ppm1440, 1.0f) - 97.7f) < 0.5f);
+    CHECK(fabs(engine_full_3d_distance(4.0f, ppm1440, 1.0f) - 39.1f) < 0.1f);
+    CHECK(fabs(engine_full_3d_distance(6.0f, ppm1440, 1.0f) - 58.6f) < 0.1f);
+    CHECK(fabs(engine_full_3d_distance(10.0f, ppm1440, 1.0f) - 97.7f) < 0.1f);
     CHECK(engine_full_3d_distance(16.0f, ppm1440, 1.0f) == ENGINE_FULL_3D_MAX);
+    CHECK(fabs(engine_full_3d_distance(2.0f, ppm2160, 1.0f) - 29.3f) < 0.1f);
+    CHECK(fabs(engine_full_3d_distance(4.0f, ppm2160, 1.0f) - 58.6f) < 0.1f);
+    CHECK(fabs(engine_full_3d_distance(6.0f, ppm2160, 1.0f) - 88.0f) < 0.1f);
+    CHECK(fabs(engine_full_3d_distance(10.0f, ppm2160, 1.0f) - 146.6f) < 0.1f);
+    CHECK(engine_full_3d_distance(16.0f, ppm2160, 1.0f) == ENGINE_FULL_3D_MAX);
+    CHECK(engine_full_3d_distance(500.0f, ppm2160, 1.0f) == ENGINE_FULL_3D_MAX);
+    /* Past a CacheMul of 10 the maximum is below 1998's own distance, which stays the floor. */
+    CHECK(engine_full_3d_distance(500.0f, ppm2160, 10.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL * 10.0f);
     CHECK(engine_full_3d_distance(500.0f, ppm2160, 9.0f) == ENGINE_FULL_3D_MAX);
+    CHECK(engine_full_3d_distance(500.0f, ppm2160, 11.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL * 11.0f);
     CHECK(engine_size_class(0.5f) == ENGINE_SIZE_SMALL && engine_size_class(3.0f) == ENGINE_SIZE_MEDIUM &&
           engine_size_class(5.0f) == ENGINE_SIZE_LARGE && engine_size_class(10.0f) == ENGINE_SIZE_LANDMARK);
     /* Never nearer than 1998's 15 m x CacheMul, even past the max. */
@@ -2027,8 +2476,184 @@ static void test_projected_size_policy(void) {
     CHECK(engine_cache_min_distance(1, 0, ENGINE_PART_ENTITY, 6.0f, ppm1440, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
     CHECK(engine_cache_min_distance(0, 0, ENGINE_PART_STATIC, 6.0f, ppm1440, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
     /* The distance an object becomes an impostor is never beyond where it stays visible with its level's 50 m
-     * Culling at 1.4x only when it is small: large objects keep 3D until their own, longer, cull distance. */
+     * Culling at 1.1x only when it is small: large objects keep 3D until their own, longer, cull distance. */
     CHECK(engine_full_3d_distance(0.5f, ppm1440, 1.0f) < 50.0f * ENGINE_OBJECT_DISTANCE_SCALE);
+}
+
+/* The rule the 320 px threshold replaced: 256 px with 25 and 150 m. */
+static float legacy_full_3d_distance(float radius, float pixels_per_metre, float cache_mul) {
+    float d = (radius > 0.0f ? 2.0f * radius * pixels_per_metre / 256.0f : 0.0f) * cache_mul;
+    if (d < 25.0f) d = 25.0f;
+    if (d > 150.0f) d = 150.0f;
+    if (d < ENGINE_CACHE_DISTANCE_ORIGINAL * cache_mul) d = ENGINE_CACHE_DISTANCE_ORIGINAL * cache_mul;
+    return d;
+}
+
+static engine_partition_t cacheable_mesh(float radius, float cache_mul) {
+    engine_partition_t p = { PARTITION_USES_MESH | PARTITION_CACHEABLE | PARTITION_CACHEABLE_VOLUME |
+                                 PARTITION_HARDWARE_ABLE, 10, 100, radius * radius, radius * radius, 0.0f, cache_mul };
+    return p;
+}
+
+/* The 256 px rule with 25-150 m is back: every distance is that rule's, never below 1998's 15 m x CacheMul. */
+static void test_impostor_sooner(void) {
+    const float radii[] = { 0.5f, 1.0f, 2.0f, 4.0f, 6.0f, 10.0f, 16.0f, 24.0f }, muls[] = { 1.0f, 1.25f, 2.0f, 4.0f };
+    const float ppms[] = { 938.4f, ENGINE_PIXELS_PER_METRE_DEFAULT, 1876.7f };
+    for (unsigned a = 0; a < sizeof radii / sizeof radii[0]; a++)
+        for (unsigned m = 0; m < sizeof muls / sizeof muls[0]; m++)
+            for (unsigned q = 0; q < sizeof ppms / sizeof ppms[0]; q++) {
+                float old_d = legacy_full_3d_distance(radii[a], ppms[q], muls[m]);
+                float new_d = engine_full_3d_distance(radii[a], ppms[q], muls[m]);
+                float floor_d = ENGINE_CACHE_DISTANCE_ORIGINAL * muls[m];
+                CHECK(isfinite(new_d) && new_d > 0.0f);
+                CHECK(new_d <= old_d);
+                CHECK(new_d >= floor_d && new_d >= ENGINE_FULL_3D_MIN);
+                CHECK(fabsf(new_d - old_d) < 0.01f);
+            }
+    /* Radius 2/4/6/10/16 m at 1440 lines, CacheMul 1: 25/39.1/58.6/97.7/150 m (280 px had 22.9/35.7/53.6/89.4/120). */
+    {
+        const float radii5[] = { 2.0f, 4.0f, 6.0f, 10.0f, 16.0f }, was[] = { 25.0f, 39.1f, 58.6f, 97.7f, 150.0f },
+                    now[] = { 25.0f, 39.1f, 58.6f, 97.7f, 150.0f };
+        for (unsigned a = 0; a < 5; a++) {
+            CHECK(fabsf(legacy_full_3d_distance(radii5[a], ENGINE_PIXELS_PER_METRE_DEFAULT, 1.0f) - was[a]) < 0.1f);
+            CHECK(fabsf(engine_full_3d_distance(radii5[a], ENGINE_PIXELS_PER_METRE_DEFAULT, 1.0f) - now[a]) < 0.1f);
+        }
+    }
+}
+
+/* An impostor turns back into 3D nearer than the 3D object turns into one: walking at the switch distance keeps it. */
+static void test_impostor_hysteresis(void) {
+    const float radii[] = { 0.5f, 2.0f, 4.0f, 6.0f, 10.0f, 16.0f, 40.0f }, muls[] = { 1.0f, 1.25f, 2.0f, 8.0f, 12.0f };
+    const float ppm = 1876.7f;
+    for (unsigned a = 0; a < sizeof radii / sizeof radii[0]; a++)
+        for (unsigned m = 0; m < sizeof muls / sizeof muls[0]; m++) {
+            float out = engine_full_3d_distance(radii[a], ppm, muls[m]), back = engine_return_3d_distance(radii[a], ppm, muls[m]);
+            float floor_d = ENGINE_CACHE_DISTANCE_ORIGINAL * muls[m];
+            CHECK(back <= out && back >= floor_d);
+            if (out > floor_d) CHECK(fabsf(back - fmaxf(out * 256.0f / 288.0f, floor_d)) < 0.01f);
+            CHECK(engine_cache_min_distance_held(1, 0, ENGINE_PART_STATIC, radii[a], ppm, muls[m], 1) * muls[m] - back < 0.01f);
+            CHECK(engine_cache_min_distance_held(1, 0, ENGINE_PART_STATIC, radii[a], ppm, muls[m], 0) ==
+                  engine_cache_min_distance(1, 0, ENGINE_PART_STATIC, radii[a], ppm, muls[m]));
+        }
+    /* 4 m at 2160 lines: an impostor beyond 58.6 m, 3D again within 52.1 m; 1998's own rules ignore the band. */
+    CHECK(fabsf(engine_full_3d_distance(4.0f, ppm, 1.0f) - 58.6f) < 0.1f);
+    CHECK(fabsf(engine_return_3d_distance(4.0f, ppm, 1.0f) - 52.1f) < 0.1f);
+    CHECK(fabsf(engine_return_3d_distance(500.0f, ppm, 1.0f) - 150.0f * 256.0f / 288.0f) < 0.01f);
+    CHECK(engine_cache_min_distance_held(1, 1, ENGINE_PART_STATIC, 4.0f, ppm, 1.0f, 1) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    CHECK(engine_cache_min_distance_held(1, 0, ENGINE_PART_ENTITY, 4.0f, ppm, 1.0f, 1) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    CHECK(engine_cache_min_distance_held(0, 0, ENGINE_PART_STATIC, 4.0f, ppm, 1.0f, 1) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+}
+
+/* = and - only resized the 3D view inside gameplay (CGameWnd::OnKey -> ChangeViewportSize); the view margin the
+ * registry stores is answered 0, so the view is always the whole launcher resolution. */
+static void test_screen_size_removed(void) {
+    CHECK(screen_size_key_dropped(0xBBu, 1) && screen_size_key_dropped(0xBDu, 1));
+    CHECK(!screen_size_key_dropped(0xBBu, 0) && !screen_size_key_dropped(0xBDu, 0));
+    CHECK(!screen_size_key_dropped(0x6Bu, 1) && !screen_size_key_dropped(0x6Du, 1));
+    CHECK(!screen_size_key_dropped(0x7Au, 1) && !screen_size_key_dropped('W', 1) && !screen_size_key_dropped(0x1Bu, 1));
+    CHECK(registry_view_margin_name("XView") && registry_view_margin_name("YView") && !registry_view_margin_name("Width"));
+    CHECK(REGISTRY_VIEW_MARGIN == 0u);
+}
+
+static void test_impostor_state(void) {
+    static engine_impostor_state_t t[64];
+    uint32_t since = 99;
+    memset(t, 0, sizeof t);
+    CHECK(!engine_impostor_held(t, 64, 0x1000, 10) && !engine_impostor_known(t, 64, 0x1000, 10));
+    CHECK(engine_impostor_note(t, 64, 0x1000, 10, 0, &since) == ENGINE_IMPOSTOR_SAME && since == 0);
+    CHECK(!engine_impostor_held(t, 64, 0x1000, 11));
+    CHECK(engine_impostor_known(t, 64, 0x1000, 11) && !engine_impostor_known(t, 64, 0x1000, 13));
+    CHECK(engine_impostor_note(t, 64, 0x1000, 11, 1, &since) == ENGINE_IMPOSTOR_BECAME && since == 0);
+    CHECK(engine_impostor_held(t, 64, 0x1000, 11) && engine_impostor_held(t, 64, 0x1000, 12));
+    CHECK(engine_impostor_held(t, 64, 0x1000, 11 + ENGINE_IMPOSTOR_STATE_FRAMES));
+    CHECK(!engine_impostor_held(t, 64, 0x1000, 12 + ENGINE_IMPOSTOR_STATE_FRAMES));
+    CHECK(engine_impostor_note(t, 64, 0x1000, 12, 1, &since) == ENGINE_IMPOSTOR_SAME);
+    CHECK(engine_impostor_note(t, 64, 0x1000, 12, 1, &since) == ENGINE_IMPOSTOR_SAME);
+    CHECK(engine_impostor_note(t, 64, 0x1000, 40, 0, &since) == ENGINE_IMPOSTOR_SAME);
+    CHECK(engine_impostor_note(t, 64, 0x1000, 41, 1, &since) == ENGINE_IMPOSTOR_BECAME && since == 30);
+    CHECK(engine_impostor_note(t, 64, 0x1000, 42, 0, &since) == ENGINE_IMPOSTOR_DROPPED && since == 1);
+    CHECK(!engine_impostor_held(t, 64, 0x1000, 42));
+    CHECK(engine_impostor_note(t, 64, 0x1000, 43, 1, &since) == ENGINE_IMPOSTOR_BECAME && since == 1);
+    /* Other keys in a full neighbourhood: stale entries are reused, a live key is never lost. */
+    for (uint32_t k = 1; k <= 200; k++) engine_impostor_note(t, 64, k * 64u, 50, 1, &since);
+    CHECK(engine_impostor_held(t, 64, 64u, 50) || !engine_impostor_held(t, 64, 64u * 200u, 50));
+    CHECK(!engine_impostor_held(t, 64, 0, 50));
+    CHECK(engine_impostor_note(t, 64, 0, 50, 1, &since) == ENGINE_IMPOSTOR_SAME);
+}
+
+/* Non-finite and out-of-range inputs: a finite distance within the limits, never NaN or infinity. */
+static void test_impostor_distance_inputs(void) {
+    const float values[] = { NAN, -INFINITY, -1.0f, 0.0f, 1e-30f, 0.5f, 1.0f, 100.0f, 1e6f, 1e30f, INFINITY };
+    for (unsigned r = 0; r < sizeof values / sizeof values[0]; r++)
+        for (unsigned p = 0; p < sizeof values / sizeof values[0]; p++)
+            for (unsigned m = 0; m < sizeof values / sizeof values[0]; m++) {
+                float d = engine_full_3d_distance(values[r], values[p], values[m]);
+                float stored = engine_cache_min_distance(1, 0, ENGINE_PART_STATIC, values[r], values[p], values[m]);
+                CHECK(isfinite(d) && d >= ENGINE_FULL_3D_MIN && d <= ENGINE_CACHE_DISTANCE_ORIGINAL * 1e6f + 1.0f);
+                CHECK(isfinite(stored) && stored > 0.0f);
+            }
+    /* Larger objects stay 3D at least as far; CacheMul scales the distance until a limit holds it. */
+    for (float r = 0.0f; r < 40.0f; r += 0.25f)
+        CHECK(engine_full_3d_distance(r + 0.25f, ENGINE_PIXELS_PER_METRE_DEFAULT, 1.0f) >=
+              engine_full_3d_distance(r, ENGINE_PIXELS_PER_METRE_DEFAULT, 1.0f));
+    CHECK(fabsf(engine_full_3d_distance(4.0f, ENGINE_PIXELS_PER_METRE_DEFAULT, 2.0f) -
+                2.0f * engine_full_3d_distance(4.0f, ENGINE_PIXELS_PER_METRE_DEFAULT, 1.0f)) < 0.01f);
+    CHECK(engine_full_3d_distance(4.0f, ENGINE_PIXELS_PER_METRE_DEFAULT, 1.25f) >
+          engine_full_3d_distance(4.0f, ENGINE_PIXELS_PER_METRE_DEFAULT, 1.0f));
+}
+
+/* Through bShouldCache's own refusals with the distance the host stores: refused inside it, an impostor candidate past
+ * it, and between the new and the old distance the object is now one. */
+static void test_impostor_decision(void) {
+    const float radii[] = { 2.0f, 4.0f, 6.0f, 10.0f, 16.0f };
+    const float ppm = ENGINE_PIXELS_PER_METRE_DEFAULT;
+    for (unsigned a = 0; a < sizeof radii / sizeof radii[0]; a++) {
+        float r = radii[a], new_d = engine_full_3d_distance(r, ppm, 1.0f), old_d = legacy_full_3d_distance(r, ppm, 1.0f);
+        engine_partition_t p = cacheable_mesh(r, 1.0f);
+        engine_cache_settings_t now = { 1, 8.55f, 0.085f * 0.085f, engine_cache_min_distance(1, 0, ENGINE_PART_STATIC, r, ppm, 1.0f) };
+        engine_cache_settings_t was = now;
+        float between = (new_d + old_d) * 0.5f - r;
+        float inside = 0.95f * new_d - r, beyond = new_d + 1.0f;
+        was.min_distance = legacy_full_3d_distance(r, ppm, 1.0f);
+        CHECK(engine_cache_refusal(&p, &now, inside * inside) != CACHE_REFUSED_PARALLAX);
+        CHECK(engine_cache_refusal(&p, &now, beyond * beyond) == CACHE_REFUSED_PARALLAX);
+        if (new_d < old_d) {
+            CHECK(engine_cache_refusal(&p, &was, between * between) == CACHE_REFUSED_3D_DISTANCE);
+            CHECK(engine_cache_refusal(&p, &now, between * between) == CACHE_REFUSED_PARALLAX);
+        }
+        /* Close up (under the 1998 distance), an object is refused whatever its size. */
+        CHECK(engine_cache_refusal(&p, &now, 10.0f * 10.0f) != CACHE_REFUSED_PARALLAX);
+        CHECK(engine_cache_refusal(&p, &now, 1.0f) != CACHE_REFUSED_PARALLAX);
+    }
+    /* What the image cache cannot draw stays out at any distance, as does anything the level or its movement forbids. */
+    for (float far_m = 25.0f; far_m <= 5000.0f; far_m *= 2.0f) {
+        engine_cache_settings_t c = { 1, 8.55f, 0.085f * 0.085f, engine_cache_min_distance(1, 0, ENGINE_PART_STATIC, 4.0f, ppm, 1.0f) };
+        engine_partition_t p = cacheable_mesh(4.0f, 1.0f);
+        p.flags &= ~PARTITION_CACHEABLE;
+        CHECK(engine_cache_refusal(&p, &c, far_m * far_m) == CACHE_REFUSED_NOT_CACHEABLE);
+        p.flags |= PARTITION_CACHE_NEVER;
+        CHECK(engine_cache_refusal(&p, &c, far_m * far_m) == CACHE_REFUSED_CACHE_NEVER);
+        p = cacheable_mesh(4.0f, 1.0f);
+        p.flags |= PARTITION_SIMPLE_OBJECT;
+        CHECK(engine_cache_refusal(&p, &c, far_m * far_m) == CACHE_REFUSED_SIMPLE_OBJECT);
+        p = cacheable_mesh(4.0f, 1.0f);
+        p.flags |= PARTITION_ALWAYS_FACE;
+        CHECK(engine_cache_refusal(&p, &c, far_m * far_m) == CACHE_REFUSED_FACES_CAMERA);
+        p = cacheable_mesh(4.0f, 1.0f);
+        p.no_cache_until = 100;
+        CHECK(engine_cache_refusal(&p, &c, far_m * far_m) == CACHE_REFUSED_MOVING);
+        p = cacheable_mesh(4.0f, 1.0f);
+        p.flags &= ~PARTITION_CACHEABLE_VOLUME;
+        CHECK(engine_cache_refusal(&p, &c, far_m * far_m) == CACHE_REFUSED_VOLUME);
+    }
+    /* Entities, meshes the CPU draws and the software renderer keep 1998's distance, however small the object. */
+    CHECK(engine_cache_min_distance(1, 0, ENGINE_PART_ENTITY, 16.0f, ppm, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    CHECK(engine_cache_min_distance(1, 1, ENGINE_PART_SPATIAL, 16.0f, ppm, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    CHECK(engine_cache_min_distance(0, 0, ENGINE_PART_STATIC, 16.0f, ppm, 1.0f) == ENGINE_CACHE_DISTANCE_ORIGINAL);
+    /* The guest multiplies the stored distance by CacheMul again: the product is the distance of the policy. */
+    for (float mul = 0.5f; mul <= 8.0f; mul *= 2.0f)
+        CHECK(fabsf(engine_cache_min_distance(1, 0, ENGINE_PART_STATIC, 6.0f, ppm, mul) * mul -
+                    engine_full_3d_distance(6.0f, ppm, mul)) < 0.01f);
 }
 
 static void test_partition_kinds(void) {
@@ -2084,6 +2709,295 @@ static void test_object_atomicity(void) {
           !engine_refusal_holds_parts(CACHE_REFUSED_FACES_CAMERA));
     /* The stored distance for a part of an object kept 3D refuses at any distance and CacheMul. */
     CHECK(sqrtf(1e12f) + 10.0f < ENGINE_CACHE_DISTANCE_NEVER * 0.01f);
+}
+
+/* The callers named by the readbacks of log 034 (sub_0057C980) and the functions that only it and its twin reach. */
+static void test_store_only_polygon_callers(void) {
+    const uint32_t store_only[CPU_POLYGON_STORE_ONLY_CALLERS] = {
+        0x0057C980u, 0x005D4150u, 0x005D5060u, 0x0057E680u, 0x005D6D40u, 0x005D75C0u,
+        0x0056F400u, 0x005BF090u, 0x005BFFD0u, 0x00571A30u, 0x005C2F10u, 0x005C37B0u,
+        0x00567A90u, 0x005B5010u, 0x005B3E10u, 0x005C1FE0u,
+        0x00569A20u, 0x005B6E30u, 0x005B7960u,
+    };
+    const uint32_t others[] = { 0u, 0x0057B7B0u, 0x0057DB50u, 0x00560666u, 0x005D3340u, 0x00641A40u, 0x0055F540u,
+                                0x0057C981u, 0x0057C97Fu, 0x00503400u, 0x005668C0u, 0x00568EF0u, 0x005B67E0u, 0x00567A91u, 0x005B5011u,
+                                0x005D66F0u, 0x005D5E70u, 0x00571A31u, 0x0056F3FFu, 0x0063C5F0u, 0x0063DA50u };
+    for (int i = 0; i < CPU_POLYGON_STORE_ONLY_CALLERS; i++) CHECK(cpu_polygon_store_only_caller(store_only[i]) == i);
+    for (unsigned i = 0; i < sizeof others / sizeof others[0]; i++) CHECK(cpu_polygon_store_only_caller(others[i]) == -1);
+}
+
+static void test_perf_stat(void) {
+    perf_stat_t s;
+    memset(&s, 0, sizeof s);
+    CHECK(perf_stat_percentile(&s, 0.5) == 0.0 && perf_stat_mean(&s) == 0.0);
+    for (int i = 1; i <= 100; i++) perf_stat_add(&s, i * 0.1);
+    CHECK(s.n == 100 && fabs(perf_stat_mean(&s) - 5.05) < 1e-9 && fabs(s.max - 10.0) < 1e-9);
+    CHECK(fabs(perf_stat_percentile(&s, 0.5) - 5.25) < 0.01 && fabs(perf_stat_percentile(&s, 0.95) - 9.75) < 0.26);
+    perf_stat_add(&s, 5000.0);
+    CHECK(s.n == 101 && s.max == 5000.0 && perf_stat_percentile(&s, 1.0) == PERF_STAT_BINS * PERF_STAT_BIN_MS);
+    perf_stat_add(&s, -1.0);
+    perf_stat_add(&s, NAN);
+    perf_stat_add(&s, INFINITY);
+    CHECK(s.n == 101);
+}
+
+/* A transparent-skip polygon drawn into a captured box: with the box read back from the GPU (the old path) or left
+ * unwritten (store-only), the GPU picture that results from compositing the changed pixels is the same. */
+#define SKIP_W 96
+#define SKIP_H 64
+
+static uint16_t skip_gpu_pixel(int x, int y) { return (uint16_t)(0x2000u + (unsigned)(x * 7 + y * 131) % 0x4000u); }
+
+static int skip_covers(int x, int y) { return x >= 20 && x < 80 && y >= 8 && y < 50 && (x - 20) * 42 > (y - 8) * 20; }
+
+static int skip_transparent(int x, int y) { return ((x / 3) + (y / 2)) % 3 == 0 || (x + y) % 11 == 0; }
+
+/* SelfMod 0x0063C5F0 and 0x0063DA50 per pixel: texel = byte texture[uv]; texel 0 is skipped, otherwise
+ * [ebp+edi*2] = clut[texel]. Nothing reads the screen. */
+static int s_skip_clut_span;
+
+static uint16_t skip_clut(unsigned texel) { return (uint16_t)(0x0841u * (texel % 29u) + (texel >> 5)); }
+
+static uint8_t skip_texel(int x, int y) { return (uint8_t)((x / 2) % 5 == 0 || (y % 7) == 3 ? 0u : (unsigned)(x * 29 + y * 17) % 255u + 1u); }
+
+static void skip_polygon(uint8_t* copy, long pitch, const d3dt_rect_t* box) {
+    if (s_skip_clut_span) {
+        for (int y = box->top; y < box->bottom; y++)
+            for (int x = box->left; x < box->right; x++) {
+                unsigned texel = skip_covers(x, y) ? skip_texel(x, y) : 0u;
+                if (texel) ((uint16_t*)(copy + (size_t)y * (size_t)pitch))[x] = skip_clut(texel);
+            }
+        return;
+    }
+    for (int y = box->top; y < box->bottom; y++)
+        for (int x = box->left; x < box->right; x++)
+            if (skip_covers(x, y) && !skip_transparent(x, y))
+                ((uint16_t*)(copy + (size_t)y * (size_t)pitch))[x] = (uint16_t)(0x6000u + (unsigned)(x * 5 + y * 3) % 0x1000u);
+}
+
+static void skip_run(int read_back, uint16_t* picture, unsigned* composited) {
+    static uint16_t gpu[SKIP_W * SKIP_H], reference[SKIP_W * SKIP_H], copy[SKIP_W * SKIP_H];
+    static uint32_t overlay[SKIP_W * SKIP_H];
+    const long pitch = SKIP_W * 2;
+    d3dt_rect_t box = { 18, 6, 82, 52 }, changed, whole = { 0, 0, SKIP_W, SKIP_H };
+    tsync_counts_t counts = { 0, 0 };
+    for (int y = 0; y < SKIP_H; y++)
+        for (int x = 0; x < SKIP_W; x++) gpu[y * SKIP_W + x] = skip_gpu_pixel(x, y);
+    memset(copy, 0x5A, sizeof copy);
+    memset(reference, 0x5A, sizeof reference);
+    tsync_fill((uint8_t*)copy, pitch, reference, SKIP_W, &whole, TSYNC_UNWRITTEN);
+    if (read_back) tsync_fill_unwritten((uint8_t*)copy, pitch, reference, SKIP_W, &box, gpu + box.top * SKIP_W + box.left, SKIP_W);
+    skip_polygon((uint8_t*)copy, pitch, &box);
+    memcpy(picture, gpu, sizeof gpu);
+    *composited = 0;
+    if (tsync_changed_box((const uint8_t*)copy, pitch, reference, SKIP_W, &whole, &changed)) {
+        memset(overlay, 0, sizeof overlay);
+        tsync_overlay_box((const uint8_t*)copy, pitch, reference, SKIP_W, &changed, overlay, &counts);
+        for (int y = changed.top; y < changed.bottom; y++)
+            for (int x = changed.left; x < changed.right; x++)
+                if (overlay[(y - changed.top) * (changed.right - changed.left) + (x - changed.left)]) {
+                    picture[y * SKIP_W + x] = copy[y * SKIP_W + x];
+                    (*composited)++;
+                }
+    }
+}
+
+static void test_transparent_skip_store_only(void) {
+    static uint16_t with_readback[SKIP_W * SKIP_H], without[SKIP_W * SKIP_H];
+    unsigned written = 0, a = 0, b = 0, expected = 0;
+    skip_run(1, with_readback, &a);
+    skip_run(0, without, &b);
+    CHECK(memcmp(with_readback, without, sizeof without) == 0);
+    for (int y = 0; y < SKIP_H; y++)
+        for (int x = 0; x < SKIP_W; x++) {
+            int drawn = skip_covers(x, y) && !skip_transparent(x, y);
+            uint16_t want = drawn ? (uint16_t)(0x6000u + (unsigned)(x * 5 + y * 3) % 0x1000u) : skip_gpu_pixel(x, y);
+            written += drawn;
+            expected += drawn;
+            CHECK(without[y * SKIP_W + x] == want);
+        }
+    CHECK(written > 500 && a == written && b == written && expected == written);
+}
+
+static void test_colour_keyed_span_store_only(void) {
+    static uint16_t with_readback[SKIP_W * SKIP_H], without[SKIP_W * SKIP_H];
+    unsigned a = 0, b = 0, drawn = 0, keyed = 0;
+    for (unsigned t = 1; t < 256; t++) CHECK(skip_clut(t) != TSYNC_UNWRITTEN);
+    s_skip_clut_span = 1;
+    skip_run(1, with_readback, &a);
+    skip_run(0, without, &b);
+    s_skip_clut_span = 0;
+    CHECK(memcmp(with_readback, without, sizeof without) == 0);
+    for (int y = 0; y < SKIP_H; y++)
+        for (int x = 0; x < SKIP_W; x++) {
+            unsigned texel = skip_covers(x, y) ? skip_texel(x, y) : 0u;
+            keyed += skip_covers(x, y) && !texel;
+            drawn += texel != 0;
+            CHECK(without[y * SKIP_W + x] == (texel ? skip_clut(texel) : skip_gpu_pixel(x, y)));
+        }
+    CHECK(drawn > 400 && keyed > 100 && a == drawn && b == drawn);
+}
+
+/* A span that reads the screen (half the old pixel plus the new colour): the box must hold the GPU picture first. */
+static uint16_t blend_half(uint16_t old_pixel, uint16_t colour) {
+    return (uint16_t)((((old_pixel >> 1) & 0x7BEFu) + ((colour >> 1) & 0x7BEFu)) & 0xFFFFu);
+}
+
+static void blend_run(int read_back, uint16_t* picture) {
+    static uint16_t gpu[SKIP_W * SKIP_H], reference[SKIP_W * SKIP_H], copy[SKIP_W * SKIP_H];
+    static uint32_t overlay[SKIP_W * SKIP_H];
+    const long pitch = SKIP_W * 2;
+    d3dt_rect_t box = { 18, 6, 82, 52 }, changed, whole = { 0, 0, SKIP_W, SKIP_H };
+    tsync_counts_t counts = { 0, 0 };
+    for (int y = 0; y < SKIP_H; y++)
+        for (int x = 0; x < SKIP_W; x++) gpu[y * SKIP_W + x] = skip_gpu_pixel(x, y);
+    memset(copy, 0x5A, sizeof copy);
+    memset(reference, 0x5A, sizeof reference);
+    tsync_fill((uint8_t*)copy, pitch, reference, SKIP_W, &whole, TSYNC_UNWRITTEN);
+    if (read_back) tsync_fill_unwritten((uint8_t*)copy, pitch, reference, SKIP_W, &box, gpu + box.top * SKIP_W + box.left, SKIP_W);
+    for (int y = box.top; y < box.bottom; y++)
+        for (int x = box.left; x < box.right; x++)
+            if (skip_covers(x, y)) copy[y * SKIP_W + x] = blend_half(copy[y * SKIP_W + x], 0x3333u);
+    memcpy(picture, gpu, sizeof gpu);
+    if (tsync_changed_box((const uint8_t*)copy, pitch, reference, SKIP_W, &whole, &changed)) {
+        memset(overlay, 0, sizeof overlay);
+        tsync_overlay_box((const uint8_t*)copy, pitch, reference, SKIP_W, &changed, overlay, &counts);
+        for (int y = changed.top; y < changed.bottom; y++)
+            for (int x = changed.left; x < changed.right; x++)
+                if (overlay[(y - changed.top) * (changed.right - changed.left) + (x - changed.left)])
+                    picture[y * SKIP_W + x] = copy[y * SKIP_W + x];
+    }
+}
+
+static void test_read_modify_write_needs_the_box(void) {
+    static uint16_t with_readback[SKIP_W * SKIP_H], without[SKIP_W * SKIP_H];
+    unsigned wrong = 0;
+    blend_run(1, with_readback);
+    blend_run(0, without);
+    for (int y = 0; y < SKIP_H; y++)
+        for (int x = 0; x < SKIP_W; x++) {
+            uint16_t want = skip_covers(x, y) && x >= 18 && x < 82 && y >= 6 && y < 52
+                                ? blend_half(skip_gpu_pixel(x, y), 0x3333u) : skip_gpu_pixel(x, y);
+            CHECK(with_readback[y * SKIP_W + x] == want);
+            wrong += without[y * SKIP_W + x] != want;
+        }
+    CHECK(wrong > 500);
+}
+
+static void test_texture_anomalies(void) {
+    CHECK(texture_anomaly(1, 3, 3, 256, 256, 0) == TEXTURE_OK);
+    CHECK(texture_anomaly(0, 3, 3, 256, 256, 0) == TEXTURE_NULL_RESOURCE);
+    CHECK(texture_anomaly(1, 2, 3, 256, 256, 0) == TEXTURE_STALE_GENERATION);
+    CHECK(texture_anomaly(1, 3, 3, 0, 256, 0) == TEXTURE_BAD_DIMENSIONS && texture_anomaly(1, 3, 3, 256, 9000, 0) == TEXTURE_BAD_DIMENSIONS);
+    CHECK(texture_anomaly(1, 3, 3, 256, 256, 1) == TEXTURE_DIRTY_NOT_UPLOADED);
+    for (int k = TEXTURE_OK; k <= TEXTURE_DIRTY_NOT_UPLOADED; k++) CHECK(strcmp(texture_anomaly_name((texture_anomaly_t)k), "?") != 0);
+}
+
+static int dirty_covers(const d3dt_dirty_t* d, long x, long y) {
+    for (unsigned i = 0; i < d->n; i++)
+        if (x >= d->r[i].left && x < d->r[i].right && y >= d->r[i].top && y < d->r[i].bottom) return 1;
+    return 0;
+}
+
+static void check_dirty_list(const d3dt_dirty_t* d, const d3dt_rect_t* added, unsigned count) {
+    CHECK(d->n <= D3DT_DIRTY_MAX);
+    for (unsigned i = 0; i < d->n; i++)
+        for (unsigned k = i + 1; k < d->n; k++) CHECK(!d3dt_rects_near(&d->r[i], &d->r[k]));
+    for (unsigned i = 0; i < count; i++)
+        for (long y = added[i].top; y < added[i].bottom; y++)
+            for (long x = added[i].left; x < added[i].right; x++)
+                if (!dirty_covers(d, x, y)) {
+                    CHECK(!"a written pixel left the dirty boxes");
+                    return;
+                }
+}
+
+static void test_dirty_boxes(void) {
+    d3dt_dirty_t d;
+    const d3dt_rect_t far_apart[2] = { { 10, 10, 40, 30 }, { 600, 400, 630, 430 } };
+    const d3dt_rect_t touching[2] = { { 10, 10, 40, 30 }, { 41, 10, 70, 30 } };
+    const d3dt_rect_t overlapping[3] = { { 100, 100, 200, 200 }, { 150, 150, 260, 230 }, { 90, 210, 120, 240 } };
+    const d3dt_rect_t empty = { 5, 5, 5, 9 };
+    d3dt_rect_t many[40];
+    unsigned long long separate = 0, merged = 0;
+    memset(&d, 0, sizeof d);
+    for (unsigned i = 0; i < 2; i++) d3dt_dirty_add(&d, &far_apart[i]);
+    CHECK(d.n == 2);
+    check_dirty_list(&d, far_apart, 2);
+    for (unsigned i = 0; i < d.n; i++) separate += (unsigned long long)(d.r[i].right - d.r[i].left) * (d.r[i].bottom - d.r[i].top);
+    CHECK(separate == 30ull * 20ull + 30ull * 30ull); /* a single union would be 620 x 420 */
+    d3dt_dirty_add(&d, &empty);
+    CHECK(d.n == 2);
+    memset(&d, 0, sizeof d);
+    for (unsigned i = 0; i < 2; i++) d3dt_dirty_add(&d, &touching[i]);
+    CHECK(d.n == 1 && d.r[0].left == 10 && d.r[0].right == 70);
+    memset(&d, 0, sizeof d);
+    for (unsigned i = 0; i < 3; i++) d3dt_dirty_add(&d, &overlapping[i]);
+    check_dirty_list(&d, overlapping, 3);
+    CHECK(d.n == 1);
+    /* A full list merges instead of growing, and every box written stays covered with no apron reaching another box. */
+    memset(&d, 0, sizeof d);
+    for (unsigned i = 0; i < 40; i++) {
+        long x = (long)((i * 151u) % 3700u), y = (long)((i * 97u) % 2100u);
+        many[i].left = x;
+        many[i].top = y;
+        many[i].right = x + 3 + (long)(i % 7u) * 9;
+        many[i].bottom = y + 2 + (long)(i % 5u) * 11;
+        d3dt_dirty_add(&d, &many[i]);
+        check_dirty_list(&d, many, i + 1);
+    }
+    CHECK(d.n >= 1 && d.n <= D3DT_DIRTY_MAX);
+    /* Eight small boxes in a grid stay eight; a ninth joins the box it grows least. */
+    memset(&d, 0, sizeof d);
+    for (unsigned i = 0; i < 9; i++) {
+        many[i].left = (long)(i % 3u) * 1200 + (i == 8 ? 60 : 0);
+        many[i].top = (long)(i / 3u) * 700;
+        many[i].right = many[i].left + 40;
+        many[i].bottom = many[i].top + 30;
+        d3dt_dirty_add(&d, &many[i]);
+        check_dirty_list(&d, many, i + 1);
+        CHECK(d.n == (i < 8 ? i + 1 : 8u));
+    }
+    for (unsigned i = 0; i < d.n; i++) merged += (unsigned long long)(d.r[i].right - d.r[i].left) * (d.r[i].bottom - d.r[i].top);
+    CHECK(merged == 7ull * 40ull * 30ull + 1300ull * 30ull);
+}
+
+static void test_render_state_batches(void) {
+    const DWORD drawn[] = { D3DRENDERSTATE_ZENABLE, D3DRENDERSTATE_FILLMODE, D3DRENDERSTATE_SHADEMODE,
+                            D3DRENDERSTATE_ZWRITEENABLE, D3DRENDERSTATE_ALPHATESTENABLE, D3DRENDERSTATE_TEXTUREMAG,
+                            D3DRENDERSTATE_TEXTUREMIN, D3DRENDERSTATE_SRCBLEND, D3DRENDERSTATE_DESTBLEND,
+                            D3DRENDERSTATE_TEXTUREMAPBLEND, D3DRENDERSTATE_CULLMODE, D3DRENDERSTATE_ZFUNC,
+                            D3DRENDERSTATE_ALPHAREF, D3DRENDERSTATE_ALPHAFUNC, D3DRENDERSTATE_ALPHABLENDENABLE,
+                            D3DRENDERSTATE_FOGENABLE, D3DRENDERSTATE_SPECULARENABLE, D3DRENDERSTATE_FOGCOLOR,
+                            D3DRENDERSTATE_TEXTUREADDRESS, D3DRENDERSTATE_TEXTUREADDRESSU,
+                            D3DRENDERSTATE_TEXTUREADDRESSV, D3DRENDERSTATE_ZBIAS };
+    const DWORD ignored[] = { D3DRENDERSTATE_TEXTUREHANDLE, D3DRENDERSTATE_TEXTUREPERSPECTIVE, D3DRENDERSTATE_LASTPIXEL,
+                              D3DRENDERSTATE_DITHERENABLE, D3DRENDERSTATE_SUBPIXEL, D3DRENDERSTATE_SUBPIXELX,
+                              D3DRENDERSTATE_STIPPLEDALPHA, D3DRENDERSTATE_FOGTABLEMODE,
+                              D3DRENDERSTATE_COLORKEYENABLE, D3DRENDERSTATE_RANGEFOGENABLE };
+    for (unsigned i = 0; i < sizeof drawn / sizeof drawn[0]; i++) {
+        CHECK(!d3dt_render_state_keeps_batch(drawn[i]));
+        CHECK(d3dt_render_change_flushes(drawn[i], 0, 1) && !d3dt_render_change_flushes(drawn[i], 5, 5));
+    }
+    for (unsigned i = 0; i < sizeof ignored / sizeof ignored[0]; i++) {
+        CHECK(d3dt_render_state_keeps_batch(ignored[i]));
+        CHECK(!d3dt_render_change_flushes(ignored[i], 0, 1));
+    }
+}
+
+static void test_polygon_spans(void) {
+    CHECK(cpu_polygon_span(0x005D66F0u) == 0x006402F0u && cpu_polygon_span(0x0057DB50u) == 0x006402F0u);
+    CHECK(cpu_polygon_span(0x00567A90u) == 0x0063F5E0u && cpu_polygon_span(0x005B5010u) == 0x0063F5E0u &&
+          cpu_polygon_span(0x005B3E10u) == 0x0063F5E0u);
+    CHECK(cpu_polygon_span(0x0057C980u) == 0x00640D60u && cpu_polygon_span(0x0057E680u) == 0x0063F850u);
+    CHECK(cpu_polygon_span(0x00571A30u) == 0x0063C5F0u && cpu_polygon_span(0x005C2F10u) == 0x0063C5F0u &&
+          cpu_polygon_span(0x005C37B0u) == 0x0063C5F0u);
+    CHECK(cpu_polygon_span(0x0056F400u) == 0x0063DA50u && cpu_polygon_span(0x005BF090u) == 0x0063DA50u &&
+          cpu_polygon_span(0x005BFFD0u) == 0x0063DA50u);
+    CHECK(cpu_polygon_span(0x005C1FE0u) == 0x0063F360u);
+    CHECK(cpu_polygon_span(0x00569A20u) == 0x0063E900u && cpu_polygon_span(0x005B7960u) == 0x0063E900u);
+    CHECK(cpu_polygon_span(0x00401000u) == 0u);
+    CHECK(cpu_polygon_store_only_caller(0x005D66F0u) == -1 && cpu_polygon_store_only_caller(0x0057DB50u) == -1);
 }
 
 /* The game's view sits inside the surface (3212x1345 centred in 3440x1440): iOffsetPointer moves a polygon's box. */
@@ -2417,8 +3331,77 @@ static void test_cpu_polygon_box_readback(void) {
     }
 }
 
+static void test_planar_gradient_limit(void) {
+    CHECK(planar_gradient_limit(480) == PLANAR_GRADIENT_LIMIT_1998);
+    CHECK(planar_gradient_limit(256) == PLANAR_GRADIENT_LIMIT_1998);
+    CHECK(planar_gradient_limit(0) == PLANAR_GRADIENT_LIMIT_1998);
+    CHECK(planar_gradient_limit(-5) == PLANAR_GRADIENT_LIMIT_1998);
+    CHECK(fabsf(planar_gradient_limit(1080) - (-253.125f)) < 1e-3f);
+    CHECK(fabsf(planar_gradient_limit(1440) - (-450.0f)) < 1e-3f);
+    CHECK(fabsf(planar_gradient_limit(2160) - (-1012.5f)) < 1e-3f);
+    CHECK(planar_gradient_limit(2160) < planar_gradient_limit(1440));
+}
+
+static void test_terrain_shadow_pool(void) {
+    /* 1.0.116 at 0x00492298 and PT-BR at 0x00470F41: SetTextureMemSize's last two calls. */
+    static const uint8_t en116[] = { 0xC1, 0xE0, 0x0A, 0x50, 0xE8, 0x3F, 0x67, 0x01, 0x00, 0x8B, 0x15, 0x4C, 0x42, 0x66,
+                                     0x00, 0x8B, 0x0D, 0x9C, 0xF9, 0x66, 0x00, 0x6A, 0x00, 0x52, 0x68, 0x00, 0x00, 0x80,
+                                     0x3F, 0x6A, 0x00, 0x68, 0x00, 0x00, 0x08, 0x00, 0xE8, 0x4F, 0x67, 0x01, 0x00, 0xE9,
+                                     0xBA, 0x33, 0x00, 0x00 };
+    static const uint8_t ptbr[] = { 0x8B, 0x15, 0xFC, 0x6F, 0x66, 0x00, 0x8B, 0x0D, 0x34, 0x34, 0x67, 0x00, 0x6A, 0x00,
+                                    0x52, 0x68, 0x00, 0x00, 0x80, 0x3F, 0x6A, 0x00, 0x68, 0x00, 0x00, 0x08, 0x00, 0xE8,
+                                    0x4F, 0xC1, 0x01, 0x00, 0xE9, 0xFA, 0x33, 0x00, 0x00, 0xC3 };
+    uint8_t other[sizeof en116];
+    uint32_t pool = 0, alloc = 0;
+    CHECK(engine_terrain_shadow_kb(256) == 4096u);
+    CHECK(engine_terrain_shadow_kb(128) == 1024u);
+    CHECK(engine_terrain_shadow_kb(64) == ENGINE_TERRAIN_SHADOW_KB_ORIGINAL);
+    CHECK(engine_terrain_shadow_kb(0) == ENGINE_TERRAIN_SHADOW_KB_ORIGINAL);
+    CHECK(engine_terrain_shadow_kb(0x10000) == ENGINE_TERRAIN_SHADOW_KB_ORIGINAL);
+    CHECK(engine_terrain_shadow_kb(256) * 1024u / (256u * 256u * 2u) == ENGINE_TERRAIN_SHADOW_PAGES);
+    CHECK(ENGINE_TERRAIN_SHADOW_KB_ORIGINAL * 1024u / (256u * 256u * 2u) == 4u);
+    CHECK(terrain_shadow_pool_call(en116, 0x00492298u, sizeof en116, &pool, &alloc));
+    CHECK(pool == 0x0066F99Cu && alloc == 0x004A8A10u);
+    CHECK(terrain_shadow_pool_call(ptbr, 0x00470F41u, sizeof ptbr, &pool, &alloc));
+    CHECK(pool == 0x00673434u && alloc == 0x00470F61u + 0x0001C14Fu);
+    memcpy(other, en116, sizeof other);
+    other[31] = 0x68;
+    other[34] = 0x10;
+    CHECK(!terrain_shadow_pool_call(other, 0x00492298u, sizeof other, &pool, &alloc));
+    CHECK(!terrain_shadow_pool_call(en116, 0x00492298u, 30, &pool, &alloc));
+}
+
+/* fCullDistanceCombined multiplies every squared cull distance: a level's own Culling stays shorter or longer than
+ * another's, and the original limits keep 1. */
+static void test_draw_distance_policy(void) {
+    const float culls[] = { 20.0f, 50.0f, 126.0f, 504.0f, 900.0f }, combined = engine_object_cull_combined(1);
+    float previous = 0.0f;
+    CHECK(fabsf(combined - 1.44f) < 1e-5f && engine_object_cull_combined(0) == 1.0f);
+    CHECK(ENGINE_OBJECT_DISTANCE_SCALE >= 1.0f && ENGINE_OBJECT_DISTANCE_SCALE < 1.4f);
+    for (unsigned i = 0; i < sizeof culls / sizeof culls[0]; i++) {
+        float drawn = sqrtf(culls[i] * culls[i] * combined);
+        CHECK(fabsf(drawn - 1.2f * culls[i]) < 0.01f);
+        CHECK(drawn >= culls[i] && drawn > previous);
+        CHECK(sqrtf(culls[i] * culls[i] * engine_object_cull_combined(0)) == culls[i]);
+        previous = drawn;
+    }
+}
+
+/* The ceiling of the host's own far-clip reach: a level that clips nearer keeps its own far clip. */
+static void test_far_clip_limit(void) {
+    CHECK(ENGINE_FAR_CLIP_MAX == 750.0f);
+    CHECK(engine_far_clip_limit(500.0f) == 500.0f && engine_far_clip_limit(600.0f) == 600.0f);
+    CHECK(engine_far_clip_limit(749.0f) == 749.0f && engine_far_clip_limit(750.0f) == 750.0f);
+    CHECK(engine_far_clip_limit(900.0f) == 750.0f && engine_far_clip_limit(1000.0f) == 750.0f);
+    CHECK(engine_far_clip_limit(50000.0f) == 750.0f);
+    CHECK(engine_far_clip_limit(0.0f) == 750.0f && engine_far_clip_limit(-5.0f) == 750.0f);
+    CHECK(engine_far_clip_limit(NAN) == 750.0f && engine_far_clip_limit(INFINITY) == 750.0f);
+    for (float far_clip = 10.0f; far_clip <= 2000.0f; far_clip += 10.0f)
+        CHECK(engine_far_clip_limit(far_clip) == (far_clip < 750.0f ? far_clip : 750.0f));
+}
+
 static void test_engine_limits(void) {
-    float cull = engine_cull_distance(1.0f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL);
+    float cull =engine_cull_distance(1.0f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL);
     float combined = ENGINE_OBJECT_DISTANCE_SCALE * ENGINE_OBJECT_DISTANCE_SCALE, level_culling = 50.0f;
     CHECK(fabs(cull - 126.0f) < 0.01);
     CHECK(fabs(engine_cull_distance(4.0f, 800.0f, ENGINE_CULL_SCALE_ORIGINAL, ENGINE_CULL_MAX_ORIGINAL) - 504.0f) < 0.01);
@@ -2429,10 +3412,17 @@ static void test_engine_limits(void) {
               cull * cull * combined &&
           cull * (ENGINE_OBJECT_DISTANCE_SCALE + 0.01f) * cull * (ENGINE_OBJECT_DISTANCE_SCALE + 0.01f) >
               cull * cull * combined);
-    /* Log 029: 1.6x considered 1100-1569 partitions in dense areas; 1.4x keeps (1.4/1.6)^2 = 77% of the area. */
-    CHECK(ENGINE_OBJECT_DISTANCE_SCALE >= 1.35f && ENGINE_OBJECT_DISTANCE_SCALE <= 1.5f);
-    CHECK(69.9f * 69.9f < level_culling * level_culling * combined && 70.1f * 70.1f > level_culling * level_culling * combined);
+    CHECK(ENGINE_OBJECT_DISTANCE_SCALE == 1.2f);
+    CHECK(59.9f * 59.9f < level_culling * level_culling * combined && 60.1f * 60.1f > level_culling * level_culling * combined);
+    test_draw_distance_policy();
+    test_far_clip_limit();
     test_projected_size_policy();
+    test_impostor_sooner();
+    test_impostor_hysteresis();
+    test_impostor_state();
+    test_screen_size_removed();
+    test_impostor_distance_inputs();
+    test_impostor_decision();
     test_cache_refusals();
     test_partition_kinds();
     test_projected_cull();
@@ -2452,6 +3442,21 @@ static void test_engine_limits(void) {
     CHECK(engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 0x7FFFFFFFu, 1).regular -
               (int32_t)(ENGINE_TERRAIN_TEXTURE_KB_MODERN * 1024u - 0x1E0000u) >
           engine_texture_layout(ENGINE_TEXTURE_MB_SAFE, 0x7FFFFFFFu, 0).regular);
+    {
+        /* Log 209 at 64 MB: 63744 KB divided, 23936 KB left to the regular textures once 16 MB of terrain pages and the
+         * 20 MB image cache are paid. */
+        engine_texture_layout_t at64 = engine_texture_layout(64, 0x7FFFFFFFu, 1);
+        engine_texture_layout_t now = engine_texture_layout(ENGINE_TEXTURE_MB_MODERN, 0x7FFFFFFFu, 1);
+        CHECK(at64.total / 1024 == 63744 && engine_regular_texture_bytes(&at64, 1) / 1024 == 23936);
+        CHECK(engine_regular_texture_bytes(&at64, 0) == at64.regular);
+        CHECK(ENGINE_TEXTURE_MB_MODERN == 96u && now.total / 1024 == 96512 && now.image_cache / 1024 == 20480 &&
+              now.water / 1024 == 1024 && !now.overflow && now.accepted);
+        CHECK(engine_regular_texture_bytes(&now, 1) / 1024 == 56704);
+        CHECK(engine_regular_texture_bytes(&now, 1) / 1024 >= 48 * 1024);
+        /* Each regular texture has a system-memory surface besides its Direct3D 11 copy: 32 MB more budget is at most
+         * 64 MB more of the x86 address space, log 209 peaked at 1658 MB of 2048. */
+        CHECK(1658u + 2u * (ENGINE_TEXTURE_MB_MODERN - 64u) <= 1800u);
+    }
 }
 
 /* CQuadRootTIN::Update's inputs: levels set 230 m, TrrPixelTol 10 (7 near the beach) and TrrPixelTolFar 50; quality 4
@@ -2459,7 +3464,8 @@ static void test_engine_limits(void) {
 static void test_terrain_settings(void) {
     terrain_settings_t level = { 230.0f, 10.0f, 50.0f, 1.5f, 0.5f }, used;
     used = terrain_modern_settings(level, 1000.0f, 3.0f);
-    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - 1000.0f) < 0.01);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - ENGINE_FAR_CLIP_MAX) < 0.01);
+    CHECK(ENGINE_FAR_CLIP_MAX == 750.0f);
     /* 1440 lines: the level's 10 is already finer than the community's 4 at 480 lines (12); far 50 becomes 36. */
     CHECK(used.pixel_tolerance == 10.0f && fabs(used.pixel_tolerance_far - 36.0f) < 0.001);
     CHECK(used.distance_scale == level.distance_scale && used.pixel_tolerance_scale == level.pixel_tolerance_scale);
@@ -2470,11 +3476,29 @@ static void test_terrain_settings(void) {
     used = terrain_modern_settings(level, 600.0f, 3.0f);
     CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - 600.0f) < 0.01);
     used = terrain_modern_settings(level, 0.0f, 3.0f);
-    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - TERRAIN_TEXTURE_DISTANCE_MAX) < 0.01);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - ENGINE_FAR_CLIP_MAX) < 0.01);
     used = terrain_modern_settings(level, 50000.0f, 3.0f);
-    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - TERRAIN_TEXTURE_DISTANCE_MAX) < 0.01);
+    CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - ENGINE_FAR_CLIP_MAX) < 0.01);
     /* The rvar's own range is 10-1000: Update reads the data directly, so a value past 1000 / 1.5 still works. */
     CHECK(used.dynamic_texture_distance > 230.0f && used.dynamic_texture_distance <= 1000.0f);
+    /* Own textures follow the far clip up to the ceiling; the tolerances do not depend on it. */
+    {
+        const float fars[] = { 400.0f, 500.0f, 600.0f, 749.0f, 750.0f, 900.0f, 1000.0f, 1500.0f };
+        terrain_settings_t reference = terrain_modern_settings(level, 1000.0f, 3.0f);
+        for (unsigned i = 0; i < sizeof fars / sizeof fars[0]; i++) {
+            float reach = fars[i] < ENGINE_FAR_CLIP_MAX ? fars[i] : ENGINE_FAR_CLIP_MAX;
+            used = terrain_modern_settings(level, fars[i], 3.0f);
+            CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - reach) < 0.01);
+            CHECK(used.pixel_tolerance == reference.pixel_tolerance &&
+                  used.pixel_tolerance_far == reference.pixel_tolerance_far);
+            CHECK(used.distance_scale == level.distance_scale && used.pixel_tolerance_scale == level.pixel_tolerance_scale);
+        }
+        /* Quality 0 scales the distance by 0.5: the range variable is larger, the metres are the same. */
+        level.distance_scale = 0.5f;
+        used = terrain_modern_settings(level, 1000.0f, 3.0f);
+        CHECK(fabs(used.dynamic_texture_distance * level.distance_scale - ENGINE_FAR_CLIP_MAX) < 0.01);
+        level.distance_scale = 1.5f;
+    }
     level.dynamic_texture_distance = 900.0f;
     level.pixel_tolerance = 7.0f;
     level.pixel_tolerance_far = 5.0f;
@@ -2510,7 +3534,12 @@ static void test_engine_upload_clock(void) {
           ENGINE_UPLOAD_MS_ORIGINAL);
     CHECK(engine_upload_clock(100u, 7.5, 7.0) - 100u > ENGINE_UPLOAD_MS_ORIGINAL);
     CHECK(engine_upload_clock(100u, 6.9, 7.0) - 100u <= ENGINE_UPLOAD_MS_ORIGINAL);
-    CHECK(ENGINE_UPLOAD_BUDGET_MS > ENGINE_UPLOAD_MS_ORIGINAL && ENGINE_UPLOAD_BUDGET_MS < 16.7);
+    CHECK(engine_upload_budget_ms(0) == 3.0 && engine_upload_budget_ms(1) == 6.0);
+    CHECK(engine_upload_clock(start, 2.9, engine_upload_budget_ms(0)) == start);
+    CHECK(engine_upload_clock(start, 3.1, engine_upload_budget_ms(0)) != start);
+    CHECK(engine_upload_clock(start, 5.9, engine_upload_budget_ms(1)) == start);
+    CHECK(engine_upload_clock(start, 6.1, engine_upload_budget_ms(1)) != start);
+    CHECK(ENGINE_UPLOAD_BACKLOG_MS < 16.7 / 2.0);
 }
 
 static void test_engine_texture_layout(void) {
@@ -2615,7 +3644,7 @@ static void test_page_arena(void) {
 #define HAND_DROP_M 1.644f /* pw_hand_limit for Anne */
 #define HAND_JUMP_SPEED (5.0f * 1.7320508f) /* Jump Height 3x */
 
-enum { HAND_RETAIL, HAND_PREVIOUS, HAND_CARRIER };
+enum { HAND_RETAIL, HAND_PREVIOUS, HAND_FOLLOW };
 enum { BAND_10, BAND_50, BAND_100, BAND_500, BANDS };
 
 typedef struct {
@@ -2629,7 +3658,7 @@ typedef struct {
 
 typedef struct {
     float m, intensity, seconds, metres, heading;
-    int fix, course_073, move_hand;
+    int fix, course_073, move_hand, snag;
     terrain_t ground;
 } hand_course_t;
 
@@ -2673,7 +3702,8 @@ static float length3(const float a[3], const float b[3]) {
  * course instead runs from log 073's last HAND FAR point towards where the pelvis was lost, weaving. */
 static hand_run_t hand_run(const hand_course_t* c) {
     float foot[3], V[3] = { 0, 0, 0 }, B[3], H[3], HV[3] = { 0, 0, 0 }, yaw = c->heading, mouth = 0.9f;
-    float k = c->fix == HAND_CARRIER ? hand_frame_share(c->m) : c->fix == HAND_PREVIOUS && c->m > 1.0f ? 1.0f - 1.0f / c->m : 0.0f;
+    float k = c->fix == HAND_PREVIOUS && c->m > 1.0f ? 1.0f - 1.0f / c->m : 0.0f, world[3], carried_k;
+    hand_follow_t follow = { 0 };
     hand_carrier_t carrier = { 0 };
     hand_run_t out;
     int dropped = 0;
@@ -2691,7 +3721,7 @@ static hand_run_t hand_run(const hand_course_t* c) {
     for (int step = 0; step < 200000; step++) {
         float t = step * HAND_DT, phase = fmodf(t, 30.0f), in = 1.0f, turn = 0.0f, rest[3] = { 0.31f, 0.15f, -0.35f };
         float a[3], ha[3], target[3], u[3], intensity = c->intensity, r;
-        int grounded, band;
+        int grounded, band, controlled = 0, snagged = c->snag && fmodf(t, 5.0f) > 4.0f;
         if (t >= c->seconds && out.travelled >= c->metres) break;
         if (c->course_073) {
             turn = 0.3f * cosf(t * 1.1f);
@@ -2705,6 +3735,7 @@ static hand_run_t hand_run(const hand_course_t* c) {
                 rest[1] = 0.05f;
                 rest[2] = 0.1f;
                 intensity = 0.75f;
+                controlled = 1;
             }
         }
         yaw += turn * HAND_DT;
@@ -2721,15 +3752,20 @@ static hand_run_t hand_run(const hand_course_t* c) {
         target[0] = B[0] + rest[0] * cosf(yaw) - rest[1] * sinf(yaw);
         target[1] = B[1] + rest[0] * sinf(yaw) + rest[1] * cosf(yaw);
         target[2] = B[2] + rest[2];
-        if (c->fix == HAND_CARRIER) {
-            hand_carrier_step(&carrier, k, HAND_DT, B, V, H, HV);
-            if (carrier.valid) hand_damping_shift(k, 1.0f, V, HV);
+        carried_k = c->fix == HAND_FOLLOW && controlled ? hand_frame_share(c->m) : 0.0f;
+        if (c->fix == HAND_FOLLOW) {
+            hand_follow_enter(&follow, !controlled, B, V, H, HV);
+            hand_carrier_step(&carrier, carried_k, HAND_DT, B, V, H, HV);
+            if (carrier.valid) hand_damping_shift(carried_k, 1.0f, V, HV);
         }
         for (int i = 0; i < 3; i++) {
             u[i] = HV[i] - 1.25f * V[i] + (c->fix == HAND_PREVIOUS && i < 2 ? 0.25f * k * V[i] : 0.0f);
             target[i] -= H[i];
         }
-        if (c->fix == HAND_CARRIER && carrier.valid) hand_damping_shift(k, -1.0f, V, HV);
+        if (c->fix == HAND_FOLLOW) {
+            hand_follow_leave(&follow, HV);
+            if (carrier.valid) hand_damping_shift(carried_k, -1.0f, V, HV);
+        }
         if (!dropped && length3(H, B) > HAND_DROP_M) dropped = out.dropped = 1;
         if (dropped)
             ha[0] = ha[1] = ha[2] = 0.0f;
@@ -2744,6 +3780,8 @@ static hand_run_t hand_run(const hand_course_t* c) {
             if (ha[2] < 0.0f) ha[2] = 0.0f;
             for (int i = 0; i < 2; i++) ha[i] -= 8.0f * HV[i];
         }
+        if (snagged) /* caught on something: the contact takes all of the hand's velocity */
+            for (int i = 0; i < 3; i++) HV[i] = ha[i] = 0.0f;
         r = length3(H, B);
         band = out.travelled < 10.0f ? BAND_10 : out.travelled < 50.0f ? BAND_50 : out.travelled < 100.0f ? BAND_100 : BAND_500;
         out.band[band] = fmaxf(out.band[band], r);
@@ -2758,7 +3796,8 @@ static hand_run_t hand_run(const hand_course_t* c) {
         if (!out.finite) break;
         out.travelled += HAND_DT * hypotf(V[0], V[1]);
         out.body_speed = fmaxf(out.body_speed, sqrtf(V[0] * V[0] + V[1] * V[1] + V[2] * V[2]));
-        out.hand_speed = fmaxf(out.hand_speed, sqrtf(HV[0] * HV[0] + HV[1] * HV[1] + HV[2] * HV[2]));
+        hand_follow_world_velocity(&follow, HV, world);
+        out.hand_speed = fmaxf(out.hand_speed, sqrtf(world[0] * world[0] + world[1] * world[1] + world[2] * world[2]));
         if (foot[2] <= terrain_z(&c->ground, foot[0], foot[1])) {
             float n[3], vn;
             terrain_normal(&c->ground, foot[0], foot[1], n);
@@ -2787,6 +3826,117 @@ static hand_course_t hand_course(float m, int fix, float bump) {
     c.ground.gy = 0.07f;
     c.ground.bump = bump;
     return c;
+}
+
+/* Logs 073 and 211: a hand at the retail HandDrop distance (about 1.65 m) is normal; one 55-62 m away has left the
+ * skeleton and is put back beside the body; a reach, a held object or a throw never gets past 3.5 m. */
+static void test_hand_recovery(void) {
+    const float body[3] = { 224.7f, 640.8f, 47.0f }, offset[3] = { 0.3f, -0.2f, 0.1f };
+    float out[3], nan_offset[3] = { NAN, 0.0f, 0.0f };
+    const float multipliers[] = { 1.0f };
+    CHECK(!hand_recovery_needed(0.4f, 1.644f) && !hand_recovery_needed(1.65f, 1.644f) && !hand_recovery_needed(2.0f, 1.644f));
+    CHECK(!hand_recovery_needed(3.29f, 1.644f) && !hand_recovery_needed(3.5f, 1.644f));
+    CHECK(hand_recovery_needed(3.51f, 1.644f) && hand_recovery_needed(55.206f, 1.644f) && hand_recovery_needed(62.9f, 1.644f));
+    CHECK(!hand_recovery_needed(3.9f, 2.0f) && hand_recovery_needed(4.1f, 2.0f));
+    CHECK(hand_recovery_needed(NAN, 1.644f) && hand_recovery_needed(INFINITY, 1.644f));
+    CHECK(!hand_recovery_needed(3.4f, NAN) && hand_recovery_needed(3.6f, 0.0f));
+    hand_rest_position(body, offset, 1, out);
+    CHECK(fabsf(out[0] - 225.0f) < 1e-3f && fabsf(out[1] - 640.6f) < 1e-3f && fabsf(out[2] - 47.1f) < 1e-3f);
+    hand_rest_position(body, offset, 0, out);
+    CHECK(out[0] == body[0] && out[1] == body[1] && fabsf(out[2] - (body[2] - 0.35f)) < 1e-4f);
+    hand_rest_position(body, nan_offset, 1, out);
+    CHECK(isfinite(out[0]) && out[0] == body[0] && !hand_recovery_needed(hypotf(out[0] - body[0], out[2] - body[2]), 1.644f));
+    (void)multipliers;
+}
+
+/* A passive hand at rest rides the pelvis exactly, whatever moves the body (velocity set or removed, position rebuilt)
+ * and at any Movement Speed; Move Hand, a held object or a throw leave the hand to the game, untouched. */
+static void test_hand_follow(void) {
+    static const float multipliers[] = { 1.0f, 2.0f, 5.0f, 10.0f };
+    CHECK(hand_passive(0, 0, 0.0f) && !hand_passive(1, 0, 0.0f) && !hand_passive(2, 0, 0.0f) && !hand_passive(3, 0, 0.0f));
+    CHECK(!hand_passive(0, 1, 0.0f) && !hand_passive(0, 0x01234567, 0.0f) && !hand_passive(0, 0, 0.5f));
+    CHECK(!hand_passive(-1, -1, 0.0f) && hand_passive(0, 0, NAN));
+    for (size_t m = 0; m < sizeof multipliers / sizeof multipliers[0]; m++) {
+        hand_follow_t f = { 0 };
+        float body[3] = { 10.0f, -5.0f, 2.0f }, bv[3] = { 0, 0, 0 }, start_body[3], start_hand[3], err = 0.0f;
+        float hand[3] = { 10.3f, -4.8f, 1.6f }, hv[3] = { 0, 0, 0 }, moved;
+        unsigned seed = 12345u;
+        memcpy(start_body, body, sizeof body);
+        memcpy(start_hand, hand, sizeof hand);
+        for (int step = 0; step < 30000; step++) {
+            hand_follow_enter(&f, 1, body, bv, hand, hv);
+            for (int i = 0; i < 3; i++) CHECK(fabsf(hv[i] - 1.25f * bv[i]) < 1e-3f * (1.0f + fabsf(bv[i])));
+            hand_follow_leave(&f, hv);
+            for (int i = 0; i < 3; i++) {
+                float kick, acc;
+                seed = seed * 1103515245u + 12345u;
+                kick = ((seed >> 16) & 1023u) / 1023.0f - 0.5f;
+                acc = multipliers[m] * (40.0f * kick + (i == 0 ? 3.0f : 0.0f));
+                body[i] += HAND_DT * bv[i];
+                hand[i] += HAND_DT * hv[i];
+                bv[i] += HAND_DT * acc;
+                if ((step % 97) == 0) bv[i] *= 0.6f;
+                if ((step % 211) == 0) body[i] += 0.05f * kick;
+            }
+        }
+        hand_follow_enter(&f, 1, body, bv, hand, hv);
+        for (int i = 0; i < 3; i++) err = fmaxf(err, fabsf((hand[i] - start_hand[i]) - (body[i] - start_body[i])));
+        moved = length3(body, start_body);
+        printf("hand at rest, %.0fx: body moved %.0f m, hand off the body's displacement by %.5f m\n", multipliers[m],
+               moved, err);
+        CHECK(moved > 100.0f * multipliers[m] && err < 2e-3f);
+    }
+    /* controlled: nothing changes; leaving the passive state gives the world velocity back */
+    {
+        hand_follow_t f = { 0 };
+        float body[3] = { 1, 2, 3 }, bv[3] = { 12.0f, -3.0f, 0.5f }, hand[3] = { 1.3f, 2.1f, 2.7f }, hv[3] = { 4, 5, 6 };
+        float world[3];
+        for (int phase = 0; phase < 3; phase++) {
+            hand_follow_enter(&f, 0, body, bv, hand, hv);
+            CHECK(!f.passive && hand[0] == 1.3f && hv[0] == 4.0f && hv[1] == 5.0f && hv[2] == 6.0f);
+            hand_follow_leave(&f, hv);
+            CHECK(hv[0] == 4.0f);
+            body[0] += 0.12f;
+        }
+        hand_follow_enter(&f, 1, body, bv, hand, hv);
+        hand_follow_leave(&f, hv);
+        hand_follow_world_velocity(&f, hv, world);
+        CHECK(fabsf(world[0] - 4.0f) < 1e-5f && fabsf(hv[0] - (4.0f - 12.0f)) < 1e-5f && hand[0] == 1.3f);
+        body[0] += 0.12f;
+        hand[0] += HAND_DT * hv[0];
+        hand_follow_enter(&f, 0, body, bv, hand, hv); /* Move Hand pressed: last step's ride, then world velocity */
+        CHECK(!f.passive && fabsf(hv[0] - 4.0f) < 1e-5f && fabsf(hand[0] - (1.3f - 0.08f + 0.12f)) < 1e-5f);
+        body[0] += 0.12f;
+        hand_follow_enter(&f, 0, body, bv, hand, hv);
+        CHECK(fabsf(hand[0] - (1.3f - 0.08f + 0.12f)) < 1e-5f && fabsf(hv[0] - 4.0f) < 1e-5f);
+    }
+    /* a teleport or a NaN is not ridden */
+    {
+        hand_follow_t f = { 0 };
+        float body[3] = { 0, 0, 0 }, bv[3] = { 0, 0, 0 }, hand[3] = { 0.3f, 0, -0.3f }, hv[3] = { 0, 0, 0 };
+        hand_follow_enter(&f, 1, body, bv, hand, hv);
+        hand_follow_leave(&f, hv);
+        body[0] = 500.0f;
+        hand_follow_enter(&f, 1, body, bv, hand, hv);
+        CHECK(hand[0] == 0.3f && f.passive);
+        hand_follow_leave(&f, hv);
+        body[1] = NAN;
+        hand_follow_enter(&f, 1, body, bv, hand, hv);
+        CHECK(!f.passive && !f.valid && hand[0] == 0.3f && isfinite(hv[0]));
+    }
+    /* the safety recovery puts the hand at rest relative to the body */
+    {
+        hand_follow_t f = { 0 };
+        float body[3] = { 0, 0, 0 }, bv[3] = { 9.0f, 0, 0 }, hand[3] = { 0.3f, 0, -0.3f }, hv[3] = { 0, 0, 0 }, world[3];
+        hand_follow_enter(&f, 1, body, bv, hand, hv);
+        hand_follow_leave(&f, hv);
+        hand_follow_rebase(&f, body, bv, hv);
+        hand_follow_world_velocity(&f, hv, world);
+        CHECK(hv[0] == 0.0f && world[0] == 9.0f);
+        f.passive = 0;
+        hand_follow_rebase(&f, body, bv, hv);
+        CHECK(hv[0] == 9.0f);
+    }
 }
 
 /* The carrier alone, against a body whose velocity is accelerated, set and removed and whose position is rebuilt with
@@ -2866,9 +4016,9 @@ static void test_hand_carrier_exact(void) {
     CHECK(fabsf(hand_frame_share(10.0f) - 0.9f) < 1e-6f);
 }
 
-/* At least 60 s and 500 m at every multiplier, Move Hand off and on, on smooth and bumpy ground: never past the drop
- * distance and, at 10, 50, 100 and 500 m alike, never farther from the pelvis than at 1x. 1x and 0.5x are the game's own
- * arithmetic. */
+/* At least 60 s and 500 m at every multiplier, Move Hand off (riding the pelvis) and on (the carrier), on smooth and
+ * bumpy ground: never past the drop distance and, at 10, 50, 100 and 500 m alike, never farther from the pelvis than
+ * the game's own hand at 1x. */
 static void test_hand_long_run(void) {
     static const float speeds[] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
     static const float bumps[] = { 0.0f, 0.2f };
@@ -2877,7 +4027,7 @@ static void test_hand_long_run(void) {
         hand_run_t one = hand_run(&one_c);
         CHECK(!one.dropped && one.worst < HAND_DROP_M);
         for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
-            hand_course_t c = hand_course(speeds[i], HAND_CARRIER, bumps[b]), on_c = c, retail_c = c;
+            hand_course_t c = hand_course(speeds[i], HAND_FOLLOW, bumps[b]), on_c = c, retail_c = c;
             hand_run_t r, on, retail;
             on_c.move_hand = 1;
             retail_c.fix = HAND_RETAIL;
@@ -2889,16 +4039,31 @@ static void test_hand_long_run(void) {
                    speeds[i], bumps[b], r.travelled, r.worst, r.band[BAND_10], r.band[BAND_50], r.band[BAND_100],
                    r.band[BAND_500], on.worst, retail.worst, retail.dropped ? " (dropped)" : "");
             CHECK(r.finite && on.finite && r.travelled >= 500.0f && on.travelled >= 500.0f);
-            CHECK(!r.dropped && !on.dropped);
+            CHECK(!r.dropped);
             for (int band = 0; band < BANDS; band++) CHECK(r.band[band] <= one.worst + 0.05f);
-            CHECK(on.worst <= one.worst + 0.05f && r.final_distance < 1.0f);
-            if (speeds[i] <= 1.0f) CHECK(r.worst == retail.worst && r.travelled == retail.travelled);
+            CHECK(r.final_distance < 1.0f && on.final_distance < 1.0f);
+            CHECK(!on.dropped && on.worst <= one.worst + 0.05f);
         }
     }
     /* uncarried, the hand is let go from 5x on */
     {
         hand_course_t u = hand_course(5.0f, HAND_RETAIL, 0.0f);
         CHECK(hand_run(&u).dropped);
+    }
+    /* caught on something for 1 s in every 5 (log 213: hand 0.4-3 m/s against a 10-13 m/s body): left behind
+     * uncarried at any speed, riding the pelvis at every one */
+    for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
+        hand_course_t c = hand_course(speeds[i], HAND_FOLLOW, 0.2f), u;
+        hand_run_t r, left;
+        c.snag = 1;
+        u = c;
+        u.fix = HAND_RETAIL;
+        r = hand_run(&c);
+        left = hand_run(&u);
+        printf("hand snagged %.1fx: riding max %.3f m (end %.3f); uncarried %.3f m%s\n", speeds[i], r.worst,
+               r.final_distance, left.worst, left.dropped ? " (dropped)" : "");
+        CHECK(r.finite && !r.dropped && r.worst < 1.0f && r.final_distance < 1.0f);
+        if (speeds[i] >= 1.0f) CHECK(left.dropped || left.worst > r.worst + 0.5f);
     }
 }
 
@@ -2933,7 +4098,7 @@ static void test_hand_log_073(void) {
                 c.ground.bump = bumps[b];
                 c.fix = HAND_PREVIOUS;
                 previous = hand_run(&c);
-                c.fix = HAND_CARRIER;
+                c.fix = HAND_FOLLOW;
                 carried = hand_run(&c);
                 if (previous.dropped) previous_drops++;
                 else previous_worst = fmaxf(previous_worst, previous.worst);
@@ -2954,7 +4119,7 @@ static void test_hand_log_073(void) {
 static void test_speed_sanity(void) {
     static const float speeds[] = { 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.5f, 10.0f };
     for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
-        hand_course_t c = hand_course(speeds[i], HAND_CARRIER, 0.2f);
+        hand_course_t c = hand_course(speeds[i], HAND_FOLLOW, 0.2f);
         hand_run_t r = hand_run(&c);
         printf("sanity at %.1fx: body %.2f m/s, hand %.2f m/s\n", speeds[i], r.body_speed, r.hand_speed);
         CHECK(r.finite && r.body_speed < 50.0f && r.hand_speed < 50.0f);
@@ -3104,7 +4269,9 @@ int main(void) {
     test_profile_activate();
     test_activation_during_load();
     test_window_title();
+    test_hand_follow();
     test_hand_carrier_exact();
+    test_hand_recovery();
     test_hand_long_run();
     test_hand_log_073();
     test_speed_sanity();
@@ -3122,11 +4289,22 @@ int main(void) {
     test_scene_heap_overflow();
     test_cpu_polygon_tiles();
     test_cpu_polygon_origin();
+    test_store_only_polygon_callers();
+    test_transparent_skip_store_only();
+    test_read_modify_write_needs_the_box();
+    test_texture_anomalies();
+    test_polygon_spans();
+    test_render_state_batches();
+    test_dirty_boxes();
+    test_colour_keyed_span_store_only();
+    test_perf_stat();
     test_lazy_capture();
     test_cache_never_and_groups();
     test_scene_heap_stress();
     test_text_box_capture();
     test_cpu_polygon_box_readback();
+    test_planar_gradient_limit();
+    test_terrain_shadow_pool();
     test_target_sync_buffers();
     test_stale_black_cannot_replace_gpu();
     test_no_read_lock_on_gpu_picture();
@@ -3173,6 +4351,15 @@ int main(void) {
     test_mip_chain();
     test_mip_alpha();
     test_coverage_selection();
+    test_texture_gpu();
+    test_texture_gpu_rows();
+    test_texture_gpu_session();
+    test_texture_gpu_run();
+    test_texture_gpu_bump();
+    test_texture_gpu_cache();
+    test_fill_runs();
+    test_overlay_row_sync();
+    test_mip_downsample_exact();
     test_dynamic_textures();
     test_sampler_choice();
     test_readback_regions();

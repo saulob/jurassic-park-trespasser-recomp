@@ -114,12 +114,23 @@ uint16_t d3dt_bgra_to_rgb565(uint32_t v);
 unsigned d3dt_overlay_row(const uint16_t* current, const uint16_t* pristine, unsigned count, uint32_t* out);
 /* Pixels the CPU turned black where the previous picture was not: what could paint the scene black. */
 unsigned d3dt_black_over_content(const uint16_t* current, const uint16_t* previous, unsigned count);
+/* d3dt_overlay_row, d3dt_black_over_content and the copy of the row into keep, in one pass; adds the black count. */
+unsigned d3dt_overlay_row_sync(const uint16_t* current, uint16_t* keep, unsigned count, uint32_t* out, unsigned long* black);
 /* First and one-past-last differing pixel of a row; 0 when the rows are equal. */
 int d3dt_row_span(const uint16_t* current, const uint16_t* pristine, unsigned count, unsigned* first, unsigned* end);
 
 typedef struct {
     long left, top, right, bottom;
 } d3dt_rect_t;
+
+/* Where the CPU wrote, as up to D3DT_DIRTY_MAX separate boxes. Boxes closer than D3DT_DIRTY_GAP pixels are one box:
+ * each composite also rewrites a 1-pixel apron, which must never reach another box. */
+#define D3DT_DIRTY_MAX 8u
+#define D3DT_DIRTY_GAP 2
+typedef struct {
+    d3dt_rect_t r[D3DT_DIRTY_MAX];
+    unsigned n;
+} d3dt_dirty_t;
 
 d3dt_rect_t d3dt_scale_rect(long x, long y, long w, long h, unsigned legacy_w, unsigned legacy_h, unsigned target_w,
                             unsigned target_h);
@@ -190,8 +201,17 @@ uint32_t d3dt_vertex_sampler(uint32_t address_u, uint32_t address_v);
 /* Copies the bytes of src's rows that differ from dst's: 0 when none does, else the changed box in pixels. */
 int d3dt_copy_changed(uint8_t* dst, long dst_pitch, const uint8_t* src, long src_pitch, unsigned width, unsigned height,
                       unsigned pixel_bytes, d3dt_rect_t* changed);
+/* Adds a written box: merged with every box it touches, overlaps or nearly fills a union with (at most 25% more
+ * pixels than both), and into the box it grows least when the list is full. */
+void d3dt_dirty_add(d3dt_dirty_t* d, const d3dt_rect_t* add);
+/* Whether two boxes are closer than D3DT_DIRTY_GAP pixels on both axes. */
+int d3dt_rects_near(const d3dt_rect_t* a, const d3dt_rect_t* b);
 /* Whether an address mode change keeps the open batch: both values are wrap or clamp. */
 int d3dt_address_joins(uint32_t old_value, uint32_t value);
+/* Whether a render state is never read when a batch is drawn (ignored, or baked into each vertex by DrawPrimitive). */
+int d3dt_render_state_keeps_batch(uint32_t state);
+/* Whether SetRenderState(state, value) over old_value must draw the open batch first. */
+int d3dt_render_change_flushes(uint32_t state, uint32_t old_value, uint32_t value);
 /* The slot of item among the max a batch binds, taking a free one; -1 when every slot holds another item. */
 int d3dt_batch_slot(const void** bound, unsigned* count, unsigned max, const void* item);
 

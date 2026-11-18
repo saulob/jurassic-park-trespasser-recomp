@@ -869,7 +869,7 @@ private:
             ui.Toggle("Enhanced sky", available ? kEnhancedSkyHelp : kDirect3DOnlyHelp, JPT_KEY_ENHANCED_SKY, true, "Off", "On");
             ImGui::EndDisabled();
         }
-        ui.Toggle("Maximum object detail", kMaxObjectDetailHelp, JPT_KEY_MAX_OBJECT_DETAIL, true, "Off", "On");
+        ui.Toggle("Maximum object detail", kMaxObjectDetailHelp, JPT_KEY_MAX_OBJECT_DETAIL, false, "Off", "On");
         ui.Combo("Texture filtering", kTextureFilteringHelp, JPT_KEY_TEXTURE_FILTER, "anisotropic16",
                  {{"original", "Original"},
                   {"bilinear", "Bilinear"},

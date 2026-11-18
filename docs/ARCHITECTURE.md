@@ -189,10 +189,13 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   level 0 only. Each distinct sampler is logged once with the D3D11 filter and `MaxAnisotropy` actually bound.
 - Engine limits (`engine_limits.c`, D3D11 only, `--original-engine-limits` to compare):
   - Objects: `fCullDistanceCombined` (`0x006634EC`, set to 1 by `SetGlobalPartitionData`) multiplies every squared
-    cull distance, a level's own `Culling` included; the host makes it 1.4^2. `bShouldCache`'s minimum impostor
+    cull distance, a level's own `Culling` included; the host makes it 1.2^2. `bShouldCache`'s minimum impostor
     distance (`0x0064E458`, ATX's ObjectClarityDrawDistance) is set per call from the partition's bounding sphere:
-    a static instance or spatial group stays 3D while the sphere spans more than 256 px (the impostor's own size)
-    with the main camera's projection (25-150 m, times CacheMul, never nearer than 1998's 15 m times CacheMul).
+    a static instance or spatial group stays 3D while the sphere spans more than 256 px (the 256 px impostor, never
+    magnified) with the main camera's projection (25-150 m, times CacheMul, never nearer than 1998's 15 m times
+    CacheMul). An impostor turns back into 3D only once it spans 288 px (its distance times 256/288): `bShouldCache`
+    builds the impostor when it says yes and deletes it when it says no, so without the band an object at the switch
+    distance would rebuild it every few frames. The last answer per partition is kept for two frames.
     Entities (`CEntity` and descendants, by vtable) and meshes that are not hardware-able keep 1998's 15 m. The
     partition tree is visited from the root: an instance kept 3D in a frame for a reason that passes later (too close,
     too big on screen, inside the 3D distance, parallax) keeps its parts 3D too, so it never splits between geometry
@@ -202,11 +205,25 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
     primitives copy the polygon to `arvRasterVertices` before their walker calls `CRasterVid::Lock` (`0x00503400`).
     The coordinates are relative to the game's view, which `CRasterWin::Lock` (`0x00504D20`) places
     `iOffsetPointer` (`+0x90`) bytes into the surface. One DirectDraw Lock spans a run of polygons; each claims the
-    32 px tiles of its screen box, which alone are captured, and the Unlock composites the union of the boxes.
-    Primitives proven to only store pixels (bump, texture linear/perspective, flat) read nothing; any other reads
-    its box from the GPU, never the frame. `FlushBatch`'s Lock (`0x00555AB0`), a wait that touches no pixel, costs
-    nothing. After a Flip the reference matches the other CPU buffer; a polygon run then captures lazily: only tiles
+    32 px tiles of its screen box, which alone are captured, and the Unlock composites them as up to 8 separate
+    boxes (`d3dt_dirty_add`: boxes closer than 2 px, or whose union costs at most 25% more pixels, are one box, so
+    no composite's 1 px apron reaches another box). Primitives proven to only store pixels (bump, texture
+    linear/perspective, flat, the lit texture (DrawPolygon feature 0x06: `sub_00567A90`, its walkers `sub_005B5010` and
+    `sub_005B3E10`, one span `0x0063F5E0` whose only screen access is the store at `0x0063F742`) and the colour-keyed
+    ones, DrawPolygon features 0x0C/0x10C/0x1C/0x11C, whose spans skip texel 0 and store the CLUT word, the colour-keyed lit texture `sub_005C1FE0` (span `0x0063F360`) and the Gouraud texture `sub_00569A20` with its walkers `sub_005B6E30` and `sub_005B7960` (span `0x0063E900`)) read nothing; any other reads its box from the GPU, never the frame. `FlushBatch`'s Lock (`0x00555AB0`), a wait that touches no pixel, costs
+    nothing. A composite of boxes that the last polygon run captured whole uploads the copy's RGB565 rows as they are and `ps_copy_raw` skips the unwritten pixels, with no CPU comparison. The perspective-textured primitive (`sub_00568EF0`, walkers `sub_005B67E0` and `sub_005B5F40`, span `0x0063D020`) can be drawn by the GPU on 1.0.116. The polygon's first screen Lock decides, before any span ran: the screen raster, a bounded readable texture (the tile mask or the clamp limits, whichever is smaller) and CLUT, no alternate-line rows, 3 to 64 valid vertices and a ready Direct3D target send the whole polygon to the GPU (Locks skipped, the span replaced by its own row loop in `texture_gpu_policy.c`, which records the u/z, v/z, 1/z planes for `ps_poly_texture`); anything else, including polygons that never Lock the screen (memory rasters), runs the original CPU path untouched. The primitive is never run twice (it reuses its argument slots as locals). A screen the game holds locked (a run of CPU polygons, since `CRasterVid::Unlock` does not release it) does not keep the polygon on the CPU: the run keeps going when no CPU box lies under the polygon, otherwise the run's pixels are composited first and a fresh capture run starts, so order is kept; a Lock nobody touched is taken over. The shutdown line counts the CPU polygons by reason. A state the preflight did not foresee drops that polygon and turns the path off for the session with one log line. The texel and CLUT caches are emptied on a device change and around every level load. `JPT_GPU_POLYGONS=0` turns it off. The bump-mapped perspective primitive `sub_0057DB50` (its walkers `sub_005D66F0` and `sub_005D5E70` and its inline branches reach only span `0x006402F0`, with the same row epilogue and planes) takes the same path with `ps_poly_bump`: a 16-bit texel (two bytes of the texel buffer) selects `table[(texel - theta) & 0x3FF]` in the 1024-byte intensity table and the CLUT entry `intensity * 64 + (texel >> 10)`; the table and the CLUT rows it can reach are re-checked at every use. `JPT_GPU_BUMP=0` turns off this part only. After a Flip the reference matches the other CPU buffer; a polygon run then captures lazily: only tiles
     claimed since the Flip are filled, compared and uploaded, until something makes the whole copy consistent.
+  - A trapezoid walker draws a polygon of more than 3 vertices with the gradients of one vertex triple
+    (`sub_00555060`): the first whose area exceeds 25 px², else the largest. The game's merged polygons are only
+    nearly planar, so a thin triple misplaces 1/Z and texture across the rest of the polygon. `DrawPolygon` sets that
+    limit (`0x0064E6C4`, 1.0.116 only) from its raster's lines, scaled by (lines / 480)², never below 1998's:
+    identical at 480 lines, the same share of the polygon at any taller resolution.
+  - A terrain node touched by a moving object's shadow (a dinosaur's) keeps its own texture only with a buffer of
+    the same size in the moving-shadow pool; otherwise it is purged and drawn from the base texture, a flat
+    colour at that scale. `SetTextureMemSize` (`0x00492200`) gives that pool a fixed 512 KB: 16 pages of 128 px,
+    only 4 of the 256 px pages Direct3D 11 uses, while at high resolutions nodes ask for full 256 px regions. The
+    host reallocates it right after that call with 32 pages (`engine_limits.c`), finding the pool and its
+    `AllocPages` in the function's code, so every version gets it.
   - Scene heaps (`engine_heaps.c`): `pvCommitMem` (`0x005F8B10`) ignores `VirtualAlloc`'s result, and
     `CDArray::bCommit` commits before it checks its capacity, so a shape asking past a heap's reservation left pages
     marked committed that were not (the 0x0051B90D fault of log 031). Commits are kept inside the reservation, and
@@ -214,7 +231,8 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
     pointers) and the terrain heaps are reserved 4x larger, capacity with them.
   - "Max Recommended Tex Dim" 128 -> 256 (world textures, impostors and terrain pages; the impostor scale branch
     still sees 128).
-  - Texture memory (`iLargeMemAllocMB`) 24 -> 64 MB. The engine splits it with signed 32-bit products
+  - Texture memory (`iLargeMemAllocMB`) 24 -> 96 MB: image cache 20 MB, terrain pages 16 MB (the split pays for the
+    host's terrain pages), water 1 MB, regular textures 55.4 MB (23.4 MB at 64 MB, log 209). The engine splits it with signed 32-bit products
     (`engine_texture_layout`) that wrap from 46 MB; the host corrects them in place: inside the split
     (`0x00506EB0`/`0x00506C00`) the image cache (`0x00547710`) gets min(40%, 20 MB) and the regular pool the rest,
     and `AllocateMemory` (`0x00514FE0`) gets its 85%/95% marks in 64-bit arithmetic. Unused textures are evicted only
@@ -223,7 +241,7 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
     granule each.
 - Terrain (`terrain_quality.c`): under Direct3D only `TrrNoDynTextureDist` applies (`TrrNoTextureDist` is
   software-only): beyond it, or when the terrain pages are full, a node draws a crop of the level's base texture.
-  `CQuadRootTIN::Update` sees own textures out to the far clip (at most 1000 m) and tolerances capped at the
+  `CQuadRootTIN::Update` sees own textures out to the far clip (at most 750 m, `ENGINE_FAR_CLIP_MAX`) and tolerances capped at the
   community's 4 / 12 px scaled from 480 lines to the render height, for that call only. Terrain pages are 256 px in
   16 MB. The terrain's fixed heaps (`pHeapAlloc`, no overflow check) are reserved 4x.
 - Texture residency: a texture surface the game frees with an unchanged GPU copy is parked under its content hash and
@@ -233,7 +251,8 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   newly visible polygons until `GetTickCount() - start > 7`; the polygons it does not reach draw with another linked
   mip or, with none, as a fill of the texture's average colour (`GetBestMipLevels`, `0x0055A920`). With GetTickCount's
   15.6 ms steps that window was anywhere from one upload to 15 ms; inside the call the host's GetTickCount stands
-  still for 10 ms of performance-counter time and then ends the loop (`engine_upload_clock`).
+  still for 3 ms of performance-counter time, 6 ms right after a window that ran out, and then ends the loop
+  (`engine_upload_clock`). A level load uploads everything regardless (`iDisabledCount`).
 - Lifted code optimisation: every lifted file compiles at `/O2 /Ob1`, a /Od build included; `/Ob1` expands only the
   runtime's `inline` helpers (`_pop32`, the x87 ring, flags, `recomp_resolve`). Overrides do not depend on it or on the
   linker: each replaceable function has a stable entry (below). pcrecomp's runtime comes with `patches\pcrecomp`: the
@@ -482,7 +501,10 @@ to its top edge, and `cp_project_in` projects the marker and the trail on it. Th
 Screen Size margin (`XView`/`YView`, each step 6.6% of the size, centred: guest `0x00412BC0`, `0x005F7980`, `0x00504CC0`, the
 same in the four builds), so it fills the surface for 0 and is 3588x2018 inside 3840x2160 for 1. The port hides the game's
 legacy Video options, so the host answers both values 0 for every version (`registry_view_margin_name`) and a margin stored
-by an earlier build is ignored: the image is always the resolution the launcher chose. `compass_tests` reproduces that arithmetic against the logged camera sizes and checks the four versions at
+by an earlier build is ignored: the image is always the resolution the launcher chose. In gameplay `=` (VK 0xBB) and `-`
+(0xBD) only reach `CGameWnd::OnKey`'s calls of `ChangeViewportSize` (`0x00412B70`, the jump table at `0x0040C200`), so the host
+keeps those two key presses from the game there (`screen_size_key_dropped`); menus and the game's own bindings still get
+them. `compass_tests` reproduces that arithmetic against the logged camera sizes and checks the four versions at
 1920x1080, 2560x1440 and 3840x2160.
 
 Objectives (`objective_policy.c`, `objectives.c`) follow `CSetHintAction::iCurrentHint` (`0x0066F01C`), the value
@@ -538,6 +560,17 @@ times the body's displacement; the controller sees `v_hand - 1.25 v_body + 0.25 
 relative to the carrier. The earlier version fed k times BODY's acceleration instead, which misses every direct velocity
 change: on contact-bound ground the hand ran at the edge of the drop distance and was eventually let go (log 073: tens
 of metres behind, then the 60 m query-region check deactivated the pelvis). 1x and below run the game's arithmetic.
+HandDrop is never read by the game, so nothing brings a hand back once it is left behind (log 211: 55-62 m, then
+"human pelvis lost" through `CPhysicsInfoSkeleton`'s deactivation `0x004F03D0` -> `0x004F3F50`). The carrier moves the
+hand through its velocity, which the hand's own contacts and the capped controller take away (log 213: body 10-13 m/s,
+hand 0.4-3 m/s, 0.76 -> 2.51 m in 24 steps). So it only serves the controlled hand (Move Hand, a held object, a throw:
+CPlayer `+0xE28` hand phase, `+0xE30` held, ControlArm urgency `0x006D0A80`). A passive hand rides the pelvis
+(`hand_follow_enter`): between steps its DOF holds a world velocity (its own plus the body's), so the game's integration
+carries it with the body, and only a body displacement the integration does not explain is added at Pelvic_IDOF's
+entry; inside Pelvic_IDOF `Update_Right_Arm` is shown its velocity relative to the body plus 1.25 body velocity, so its
+damping input and its contacts act on the hand's own motion. After each human step
+the override puts a hand farther than twice the arm's reach (at least 3.5 m, `hand_recovery_needed`) back at its last
+offset within reach, at rest relative to the body; this safety recovery is counted at exit and is expected never to run.
 
 ### Closing
 
@@ -876,6 +909,16 @@ readback callers (count, MB, ms), CPU pixels composited in gameplay and menus wi
 over known GPU pixels, the draw state classes (blended ones are the
 water and glass candidates), dark-draw counts, unknown texture formats and the refused-state
 counters. `shutdown` and `thread` cover closing and the game's own threads.
+The exit summary of a gameplay run reads as follows (`DEBUG_SAULO` lines): the frame breakdown rows are exclusive of
+each other (the translation row leaves out the texture uploads, batch flushes, readbacks and CPU composites that run
+inside a DrawPrimitive, which have their own rows), so "guest and everything else" is what the guest thread spent in
+its own code, the CPU polygon rows include the host work they call; `profile` lines name the hottest lifted functions
+with their subsystem, the game code by work class (render, visibility, scene traversal, mesh processing, object update,
+animation, collision/physics, terrain, AI) and the hottest host functions by name (PDB through DbgHelp, resolved only
+when the profile is logged). `D3D batches` lines split the batches ended early by cause (state change, texture arrays
+full, CPU access, GPU target sync, Clear, EndScene, texture upload, frame end, surface change) and name the render
+states that end most of them with the value they changed to; `DrawPrimitive translation` splits one call in eight into
+its stages; `D3D/DirectDraw methods by time` ranks the compatibility layer's methods by sampled time.
 Per-call lines are capped so loops cannot flood the file. `--native-trace` and, in a
 `-Trace` build, `--calltrace FILE` / `--firsthit LO HI` give full detail when asked for.
 

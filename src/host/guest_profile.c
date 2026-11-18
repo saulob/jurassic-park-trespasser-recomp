@@ -1,5 +1,5 @@
 /*
- * --perf-log: sampling profile of the guest thread. Every 2 ms a host thread suspends the guest thread, reads its
+ * Sampling profile of the guest thread (logged every 5 s with --perf-log, for the session at exit). Every 2 ms a host thread suspends the guest thread, reads its
  * instruction pointer and resumes it; nothing between the suspend and the resume may take a lock (the guest thread can
  * hold the heap or CRT lock). A sample inside a lifted function is charged to its guest address; one in the host's own
  * code to a 32-byte block, logged as an offset in the executable to be named with its PDB.
@@ -11,10 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <dbghelp.h>
+
 #define SAMPLE_MS 2
 #define MAX_MODULES 32
-#define TOP_FUNCTIONS 10
-#define TOP_HOST_BLOCKS 12
+#define TOP_FUNCTIONS 16
+#define TOP_HOST_BLOCKS 16
 #define MAX_WORKERS 8
 #define HOST_SLOTS 4096u
 #define HOST_BLOCK_SHIFT 5
@@ -63,7 +65,20 @@ static const struct {
     { 0x00492000u, "terrain" },         { 0x004A2700u, "partitions/scene" },
     { 0x004A6E00u, "visibility/clipping" }, { 0x004A8900u, "texture paging" },
     { 0x004AA000u, "loader/values" },   { 0x004B7000u, "renderer setup" },
-    { 0x004CF000u, "physics" },         { 0x00503000u, "raster backend" },
+    { 0x004CF000u, "physics: system step" },
+    { 0x004D2490u, "physics: object info, magnets" },
+    { 0x004D8460u, "physics: player info" },
+    { 0x004D9D10u, "physics: rigid boxes" },
+    { 0x004DDEB4u, "physics: broad phase" },
+    { 0x004E2470u, "physics: foot contacts" },
+    { 0x004E85A0u, "physics: box-box contacts" },
+    { 0x004EF610u, "physics: rigid integration" },
+    { 0x004F01D0u, "physics: skeletons" },
+    { 0x004F17F0u, "physics: bipeds" },
+    { 0x004F34A0u, "physics: quadrupeds" },
+    { 0x004F3900u, "physics: humans, pelvis IDOF" },
+    { 0x004F71E0u, "physics: compound bodies, arms" },
+    { 0x00503000u, "raster backend" },
     { 0x0050F000u, "D3D rasters/texture memory" }, { 0x00516700u, "shapes/meshes" },
     { 0x0051C000u, "render pipeline" }, { 0x00544000u, "image cache" },
     { 0x00549000u, "rasteriser primitives" }, { 0x005F5000u, "system/paging" },
@@ -74,6 +89,30 @@ static const struct {
     { 0x00639200u, "other" },           { 0x0063B000u, "game native code" },
 };
 #define RANGE_COUNT (sizeof k_ranges / sizeof k_ranges[0])
+
+/* The work classes the optimisation rounds talk about, from the subsystem of a guest address. */
+enum { CAT_RENDER, CAT_VISIBILITY, CAT_SCENE, CAT_MESH, CAT_OBJECTS, CAT_ANIMATION, CAT_PHYSICS, CAT_TERRAIN, CAT_AI,
+       CAT_OTHER, CAT_COUNT };
+static const char* const k_category_names[CAT_COUNT] = { "render", "visibility", "scene traversal", "mesh processing",
+                                                         "object update", "animation", "collision/physics", "terrain",
+                                                         "AI", "other" };
+
+static int category_of(const char* name) {
+    static const struct {
+        const char* name;
+        int category;
+    } map[] = { { "render pipeline", CAT_RENDER }, { "scene render", CAT_RENDER }, { "raster backend", CAT_RENDER },
+                { "D3D rasters/texture memory", CAT_RENDER }, { "rasteriser primitives", CAT_RENDER },
+                { "renderer setup", CAT_RENDER }, { "image cache", CAT_RENDER }, { "texture paging", CAT_RENDER },
+                { "visibility/clipping", CAT_VISIBILITY }, { "partitions/scene", CAT_SCENE },
+                { "shapes/meshes", CAT_MESH }, { "world/entities", CAT_OBJECTS }, { "water", CAT_OBJECTS },
+                { "triggers/actions", CAT_OBJECTS }, { "player/animation", CAT_ANIMATION }, { "terrain", CAT_TERRAIN },
+                { "AI", CAT_AI } };
+    if (!strncmp(name, "physics", 7)) return CAT_PHYSICS;
+    for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
+        if (!strcmp(name, map[i].name)) return map[i].category;
+    return CAT_OTHER;
+}
 
 typedef struct {
     unsigned* fn_hits;
@@ -101,18 +140,22 @@ static struct {
 } s_workers[MAX_WORKERS];
 static volatile LONG s_worker_count;
 static profile_t s_window, s_session;
+static volatile LONG s_slot_samples[RANGE_COUNT + BUCKET_COUNT];
 static SRWLOCK s_lock = SRWLOCK_INIT;
 static volatile LONG s_running;
 static LARGE_INTEGER s_window_start;
 static uint32_t s_icalls_at_start;
 static unsigned long long s_cache_hits_at_start, s_cache_misses_at_start;
 
+/* A function pointer of an incrementally linked image is a jump in the thunk table at the start of .text, below all
+ * the host code: a lifted function started there would be charged with every host sample (log 213: the host's waits
+ * and the renderer as "AI", sub_004213F0). */
 static uintptr_t function_body(recomp_func_t f) {
     const BYTE* p = (const BYTE*)f;
-    if (p[0] == 0xE9) {
+    for (int hops = 0; hops < 4 && p[0] == 0xE9; hops++) {
         int32_t rel;
         memcpy(&rel, p + 1, 4);
-        return (uintptr_t)(p + 5 + rel);
+        p += 5 + rel;
     }
     return (uintptr_t)p;
 }
@@ -284,6 +327,9 @@ static void record(profile_t* p, uintptr_t ip, const uint32_t* stack, unsigned w
     p->total++;
     p->bucket[bucket]++;
     if (fn >= 0) p->fn_hits[fn]++;
+    InterlockedIncrement(&s_slot_samples[bucket == BUCKET_LIFTED     ? range_of(s_fns[fn].va)
+                                         : bucket == BUCKET_SELFMOD ? range_of((uint32_t)ip)
+                                                                    : RANGE_COUNT + (unsigned)bucket]);
     if (bucket == BUCKET_SELFMOD) p->selfmod_range[range_of((uint32_t)ip)]++;
     if (bucket == BUCKET_HOST) add_host_block(p, (uint32_t)((ip - s_image_lo) >> HOST_BLOCK_SHIFT), 1);
     if (m >= 0) p->module_hits[m]++;
@@ -353,7 +399,6 @@ void guest_profile_start(HANDLE guest_thread) {
     const IMAGE_NT_HEADERS* nt = (const IMAGE_NT_HEADERS*)((const BYTE*)self + ((const IMAGE_DOS_HEADER*)self)->e_lfanew);
     HANDLE thread;
     const lift_image_t* image = lift_active_image();
-    if (!host_perf_logging()) return;
     s_fn_count = image->meta->function_count;
     s_fns = (lifted_fn_t*)malloc(s_fn_count * sizeof *s_fns);
     s_window.fn_hits = (unsigned*)calloc(s_fn_count, sizeof(unsigned));
@@ -363,7 +408,7 @@ void guest_profile_start(HANDLE guest_thread) {
         return;
     for (unsigned i = 0; i < s_fn_count; i++) {
         recomp_func_t lifted = guest_override_lifted(image->dispatch[i].address);
-        s_fns[i].start = lifted ? (uintptr_t)lifted : function_body(image->dispatch[i].func);
+        s_fns[i].start = function_body(lifted ? lifted : image->dispatch[i].func);
         s_fns[i].va = image->dispatch[i].address;
     }
     qsort(s_fns, s_fn_count, sizeof *s_fns, by_start);
@@ -397,8 +442,43 @@ void guest_profile_add_worker(HANDLE thread, uint32_t entry) {
 
 static double share(unsigned n, unsigned total) { return total ? 100.0 * n / total : 0.0; }
 
+/* The host function at an offset of the executable, from its PDB through DbgHelp loaded on first use (only when the
+ * profile is logged, so never in a frame). */
+static int host_symbol(uint32_t offset, char* out, size_t cap) {
+    typedef BOOL(WINAPI * init_t)(HANDLE, PCSTR, BOOL);
+    typedef DWORD64(WINAPI * load_t)(HANDLE, HANDLE, PCSTR, PCSTR, DWORD64, DWORD, PMODLOAD_DATA, DWORD);
+    typedef BOOL(WINAPI * from_t)(HANDLE, DWORD64, PDWORD64, PSYMBOL_INFO);
+    static int s_state; /* 0 not tried, 1 ready, -1 unavailable */
+    static from_t s_from;
+    union {
+        SYMBOL_INFO info;
+        char bytes[sizeof(SYMBOL_INFO) + 255];
+    } sym;
+    DWORD64 displacement = 0;
+    HANDLE process = GetCurrentProcess();
+    if (!s_state) {
+        HMODULE dbg = LoadLibraryA("dbghelp.dll");
+        init_t init = dbg ? (init_t)GetProcAddress(dbg, "SymInitialize") : NULL;
+        load_t load = dbg ? (load_t)GetProcAddress(dbg, "SymLoadModuleEx") : NULL;
+        char path[MAX_PATH];
+        s_state = -1;
+        s_from = dbg ? (from_t)GetProcAddress(dbg, "SymFromAddr") : NULL;
+        if (init && load && s_from && GetModuleFileNameA(NULL, path, sizeof path) && init(process, NULL, FALSE) &&
+            load(process, NULL, path, NULL, (DWORD64)s_image_lo, (DWORD)(s_image_hi - s_image_lo), NULL, 0))
+            s_state = 1;
+    }
+    if (s_state < 0) return 0;
+    memset(&sym, 0, sizeof sym);
+    sym.info.SizeOfStruct = sizeof sym.info;
+    sym.info.MaxNameLen = 255;
+    if (!s_from(process, (DWORD64)s_image_lo + offset, &displacement, &sym.info)) return 0;
+    _snprintf(out, cap - 1, "%s+0x%X", sym.info.Name, (unsigned)displacement);
+    out[cap - 1] = 0;
+    return 1;
+}
+
 static void log_host_blocks(const profile_t* p, const char* when) {
-    char line[900];
+    char line[2600];
     uint32_t top_block[TOP_HOST_BLOCKS];
     unsigned top_hits[TOP_HOST_BLOCKS], top_n = 0, k;
     int n = 0;
@@ -414,23 +494,32 @@ static void log_host_blocks(const profile_t* p, const char* when) {
         top_hits[k] = h;
         top_block[k] = p->host_block[i];
     }
-    for (k = 0; k < top_n; k++)
-        n += _snprintf(line + n, sizeof line - 1 - n, "%s+0x%07X %.1f%%", k ? ", " : "",
-                       top_block[k] << HOST_BLOCK_SHIFT, share(top_hits[k], p->total));
+    for (k = 0; k < top_n; k++) {
+        char name[96];
+        uint32_t offset = top_block[k] << HOST_BLOCK_SHIFT;
+        n += _snprintf(line + n, sizeof line - 1 - n, "%s+0x%07X%s%s %.1f%%", k ? ", " : "", offset,
+                       host_symbol(offset, name, sizeof name) ? " " : "", host_symbol(offset, name, sizeof name) ? name : "",
+                       share(top_hits[k], p->total));
+    }
     line[sizeof line - 1] = 0;
     if (n) host_log("profile", "%s, hottest port code (32-byte blocks, offsets in the guest image): %s", when, line);
 }
 
 static void describe_caller(uint32_t caller, char* out, size_t cap) {
     if (!caller) _snprintf(out, cap - 1, "?");
-    else if (caller & 0x80000000u) _snprintf(out, cap - 1, "+0x%07X", (caller & 0x7FFFFFFFu) << HOST_BLOCK_SHIFT);
+    else if (caller & 0x80000000u) {
+        uint32_t offset = (caller & 0x7FFFFFFFu) << HOST_BLOCK_SHIFT;
+        char name[96];
+        if (host_symbol(offset, name, sizeof name)) _snprintf(out, cap - 1, "+0x%07X %s", offset, name);
+        else _snprintf(out, cap - 1, "+0x%07X", offset);
+    }
     else _snprintf(out, cap - 1, "sub_%08X", caller);
     out[cap - 1] = 0;
 }
 
 /* Which system API the guest thread is in, who called it, and the guest's import at that moment. */
 static void log_system(const profile_t* p, const char* when) {
-    char line[1400], caller[24];
+    char line[2400], caller[160];
     const system_hit_t* top[TOP_SYSTEM];
     unsigned top_n = 0, k;
     int n = 0;
@@ -481,16 +570,18 @@ static void log_icalls(const profile_t* p, const char* when) {
 
 static void log_profile(const profile_t* p, const char* when) {
     char line[900];
-    unsigned category[RANGE_COUNT];
+    unsigned category[RANGE_COUNT], category_all[RANGE_COUNT];
     uint32_t top_va[TOP_FUNCTIONS];
     unsigned top_hits[TOP_FUNCTIONS], top_n = 0;
     int n = 0;
     if (!p->total) return;
     memcpy(category, p->selfmod_range, sizeof category);
+    memcpy(category_all, p->selfmod_range, sizeof category_all);
     for (unsigned i = 0; i < s_fn_count; i++) {
         unsigned h = p->fn_hits[i], k;
         if (!h) continue;
         category[range_of(s_fns[i].va)] += h;
+        category_all[range_of(s_fns[i].va)] += h;
         if (top_n < TOP_FUNCTIONS) top_n++;
         else if (h <= top_hits[TOP_FUNCTIONS - 1]) continue;
         for (k = top_n - 1; k > 0 && top_hits[k - 1] < h; k--) {
@@ -530,10 +621,23 @@ static void log_profile(const profile_t* p, const char* when) {
     }
     line[sizeof line - 1] = 0;
     if (n) host_log("profile", "%s, game code by subsystem: %s", when, line);
+    {
+        unsigned by_category[CAT_COUNT] = { 0 }, game_total = 0;
+        for (unsigned r = 0; r < RANGE_COUNT; r++) {
+            by_category[category_of(k_ranges[r].name)] += category_all[r];
+            game_total += category_all[r];
+        }
+        n = 0;
+        for (int c = 0; c < CAT_COUNT; c++)
+            n += _snprintf(line + n, sizeof line - 1 - n, "%s%s %.1f%% (%.0f%% of the game code)", c ? ", " : "",
+                           k_category_names[c], share(by_category[c], p->total), share(by_category[c], game_total));
+        line[sizeof line - 1] = 0;
+        if (n) host_log("profile", "%s, game code by work class: %s", when, line);
+    }
     n = 0;
     for (unsigned i = 0; i < top_n; i++)
-        n += _snprintf(line + n, sizeof line - 1 - n, "%ssub_%08X %.1f%%", i ? ", " : "", top_va[i],
-                       share(top_hits[i], p->total));
+        n += _snprintf(line + n, sizeof line - 1 - n, "%ssub_%08X %.1f%% (%s)", i ? ", " : "", top_va[i],
+                       share(top_hits[i], p->total), k_ranges[range_of(top_va[i])].name);
     line[sizeof line - 1] = 0;
     if (n) host_log("profile", "%s, hottest lifted functions: %s", when, line);
     log_host_blocks(p, when);
@@ -594,6 +698,24 @@ static void log_indirect_calls(void) {
 }
 
 /* Called with the renderer's 5-second performance lines; the copy is taken under the lock, the logging after it. */
+unsigned guest_profile_slots(void) { return (unsigned)(RANGE_COUNT + BUCKET_COUNT); }
+
+const char* guest_profile_slot_name(unsigned slot) {
+    return slot < RANGE_COUNT ? k_ranges[slot].name : slot < RANGE_COUNT + BUCKET_COUNT ? k_bucket_names[slot - RANGE_COUNT] : "?";
+}
+
+void guest_profile_snapshot(unsigned* out) {
+    for (unsigned i = 0; i < RANGE_COUNT + BUCKET_COUNT; i++) out[i] = (unsigned)s_slot_samples[i];
+}
+
+int guest_profile_running(void) { return s_running != 0; }
+
+int guest_profile_slot_physics(unsigned slot) {
+    return slot < RANGE_COUNT && !strncmp(k_ranges[slot].name, "physics", 7);
+}
+
+double guest_profile_sample_ms(void) { return SAMPLE_MS; }
+
 void guest_profile_window(void) {
     static profile_t copy;
     unsigned* hits;

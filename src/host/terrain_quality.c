@@ -7,6 +7,7 @@
  */
 #include "guest_va.h"
 #include "host.h"
+#include "perf_sections.h"
 
 #include <string.h>
 
@@ -86,13 +87,9 @@ static void log_pages(void) {
              "part of the map)" : "");
 }
 
-static void quad_root_update(void) {
+static void quad_root_update_modern(void) {
     terrain_settings_t level, used;
     float far_clip;
-    if (g_alias_entry) {
-        s_update_lifted();
-        return;
-    }
     if (!engine_limits_modern()) {
         s_update_lifted();
         return;
@@ -111,6 +108,17 @@ static void quad_root_update(void) {
     log_pages();
 }
 
+static void quad_root_update(void) {
+    int64_t begin;
+    if (g_alias_entry) {
+        s_update_lifted();
+        return;
+    }
+    begin = perf_section_begin();
+    quad_root_update_modern();
+    perf_section_end(PS_TERRAIN_UPDATE, begin);
+}
+
 void terrain_quality_install(void) {
     s_installed = guest_override_install(QUAD_ROOT_UPDATE_VA, quad_root_update, &s_update_lifted);
 }
@@ -119,7 +127,7 @@ void terrain_quality_log(void) {
     if (!s_installed || !engine_limits_modern()) return;
     host_log("graphics", "  terrain: own (dynamic) textures out to the camera's far clip, at most %.0f m (levels: "
              "230 m times 1.5 at quality 4); mesh error at most TrrPixelTol %.0f / TrrPixelTolFar %.0f at 480 lines%s; "
-             "terrain heaps reserved %ux", TERRAIN_TEXTURE_DISTANCE_MAX, TERRAIN_PIXEL_TOL_480,
+             "terrain heaps reserved %ux", ENGINE_FAR_CLIP_MAX, TERRAIN_PIXEL_TOL_480,
              TERRAIN_PIXEL_TOL_FAR_480,
              engine_heaps_enlarged() ? " (scaled to the render height)" : " (levels' own: heaps not enlarged)",
              engine_heaps_enlarged() ? TERRAIN_HEAP_SCALE : 1u);

@@ -168,7 +168,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `medium` |
 | `water_refraction` | 1, 0 | 1 |
 | `enhanced_sky` | 1, 0 | 1 |
-| `max_object_detail` | 1, 0 | 1 |
+| `max_object_detail` | 1, 0 | 0 |
 | `dual_stow` | 1, 0 | 1 |
 | `active_ai` | `original`, `enhanced` | `enhanced` |
 | `official_patch_117` | 1, 0 | 1 |
@@ -429,7 +429,7 @@ is not part of this work.
   out of range) keep the retail sky. The port draws the same retail plane and texture and takes v per pixel from the
   plane point the texture coordinates give (u = x · 1e-4 + 1.5 + scroll, v = y · 1e-4 + scroll) against the camera.
   Object, terrain and water fog are unchanged.
-- **Maximum object detail** (key `max_object_detail`, On by default): as Trespasser CE's `ForceMaxObjectDetail`, the
+- **Maximum object detail** (key `max_object_detail`, Off by default; a saved value is kept): as Trespasser CE's `ForceMaxObjectDetail`, the
   renderer's `bDetailReduce` (render settings `[[0x006D2224]]+0x33`) is cleared, so the object pipeline (0x00519B20)
   and the terrain shadow pass always take an object's top mesh instead of the lower-detail one 0x004A7F10 would pick
   for its screen size. Impostor images and terrain shadows keep their own settings, as in CE. Off is the retail

@@ -385,6 +385,47 @@ int target_access_reads(cpu_access_t access, uint32_t lock_flags, uint32_t calle
 
 int safemode_value_virtual(int legacy) { return !legacy; }
 
+int cpu_polygon_store_only_caller(uint32_t caller) {
+    static const uint32_t callers[CPU_POLYGON_STORE_ONLY_CALLERS] = {
+        0x0057C980u, 0x005D4150u, 0x005D5060u, 0x0057E680u, 0x005D6D40u, 0x005D75C0u,
+        0x0056F400u, 0x005BF090u, 0x005BFFD0u, 0x00571A30u, 0x005C2F10u, 0x005C37B0u,
+        0x00567A90u, 0x005B5010u, 0x005B3E10u, 0x005C1FE0u,
+        0x00569A20u, 0x005B6E30u, 0x005B7960u,
+    };
+    for (int i = 0; i < CPU_POLYGON_STORE_ONLY_CALLERS; i++)
+        if (caller == callers[i]) return i;
+    return -1;
+}
+
+uint32_t cpu_polygon_span(uint32_t caller) {
+    switch (caller) {
+    case 0x0057DB50u: case 0x005D5E70u: case 0x005D66F0u: return 0x006402F0u;
+    case 0x0057B7B0u: case 0x005D3340u: return 0x00640FE0u;
+    case 0x0057C980u: case 0x005D4150u: case 0x005D5060u: return 0x00640D60u;
+    case 0x0057E680u: case 0x005D6D40u: case 0x005D75C0u: return 0x0063F850u;
+    case 0x0056F400u: case 0x005BF090u: case 0x005BFFD0u: return 0x0063DA50u;
+    case 0x00571A30u: case 0x005C2F10u: case 0x005C37B0u: return 0x0063C5F0u;
+    case 0x00567A90u: case 0x005B5010u: case 0x005B3E10u: return 0x0063F5E0u;
+    case 0x005C1FE0u: return 0x0063F360u;
+    case 0x00569A20u: case 0x005B6E30u: case 0x005B7960u: return 0x0063E900u;
+    default: return 0;
+    }
+}
+
+texture_anomaly_t texture_anomaly(int has_resource, unsigned resource_generation, unsigned device_generation,
+                                  unsigned width, unsigned height, int dirty_left) {
+    if (!width || !height || width > 8192u || height > 8192u) return TEXTURE_BAD_DIMENSIONS;
+    if (!has_resource) return TEXTURE_NULL_RESOURCE;
+    if (resource_generation != device_generation) return TEXTURE_STALE_GENERATION;
+    return dirty_left ? TEXTURE_DIRTY_NOT_UPLOADED : TEXTURE_OK;
+}
+
+const char* texture_anomaly_name(texture_anomaly_t kind) {
+    static const char* const names[] = { "ok", "null resource", "stale generation", "invalid dimensions",
+                                         "dirty without upload" };
+    return (unsigned)kind < sizeof names / sizeof names[0] ? names[kind] : "?";
+}
+
 int cpu_polygon_box(const float* x, const float* y, unsigned count, long width, long height, long margin, long box[4]) {
     float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
     if (!count) return 0;
@@ -415,6 +456,12 @@ void cpu_polygon_to_surface(long box[4], uint32_t origin_bytes, long pitch) {
     box[2] += x;
     box[1] += y;
     box[3] += y;
+}
+
+float planar_gradient_limit(long raster_lines) {
+    double scale = (double)raster_lines / (double)PLANAR_GRADIENT_LINES_1998;
+    if (!(scale > 1.0)) return PLANAR_GRADIENT_LIMIT_1998;
+    return (float)(PLANAR_GRADIENT_LIMIT_1998 * scale * scale);
 }
 
 engine_heap_t engine_heap_for(uint32_t bytes) {
@@ -448,6 +495,14 @@ float engine_cull_distance(float radius, float max_at, float scale, float cap) {
     return d + radius;
 }
 
+float engine_object_cull_combined(int modern) {
+    return modern ? ENGINE_OBJECT_DISTANCE_SCALE * ENGINE_OBJECT_DISTANCE_SCALE : 1.0f;
+}
+
+float engine_far_clip_limit(float level_far_clip) {
+    return level_far_clip > 0.0f && level_far_clip < ENGINE_FAR_CLIP_MAX ? level_far_clip : ENGINE_FAR_CLIP_MAX;
+}
+
 float engine_view_pixels_per_metre(float view_height, float tan_half_height) {
     if (!(view_height > 0.0f) || !(tan_half_height > 0.0f)) return ENGINE_PIXELS_PER_METRE_DEFAULT;
     return view_height * 0.5f / tan_half_height;
@@ -455,14 +510,23 @@ float engine_view_pixels_per_metre(float view_height, float tan_half_height) {
 
 static float positive_or_one(float v) { return v > 0.0f && v < 1e6f ? v : 1.0f; }
 
-float engine_full_3d_distance(float radius, float pixels_per_metre, float cache_mul) {
+static float distance_at_pixels(float radius, float pixels_per_metre, float cache_mul, float pixels) {
     float mul = positive_or_one(cache_mul), ppm = pixels_per_metre > 0.0f ? pixels_per_metre
                                                                           : ENGINE_PIXELS_PER_METRE_DEFAULT;
-    float d = (radius > 0.0f ? 2.0f * radius * ppm / ENGINE_IMPOSTOR_SWITCH_PX : 0.0f) * mul;
-    if (d < ENGINE_FULL_3D_MIN) d = ENGINE_FULL_3D_MIN;
-    if (d > ENGINE_FULL_3D_MAX) d = ENGINE_FULL_3D_MAX;
+    float scale = ENGINE_IMPOSTOR_SWITCH_PX / pixels;
+    float d = (radius > 0.0f ? 2.0f * radius * ppm / pixels : 0.0f) * mul;
+    if (d < ENGINE_FULL_3D_MIN * scale) d = ENGINE_FULL_3D_MIN * scale;
+    if (d > ENGINE_FULL_3D_MAX * scale) d = ENGINE_FULL_3D_MAX * scale;
     if (d < ENGINE_CACHE_DISTANCE_ORIGINAL * mul) d = ENGINE_CACHE_DISTANCE_ORIGINAL * mul;
     return d;
+}
+
+float engine_full_3d_distance(float radius, float pixels_per_metre, float cache_mul) {
+    return distance_at_pixels(radius, pixels_per_metre, cache_mul, ENGINE_IMPOSTOR_SWITCH_PX);
+}
+
+float engine_return_3d_distance(float radius, float pixels_per_metre, float cache_mul) {
+    return distance_at_pixels(radius, pixels_per_metre, cache_mul, ENGINE_IMPOSTOR_RETURN_PX);
 }
 
 engine_part_kind_t engine_partition_kind(uint32_t vtable) {
@@ -472,10 +536,17 @@ engine_part_kind_t engine_partition_kind(uint32_t vtable) {
     return ENGINE_PART_ENTITY;
 }
 
+float engine_cache_min_distance_held(int modern, int software, engine_part_kind_t kind, float radius,
+                                     float pixels_per_metre, float cache_mul, int impostor_now) {
+    if (!modern || software || kind == ENGINE_PART_ENTITY) return ENGINE_CACHE_DISTANCE_ORIGINAL;
+    return (impostor_now ? engine_return_3d_distance(radius, pixels_per_metre, cache_mul)
+                         : engine_full_3d_distance(radius, pixels_per_metre, cache_mul)) /
+           positive_or_one(cache_mul);
+}
+
 float engine_cache_min_distance(int modern, int software, engine_part_kind_t kind, float radius, float pixels_per_metre,
                                 float cache_mul) {
-    if (!modern || software || kind == ENGINE_PART_ENTITY) return ENGINE_CACHE_DISTANCE_ORIGINAL;
-    return engine_full_3d_distance(radius, pixels_per_metre, cache_mul) / positive_or_one(cache_mul);
+    return engine_cache_min_distance_held(modern, software, kind, radius, pixels_per_metre, cache_mul, 0);
 }
 
 float engine_projected_pixels(float radius, float distance_sqr, float pixels_per_metre) {
@@ -491,6 +562,60 @@ int engine_projected_cull(engine_part_kind_t kind, int uses_mesh, float radius, 
 }
 
 static unsigned frame_slot(uint32_t key, unsigned size) { return (key * 2654435761u) & (size - 1u); }
+
+#define IMPOSTOR_PROBES 32u
+
+static int impostor_recent(const engine_impostor_state_t* e, uint32_t frame) {
+    return e->key && frame - e->seen <= ENGINE_IMPOSTOR_STATE_FRAMES;
+}
+
+static engine_impostor_state_t* impostor_slot(engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame,
+                                              int insert) {
+    engine_impostor_state_t* free_slot = NULL;
+    unsigned i = frame_slot(key, size);
+    for (unsigned n = 0; n < IMPOSTOR_PROBES && n < size; n++, i = (i + 1u) & (size - 1u)) {
+        if (t[i].key == key) return &t[i];
+        if (!free_slot && (!t[i].key || !impostor_recent(&t[i], frame))) free_slot = &t[i];
+        if (!t[i].key) break;
+    }
+    if (!insert || !free_slot) return NULL;
+    memset(free_slot, 0, sizeof *free_slot);
+    free_slot->key = key;
+    free_slot->seen = frame - ENGINE_IMPOSTOR_STATE_FRAMES - 1u;
+    return free_slot;
+}
+
+int engine_impostor_held(const engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame) {
+    const engine_impostor_state_t* e = key ? impostor_slot((engine_impostor_state_t*)t, size, key, frame, 0) : NULL;
+    return e && impostor_recent(e, frame) && e->impostor;
+}
+
+int engine_impostor_known(const engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame) {
+    const engine_impostor_state_t* e = key ? impostor_slot((engine_impostor_state_t*)t, size, key, frame, 0) : NULL;
+    return e && impostor_recent(e, frame);
+}
+
+engine_impostor_change_t engine_impostor_note(engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame,
+                                              int impostor, uint32_t* since) {
+    engine_impostor_state_t* e = key ? impostor_slot(t, size, key, frame, 1) : NULL;
+    engine_impostor_change_t change;
+    *since = 0;
+    if (!e) return ENGINE_IMPOSTOR_SAME;
+    impostor = impostor != 0;
+    if (!impostor_recent(e, frame))
+        change = impostor ? ENGINE_IMPOSTOR_BECAME : ENGINE_IMPOSTOR_SAME;
+    else
+        change = e->impostor == impostor ? ENGINE_IMPOSTOR_SAME
+                 : impostor               ? ENGINE_IMPOSTOR_BECAME
+                                          : ENGINE_IMPOSTOR_DROPPED;
+    if (change != ENGINE_IMPOSTOR_SAME) {
+        if (e->changed) *since = frame - e->changed;
+        e->changed = frame;
+    }
+    e->impostor = impostor;
+    e->seen = frame;
+    return change;
+}
 
 void engine_frame_set_add(engine_frame_slot_t* slots, unsigned size, uint32_t key, uint32_t frame) {
     unsigned i = frame_slot(key, size);
@@ -615,6 +740,13 @@ engine_texture_layout_t engine_texture_layout(unsigned budget_mb, uint32_t free_
     return l;
 }
 
+int32_t engine_regular_texture_bytes(const engine_texture_layout_t* layout, int modern_terrain) {
+    int32_t terrain = (int32_t)(ENGINE_TERRAIN_TEXTURE_KB_MODERN * 1024u);
+    if (!modern_terrain || terrain <= layout->terrain) return layout->regular;
+    return layout->regular - (terrain - layout->terrain) > 0x280000 ? layout->regular - (terrain - layout->terrain)
+                                                                      : 0x280000;
+}
+
 unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim) {
     unsigned page_kb = dim * dim * 2u / 1024u;
     return page_kb ? cache_kb / page_kb : 0u;
@@ -622,11 +754,34 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim) {
 
 uint32_t engine_texture_dim_policy(int modern) { return modern ? ENGINE_TEX_DIM_MODERN : 0u; }
 
+uint32_t engine_terrain_shadow_kb(uint32_t page_px) {
+    uint32_t kb = page_px <= 1024u ? ENGINE_TERRAIN_SHADOW_PAGES * page_px * page_px * 2u / 1024u : 0u;
+    return kb > ENGINE_TERRAIN_SHADOW_KB_ORIGINAL ? kb : ENGINE_TERRAIN_SHADOW_KB_ORIGINAL;
+}
+
+int terrain_shadow_pool_call(const uint8_t* code, uint32_t code_va, uint32_t size, uint32_t* pool_va,
+                             uint32_t* alloc_va) {
+    static const uint8_t k_args[] = { 0x6A, 0x00, 0x52, 0x68, 0x00, 0x00, 0x80, 0x3F,
+                                      0x6A, 0x00, 0x68, 0x00, 0x00, 0x08, 0x00, 0xE8 };
+    const uint32_t mov = 6, args = sizeof k_args, call = mov + args + 4;
+    for (uint32_t at = 0; at + call <= size; at++) {
+        int32_t rel;
+        if (code[at] != 0x8B || code[at + 1] != 0x0D || memcmp(code + at + mov, k_args, args)) continue;
+        memcpy(pool_va, code + at + 2, 4);
+        memcpy(&rel, code + at + mov + args, 4);
+        *alloc_va = code_va + at + call + (uint32_t)rel;
+        return 1;
+    }
+    return 0;
+}
+
 int registry_subtitles_migration(int marker_present, int value_present, uint32_t value, uint32_t* replacement) {
     if (marker_present || !value_present || value) return 0;
     *replacement = REGISTRY_SUBTITLES_ON;
     return 1;
 }
+
+int screen_size_key_dropped(unsigned vk, int gameplay) { return gameplay && (vk == 0xBBu || vk == 0xBDu); }
 
 int registry_view_margin_name(const char* name) {
     return name && (!_stricmp(name, "XView") || !_stricmp(name, "YView"));
@@ -640,9 +795,13 @@ uint32_t engine_upload_clock(uint32_t start_tick, double elapsed_ms, double budg
     return elapsed_ms <= budget_ms ? start_tick : start_tick + ENGINE_UPLOAD_MS_ORIGINAL + 1u;
 }
 
+double engine_upload_budget_ms(int previous_ran_out) {
+    return previous_ran_out ? ENGINE_UPLOAD_BACKLOG_MS : ENGINE_UPLOAD_BUDGET_MS;
+}
+
 terrain_settings_t terrain_modern_settings(terrain_settings_t level, float far_clip, float lines_scale) {
     terrain_settings_t used = level;
-    float reach = far_clip > 0.0f && far_clip < TERRAIN_TEXTURE_DISTANCE_MAX ? far_clip : TERRAIN_TEXTURE_DISTANCE_MAX;
+    float reach = engine_far_clip_limit(far_clip);
     if (level.distance_scale > 0.0f && reach / level.distance_scale > level.dynamic_texture_distance)
         used.dynamic_texture_distance = reach / level.distance_scale;
     if (lines_scale > 0.0f) {
@@ -736,6 +895,66 @@ void hand_carrier_step(hand_carrier_t* c, float k, float dt, const float body_po
 void hand_damping_shift(float k, float sign, const float body_vel[3], float hand_vel[3]) {
     if (!(k > 0.0f)) return;
     for (int i = 0; i < 3; i++) hand_vel[i] += sign * 0.25f * k * body_vel[i];
+}
+
+int hand_passive(int hand_phase, int holding, float arm_urgency) {
+    return hand_phase == 0 && holding == 0 && !(arm_urgency > 0.0f);
+}
+
+#define HAND_SEEN_DAMPING 1.25f
+
+void hand_follow_enter(hand_follow_t* f, int passive, const float body_pos[3], const float body_vel[3],
+                       float hand_pos[3], float hand_vel[3]) {
+    float d[3], moved = 0.0f;
+    int finite = finite3(body_pos) && finite3(body_vel) && finite3(hand_pos) && finite3(hand_vel);
+    if (finite && f->valid) {
+        for (int i = 0; i < 3; i++) {
+            d[i] = body_pos[i] - f->body_pos[i];
+            moved += d[i] * d[i];
+        }
+        if (f->passive && moved <= HAND_FOLLOW_JUMP_M * HAND_FOLLOW_JUMP_M)
+            for (int i = 0; i < 3; i++) hand_pos[i] += d[i];
+    }
+    if (!finite || !passive) {
+        if (f->passive && finite3(body_vel))
+            for (int i = 0; i < 3; i++) hand_vel[i] += body_vel[i];
+        f->valid = f->passive = 0;
+        return;
+    }
+    if (!f->passive)
+        for (int i = 0; i < 3; i++) hand_vel[i] -= body_vel[i];
+    for (int i = 0; i < 3; i++) hand_vel[i] += HAND_SEEN_DAMPING * body_vel[i];
+    memcpy(f->body_pos, body_pos, sizeof f->body_pos);
+    memcpy(f->body_vel, body_vel, sizeof f->body_vel);
+    f->valid = f->passive = 1;
+}
+
+void hand_follow_leave(const hand_follow_t* f, float hand_vel[3]) {
+    if (!f->passive) return;
+    for (int i = 0; i < 3; i++) hand_vel[i] -= HAND_SEEN_DAMPING * f->body_vel[i];
+}
+
+void hand_follow_world_velocity(const hand_follow_t* f, const float hand_vel[3], float out[3]) {
+    for (int i = 0; i < 3; i++) out[i] = hand_vel[i] + (f->passive ? f->body_vel[i] : 0.0f);
+}
+
+void hand_follow_rebase(hand_follow_t* f, const float body_pos[3], const float body_vel[3], float hand_vel[3]) {
+    for (int i = 0; i < 3; i++) hand_vel[i] = f->passive ? 0.0f : body_vel[i];
+    if (!f->passive) return;
+    memcpy(f->body_pos, body_pos, sizeof f->body_pos);
+    memcpy(f->body_vel, body_vel, sizeof f->body_vel);
+}
+
+int hand_recovery_needed(float distance, float hand_limit) {
+    float limit = isfinite(hand_limit) && hand_limit > 0.0f ? 2.0f * hand_limit : 0.0f;
+    if (limit < HAND_RECOVERY_MIN_M) limit = HAND_RECOVERY_MIN_M;
+    return !isfinite(distance) || distance > limit;
+}
+
+void hand_rest_position(const float body_pos[3], const float last_offset[3], int have_offset, float out[3]) {
+    static const float hanging[3] = { 0.0f, 0.0f, -0.35f };
+    const float* offset = have_offset && finite3(last_offset) ? last_offset : hanging;
+    for (int i = 0; i < 3; i++) out[i] = body_pos[i] + offset[i];
 }
 
 int safemode_prompt_args(uint32_t func, uint32_t type, uint32_t title_id, uint32_t text_id) {

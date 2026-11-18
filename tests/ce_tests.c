@@ -191,13 +191,14 @@ static void test_footsteps(void) {
 static void test_settings(void) {
     jpt_config_t c;
     jpt_config_defaults(&c);
-    CHECK(c.dual_stow && c.max_object_detail);
+    CHECK(c.dual_stow && !c.max_object_detail);
     CHECK(c.ambient_occlusion == JPT_AO_MEDIUM);
     CHECK(c.hotkey_vk[JPT_HOTKEY_QUICK_SAVE] == VK_F7_ && c.hotkey_vk[JPT_HOTKEY_QUICK_LOAD] == VK_F8_);
-    CHECK(!strcmp(jpt_default_value(JPT_KEY_DUAL_STOW), "1") && !strcmp(jpt_default_value(JPT_KEY_MAX_OBJECT_DETAIL), "1"));
+    CHECK(!strcmp(jpt_default_value(JPT_KEY_DUAL_STOW), "1") && !strcmp(jpt_default_value(JPT_KEY_MAX_OBJECT_DETAIL), "0"));
     CHECK(!strcmp(jpt_default_value(JPT_KEY_QUICK_SAVE), "F7") && !strcmp(jpt_default_value(JPT_KEY_QUICK_LOAD), "F8"));
     CHECK(!strcmp(jpt_default_value(JPT_KEY_AMBIENT_OCCLUSION), "medium"));
     CHECK(jpt_config_apply(&c, JPT_KEY_DUAL_STOW, "off") && !c.dual_stow);
+    CHECK(jpt_config_apply(&c, JPT_KEY_MAX_OBJECT_DETAIL, "1") && c.max_object_detail);
     CHECK(jpt_config_apply(&c, JPT_KEY_MAX_OBJECT_DETAIL, "0") && !c.max_object_detail);
     CHECK(!jpt_config_apply(&c, JPT_KEY_DUAL_STOW, "maybe") && !c.dual_stow);
     CHECK(jpt_config_apply(&c, JPT_KEY_QUICK_SAVE, "f9") && c.hotkey_vk[JPT_HOTKEY_QUICK_SAVE] == VK_F9_);
@@ -501,6 +502,24 @@ static void test_water_shift_stats(void) {
 }
 
 /* The retail startup disk check wraps in 32 bits on a large volume; the port never blocks on it. */
+/* The loader's check (0x004B069A) multiplies in 32 bits: a drive with 721599037440 free bytes wrapped to 42 MB and the
+ * level was refused. */
+static void test_disk_space_report(void) {
+    uint32_t g[4];
+    const uint64_t drives[] = { 0, 50ull << 20, 3ull << 30, 4ull << 30, 721599037440ull, 4ull << 40, ~0ull };
+    for (unsigned i = 0; i < sizeof drives / sizeof drives[0]; i++) {
+        uint32_t product;
+        legacy_disk_geometry(drives[i], drives[i] * 2 > drives[i] ? drives[i] * 2 : drives[i], g);
+        product = g[0] * g[1] * g[2];
+        CHECK(g[0] == 8 && g[1] == 512 && g[3] >= g[2]);
+        CHECK(product <= 0x7FFFF000u);
+        CHECK((uint64_t)product == (drives[i] / 4096 < 0x7FFFFu ? drives[i] / 4096 * 4096 : 0x7FFFF000ull));
+    }
+    legacy_disk_geometry(721599037440ull, 2ull << 40, g);
+    CHECK(g[0] * g[1] * g[2] > 100u << 20);
+    CHECK(legacy_free_bytes(8, 512, 176171640u, 0) < 100u << 20);
+}
+
 static void test_legacy_disk_check(void) {
     uint32_t spc = 8, bps = 512, clusters = 100u * 1048576u + 12800u; /* about 429 GB free */
     uint32_t wrapped = legacy_free_bytes(spc, bps, clusters, 0);
@@ -594,11 +613,41 @@ static void test_migration_and_reset(void) {
     CHECK(jpt_config_migrate(path) == JPT_MIGRATED_NOTHING);
     CHECK(jpt_config_load(path, &c));
     CHECK(!c.hardware && c.ambient_occlusion == JPT_AO_HIGH);
-    CHECK(c.dual_stow && c.max_object_detail && c.hotkey_vk[JPT_HOTKEY_QUICK_SAVE] == VK_F7_ &&
+    CHECK(c.dual_stow && !c.max_object_detail && c.hotkey_vk[JPT_HOTKEY_QUICK_SAVE] == VK_F7_ &&
           c.hotkey_vk[JPT_HOTKEY_QUICK_LOAD] == VK_F8_);
     CHECK(jpt_ini_set(path, keys, off, 1));
     CHECK(jpt_config_load(path, &c) && !c.dual_stow && !c.hardware && c.ambient_occlusion == JPT_AO_HIGH);
     remove(path);
+}
+
+static int load_max_object_detail(const char* text, int* value) {
+    char path[] = "ce_tests_detail.ini";
+    FILE* f = fopen(path, "w");
+    jpt_config_t c;
+    int loaded;
+    CHECK(f != NULL);
+    if (!f) return 0;
+    fputs(text, f);
+    fclose(f);
+    CHECK(jpt_config_migrate(path) != JPT_MIGRATED_EXPERIMENTAL);
+    jpt_config_defaults(&c);
+    loaded = jpt_config_load(path, &c);
+    *value = c.max_object_detail;
+    remove(path);
+    return loaded;
+}
+
+/* A new config starts with the game's own LOD; a saved choice, from any settings version, is kept. */
+static void test_max_object_detail(void) {
+    int value = -1;
+    CHECK(load_max_object_detail("renderer = d3d11\nsettings_version = 3\n", &value) && value == 0);
+    CHECK(load_max_object_detail("max_object_detail = 1\nsettings_version = 3\n", &value) && value == 1);
+    CHECK(load_max_object_detail("max_object_detail = off\nsettings_version = 3\n", &value) && value == 0);
+    CHECK(load_max_object_detail("max_object_detail = on\nsettings_version = 2\nmsaa = 1\n", &value) && value == 1);
+    CHECK(load_max_object_detail("max_object_detail = 1\nsettings_version = 1\nvsync = 0\n", &value) && value == 1);
+    /* Off leaves the game's bDetailReduce as its own LOD set it; On clears it. */
+    CHECK(ce_detail_reduce(0, 0) == 0 && ce_detail_reduce(0, 1) == 1 && ce_detail_reduce(0, 0xFF) == 0xFF);
+    CHECK(ce_detail_reduce(1, 0) == 0 && ce_detail_reduce(1, 1) == 0 && ce_detail_reduce(1, 0xFF) == 0);
 }
 
 static char* read_source(const char* relative) {
@@ -726,11 +775,13 @@ int main(void) {
     test_water_shift_stats();
     test_water_alpha();
     test_water_edges();
+    test_disk_space_report();
     test_legacy_disk_check();
     test_water_identity();
     test_water_neighbour();
     test_water_plan();
     test_migration_and_reset();
+    test_max_object_detail();
     test_keys();
     test_quick_save_input_order();
     test_interface_text();

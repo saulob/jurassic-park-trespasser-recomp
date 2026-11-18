@@ -254,9 +254,36 @@ const char* readback_reason_name(readback_reason_t reason);
 #define LOCK_CALLER_CLEAR GVA(0x005035B0) /* CRasterVid::Clear without DirectDraw: fills every row */
 /* The pixels a rasterised polygon can write: its screen vertices' bounds widened by margin, inside width x height;
  * 0 when nothing is left or a coordinate is not finite. */
+/* The 1.0.116 functions that lock the screen for the colour-keyed primitives (DrawPolygon features 0x1C, 0x11C, 0x0C,
+ * 0x10C), the lit-texture primitive (0x06) and the walkers only they call. Their spans (SelfMod 0x00640D60, 0x0063F850,
+ * 0x0063DA50, 0x0063C5F0, 0x0063F360) skip texel 0 and only store; 0x0063E900 stores a Gouraud-lit texel; 0x0063F5E0 stores a lit texel. Their index, or -1. */
+#define CPU_POLYGON_STORE_ONLY_CALLERS 19
+int cpu_polygon_store_only_caller(uint32_t caller);
+/* The SelfMod span a CPU polygon's primitive or walker ends in (1.0.116), 0 when it is not one of the known ones. */
+uint32_t cpu_polygon_span(uint32_t caller);
+
+typedef enum {
+    TEXTURE_OK,
+    TEXTURE_NULL_RESOURCE,
+    TEXTURE_STALE_GENERATION,
+    TEXTURE_BAD_DIMENSIONS,
+    TEXTURE_DIRTY_NOT_UPLOADED
+} texture_anomaly_t;
+/* What is wrong with a surface's GPU texture at the point a draw is about to use it. */
+texture_anomaly_t texture_anomaly(int has_resource, unsigned resource_generation, unsigned device_generation,
+                                  unsigned width, unsigned height, int dirty_left);
+const char* texture_anomaly_name(texture_anomaly_t kind);
 int cpu_polygon_box(const float* x, const float* y, unsigned count, long width, long height, long margin, long box[4]);
 /* A box of a raster whose first pixel is origin_bytes into a 16 bpp surface of this pitch, in surface pixels. */
 void cpu_polygon_to_surface(long box[4], uint32_t origin_bytes, long pitch);
+
+/* The trapezoid walkers draw a polygon of more than 3 vertices with the gradients of one consecutive vertex triple
+ * (sub_00555060): the first whose doubled area is below the limit, else the largest. The game's polygons are only
+ * nearly planar, so a thin triple misplaces texture and 1/Z across the rest of the polygon. The 1998 limit is in pixels
+ * of a 480-line raster; a taller one gets it scaled by the square of its lines over 480. */
+#define PLANAR_GRADIENT_LIMIT_1998 (-50.0f)
+#define PLANAR_GRADIENT_LINES_1998 480L
+float planar_gradient_limit(long raster_lines);
 int target_access_reads(cpu_access_t access, uint32_t lock_flags, uint32_t caller, int screen_blt_write_only);
 
 /* The game's "unstable last time, Safe Mode?" prompt: WinMain sets registry "Safemode" to 1 at start
@@ -291,9 +318,9 @@ typedef struct {
 pelvis_mouth_t pelvis_mouth_clamps(float pos, float vel, float height, float bio_body_z, double knee, double low,
                                    double high);
 
-/* Movement Speed m: the right hand (a world-space DOF chasing body + rest pose through Update_Right_Arm, capped at
- * 150 m/s^2) is carried by k = 1 - 1/m of the body's own motion and its controller sees the rest, as at 1x. k is 0 at
- * 1x and below: the game's own arithmetic. */
+/* Movement Speed m, while the hand is controlled (Move Hand, a held object, a throw): the right hand (a world-space DOF
+ * chasing body + pose through Update_Right_Arm, capped at 150 m/s^2) is carried by k = 1 - 1/m of the body's own motion
+ * and its controller sees the rest, as at 1x. k is 0 at 1x and below: the game's own arithmetic. */
 float hand_frame_share(float multiplier);
 
 /* The body as the previous step left it. The body's velocity also changes outside its acceleration (Foot_IDOF's
@@ -315,6 +342,39 @@ void hand_carrier_step(hand_carrier_t* c, float k, float dt, const float body_po
  * (hand - k body) - 1.25 (1 - k) body, i.e. the hand's velocity shifted by 0.25 k body. sign +1 before, -1 after. */
 void hand_damping_shift(float k, float sign, const float body_vel[3], float hand_vel[3]);
 
+/* The right hand is passive when the player neither raises it (CPlayer +0xE28 hand phase 0) nor holds anything
+ * (+0xE30) and ControlArm's urgency is 0: Update_Right_Arm then only springs it towards body + rest pose. */
+int hand_passive(int hand_phase, int holding, float arm_urgency);
+
+/* A passive hand rides the pelvis. At Pelvic_IDOF's entry, before Update_Right_Arm reads it, it is moved by the body's
+ * whole displacement since the previous step, and between steps its DOF velocity is its own, relative to the body:
+ * its contacts and the arm's damping act on the hand's motion, never on the body's (log 213: body 10-13 m/s, hand held
+ * to 0.4-3 m/s, left 2.5 m behind). Update_Right_Arm is shown that velocity plus 1.25 body velocity, so its damping
+ * input (v_hand - 1.25 v_body, 0x00649CA0) is the hand's own velocity. When the hand stops being passive it gets its
+ * world velocity back and the carrier above takes it. */
+typedef struct {
+    int valid, passive;
+    float body_pos[3], body_vel[3];
+} hand_follow_t;
+
+#define HAND_FOLLOW_JUMP_M 4.0f /* a body displacement in one step that no movement explains (teleport, load) */
+
+void hand_follow_enter(hand_follow_t* f, int passive, const float body_pos[3], const float body_vel[3],
+                       float hand_pos[3], float hand_vel[3]);
+/* After Pelvic_IDOF: the velocity Pelvis_integrate moves the hand with. */
+void hand_follow_leave(const hand_follow_t* f, float hand_vel[3]);
+/* The hand's velocity in the world (what the DOF holds outside the passive state). */
+void hand_follow_world_velocity(const hand_follow_t* f, const float hand_vel[3], float out[3]);
+/* A hand put back beside the body: at rest relative to it, displacements counted from body_pos. */
+void hand_follow_rebase(hand_follow_t* f, const float body_pos[3], const float body_vel[3], float hand_vel[3]);
+
+/* A right hand farther from the body than any reach allows (twice the arm's limit, at least 3.5 m) has left the
+ * skeleton: nothing in the game brings it back, and a pelvis whose parts span 60 m is deactivated. */
+#define HAND_RECOVERY_MIN_M 3.5f
+int hand_recovery_needed(float distance, float hand_limit);
+/* Where a recovered hand goes: the body plus its last offset within reach, or a hand hanging at the hip. */
+void hand_rest_position(const float body_pos[3], const float last_offset[3], int have_offset, float out[3]);
+
 int safemode_prompt_args(uint32_t func, uint32_t type, uint32_t title_id, uint32_t text_id);
 
 /* Lifted calls push a dummy return address, so a caller is found in pcrecomp's indirect-call ring:
@@ -331,22 +391,33 @@ uint32_t icall_ring_caller(const uint32_t* targets, const uint32_t* from, uint32
 /* bInRange (0x00477A40) compares squared distances with the cull distance squared times fCullDistanceCombined, which
  * SetGlobalPartitionData (0x004A24B0) sets to 1: every object, a level's own "Culling" included, stays drawn this many
  * times as far with the square in its place. */
-#define ENGINE_OBJECT_DISTANCE_SCALE 1.4f
+#define ENGINE_OBJECT_DISTANCE_SCALE 1.2f
+/* What fCullDistanceCombined the game is given: the square of the distance scale with Direct3D 11's limits, 1 without. */
+float engine_object_cull_combined(int modern);
+/* The farthest a host distance policy reaches (the terrain's own textures) however far the level's camera clips; a
+ * level that clips nearer keeps its own. The camera's far clip itself is never changed. */
+#define ENGINE_FAR_CLIP_MAX 750.0f
+float engine_far_clip_limit(float level_far_clip);
 /* bShouldCache's fMinDistanceToCache (0x0064E458, ATX's ObjectClarityDrawDistance) times the object's CacheMul: nearer,
  * an object is never replaced by its image-cache impostor. Under Direct3D an object stays 3D while its bounding sphere
- * spans more than ENGINE_IMPOSTOR_SWITCH_PX on screen (half the 256 px impostor), within the min/max distances and
- * never nearer than 1998's. A mesh that is not hardware-able is drawn by the CPU into the Direct3D frame, so it and
- * every group holding one keep the 1998 distance. */
+ * spans more than ENGINE_IMPOSTOR_SWITCH_PX on screen (the 256 px impostor, never magnified when it takes over),
+ * within the min/max distances and never nearer than 1998's. An impostor goes back to 3D only once it spans
+ * ENGINE_IMPOSTOR_RETURN_PX, so an object at the switch distance does not rebuild its impostor every few frames.
+ * A mesh that is not hardware-able is drawn by the CPU into the Direct3D frame, so it and every group holding one keep
+ * the 1998 distance. The minimum scales with the threshold (25 m at 256 px). */
 #define ENGINE_CACHE_DISTANCE_ORIGINAL 15.0f
-#define ENGINE_FULL_3D_MIN 25.0f
-#define ENGINE_FULL_3D_MAX 150.0f
 #define ENGINE_IMPOSTOR_SWITCH_PX 256.0f
+#define ENGINE_IMPOSTOR_RETURN_PX 288.0f
+#define ENGINE_FULL_3D_MIN (25.0f * 256.0f / ENGINE_IMPOSTOR_SWITCH_PX)
+#define ENGINE_FULL_3D_MAX 150.0f
 /* A static instance whose bounding sphere spans less than this on screen is not drawn. */
 #define ENGINE_CULL_PIXELS 1.5f
 #define ENGINE_PIXELS_PER_METRE_DEFAULT 1251.0f /* 1440 lines, the game's 4:3 tan(half width) 0.7673 */
 float engine_view_pixels_per_metre(float view_height, float tan_half_height);
 /* How far an object of this radius stays 3D (metres from its centre plus cylinder radius, as bShouldCache measures). */
 float engine_full_3d_distance(float radius, float pixels_per_metre, float cache_mul);
+/* Where an impostor turns back into the 3D object: nearer, by the ratio of the two thresholds. */
+float engine_return_3d_distance(float radius, float pixels_per_metre, float cache_mul);
 
 /* By the partition's class (vtable): pure spatial groups, plain static instances, and everything with behaviour
  * (CEntity and its descendants: animals, the player, guns, triggers, water, backdrops...). */
@@ -361,6 +432,8 @@ engine_part_kind_t engine_partition_kind(uint32_t vtable);
  * objects and spatial groups get the modern distance; entities and meshes the CPU draws keep 1998's. */
 float engine_cache_min_distance(int modern, int software, engine_part_kind_t kind, float radius, float pixels_per_metre,
                                 float cache_mul);
+float engine_cache_min_distance_held(int modern, int software, engine_part_kind_t kind, float radius,
+                                     float pixels_per_metre, float cache_mul, int impostor_now);
 /* Stored instead when the object a partition belongs to stays 3D this frame: every part of it stays 3D too. */
 #define ENGINE_CACHE_DISTANCE_NEVER 1e30f
 float engine_projected_pixels(float radius, float distance_sqr, float pixels_per_metre);
@@ -373,6 +446,21 @@ typedef struct {
 } engine_frame_slot_t;
 void engine_frame_set_add(engine_frame_slot_t* slots, unsigned size, uint32_t key, uint32_t frame);
 int engine_frame_set_has(const engine_frame_slot_t* slots, unsigned size, uint32_t key, uint32_t frame);
+
+/* Each partition's last bShouldCache answer (open addressing, size a power of two, key 0 unused). An answer older than
+ * ENGINE_IMPOSTOR_STATE_FRAMES frames is forgotten: the object left the view. */
+#define ENGINE_IMPOSTOR_STATE_FRAMES 2u
+typedef struct {
+    uint32_t key, seen, changed;
+    int impostor;
+} engine_impostor_state_t;
+typedef enum { ENGINE_IMPOSTOR_SAME, ENGINE_IMPOSTOR_BECAME, ENGINE_IMPOSTOR_DROPPED } engine_impostor_change_t;
+int engine_impostor_held(const engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame);
+/* Whether the partition answered within the last ENGINE_IMPOSTOR_STATE_FRAMES frames (a change then is a transition). */
+int engine_impostor_known(const engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame);
+/* Records an answer; *since is the frames since the partition's previous change (0 when it has none). */
+engine_impostor_change_t engine_impostor_note(engine_impostor_state_t* t, unsigned size, uint32_t key, uint32_t frame,
+                                              int impostor, uint32_t* since);
 
 typedef enum { ENGINE_SIZE_SMALL, ENGINE_SIZE_MEDIUM, ENGINE_SIZE_LARGE, ENGINE_SIZE_LANDMARK, ENGINE_SIZE_COUNT } engine_size_t;
 engine_size_t engine_size_class(float radius);
@@ -427,9 +515,19 @@ int engine_cache_group_objects(int modern, int game_value);
 #define ENGINE_TEX_DIM_MODERN 256u       /* the largest level in the game's data */
 #define ENGINE_TEXTURE_MB_ORIGINAL 24u   /* iLargeMemAllocMB with more than 92 MB of RAM */
 #define ENGINE_TEXTURE_MB_SAFE 40u       /* below 46 MB, where the engine's own 32-bit arithmetic overflows */
-#define ENGINE_TEXTURE_MB_MODERN 64u     /* with the host's 64-bit split */
+#define ENGINE_TEXTURE_MB_MODERN 96u     /* with the host's 64-bit split */
 #define ENGINE_IMAGE_CACHE_KB_MAX 20480u /* CRenderCache::SetTextureMemSize's kb * 95 * 1024 stays below 2^31 */
 #define ENGINE_TERRAIN_TEXTURE_KB_MODERN 16384u /* the game asks 1280-1920 KB; 128 KB per 256 px page */
+/* A terrain node under a moving object's shadow keeps its own texture only with a buffer of the same size in the
+ * moving-shadow pool, a fixed 512 KB (16 pages of 128 px); without one it is purged and drawn from the base texture. */
+#define ENGINE_TERRAIN_SHADOW_KB_ORIGINAL 512u
+#define ENGINE_TERRAIN_SHADOW_PAGES 32u
+uint32_t engine_terrain_shadow_kb(uint32_t page_px);
+/* SetTextureMemSize's last call, the moving-shadow pool's AllocPages(0x80000, 0, 1.0f, page size, false):
+ * mov ecx, [pool]; push 0; push edx; push 1.0f; push 0; push 0x80000; call. Finds it in code bytes, giving the pool
+ * pointer's address and the call's target; 0 when the code differs. */
+int terrain_shadow_pool_call(const uint8_t* code, uint32_t code_va, uint32_t size, uint32_t* pool_va,
+                             uint32_t* alloc_va);
 #define ENGINE_RENDER_QUALITY_TOP 4u
 /* SPartitionSettings::fGetCullDistance (0x004A22D0) plus the radius: how far an object of that radius stays drawn
  * with level cull distance max_at (CullMaxDist, 800 by default). */
@@ -445,6 +543,9 @@ typedef struct {
     int accepted, overflow;
 } engine_texture_layout_t;
 engine_texture_layout_t engine_texture_layout(unsigned budget_mb, uint32_t free_video_memory, int fixed_split);
+/* The regular textures' share once the split also pays for the host's larger terrain pages (the game divides after
+ * SetTextureMemSize has taken them). */
+int32_t engine_regular_texture_bytes(const engine_texture_layout_t* layout, int modern_terrain);
 /* The image-cache share of the split: the engine's T * 40 / 100 in 32 bits, or the host's. */
 int32_t engine_image_cache_bytes(int32_t total, int fixed_split);
 /* AllocateMemory's 85% and 95% marks of the regular textures in 64-bit arithmetic; all 0 when the engine refuses. */
@@ -465,16 +566,22 @@ int registry_subtitles_migration(int marker_present, int value_present, uint32_t
  * resolution the launcher chose. */
 #define REGISTRY_VIEW_MARGIN 0u
 int registry_view_margin_name(const char* name);
+/* CGameWnd::OnKey's only use of = (0xBB) and - (0xBD) is ChangeViewportSize (0x00412B70), the legacy Screen Size: in
+ * gameplay those key presses are kept from the game; menus, text fields and the game's own control bindings (read with
+ * GetAsyncKeyState) still get them. */
+int screen_size_key_dropped(unsigned vk, int gameplay);
 /* UploadPolygonArray (0x0055A4E0) uploads textures until GetTickCount() - start > 7 (a .text immediate); with the
  * 15.6 ms tick the window is anywhere from one upload to 15 ms. What GetTickCount answers inside it instead: the start
  * tick until budget_ms of real time have passed, then a tick past the game's limit. */
 #define ENGINE_UPLOAD_MS_ORIGINAL 7u
-#define ENGINE_UPLOAD_BUDGET_MS 10.0
+#define ENGINE_UPLOAD_BUDGET_MS 3.0
+#define ENGINE_UPLOAD_BACKLOG_MS 6.0
 uint32_t engine_upload_clock(uint32_t start_tick, double elapsed_ms, double budget_ms);
+/* The window for this frame: longer right after a window that ran out (textures were left for later). */
+double engine_upload_budget_ms(int previous_ran_out);
 
 /* Terrain with Direct3D 11 (terrain_quality.c). CQuadRootTIN::Update multiplies TrrNoDynTextureDist by the quality's
  * distance scale and the pixel tolerances by its tolerance scale; the tolerances are in render pixels. */
-#define TERRAIN_TEXTURE_DISTANCE_MAX 1000.0f /* metres of own terrain texture when the far clip is farther */
 #define TERRAIN_PIXEL_TOL_480 4.0f           /* the community's TrrPixelTol, at 480 render lines */
 #define TERRAIN_PIXEL_TOL_FAR_480 12.0f      /* and TrrPixelTolFar */
 #define TERRAIN_HEAP_SCALE 4u                /* the terrain's node heaps, reserved this many times larger */
@@ -494,7 +601,7 @@ typedef struct {
     float dynamic_texture_distance, pixel_tolerance, pixel_tolerance_far; /* the range variables */
     float distance_scale, pixel_tolerance_scale;                          /* the render quality's multipliers */
 } terrain_settings_t;
-/* What one Update uses: own textures out to the far clip (at most TERRAIN_TEXTURE_DISTANCE_MAX) unless the level
+/* What one Update uses: own textures out to the far clip (at most ENGINE_FAR_CLIP_MAX) unless the level
  * already goes farther, and the level's tolerances capped at the community's, scaled from 480 lines to the render
  * height (lines_scale = height / 480; 0 keeps the level's); far is never finer than near. */
 terrain_settings_t terrain_modern_settings(terrain_settings_t level, float far_clip, float lines_scale);

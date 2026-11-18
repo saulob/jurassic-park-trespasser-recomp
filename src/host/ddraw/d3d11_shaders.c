@@ -176,6 +176,63 @@ const char d3d11_shader_source[] =
     "  if (c.a < 0.5) discard;\n"
     "  return c;\n"
     "}\n"
+    /* The CPU copy's own RGB565 pixels inside pass_uv (pass_color.xy = the copy's size); unwritten ones (0xF81F) are
+     * left alone and leave no stencil mark. */
+    "Texture2D<uint> cpu_raw : register(t20);\n"
+    "float4 ps_copy_raw(QuadOut i) : SV_Target {\n"
+    "  float2 lo = pass_uv.xy * pass_color.xy, hi = pass_uv.zw * pass_color.xy - 1.0;\n"
+    "  int2 p = (int2)clamp(floor(i.uv * pass_color.xy), lo, hi);\n"
+    "  uint v = cpu_raw.Load(int3(p, 0));\n"
+    "  if (v == 0xF81Fu) discard;\n"
+    "  uint3 c = uint3(v >> 11, (v >> 5) & 63u, v & 31u);\n"
+    "  c = uint3((c.r << 3) | (c.r >> 2), (c.g << 2) | (c.g >> 4), (c.b << 3) | (c.b >> 2));\n"
+    "  return float4(c / 255.0, 1.0);\n"
+    "}\n"
+    /* The perspective-textured software primitive on the GPU (texture_gpu_policy.h): the polygon's fan from poly_xy in
+     * the surface's pixels; per pixel u/z, v/z, 1/z from their planes, the texel index as the span walks it, an 8-bit
+     * texel and its CLUT pixel. */
+    "cbuffer Poly : register(b4) {\n"
+    "  float4 poly_xy[32]; float4 poly_u; float4 poly_v; float4 poly_w;\n"
+    "  float4 poly_origin; float4 poly_size; float4 poly_clamp; uint4 poly_tex; uint4 poly_lut; uint4 poly_bump;\n"
+    "};\n"
+    "Buffer<uint> poly_texels : register(t21);\n"
+    "Buffer<uint> poly_clut : register(t22);\n"
+    "Buffer<uint> poly_bump_clut : register(t23);\n"
+    "Buffer<uint> poly_bump_table : register(t24);\n"
+    "float4 vs_poly(uint id : SV_VertexID) : SV_Position {\n"
+    "  uint tri = id / 3u, corner = id - tri * 3u;\n"
+    "  uint k = corner == 0u ? 0u : tri + corner;\n"
+    "  float4 pair = poly_xy[k >> 1];\n"
+    "  float2 p = (k & 1u) ? pair.zw : pair.xy;\n"
+    "  return float4(p.x / poly_size.x * 2.0 - 1.0, 1.0 - p.y / poly_size.y * 2.0, 0.0, 1.0);\n"
+    "}\n"
+    "uint poly_index(float4 pos) {\n"
+    "  float2 q = floor(pos.xy * poly_size.zw) - poly_origin.xy;\n"
+    "  float w = poly_w.x + poly_w.y * q.x + poly_w.z * q.y;\n"
+    "  float u = (poly_u.x + poly_u.y * q.x + poly_u.z * q.y) / w;\n"
+    "  float v = (poly_v.x + poly_v.y * q.x + poly_v.z * q.y) / w;\n"
+    "  bool clamped = poly_clamp.w != 0.0;\n"
+    "  if (clamped) { u = clamp(u, poly_clamp.x, poly_clamp.y); v = clamp(v, poly_clamp.x, poly_clamp.z); }\n"
+    "  int iu = (int)floor(u), iv = (int)floor(v);\n"
+    "  uint row = clamped ? (uint)iv * poly_tex.y : (uint)iv << 9;\n"
+    "  return (row + ((uint)iu & poly_tex.z)) & poly_tex.w;\n"
+    "}\n"
+    "float4 poly_color(uint pixel) {\n"
+    "  uint3 c = uint3(pixel >> 11, (pixel >> 5) & 63u, pixel & 31u);\n"
+    "  c = uint3((c.r << 3) | (c.r >> 2), (c.g << 2) | (c.g >> 4), (c.b << 3) | (c.b >> 2));\n"
+    "  return float4(c / 255.0, 1.0);\n"
+    "}\n"
+    "float4 ps_poly_texture(float4 pos : SV_Position) : SV_Target {\n"
+    "  return poly_color(poly_clut[poly_lut.x + poly_texels[poly_tex.x + poly_index(pos)]]);\n"
+    "}\n"
+    /* The bump-mapped perspective primitive (SelfMod 0x006402F0): a 16-bit texel (two bytes of the texel buffer) is an
+     * angle into the intensity table and a row of the CLUT. */
+    "float4 ps_poly_bump(float4 pos : SV_Position) : SV_Target {\n"
+    "  uint at = poly_tex.x + poly_index(pos) * 2u;\n"
+    "  uint texel = poly_texels[at] | (poly_texels[at + 1u] << 8);\n"
+    "  uint intensity = poly_bump_table[poly_bump.x + ((texel - poly_bump.y) & 0x3FFu)];\n"
+    "  return poly_color(poly_bump_clut[poly_bump.z + intensity * 64u + (texel >> 10)]);\n"
+    "}\n"
     /* Readback in the surface's own format, rounded as d3dt_bgra_to_rgb565 does. */
     "uint ps_pack565(QuadOut i) : SV_Target {\n"
     "  uint3 k = (uint3)(saturate(tex0.Sample(samp0, i.uv).rgb) * 255.0 + 0.5);\n"
@@ -193,7 +250,8 @@ const d3d11_shader_entry_t d3d11_shader_entries[D3D11_SHADER_COUNT] = {
     { "vs_tl", "vs_4_0" },     { "ps_fixed", "ps_4_0" }, { "vs_quad", "vs_4_0" },
     { "ps_fill", "ps_4_0" },   { "ps_copy", "ps_4_0" },  { "ps_present", "ps_4_0" },
     { "ps_pack565", "ps_4_0" }, { "ps_copy_cpu", "ps_4_0" }, { "ps_water", "ps_4_0" },
-    { "ps_sky", "ps_4_0" },
+    { "ps_sky", "ps_4_0" },   { "ps_copy_raw", "ps_4_0" },
+    { "vs_poly", "vs_4_0" },   { "ps_poly_texture", "ps_4_0" }, { "ps_poly_bump", "ps_4_0" },
 };
 
 /* Bump-mapped spans of the software renderer (bump_spans.c), one instance per span record: the texel index by the

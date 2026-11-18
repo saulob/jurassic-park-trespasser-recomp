@@ -497,7 +497,9 @@ static void level_load(void) {
     L.shown = 0;
     L.omitted = 0;
     L.scene[0] = L.slot[0] = L.refusal[0] = 0;
+    d3dr_texture_polygon_reset();
     L.level_lifted();
+    d3dr_texture_polygon_reset();
     L.loading = 0;
     window_host_level_load_done();
     log_load();

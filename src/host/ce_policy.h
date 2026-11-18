@@ -75,6 +75,10 @@ int ds_pose_swapped(int phase_before, int phase_after);
  * game time back while fLastTime stays: a time in the future is re-armed so the pair can play again. 1 when changed. */
 int sound_rearm(float* last_time, float min_delay, float now);
 
+/* The renderer's bDetailReduce byte with Maximum object detail: On clears it (every object keeps its top mesh), Off
+ * leaves whatever the game's own LOD set. */
+uint8_t ce_detail_reduce(int max_object_detail, uint8_t game_value);
+
 /* The retail startup disk check (0x0040DA00) multiplies sectors per cluster, bytes per sector and free clusters in 32
  * bits and adds the swap files' sizes: a volume with more than 4 GB free wraps to a small number. */
 uint32_t legacy_free_bytes(uint32_t sectors_per_cluster, uint32_t bytes_per_sector, uint32_t free_clusters, uint32_t swap_bytes);
@@ -82,6 +86,10 @@ uint32_t legacy_free_bytes(uint32_t sectors_per_cluster, uint32_t bytes_per_sect
 int legacy_disk_check_passes(uint32_t free_bytes, uint32_t megabytes);
 /* What the port does instead: the check is not made, the game always starts. */
 int startup_disk_check_passes(void);
+/* What GetDiskFreeSpaceA tells the game: the retail loader multiplies sectors per cluster, bytes per sector and free
+ * clusters in 32 bits, so the free space is reported capped at 2 GB. out: sectors per cluster, bytes per sector, free
+ * clusters, total clusters. */
+void legacy_disk_geometry(uint64_t free_bytes, uint64_t total_bytes, uint32_t out[4]);
 
 #ifdef __cplusplus
 }

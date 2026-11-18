@@ -55,11 +55,11 @@ start of a level.
 
 ### Minimap
 
-A circular map of the level sits in the bottom-left corner of the picture, centred on Anne, with north up and a fixed
-2x zoom. **F5**, or **L3 + R3** together on a gamepad (one toggle per press of the pair; hold it and nothing repeats),
+A circular map of the level sits in the bottom-left corner of the picture, centred on Anne, with her heading always up
+(the map turns as she does; the compass above keeps north) and a fixed 2x zoom. **F5**, or **L3 + R3** together on a gamepad (one toggle per press of the pair; hold it and nothing repeats),
 shows or hides it in gameplay and saves the choice to `minimap` in `trespasser.ini`; the launcher's Gameplay page
 shows the same setting as **Enable Minimap** (on by default). A line under the compass says "Minimap On" or "Minimap
-Off". F5 and L3 + R3 do nothing in a host panel or the controls card. M, + and - belong to the game again. L3 or R3
+Off". F5 and L3 + R3 do nothing in a host panel or the controls card. M belongs to the game again; = and - no longer resize the 3D view. L3 or R3
 alone act as bound, 50 ms after the press: the pair is waited for that long so the chord never also crouches.
 
 ### Compass and objectives

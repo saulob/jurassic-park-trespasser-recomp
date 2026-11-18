@@ -57,7 +57,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_LANGUAGE, JPT_L10N_ENGLISH },
     { JPT_KEY_GAME_VERSION, "" },
     { JPT_KEY_DUAL_STOW, "1" },
-    { JPT_KEY_MAX_OBJECT_DETAIL, "1" },
+    { JPT_KEY_MAX_OBJECT_DETAIL, "0" },
     { JPT_KEY_ACTIVE_AI, "enhanced" },
     { JPT_KEY_WATER_REFRACTION, "1" },
     { JPT_KEY_ENHANCED_SKY, "1" },

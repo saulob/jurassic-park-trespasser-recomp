@@ -2,6 +2,7 @@
 
 #include "d3d11_shaders.h"
 
+#include <emmintrin.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -354,7 +355,7 @@ static __inline uint32_t xrgb8888(uint32_t v) { return v | 0xFF000000u; }
 static __inline uint32_t argb8888(uint32_t v) { return v; }
 
 /* One loop per format, so a whole texture row converts without a per-texel switch. */
-#define CONVERT_ROW(type, convert)                                                                                         for (unsigned x = 0; x < count; x++) {                                                                                     uint32_t raw = ((const type*)src)[x], c = convert(raw);                                                                dst[x] = keyed && raw >= key_low && raw <= key_high ? c & 0x00FFFFFFu : c;                                         }
+#define CONVERT_ROW(type, convert)                                                                                     for (unsigned x = 0; x < count; x++) {                                                                                 uint32_t raw = ((const type*)src)[x], c = convert(raw);                                                            dst[x] = keyed && raw >= key_low && raw <= key_high ? c & 0x00FFFFFFu : c;                                     }
 
 void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
                       uint32_t key_high) {
@@ -398,10 +399,70 @@ unsigned d3dt_black_over_content(const uint16_t* current, const uint16_t* previo
     return n;
 }
 
+static unsigned lane_count(unsigned mask8) {
+    mask8 -= (mask8 >> 1) & 0x55u;
+    mask8 = (mask8 & 0x33u) + ((mask8 >> 2) & 0x33u);
+    return (mask8 + (mask8 >> 4)) & 0x0Fu;
+}
+
+unsigned d3dt_overlay_row_sync(const uint16_t* current, uint16_t* keep, unsigned count, uint32_t* out, unsigned long* black) {
+    const __m128i zero = _mm_setzero_si128(), ones = _mm_set1_epi16(-1), lo5 = _mm_set1_epi16(0x1F),
+                  lo6 = _mm_set1_epi16(0x3F), alpha = _mm_set1_epi16((short)0xFF00);
+    unsigned changed = 0, dark = 0, x = 0;
+    for (; x + 8 <= count; x += 8) {
+        __m128i cur = _mm_loadu_si128((const __m128i*)(current + x));
+        __m128i old = _mm_loadu_si128((const __m128i*)(keep + x));
+        __m128i same = _mm_cmpeq_epi16(cur, old), diff, r, g, b, bg, ra, mask_lo, mask_hi;
+        if (_mm_movemask_epi8(same) == 0xFFFF) {
+            _mm_storeu_si128((__m128i*)(out + x), zero);
+            _mm_storeu_si128((__m128i*)(out + x + 4), zero);
+            continue;
+        }
+        diff = _mm_xor_si128(same, ones);
+        changed += lane_count((unsigned)_mm_movemask_epi8(_mm_packs_epi16(diff, diff)) & 0xFFu);
+        dark += lane_count((unsigned)_mm_movemask_epi8(_mm_packs_epi16(_mm_and_si128(_mm_cmpeq_epi16(cur, zero), diff),
+                                                                         zero)) & 0xFFu);
+        r = _mm_and_si128(_mm_srli_epi16(cur, 11), lo5);
+        g = _mm_and_si128(_mm_srli_epi16(cur, 5), lo6);
+        b = _mm_and_si128(cur, lo5);
+        r = _mm_or_si128(_mm_slli_epi16(r, 3), _mm_srli_epi16(r, 2));
+        g = _mm_or_si128(_mm_slli_epi16(g, 2), _mm_srli_epi16(g, 4));
+        b = _mm_or_si128(_mm_slli_epi16(b, 3), _mm_srli_epi16(b, 2));
+        bg = _mm_or_si128(b, _mm_slli_epi16(g, 8));
+        ra = _mm_or_si128(r, alpha);
+        mask_lo = _mm_unpacklo_epi16(diff, diff);
+        mask_hi = _mm_unpackhi_epi16(diff, diff);
+        _mm_storeu_si128((__m128i*)(out + x), _mm_and_si128(_mm_unpacklo_epi16(bg, ra), mask_lo));
+        _mm_storeu_si128((__m128i*)(out + x + 4), _mm_and_si128(_mm_unpackhi_epi16(bg, ra), mask_hi));
+        _mm_storeu_si128((__m128i*)(keep + x), cur);
+    }
+    for (; x < count; x++) {
+        uint16_t c = current[x], k = keep[x];
+        if (c != k) {
+            out[x] = rgb565(c);
+            changed++;
+            dark += c == 0;
+            keep[x] = c;
+        } else {
+            out[x] = 0;
+        }
+    }
+    *black += dark;
+    return changed;
+}
+
 int d3dt_row_span(const uint16_t* current, const uint16_t* pristine, unsigned count, unsigned* first, unsigned* end) {
     unsigned a = 0, b = count;
     if (!memcmp(current, pristine, (size_t)count * 2)) return 0;
+    while (a + 8 <= count &&
+           _mm_movemask_epi8(_mm_cmpeq_epi16(_mm_loadu_si128((const __m128i*)(current + a)),
+                                             _mm_loadu_si128((const __m128i*)(pristine + a)))) == 0xFFFF)
+        a += 8;
     while (a < count && current[a] == pristine[a]) a++;
+    while (b >= a + 8 &&
+           _mm_movemask_epi8(_mm_cmpeq_epi16(_mm_loadu_si128((const __m128i*)(current + b - 8)),
+                                             _mm_loadu_si128((const __m128i*)(pristine + b - 8)))) == 0xFFFF)
+        b -= 8;
     while (b > a && current[b - 1] == pristine[b - 1]) b--;
     *first = a;
     *end = b;
@@ -454,6 +515,46 @@ void d3dt_rect_union(d3dt_rect_t* acc, const d3dt_rect_t* add) {
     if (add->top < acc->top) acc->top = add->top;
     if (add->right > acc->right) acc->right = add->right;
     if (add->bottom > acc->bottom) acc->bottom = add->bottom;
+}
+
+static unsigned long long rect_area(const d3dt_rect_t* r) {
+    return d3dt_rect_empty(r) ? 0ull : (unsigned long long)(r->right - r->left) * (unsigned long long)(r->bottom - r->top);
+}
+
+int d3dt_rects_near(const d3dt_rect_t* a, const d3dt_rect_t* b) {
+    return a->left - D3DT_DIRTY_GAP < b->right && b->left - D3DT_DIRTY_GAP < a->right &&
+           a->top - D3DT_DIRTY_GAP < b->bottom && b->top - D3DT_DIRTY_GAP < a->bottom;
+}
+
+static int rects_join(const d3dt_rect_t* a, const d3dt_rect_t* b) {
+    d3dt_rect_t u = *a;
+    if (d3dt_rects_near(a, b)) return 1;
+    d3dt_rect_union(&u, b);
+    return rect_area(&u) * 4u <= (rect_area(a) + rect_area(b)) * 5u;
+}
+
+void d3dt_dirty_add(d3dt_dirty_t* d, const d3dt_rect_t* add) {
+    d3dt_rect_t cur;
+    if (d3dt_rect_empty(add)) return;
+    cur = *add;
+    for (;;) {
+        unsigned i = 0;
+        while (i < d->n && !rects_join(&d->r[i], &cur)) i++;
+        if (i == d->n && d->n == D3DT_DIRTY_MAX) {
+            unsigned long long best_growth = ~0ull;
+            for (unsigned k = 0; k < d->n; k++) {
+                d3dt_rect_t u = d->r[k];
+                unsigned long long growth;
+                d3dt_rect_union(&u, &cur);
+                growth = rect_area(&u) - rect_area(&d->r[k]);
+                if (growth < best_growth) best_growth = growth, i = k;
+            }
+        }
+        if (i == d->n) break;
+        d3dt_rect_union(&cur, &d->r[i]);
+        d->r[i] = d->r[--d->n];
+    }
+    d->r[d->n++] = cur;
 }
 
 int d3dt_parse_resolution(const char* text, unsigned* w, unsigned* h) {
@@ -649,20 +750,54 @@ static void keep_coverage(uint32_t* dst, unsigned dw, unsigned dh, unsigned n, c
         if ((dst[i] >> 24) != 0xFF) dst[i] &= 0x00FFFFFFu;
 }
 
+/* floor(n / d) for n < 2^18 and d in 1..1020 as one multiply: the error of the rounded-up reciprocal stays below 2^28. */
+#define MIP_DIVISORS 1021u
+static uint64_t s_mip_reciprocal[MIP_DIVISORS];
+
+static void mip_reciprocals(void) {
+    if (s_mip_reciprocal[MIP_DIVISORS - 1]) return;
+    for (uint64_t d = 1; d < MIP_DIVISORS; d++) s_mip_reciprocal[d] = ((1ull << 32) + d - 1) / d;
+}
+
+static __inline uint32_t mip_divide(uint32_t n, uint32_t d) { return (uint32_t)(((uint64_t)n * s_mip_reciprocal[d]) >> 32); }
+
+/* Four opaque texels: each channel is (sum + 2) / 4, which is what the alpha-weighted average comes to at alpha 255. */
+static __inline uint32_t mip_opaque_average(uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3) {
+    uint32_t rb = (t0 & 0x00FF00FFu) + (t1 & 0x00FF00FFu) + (t2 & 0x00FF00FFu) + (t3 & 0x00FF00FFu) + 0x00020002u;
+    uint32_t ag = ((t0 >> 8) & 0x00FF00FFu) + ((t1 >> 8) & 0x00FF00FFu) + ((t2 >> 8) & 0x00FF00FFu) +
+                  ((t3 >> 8) & 0x00FF00FFu) + 0x00020002u;
+    return (((ag >> 2) & 0x00FF00FFu) << 8) | ((rb >> 2) & 0x00FF00FFu);
+}
+
 /* Colour is averaged over the footprint weighted by alpha, so transparent texels (often black or a key colour)
  * never darken an edge. A binary-alpha level stays binary at the coverage of the level above, so alpha-tested
- * foliage keeps its density at a distance. */
+ * foliage keeps its density at a distance. Full 2x2 footprints take the cheap paths: all opaque is a plain average,
+ * and a partly transparent one divides by its alpha sum with a reciprocal. */
 void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst) {
     unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1;
     unsigned fx = w > 1 ? 2 : 1, fy = h > 1 ? 2 : 1, n = fx * fy;
     unsigned long hist[5] = { 0, 0, 0, 0, 0 }, covered = 0;
-    for (unsigned y = 0; y < dh; y++)
+    mip_reciprocals();
+    for (unsigned y = 0; y < dh; y++) {
+        const uint32_t* row0 = src + (size_t)(y * fy) * w;
+        uint32_t* out = dst + (size_t)y * dw;
         for (unsigned x = 0; x < dw; x++) {
             uint32_t sa = 0, sr = 0, sg = 0, sb = 0, ur = 0, ug = 0, ub = 0, opaque = 0, r, g, b;
-            for (unsigned j = 0; j < fy; j++)
-                for (unsigned i = 0; i < fx; i++) {
-                    uint32_t t = src[(size_t)(y * fy + j) * w + x * fx + i], a = t >> 24;
-                    uint32_t tr = (t >> 16) & 0xFF, tg = (t >> 8) & 0xFF, tb = t & 0xFF;
+            if (n == 4) {
+                const uint32_t* p = row0 + (size_t)x * 2;
+                uint32_t t[4] = { p[0], p[1], p[w], p[w + 1] };
+                if ((t[0] & t[1] & t[2] & t[3]) >> 24 == 0xFFu) {
+                    uint32_t c = mip_opaque_average(t[0], t[1], t[2], t[3]);
+                    if (alpha_kind == D3DT_ALPHA_BINARY) {
+                        out[x] = (c & 0x00FFFFFFu) | (4u << 24);
+                        hist[4]++;
+                    } else {
+                        out[x] = c;
+                    }
+                    continue;
+                }
+                for (unsigned i = 0; i < 4; i++) {
+                    uint32_t a = t[i] >> 24, tr = (t[i] >> 16) & 0xFF, tg = (t[i] >> 8) & 0xFF, tb = t[i] & 0xFF;
                     sa += a;
                     sr += tr * a;
                     sg += tg * a;
@@ -672,24 +807,40 @@ void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_
                     ub += tb;
                     opaque += a >= 128;
                 }
+            } else {
+                for (unsigned j = 0; j < fy; j++)
+                    for (unsigned i = 0; i < fx; i++) {
+                        uint32_t t = row0[(size_t)j * w + x * fx + i], a = t >> 24;
+                        uint32_t tr = (t >> 16) & 0xFF, tg = (t >> 8) & 0xFF, tb = t & 0xFF;
+                        sa += a;
+                        sr += tr * a;
+                        sg += tg * a;
+                        sb += tb * a;
+                        ur += tr;
+                        ug += tg;
+                        ub += tb;
+                        opaque += a >= 128;
+                    }
+            }
             if (sa) {
-                r = (sr + sa / 2) / sa;
-                g = (sg + sa / 2) / sa;
-                b = (sb + sa / 2) / sa;
+                r = mip_divide(sr + sa / 2, sa);
+                g = mip_divide(sg + sa / 2, sa);
+                b = mip_divide(sb + sa / 2, sa);
             } else {
                 r = (ur + n / 2) / n;
                 g = (ug + n / 2) / n;
                 b = (ub + n / 2) / n;
             }
             if (alpha_kind == D3DT_ALPHA_OPAQUE) {
-                dst[(size_t)y * dw + x] = argb(255, r, g, b);
+                out[x] = argb(255, r, g, b);
             } else if (alpha_kind == D3DT_ALPHA_BLENDED) {
-                dst[(size_t)y * dw + x] = argb((sa + n / 2) / n, r, g, b);
+                out[x] = argb((sa + n / 2) / n, r, g, b);
             } else {
-                dst[(size_t)y * dw + x] = argb(opaque, r, g, b);
+                out[x] = argb(opaque, r, g, b);
                 hist[opaque]++;
             }
         }
+    }
     if (alpha_kind != D3DT_ALPHA_BINARY) return;
     for (unsigned y = 0; y < dh * fy; y++)
         for (unsigned x = 0; x < dw * fx; x++) covered += (src[(size_t)y * w + x] >> 24) >= 128;
@@ -742,6 +893,27 @@ uint32_t d3dt_vertex_sampler(uint32_t address_u, uint32_t address_v) {
 }
 
 int d3dt_address_joins(uint32_t old_value, uint32_t value) { return wrap_or_clamp(old_value) && wrap_or_clamp(value); }
+
+int d3dt_render_state_keeps_batch(uint32_t state) {
+    switch (state) {
+    case 1:  /* TEXTUREHANDLE */
+    case 4:  /* TEXTUREPERSPECTIVE */
+    case 16: /* LASTPIXEL */
+    case 26: /* DITHERENABLE */
+    case 31: /* SUBPIXEL */
+    case 32: /* SUBPIXELX */
+    case 33: /* STIPPLEDALPHA */
+    case 35: /* FOGTABLEMODE */
+    case 41: /* COLORKEYENABLE: the key test travels in each vertex's layer */
+    case 48: /* RANGEFOGENABLE */
+        return 1;
+    default: return 0;
+    }
+}
+
+int d3dt_render_change_flushes(uint32_t state, uint32_t old_value, uint32_t value) {
+    return old_value != value && !d3dt_render_state_keeps_batch(state);
+}
 
 int d3dt_batch_slot(const void** bound, unsigned* count, unsigned max, const void* item) {
     for (unsigned i = 0; i < *count; i++)

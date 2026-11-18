@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 uint32_t g_cur_func;
-static int s_failures, s_checks, s_draws, s_clears, s_attached;
+static int s_failures, s_checks, s_draws, s_clears, s_attached, s_flushes, s_kept;
 
 #define CHECK(cond) do { s_checks++; if (!(cond)) { s_failures++; printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
 
@@ -42,7 +42,14 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
 void d3dr_detach(d3d_device_t* dev) { (void)dev; s_attached--; }
 void d3dr_begin_scene(d3d_device_t* dev) { (void)dev; }
 void d3dr_end_scene(d3d_device_t* dev) { (void)dev; }
-void d3dr_state_will_change(d3d_device_t* dev) { (void)dev; }
+void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD value) {
+    (void)dev; (void)change; (void)state;
+    s_flushes++;
+}
+void d3dr_state_kept_batch(d3d_device_t* dev) {
+    (void)dev;
+    s_kept++;
+}
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count) {
     (void)dev; (void)vertices; (void)indices; (void)index_count;
@@ -308,6 +315,23 @@ int main(void) {
     CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_RANGEFOGENABLE, 0)));
     CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_MODULATE)));
     CHECK(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_TEXTUREMAPBLEND, 9) == DDERR_INVALIDPARAMS);
+    /* The same state set again reaches the renderer once; a real change still does, and is kept. */
+    s_flushes = s_kept = 0;
+    for (int k = 0; k < 50; k++) CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_ALPHABLENDENABLE, TRUE)));
+    CHECK(s_flushes == 1 && s_kept == 0);
+    CHECK(SUCCEEDED(dev->lpVtbl->GetRenderState(dev, D3DRENDERSTATE_ALPHABLENDENABLE, &value)) && value == TRUE);
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_ALPHABLENDENABLE, FALSE)) && s_flushes == 2);
+    CHECK(SUCCEEDED(dev->lpVtbl->GetRenderState(dev, D3DRENDERSTATE_ALPHABLENDENABLE, &value)) && value == FALSE);
+    for (int k = 0; k < 50; k++) CHECK(SUCCEEDED(dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_MAGFILTER, D3DTFG_LINEAR)));
+    CHECK(s_flushes == 3);
+    /* States no batch reads change without drawing it, and still read back. */
+    for (int k = 0; k < 10; k++) {
+        CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_DITHERENABLE, k & 1)));
+        CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_COLORKEYENABLE, k & 1)));
+    }
+    CHECK(s_flushes == 3 && s_kept >= 18);
+    CHECK(SUCCEEDED(dev->lpVtbl->GetRenderState(dev, D3DRENDERSTATE_COLORKEYENABLE, &value)) && value == 1);
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_COLORKEYENABLE, 0)));
     d3d_objects_counts(&refused_render, &refused_stage, &failed);
     CHECK(refused_render == 4 && refused_stage == 3);
     CHECK(failed >= refused_render + refused_stage);

@@ -35,13 +35,13 @@ original game. These are part of the normal Direct3D 11 renderer; there is nothi
 - **Modern texture filtering**: anisotropic filtering up to 16x, and MSAA up to 8x where the card supports it.
 - **Generated mipmaps**: the 3D world's textures get full mip chains made from the originals at load time (the files
   are never changed), so distant ground and foliage stay steady and alpha-tested plants keep their density.
-- **Improved draw distance**: every object stays drawn 1.6 times as far, and stays a 3D model out to 100-150 m before
-  the game may swap it for a flat impostor (15 m in 1998).
-- **Textured distant terrain**: the ground keeps its own detailed textures out to the far clip instead of a blurry
-  map beyond 345 m, with more room for terrain textures and safer terrain memory.
+- **Improved draw distance**: every object stays drawn 1.2 times as far, and stays a 3D model out to 25-150 m (by
+  size) before the game may swap it for a flat impostor (15 m in 1998), and does not flicker between the two.
+- **Textured distant terrain**: the ground keeps its own detailed textures out to the far clip, at most 750 m, instead
+  of a blurry map beyond 345 m, with more room for terrain textures and safer terrain memory.
 - **Improved LOD behaviour**: models keep their detail measured at the real render size, and textures, terrain and
   impostors use their full 256-pixel resolution instead of the 1998 limit of 128.
-- **Modern texture cache**: the game's texture memory grows from 24 MB to 64 MB, with the engine's 32-bit budget
+- **Modern texture cache**: the game's texture memory grows from 24 MB to 96 MB, with the engine's 32-bit budget
   arithmetic corrected, and textures survive Alt+Tab and menu changes without being rebuilt.
 - **Steady texture streaming**: the game's per-frame texture upload window is timed precisely, so newly visible
   scenery gets its textures sooner instead of showing flat colours.

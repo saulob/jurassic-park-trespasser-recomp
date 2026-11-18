@@ -19,7 +19,6 @@ const unsigned char jpt_gva_gate[JPT_GVA_COUNT] = {
     0, /* 0x00413160 */
     0, /* 0x00414100 */
     0, /* 0x004142C0 */
-    0, /* 0x00414480 */
     0, /* 0x00414570 */
     0, /* 0x00414D80 */
     0, /* 0x00414E80 */
@@ -129,7 +128,6 @@ const unsigned char jpt_gva_gate[JPT_GVA_COUNT] = {
     0, /* 0x00607E90 */
     0, /* 0x00608150 */
     0, /* 0x00608170 */
-    0, /* 0x0060CB70 */
     0, /* 0x0060E3F0 */
     0, /* 0x0060FC10 */
     0, /* 0x00614A60 */
@@ -306,8 +304,6 @@ const unsigned char jpt_gva_gate[JPT_GVA_COUNT] = {
     0, /* 0x0073F34C */
     0, /* 0x0073F350 */
     0, /* 0x0073F444 */
-    0, /* 0x0073F600 */
-    0, /* 0x0073F614 */
     0, /* 0x0073F708 */
     0, /* 0x0073F70C */
     0, /* 0x0073F710 */
@@ -334,7 +330,6 @@ const uint32_t jpt_gva_canonical[JPT_GVA_COUNT] = {
     0x00413160u,
     0x00414100u,
     0x004142C0u,
-    0x00414480u,
     0x00414570u,
     0x00414D80u,
     0x00414E80u,
@@ -444,7 +439,6 @@ const uint32_t jpt_gva_canonical[JPT_GVA_COUNT] = {
     0x00607E90u,
     0x00608150u,
     0x00608170u,
-    0x0060CB70u,
     0x0060E3F0u,
     0x0060FC10u,
     0x00614A60u,
@@ -621,8 +615,6 @@ const uint32_t jpt_gva_canonical[JPT_GVA_COUNT] = {
     0x0073F34Cu,
     0x0073F350u,
     0x0073F444u,
-    0x0073F600u,
-    0x0073F614u,
     0x0073F708u,
     0x0073F70Cu,
     0x0073F710u,
@@ -658,7 +650,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00413160u,
             0x00414100u,
             0x004142C0u,
-            0x00414480u,
             0x00414570u,
             0x00414D80u,
             0x00414E80u,
@@ -768,7 +759,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00607E90u,
             0x00608150u,
             0x00608170u,
-            0x0060CB70u,
             0x0060E3F0u,
             0x0060FC10u,
             0x00614A60u,
@@ -945,8 +935,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x0073F34Cu,
             0x0073F350u,
             0x0073F444u,
-            0x0073F600u,
-            0x0073F614u,
             0x0073F708u,
             0x0073F70Cu,
             0x0073F710u,
@@ -981,7 +969,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00413280u,
             0x00414220u,
             0x004143B0u,
-            0x00414580u,
             0x00414670u,
             0x00414E80u,
             0x00414F80u,
@@ -1091,7 +1078,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x005EDEC0u,
             0x005EE180u,
             0x005EE1A0u,
-            0x005F3040u,
             0x005F4970u,
             0x005F6190u,
             0x005FAFE0u,
@@ -1268,8 +1254,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00741CBCu,
             0x00741CC0u,
             0x00741DB4u,
-            0x00741F70u,
-            0x00741F84u,
             0x00742068u,
             0x0074206Cu,
             0x00742070u,
@@ -1304,7 +1288,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00413460u,
             0x00414400u,
             0x00414590u,
-            0x00414760u,
             0x00414850u,
             0x00415060u,
             0x00415160u,
@@ -1414,7 +1397,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x005F0520u,
             0x005F07E0u,
             0x005F0800u,
-            0x005F5640u,
             0x005F6F70u,
             0x005F8750u,
             0x005FD5A0u,
@@ -1591,8 +1573,6 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x0074346Cu,
             0x00743470u,
             0x00743564u,
-            0x00743720u,
-            0x00743734u,
             0x007437C0u,
             0x007437C4u,
             0x007437C8u,

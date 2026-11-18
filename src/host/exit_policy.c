@@ -112,6 +112,11 @@ static void finish_logging(void) {
     window_host_input_summary();
     gamepad_summary();
     d3dr_summary();
+    active_ai_summary();
+    physics_fixes_summary();
+    cpu_polygons_summary();
+    texture_streaming_summary();
+    engine_limits_cache_summary();
     guest_profile_summary();
     io_trace_summary();
 }

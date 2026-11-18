@@ -6,6 +6,7 @@
  */
 #include "guest_va.h"
 #include "host.h"
+#include "perf_sections.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -270,11 +271,15 @@ static void navigate(uint32_t scratch, uint32_t now) {
     cp_scene_t scene;
     const char* notice;
     scene_of(&scene);
+    int64_t section = perf_section_begin();
     notice = objectives_frame(&D.world, D.state.open && D.state.menu == DM_MENU_OBJECTIVES, scratch);
+    perf_section_end(PS_OBJECTIVES, section);
     if (notice) dm_notice(&D.state, notice, now);
     minimap_level_seen(D.world.level);
     dm_navigate(&D.state, &D.world, &scene, objectives_goal(), now, &D.hud);
+    section = perf_section_begin();
     if (D.hud.minimap) minimap_creatures(scratch);
+    perf_section_end(PS_MINIMAP_STATE, section);
     cp_hud_reminder(&D.hud, objectives_goal(), cp_reminder_step(&D.reminder, now, objectives_goal()));
 }
 
@@ -288,6 +293,19 @@ static void note_changes(void) {
     D.was_open = D.state.open;
 }
 
+int debug_menu_positions(float player[3], float camera[3]) {
+    int found = 0;
+    if (D.world.player) {
+        memcpy(player, D.world.at.pos, 3 * sizeof(float));
+        found |= 1;
+    }
+    if (D.world.eye) {
+        memcpy(camera, D.world.eye_at.pos, 3 * sizeof(float));
+        found |= 2;
+    }
+    return found;
+}
+
 void debug_menu_ui_loop(void) {
     guest_ui_view_t v;
     dm_action_t action;
@@ -298,7 +316,11 @@ void debug_menu_ui_loop(void) {
     sample(&v, scratch);
     dm_world_seen(&D.state, &D.world);
     if (dm_take(&D.state, &action)) run(&action, &v, scratch, now);
-    cheats_frame(&D.world, scratch);
+    {
+        int64_t section = perf_section_begin();
+        cheats_frame(&D.world, scratch);
+        perf_section_end(PS_CHEATS, section);
+    }
     navigate(scratch, now);
     g_esp = esp;
     note_changes();

@@ -46,6 +46,7 @@
 
 static int s_on;
 static float s_min_half[BOX_COUNT];
+static physics_counts_t s_counts; /* DEBUG_SAULO */
 static int s_box_init_hooked;
 static recomp_func_t s_box_init_lifted;
 
@@ -60,6 +61,26 @@ static uint32_t bits(float v) {
 static int box_index(uint32_t box) {
     uint32_t off = box - BOX_POOL;
     return off < BOX_COUNT * BOX_STRIDE && !(off % BOX_STRIDE) ? (int)(off / BOX_STRIDE) : -1;
+}
+
+/* DEBUG_SAULO */
+static void count_box(unsigned* per_box, uint32_t box) {
+    int i = box_index(box);
+    if (i >= 0) per_box[i]++;
+}
+
+void physics_counts_take(physics_counts_t* out) {
+    *out = s_counts;
+    for (uint32_t i = 0; i < BOX_COUNT && i < PHYSICS_BOXES; i++) {
+        uint32_t box = BOX_POOL + BOX_STRIDE * i;
+        float sub = rdf(box + BOX_SUB_COUNT);
+        out->box_sub_count[i] = sub > 0.0f && sub < 1000.0f ? (unsigned)sub : 0u;
+        out->box_awake[i] = MEM32(box + BOX_STATE) == MEM32(STATE_AWAKE);
+        out->box_movable[i] = MEM8(box + BOX_MOVABLE) != 0;
+        if (out->box_awake[i]) out->awake++;
+        if (MEM32(box + BOX_ACTIVE)) out->active++;
+    }
+    memset(&s_counts, 0, sizeof s_counts);
 }
 
 static const float* sub_rotation(uint32_t box, uint32_t sub) {
@@ -81,6 +102,8 @@ static void box_init(void) {
 /* Box-box, at a velocity kill call with its arguments pushed: esi = this box, ebp = its sub-box. */
 static void kill_normal_in_box_frame(void) {
     float n[3];
+    s_counts.kills++;
+    count_box(s_counts.box_kills, g_esi);
     if (!s_on || !MEM8(g_esi + BOX_SUB_ROTATED + g_ebp)) return;
     for (int i = 0; i < 3; i++) n[i] = rdf(g_esp + 0xC + 4u * i);
     patch117_sub_box_rotate(sub_rotation(g_esi, g_ebp), n);
@@ -110,6 +133,7 @@ void GHOOK(0x004EC586)(void) {
     patch117_face_t faces[3];
     patch117_contact_coeffs_t k;
     int n, rotated;
+    s_counts.corner_tests++;
     if (!s_on) return;
     c[0] = rdf(sp + 0x88), c[1] = rdf(sp + 0x28), c[2] = rdf(sp + 0xB4);
     h[0] = rdf(sp + 0xA0), h[1] = rdf(sp + 0x8C), h[2] = rdf(sp + 0x7C);
@@ -147,6 +171,9 @@ void GHOOK(0x004EC586)(void) {
 void GHOOK(0x004EC5A2)(void) {
     uint32_t other = MEM32(g_esp + 0x68), self = MEM32(g_esp + 0x118);
     uint8_t run;
+    s_counts.sub_pairs++;
+    if (self < PHYSICS_BOXES) s_counts.box_sub_pairs[self]++;
+    if (other < PHYSICS_BOXES) s_counts.box_sub_pairs[other]++;
     if (!s_on || !s_box_init_hooked || other >= BOX_COUNT || self >= BOX_COUNT) return;
     run = patch117_edge_contact(1, s_min_half[self], s_min_half[other], (int)self, (int)other) ? 0xFFu : 0u;
     MEM8(g_esi + BOX_EDGE_PENDING + other) = run;
@@ -174,6 +201,9 @@ static void wake_write(uint32_t box, const patch117_wake_box_t* w) {
 void GHOOK(0x004DDEFD)(void) {
     uint32_t a = g_ebp, b = g_ebx - PAIR_B_BASE;
     patch117_wake_box_t wa, wb;
+    s_counts.pairs++;
+    count_box(s_counts.box_pairs, a);
+    count_box(s_counts.box_pairs, b);
     if (!s_on || !(g_eax & 0xFFu)) return;
     wa = wake_read(a);
     wb = wake_read(b);

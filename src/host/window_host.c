@@ -14,6 +14,7 @@
  */
 #include "guest_va.h"
 #include "host.h"
+#include "perf_sections.h"
 #include "gamepad.h"
 #include "host_policy.h"
 #include "loading_hd.h"
@@ -1068,6 +1069,10 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         input_log("%s key-up of the press that opened %s consumed", wparam == VK_ESCAPE ? "Esc" : "F1", ui_text(&g));
         return 0;
     }
+    if ((msg == WM_KEYDOWN || msg == WM_KEYUP) && screen_size_key_dropped((unsigned)wparam, g.ui == GUEST_UI_GAMEPLAY)) {
+        if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "dropped (legacy Screen Size)");
+        return 0;
+    }
     if (input_captured(s.state) && key_opens_game_window(msg, (unsigned)wparam, repeat)) {
         s.clip_hold_until = GetTickCount() + CLIP_HOLD_MS;
         release_clip();
@@ -1530,12 +1535,14 @@ void shim_GetCursorPos(void) {
     if (virtual_input_active()) {
         update_input("GetCursorPos");
         if (g_cur_func == UI_LOOP) {
+            int64_t section = perf_section_begin();
             gamepad_ui_loop();
             overlay_ui_loop();
             debug_menu_ui_loop();
             widescreen_apply_fov();
             ce_gameplay_ui_loop();
             update_input("GetCursorPos");
+            perf_section_end(PS_UI_LOOP, section);
         }
         *out = game_cursor();
     } else {

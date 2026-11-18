@@ -134,8 +134,63 @@ static void report_first_entry(uint32_t va) {
     host_log("selfmod", "first native entry at 0x%08X from sub_%08X", va, g_cur_func);
 }
 
+#define TIMED_SLOTS 512u
+static struct {
+    uint32_t target, caller;
+    unsigned long long calls;
+    LONG64 ticks;
+} s_timed[TIMED_SLOTS];
+static LONG64 s_total_ticks;
+
+static void note_time(uint32_t target, uint32_t caller, LONG64 ticks) {
+    unsigned i = ((target * 2654435761u) ^ (caller * 40503u)) & (TIMED_SLOTS - 1u);
+    for (unsigned n = 0; n < TIMED_SLOTS; n++, i = (i + 1u) & (TIMED_SLOTS - 1u))
+        if (!s_timed[i].calls || (s_timed[i].target == target && s_timed[i].caller == caller)) {
+            s_timed[i].target = target;
+            s_timed[i].caller = caller;
+            s_timed[i].calls++;
+            s_timed[i].ticks += ticks;
+            break;
+        }
+    s_total_ticks += ticks;
+}
+
+static double ticks_to_ms(LONG64 ticks) {
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    return (double)ticks * 1000.0 / (double)f.QuadPart;
+}
+
+double selfmod_total_ms(void) { return ticks_to_ms(s_total_ticks); }
+
+void selfmod_report(double frames, double frame_ms) {
+    unsigned shown[10], count = 0;
+    for (unsigned k = 0; k < 10; k++) {
+        unsigned best = TIMED_SLOTS;
+        for (unsigned i = 0; i < TIMED_SLOTS; i++) {
+            int taken = 0;
+            for (unsigned j = 0; j < count; j++) taken |= shown[j] == i;
+            if (s_timed[i].calls && !taken && (best == TIMED_SLOTS || s_timed[i].ticks > s_timed[best].ticks)) best = i;
+        }
+        if (best == TIMED_SLOTS) break;
+        shown[count++] = best;
+    }
+    host_log("perf-detail", "SelfMod native code: %llu entries, %.1f per frame, %.2f ms per frame (%.1f%% of the frame)",
+             (unsigned long long)s_entries, s_entries / (frames > 0.0 ? frames : 1.0),
+             selfmod_total_ms() / (frames > 0.0 ? frames : 1.0),
+             frame_ms > 0.0 ? 100.0 * selfmod_total_ms() / (frames > 0.0 ? frames : 1.0) / frame_ms : 0.0);
+    for (unsigned j = 0; j < count; j++) {
+        double ms = ticks_to_ms(s_timed[shown[j]].ticks), per_frame = ms / (frames > 0.0 ? frames : 1.0);
+        host_log("perf-detail", "SelfMod 0x%08X from sub_%08X: %llu calls, %.1f ms, %.2f us each, %.1f%% of the frame",
+                 s_timed[shown[j]].target, s_timed[shown[j]].caller, s_timed[shown[j]].calls, ms,
+                 ms * 1000.0 / (double)s_timed[shown[j]].calls, frame_ms > 0.0 ? 100.0 * per_frame / frame_ms : 0.0);
+    }
+}
+
 static void selfmod_bridge(void) {
     selfmod_ctx_t c;
+    LARGE_INTEGER began, ended;
+    uint32_t caller = g_cur_func;
     const char* saved_import = g_cur_import;
     uint32_t guest_esp = g_esp + 4;
     int depth = g_fp_top < 0 ? 0 : g_fp_top > 8 ? 8 : g_fp_top;
@@ -153,7 +208,10 @@ static void selfmod_bridge(void) {
     g_cur_import = "(SelfMod native code)";
     g_esp = guest_esp - CALLBACK_STACK_GAP;
 
+    QueryPerformanceCounter(&began);
     selfmod_run(&c);
+    QueryPerformanceCounter(&ended);
+    note_time(c.fn, caller, ended.QuadPart - began.QuadPart);
 
     g_eax = c.out[0]; g_ecx = c.out[1]; g_edx = c.out[2]; g_ebx = c.out[3];
     g_esp = c.out[4]; g_ebp = c.out[5]; g_esi = c.out[6]; g_edi = c.out[7];
@@ -171,8 +229,18 @@ static void selfmod_bridge(void) {
     g_cur_import = saved_import;
 }
 
+static selfmod_interceptor_t s_interceptor;
+static DWORD s_interceptor_thread;
+
+/* Only the installing thread is redirected: the game's worker threads keep reaching SelfMod code meanwhile. */
+void selfmod_intercept(selfmod_interceptor_t interceptor) {
+    s_interceptor_thread = interceptor ? GetCurrentThreadId() : 0;
+    s_interceptor = interceptor;
+}
+
 recomp_func_t selfmod_lookup(uint32_t va) {
     if (va < lift_selfmod_start || va >= lift_selfmod_end) return NULL;
+    if (s_interceptor && s_interceptor_thread == GetCurrentThreadId()) return s_interceptor(va);
     s_target = va;
     return selfmod_bridge;
 }

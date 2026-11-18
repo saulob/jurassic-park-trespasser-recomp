@@ -75,6 +75,7 @@ static native32_shim_t s_shims[] = {
     { "SetFilePointer", shim_SetFilePointer },
     { "GetFileSize", shim_GetFileSize },
     { "GetFileAttributesA", shim_GetFileAttributesA },
+    { "GetDiskFreeSpaceA", shim_GetDiskFreeSpaceA },
     { "FindFirstFileA", shim_FindFirstFileA },
     { "LZOpenFileA", shim_LZOpenFileA },
     { "LZRead", shim_LZRead },

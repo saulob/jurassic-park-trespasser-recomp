@@ -1,5 +1,340 @@
 {
   "literals": [
-    {"file": "src/host/host_policy.c", "literal": "0x600000", "category": "DATA_NOT_CODE", "reason": "free memory threshold in bytes"}
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x600000",
+      "category": "DATA_NOT_CODE",
+      "reason": "free memory threshold in bytes"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0056f400",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005bf090",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005bffd0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x00571a30",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005c2f10",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005c37b0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0063da50",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0063c5f0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0057c980",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d4150",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d5060",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0057e680",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d6d40",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d75c0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/ddraw/d3d11_renderer.c",
+      "literal": "0x0057db50",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/ddraw/d3d11_renderer.c",
+      "literal": "0x005d66f0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/ddraw/d3d11_renderer.c",
+      "literal": "0x005d5e70",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0057db50",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d5e70",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d66f0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x006402f0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0057b7b0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005d3340",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x00640fe0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x00640d60",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0063f850",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon callers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x00567a90",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005b5010",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005b3e10",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0063f5e0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005c1fe0",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0063f360",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x0064e6c4",
+      "category": "LIFT116_ONLY",
+      "reason": "the 1.0.116 trapezoid gradient limit constant, checked against its stock value before use"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x00569a20",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005b6e30",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x005b7960",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/host_policy.c",
+      "literal": "0x0063e900",
+      "category": "LIFT116_ONLY",
+      "reason": "store-only polygon lockers and spans, used only with the 1.0.116 lift"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x0063d020",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737e88",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737f00",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737f64",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737408",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737ebc",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x0064e6d8",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x006699fc",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x006699f0",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737edc",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737430",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x007373d8",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x007373e4",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737428",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737eb4",
+      "category": "LIFT116_ONLY",
+      "reason": "the perspective-textured span's inputs, read only with the 1.0.116 lift (GPU texture polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x006402f0",
+      "category": "LIFT116_ONLY",
+      "reason": "the bump-mapped perspective span, its walker and inputs, used only with the 1.0.116 lift (GPU bump polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737e98",
+      "category": "LIFT116_ONLY",
+      "reason": "the bump-mapped perspective span, its walker and inputs, used only with the 1.0.116 lift (GPU bump polygons)"
+    },
+    {
+      "file": "src/host/cpu_polygons.c",
+      "literal": "0x00737410",
+      "category": "LIFT116_ONLY",
+      "reason": "the bump-mapped perspective span, its walker and inputs, used only with the 1.0.116 lift (GPU bump polygons)"
+    }
   ]
 }

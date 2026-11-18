@@ -90,6 +90,8 @@ int sound_rearm(float* last_time, float min_delay, float now) {
 
 int ds_pose_swapped(int phase_before, int phase_after) { return phase_before == 3 && (phase_after == 4 || phase_after == 0); }
 
+uint8_t ce_detail_reduce(int max_object_detail, uint8_t game_value) { return max_object_detail ? 0 : game_value; }
+
 uint32_t legacy_free_bytes(uint32_t sectors_per_cluster, uint32_t bytes_per_sector, uint32_t free_clusters, uint32_t swap_bytes) {
     return sectors_per_cluster * bytes_per_sector * free_clusters + swap_bytes;
 }
@@ -97,3 +99,15 @@ uint32_t legacy_free_bytes(uint32_t sectors_per_cluster, uint32_t bytes_per_sect
 int legacy_disk_check_passes(uint32_t free_bytes, uint32_t megabytes) { return free_bytes >= megabytes << 20; }
 
 int startup_disk_check_passes(void) { return 1; }
+
+void legacy_disk_geometry(uint64_t free_bytes, uint64_t total_bytes, uint32_t out[4]) {
+    const uint64_t cluster = 8u * 512u, free_max = 0x7FFFFu, total_max = 0xFFFFFu;
+    uint64_t free_clusters = free_bytes / cluster, total_clusters = total_bytes / cluster;
+    if (free_clusters > free_max) free_clusters = free_max;
+    if (total_clusters > total_max) total_clusters = total_max;
+    if (total_clusters < free_clusters) total_clusters = free_clusters;
+    out[0] = 8u;
+    out[1] = 512u;
+    out[2] = (uint32_t)free_clusters;
+    out[3] = (uint32_t)total_clusters;
+}

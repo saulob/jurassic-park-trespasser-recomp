@@ -12,6 +12,7 @@
 #include "host.h"
 #include "jpt_gpu.h"
 #include "jpt_video_subtitles.h"
+#include "perf_sections.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -412,7 +413,9 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         ID3D11RenderTargetView* view = NULL;
         if (SUCCEEDED(ID3D11Device_CreateRenderTargetView(s_p.device, (ID3D11Resource*)back, NULL, &view))) {
             video_test_overlay(s_p.device, s_p.context, view, (int)width, (int)height);
+            int64_t section = perf_section_begin();
             debug_menu_overlay(s_p.device, s_p.context, view, (int)width, (int)height);
+            perf_section_end(PS_HUD_DRAW, section);
             ID3D11RenderTargetView_Release(view);
         }
     }
@@ -451,7 +454,9 @@ int present_submit(int vsync) {
     if (!s_p.swapchain) return 0;
     if (s_p.back_rtv) {
         video_test_overlay(s_p.device, s_p.context, s_p.back_rtv, (int)s_p.width, (int)s_p.height);
+        int64_t section = perf_section_begin();
         debug_menu_overlay(s_p.device, s_p.context, s_p.back_rtv, (int)s_p.width, (int)s_p.height);
+        perf_section_end(PS_HUD_DRAW, section);
     }
     QueryPerformanceCounter(&start);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);

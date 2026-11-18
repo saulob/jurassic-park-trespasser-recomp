@@ -38,6 +38,22 @@ void minimap_frame(minimap_frame_t* f, float cx, float cy, float radius, float p
     f->scale = 2.0f * radius * clamp_zoom(zoom) / MM_VIEW_SPAN_M;
     f->player_x = player_x;
     f->player_y = player_y;
+    f->up_x = 0.0f;
+    f->up_y = 1.0f;
+}
+
+void minimap_face(minimap_frame_t* f, float heading_deg) {
+    const double rad = (double)heading_deg * 0.017453292519943295;
+    if (!isfinite(heading_deg)) return;
+    f->up_x = (float)sin(rad);
+    f->up_y = (float)cos(rad);
+}
+
+int minimap_place_facing(const minimap_rect_t* picture, float player_x, float player_y, float heading_deg, float zoom,
+                         minimap_frame_t* out) {
+    if (!minimap_place(picture, player_x, player_y, zoom, out)) return 0;
+    minimap_face(out, heading_deg);
+    return 1;
 }
 
 int minimap_place(const minimap_rect_t* picture, float player_x, float player_y, float zoom, minimap_frame_t* out) {
@@ -54,8 +70,10 @@ int minimap_place(const minimap_rect_t* picture, float player_x, float player_y,
 }
 
 void minimap_to_screen(const minimap_frame_t* f, float x, float y, float* sx, float* sy) {
-    if (sx) *sx = f->cx + (x - f->player_x) * f->scale;
-    if (sy) *sy = f->cy - (y - f->player_y) * f->scale;
+    const float dx = x - f->player_x, dy = y - f->player_y;
+    const float right = dx * f->up_y - dy * f->up_x, ahead = dx * f->up_x + dy * f->up_y;
+    if (sx) *sx = f->cx + right * f->scale;
+    if (sy) *sy = f->cy - ahead * f->scale;
 }
 
 int minimap_run_world(const minimap_bounds_t* b, const minimap_level_map_t* m, const minimap_run_t* run, float* min_x,

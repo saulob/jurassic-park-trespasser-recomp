@@ -224,12 +224,15 @@ static void run_request(qs_request_t request) {
 
 static void apply_max_detail(void) {
     uint32_t renderer, settings;
+    uint8_t game, wanted;
     if (!C.max_detail || !guest_read32(RENDER_SETTINGS, &renderer) || !renderer || !guest_read32(renderer, &settings) ||
         !settings || !guest_readable(settings + SETTINGS_DETAIL_REDUCE, 1))
         return;
-    if (MEM8(settings + SETTINGS_DETAIL_REDUCE) && !C.detail_logged++)
-        host_log("graphics", "Maximum object detail: every object keeps its most detailed model");
-    MEM8(settings + SETTINGS_DETAIL_REDUCE) = 0;
+    game = MEM8(settings + SETTINGS_DETAIL_REDUCE);
+    wanted = ce_detail_reduce(C.max_detail, game);
+    if (wanted == game) return;
+    if (!C.detail_logged++) host_log("graphics", "Maximum object detail: every object keeps its most detailed model");
+    MEM8(settings + SETTINGS_DETAIL_REDUCE) = wanted;
 }
 
 /* CAudioDaemon's collision effects (a std::map of material pairs): every pair whose last play lies after the game

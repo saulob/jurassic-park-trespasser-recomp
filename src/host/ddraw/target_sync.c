@@ -1,5 +1,6 @@
 #include "target_sync.h"
 
+#include <emmintrin.h>
 #include <string.h>
 
 void tsync_attach(tsync_t* t) {
@@ -154,9 +155,17 @@ static const uint16_t* copy_row(const uint8_t* copy, long pitch, long y) {
     return (const uint16_t*)(copy + (size_t)y * (size_t)pitch);
 }
 
-/* One array per loop: the stores cannot alias, so the compiler fills with wide stores. */
 static void fill16(uint16_t* p, size_t n, uint16_t value) {
-    for (size_t i = 0; i < n; i++) p[i] = value;
+    size_t i = 0;
+    if (n >= 16) {
+        const __m128i v = _mm_set1_epi16((short)value);
+        for (; ((uintptr_t)(p + i) & 15u) && i < n; i++) p[i] = value;
+        for (; i + 16 <= n; i += 16) {
+            _mm_store_si128((__m128i*)(p + i), v);
+            _mm_store_si128((__m128i*)(p + i + 8), v);
+        }
+    }
+    for (; i < n; i++) p[i] = value;
 }
 
 void tsync_fill(uint8_t* copy, long pitch, uint16_t* reference, unsigned width, const d3dt_rect_t* r, uint16_t value) {
@@ -194,9 +203,7 @@ void tsync_overlay_box(const uint8_t* copy, long pitch, uint16_t* reference, uns
     for (long y = box->top; y < box->bottom; y++) {
         const uint16_t* row = copy_row(copy, pitch, y) + box->left;
         uint16_t* keep = reference + (size_t)y * width + box->left;
-        counts->changed += d3dt_overlay_row(row, keep, bw, out + (size_t)(y - box->top) * bw);
-        counts->black += d3dt_black_over_content(row, keep, bw);
-        memcpy(keep, row, (size_t)bw * 2);
+        counts->changed += d3dt_overlay_row_sync(row, keep, bw, out + (size_t)(y - box->top) * bw, &counts->black);
     }
 }
 
@@ -342,9 +349,7 @@ void tsync_overlay_box_in(const uint8_t* copy, long pitch, uint16_t* reference, 
                 continue;
             }
             n = (unsigned)(end - x);
-            counts->changed += d3dt_overlay_row(row + x, keep + x, n, texels + x);
-            counts->black += d3dt_black_over_content(row + x, keep + x, n);
-            memcpy(keep + x, row + x, (size_t)n * 2);
+            counts->changed += d3dt_overlay_row_sync(row + x, keep + x, n, texels + x, &counts->black);
         }
     }
 }

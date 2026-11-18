@@ -661,7 +661,7 @@ void minimap(const dmp_frame_t* f) {
     const dmp_rect_t r = picture(f);
     const minimap_rect_t pic = { r.x, r.y, r.w, r.h };
     minimap_frame_t fr;
-    if (!minimap_place(&pic, h.player_pos[0], h.player_pos[1], MM_ZOOM, &fr)) return;
+    if (!minimap_place_facing(&pic, h.player_pos[0], h.player_pos[1], h.heading, MM_ZOOM, &fr)) return;
     const float radius = fr.radius, cx = fr.cx, cy = fr.cy;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
@@ -696,7 +696,7 @@ void minimap(const dmp_frame_t* f) {
 
     float dx, dy;
     minimap_point_t t[4];
-    minimap_heading_dir(h.heading, &dx, &dy);
+    minimap_heading_dir(0.0f, &dx, &dy);
     minimap_player_shape(cx, cy, dx, dy, radius * MM_PLAYER_K, t);
     const ImVec2 tip(t[0].x, t[0].y), left(t[1].x, t[1].y), notch(t[2].x, t[2].y), right(t[3].x, t[3].y);
     const ImU32 fill = colour(ImVec4(MM_COLOR_PLAYER, 1.0f), 1.0f);

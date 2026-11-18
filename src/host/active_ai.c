@@ -14,6 +14,7 @@
 #include "active_ai_policy.h"
 #include "cheats.h"
 #include "minimap.h"
+#include "perf_sections.h"
 
 #define AI_SYSTEM GVA(0x0066E77C)
 #define PLAYER GVA(0x0066EF64)
@@ -116,6 +117,8 @@ static struct {
     uint32_t think_brain, think_esp;
     recomp_func_t ctor, dtor, activate, deactivate, within, seen, heard, think_next, process, save, load, influences,
         influences_tail;
+    unsigned long long processed, active_sum; /* DEBUG_SAULO */
+    int active_max;
 } A;
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
@@ -579,13 +582,34 @@ static void ai_think_next(void) {
     GUEST_RETURN_STDCALL(0);
 }
 
+/* DEBUG_SAULO */
+static void count_active(uint32_t sys) {
+    int n = 0, limit = limit_of(sys);
+    for (int i = 1; i <= limit; i++)
+        if (active_at(sys, i)) n++;
+    A.processed++;
+    A.active_sum += (unsigned)n;
+    if (n > A.active_max) A.active_max = n;
+}
+
 static void ai_process(void) {
+    int64_t begin;
     if (g_alias_entry) {
         A.process();
         return;
     }
+    begin = perf_section_begin();
     process(g_ecx, GUEST_ARG(0));
+    count_active(g_ecx);
+    perf_section_end(PS_AI, begin);
     GUEST_RETURN_STDCALL(1);
+}
+
+void active_ai_summary(void) {
+    if (!A.processed) return;
+    host_log("perf-detail", "DEBUG_SAULO active AI: %llu system updates, active animals average %.2f, max %d (limit %d); "
+             "its time is the AI row of the frame breakdown", A.processed, (double)A.active_sum / (double)A.processed,
+             A.active_max, A.enhanced ? ACTIVE_AI_ENHANCED_LIMIT : ACTIVE_AI_ORIGINAL_LIMIT);
 }
 
 static void ai_save(void) {

@@ -102,11 +102,13 @@ typedef struct {
     int threat;
 } minimap_creature_t;
 
-/* The player-centred transform: the player's world position is always the circle's centre (screen y grows south). */
+/* The player-centred transform: the player's world position is always the circle's centre (screen y grows down). The
+ * world direction drawn straight up: north (+y) until minimap_face sets the player's heading. */
 typedef struct {
     float cx, cy, radius;
     float scale; /* screen pixels per world metre */
     float player_x, player_y;
+    float up_x, up_y;
 } minimap_frame_t;
 
 typedef struct {
@@ -135,6 +137,11 @@ const minimap_level_map_t* minimap_map(const char* level_id);
 int minimap_place(const minimap_rect_t* picture, float player_x, float player_y, float zoom, minimap_frame_t* out);
 void minimap_frame(minimap_frame_t* f, float cx, float cy, float radius, float player_x, float player_y, float zoom);
 /* World (x, y) to screen: the player lands on (cx, cy), east grows right, north grows up. */
+/* Player-up: the heading (compass degrees, clockwise from north) points straight up; one sine and cosine per frame. */
+void minimap_face(minimap_frame_t* f, float heading_deg);
+/* minimap_place, then minimap_face. */
+int minimap_place_facing(const minimap_rect_t* picture, float player_x, float player_y, float heading_deg, float zoom,
+                         minimap_frame_t* out);
 void minimap_to_screen(const minimap_frame_t* f, float x, float y, float* sx, float* sy);
 /* The world rect of one map run (min_x < max_x, south_y < north_y); 0 with bad input. */
 int minimap_run_world(const minimap_bounds_t* b, const minimap_level_map_t* m, const minimap_run_t* run, float* min_x,

@@ -79,6 +79,7 @@ set(HOST_SOURCES
   src/host/exit_policy.c
   src/host/milestones.c
   src/host/selfmod.c
+  src/host/perf_sections.c
   src/host/guest_overrides.c
   src/host/override_registry.c
   src/host/water_kernels.c
@@ -133,6 +134,7 @@ set(HOST_SOURCES
   src/host/texture_streaming.c
   src/host/terrain_quality.c
   src/host/cpu_polygons.c
+  src/host/texture_gpu_policy.c
   src/host/diagnostics.c
   src/host/physics_fixes.c
   src/host/ce_policy.c
@@ -484,7 +486,7 @@ target_link_libraries(patch117_tests PRIVATE jpt_common lz32)
 target_compile_options(patch117_tests PRIVATE /W3)
 target_compile_definitions(patch117_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
-add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/window_title.c src/host/bump_spans.c src/host/ddraw/d3d_translate.c
+add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_policy.c src/host/window_title.c src/host/bump_spans.c src/host/texture_gpu_policy.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/target_sync.c src/host/ddraw/d3d11_shaders.c src/host/ddraw/page_arena.c src/common/jpt_display.c)
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)

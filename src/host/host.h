@@ -83,7 +83,20 @@ int ddraw_compat_last_call(char* out, int cap);
 
 int selfmod_init(void);
 recomp_func_t selfmod_lookup(uint32_t va);
+/* While set, every SelfMod entry goes to the host function the interceptor returns instead of the native code. */
+typedef recomp_func_t (*selfmod_interceptor_t)(uint32_t va);
+void selfmod_intercept(selfmod_interceptor_t interceptor);
 unsigned long selfmod_entries(void);
+double selfmod_total_ms(void);
+#define GUEST_PROFILE_MAX_SLOTS 64
+unsigned guest_profile_slots(void);
+const char* guest_profile_slot_name(unsigned slot);
+void guest_profile_snapshot(unsigned* out);
+int guest_profile_running(void);
+/* DEBUG_SAULO: the slots of the physics code's stages, and the time one sample stands for. */
+int guest_profile_slot_physics(unsigned slot);
+double guest_profile_sample_ms(void);
+void selfmod_report(double frames, double frame_ms);
 
 void diagnostics_install(unsigned watchdog_seconds);
 /* Reports the machine state and ends the run with HOST_EXIT_SHUTDOWN_TIMEOUT. */
@@ -136,6 +149,7 @@ void shim_GetWindowRect(void);
 void shim_GetClientRect(void);
 void shim_ClientToScreen(void);
 void shim_GetCursorPos(void);
+void shim_GetDiskFreeSpaceA(void);
 void shim_SetCursorPos(void);
 void shim_ClipCursor(void);
 void shim_ShowCursor(void);
@@ -188,8 +202,41 @@ const char* d3dr_name(void);
  * only store pixels. */
 void d3dr_cpu_polygon(void* surface_iface, const long box[4], uint32_t origin_bytes, int reads);
 void d3dr_cpu_polygon_done(void);
+/* A perspective-textured polygon drawn by the GPU in place of the software primitive, in the surface's pixels; 0 when
+ * the target cannot take it (the caller then draws it on the CPU). */
+typedef struct {
+    float x[64], y[64]; /* the raster's view pixels: origin_bytes from the surface's first pixel */
+    unsigned count;
+    uint32_t origin_bytes;
+    float plane[4][3]; /* u/z, v/z, 1/z: value at origin, per pixel x, per row; plane[3] = origin x, y */
+    int clamped;
+    float umin, umax, vmax;
+    uint32_t line, umask, tile_mask;
+    const uint8_t* texels;
+    uint32_t texel_bytes;
+    const uint16_t* clut;
+    uint32_t clut_entries;
+    uint32_t kind; /* GPU_POLYGON_TEXTURE: 8-bit texels in the CLUT; GPU_POLYGON_BUMP: 16-bit texels, bump table */
+    const uint8_t* bump_table;
+    uint32_t light_theta;
+} gpu_texture_polygon_t;
+#define GPU_POLYGON_TEXTURE 0u
+#define GPU_POLYGON_BUMP 1u
+typedef enum { GPU_POLYGON_READY, GPU_POLYGON_NO_TARGET, GPU_POLYGON_BUSY, GPU_POLYGON_NO_RESOURCES } gpu_polygon_status_t;
+/* Before the polygon's spans run: the target, the resources, the uploads and the order against CPU polygons. */
+gpu_polygon_status_t d3dr_texture_polygon_prepare(void* surface_iface, const gpu_texture_polygon_t* p);
+/* Draws a polygon d3dr_texture_polygon_prepare accepted. */
+int d3dr_texture_polygon(void* surface_iface, const gpu_texture_polygon_t* p);
+/* A level change: guest addresses may now hold other textures and CLUTs. */
+void d3dr_texture_polygon_reset(void);
+/* DEBUG_SAULO: the guest function behind the current raster Lock. */
+uint32_t d3dr_lock_caller(void);
 /* cpu_polygons.c: the software polygons drawn into the Direct3D frame (meshes Direct3D cannot take). */
 void cpu_polygons_install(void);
+/* DEBUG_SAULO: DrawPolygon's cost by screen Lock caller, at exit. */
+void cpu_polygons_summary(void);
+/* DEBUG_SAULO: closes the frame's per-family counts; gameplay = a stable gameplay frame, slow = over 25 ms. */
+void cpu_polygons_frame_end(int gameplay, int slow);
 /* widescreen.c: screen pixels per metre at unit distance for the main camera's view; 0 when there is none. */
 float widescreen_pixels_per_metre(void);
 /* tan of half the main camera's vertical view, as the picture shows it; 0 when there is none. */
@@ -250,6 +297,9 @@ void engine_limits_summary(unsigned long long hardware_draw_calls);
 /* texture_streaming.c: the game's per-frame Direct3D texture upload window. */
 void texture_streaming_install(void);
 void texture_streaming_log(void);
+void texture_streaming_summary(void);
+/* DEBUG_SAULO: image-cache decisions at exit (engine_limits.c). */
+void engine_limits_cache_summary(void);
 void shim_GetTickCount(void);
 /* terrain_quality.c: terrain texture distance and mesh tolerance with Direct3D 11. */
 /* engine_heaps.c: the engine's fixed heaps (scene polygons and vertices, terrain) and their commits. */
@@ -335,6 +385,7 @@ void debug_menu_close(void);
 /* overlay.c: the one owner of the host's interfaces over gameplay (overlay_policy.h kinds). */
 void overlay_request(int kind, const char* source);
 void overlay_ui_loop(void);
+int debug_menu_positions(float player[3], float camera[3]);
 int overlay_blocks_gameplay(void);
 
 
@@ -368,8 +419,24 @@ void patch117_player_install(void);
 /* patch117_physics.c: the official v1.1 build 117 box-box and broad-phase fixes over the lifted 116 code. */
 void patch117_physics_configure(int on);
 void patch117_physics_install(void);
+/* DEBUG_SAULO: what the rigid-box physics did since the last take, by box of the 50-box pool (its broad-phase pairs,
+ * sub-box pairs it was tested in, velocity kills of its contacts) and the pool's state now. */
+#define PHYSICS_BOXES 50u
+typedef struct {
+    unsigned pairs, sub_pairs, corner_tests, kills, awake, active;
+    unsigned box_pairs[PHYSICS_BOXES], box_sub_pairs[PHYSICS_BOXES], box_kills[PHYSICS_BOXES];
+    unsigned box_sub_count[PHYSICS_BOXES];
+    unsigned char box_awake[PHYSICS_BOXES], box_movable[PHYSICS_BOXES];
+} physics_counts_t;
+void physics_counts_take(physics_counts_t* out);
+/* Frames the Direct3D 11 renderer presented with the hardware device. */
+unsigned long long renderer_hardware_frames(void);
 void active_ai_install(void);
 int active_ai_installed(void);
+/* DEBUG_SAULO: active animals per AI update, at exit. */
+void active_ai_summary(void);
+/* DEBUG_SAULO: hand escapes and recoveries at exit (physics_fixes.c). */
+void physics_fixes_summary(void);
 /* ce_graphics.c: the sky draw hook and the water rows' observer (Direct3D 11 only). */
 void ce_graphics_install(int hardware);
 /* Every key message first: 1 when the game must not see it. */
@@ -434,7 +501,7 @@ void shim_CreateThread(void);
 unsigned guest_threads_alive(void);
 /* diagnostics.c: lifted indirect calls answered from the dispatch cache, and the ones that searched the table. */
 void dispatch_cache_counts(unsigned long long* hits, unsigned long long* misses);
-/* guest_profile.c (--perf-log): sampled guest CPU time, logged with the 5-second performance lines. */
+/* guest_profile.c: sampled guest CPU time, logged with the 5-second performance lines (--perf-log) and at exit. */
 void guest_profile_start(HANDLE guest_thread);
 void guest_profile_add_worker(HANDLE thread, uint32_t entry);
 void guest_profile_window(void);

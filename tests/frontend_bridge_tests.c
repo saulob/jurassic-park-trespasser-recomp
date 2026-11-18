@@ -187,6 +187,8 @@ int ui_frozen_picture(const uint16_t** bits, int* w, int* h, long* pitch) {
 }
 void d3dr_frontend_release(void) {}
 void window_host_level_load_done(void) {}
+void d3dr_texture_polygon_reset(void) {}
+void guest_threads_trace(const char* event) { (void)event; }
 
 int window_host_pointer(int* x, int* y) {
     *x = *y = 0;
