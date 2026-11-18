@@ -2272,6 +2272,134 @@ static void test_texture_gpu_bump(void) {
     CHECK(tgpu_texture_cache_find_checked(&cache, cache_a[1], 1024, &up) == 0 && up);
 }
 
+/* The vectorised texture conversion, alpha scan and mip downsample against the per-texel reference, byte for byte. */
+static uint32_t s_simd_seed = 12345u;
+
+static uint32_t simd_rand(void) {
+    s_simd_seed = s_simd_seed * 1664525u + 1013904223u;
+    return s_simd_seed >> 8 ^ s_simd_seed << 16;
+}
+
+static void test_texture_simd_convert(void) {
+    static const int formats[] = { D3DT_FMT_RGB565, D3DT_FMT_XRGB1555, D3DT_FMT_ARGB1555, D3DT_FMT_ARGB4444,
+                                   D3DT_FMT_XRGB4444, D3DT_FMT_XRGB8888, D3DT_FMT_ARGB8888 };
+    static uint32_t src[96 + 8], out_a[96 + 8], out_b[96 + 8];
+    int bad = 0, edge_bad = 0;
+    for (unsigned f = 0; f < sizeof formats / sizeof formats[0]; f++)
+        for (int k = 0; k < 100000; k++) {
+            unsigned count = simd_rand() % 80, offset = simd_rand() % 4, at = simd_rand() % 3;
+            uint32_t low = simd_rand() & 0xFFFFu, high = low + (simd_rand() % 4 == 0 ? 0xFFFFu : simd_rand() % 4096u);
+            int keyed = (int)(simd_rand() % 3 != 0), bytes = formats[f] >= D3DT_FMT_XRGB8888 && formats[f] != D3DT_FMT_XRGB4444 ? 4 : 2;
+            const uint8_t* in = (const uint8_t*)src + offset * (unsigned)bytes;
+            for (unsigned i = 0; i < 100; i++) src[i] = simd_rand() ^ (simd_rand() << 16);
+            if (k % 7 == 0)
+                for (unsigned i = 0; i < 100; i++) src[i] = (i % 2) ? 0xFFFFFFFFu : 0u;
+            if (k % 11 == 0 && keyed) low = 0, high = 0xFFFFFFFFu;
+            if (k % 13 == 0) high = low;
+            memset(out_a, 0xA5, sizeof out_a);
+            memset(out_b, 0xA5, sizeof out_b);
+            d3dt_convert_row_reference(formats[f], in, out_a + at, count, keyed, low, high);
+            d3dt_convert_row(formats[f], in, out_b + at, count, keyed, low, high);
+            bad |= memcmp(out_a, out_b, sizeof out_a) != 0;
+        }
+    for (unsigned f = 0; f < 5; f++) {
+        uint16_t extremes[8] = { 0x0000, 0xFFFF, 0x8000, 0x7FFF, 0xF800, 0x07E0, 0x001F, 0x0F0F };
+        for (unsigned n = 1; n <= 8; n++) {
+            uint32_t a[8], b[8];
+            d3dt_convert_row_reference(formats[f], extremes, a, n, 1, 0x7FFF, 0xF800);
+            d3dt_convert_row(formats[f], extremes, b, n, 1, 0x7FFF, 0xF800);
+            edge_bad |= memcmp(a, b, n * 4) != 0;
+        }
+    }
+    CHECK(!bad);
+    CHECK(!edge_bad);
+}
+
+static void test_texture_simd_alpha(void) {
+    static uint32_t px[70];
+    int bad = 0;
+    for (int k = 0; k < 100000; k++) {
+        unsigned count = simd_rand() % 66, at = simd_rand() % 3, mode = (unsigned)k % 4;
+        for (unsigned i = 0; i < 70; i++) px[i] = 0xFF000000u | simd_rand();
+        if (mode && count) px[simd_rand() % count] = (mode == 1 ? 0u : mode == 2 ? 0x80000000u : 0x01000000u) | (simd_rand() & 0xFFFFFFu);
+        if (mode == 3 && count > 4) px[count - 1] = simd_rand() & 0xFFFFFFu;
+        bad |= d3dt_alpha_kind(px + at, count) != d3dt_alpha_kind_reference(px + at, count);
+    }
+    CHECK(!bad);
+}
+
+static void test_texture_simd_mips(void) {
+    static const unsigned sizes[][2] = { { 256, 256 }, { 128, 128 }, { 64, 64 }, { 32, 32 }, { 16, 16 }, { 8, 8 },
+                                         { 256, 128 }, { 128, 256 }, { 64, 128 }, { 32, 8 }, { 8, 16 }, { 1, 1 },
+                                         { 1, 8 }, { 8, 1 }, { 2, 2 }, { 3, 5 }, { 5, 3 }, { 7, 9 }, { 12, 6 }, { 4, 4 } };
+    static uint32_t src[256 * 256], a[256 * 256 / 3 + 64], b[256 * 256 / 3 + 64];
+    int bad = 0, chains_bad = 0;
+    for (int k = 0; k < 10000; k++) {
+        unsigned s = (unsigned)k % (sizeof sizes / sizeof sizes[0]), w = sizes[s][0], h = sizes[s][1], kind = (unsigned)k / 20 % 3;
+        unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1;
+        unsigned long texels = (unsigned long)w * h;
+        for (unsigned long i = 0; i < texels; i++) {
+            uint32_t c = simd_rand() & 0xFFFFFFu, alpha = kind == 0 ? 255u : kind == 1 ? ((simd_rand() & 3u) ? 255u : 0u) : (simd_rand() & 0xFFu);
+            src[i] = (alpha << 24) | c;
+        }
+        if (k % 5 == 0)
+            for (unsigned long i = 0; i < texels; i++) src[i] = kind == 0 ? 0xFF000000u : src[i] | 0x00FFFFFFu;
+        memset(a, 0x5A, sizeof a);
+        memset(b, 0x5A, sizeof b);
+        {
+            int ak = d3dt_alpha_kind(src, texels);
+            d3dt_mip_downsample_reference(src, w, h, ak, a);
+            d3dt_mip_downsample(src, w, h, ak, b);
+            bad |= memcmp(a, b, ((size_t)dw * dh + 8) * 4) != 0;
+        }
+    }
+    for (int k = 0; k < 200; k++) {
+        unsigned s = (unsigned)k % 12, w = sizes[s][0], h = sizes[s][1], levels = d3dt_mip_count(w, h);
+        size_t total = d3dt_mip_chain_texels(w, h, levels), i;
+        static uint32_t chain_a[256 * 256 * 2], chain_b[256 * 256 * 2];
+        for (i = 0; i < (size_t)w * h; i++) chain_a[i] = chain_b[i] = 0xFF000000u | simd_rand();
+        d3dt_build_mips(chain_b, w, h, levels, D3DT_ALPHA_OPAQUE);
+        for (unsigned l = 1, lw, lh, off = 0; l < levels; l++) {
+            uint32_t* level = chain_a + off;
+            d3dt_mip_size(w, h, l - 1, &lw, &lh);
+            d3dt_mip_downsample_reference(level, lw, lh, D3DT_ALPHA_OPAQUE, level + (size_t)lw * lh);
+            off += lw * lh;
+        }
+        chains_bad |= memcmp(chain_a, chain_b, total * 4) != 0;
+    }
+    CHECK(!bad);
+    CHECK(!chains_bad);
+}
+
+/* DEBUG_SAULO: reference against vectorised on a 128x128 texture, printed only. */
+static void bench_texture_simd(void) {
+    static uint16_t src[128 * 128];
+    static uint32_t dst[128 * 128], mip[128 * 128];
+    LARGE_INTEGER f, t0, t1, t2, t3, t4;
+    double ref_row, simd_row, ref_mip, simd_mip;
+    QueryPerformanceFrequency(&f);
+    for (unsigned i = 0; i < 128 * 128; i++) src[i] = (uint16_t)simd_rand();
+    QueryPerformanceCounter(&t0);
+    for (int r = 0; r < 200; r++)
+        for (unsigned y = 0; y < 128; y++) d3dt_convert_row_reference(D3DT_FMT_RGB565, src + y * 128, dst + y * 128, 128, 0, 0, 0);
+    QueryPerformanceCounter(&t1);
+    for (int r = 0; r < 200; r++)
+        for (unsigned y = 0; y < 128; y++) d3dt_convert_row(D3DT_FMT_RGB565, src + y * 128, dst + y * 128, 128, 0, 0, 0);
+    QueryPerformanceCounter(&t2);
+    ref_row = (double)(t1.QuadPart - t0.QuadPart), simd_row = (double)(t2.QuadPart - t1.QuadPart);
+    for (unsigned i = 0; i < 128 * 128; i++) dst[i] |= 0xFF000000u;
+    QueryPerformanceCounter(&t0);
+    for (int r = 0; r < 400; r++) d3dt_mip_downsample_reference(dst, 128, 128, D3DT_ALPHA_OPAQUE, mip);
+    QueryPerformanceCounter(&t3);
+    for (int r = 0; r < 400; r++) d3dt_mip_downsample(dst, 128, 128, D3DT_ALPHA_OPAQUE, mip);
+    QueryPerformanceCounter(&t4);
+    ref_mip = (double)(t3.QuadPart - t0.QuadPart), simd_mip = (double)(t4.QuadPart - t3.QuadPart);
+    printf("texture simd: RGB565 row conversion x%.1f (%.2f -> %.2f us per 128x128), opaque mip downsample x%.1f "
+           "(%.1f -> %.1f us per 128x128)\n", ref_row / simd_row, ref_row * 1e6 / (double)f.QuadPart / 200.0,
+           simd_row * 1e6 / (double)f.QuadPart / 200.0, ref_mip / simd_mip, ref_mip * 1e6 / (double)f.QuadPart / 400.0,
+           simd_mip * 1e6 / (double)f.QuadPart / 400.0);
+}
+
 static void test_fill_runs(void) {
     static uint16_t copy[4 * 96], reference[4 * 96];
     for (long left = 0; left < 12; left++)
@@ -4356,6 +4484,10 @@ int main(void) {
     test_texture_gpu_session();
     test_texture_gpu_run();
     test_texture_gpu_bump();
+    test_texture_simd_convert();
+    test_texture_simd_alpha();
+    test_texture_simd_mips();
+    bench_texture_simd();
     test_texture_gpu_cache();
     test_fill_runs();
     test_overlay_row_sync();

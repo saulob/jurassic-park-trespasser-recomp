@@ -3443,6 +3443,7 @@ static void release_poly_resources(void) {
 
 void d3dr_texture_polygon_reset(void) { reset_poly_caches(); }
 
+
 static ID3D11Buffer* make_typed_buffer(UINT bytes, DXGI_FORMAT format, UINT elements, ID3D11ShaderResourceView** srv) {
     D3D11_BUFFER_DESC desc;
     D3D11_SHADER_RESOURCE_VIEW_DESC view;
@@ -3501,6 +3502,11 @@ static int poly_bump_resources_ready(void) {
     SAFE_RELEASE(s_poly.bump_tables);
     SAFE_RELEASE(s_poly.bump_clut);
     return 0;
+}
+
+/* The GPU polygon buffers exist on the level's final device before the first polygon needs them. */
+void d3dr_texture_polygon_warm(void) {
+    if (R.hardware && R.dev && poly_resources_ready()) poly_bump_resources_ready();
 }
 
 static void poly_upload(ID3D11Buffer* buffer, uint32_t offset, const void* data, uint32_t bytes) {

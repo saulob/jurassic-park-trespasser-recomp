@@ -357,8 +357,8 @@ static __inline uint32_t argb8888(uint32_t v) { return v; }
 /* One loop per format, so a whole texture row converts without a per-texel switch. */
 #define CONVERT_ROW(type, convert)                                                                                     for (unsigned x = 0; x < count; x++) {                                                                                 uint32_t raw = ((const type*)src)[x], c = convert(raw);                                                            dst[x] = keyed && raw >= key_low && raw <= key_high ? c & 0x00FFFFFFu : c;                                     }
 
-void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
-                      uint32_t key_high) {
+void d3dt_convert_row_reference(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
+                               uint32_t key_high) {
     switch (format) {
     case D3DT_FMT_RGB565: CONVERT_ROW(uint16_t, rgb565) break;
     case D3DT_FMT_XRGB1555: CONVERT_ROW(uint16_t, xrgb1555) break;
@@ -369,6 +369,77 @@ void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count
     case D3DT_FMT_ARGB8888: CONVERT_ROW(uint32_t, argb8888) break;
     default:
         for (unsigned x = 0; x < count; x++) dst[x] = 0;
+    }
+}
+
+static __inline __m128i expand5v(__m128i v) { return _mm_or_si128(_mm_slli_epi16(v, 3), _mm_srli_epi16(v, 2)); }
+static __inline __m128i expand6v(__m128i v) { return _mm_or_si128(_mm_slli_epi16(v, 2), _mm_srli_epi16(v, 4)); }
+static __inline __m128i expand4v(__m128i v) { return _mm_or_si128(_mm_slli_epi16(v, 4), v); }
+
+/* Eight 16-bit texels per step; what is left goes through the reference loop. Texels in the key range keep their colour
+ * with alpha 0, as there. */
+static unsigned convert16_sse2(int format, const uint16_t* src, uint32_t* dst, unsigned count, int keyed,
+                               uint32_t key_low, uint32_t key_high) {
+    const __m128i m1f = _mm_set1_epi16(0x1F), m3f = _mm_set1_epi16(0x3F), m0f = _mm_set1_epi16(0x0F);
+    const __m128i opaque = _mm_set1_epi16(0xFF), bias = _mm_set1_epi16((short)0x8000);
+    __m128i low = _mm_setzero_si128(), high = _mm_setzero_si128();
+    unsigned x = 0;
+    if (keyed && key_low > 0xFFFFu) keyed = 0;
+    if (keyed) {
+        low = _mm_set1_epi16((short)((key_low & 0xFFFFu) ^ 0x8000u));
+        high = _mm_set1_epi16((short)((key_high > 0xFFFFu ? 0xFFFFu : key_high) ^ 0x8000u));
+    }
+    for (; x + 8 <= count; x += 8) {
+        __m128i raw = _mm_loadu_si128((const __m128i*)(src + x)), r, g, b, a = opaque, bg, ra;
+        switch (format) {
+        case D3DT_FMT_RGB565:
+            r = expand5v(_mm_srli_epi16(raw, 11));
+            g = expand6v(_mm_and_si128(_mm_srli_epi16(raw, 5), m3f));
+            b = expand5v(_mm_and_si128(raw, m1f));
+            break;
+        case D3DT_FMT_XRGB1555:
+        case D3DT_FMT_ARGB1555:
+            r = expand5v(_mm_and_si128(_mm_srli_epi16(raw, 10), m1f));
+            g = expand5v(_mm_and_si128(_mm_srli_epi16(raw, 5), m1f));
+            b = expand5v(_mm_and_si128(raw, m1f));
+            if (format == D3DT_FMT_ARGB1555) a = _mm_and_si128(_mm_srai_epi16(raw, 15), opaque);
+            break;
+        default:
+            r = expand4v(_mm_and_si128(_mm_srli_epi16(raw, 8), m0f));
+            g = expand4v(_mm_and_si128(_mm_srli_epi16(raw, 4), m0f));
+            b = expand4v(_mm_and_si128(raw, m0f));
+            if (format == D3DT_FMT_ARGB4444) a = expand4v(_mm_srli_epi16(raw, 12));
+            break;
+        }
+        if (keyed) {
+            __m128i biased = _mm_xor_si128(raw, bias);
+            a = _mm_and_si128(a, _mm_or_si128(_mm_cmpgt_epi16(low, biased), _mm_cmpgt_epi16(biased, high)));
+        }
+        bg = _mm_or_si128(b, _mm_slli_epi16(g, 8));
+        ra = _mm_or_si128(r, _mm_slli_epi16(a, 8));
+        _mm_storeu_si128((__m128i*)(dst + x), _mm_unpacklo_epi16(bg, ra));
+        _mm_storeu_si128((__m128i*)(dst + x + 4), _mm_unpackhi_epi16(bg, ra));
+    }
+    return x;
+}
+
+void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
+                      uint32_t key_high) {
+    unsigned done = 0;
+    switch (format) {
+    case D3DT_FMT_RGB565:
+    case D3DT_FMT_XRGB1555:
+    case D3DT_FMT_ARGB1555:
+    case D3DT_FMT_ARGB4444:
+    case D3DT_FMT_XRGB4444:
+        done = convert16_sse2(format, (const uint16_t*)src, dst, count, keyed, key_low, key_high);
+        break;
+    default: break;
+    }
+    if (done < count) {
+        int bytes = d3dt_format_bytes(format);
+        d3dt_convert_row_reference(format, (const uint8_t*)src + (size_t)done * (bytes ? bytes : 1), dst + done,
+                                   count - done, keyed, key_low, key_high);
     }
 }
 
@@ -702,7 +773,7 @@ size_t d3dt_mip_chain_texels(unsigned w, unsigned h, unsigned levels) {
     return total;
 }
 
-int d3dt_alpha_kind(const uint32_t* bgra, size_t count) {
+int d3dt_alpha_kind_reference(const uint32_t* bgra, size_t count) {
     int kind = D3DT_ALPHA_OPAQUE;
     for (size_t i = 0; i < count; i++) {
         uint32_t a = bgra[i] >> 24;
@@ -711,6 +782,17 @@ int d3dt_alpha_kind(const uint32_t* bgra, size_t count) {
         kind = D3DT_ALPHA_BINARY;
     }
     return kind;
+}
+
+/* The opaque prefix four texels at a time; the first block with any other alpha continues in the reference loop. */
+int d3dt_alpha_kind(const uint32_t* bgra, size_t count) {
+    size_t i = 0;
+    const __m128i full = _mm_set1_epi32(0xFF);
+    for (; i + 4 <= count; i += 4) {
+        __m128i a = _mm_srli_epi32(_mm_loadu_si128((const __m128i*)(bgra + i)), 24);
+        if (_mm_movemask_epi8(_mm_cmpeq_epi32(a, full)) != 0xFFFF) break;
+    }
+    return d3dt_alpha_kind_reference(bgra + i, count - i);
 }
 
 static __inline uint32_t argb(uint32_t a, uint32_t r, uint32_t g, uint32_t b) { return a << 24 | r << 16 | g << 8 | b; }
@@ -773,7 +855,32 @@ static __inline uint32_t mip_opaque_average(uint32_t t0, uint32_t t1, uint32_t t
  * never darken an edge. A binary-alpha level stays binary at the coverage of the level above, so alpha-tested
  * foliage keeps its density at a distance. Full 2x2 footprints take the cheap paths: all opaque is a plain average,
  * and a partly transparent one divides by its alpha sum with a reciprocal. */
-void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst) {
+/* Four output texels from two rows of eight fully opaque texels: (sum of four + 2) / 4 per channel; any other block
+ * stops the vector run. */
+static unsigned mip_opaque_sse2(const uint32_t* row0, const uint32_t* row1, uint32_t* out, unsigned dw) {
+    const __m128i zero = _mm_setzero_si128(), two = _mm_set1_epi16(2);
+    unsigned x = 0;
+    for (; x + 4 <= dw; x += 4) {
+        __m128i sums[4], pair[2], alpha = _mm_set1_epi32(-1);
+        for (unsigned k = 0; k < 2; k++) {
+            __m128i a = _mm_loadu_si128((const __m128i*)(row0 + 2 * x + 4 * k));
+            __m128i b = _mm_loadu_si128((const __m128i*)(row1 + 2 * x + 4 * k));
+            alpha = _mm_and_si128(alpha, _mm_and_si128(a, b));
+            sums[2 * k] = _mm_add_epi16(_mm_unpacklo_epi8(a, zero), _mm_unpacklo_epi8(b, zero));
+            sums[2 * k + 1] = _mm_add_epi16(_mm_unpackhi_epi8(a, zero), _mm_unpackhi_epi8(b, zero));
+        }
+        if (_mm_movemask_epi8(_mm_cmpeq_epi32(_mm_srli_epi32(alpha, 24), _mm_set1_epi32(0xFF))) != 0xFFFF) break;
+        for (unsigned k = 0; k < 2; k++) {
+            __m128i lo = _mm_add_epi16(sums[2 * k], _mm_srli_si128(sums[2 * k], 8));
+            __m128i hi = _mm_add_epi16(sums[2 * k + 1], _mm_srli_si128(sums[2 * k + 1], 8));
+            pair[k] = _mm_srli_epi16(_mm_add_epi16(_mm_unpacklo_epi64(lo, hi), two), 2);
+        }
+        _mm_storeu_si128((__m128i*)(out + x), _mm_packus_epi16(pair[0], pair[1]));
+    }
+    return x;
+}
+
+static void mip_downsample_impl(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst, int simd) {
     unsigned dw = w > 1 ? w / 2 : 1, dh = h > 1 ? h / 2 : 1;
     unsigned fx = w > 1 ? 2 : 1, fy = h > 1 ? 2 : 1, n = fx * fy;
     unsigned long hist[5] = { 0, 0, 0, 0, 0 }, covered = 0;
@@ -781,7 +888,8 @@ void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_
     for (unsigned y = 0; y < dh; y++) {
         const uint32_t* row0 = src + (size_t)(y * fy) * w;
         uint32_t* out = dst + (size_t)y * dw;
-        for (unsigned x = 0; x < dw; x++) {
+        unsigned first = simd && n == 4 && alpha_kind == D3DT_ALPHA_OPAQUE ? mip_opaque_sse2(row0, row0 + w, out, dw) : 0;
+        for (unsigned x = first; x < dw; x++) {
             uint32_t sa = 0, sr = 0, sg = 0, sb = 0, ur = 0, ug = 0, ub = 0, opaque = 0, r, g, b;
             if (n == 4) {
                 const uint32_t* p = row0 + (size_t)x * 2;
@@ -845,6 +953,14 @@ void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_
     for (unsigned y = 0; y < dh * fy; y++)
         for (unsigned x = 0; x < dw * fx; x++) covered += (src[(size_t)y * w + x] >> 24) >= 128;
     keep_coverage(dst, dw, dh, n, hist, (unsigned long)(((double)covered / n) + 0.5));
+}
+
+void d3dt_mip_downsample(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst) {
+    mip_downsample_impl(src, w, h, alpha_kind, dst, 1);
+}
+
+void d3dt_mip_downsample_reference(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst) {
+    mip_downsample_impl(src, w, h, alpha_kind, dst, 0);
 }
 
 void d3dt_build_mips(uint32_t* chain, unsigned w, unsigned h, unsigned levels, int alpha_kind) {

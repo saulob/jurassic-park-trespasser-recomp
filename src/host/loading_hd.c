@@ -500,6 +500,7 @@ static void level_load(void) {
     d3dr_texture_polygon_reset();
     L.level_lifted();
     d3dr_texture_polygon_reset();
+    d3dr_texture_polygon_warm();
     L.loading = 0;
     window_host_level_load_done();
     log_load();

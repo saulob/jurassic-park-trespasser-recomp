@@ -229,6 +229,8 @@ gpu_polygon_status_t d3dr_texture_polygon_prepare(void* surface_iface, const gpu
 int d3dr_texture_polygon(void* surface_iface, const gpu_texture_polygon_t* p);
 /* A level change: guest addresses may now hold other textures and CLUTs. */
 void d3dr_texture_polygon_reset(void);
+/* After a level load: creates the GPU polygon buffers on the current device. */
+void d3dr_texture_polygon_warm(void);
 /* DEBUG_SAULO: the guest function behind the current raster Lock. */
 uint32_t d3dr_lock_caller(void);
 /* cpu_polygons.c: the software polygons drawn into the Direct3D frame (meshes Direct3D cannot take). */

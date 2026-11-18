@@ -105,6 +105,11 @@ const char* d3dt_format_name(int format);
  * texels index palette (0xAARRGGBB entries); other formats ignore it. */
 void d3dt_convert_row(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
                       uint32_t key_high);
+/* The per-texel loop d3dt_convert_row, d3dt_alpha_kind and d3dt_mip_downsample must match byte for byte. */
+void d3dt_convert_row_reference(int format, const void* src, uint32_t* dst, unsigned count, int keyed, uint32_t key_low,
+                                uint32_t key_high);
+int d3dt_alpha_kind_reference(const uint32_t* bgra, size_t count);
+void d3dt_mip_downsample_reference(const uint32_t* src, unsigned w, unsigned h, int alpha_kind, uint32_t* dst);
 void d3dt_convert_row_pal8(const uint8_t* src, uint32_t* dst, unsigned count, const uint32_t* palette, int keyed,
                            uint32_t key_low, uint32_t key_high);
 uint32_t d3dt_rgb565_to_bgra(uint16_t v);
