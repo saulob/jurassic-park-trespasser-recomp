@@ -96,6 +96,9 @@ void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11RenderTargetView;
+/* The game's text of the frame being presented, as a texture over the presented picture; 0 when there is none. */
+int present_take_text_layer(void** texture, int* legacy_w, int* legacy_h, int* left, int* top, int* right, int* bottom);
+const uint32_t* d3dr_rgb565_table(void);
 int present_device(struct ID3D11Device** device, struct ID3D11DeviceContext** context);
 unsigned present_device_generation(void);
 struct ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height);

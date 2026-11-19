@@ -446,7 +446,7 @@ static int hud_wanted(void) {
 }
 
 int debug_menu_overlay_wanted(void) {
-    return D.state.open || hud_wanted();
+    return D.state.open || hud_wanted() || window_host_frame_counter_on();
 }
 
 /* The UI loop that refreshes the HUD does not run under videos or loads: the picture is checked as it is shown. */
@@ -479,6 +479,8 @@ static void scene_view(dmp_frame_t* f) {
 void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext* context,
                         struct ID3D11RenderTargetView* target, int width, int height) {
     dmp_frame_t f;
+    dmp_text_layer_t text;
+    char counter[32];
     RECT view;
     if (!debug_menu_overlay_wanted() || !window_host_view_rect(&view)) return;
     memset(&f, 0, sizeof f);
@@ -488,7 +490,13 @@ void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext*
     scene_view(&f);
     f.menu = D.state.open;
     f.objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
-    if (hud_on_screen()) f.hud = &D.hud;
+    if (hud_on_screen()) {
+        f.hud = &D.hud;
+        if (present_take_text_layer(&text.texture, &text.legacy_w, &text.legacy_h, &text.left, &text.top, &text.right,
+                                 &text.bottom))
+            f.text_layer = &text;
+    }
+    if (window_host_frame_counter_text(counter, sizeof counter)) f.counter = counter;
     if (f.menu) {
         f.rows = D.rows;
         f.row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);

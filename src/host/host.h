@@ -292,6 +292,9 @@ void shim_CreateFontA(void);
 void shim_CreateFontIndirectA(void);
 /* The device box a TextOutA under the text overlay's DC is about to draw into (NULL: anywhere on the surface). */
 void d3dr_text_box(HDC dc, const RECT* box);
+/* The game's text of the frame being presented, kept as its own picture; 0 when there is none. The texture is valid until
+ * the frame has been presented. */
+int present_take_text_layer(void** texture, int* legacy_w, int* legacy_h, int* left, int* top, int* right, int* bottom);
 /* ui_canvas.c: the game's 640x480 menus and dialogs on a larger game screen draw into an offscreen canvas the
  * renderer scales over the frame. */
 void ui_canvas_install(void);
@@ -402,6 +405,12 @@ int overlay_blocks_gameplay(void);
 void minimap_configure(int enabled);
 /* F5 and L3 + R3: flips the minimap in gameplay, saves it to trespasser.ini and says so on the HUD. */
 void window_host_toggle_minimap(const char* source);
+/* The frame counter over the game: the launcher's choice at start, F6 for the session. The text is "FPS: n" from the
+ * rate the window title shows; 0 until one is measured or while the counter is off. */
+void window_host_set_frame_counter(int on);
+void window_host_toggle_frame_counter(void);
+int window_host_frame_counter_on(void);
+int window_host_frame_counter_text(char* out, size_t cap);
 
 /* ce_gameplay.c: Quick Save / Quick Load, Dual stow and Maximum object detail. Requests run in the game's UI loop. */
 void ce_gameplay_configure(int dual_stow, int max_object_detail);

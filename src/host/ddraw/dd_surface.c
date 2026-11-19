@@ -7,6 +7,7 @@
 #include "host.h"
 #include "page_arena.h"
 #include "page_guard.h"
+#include "text_layer.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -192,6 +193,7 @@ void dd_present(dd_surface_t* front, int vsync) {
     GdiFlush();
     present_frame(window, front->bits, front->pitch, &source, &front->format, &d->gamma, d->gamma_changed, vsync,
                   front->display_generation);
+    tl_frame_end();
     d->gamma_changed = 0;
 }
 

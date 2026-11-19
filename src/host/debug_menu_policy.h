@@ -144,6 +144,7 @@ typedef struct {
     dm_row_kind_t kind;
     int item; /* dm_item_t, a level's index on the levels page, a dm_goal_status_t; -1 for other rows */
     int enabled, selected;
+    int lit; /* the value is a cheat that is on or a multiplier off its default: drawn in the accent */
     char text[DM_LINE_MAX];
     char value[DM_TEXT_MAX];
 } dm_row_t;

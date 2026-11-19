@@ -32,6 +32,8 @@ extern "C" {
 #define JPT_KEY_VSYNC "vsync"
 #define JPT_KEY_AMBIENT_OCCLUSION "ambient_occlusion"
 #define JPT_KEY_SHOW_FPS "show_fps"
+/* The frame counter over the game, shown from the start; F6 toggles it for the session only. */
+#define JPT_KEY_SHOW_FRAME_COUNTER "show_frame_counter"
 #define JPT_KEY_SKIP_INTRO "skip_intro"
 #define JPT_KEY_VIDEO_SUBTITLES "video_subtitles"
 #define JPT_KEY_SHOW_RESOLUTION_TITLE "show_resolution_title"
@@ -125,6 +127,7 @@ typedef struct {
     int vsync;
     int ambient_occlusion;    /* JPT_AO_* */
     int show_fps;
+    int show_frame_counter;
     int show_resolution_title;
     int skip_intro;
     int video_subtitles;
@@ -152,7 +155,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (30 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (31 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

@@ -23,7 +23,7 @@ int host_unavailable_library(const char* name) {
 #define FPS_STALL_WINDOWS 2
 
 enum { MSG_KEYDOWN = 0x100, MSG_KEYUP = 0x101, MSG_SYSKEYDOWN = 0x104, MSG_SYSKEYUP = 0x105 };
-enum { VK_ESC = 0x1B, VK_F1_ = 0x70, VK_F2_ = 0x71, VK_F3_ = 0x72, VK_F4_ = 0x73, VK_F5_ = 0x74, VK_F9_ = 0x78, VK_F10_ = 0x79,
+enum { VK_ESC = 0x1B, VK_F1_ = 0x70, VK_F2_ = 0x71, VK_F3_ = 0x72, VK_F4_ = 0x73, VK_F5_ = 0x74, VK_F6_ = 0x75, VK_F9_ = 0x78, VK_F10_ = 0x79,
        VK_F11_ = 0x7A, VK_F12_ = 0x7B };
 
 void fps_counter_init(fps_counter_t* c, int64_t frequency, int64_t now) {
@@ -129,6 +129,7 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
         if (ctrl) return KEY_TO_GAME;
         return down && !repeat ? KEY_HOST_FULLSCREEN : KEY_DROP;
     case VK_F5_: return down && !repeat ? KEY_HOST_MINIMAP : KEY_DROP;
+    case VK_F6_: return down && !repeat ? KEY_HOST_FRAME_COUNTER : KEY_DROP;
     /* F10 alone is Windows' menu-bar key: its key-up must never reach DefWindowProc either. */
     case VK_F10_: return down && !repeat ? KEY_HOST_CHEATS : KEY_DROP;
     case VK_F4_:

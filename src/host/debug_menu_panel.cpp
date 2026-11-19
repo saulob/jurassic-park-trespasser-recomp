@@ -36,9 +36,15 @@ const ImVec4 kFeedback(0.55f, 0.90f, 0.55f, 1.0f);
 const ImVec4 kNorth(1.0f, 0.42f, 0.36f, 1.0f);
 const ImVec4 kObjective(MM_COLOR_OBJECTIVE, 1.0f);
 const ImVec4 kDone(0.55f, 0.80f, 0.55f, 1.0f);
-const float kObjectivesFont = 1.25f;
-const float kCurrentFont = 1.2f;
+const float kObjectivesFont = 1.1f;
+const float kCurrentFont = 1.15f;
 const ImVec4 kWhite(1.0f, 1.0f, 1.0f, 1.0f);
+const ImVec4 kAccent(0x8C / 255.0f, 0xC6 / 255.0f, 0x3F / 255.0f, 1.0f);
+const ImVec4 kPanelBackground(0.04f, 0.05f, 0.11f, 0.92f);
+const ImVec4 kDim(0.64f, 0.66f, 0.76f, 1.0f);
+const ImVec4 kTitleBackground(0.07f, 0.09f, 0.18f, 0.96f);
+const ImVec4 kFocus(kAccent.x, kAccent.y, kAccent.z, 0.42f);
+const ImU32 kCounterBackground = IM_COL32(7, 10, 22, 190);
 
 int g_imgui_errors;
 
@@ -117,25 +123,49 @@ void goal_mark(dm_goal_status_t status) {
     ImGui::SameLine();
 }
 
+const int kChromeColors = 7;
+const int kChromeVars = 2;
+
+// One look for every panel: the navy body, the accent border and rows, rounded.
+void push_chrome(float em) {
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, kPanelBackground);
+    ImGui::PushStyleColor(ImGuiCol_Border, kAccent);
+    ImGui::PushStyleColor(ImGuiCol_Header, kFocus);
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, kFocus);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, kFocus);
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, kTitleBackground);
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, kTitleBackground);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, em * 0.35f);
+}
+
+void pop_chrome() {
+    ImGui::PopStyleVar(kChromeVars);
+    ImGui::PopStyleColor(kChromeColors);
+}
+
+void objective_row(const dm_row_t& r) {
+    const bool current = r.item == DM_GOAL_CURRENT;
+    if (current) {
+        ImGui::Spacing();
+        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kObjectivesFont * kCurrentFont);
+    }
+    goal_mark((dm_goal_status_t)r.item);
+    ImGui::PushTextWrapPos(0.0f);
+    if (current) ImGui::TextColored(kObjective, "%s", r.text);
+    else if (r.item == DM_GOAL_DONE) ImGui::TextColored(kDone, "%s", r.text);
+    else ImGui::TextDisabled("%s", r.text);
+    ImGui::PopTextWrapPos();
+    if (current) ImGui::PopFont();
+}
+
 void row(const dm_row_t& r) {
     switch (r.kind) {
     case DM_ROW_TITLE: break;
-    case DM_ROW_GOAL:
-        if (r.item == DM_GOAL_CURRENT) {
-            ImGui::Spacing();
-            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kObjectivesFont * kCurrentFont);
-        }
-        goal_mark((dm_goal_status_t)r.item);
-        ImGui::PushTextWrapPos(0.0f);
-        if (r.item == DM_GOAL_CURRENT) ImGui::TextColored(kObjective, "%s", r.text);
-        else if (r.item == DM_GOAL_DONE) ImGui::TextColored(kDone, "%s", r.text);
-        else ImGui::TextDisabled("%s", r.text);
-        ImGui::PopTextWrapPos();
-        if (r.item == DM_GOAL_CURRENT) ImGui::PopFont();
-        break;
+    case DM_ROW_GOAL: objective_row(r); break;
     case DM_ROW_NOTE:
         ImGui::Indent(ImGui::GetFontSize() * 1.1f + ImGui::GetStyle().ItemSpacing.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleColor(ImGuiCol_Text, kDim);
         ImGui::TextWrapped("%s", r.text);
         ImGui::PopStyleColor();
         ImGui::Unindent(ImGui::GetFontSize() * 1.1f + ImGui::GetStyle().ItemSpacing.x);
@@ -152,11 +182,6 @@ void row(const dm_row_t& r) {
     case DM_ROW_ITEM: {
         ImGui::BeginDisabled(!r.enabled);
         ImGui::Selectable(r.text, r.selected != 0);
-        if (r.value[0]) {
-            ImGui::SameLine(ImGui::GetFontSize() * 14.0f);
-            if (r.selected) ImGui::TextColored(kSelected, "%s", r.value);
-            else ImGui::TextUnformatted(r.value);
-        }
         ImGui::EndDisabled();
         if (r.selected) ImGui::SetScrollHereY(0.5f);
         break;
@@ -164,33 +189,37 @@ void row(const dm_row_t& r) {
     }
 }
 
-void legacy_menu(const dmp_frame_t* f) {
-    if (f->objectives) ImGui::PushFont(g_panel.vector, ImGui::GetStyle().FontSizeBase * kObjectivesFont);
-    const float w = ImGui::GetFontSize() * (f->objectives ? 24.0f : 30.0f);
-    if (f->objectives)
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize() * 0.8f));
+// The window centred in the view: wider and in smaller type than the first version, so a title takes one line.
+void objectives_window(const dmp_frame_t* f) {
+    ImGui::PushFont(g_panel.vector, ImGui::GetStyle().FontSizeBase * kObjectivesFont);
+    const float em = ImGui::GetFontSize(), w = dml_objectives_width(f->view_w, f->view_h, em);
+    push_chrome(em);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(em * 1.1f, em * 0.9f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, em * 0.45f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(em * 0.7f, em * 0.45f));
     ImGui::SetNextWindowPos(ImVec2(f->view_w * 0.5f, f->view_h * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(w, 0.0f), ImVec2(w, f->view_h * 0.9f));
-    ImGui::SetNextWindowBgAlpha(0.92f);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav;
     char title[DM_TEXT_MAX + 16];
-    snprintf(title, sizeof title, "%s###menu", f->title ? f->title : "Cheats");
-    if (ImGui::Begin(title, nullptr, flags)) {
+    snprintf(title, sizeof title, "%s###menu", f->title ? f->title : "Objectives");
+    ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
+    const bool open = ImGui::Begin(title, nullptr, flags);
+    ImGui::PopStyleColor();
+    if (open) {
         for (int i = 0; i < f->row_count; i++) row(f->rows[i]);
         ImGui::Separator();
         if (f->feedback) ImGui::TextColored(kFeedback, "%s", f->feedback);
         if (f->help) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::PushStyleColor(ImGuiCol_Text, kDim);
             ImGui::TextWrapped("%s", f->help);
             ImGui::PopStyleColor();
         }
     }
     ImGui::End();
-    if (f->objectives) {
-        ImGui::PopStyleVar();
-        ImGui::PopFont();
-    }
+    ImGui::PopStyleVar(3);
+    pop_chrome();
+    ImGui::PopFont();
 }
 
 dml_hits_t g_hits;
@@ -216,8 +245,6 @@ float stable_width(const dmp_frame_t* f, float width) {
     return g_stable.width;
 }
 
-const ImVec4 kCloseHover(1.0f, 0.42f, 0.36f, 1.0f);
-
 float row_pitch() { return ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y; }
 
 float row_height(const dm_row_t& r) {
@@ -235,7 +262,6 @@ float value_width(const dm_row_t& r) {
 
 struct Table {
     float label_w = 0.0f, value_w = 0.0f, other_w = 0.0f, body_h = 0.0f;
-    float x[2] = { 0.0f, 0.0f };
 };
 
 Table measure(const dmp_frame_t* f) {
@@ -272,7 +298,8 @@ void footer_text(const char* text, const ImVec4& colour, float wrap_x) {
     ImGui::PopTextWrapPos();
 }
 
-void table_row(const dm_row_t& r, int id, float value_x, float pad, ImVec2* lo, ImVec2* hi) {
+// A row's label at the left, its value right-aligned: in the accent when the cheat is on, dim otherwise.
+void table_row(const dm_row_t& r, int id, ImVec2* lo, ImVec2* hi) {
     switch (r.kind) {
     case DM_ROW_SECTION:
         ImGui::Spacing();
@@ -287,22 +314,24 @@ void table_row(const dm_row_t& r, int id, float value_x, float pad, ImVec2* lo, 
         ImGui::BeginDisabled(!r.enabled);
         {
             const ImVec2 at = ImGui::GetCursorScreenPos();
+            const float inner = ImGui::GetFontSize() * 0.4f;
+            ImDrawList* dl = ImGui::GetWindowDrawList();
             ImGui::PushID(id);
-            ImGui::Selectable("##row", r.selected != 0);
+            ImGui::Selectable("##row", false);
             ImGui::PopID();
             // The item rectangle already takes in half the spacing above and below.
             *lo = ImGui::GetItemRectMin();
             *hi = ImGui::GetItemRectMax();
-            // The label stops short of the value column, so a long name is cut rather than run into the value.
-            const float limit = r.value[0] ? at.x + value_x - ImGui::GetFontSize() * 0.5f : hi->x;
-            const ImVec4 clip(at.x, at.y, limit, at.y + ImGui::GetTextLineHeight() + 1.0f);
-            ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), at,
-                                                ImGui::GetColorU32(ImGuiCol_Text), r.text, nullptr, 0.0f, &clip);
-        }
-        if (r.value[0]) {
-            ImGui::SameLine(pad + value_x);
-            if (r.selected) ImGui::TextColored(kSelected, "%s", r.value);
-            else ImGui::TextUnformatted(r.value);
+            if (r.selected) dl->AddRectFilled(*lo, *hi, ImGui::GetColorU32(kFocus), ImGui::GetFontSize() * 0.25f);
+            const float value_x = hi->x - inner - value_width(r);
+            // The label stops short of the value, so a long name is cut rather than run into it.
+            const float limit = r.value[0] ? value_x - ImGui::GetFontSize() * 0.5f : hi->x - inner;
+            const ImVec4 clip(lo->x, at.y, limit, at.y + ImGui::GetTextLineHeight() + 1.0f);
+            dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(lo->x + inner, at.y),
+                        ImGui::GetColorU32(ImGuiCol_Text), r.text, nullptr, 0.0f, &clip);
+            if (r.value[0])
+                dl->AddText(ImVec2(value_x, at.y),
+                            ImGui::ColorConvertFloat4ToU32(r.lit ? kAccent : r.selected ? kSelected : kDim), r.value);
         }
         ImGui::EndDisabled();
         if (r.selected) ImGui::SetScrollHereY(0.5f);
@@ -325,32 +354,63 @@ void close_button(const dml_rect_t& c, bool hot) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 lo(c.x, c.y), hi(c.x + c.w, c.y + c.h);
     const float m = c.w * 0.3f, t = fmaxf(1.5f, c.w * 0.08f);
-    const ImU32 ink = ImGui::ColorConvertFloat4ToU32(hot ? kSelected : kSection);
+    const ImU32 ink = ImGui::ColorConvertFloat4ToU32(hot ? kSelected : kAccent);
     dl->AddRectFilled(lo, hi, ImGui::ColorConvertFloat4ToU32(hot ? ImVec4(0.7f, 0.2f, 0.18f, 0.9f) : ImVec4(1, 1, 1, 0.08f)),
                       c.w * 0.15f);
     dl->AddLine(ImVec2(lo.x + m, lo.y + m), ImVec2(hi.x - m, hi.y - m), ink, t);
     dl->AddLine(ImVec2(hi.x - m, lo.y + m), ImVec2(lo.x + m, hi.y - m), ink, t);
 }
 
+// Where the frame counter's box goes for this frame; false when there is no counter.
+bool counter_box(const dmp_frame_t* f, dml_counter_t* box) {
+    if (!f->counter || !f->counter[0]) return false;
+    const ImVec2 text = ImGui::CalcTextSize(f->counter);
+    dml_counter_layout(f->view_w, ImGui::GetFontSize(), text.x, text.y, box);
+    return true;
+}
+
+void frame_counter(ImDrawList* dl, const dmp_frame_t* f) {
+    dml_counter_t c;
+    if (!counter_box(f, &c)) return;
+    const ImVec2 lo(c.box.x, c.box.y), hi(c.box.x + c.box.w, c.box.y + c.box.h);
+    dl->AddRectFilled(lo, hi, kCounterBackground, c.rounding);
+    dl->AddRect(lo, hi, ImGui::ColorConvertFloat4ToU32(kAccent), c.rounding, 0, 1.0f);
+    dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(lo.x + c.pad_x, lo.y + c.pad_y),
+                ImGui::ColorConvertFloat4ToU32(kWhite), f->counter);
+}
+
+// The game's own text, redrawn over the HUD.
+void text_layer(ImDrawList* dl, const dmp_frame_t* f) {
+    const dmp_text_layer_t* t = f->text_layer;
+    if (!t || !t->texture || t->legacy_w <= 0 || t->legacy_h <= 0 || t->right <= t->left || t->bottom <= t->top) return;
+    const float sx = f->view_w / (float)t->legacy_w, sy = f->view_h / (float)t->legacy_h;
+    dl->AddImage(ImTextureRef((ImTextureID)(uintptr_t)t->texture), ImVec2((float)t->left * sx, (float)t->top * sy),
+                 ImVec2((float)t->right * sx, (float)t->bottom * sy),
+                 ImVec2((float)t->left / (float)t->legacy_w, (float)t->top / (float)t->legacy_h),
+                 ImVec2((float)t->right / (float)t->legacy_w, (float)t->bottom / (float)t->legacy_h));
+}
+
 void panel(const dmp_frame_t* f) {
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float em = ImGui::GetFontSize(), pad = style.WindowPadding.x, gap = em * 1.5f;
+    const float em = ImGui::GetFontSize(), pad = style.WindowPadding.x * 1.5f, gap = em * 1.5f;
     const char* title_text = f->title ? f->title : "Cheats";
     Table t = measure(f);
-    float widths[2] = { t.label_w, t.value_w }, content_w;
+    dml_counter_t counter;
     const float title_w = ImGui::CalcTextSize(title_text).x;
-    content_w = fmaxf(t.other_w, t.label_w + (t.value_w > 0.0f ? gap + t.value_w : 0.0f)) + style.FramePadding.x * 2.0f;
+    const float content_w = fmaxf(t.other_w, t.label_w + (t.value_w > 0.0f ? gap + t.value_w : 0.0f)) + em * 0.8f;
     dml_params_t p;
     dml_layout_t l;
+    memset(&p, 0, sizeof p);
     p.view_w = f->view_w;
     p.view_h = f->view_h;
     p.em = em;
     p.pad = pad;
+    p.dock_right = 1;
+    p.top_inset = counter_box(f, &counter) ? dml_counter_inset(&counter, f->view_w, f->view_h, em) : 0.0f;
     p.panel_w = stable_width(f, dml_panel_width(f->view_w, f->view_h, em, pad, em * 24.0f, content_w, title_w));
     p.body_h = t.body_h;
     p.footer_h = footer_height(f, dml_footer_width(p.panel_w, pad));
     dml_layout(&p, &l);
-    dml_columns(widths, 2, l.panel.w - 2.0f * pad - style.FramePadding.x * 2.0f, gap, em * 0.75f, t.x);
 
     memset(&g_hits, 0, sizeof g_hits);
     g_hits.valid = 1;
@@ -360,9 +420,9 @@ void panel(const dmp_frame_t* f) {
     g_hits.close = l.close;
     g_hits.has_close = 1;
 
+    push_chrome(em);
     ImGui::SetNextWindowPos(ImVec2(l.panel.x, l.panel.y));
     ImGui::SetNextWindowSize(ImVec2(l.panel.w, l.panel.h));
-    ImGui::SetNextWindowBgAlpha(0.92f);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
                                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
@@ -371,7 +431,7 @@ void panel(const dmp_frame_t* f) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const bool hot = f->pointer && dml_contains(&l.close, f->pointer_x, f->pointer_y);
         const ImU32 rule = ImGui::GetColorU32(ImGuiCol_Separator);
-        dl->AddText(ImVec2(l.title.x, l.title.y + (l.title.h - em) * 0.5f), ImGui::ColorConvertFloat4ToU32(kSection),
+        dl->AddText(ImVec2(l.title.x, l.title.y + (l.title.h - em) * 0.5f), ImGui::ColorConvertFloat4ToU32(kAccent),
                     title_text);
         close_button(l.close, hot);
         dl->AddLine(ImVec2(l.header.x, l.header.y + l.header.h), ImVec2(l.header.x + l.header.w, l.header.y + l.header.h),
@@ -383,7 +443,7 @@ void panel(const dmp_frame_t* f) {
                               ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoScrollWithMouse)) {
             for (int i = 0; i < f->row_count; i++) {
                 ImVec2 lo(0.0f, 0.0f), hi(0.0f, 0.0f);
-                table_row(f->rows[i], i, t.x[1], pad, &lo, &hi);
+                table_row(f->rows[i], i, &lo, &hi);
                 record_hit(l.body, f->rows[i], lo, hi, l.panel.x, l.panel.w);
             }
         }
@@ -400,20 +460,21 @@ void panel(const dmp_frame_t* f) {
         if (note && note[0]) {
             const ImVec4 clip(l.footer.x, l.footer.y, l.footer.x + l.footer.w, l.footer.y + area);
             dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(l.footer.x, l.footer.y),
-                        ImGui::ColorConvertFloat4ToU32(note == f->feedback ? kFeedback : kSelected), note, nullptr,
+                        ImGui::ColorConvertFloat4ToU32(note == f->feedback ? kFeedback : kDim), note, nullptr,
                         l.footer.w, &clip);
         }
         if (f->help && f->help[0]) {
             ImGui::SetCursorScreenPos(ImVec2(l.footer.x, l.footer.y + area));
-            footer_text(f->help, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), wrap);
+            footer_text(f->help, kDim, wrap);
         }
     }
     ImGui::End();
     ImGui::PopStyleVar();
+    pop_chrome();
 }
 
 void menu(const dmp_frame_t* f) {
-    if (f->objectives) legacy_menu(f);
+    if (f->objectives) objectives_window(f);
     else panel(f);
 }
 
@@ -586,7 +647,6 @@ void compass(const dmp_frame_t* f) {
         trail(dl, f, h, l);
         world_marker(dl, f, h, l);
     }
-    dl = ImGui::GetForegroundDrawList();
     if (h.compass) strip(dl, h, l);
     if (h.compass && h.marker) marker(dl, h, l);
     if (h.objective[0]) titled_text(dl, l.objective_px, l.centre, l.objective_y, kObjective, h.objective_alpha, h.objective, l);
@@ -679,7 +739,7 @@ void minimap(const dmp_frame_t* f) {
     if (!minimap_place_facing(&pic, h.player_pos[0], h.player_pos[1], h.heading, MM_ZOOM, &fr)) return;
     const float radius = fr.radius, cx = fr.cx, cy = fr.cy;
 
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
     dl->AddCircleFilled(ImVec2(cx, cy), radius, colour(ImVec4(0.04f, 0.06f, 0.05f, 0.62f), 1.0f), MM_CLIP_SIDES);
 
     const ImDrawListFlags flags = dl->Flags;
@@ -734,7 +794,7 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
     if (!device || !context || !target || bb_w <= 0 || bb_h <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return;
-    if (!f->menu && !hud_shown(f)) return;
+    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return;
     if (!start(device, context)) return;
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(f->view_w, f->view_h);
@@ -744,10 +804,13 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     fonts();
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
+    // The background list is under every window: the HUD, then the game's text, then the counter, then the windows.
     if (hud_shown(f)) {
         compass(f);
         minimap(f);
+        text_layer(ImGui::GetBackgroundDrawList(), f);
     }
+    frame_counter(ImGui::GetBackgroundDrawList(), f);
     if (f->menu) menu(f);
     ImGui::Render();
     context->OMGetRenderTargets(1, &previous, &previous_depth);

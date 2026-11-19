@@ -43,7 +43,7 @@ game's own save writer: a normal retail save that the Load screen lists as "Quic
 out, so a normal save can never overwrite it by accident). It works in a level with Anne alive and no host panel open;
 a line under the compass says "Quick saved". Quick Load loads that file only, in a level (also after death) or from
 the main menu; without a Quick Save it says "No Quick Save yet" and loads nothing. F2 shows or hides the controls card in a level (the same card as the gamepad's View, with the keyboard's
-bindings and the hotkeys below), F3 Objectives, F4 Show Objective, F5 the minimap, F10 Cheats, F11 windowed
+bindings and the hotkeys below), F3 Objectives, F4 Show Objective, F5 the minimap, F6 the frame counter (top right corner, for this session; the Gameplay page's Frame counter sets whether it starts shown; F6 bound to Quick Save or Quick Load belongs to that choice instead), F10 Cheats, F11 windowed
 / borderless full screen, Alt+F4 exit. The game's own: Esc menu, F1 Hint. The card lists F1 Hint, F2 Controls, F3
 Objectives, F4 Show Objective, F5 Toggle Minimap, F10 Cheats, F11 Fullscreen and Esc Menu. The gamepad card adds L3 + R3 Toggle Minimap. On a gamepad, D-pad Left opens the
 game's Hint (its own F1 path), D-pad Right Objectives and D-pad Down Show Objective, each only while no action is bound

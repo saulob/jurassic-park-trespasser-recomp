@@ -1704,6 +1704,9 @@ static void TestLanguageNames() {
           std::string(Tr("Shows the frame rate in the window title.")) == "Mostra a taxa de quadros no título da janela." &&
           std::string(Tr("Shows the game's render resolution in the window title.")) ==
               "Mostra a resolução de render do jogo no título da janela.");
+    CHECK(std::string(Tr("Frame counter")) == "Contador de quadros" &&
+          std::string(Tr("Shows the frame rate in the top right corner of the game. F6 shows or hides it while playing.")) !=
+              "Shows the frame rate in the top right corner of the game. F6 shows or hides it while playing.");
     CHECK(std::string(Tr("Off")) == "Desligado" && std::string(Tr("On")) == "Ligado");
     // English -> Português Brasil -> Français -> Português Brasil -> English, with no restart in between
     for (const char* language : {"en", "pt-BR", "fr", "pt-BR", "en"}) {
@@ -1726,12 +1729,14 @@ static void TestGoreAndTitleOptions() {
     const size_t controls = launcher.find("// ---- Controls");
     const std::string body = launcher.substr(gameplay, controls - gameplay);
     const size_t language = body.find("ui.Combo(\"Language\""), skip = body.find("\"Skip Intro\""),
-                 fps = body.find("\"Frame rate in title\""), resolution = body.find("\"Render resolution in title\"");
-    CHECK(language < skip && skip < fps && fps < resolution && resolution != std::string::npos);
-    CHECK(body.find("overage") == std::string::npos && body.find("Frame counter") == std::string::npos);
+                 fps = body.find("\"Frame rate in title\""), counter = body.find("\"Frame counter\""),
+                 resolution = body.find("\"Render resolution in title\"");
+    CHECK(language < skip && skip < fps && fps < counter && counter < resolution && resolution != std::string::npos);
+    CHECK(body.find("overage") == std::string::npos && body.find("JPT_KEY_SHOW_FRAME_COUNTER") != std::string::npos);
     CHECK(body.find("JPT_KEY_SHOW_RESOLUTION_TITLE") != std::string::npos && body.find("JPT_KEY_SHOW_FPS") != std::string::npos);
     for (int i = 0; i < JPT_SETTING_COUNT; ++i) CHECK(std::string(jpt_settings[i].key).find("gore") == std::string::npos);
-    CHECK(std::string(jpt_default_value(JPT_KEY_SHOW_FPS)) == "1" && std::string(jpt_default_value(JPT_KEY_SHOW_RESOLUTION_TITLE)) == "0");
+    CHECK(std::string(jpt_default_value(JPT_KEY_SHOW_FPS)) == "1" && std::string(jpt_default_value(JPT_KEY_SHOW_RESOLUTION_TITLE)) == "0" &&
+          std::string(jpt_default_value(JPT_KEY_SHOW_FRAME_COUNTER)) == "0");
 }
 
 static void TestNoLanguagePage() {

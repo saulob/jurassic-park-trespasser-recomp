@@ -10,6 +10,13 @@ struct ID3D11RenderTargetView;
 
 #define DMP_HELP_LINES 2
 
+/* The game's own text of this frame (subtitles, hints), kept apart from the picture so the HUD can sit under it. */
+typedef struct {
+    void* texture; /* an ID3D11ShaderResourceView of legacy_w x legacy_h, straight alpha, on the panel's device */
+    int legacy_w, legacy_h;
+    int left, top, right, bottom; /* the part of it that holds text, in texture pixels */
+} dmp_text_layer_t;
+
 typedef struct {
     float view_w, view_h; /* the presentation surface, in its own pixels */
     float scene_x, scene_y, scene_w, scene_h; /* the game's 3D view inside it; w 0: the whole surface */
@@ -27,6 +34,8 @@ typedef struct {
     int pointer;              /* the pointer is over the view */
     float pointer_x, pointer_y;
     const cp_hud_t* hud; /* the compass and its notice; NULL when the HUD is not on screen */
+    const dmp_text_layer_t* text_layer; /* drawn over the HUD; NULL for none */
+    const char* counter;                /* the frame counter's text; NULL for none */
 } dmp_frame_t;
 
 #ifdef __cplusplus

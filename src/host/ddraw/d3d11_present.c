@@ -13,10 +13,12 @@
 #include "jpt_gpu.h"
 #include "jpt_video_subtitles.h"
 #include "perf_sections.h"
+#include "text_layer.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define STAGING_COUNT 2
 
@@ -35,6 +37,12 @@ typedef struct {
     uint32_t* table;
     DDPIXELFORMAT table_format;
     int table_ready;
+    RECT text_source;
+    ID3D11Texture2D* text_tex;
+    ID3D11ShaderResourceView* text_srv;
+    UINT text_w, text_h;
+    uint32_t* text_scratch;
+    size_t text_scratch_cap;
 } presenter_t;
 
 static presenter_t s_p;
@@ -128,7 +136,16 @@ static void release_back_view(void) {
     s_p.back_rtv = NULL;
 }
 
+static void release_text_layer(void) {
+    if (s_p.text_srv) ID3D11ShaderResourceView_Release(s_p.text_srv);
+    if (s_p.text_tex) ID3D11Texture2D_Release(s_p.text_tex);
+    s_p.text_srv = NULL;
+    s_p.text_tex = NULL;
+    s_p.text_w = s_p.text_h = 0;
+}
+
 void present_release(void) {
+    release_text_layer();
     video_hd_release();
     video_test_release();
     debug_menu_release();
@@ -359,6 +376,66 @@ static void handle_present_result(HRESULT hr) {
     }
 }
 
+int present_take_text_layer(void** texture, int* legacy_w, int* legacy_h, int* left, int* top, int* right, int* bottom) {
+    tl_view_t v;
+    tl_rect_t region;
+    RECT source;
+    const uint32_t* table = d3dr_hardware() ? d3dr_rgb565_table() : s_p.table;
+    D3D11_BOX box;
+    size_t pixels;
+    if (!s_p.device || !s_p.context || !table || !tl_current(&v)) return 0;
+    source = d3dr_hardware() ? (RECT){ 0, 0, (LONG)v.w, (LONG)v.h } : s_p.text_source;
+    region = v.dirty;
+    if (region.left < source.left) region.left = source.left;
+    if (region.top < source.top) region.top = source.top;
+    if (region.right > source.right) region.right = source.right;
+    if (region.bottom > source.bottom) region.bottom = source.bottom;
+    if (region.right <= region.left || region.bottom <= region.top) return 0;
+    if (!s_p.text_tex || s_p.text_w != (UINT)(source.right - source.left) || s_p.text_h != (UINT)(source.bottom - source.top)) {
+        D3D11_TEXTURE2D_DESC desc;
+        release_text_layer();
+        memset(&desc, 0, sizeof desc);
+        desc.Width = (UINT)(source.right - source.left);
+        desc.Height = (UINT)(source.bottom - source.top);
+        desc.MipLevels = desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(ID3D11Device_CreateTexture2D(s_p.device, &desc, NULL, &s_p.text_tex)) ||
+            FAILED(ID3D11Device_CreateShaderResourceView(s_p.device, (ID3D11Resource*)s_p.text_tex, NULL, &s_p.text_srv))) {
+            release_text_layer();
+            return 0;
+        }
+        s_p.text_w = desc.Width;
+        s_p.text_h = desc.Height;
+    }
+    pixels = (size_t)(region.right - region.left) * (size_t)(region.bottom - region.top);
+    if (pixels > s_p.text_scratch_cap) {
+        free(s_p.text_scratch);
+        s_p.text_scratch = (uint32_t*)malloc(pixels * sizeof *s_p.text_scratch);
+        s_p.text_scratch_cap = s_p.text_scratch ? pixels : 0;
+        if (!s_p.text_scratch) return 0;
+    }
+    tl_expand(&region, table, s_p.text_scratch, (size_t)(region.right - region.left));
+    box.left = (UINT)(region.left - source.left);
+    box.top = (UINT)(region.top - source.top);
+    box.front = 0;
+    box.right = (UINT)(region.right - source.left);
+    box.bottom = (UINT)(region.bottom - source.top);
+    box.back = 1;
+    ID3D11DeviceContext_UpdateSubresource(s_p.context, (ID3D11Resource*)s_p.text_tex, 0, &box, s_p.text_scratch,
+                                          (UINT)(region.right - region.left) * 4, 0);
+    *texture = s_p.text_srv;
+    *legacy_w = (int)s_p.text_w;
+    *legacy_h = (int)s_p.text_h;
+    *left = (int)box.left;
+    *top = (int)box.top;
+    *right = (int)box.right;
+    *bottom = (int)box.bottom;
+    return 1;
+}
+
 void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
                    const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation) {
     UINT width = (UINT)(source->right - source->left), height = (UINT)(source->bottom - source->top);
@@ -370,6 +447,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
     HRESULT hr;
     LARGE_INTEGER start;
     QueryPerformanceCounter(&start);
+    s_p.text_source = *source;
     if (format->dwRGBBitCount != 16 || !width || !height || !window_host_frames_allowed()) return;
     if (IsIconic(window)) {
         Sleep(10);

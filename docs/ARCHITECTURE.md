@@ -481,8 +481,8 @@ window procedure still receives the messages it received before.
 
 ### Keys
 
-`F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F10 Cheats | F11 Fullscreen | Esc Menu`
-(logged once as `[hotkeys]`). F2, F3, F4, F5, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
+`F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F6 FPS | F10 Cheats | F11 Fullscreen | Esc Menu`
+(logged once as `[hotkeys]`). F2, F3, F4, F5, F6, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
 game (F10's key-up included, which would open the window's menu bar); F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
 table at `0x0040C220` gives F2, F3 and F4 no action: only Esc, Space, F1, F11, F12, `=` and `-` have one). F4 alone is
 Show Objective in gameplay (`debug_menu_show_objective`, D-pad Down's own); with Alt it stays Exit. F12, which opened the game's `CControlsWnd` (still under Options >
@@ -567,6 +567,21 @@ is read without calls and each entry classified by `cp_text_kind`: the add routi
 the scene's own flags), the port's own categories (`0x4A50` card, `0x4A51` hint) and where its first laid-out line
 landed in the raster (the top 30 %). Subtitles and small messages lower on the picture leave the HUD alone; the F2 card,
 the port's hint and any other top text hide it.
+
+Draw order over the picture (one ImGui frame, `dmp_draw`): the HUD (world markers, compass strip, minimap) and the game's
+own text are on the background list, the frame counter after them, the Cheats and Objectives windows over everything.
+The text overlay is drawn by the game into the same raster as the picture, so `text_layer.c` keeps what it wrote as a
+layer of its own (RGB565, `TL_MARKER` = not text) and the panel draws it after the minimap. Both renderers feed it and
+`tl_frame_end` (every present) drops it, so text never outlives its frame. D3D11: the text boxes announced by
+`d3dr_text_box` are claimed as capture tiles (marker-filled) and `tl_scan` reads them when the DC is released. Software:
+`d3dr_text_box` fills the new part of the box (pixels not already claimed this DC) with the marker after saving what was
+under it, and `tl_settle` at ReleaseDC keeps the non-marker pixels as text and puts the saved pixels back everywhere
+else, so the frame the game and the presentation read is unchanged and the minimap never shows a rectangle of the old
+frame; a claim still open at the end of the frame is settled by it. `present_take_text_layer` expands only the dirty box
+(through the renderer's colour table: the GPU renderer's, or the Software present's) into a texture over the presented
+picture. The Cheats panel docks in the top
+right corner under the frame counter (`dml_layout` with `dock_right`, `dml_counter_inset`); Objectives stays centred,
+`dml_objectives_width` = 38 em, at most 60 % of the view, in 1.1x type with the current objective 1.15x of that.
 
 ### Cheats
 

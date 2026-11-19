@@ -1092,6 +1092,226 @@ static void test_panel(void) {
               "Level Select and the Debug Menu (%d)", dmp_imgui_errors());
     }
     {
+        /* the frame counter, the Objectives window and the draw order: HUD, the game's text, the counter, the windows */
+        static uint32_t shot[960][1280];
+        static uint32_t text_pixels[480][640];
+        static const float dark[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        ID3D11Texture2D* text_tex = NULL;
+        ID3D11ShaderResourceView* text_srv = NULL;
+        dmp_text_layer_t layer;
+        dmp_frame_t g;
+        cp_hud_t mh;
+        minimap_frame_t expect;
+        minimap_rect_t pic = { 0.0f, 0.0f, 1280.0f, 960.0f };
+        const minimap_bounds_t* mb = minimap_bounds("BE");
+        const minimap_level_map_t* mm = minimap_map("BE");
+        const minimap_run_t* best = NULL;
+        float x0, s0, x1, n0;
+        int right = 0, left = 0, quiet = 0;
+        memset(&g, 0, sizeof g);
+        g.view_w = 1280.0f;
+        g.view_h = 960.0f;
+        g.dpi_scale = 1.0f;
+        g.counter = "FPS: 60.0";
+        for (int frame = 0; frame < 3; frame++) {
+            ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, dark);
+            dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+        }
+        ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource*)staging, (ID3D11Resource*)tex);
+        if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
+            for (int y = 0; y < 960; y++)
+                for (int x = 0; x < 1280; x++) {
+                    const uint32_t px = ((const uint32_t*)((const uint8_t*)m.pData + (size_t)y * m.RowPitch))[x];
+                    if (!(px & 0xFFFFFFu)) continue;
+                    if (y < 120 && x > 1280 * 4 / 5) right++;
+                    else if (x < 1280 * 4 / 5 || y >= 120) left++;
+                }
+            ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
+        }
+        CHECK(right > 40 && left == 0, "the frame counter is drawn alone in the top right corner (%d there, %d elsewhere)", right,
+              left);
+        g.counter = NULL;
+        ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, dark);
+        dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+        ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource*)staging, (ID3D11Resource*)tex);
+        if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
+            for (int y = 0; y < 960; y++)
+                for (int x = 0; x < 1280; x++)
+                    quiet += (((const uint32_t*)((const uint8_t*)m.pData + (size_t)y * m.RowPitch))[x] & 0xFFFFFFu) != 0;
+            ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
+        }
+        CHECK(quiet == 0, "no counter text, nothing drawn (%d pixels)", quiet);
+
+        /* the Cheats panel under the counter, docked right */
+        {
+            dm_state_t c;
+            dm_world_t cw = level_world("be.scn");
+            dml_rect_t plain, under;
+            dm_init(&c);
+            dm_toggle(&c, &cw, DM_MENU_CHEATS);
+            memset(&g, 0, sizeof g);
+            g.view_w = 1280.0f;
+            g.view_h = 960.0f;
+            g.dpi_scale = 1.5f;
+            g.menu = 1;
+            g.rows = rows;
+            g.row_count = dm_rows(&c, &cw, rows, DM_ROWS_MAX);
+            g.title = dm_menu_title(DM_MENU_CHEATS);
+            g.help_lines = DMP_HELP_LINES;
+            g.menu_id = DM_MENU_CHEATS;
+            g.page = c.page;
+            ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, dark);
+            dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+            plain = dmp_hits()->panel;
+            g.counter = "FPS: 60.0";
+            ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, dark);
+            dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+            under = dmp_hits()->panel;
+            CHECK(plain.x > 1280.0f * 0.5f && plain.x + plain.w <= 1280.0f && plain.x + plain.w > 1280.0f * 0.9f,
+                  "the Cheats panel is docked in the top right corner (%.0f..%.0f)", plain.x, plain.x + plain.w);
+            CHECK(under.x == plain.x && under.w == plain.w && under.y > plain.y + 8.0f && under.y + under.h <= 960.0f,
+                  "the counter pushes the panel down and never over it (%.0f -> %.0f)", plain.y, under.y);
+        }
+
+        /* Objectives: centred, wide enough for a title on one line, at most 60% of the view, at every scale */
+        {
+            static const struct {
+                const char* text;
+                dm_goal_status_t status;
+            } goals[] = { { "Find the jeep", DM_GOAL_DONE },
+                          { "Search the construction site for clues", DM_GOAL_CURRENT },
+                          { "???", DM_GOAL_UNKNOWN } };
+            static const float scales[] = { 1.0f, 1.5f, 2.25f };
+            dm_row_t o[8];
+            int n = 0;
+            for (int i = 0; i < 8; i++) memset(&o[i], 0, sizeof o[i]);
+            o[n].kind = DM_ROW_TITLE;
+            strcpy(o[n++].text, "Objectives");
+            o[n].kind = DM_ROW_SECTION;
+            strcpy(o[n++].text, "BE - Beach");
+            for (int i = 0; i < 3; i++) {
+                o[n].kind = DM_ROW_GOAL;
+                o[n].item = goals[i].status;
+                o[n].enabled = 1;
+                strcpy(o[n++].text, goals[i].text);
+            }
+            o[n].kind = DM_ROW_NOTE;
+            strcpy(o[n++].text, "Look for the tracks near the fence and follow them to the gate");
+            o[n].kind = DM_ROW_ITEM;
+            o[n].item = DM_CLOSE;
+            o[n].enabled = o[n].selected = 1;
+            strcpy(o[n++].text, "Close");
+            for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+                int first = -1, last = -1;
+                memset(&g, 0, sizeof g);
+                g.view_w = 1280.0f;
+                g.view_h = 960.0f;
+                g.dpi_scale = scales[i];
+                g.menu = 1;
+                g.objectives = 1;
+                g.title = "Objectives";
+                g.rows = o;
+                g.row_count = n;
+                g.help = "Esc/B or F3 close";
+                g.menu_id = DM_MENU_OBJECTIVES;
+                for (int frame = 0; frame < 3; frame++) {
+                    ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, dark);
+                    dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+                }
+                ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource*)staging, (ID3D11Resource*)tex);
+                if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
+                    const uint32_t* row = (const uint32_t*)((const uint8_t*)m.pData + (size_t)480 * m.RowPitch);
+                    for (int x = 0; x < 1280; x++)
+                        if (row[x] & 0xFFFFFFu) {
+                            if (first < 0) first = x;
+                            last = x;
+                        }
+                    ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
+                }
+                CHECK(first > 0 && last > first, "scale %.2f: the Objectives window is drawn across the middle row", scales[i]);
+                CHECK(((first + last) / 2 >= 1280 / 2 - 3) && ((first + last) / 2 <= 1280 / 2 + 3),
+                      "scale %.2f: the Objectives window is centred (%d..%d)", scales[i], first, last);
+                CHECK(last - first + 1 <= (int)(1280.0f * 0.6f) + 2,
+                      "scale %.2f: the Objectives window is never more than 60%% of the view (%d px)", scales[i], last - first + 1);
+                CHECK(last - first + 1 >= (int)(dml_objectives_width(1280.0f, 960.0f, 13.0f * 1.1f * scales[i]) * 0.97f),
+                      "scale %.2f: the Objectives window has the width the policy gives (%d px)", scales[i], last - first + 1);
+                if (i == 0)
+                    CHECK(last - first + 1 >= 480, "at 100%% the Objectives window is wider than the old 390 px (%d)", last - first + 1);
+            }
+            CHECK(dmp_imgui_errors() == 0, "Dear ImGui reported no layout error drawing the counter and Objectives (%d)",
+                  dmp_imgui_errors());
+        }
+
+        /* the game's text is over the minimap: a solid layer covers the map's centre, and only then */
+        for (int i = 0; mb && mm && i < mm->count; i++)
+            if (mm->runs[i].kind == MM_KIND_LAND && (!best || mm->runs[i].len > best->len)) best = &mm->runs[i];
+        if (best && minimap_run_world(mb, mm, best, &x0, &s0, &x1, &n0)) {
+            D3D11_TEXTURE2D_DESC td;
+            D3D11_SUBRESOURCE_DATA init;
+            int centre_x, centre_y, red[2] = { 0, 0 };
+            for (int y = 0; y < 480; y++)
+                for (int x = 0; x < 640; x++) text_pixels[y][x] = 0xFFFF0000u;
+            memset(&td, 0, sizeof td);
+            td.Width = 640;
+            td.Height = 480;
+            td.MipLevels = td.ArraySize = 1;
+            td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            td.SampleDesc.Count = 1;
+            td.Usage = D3D11_USAGE_IMMUTABLE;
+            td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            init.pSysMem = text_pixels;
+            init.SysMemPitch = 640 * 4;
+            init.SysMemSlicePitch = 0;
+            memset(&mh, 0, sizeof mh);
+            mh.minimap = 1;
+            strcpy(mh.minimap_level, "BE");
+            mh.player_pos[0] = (x0 + x1) * 0.5f;
+            mh.player_pos[1] = (s0 + n0) * 0.5f;
+            minimap_place(&pic, mh.player_pos[0], mh.player_pos[1], MM_ZOOM, &expect);
+            centre_x = (int)expect.cx;
+            centre_y = (int)expect.cy;
+            CHECK(centre_x < 640 && centre_y >= 480, "the minimap's centre is inside the text box (%d, %d)", centre_x, centre_y);
+            if (SUCCEEDED(ID3D11Device_CreateTexture2D(dev, &td, &init, &text_tex)) &&
+                SUCCEEDED(ID3D11Device_CreateShaderResourceView(dev, (ID3D11Resource*)text_tex, NULL, &text_srv))) {
+                layer.texture = text_srv;
+                layer.legacy_w = 640;
+                layer.legacy_h = 480;
+                layer.left = 0;
+                layer.top = 240;
+                layer.right = 320;
+                layer.bottom = 480;
+                for (int pass = 0; pass < 2; pass++) {
+                    memset(&g, 0, sizeof g);
+                    g.view_w = 1280.0f;
+                    g.view_h = 960.0f;
+                    g.dpi_scale = 1.0f;
+                    g.hud = &mh;
+                    g.text_layer = pass ? &layer : NULL;
+                    for (int frame = 0; frame < 3; frame++) {
+                        ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, dark);
+                        dmp_draw(dev, ctx, rtv, 1280, 960, &g);
+                    }
+                    ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource*)staging, (ID3D11Resource*)tex);
+                    if (SUCCEEDED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource*)staging, 0, D3D11_MAP_READ, 0, &m))) {
+                        for (int y = 0; y < 960; y++)
+                            memcpy(shot[y], (const uint8_t*)m.pData + (size_t)y * m.RowPitch, 1280 * 4);
+                        ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource*)staging, 0);
+                        for (int dy = -6; dy <= 6; dy++)
+                            for (int dx = -6; dx <= 6; dx++) {
+                                const uint32_t px = shot[centre_y + dy][centre_x + dx];
+                                red[pass] += ((px >> 16) & 0xFF) > 240 && ((px >> 8) & 0xFF) < 16 && (px & 0xFF) < 16;
+                            }
+                    }
+                }
+                CHECK(red[0] == 0 && red[1] == 13 * 13,
+                      "the game's text is drawn over the minimap, not under it (%d red pixels without the layer, %d with)", red[0],
+                      red[1]);
+            }
+            if (text_srv) ID3D11ShaderResourceView_Release(text_srv);
+            if (text_tex) ID3D11Texture2D_Release(text_tex);
+        }
+    }
+    {
         /* the drawn minimap: bottom-left, the player marker fixed, the map sliding under it as the player walks */
         static uint32_t shot[2][960][1280];
         const minimap_bounds_t* mb = minimap_bounds("BE");
@@ -1170,6 +1390,7 @@ void overlay_tests(int* checks, int* failures);
 void physics_watch_tests(int* checks, int* failures);
 void menu_l10n_tests(int* checks, int* failures);
 void menu_layout_tests(int* checks, int* failures);
+void text_layer_tests(int* checks, int* failures, const char* root);
 
 int main(void) {
     test_profile_activate();
@@ -1191,6 +1412,7 @@ int main(void) {
     physics_watch_tests(&g_checks, &g_failures);
     menu_l10n_tests(&g_checks, &g_failures);
     menu_layout_tests(&g_checks, &g_failures);
+    text_layer_tests(&g_checks, &g_failures, JPT_SOURCE_DIR);
     test_retail(JPT_SOURCE_DIR);
     test_panel();
     printf("debug_menu_tests: %d checks, %d failures\n", g_checks, g_failures);

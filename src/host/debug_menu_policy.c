@@ -545,6 +545,7 @@ static void add_row(dm_row_t* rows, int max, int* n, dm_row_kind_t kind, int ite
     r->item = item;
     r->enabled = enabled;
     r->selected = selected;
+    r->lit = 0;
     snprintf(r->text, sizeof r->text, "%s", text);
     snprintf(r->value, sizeof r->value, "%s", value ? value : "");
 }
@@ -578,12 +579,29 @@ static void item_value(const dm_state_t* s, const dm_world_t* w, dm_item_t item,
     }
 }
 
+static int item_lit(const dm_world_t* w, dm_item_t item, int enabled) {
+    if (!enabled) return 0;
+    switch (item) {
+    case DM_FREEZE_AI: return w->ai > 0;
+    case DM_INVULNERABLE: return w->invulnerable > 0;
+    case DM_INFINITE_AMMO: return w->ammo > 0;
+    case DM_SUPER_HEALTH: return w->super_health > 0;
+    case DM_FREE_CAMERA: return w->camera == CH_CAMERA_FREE;
+    case DM_NOCLIP: return w->noclip > 0;
+    case DM_STEALTH: return w->stealth > 0;
+    case DM_MOVE_SPEED: return w->speed != CH_MULTIPLIER_DEFAULT;
+    case DM_JUMP_HEIGHT: return w->jump != CH_MULTIPLIER_DEFAULT;
+    default: return 0;
+    }
+}
+
 static void item_row(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n, dm_item_t item) {
     char value[DM_TEXT_MAX];
-    int enabled = dm_item_enabled(s, w, item);
+    int enabled = dm_item_enabled(s, w, item), at = *n;
     item_value(s, w, item, enabled, value, sizeof value);
     add_row(rows, max, n, DM_ROW_ITEM, (int)item, enabled, s->page != DM_PAGE_LEVELS && s->cursor == (int)item,
             dm_item_label(s->menu, item), value);
+    if (*n > at) rows[at].lit = item_lit(w, item, enabled);
 }
 
 static void items_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max, int* n,

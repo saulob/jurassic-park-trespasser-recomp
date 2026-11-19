@@ -220,7 +220,20 @@
     { "id": "test-gate", "name": "The gate itself: coverage, self-test, working tree unchanged", "owners": [
       { "suite": "tests\\gate_tests.ps1", "file": "tests/gate_tests.ps1", "pattern": "-List" },
       { "suite": "every test is wired in", "file": null, "pattern": null },
-      { "suite": "working tree unchanged", "file": null, "pattern": null } ] }
+      { "suite": "working tree unchanged", "file": null, "pattern": null } ] },
+    { "id": "frame-counter", "name": "F6 in-game frame counter: key policy, shared FPS text, top right panel, launcher default Off", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "KEY_HOST_FRAME_COUNTER" },
+      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "frame counter" },
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "Frame counter" } ] },
+    { "id": "overlay-draw-order", "name": "Overlay draw order: HUD, the game's text over the minimap, counter, then Cheats and Objectives windows", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "over the minimap" },
+      { "suite": "debug_menu_tests", "file": "tests/menu_layout_tests.c", "pattern": "test_docked_panel" } ] },
+    { "id": "text-layer-both-renderers", "name": "The game's text as its own layer in the D3D11 and the Software renderer: no old pixels, no rectangle of the old frame, one draw order", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/text_layer_tests.c", "pattern": "software renderer" },
+      { "suite": "debug_menu_tests", "file": "tests/text_layer_tests.c", "pattern": "test_shared_order" } ] },
+    { "id": "objectives-sizing", "name": "Objectives window width and type: 38 em, at most 60 % of the view, every scale", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/menu_layout_tests.c", "pattern": "test_objectives_width" },
+      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "Objectives window" } ] }
   ],
   "infrastructure": [
     { "suite": "feature coverage", "reason": "the check of this file" }

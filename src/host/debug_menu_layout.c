@@ -31,7 +31,8 @@ float dml_panel_width(float view_w, float view_h, float em, float pad, float min
 float dml_footer_width(float panel_w, float pad) { return panel_w - 2.0f * pad; }
 
 void dml_layout(const dml_params_t* p, dml_layout_t* out) {
-    const float margin = dml_margin(p->view_w, p->view_h, p->em), max_h = p->view_h - 2.0f * margin;
+    const float margin = dml_margin(p->view_w, p->view_h, p->em);
+    const float top_gap = p->dock_right ? p->top_inset : 0.0f, max_h = p->view_h - 2.0f * margin - top_gap;
     const float header_h = header_height(p->em), size = close_size(header_h), inset = (header_h - size) * 0.5f;
     const float rule = p->em * 0.5f;
     float body_h = p->body_h, panel_h = header_h + body_h + rule + p->footer_h + p->pad;
@@ -43,14 +44,38 @@ void dml_layout(const dml_params_t* p, dml_layout_t* out) {
     }
     out->panel.w = p->panel_w;
     out->panel.h = panel_h;
-    out->panel.x = (p->view_w - out->panel.w) * 0.5f;
-    out->panel.y = maxf(margin, (p->view_h - panel_h) * 0.5f);
+    if (p->dock_right) {
+        out->panel.x = p->view_w - margin - out->panel.w;
+        out->panel.y = margin + top_gap;
+    } else {
+        out->panel.x = (p->view_w - out->panel.w) * 0.5f;
+        out->panel.y = maxf(margin, (p->view_h - panel_h) * 0.5f);
+    }
     out->header = (dml_rect_t){ out->panel.x, out->panel.y, out->panel.w, header_h };
     out->close = (dml_rect_t){ out->panel.x + out->panel.w - inset - size, out->panel.y + inset, size, size };
     out->title = (dml_rect_t){ out->panel.x + p->pad, out->panel.y, out->close.x - out->panel.x - 2.0f * p->pad, header_h };
     out->body = (dml_rect_t){ out->panel.x, out->panel.y + header_h, out->panel.w, body_h };
     out->footer = (dml_rect_t){ out->panel.x + p->pad, out->body.y + body_h + rule, dml_footer_width(out->panel.w, p->pad),
                                 p->footer_h };
+}
+
+void dml_counter_layout(float view_w, float em, float text_w, float text_h, dml_counter_t* out) {
+    const float pad_x = em * 0.6f, pad_y = em * 0.3f, w = text_w + 2.0f * pad_x, h = text_h + 2.0f * pad_y;
+    out->pad_x = pad_x;
+    out->pad_y = pad_y;
+    out->rounding = em * 0.5f;
+    out->box = (dml_rect_t){ view_w - em - w, em, w, h };
+}
+
+float dml_counter_inset(const dml_counter_t* counter, float view_w, float view_h, float em) {
+    if (!counter || counter->box.h <= 0.0f) return 0.0f;
+    return maxf(0.0f, counter->box.y + counter->box.h + em * 0.5f - dml_margin(view_w, view_h, em));
+}
+
+float dml_objectives_width(float view_w, float view_h, float em) {
+    const float margin = dml_margin(view_w, view_h, em), widest = minf(view_w * 0.6f, view_w - 2.0f * margin);
+    const float w = em * 38.0f;
+    return w > widest ? widest : w;
 }
 
 int dml_columns(const float* widths, int n, float avail, float gap, float min_gap, float* x) {

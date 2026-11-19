@@ -89,6 +89,8 @@ constexpr char kAmbientOcclusionHelp[] =
     "Higher levels look smoother and cost more. Direct3D 11 only.";
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title.";
+constexpr char kShowFrameCounterHelp[] =
+    "Shows the frame rate in the top right corner of the game. F6 shows or hides it while playing.";
 constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution in the window title.";
 constexpr char kMinimapHelp[] =
     "Shows a circular map of the current level in the bottom-left corner, centred on Anne, with the direction she "
@@ -947,6 +949,7 @@ private:
         ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
         ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
+        ui.Toggle("Frame counter", kShowFrameCounterHelp, JPT_KEY_SHOW_FRAME_COUNTER, false, "Off", "On");
         ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
         ui.Toggle("Enable Minimap", kMinimapHelp, JPT_KEY_MINIMAP, true, "Off", "On");
         ui.EndRows();

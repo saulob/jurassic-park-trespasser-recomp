@@ -10,6 +10,12 @@ static void append(char* out, size_t cap, const char* text) {
     out[used + n] = 0;
 }
 
+void title_fps_text(double fps, char* out, size_t cap) {
+    if (!cap) return;
+    _snprintf(out, cap - 1, "FPS: %.1f", fps);
+    out[cap - 1] = 0;
+}
+
 void title_compose(const title_content_t* c, char* out, size_t cap) {
     char part[48];
     if (!cap) return;
@@ -21,8 +27,8 @@ void title_compose(const title_content_t* c, char* out, size_t cap) {
         append(out, cap, part);
     }
     if (c->show_fps && c->fps_ready) {
-        _snprintf(part, sizeof part - 1, " | FPS: %.1f", c->fps);
-        part[sizeof part - 1] = 0;
+        append(out, cap, " | ");
+        title_fps_text(c->fps, part, sizeof part);
         append(out, cap, part);
     }
 }

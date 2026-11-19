@@ -25,6 +25,8 @@ float dml_footer_width(float panel_w, float pad);
 
 typedef struct {
     float view_w, view_h, em, pad;
+    int dock_right;  /* the panel sits in the top right corner instead of the middle of the view */
+    float top_inset; /* docked: the room kept above it (the frame counter) */
     float panel_w;
     float body_h;   /* every row */
     float footer_h; /* the footer text wrapped at dml_footer_width */
@@ -36,6 +38,19 @@ typedef struct {
 } dml_layout_t;
 
 void dml_layout(const dml_params_t* p, dml_layout_t* out);
+
+/* The frame counter's box: the top right corner, one em in, padded around its text. */
+typedef struct {
+    dml_rect_t box;
+    float pad_x, pad_y, rounding;
+} dml_counter_t;
+
+void dml_counter_layout(float view_w, float em, float text_w, float text_h, dml_counter_t* out);
+/* dml_params_t::top_inset that puts a docked panel half an em below the counter box. */
+float dml_counter_inset(const dml_counter_t* counter, float view_w, float view_h, float em);
+
+/* The Objectives window's width: wide enough for a title and a hint to take few lines, never most of the view. */
+float dml_objectives_width(float view_w, float view_h, float em);
 
 /* Left edges of n columns of the given widths: gap apart, closing up towards min_gap when avail is short. 1 when the
  * columns then fit within avail without touching. */

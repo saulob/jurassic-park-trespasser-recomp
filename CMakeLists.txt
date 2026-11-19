@@ -76,6 +76,7 @@ set(HOST_SOURCES
   src/host/window_host.c
   src/host/platform.c
   src/host/window_title.c
+  src/host/text_layer.c
   src/host/gamepad.c
   src/host/gamepad_menu.c
   src/host/gamepad_policy.c
@@ -654,7 +655,7 @@ target_compile_definitions(fov_mouse_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_
 # they use and the panel on a WARP device (headless): ninja -C <build dir> debug_menu_tests && debug_menu_tests.exe
 add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/cheats_tests.c tests/compass_tests.c
   tests/minimap_tests.c tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c tests/menu_layout_tests.c src/host/debug_menu_policy.c
-  src/host/debug_menu_layout.c src/host/cheats_policy.c
+  src/host/debug_menu_layout.c src/host/cheats_policy.c src/host/text_layer.c tests/text_layer_tests.c
   src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
   src/host/minimap.c src/host/host_policy.c tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)
@@ -692,7 +693,7 @@ target_compile_definitions(ao_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_
 target_link_libraries(ao_tests PRIVATE assao jpt_common d3d11 dxguid)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ce_effects.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
-  src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c)
+  src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c src/host/text_layer.c)
 target_include_directories(com_tests PRIVATE src/host src/host/ddraw src/recomp/gen ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(com_tests PRIVATE /W3)

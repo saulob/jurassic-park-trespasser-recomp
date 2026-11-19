@@ -40,6 +40,7 @@ static void check_layout(const char* what, float vw, float vh, float scale, floa
     dml_params_t p;
     dml_layout_t l;
     const dml_rect_t view = { 0.0f, 0.0f, vw, vh };
+    memset(&p, 0, sizeof p);
     p.view_w = vw;
     p.view_h = vh;
     p.em = em;
@@ -77,6 +78,65 @@ static void test_panel_layout(void) {
             /* more rows than any screen holds: the body scrolls, the footer and the header stay */
             check_layout("tall", k_views[v].w, k_views[v].h, k_scales[s], 30.0f, 80);
         }
+}
+
+/* The Cheats panel docked in the top right corner, with and without the frame counter above it. */
+static void test_docked_panel(void) {
+    for (size_t v = 0; v < sizeof k_views / sizeof k_views[0]; v++)
+        for (size_t s = 0; s < sizeof k_scales / sizeof k_scales[0]; s++) {
+            const float vw = k_views[v].w, vh = k_views[v].h, em = 13.0f * k_scales[s], pad = 8.0f * k_scales[s];
+            const float margin = dml_margin(vw, vh, em), char_w = em * 0.55f;
+            const dml_rect_t view = { 0.0f, 0.0f, vw, vh };
+            dml_counter_t counter;
+            dml_params_t p;
+            dml_layout_t plain, under;
+            dml_counter_layout(vw, em, 9.0f * char_w, em, &counter);
+            CHECK(dml_inside(&counter.box, &view) && counter.box.x + counter.box.w <= vw - em + 0.01f &&
+                      counter.box.y >= em - 0.01f,
+                  "%.0fx%.0f x%.2f: the counter is one em in from the top right corner", vw, vh, k_scales[s]);
+            CHECK(counter.box.x > vw * 0.5f && counter.pad_x > 0.0f && counter.rounding > 0.0f,
+                  "%.0fx%.0f x%.2f: the counter is in the right half and padded", vw, vh, k_scales[s]);
+            memset(&p, 0, sizeof p);
+            p.view_w = vw;
+            p.view_h = vh;
+            p.em = em;
+            p.pad = pad;
+            p.dock_right = 1;
+            p.panel_w = dml_panel_width(vw, vh, em, pad, em * 24.0f, 30.0f * char_w, 6.0f * char_w);
+            p.body_h = rows_height(11, k_scales[s]);
+            p.footer_h = 2.0f * (em + 4.0f * k_scales[s]);
+            dml_layout(&p, &plain);
+            p.top_inset = dml_counter_inset(&counter, vw, vh, em);
+            dml_layout(&p, &under);
+            CHECK(plain.panel.x + plain.panel.w == vw - margin && plain.panel.y == margin,
+                  "%.0fx%.0f x%.2f: the panel sits in the top right corner at the margin", vw, vh, k_scales[s]);
+            CHECK(dml_inside(&under.panel, &view) && under.panel.y >= counter.box.y + counter.box.h + em * 0.5f - 0.01f &&
+                      under.panel.x == plain.panel.x,
+                  "%.0fx%.0f x%.2f: under the counter the panel starts below its box (%.1f, box ends %.1f)", vw, vh,
+                  k_scales[s], under.panel.y, counter.box.y + counter.box.h);
+            CHECK(under.panel.y + under.panel.h <= vh - margin + 0.01f || under.body.h <= 0.0f,
+                  "%.0fx%.0f x%.2f: the docked panel keeps the bottom margin", vw, vh, k_scales[s]);
+            CHECK(under.close.x >= under.panel.x + under.panel.w * 0.5f && dml_inside(&under.close, &under.header),
+                  "%.0fx%.0f x%.2f: the close button follows the panel", vw, vh, k_scales[s]);
+        }
+}
+
+/* The Objectives window is the same share of the view at any resolution and grows with the DPI scale up to a cap. */
+static void test_objectives_width(void) {
+    for (size_t v = 0; v < sizeof k_views / sizeof k_views[0]; v++)
+        for (size_t s = 0; s < sizeof k_scales / sizeof k_scales[0]; s++) {
+            const float vw = k_views[v].w, vh = k_views[v].h, em = 13.0f * 1.1f * k_scales[s];
+            const float w = dml_objectives_width(vw, vh, em);
+            CHECK(w <= vw * 0.6f + 0.01f && w <= vw - 2.0f * dml_margin(vw, vh, em) + 0.01f,
+                  "%.0fx%.0f x%.2f: Objectives (%.0f px) stays inside the view", vw, vh, k_scales[s], w);
+            CHECK(w == em * 38.0f || w == fminf(vw * 0.6f, vw - 2.0f * dml_margin(vw, vh, em)),
+                  "%.0fx%.0f x%.2f: Objectives is 38 em wide unless the view caps it", vw, vh, k_scales[s]);
+        }
+    /* a long title takes one line: "Search the construction site for clues" in the current objective's type (1.15x) */
+    CHECK(dml_objectives_width(1920.0f, 1080.0f, 13.0f * 1.1f) - 13.0f * 1.1f * 1.1f * 2.0f >=
+              39.0f * 13.0f * 1.1f * 1.15f * 0.5f + 13.0f * 1.1f * 1.15f,
+          "at 100%% the window holds the title on one line");
+    CHECK(dml_objectives_width(1920.0f, 1080.0f, 13.0f * 1.1f) > 390.0f * 1.3f, "wider than the first version's 390 px");
 }
 
 static void test_widths(void) {
@@ -609,6 +669,8 @@ void menu_layout_tests(int* checks, int* failures) {
     g_checks = checks;
     g_failures = failures;
     test_panel_layout();
+    test_docked_panel();
+    test_objectives_width();
     test_widths();
     test_columns();
     test_level_names();

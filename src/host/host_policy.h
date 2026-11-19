@@ -112,12 +112,13 @@ typedef enum {
     KEY_HOST_SNAPSHOT,
     KEY_HOST_SHOW_OBJECTIVE,
     KEY_HOST_QUICK_SAVE,
-    KEY_HOST_QUICK_LOAD
+    KEY_HOST_QUICK_LOAD,
+    KEY_HOST_FRAME_COUNTER
 } key_action_t;
 
 /* msg is WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP; repeat is lParam bit 30. F2 is the controls card (unused by
  * the game: CGameWnd's key table 0x0040C220 gives it no action), as are F3, Objectives, and F4 without Alt, Show
- * Objective; F12, the game's controls window, is not passed on. */
+ * Objective; F6 toggles the frame counter; F12, the game's controls window, is not passed on. */
 key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt);
 /* The Quick Save and Quick Load keys (trespasser.ini); they win over the port's other uses of the same key. */
 void key_policy_set_quick_keys(unsigned save_vk, unsigned load_vk);

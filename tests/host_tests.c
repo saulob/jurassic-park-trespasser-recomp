@@ -192,7 +192,7 @@ static void test_keys(void) {
         CHECK(key_policy(0x104, 0x72, 0, mods & 1, mods >> 1) == KEY_HOST_OBJECTIVES);
         CHECK(key_policy(0x100, 0x72, 1, mods & 1, mods >> 1) == KEY_DROP);
         CHECK(key_policy(0x101, 0x72, 0, mods & 1, mods >> 1) == KEY_DROP);
-        CHECK(key_policy(0x100, 0x75, 0, mods & 1, mods >> 1) == KEY_TO_GAME);
+        CHECK(key_policy(0x100, 0x41, 0, mods & 1, mods >> 1) == KEY_TO_GAME);
     }
     {
         int others = 0;
@@ -242,6 +242,26 @@ static void test_keys(void) {
                 others += vk != 0x71 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_CONTROLS;
         CHECK(others == 0);
     }
+    /* F6 is the frame counter: one toggle per press, nothing reaches the game, no other key does it; F2 keeps the card */
+    for (int mods = 0; mods < 4; mods++) {
+        CHECK(key_policy(0x100, 0x75, 0, mods & 1, mods >> 1) == KEY_HOST_FRAME_COUNTER);
+        CHECK(key_policy(0x104, 0x75, 0, mods & 1, mods >> 1) == KEY_HOST_FRAME_COUNTER);
+        CHECK(key_policy(0x100, 0x75, 1, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x101, 0x75, 0, mods & 1, mods >> 1) == KEY_DROP);
+        CHECK(key_policy(0x100, 0x71, 0, mods & 1, mods >> 1) == KEY_HOST_CONTROLS);
+    }
+    {
+        int others = 0;
+        for (unsigned vk = 0; vk < 256; vk++)
+            for (unsigned msg = 0x100; msg <= 0x105; msg++)
+                others += vk != 0x75 && key_policy(msg, vk, 0, 0, 0) == KEY_HOST_FRAME_COUNTER;
+        CHECK(others == 0);
+    }
+    /* a quick key the launcher bound to F6 keeps it: the choice made in the launcher wins over the port's own use */
+    key_policy_set_quick_keys(0x75, 0x77);
+    CHECK(key_policy(0x100, 0x75, 0, 0, 0) == KEY_HOST_QUICK_SAVE && key_policy(0x101, 0x75, 0, 0, 0) == KEY_DROP);
+    key_policy_set_quick_keys(0x76, 0x77);
+    CHECK(key_policy(0x100, 0x75, 0, 0, 0) == KEY_HOST_FRAME_COUNTER);
     /* F1, F5, F11, Ctrl+F11, Esc and Alt+F4 keep what they did */
     CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x74, 0, 0, 0) == KEY_HOST_MINIMAP);
     CHECK(key_policy(0x100, 0x7A, 0, 0, 0) == KEY_HOST_FULLSCREEN && key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
@@ -4258,6 +4278,13 @@ static void test_window_title(void) {
     static const char base[] = "Jurassic Park: Trespasser Recompiled | x86 | D3D11";
     char out[160];
     title_content_t c;
+    /* the in-game counter and the title print the same measured rate the same way */
+    title_fps_text(60.04, out, sizeof out);
+    CHECK(!strcmp(out, "FPS: 60.0"));
+    title_fps_text(59.95, out, sizeof out);
+    CHECK(!strcmp(out, "FPS: 60.0") || !strcmp(out, "FPS: 59.9"));
+    title_fps_text(144.0, out, 6);
+    CHECK(!strcmp(out, "FPS: ") && strlen(out) == 5);
     memset(&c, 0, sizeof c);
     c.base = base;
     title_compose(&c, out, sizeof out);

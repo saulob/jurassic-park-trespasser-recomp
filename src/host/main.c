@@ -533,6 +533,7 @@ int main(int argc, char** argv) {
     cheats_start(cfg.cheat);
     if (!guest_overrides_enable()) return HOST_EXIT_SETUP;
 
+    window_host_set_frame_counter(cfg.show_frame_counter);
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
                           cfg.show_resolution_title,
                           settings_file);

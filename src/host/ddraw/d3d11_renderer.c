@@ -25,6 +25,7 @@
 #include <stdarg.h>
 #include "perf_stat.h"
 #include "target_sync.h"
+#include "text_layer.h"
 #include "texture_gpu_policy.h"
 
 #include <d3d11.h>
@@ -3692,9 +3693,45 @@ static void end_polygon_run(const d3dr_target_t* t) {
     if (!t || R.text_target == t) R.text_target = NULL;
 }
 
+/* Software: the DC's pixels, when it is a 16 bit top-down DIB. */
+static int dc_pixels(HDC dc, uint8_t** bits, long* pitch, unsigned* w, unsigned* h) {
+    DIBSECTION d;
+    HGDIOBJ bitmap = GetCurrentObject(dc, OBJ_BITMAP);
+    if (!bitmap || GetObjectA(bitmap, sizeof d, &d) != sizeof d || !d.dsBm.bmBits || d.dsBm.bmBitsPixel != 16 ||
+        d.dsBmih.biHeight >= 0)
+        return 0;
+    *bits = (uint8_t*)d.dsBm.bmBits;
+    *pitch = d.dsBm.bmWidthBytes;
+    *w = (unsigned)d.dsBm.bmWidth;
+    *h = (unsigned)-d.dsBmih.biHeight;
+    return 1;
+}
+
+static void software_text_box(HDC dc, const RECT* box) {
+    uint8_t* bits;
+    long pitch;
+    unsigned w, h;
+    tl_rect_t r;
+    if (!box || !dc_pixels(dc, &bits, &pitch, &w, &h)) return;
+    r.left = box->left;
+    r.top = box->top;
+    r.right = box->right;
+    r.bottom = box->bottom;
+    GdiFlush();
+    tl_claim(bits, pitch, w, h, &r);
+}
+
+typedef char text_layer_marker_is_the_capture_marker[TL_MARKER == TSYNC_UNWRITTEN ? 1 : -1];
+
+const uint32_t* d3dr_rgb565_table(void) { return R.rgb565_table; }
+
 void d3dr_text_box(HDC dc, const RECT* box) {
     d3dr_target_t* t = R.text_target;
     d3dt_rect_t r;
+    if (!R.hardware) {
+        software_text_box(dc, box);
+        return;
+    }
     if (!t || !t->surface || !t->surface->dc_out || t->surface->dc != dc || !t->lazy) return;
     if (box) {
         r.left = box->left;
@@ -3705,6 +3742,7 @@ void d3dr_text_box(HDC dc, const RECT* box) {
         r = whole_target(t);
     }
     claim_fresh(t, &r);
+    tl_note(t->legacy_w, t->legacy_h, &(tl_rect_t){ r.left, r.top, r.right, r.bottom });
     R.perf.text_boxes++;
 }
 
@@ -3769,8 +3807,14 @@ static void front_written(dd_surface_t* s) {
 
 void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
     s->cpu_writes++;
-    if (!R.hardware) return;
-    if (R.text_target && R.text_target->surface == s) R.text_target = NULL;
+    if (!R.hardware) {
+        tl_settle(s->bits);
+        return;
+    }
+    if (R.text_target && R.text_target->surface == s) {
+        tl_scan(s->bits, s->pitch, R.text_target->legacy_w, R.text_target->legacy_h);
+        R.text_target = NULL;
+    }
     front_written(s);
     if (s->target) {
         d3dt_rect_t add = { 0, 0, (long)s->width, (long)s->height };
@@ -4149,8 +4193,8 @@ static int ao_frame_for(d3dr_target_t* t) {
     return ao_frame_wanted(&f);
 }
 
-static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height, ID3D11SamplerState* sampler,
-                        const DDGAMMARAMP* gamma, int vsync, unsigned generation) {
+static int present_view_frame(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height,
+                              ID3D11SamplerState* sampler, const DDGAMMARAMP* gamma, int vsync, unsigned generation) {
     static int s_held_logged;
     ID3D11RenderTargetView* rtv;
     if (!window_host_frames_allowed()) return 1;
@@ -4174,6 +4218,13 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
     R.bound.valid = 0;
     return present_submit(vsync, generation);
+}
+
+static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height, ID3D11SamplerState* sampler,
+                        const DDGAMMARAMP* gamma, int vsync, unsigned generation) {
+    const int presented = present_view_frame(window, srv, width, height, sampler, gamma, vsync, generation);
+    tl_frame_end();
+    return presented;
 }
 
 static void keep_last_frame(d3dr_target_t* t) {

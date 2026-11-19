@@ -136,7 +136,7 @@ static struct {
     LONG_PTR saved_style, saved_exstyle;
     LARGE_INTEGER qpc_frequency;
     fps_counter_t fps;
-    int fps_ready;
+    int fps_ready, frame_counter;
     char title[160];
     struct {
         int borderless, monitor, window_w, window_h, stretch, show_fps, show_resolution;
@@ -690,6 +690,21 @@ void window_host_toggle_minimap(const char* source) {
     host_log("minimap", "%s: %s", source, on ? "on" : "off");
 }
 
+void window_host_set_frame_counter(int on) { s.frame_counter = on != 0; }
+
+void window_host_toggle_frame_counter(void) {
+    s.frame_counter = !s.frame_counter;
+    host_log("fps", "F6: frame counter %s", s.frame_counter ? "on" : "off");
+}
+
+int window_host_frame_counter_on(void) { return s.frame_counter; }
+
+int window_host_frame_counter_text(char* out, size_t cap) {
+    if (!s.frame_counter || !s.fps_ready || !cap) return 0;
+    title_fps_text(s.fps.fps, out, cap);
+    return 1;
+}
+
 static void toggle_fullscreen(void) {
     if (shutdown_active(&s.shutdown)) return;
     s.transition = 1;
@@ -1050,7 +1065,7 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     }
     if (action != KEY_HOST_MINIMAP && action != KEY_HOST_CHEATS && action != KEY_HOST_OBJECTIVES &&
         action != KEY_HOST_CONTROLS && action != KEY_HOST_FULLSCREEN &&
-        action != KEY_HOST_CLOSE && action != KEY_HOST_SHOW_OBJECTIVE &&
+        action != KEY_HOST_CLOSE && action != KEY_HOST_SHOW_OBJECTIVE && action != KEY_HOST_FRAME_COUNTER &&
         debug_menu_key(msg, wparam, lparam)) {
         if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "host menu");
         return 0;
@@ -1077,6 +1092,9 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         return 0;
     case KEY_HOST_MINIMAP:
         window_host_toggle_minimap("F5");
+        return 0;
+    case KEY_HOST_FRAME_COUNTER:
+        window_host_toggle_frame_counter();
         return 0;
     case KEY_HOST_CHEATS:
         overlay_request(OV_CHEATS, "F10");
@@ -1113,7 +1131,7 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         if (wparam == VK_F12) {
             if (msg == WM_KEYDOWN && !repeat) log_key(msg, wparam, lparam, "dropped (Controls is F2)");
         } else if (repeat && wparam != VK_F3 && wparam != VK_F4 && wparam != VK_F5 && wparam != VK_F9 &&
-                   wparam != VK_F10 && wparam != VK_F11 && wparam != VK_F2) {
+                   wparam != VK_F10 && wparam != VK_F11 && wparam != VK_F2 && wparam != VK_F6) {
             log_key(msg, wparam, lparam, "auto-repeat dropped");
         }
         return 0;
@@ -1340,7 +1358,7 @@ static void attach(HWND window) {
     layout_surface();
     host_log("window", "game window 0x%08X: resizable, centered, F11 toggles borderless full screen; "
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
-    host_log("hotkeys", "F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F10 Cheats | "
+    host_log("hotkeys", "F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F6 FPS | F10 Cheats | "
              "F11 Fullscreen | Esc Menu");
     host_log("input", "SDL3 mouse: relative mode for gameplay mouse-look, the cursor hidden and confined in "
              "INPUT_GAMEPLAY_CAPTURED only; keyboard: the game's own key messages, host keys taken from them first");

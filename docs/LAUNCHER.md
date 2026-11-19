@@ -79,7 +79,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
-| Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Render resolution in title; Trespasser CE: Dual stow, Active AI |
+| Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats | Movement Speed, Jump Height, Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health: what every session starts with ([Cheats](#cheats)) |
 | Bug Report | listed, "Coming later"; nothing active, nothing sent |
@@ -175,6 +175,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `quick_save_key`, `quick_load_key` | `F6`, `F7`, `F8`, `F9`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown` | `F7`, `F8` |
 | `vsync` | 1, 0 | 1 |
 | `show_fps` | 1, 0 | 1 |
+| `show_frame_counter` | 1, 0 | 0 |
 | `show_resolution_title` | 1, 0 | 0 |
 | `skip_intro` | 1, 0 | 0 |
 | `video_subtitles` | 1, 0 | 1 |
@@ -440,8 +441,10 @@ is not part of this work.
   D3D11` (the renderer's name), then ` | 2560x1920` and ` | FPS: 60.0` when they are on and known, in that order, never
   with a separator left over. The resolution is the render size with D3D11 (the Render resolution box), the gameplay
   mode with Software or Original, not the window or the desktop; menus and videos do not change it, and nothing is shown
-  until it is known. FPS appears after the first measured rate. There is no in-game frame counter, so the Gameplay
-  page has no Frame counter option.
+  until it is known. FPS appears after the first measured rate.
+- **Frame counter** (Gameplay, as in the other ports; key `show_frame_counter`, Off by default): `FPS: 60.0` in a small
+  panel in the top right corner of the game, from the same measured rate as the title. F6 shows or hides it for the
+  session without writing the setting (it starts as the launcher left it).
 - **Skip Intro** (Gameplay, as in Dragon's Crown Pro PC; key `skip_intro`, Off by default): the opening video before
   the main menu (`tpassintro.smk`) and the one after New Game (`newgame.smk`) are not shown. When the game is about to
   play one of them, its own `NoVideo` value reads 1 for that call only, so `CVideoWnd::Play` takes the game's own
