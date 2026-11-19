@@ -303,9 +303,13 @@ target_compile_definitions(trespasser_recomp PRIVATE
   RECOMP_LOCAL_REGS
   RECOMP_ICALL_SITE_RANGE
   ${TRESPASSER_X87_MODEL}
-  TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game"
-  TRESPASSER_LEGACY_USER_DIR="${CMAKE_SOURCE_DIR}/user"
-  TRESPASSER_DEFAULT_LOG_DIR="${CMAKE_SOURCE_DIR}/logs"
+)
+# Development builds use the source tree's game, logs and old user folders; a Release names no folder of this machine
+# (tools\verify-release.ps1) and keeps game\ and logs\ next to the program.
+target_compile_definitions(trespasser_recomp PRIVATE
+  $<$<NOT:$<CONFIG:Release>>:TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game">
+  $<$<NOT:$<CONFIG:Release>>:TRESPASSER_LEGACY_USER_DIR="${CMAKE_SOURCE_DIR}/user">
+  $<$<NOT:$<CONFIG:Release>>:TRESPASSER_LOG_DIR="${CMAKE_SOURCE_DIR}/build/logs">
 )
 if(TRESPASSER_TRACE)
   target_compile_definitions(trespasser_recomp PRIVATE RECOMP_TRACE=1)
@@ -391,9 +395,15 @@ set_source_files_properties(${PCRECOMP_SOURCES} PROPERTIES COMPILE_OPTIONS "/W1;
 # local is read again, so C4731 does not apply. native32.c defines _CRT_SECURE_NO_WARNINGS itself.
 set_source_files_properties(${PCRECOMP}/runtime/native32/native32.c PROPERTIES
   COMPILE_OPTIONS "/W1;/wd4731;${CONFIG_OPT}")
-set_source_files_properties(${HOST_SOURCES} PROPERTIES
-  COMPILE_OPTIONS "/W3;${CONFIG_OPT}"
-  COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS;TRESPASSER_LOG_DIR=\"${CMAKE_SOURCE_DIR}/build/logs\"")
+# The C++ host sources keep the configuration's own /O and /Ob (CMAKE_CXX_FLAGS_<CONFIG> is not stripped as the C one is);
+# adding CONFIG_OPT as well passed /Ob2 and /Ob1 together in Release (cl D9025).
+set(HOST_CXX_SOURCES ${HOST_SOURCES})
+list(FILTER HOST_CXX_SOURCES INCLUDE REGEX "[.]cpp$")
+set(HOST_C_SOURCES ${HOST_SOURCES})
+list(FILTER HOST_C_SOURCES EXCLUDE REGEX "[.]cpp$")
+set_source_files_properties(${HOST_C_SOURCES} PROPERTIES COMPILE_OPTIONS "/W3;${CONFIG_OPT}")
+set_source_files_properties(${HOST_CXX_SOURCES} PROPERTIES COMPILE_OPTIONS "/W3")
+set_source_files_properties(${HOST_SOURCES} PROPERTIES COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS")
 
 # The profile tables (guest addresses, patch groups, layouts, expected lift metadata) and the choice of the active
 # profile, for the tests that read guest addresses (they call test_profile_activate, tests/test_profile.h).
@@ -492,6 +502,14 @@ add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_poli
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The log's performance policy: statistics only with --perf-log, state and failure lines always (headless, scratch file):
+#   ninja -C <build dir> log_tests && log_tests.exe
+add_executable(log_tests EXCLUDE_FROM_ALL tests/log_tests.c src/host/log.c)
+target_include_directories(log_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(log_tests PRIVATE jpt_common)
+target_compile_options(log_tests PRIVATE /W3)
+target_compile_definitions(log_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"" RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
+  ${TRESPASSER_X87_MODEL})
 # The SDL3 platform layer's decisions (mouse motion after recaptures, message routing past SDL, SDL's lifetime, hotkeys,
 # controller hotplug) and where the host starts, pumps and stops SDL (headless, no SDL):
 #   ninja -C <build dir> platform_tests && platform_tests.exe

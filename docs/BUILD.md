@@ -134,7 +134,7 @@ the game.
 | `--vsync on\|off`, `--show-fps on\|off` | VSync (default on), FPS in the title (default on) |
 | `--display-mode windowed\|borderless`, `--monitor N`, `--window-size auto\|WxH`, `--presentation letterbox\|stretch` | window settings (defaults windowed, 1, auto, letterbox) |
 | `--watchdog N` | stop after N seconds and report where execution was |
-| `--perf-log` | performance lines every 5 s, renderer summaries every 60 s and a sampled guest CPU profile (diagnostics; off by default) |
+| `--perf-log` | performance lines every 5 s, renderer summaries every 60 s, the `perf-detail` exit and slow-frame breakdowns and a sampled guest CPU profile (diagnostics; off by default) |
 | `--lifted-water` | run the lifted water, occlusion and polygon-submission functions instead of their host kernels (comparison) |
 | `--native-trace` | one log line per native call (large) |
 | `--callbacks` | one log line per Windows-to-guest call |

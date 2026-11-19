@@ -945,7 +945,7 @@ readback callers (count, MB, ms), CPU pixels composited in gameplay and menus wi
 over known GPU pixels, the draw state classes (blended ones are the
 water and glass candidates), dark-draw counts, unknown texture formats and the refused-state
 counters. `shutdown` and `thread` cover closing and the game's own threads.
-The exit summary of a gameplay run reads as follows (`DEBUG_SAULO` lines): the frame breakdown rows are exclusive of
+With `--perf-log`, the exit summary of a gameplay run reads as follows (`perf-detail` lines, never written without it): the frame breakdown rows are exclusive of
 each other (the translation row leaves out the texture uploads, batch flushes, readbacks and CPU composites that run
 inside a DrawPrimitive, which have their own rows), so "guest and everything else" is what the guest thread spent in
 its own code, the CPU polygon rows include the host work they call; `profile` lines name the hottest lifted functions

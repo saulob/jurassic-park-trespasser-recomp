@@ -54,7 +54,7 @@ enum { PERF_TRANSLATE, PERF_DRAW, PERF_UPLOAD, PERF_READBACK, PERF_OVERLAY, PERF
 /* DrawPrimitive runs thousands of times a frame: one call in TRANSLATE_SAMPLE is timed and counted for all of them. */
 #define TRANSLATE_SAMPLE 8u
 
-/* DEBUG_SAULO: what ended an open batch besides a state change (D3DR_CHANGE_*). */
+/* What ended an open batch besides a state change (D3DR_CHANGE_*). */
 enum {
     FLUSH_DEVICE = D3DR_CHANGES, FLUSH_TOPOLOGY, FLUSH_EFFECT, FLUSH_ARRAYS_FULL, FLUSH_SKY, FLUSH_CPU_ACCESS,
     FLUSH_GPU_SYNC, FLUSH_CLEAR, FLUSH_SCENE_END, FLUSH_TEXTURE, FLUSH_FRAME, FLUSH_SURFACE, FLUSH_CAUSES
@@ -291,7 +291,7 @@ static struct {
         unsigned long long n, texels;
         double ms;
     } uploads_by[3], upload_totals[3];
-    unsigned long long uploads_seen_before; /* DEBUG_SAULO: first uploads of content uploaded earlier */
+    unsigned long long uploads_seen_before; /* First uploads of content uploaded earlier */
     tl_vertex_t* verts;
     uint32_t* indices;
     UINT nverts, nindices, cap_verts, cap_indices;
@@ -305,7 +305,7 @@ static struct {
     unsigned char fvf_logged, type_logged, scene_logged;
     double qpc_ms;
     perf_window_t perf, total;
-    struct { /* DEBUG_SAULO: session timings for the performance investigation */
+    struct { /* Session timings for the performance investigation */
         perf_stat_t frame, present, assao_cpu, assao_gpu, water_cpu, poly_map, poly_fill;
         unsigned long long poly_reads, poly_reads_skipped, poly_w, poly_h, poly_pixels;
         double last_present, assao_gpu_last, prev_ms[PERF_COUNT], prev_selfmod, prev_sections[PS_COUNT], prev_water;
@@ -908,7 +908,7 @@ static int free_slice(const texture_pool_t* p) {
     return -1;
 }
 
-/* DEBUG_SAULO: the array classes (size and mip count) by pages made, slices taken and slots held by full batches. */
+/* The array classes (size and mip count) by pages made, slices taken and slots held by full batches. */
 #define POOL_CLASSES 32u
 static struct {
     UINT width, height, levels;
@@ -952,7 +952,7 @@ static void log_pool_classes(void) {
         if (n < 0 || (size_t)n >= sizeof line - 80) break;
     }
     line[sizeof line - 1] = 0;
-    if (line[0]) host_log("renderer", "DEBUG_SAULO texture array classes: %s", line);
+    if (line[0]) host_log("perf-detail", "texture array classes: %s", line);
 }
 
 static int pool_take(d3dr_texture_t* t, UINT w, UINT h, UINT levels) {
@@ -2148,7 +2148,7 @@ static void count_upload(int kind, size_t texels, int64_t start) {
     R.upload_totals[kind].ms += ms;
 }
 
-/* DEBUG_SAULO: content hashes of every texture uploaded new, to count the ones the game evicted and loaded again. */
+/* Content hashes of every texture uploaded new, to count the ones the game evicted and loaded again. */
 #define SEEN_SLOTS 65536u
 static uint64_t s_seen[SEEN_SLOTS];
 
@@ -4051,7 +4051,7 @@ static int draw_frontend(UINT width, UINT height) {
     return 1;
 }
 
-/* DEBUG_SAULO: GPU time of the work between begin and end, read some frames later without ever waiting for it. */
+/* GPU time of the work between begin and end, read some frames later without ever waiting for it. */
 #define GPU_SPAN_RING 4u
 static struct {
     ID3D11Query *disjoint[GPU_SPAN_RING], *start[GPU_SPAN_RING], *end[GPU_SPAN_RING];
@@ -4227,13 +4227,13 @@ static void log_metric_lines(const char* when) {
     host_log("renderer", "textures_bound %llu", R.textures_bound);
     host_log("renderer", "texture_uploads %llu (textures reused from the game's earlier surfaces: %llu)",
              R.texture_uploads, R.textures_reused);
-    host_log("renderer", "DEBUG_SAULO texture uploads by kind: new textures %llu (%.0f ms; their content was uploaded "
+    host_log("perf-detail", "texture uploads by kind: new textures %llu (%.0f ms; their content was uploaded "
              "before, an eviction reload, %llu) | whole re-uploads of a changed texture with its mipmaps rebuilt %llu "
              "(%.0f ms) | level-0 region updates of dynamic textures %llu (%.0f ms) | mipmap chains reused from parked "
              "textures %llu", R.upload_totals[UPLOAD_FIRST].n, R.upload_totals[UPLOAD_FIRST].ms, R.uploads_seen_before,
              R.upload_totals[UPLOAD_WITH_MIPS].n, R.upload_totals[UPLOAD_WITH_MIPS].ms, R.upload_totals[UPLOAD_REGION].n,
              R.upload_totals[UPLOAD_REGION].ms, R.textures_reused);
-    host_log("renderer", "DEBUG_SAULO upload cost split (whole and region): row conversion %.0f ms, alpha scan %.0f ms, "
+    host_log("perf-detail", "upload cost split (whole and region): row conversion %.0f ms, alpha scan %.0f ms, "
              "mipmap build %.0f ms, UpdateSubresource %.0f ms in %llu calls (%.1f us each), change detection hash "
              "%.0f ms | uploads skipped because the rows, palette and key were what the GPU already holds: %llu "
              "(%.1f M texels)", R.upload_convert_ms, R.upload_alpha_ms, R.upload_build_ms, R.upload_update_ms,
@@ -4429,7 +4429,7 @@ static void end_perf_window(double seconds) {
 
 static double cumulative_ms(int category) { return R.total.ms[category] + R.perf.ms[category]; }
 
-/* DEBUG_SAULO: the physics stages' share of this frame, from the guest samples since the last frame. */
+/* The physics stages' share of this frame, from the guest samples since the last frame. */
 static double frame_physics_ms(const unsigned* samples, unsigned slots, double* per_slot) {
     double total = 0.0;
     for (unsigned i = 0; i < slots; i++) {
@@ -4453,7 +4453,7 @@ static void append_text(char* out, size_t size, const char* fmt, ...) {
     va_end(args);
 }
 
-/* DEBUG_SAULO: a slow gameplay frame, from counters that only grow and the physics hooks' counts of this frame. */
+/* A slow gameplay frame, from counters that only grow and the physics hooks' counts of this frame. */
 static void log_slow_frame(double frame_ms) {
     const physics_counts_t* pc = &R.detail.physics;
     unsigned samples[GUEST_PROFILE_MAX_SLOTS], slots = guest_profile_slots(), order[PHYSICS_BOXES], shown = 0;
@@ -4481,7 +4481,7 @@ static void log_slow_frame(double frame_ms) {
                     pc->box_awake[i] ? ", awake" : "", pc->box_pairs[i], pc->box_sub_pairs[i], pc->box_kills[i]);
         shown++;
     }
-    host_log("perf-detail", "DEBUG_SAULO slow-physics: frame %llu, %.1f ms | physics %.0f ms (2 ms samples: %s) | Anne's "
+    host_log("perf-detail", "slow-physics: frame %llu, %.1f ms | physics %.0f ms (2 ms samples: %s) | Anne's "
              "skeleton %.2f, dinosaurs' skeletons %.2f | CPU polygons %.2f, host translation %.2f, uploads %.2f, "
              "readbacks %.2f, CPU composite %.2f, present %.2f, SelfMod %.2f, ASSAO GPU (last) %.2f | boxes awake %u, "
              "active %u, broad-phase pairs %u, sub-box pairs %u, corner tests %u, velocity kills %u | busiest: %s",
@@ -4501,7 +4501,7 @@ static void snapshot_counters(void) {
     guest_profile_snapshot(R.detail.prev_samples);
 }
 
-/* DEBUG_SAULO: where a gameplay-stable frame went; guest sections include the host work they call. */
+/* Where a gameplay-stable frame went; guest sections include the host work they call. */
 static void note_stable_breakdown(double frame_ms) {
     double host = 0.0, selfmod = selfmod_total_ms() - R.detail.prev_selfmod, per_slot[GUEST_PROFILE_MAX_SLOTS];
     unsigned samples[GUEST_PROFILE_MAX_SLOTS], slots = guest_profile_slots();
@@ -4528,7 +4528,7 @@ static void log_breakdown_row(const char* name, const perf_stat_t* s) {
     host_log("perf-detail", "  %-58s average %6.2f ms | p95 %6.2f ms", name, perf_stat_mean(s), perf_stat_percentile(s, 0.95));
 }
 
-/* DEBUG_SAULO: what the D3D calls cost in D3D11 batches, over the whole session. */
+/* What the D3D calls cost in D3D11 batches, over the whole session. */
 static const char* render_state_name(int state) {
     switch (state) {
     case D3DRENDERSTATE_ZENABLE: return "ZENABLE";
@@ -4578,7 +4578,7 @@ static void log_batch_breakdown(void) {
                     R.detail.flush_state_value[best][1] / (double)frames,
                     R.detail.flush_state_value[best][2] / (double)frames);
     }
-    host_log("perf-detail", "DEBUG_SAULO D3D batches per hardware frame: DrawPrimitive calls %.0f, D3D11 draws %.0f "
+    host_log("perf-detail", "D3D batches per hardware frame: DrawPrimitive calls %.0f, D3D11 draws %.0f "
              "(%.1f calls each) | real state changes: render %.0f, stage %.1f, viewport %.1f | render state changes that "
              "kept the open batch %.1f | batches ended by: %s; other (unclassified) %.1f | render states "
              "ending most batches (D3DRENDERSTATE number, per frame): %s | CPU composites %.1f per frame, %.2f boxes "
@@ -4597,7 +4597,7 @@ static void log_batch_breakdown(void) {
 static void log_translate_split(void) {
     double frames = R.frames_hw ? (double)R.frames_hw : 1.0;
     const double* d = R.detail.draw_ms;
-    host_log("perf-detail", "DEBUG_SAULO DrawPrimitive translation per hardware frame (%llu calls timed of %llu, scaled): "
+    host_log("perf-detail", "DrawPrimitive translation per hardware frame (%llu calls timed of %llu, scaled): "
              "total %.2f ms = uploads inside it %.2f + batch flushes, readbacks and CPU composites inside it %.2f + translation proper %.2f | stages "
              "(nested work included): texture lookup/format/effect %.2f, batch join and array slot %.2f, vertex and "
              "index append %.2f | batches ended by full texture arrays %.1f per frame", R.detail.draw_sampled,
@@ -4631,7 +4631,7 @@ static void log_stable_breakdown(void) {
             if (guest_profile_slot_physics(i) && R.detail.stable_physics_slot[i] > 0.0)
                 append_text(stages, sizeof stages, "%s%s %.2f", stages[0] ? ", " : "", guest_profile_slot_name(i) + 9,
                             R.detail.stable_physics_slot[i] / frames);
-        host_log("perf-detail", "DEBUG_SAULO physics (gameplay-stable, from 2 ms guest samples): average %.2f ms | p95 "
+        host_log("perf-detail", "physics (gameplay-stable, from 2 ms guest samples): average %.2f ms | p95 "
                  "%.2f | p99 %.2f | max %.2f | ms per frame by stage: %s | per frame: broad-phase pairs %.1f, sub-box "
                  "pairs %.1f, velocity kills %.1f, boxes awake %.1f", perf_stat_mean(p), perf_stat_percentile(p, 0.95),
                  perf_stat_percentile(p, 0.99), p->max, stages[0] ? stages : "none", R.detail.stable_pairs / frames,
@@ -4695,7 +4695,7 @@ static void log_stat(const char* name, const perf_stat_t* s, double frames, doub
              perf_stat_percentile(s, 0.95), s->max, per_frame, frame_ms > 0.0 ? 100.0 * per_frame / frame_ms : 0.0);
 }
 
-/* DEBUG_SAULO: one block at exit for the 4K investigation; nothing is printed per frame. */
+/* One block at exit for the 4K investigation; nothing is printed per frame. */
 static void log_detail(void) {
     const perf_window_t* p = &R.total;
     double frames = p->frames ? (double)p->frames : 1.0, frame_sum = R.detail.frame.sum;
@@ -4767,34 +4767,34 @@ void d3dr_summary(void) {
     d3d_objects_counts(&refused_render, &refused_stage, &failed);
     accumulate(&R.total, &R.perf);
     memset(&R.perf, 0, sizeof R.perf);
-    if (R.draw_calls || R.hardware) {
+    if ((R.draw_calls || R.hardware) && host_perf_logging()) {
         log_metric_lines("summary at exit:");
         log_readback_detail(&R.total, "session");
         log_detail();
-        if (host_perf_logging()) {
-            log_hybrid(&R.total, "session");
-            for (int i = 0; i < MAX_READBACK_CALLERS; i++)
-                if (R.total.callers[i].count)
-                    host_log("perf", "readback caller sub_%08X %s: %llu, %.1f MB, %.1f ms", R.total.callers[i].caller,
-                             readback_reason_name(R.total.callers[i].reason), R.total.callers[i].count,
-                             R.total.callers[i].bytes / (1024.0 * 1024.0), R.total.callers[i].ms);
-            log_state_classes();
-        }
-        host_log("video", "water refraction: %llu water batches, %llu scene copies (%llu of them MSAA resolves); "
+        log_hybrid(&R.total, "session");
+        for (int i = 0; i < MAX_READBACK_CALLERS; i++)
+            if (R.total.callers[i].count)
+                host_log("perf", "readback caller sub_%08X %s: %llu, %.1f MB, %.1f ms", R.total.callers[i].caller,
+                         readback_reason_name(R.total.callers[i].reason), R.total.callers[i].count,
+                         R.total.callers[i].bytes / (1024.0 * 1024.0), R.total.callers[i].ms);
+        log_state_classes();
+        host_log_perf("video", "water refraction: %llu water batches, %llu scene copies (%llu of them MSAA resolves); "
                  "enhanced sky: %llu sky batches", R.fx.water_batches, R.fx.copies, R.fx.resolves, R.fx.sky_batches);
         if (fx_water_raw()->written) {
             const fx_shift_t* sh = fx_water_shifts();
-            host_log("video", "water refraction: largest wave difference %.4f (%llu of %llu texels moving); shift in pixels: average %.2f, "
+            host_log_perf("video", "water refraction: largest wave difference %.4f (%llu of %llu texels moving); shift in pixels: average %.2f, "
                      "p95 %.2f, p99 %.2f, largest %.1f (wave %.3f at %.1f m)", fx_water_abs_max(), fx_water_raw()->nonzero,
                      fx_water_raw()->written, fx_shift_mean(sh), fx_shift_percentile(sh, 0.95), fx_shift_percentile(sh, 0.99), sh->max,
                      sh->max_wave, sh->max_rhw > 0.0 ? FX_WATER_RHW_METRE / sh->max_rhw : 0.0);
         }
-        if (R.unknown_count) host_log("d3d", "unknown texture formats: %u (listed above when first drawn)", R.unknown_count);
-        host_log("d3d", "textures changed without Lock/Unlock: %llu", R.untracked_writes);
-        host_log("d3d", "CPU pixels composited over the GPU target: gameplay %llu, menus/dialogs/videos %llu; black ones "
+        host_log_perf("d3d", "CPU pixels composited over the GPU target: gameplay %llu, menus/dialogs/videos %llu; black ones "
                  "over known non-black GPU pixels: gameplay %llu, menus %llu; black ones over a capture (GPU pixels "
                  "unknown): gameplay %llu, menus %llu", R.cpu_pixels[1], R.cpu_pixels[0], R.black_over_gpu[1],
                  R.black_over_gpu[0], R.black_over_unknown[1], R.black_over_unknown[0]);
+    }
+    if (R.draw_calls || R.hardware) {
+        if (R.unknown_count) host_log("d3d", "unknown texture formats: %u (listed above when first drawn)", R.unknown_count);
+        host_log("d3d", "textures changed without Lock/Unlock: %llu", R.untracked_writes);
     }
     engine_limits_summary(R.draw_calls);
     host_log("d3d", "unsupported_render_states %lu", refused_render);

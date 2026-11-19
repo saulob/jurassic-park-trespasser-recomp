@@ -49,7 +49,7 @@ static unsigned s_cur_kind;
 static int s_installed, s_drawing, s_store_only;
 static volatile float* s_gradient_limit;
 
-/* DEBUG_SAULO: DrawPolygon's whole cost by the function that locked the screen (0: the polygon went to Direct3D). */
+/* DrawPolygon's whole cost by the function that locked the screen (0: the polygon went to Direct3D). */
 #define COST_SLOTS 24u
 static struct {
     uint32_t caller;
@@ -67,7 +67,7 @@ static uint32_t s_draw_caller;
 static unsigned long long s_draw_pixels;
 static double s_qpc_ms;
 
-/* DEBUG_SAULO: DrawPolygon cost by the polygon's material pointer, with the screen Lock caller that drew it. */
+/* DrawPolygon cost by the polygon's material pointer, with the screen Lock caller that drew it. */
 #define KEY_SLOTS 48u
 static struct {
     uint32_t key, caller;
@@ -145,7 +145,7 @@ static void slow_frame_families_summary(void) {
         if (n < 0 || (size_t)n >= sizeof line - 1) break;
     }
     line[sizeof line - 1] = 0;
-    host_log("perf-detail", "DEBUG_SAULO slow-frame CPU polygon families (stable gameplay frames over 25 ms: %llu of "
+    host_log("perf-detail", "slow-frame CPU polygon families (stable gameplay frames over 25 ms: %llu of "
              "%llu; frames = slow frames the family drew in): %s", s_slow_frames, s_gameplay_frames,
              line[0] ? line : "none");
 }
@@ -160,7 +160,7 @@ static void materials_summary(void) {
             if (!used[i] && (best < 0 || s_key[i].slow_ms > s_key[best].slow_ms)) best = (int)i;
         if (best < 0 || !s_key[best].slow_ms) break;
         used[best] = 1;
-        host_log("perf-detail", "DEBUG_SAULO CPU polygon material %08X (drawn by sub_%08X): %llu polygons, %.0f px each, "
+        host_log("perf-detail", "CPU polygon material %08X (drawn by sub_%08X): %llu polygons, %.0f px each, "
                  "%.0f ms (%.1f%% of box pixels); in slow frames %llu polygons %.0f ms", s_key[best].key,
                  s_key[best].caller, s_key[best].polygons, (double)s_key[best].pixels / (double)s_key[best].polygons,
                  s_key[best].ms, total ? 100.0 * (double)s_key[best].pixels / (double)total : 0.0,
@@ -199,7 +199,7 @@ void cpu_polygons_summary(void) {
         if (n < 0 || (size_t)n >= sizeof line - 1) break;
     }
     line[sizeof line - 1] = 0;
-    if (line[0]) host_log("perf-detail", "DEBUG_SAULO DrawPolygon by screen Lock caller (box pixels): %s", line);
+    if (line[0]) host_log("perf-detail", "DrawPolygon by screen Lock caller (box pixels): %s", line);
     slow_frame_families_summary();
     materials_summary();
     gpu_summary("perspective-textured polygons (sub_00568EF0, sub_005B67E0)", &s_gpu[POLY_TEXTURE]);

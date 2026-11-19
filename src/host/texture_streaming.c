@@ -19,7 +19,7 @@ static struct {
     double budget_ms;
     LARGE_INTEGER start;
 } s_clock;
-static struct { /* DEBUG_SAULO */
+static struct {
     unsigned long long windows, ran_out, longer;
     double max_ms;
 } s_stats;
@@ -87,6 +87,6 @@ void texture_streaming_log(void) {
 
 void texture_streaming_summary(void) {
     if (!s_stats.windows) return;
-    host_log("perf-detail", "DEBUG_SAULO upload windows: %llu, ran out %llu, given the longer window %llu, longest "
+    host_log("perf-detail", "upload windows: %llu, ran out %llu, given the longer window %llu, longest "
              "%.2f ms", s_stats.windows, s_stats.ran_out, s_stats.longer, s_stats.max_ms);
 }

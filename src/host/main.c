@@ -22,15 +22,9 @@
 #include "stream_audio.h"
 #include "recomp_trace.h"
 
-#ifndef TRESPASSER_DEFAULT_GAME_DIR
-#define TRESPASSER_DEFAULT_GAME_DIR "game"
-#endif
 /* The flat user folder of earlier development builds, migrated into the user data root. */
 #ifndef TRESPASSER_LEGACY_USER_DIR
 #define TRESPASSER_LEGACY_USER_DIR NULL
-#endif
-#ifndef TRESPASSER_LOG_DIR
-#define TRESPASSER_LOG_DIR "build\\logs"
 #endif
 
 /* Lifted frames are several times the original's, and they live on the host stack. */
@@ -119,6 +113,33 @@ static native32_shim_t s_shims[] = {
 };
 
 
+/* A folder next to the program, whatever the working directory; the bare name when the program's path is unusable. */
+static const char* beside_program(const char* name, char* out, size_t cap) {
+    char* slash;
+    DWORD n = GetModuleFileNameA(NULL, out, (DWORD)cap);
+    if (!n || n >= cap || !(slash = strrchr(out, '\\')) || (size_t)(slash + 1 - out) + strlen(name) >= cap) return name;
+    strcpy(slash + 1, name);
+    return out;
+}
+
+static const char* default_game_dir(void) {
+#ifdef TRESPASSER_DEFAULT_GAME_DIR
+    return TRESPASSER_DEFAULT_GAME_DIR;
+#else
+    static char dir[MAX_PATH];
+    return beside_program("game", dir, sizeof dir);
+#endif
+}
+
+static const char* default_log_dir(void) {
+#ifdef TRESPASSER_LOG_DIR
+    return TRESPASSER_LOG_DIR;
+#else
+    static char dir[MAX_PATH];
+    return beside_program("logs", dir, sizeof dir);
+#endif
+}
+
 static void usage(void) {
     printf("usage: trespasser_recomp [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user_data_root DIR]\n"
            "                  [--log-file FILE | --log-dir DIR] [--watchdog SECONDS] [--ddraw compat|system]\n"
@@ -149,8 +170,8 @@ static void usage(void) {
            "  --lifted-water runs the lifted water and occlusion functions instead of their host kernels\n"
            "    (comparison)\n"
            "  --legacy-safemode-dialog keeps the game's \"unstable last time, Safe Mode?\" prompt (off by default)\n"
-           "  --perf-log adds performance lines every 5 s, renderer summaries every 60 s and a sampled guest CPU\n"
-           "    profile to the log (diagnostics)\n");
+           "  --perf-log adds performance lines every 5 s, renderer summaries every 60 s, the exit and slow-frame\n"
+           "    breakdowns and a sampled guest CPU profile to the log (diagnostics)\n");
     recomp_trace_help();
 }
 
@@ -184,8 +205,8 @@ static int parse_options(int argc, char** argv, options_t* o) {
         { "--ambient-occlusion", JPT_KEY_AMBIENT_OCCLUSION },
     };
     o->game_dir = getenv("TRESPASSER_GAME_DIR");
-    if (!o->game_dir) o->game_dir = TRESPASSER_DEFAULT_GAME_DIR;
-    o->log_dir = TRESPASSER_LOG_DIR;
+    if (!o->game_dir) o->game_dir = default_game_dir();
+    o->log_dir = default_log_dir();
     o->dev_filter = -1;
     for (int i = 1; i < argc; i++) {
         int taken = recomp_trace_arg(argc, argv, i), matched = 0;
@@ -280,7 +301,7 @@ static int run_guest(void) {
         host_log("guest", "cannot create the guest thread (error %lu)", GetLastError());
         return HOST_EXIT_SETUP;
     }
-    guest_profile_start(thread);
+    if (host_perf_logging()) guest_profile_start(thread);
     WaitForSingleObject(thread, INFINITE);
     GetExitCodeThread(thread, &code);
     CloseHandle(thread);

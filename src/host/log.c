@@ -4,6 +4,7 @@
 #include <io.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #define LOG_NAME "trespasser_recomp"
 #define PREVIOUS_LOG_NAME "trespasser"
@@ -94,21 +95,34 @@ static void echo_to_console(const char* text, unsigned len) {
     if (s_console != INVALID_HANDLE_VALUE) WriteFile(s_console, text, len, &written, NULL);
 }
 
-void host_log(const char* tag, const char* fmt, ...) {
+static void log_line(const char* tag, const char* fmt, va_list ap) {
     char line[1024];
-    va_list ap;
-    int head = _snprintf(line, sizeof line - 2, "[%9.3f] [%-8s] ",
-                         (GetTickCount() - s_start_tick) / 1000.0, tag);
+    int head = _snprintf(line, sizeof line - 2, "[%9.3f] [%-8s] ", (GetTickCount() - s_start_tick) / 1000.0, tag);
     int body;
     if (head < 0) return;
-    va_start(ap, fmt);
     body = _vsnprintf(line + head, sizeof line - 2 - head, fmt, ap);
-    va_end(ap);
     if (body < 0) body = (int)(sizeof line - 2 - head);
     line[head + body] = '\n';
     line[head + body + 1] = 0;
     fputs(line, stderr);
     echo_to_console(line, (unsigned)(head + body + 1));
+}
+
+/* The tag "perf-detail" is performance detail, like everything written by host_log_perf: only with --perf-log. */
+void host_log(const char* tag, const char* fmt, ...) {
+    va_list ap;
+    if (!s_perf_logging && tag && !strcmp(tag, "perf-detail")) return;
+    va_start(ap, fmt);
+    log_line(tag, fmt, ap);
+    va_end(ap);
+}
+
+void host_log_perf(const char* tag, const char* fmt, ...) {
+    va_list ap;
+    if (!s_perf_logging) return;
+    va_start(ap, fmt);
+    log_line(tag, fmt, ap);
+    va_end(ap);
 }
 
 /* No stdio: usable from the fault handler while another thread holds the CRT lock. */

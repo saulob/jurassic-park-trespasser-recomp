@@ -198,6 +198,7 @@ static void note_peaks(pw_snapshot_t* s) {
 }
 
 static void log_snapshot(const pw_snapshot_t* s);
+static void log_automatic_snapshot(const pw_snapshot_t* s);
 
 /* The engine's own sanity check deactivates a pelvis whose boxes move too fast (InfoBox, iCornfield 1): Pel keeps the
  * last state it integrated, so it is read where the pelvis was. */
@@ -208,21 +209,21 @@ static void note_pelvis_lost(const pw_snapshot_t* now) {
     pw_peaks_get(&W.peaks, peaks);
     dofs(state, DOF_BODY, pos, vel);
     dofs(state, DOF_RIGHT_HAND, hand, hand_vel);
-    host_log("physics-watch", "human pelvis lost: pelvis %d no longer human (Pel_Usage %u) at %.3f s; player at %.3f %.3f %.3f",
+    host_log_perf("physics-watch", "human pelvis lost: pelvis %d no longer human (Pel_Usage %u) at %.3f s; player at %.3f %.3f %.3f",
              W.pelvis, MEM32(PELVIS_USAGE + 4u * (uint32_t)W.pelvis), now->t, now->player_pos[0], now->player_pos[1],
              now->player_pos[2]);
-    host_log("physics-watch", "last integrated state: body %.3f %.3f %.3f vel %.2f %.2f %.2f, hand %.3f %.3f %.3f vel %.2f "
+    host_log_perf("physics-watch", "last integrated state: body %.3f %.3f %.3f vel %.2f %.2f %.2f, hand %.3f %.3f %.3f vel %.2f "
              "%.2f %.2f",
              pos[0], pos[1], pos[2], vel[0], vel[1], vel[2], hand[0], hand[1], hand[2], hand_vel[0], hand_vel[1],
              hand_vel[2]);
-    host_log("physics-watch", "fastest in the last 1-2 s (m/s): body %.1f, right foot %.1f, left foot %.1f, hand %.1f; "
+    host_log_perf("physics-watch", "fastest in the last 1-2 s (m/s): body %.1f, right foot %.1f, left foot %.1f, hand %.1f; "
              "the engine deactivates a pelvis whose box passes %.0f m/s or whose query region reaches %.0f m",
              peaks[PW_PART_BODY], peaks[PW_PART_RIGHT_FOOT], peaks[PW_PART_LEFT_FOOT], peaks[PW_PART_HAND],
              PW_SANE_SPEED, PW_SANE_REGION);
     if (W.last.pelvis >= 0) {
         pw_snapshot_t last = W.last;
         last.reason = "LAST SNAPSHOT WITH THE PELVIS";
-        log_snapshot(&last);
+        log_automatic_snapshot(&last);
     }
 }
 
@@ -230,6 +231,11 @@ static void log_snapshot(const pw_snapshot_t* s) {
     char line[PW_LINE_MAX];
     for (int i = 0; i < PW_LINES; i++)
         if (pw_format(s, i, line, sizeof line)) host_log("physics-watch", "%s", line);
+}
+
+/* Snapshots the watcher takes by itself (death, stuck, hand far) are telemetry; F9's is asked for. */
+static void log_automatic_snapshot(const pw_snapshot_t* s) {
+    if (host_perf_logging()) log_snapshot(s);
 }
 
 void physics_watch_read(const pw_input_t* in) {
@@ -243,8 +249,8 @@ void physics_watch_read(const pw_input_t* in) {
         pw_stuck_init(&W.stuck);
         W.hand_near = 1;
         W.pelvis = -1;
-        host_log("physics-watch", "watching Anne: automatic snapshots when she cannot move (at most %d), F9 for one now",
-                 PW_SNAPSHOTS_MAX);
+        host_log_perf("physics-watch", "watching Anne: automatic snapshots when she cannot move (at most %d), F9 for one now",
+                      PW_SNAPSHOTS_MAX);
     }
     capture(&s, "MANUAL SNAPSHOT", in);
     if (s.pelvis >= 0) note_peaks(&s);
@@ -258,13 +264,13 @@ void physics_watch_read(const pw_input_t* in) {
         W.invalid = 1;
         if (W.invalid_logs++ < INVALID_LOG_MAX) {
             s.reason = "INVALID PLAYER STATE";
-            log_snapshot(&s);
+            log_automatic_snapshot(&s);
         }
     }
     if (s.pelvis >= 0 && W.alive && !(s.alive > 0.0f) && W.snapshots < PW_SNAPSHOTS_MAX) {
         W.snapshots++;
         s.reason = "ANNE DIED";
-        log_snapshot(&s);
+        log_automatic_snapshot(&s);
     }
     W.alive = s.pelvis >= 0 && s.alive > 0.0f;
     if (W.pelvis >= 0 && s.pelvis < 0) note_pelvis_lost(&s);
@@ -277,7 +283,7 @@ void physics_watch_read(const pw_input_t* in) {
         W.snapshots < PW_SNAPSHOTS_MAX) {
         W.snapshots++;
         s.reason = "HAND FAR FROM BODY";
-        log_snapshot(&s);
+        log_automatic_snapshot(&s);
     }
     cheats_watch(&want, &free_camera, &speed_real);
     tick.t = s.t;
@@ -289,7 +295,7 @@ void physics_watch_read(const pw_input_t* in) {
         s.reason = "PLAYER STUCK";
         s.stuck_seconds = stuck_seconds;
         s.stuck_moved = moved;
-        log_snapshot(&s);
+        log_automatic_snapshot(&s);
     }
 }
 

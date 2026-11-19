@@ -164,6 +164,6 @@ void dd_methods_summary(unsigned long long hardware_frames) {
     }
     line[sizeof line - 1] = 0;
     if (line[0])
-        host_log("perf-detail", "DEBUG_SAULO D3D/DirectDraw methods by time (one call in %u timed, nested host work "
+        host_log("perf-detail", "D3D/DirectDraw methods by time (one call in %u timed, nested host work "
                  "included): %s", METHOD_SAMPLE, line);
 }

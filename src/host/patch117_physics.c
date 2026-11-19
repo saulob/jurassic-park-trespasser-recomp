@@ -58,6 +58,8 @@ static uint32_t bits(float v) {
     return u;
 }
 
+static patch117_wake_box_t wake_read(uint32_t box);
+
 static int box_index(uint32_t box) {
     uint32_t off = box - BOX_POOL;
     return off < BOX_COUNT * BOX_STRIDE && !(off % BOX_STRIDE) ? (int)(off / BOX_STRIDE) : -1;
@@ -78,7 +80,8 @@ void physics_counts_take(physics_counts_t* out) {
         out->box_awake[i] = MEM32(box + BOX_STATE) == MEM32(STATE_AWAKE);
         out->box_movable[i] = MEM8(box + BOX_MOVABLE) != 0;
         if (out->box_awake[i]) out->awake++;
-        if (MEM32(box + BOX_ACTIVE)) out->active++;
+        /* The active field is only known in the builds whose box wakes the host takes over. */
+        if (JPT_P117_WAKE && wake_read(box).active) out->active++;
     }
     memset(&s_counts, 0, sizeof s_counts);
 }

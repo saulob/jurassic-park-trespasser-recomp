@@ -18,6 +18,8 @@
 int host_log_open(const char* dir, const char* file);
 const char* host_log_path(void);
 void host_log(const char* tag, const char* fmt, ...);
+/* Diagnostics and statistics: written only with --perf-log. */
+void host_log_perf(const char* tag, const char* fmt, ...);
 void host_log_raw(const char* text, unsigned len);
 /* --perf-log: the 5-second performance lines, periodic renderer summaries and the guest CPU profile. */
 void host_perf_logging_enable(void);
@@ -93,7 +95,7 @@ unsigned guest_profile_slots(void);
 const char* guest_profile_slot_name(unsigned slot);
 void guest_profile_snapshot(unsigned* out);
 int guest_profile_running(void);
-/* DEBUG_SAULO: the slots of the physics code's stages, and the time one sample stands for. */
+/* The slots of the physics code's stages, and the time one sample stands for. */
 int guest_profile_slot_physics(unsigned slot);
 double guest_profile_sample_ms(void);
 void selfmod_report(double frames, double frame_ms);
@@ -231,13 +233,13 @@ int d3dr_texture_polygon(void* surface_iface, const gpu_texture_polygon_t* p);
 void d3dr_texture_polygon_reset(void);
 /* After a level load: creates the GPU polygon buffers on the current device. */
 void d3dr_texture_polygon_warm(void);
-/* DEBUG_SAULO: the guest function behind the current raster Lock. */
+/* The guest function behind the current raster Lock. */
 uint32_t d3dr_lock_caller(void);
 /* cpu_polygons.c: the software polygons drawn into the Direct3D frame (meshes Direct3D cannot take). */
 void cpu_polygons_install(void);
-/* DEBUG_SAULO: DrawPolygon's cost by screen Lock caller, at exit. */
+/* DrawPolygon's cost by screen Lock caller, at exit. */
 void cpu_polygons_summary(void);
-/* DEBUG_SAULO: closes the frame's per-family counts; gameplay = a stable gameplay frame, slow = over 25 ms. */
+/* Closes the frame's per-family counts; gameplay = a stable gameplay frame, slow = over 25 ms. */
 void cpu_polygons_frame_end(int gameplay, int slow);
 /* widescreen.c: screen pixels per metre at unit distance for the main camera's view; 0 when there is none. */
 float widescreen_pixels_per_metre(void);
@@ -300,7 +302,7 @@ void engine_limits_summary(unsigned long long hardware_draw_calls);
 void texture_streaming_install(void);
 void texture_streaming_log(void);
 void texture_streaming_summary(void);
-/* DEBUG_SAULO: image-cache decisions at exit (engine_limits.c). */
+/* Image-cache decisions at exit (engine_limits.c). */
 void engine_limits_cache_summary(void);
 void shim_GetTickCount(void);
 /* terrain_quality.c: terrain texture distance and mesh tolerance with Direct3D 11. */
@@ -436,9 +438,9 @@ void physics_counts_take(physics_counts_t* out);
 unsigned long long renderer_hardware_frames(void);
 void active_ai_install(void);
 int active_ai_installed(void);
-/* DEBUG_SAULO: active animals per AI update, at exit. */
+/* Active animals per AI update, at exit. */
 void active_ai_summary(void);
-/* DEBUG_SAULO: hand escapes and recoveries at exit (physics_fixes.c). */
+/* Hand escapes and recoveries at exit (physics_fixes.c). */
 void physics_fixes_summary(void);
 /* ce_graphics.c: the sky draw hook and the water rows' observer (Direct3D 11 only). */
 void ce_graphics_install(int hardware);
@@ -515,8 +517,6 @@ void guest_profile_window(void);
 void guest_profile_summary(void);
 /* "[shutdown] guest threads <when>: N" and one line per worker still running. */
 void guest_threads_log(const char* when);
-/* DEBUG_SAULO: one line with the guest workers alive, for the audio and level lifecycle events. */
-void guest_threads_trace(const char* event);
 
 /* registry.c / guest_env.c: the legacy "unstable last time, Safe Mode?" prompt. */
 void registry_legacy_safemode_dialog(void);

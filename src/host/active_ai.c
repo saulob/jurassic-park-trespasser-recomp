@@ -118,7 +118,7 @@ static struct {
     uint32_t think_brain, think_esp;
     recomp_func_t ctor, dtor, activate, deactivate, within, seen, heard, think_next, process, save, load, influences,
         influences_tail;
-    unsigned long long processed, active_sum; /* DEBUG_SAULO */
+    unsigned long long processed, active_sum;
     int active_max;
 } A;
 
@@ -584,7 +584,6 @@ static void ai_think_next(void) {
     GUEST_RETURN_STDCALL(0);
 }
 
-/* DEBUG_SAULO */
 static void count_active(uint32_t sys) {
     int n = 0, limit = limit_of(sys);
     for (int i = 1; i <= limit; i++)
@@ -609,7 +608,7 @@ static void ai_process(void) {
 
 void active_ai_summary(void) {
     if (!A.processed) return;
-    host_log("perf-detail", "DEBUG_SAULO active AI: %llu system updates, active animals average %.2f, max %d (limit %d); "
+    host_log("perf-detail", "active AI: %llu system updates, active animals average %.2f, max %d (limit %d); "
              "its time is the AI row of the frame breakdown", A.processed, (double)A.active_sum / (double)A.processed,
              A.active_max, A.enhanced ? ACTIVE_AI_ENHANCED_LIMIT : ACTIVE_AI_ORIGINAL_LIMIT);
 }

@@ -3,6 +3,7 @@
     {"file": "src/host/debug_menu_policy.c", "name": "VK_ESCAPE_", "reason": "virtual key code"},
     {"file": "src/host/debug_menu_policy.c", "name": "VK_DOWN_", "reason": "virtual key code"},
     {"file": "src/host/host_policy.c", "name": "LOCK_FLAG_WRITEONLY", "reason": "DirectDraw lock flag"},
-    {"file": "src/host/text_layout.h", "name": "TL_ALIGN_BOTTOM", "reason": "host text layout flag"}
+    {"file": "src/host/text_layout.h", "name": "TL_ALIGN_BOTTOM", "reason": "host text layout flag"},
+    {"file": "src/host/engine_limits.c", "name": "TERRAIN_TEXTURE_MEM_BYTES", "reason": "byte length of SetTextureMemSize's code, compared before the host calls it"}
   ]
 }

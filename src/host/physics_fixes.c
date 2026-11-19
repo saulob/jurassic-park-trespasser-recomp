@@ -107,7 +107,7 @@ static float hand_limit_of(uint32_t data) {
                          rdf(data + PELVIS_SHOULDER + 8u), rdf(data + PELVIS_ARM));
 }
 
-/* DEBUG_SAULO: the steps before the hand went past HAND_ESCAPE_M, oldest first. */
+/* The steps before the hand went past HAND_ESCAPE_M, oldest first. */
 static void log_escape(uint32_t me, float limit) {
     char line[900];
     int n = 0;
@@ -117,7 +117,7 @@ static void log_escape(uint32_t me, float limit) {
                        s_hand[me].hand_speed[k], s_hand[me].body_speed[k], s_hand[me].rise[k]);
     }
     line[sizeof line - 1] = 0;
-    host_log("physics-watch", "DEBUG_SAULO hand-escape: pelvis %u, hand limit %.3f m, Movement Speed %.1fx; last %u steps "
+    host_log("perf-detail", "hand-escape: pelvis %u, hand limit %.3f m, Movement Speed %.1fx; last %u steps "
              "as distance m / hand speed / body speed m/s / hand height over the body m: %s", me, limit,
              cheats_speed_factor(), HAND_HISTORY, line);
 }
@@ -157,12 +157,12 @@ static void watch_hand(uint32_t me, uint32_t state, uint32_t data) {
     hand_follow_rebase(&s_follow[me], body_pos, body_vel, stored_vel);
     s_carrier[me].valid = 0;
     write3(state + PELVIS_RIGHT_HAND, DOF_VELOCITY, stored_vel);
-    for (uint32_t i = 0; i < 3; i++) wrf(state + (25u + i) * DOF_BYTES + DOF_ACCELERATION, 0.0f);
+    for (uint32_t i = 0; i < 3; i++) wrf(state + PELVIS_RIGHT_HAND + i * DOF_BYTES + DOF_ACCELERATION, 0.0f);
     s_recoveries++;
     if (s_recoveries_logged >= HAND_LOG_LIMIT) return;
     s_recoveries_logged++;
     player_hand(&phase, &grab);
-    host_log("physics-watch", "DEBUG_SAULO hand-recovery: distance %.3f m (hand limit %.3f), body %.2f %.2f %.2f, hand "
+    host_log("physics-watch", "hand-recovery: distance %.3f m (hand limit %.3f), body %.2f %.2f %.2f, hand "
              "%.2f %.2f %.2f, hand velocity %.2f %.2f %.2f, phase %d, grab %d, arm urgency %.2f, %s, reason %s; hand "
              "now %.2f %.2f %.2f", dist, limit, body_pos[0], body_pos[1], body_pos[2], before[0], before[1], before[2],
              hand_vel[0], hand_vel[1], hand_vel[2], phase, grab, rdf(CONTROL_ARM_URGENCY),
@@ -171,7 +171,7 @@ static void watch_hand(uint32_t me, uint32_t state, uint32_t data) {
 }
 
 void physics_fixes_summary(void) {
-    host_log("physics-watch", "DEBUG_SAULO hand: %llu passive steps (riding the pelvis), %llu controlled; %u escapes "
+    host_log("perf-detail", "hand: %llu passive steps (riding the pelvis), %llu controlled; %u escapes "
              "past %.1f m logged, %llu safety recoveries (expected 0)", s_passive_steps, s_active_steps,
              s_escapes_logged, HAND_ESCAPE_M, s_recoveries);
 }
@@ -192,7 +192,7 @@ static void noclip_before(uint32_t me, uint32_t state, int alive) {
         float kept_y = m->valid ? nc_horizontal_velocity(m->vy[i], vy) : vy;
         if (s_noclip_logged < NOCLIP_LOG_LIMIT && (kept_x != vx || kept_y != vy || response[0] != 0.0f || response[1] != 0.0f)) {
             s_noclip_logged++;
-            host_log("noclip", "part DOF %u: contact xy %.3f %.3f z %.3f, speed %.3f %.3f -> %.3f %.3f", /* DEBUG_SAULO */
+            host_log("perf-detail", "noclip part DOF %u: contact xy %.3f %.3f z %.3f, speed %.3f %.3f -> %.3f %.3f",
                      nc_part_dof[i], response[0], response[1], response[2], vx, vy, kept_x, kept_y);
         }
         nc_vertical_response(response);

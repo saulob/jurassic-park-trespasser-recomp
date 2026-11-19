@@ -62,7 +62,6 @@ static struct {
     uint32_t player, camera, camera_vtable, attached, animate, info;
     float speed_original, normal_max, super_hp;
     uint8_t relative[PLACEMENT_BYTES];
-    unsigned hidden_updates;
     ch_freecam_t free;
     ch_freecam_input_t input;
     int64_t last;
@@ -399,21 +398,10 @@ static const char* changed(dm_action_kind_t kind, int on, int value) {
     return NULL;
 }
 
-static void log_toggle(const char* name, int on) {
-    if (ch_format_toggle(C.text, sizeof C.text, name, on)) host_log("cheats", "%s", C.text);
-}
-
-static const char* run_stealth(int on) {
-    remember(JPT_CHEAT_STEALTH, on != 0);
-    if (on) C.hidden_updates = 0;
-    log_toggle("Stealth Mode", on);
-    if (!on) host_log("cheats", "Stealth Mode: %u perception updates ran with Anne hidden", C.hidden_updates); /* DEBUG_SAULO */
-    return NULL;
-}
-
-static const char* run_noclip(int on) {
-    remember(JPT_CHEAT_NOCLIP, on != 0);
-    log_toggle("Noclip", on);
+/* The menu's row shows the new value; the log gets the cheat's own name. */
+static const char* run_logged_toggle(jpt_cheat_t cheat, int on) {
+    remember(cheat, on != 0);
+    if (ch_format_toggle(C.text, sizeof C.text, jpt_cheats[cheat].label, on)) host_log("cheats", "%s", C.text);
     return NULL;
 }
 
@@ -435,8 +423,8 @@ const char* cheats_run(const dm_action_t* a, const char* level, uint32_t scratch
         if (!p || !ch_heal(rdf(p + ANIMATE_HP), rdf(p + ANIMATE_HP_MAX), &hp)) return jpt_tr("Anne cannot be healed now");
         wrf(p + ANIMATE_HP, hp);
         return changed(a->kind, 1, 0);
-    case DM_ACT_STEALTH: return run_stealth(a->on);
-    case DM_ACT_NOCLIP: return run_noclip(a->on);
+    case DM_ACT_STEALTH: return run_logged_toggle(JPT_CHEAT_STEALTH, a->on);
+    case DM_ACT_NOCLIP: return run_logged_toggle(JPT_CHEAT_NOCLIP, a->on);
     default: break;
     }
     suspend();
@@ -487,7 +475,6 @@ void cheats_stealth_begin(cheats_hidden_t* h) {
     uint32_t p;
     h->count = 0;
     if (!C.want.stealth || !(p = player())) return;
-    C.hidden_updates++;
     for (uint32_t i = 0; i < ANIMATE_PART_COUNT; i++) {
         uint32_t part, info, ai;
         uint8_t flags, hidden;

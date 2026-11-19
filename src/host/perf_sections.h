@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-/* DEBUG_SAULO: host work timed with the performance counter and summed per section. */
+/* Host work timed with the performance counter and summed per section. */
 typedef enum {
     PS_UI_LOOP,
     PS_OBJECTIVES,

@@ -695,20 +695,21 @@ static void test_perception(const char* root) {
         CHECK(!function_has(cheats, "void cheats_stealth_begin(", "AI_SYSTEM") &&
                   !function_has(cheats, "void cheats_stealth_begin(", "AI_FLAGS") &&
                   !function_has(cheats, "void cheats_stealth_begin(", "freeze") &&
-                  !function_has(cheats, "static const char* run_stealth(", "cheats_freeze_ai") &&
-                  !function_has(cheats, "static const char* run_stealth(", "AI_BORING"),
+                  !function_has(cheats, "static const char* run_logged_toggle(", "cheats_freeze_ai") &&
+                  !function_has(cheats, "static const char* run_logged_toggle(", "AI_BORING"),
               "Stealth Mode never touches CAISystem's flags: Freeze Dinosaurs is not involved");
         CHECK(function_has(cheats, "void cheats_stealth_begin(", "if (!C.want.stealth") &&
                   function_has(cheats, "void cheats_stealth_end(", "original"),
               "off: nothing is marked; on: every flag written is put back");
-        CHECK(function_has(cheats, "static const char* run_stealth(", "remember(JPT_CHEAT_STEALTH") &&
-                  function_has(cheats, "static const char* run_stealth(", "log_toggle(\"Stealth Mode\""),
+        CHECK(function_has(cheats, "static const char* run_logged_toggle(", "remember(cheat") &&
+                  function_has(cheats, "static const char* run_logged_toggle(", "host_log(\"cheats\"") &&
+                  strstr(cheats, "case DM_ACT_STEALTH: return run_logged_toggle(JPT_CHEAT_STEALTH, a->on);"),
               "the toggle is one session value and one log line");
         CHECK(!strstr(cheats, "debug_menu_move_player") && !strstr(cheats, "noclip_commit") && !strstr(cheats, "CH_CAMERA_NOCLIP"),
               "Noclip never moves Anne or the camera: it keeps no position of its own");
-        CHECK(function_has(cheats, "static const char* run_noclip(", "remember(JPT_CHEAT_NOCLIP") &&
-                  !function_has(cheats, "static const char* run_noclip(", "FREE_CAMERA") &&
-                  !function_has(cheats, "static const char* run_noclip(", "suspend"),
+        CHECK(strstr(cheats, "case DM_ACT_NOCLIP: return run_logged_toggle(JPT_CHEAT_NOCLIP, a->on);") &&
+                  !function_has(cheats, "static const char* run_logged_toggle(", "FREE_CAMERA") &&
+                  !function_has(cheats, "static const char* run_logged_toggle(", "suspend"),
               "the Noclip toggle is one session value and one log line: no Fly, no camera");
     }
     if (fixes) {

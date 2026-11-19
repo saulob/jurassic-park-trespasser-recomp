@@ -154,13 +154,8 @@ static int load_level(const char* scene, const guest_ui_view_t* v, uint32_t scra
     uint32_t world, name, result = 0;
     if (!dm_scene_valid(scene)) return 0;
     name = guest_string(scratch, scene);
-    if (D.world.place == DM_PLACE_LEVEL) {
-        char event[64];
-        _snprintf(event, sizeof event - 1, "Level Select %s -> %s", D.world.level, scene); /* DEBUG_SAULO */
-        event[sizeof event - 1] = 0;
-        guest_threads_trace(event);
+    if (D.world.place == DM_PLACE_LEVEL)
         return guest_read32(WORLD, &world) && world && guest_call(WORLD_DEFERRED_LOAD, world, &name, 1, 0, NULL);
-    }
     if (D.world.place != DM_PLACE_MAIN_MENU || v->kind != GUEST_WND_MAIN_MENU) return 0;
     if (!guest_call(APP_MENU_SOUNDS_OFF, APP, NULL, 0, 0, NULL) ||
         !guest_call(APP_LOAD_LEVEL, APP, &name, 1, 0, &result))
@@ -250,18 +245,6 @@ static void minimap_level_seen(const char* level) {
     if (!level || !level[0] || !strcmp(minimap_seen, level)) return;
     snprintf(minimap_seen, sizeof minimap_seen, "%s", level);
     if (!minimap_bounds(level)) host_log("minimap", "no map data for level %s: the minimap is hidden", level);
-    else if (minimap_map(level)) host_log("minimap", "DEBUG_SAULO level %s: %d vehicle markers", level, minimap_map(level)->vehicle_count);
-}
-
-/* DEBUG_SAULO: each distinct creature scale the minimap sees, once, with the size class it gets. */
-static void minimap_note_scale(float scale) {
-    static float seen[16];
-    static int count;
-    for (int i = 0; i < count; i++)
-        if (fabsf(seen[i] - scale) < 0.005f) return;
-    if (count == (int)(sizeof seen / sizeof seen[0])) return;
-    seen[count++] = scale;
-    host_log("minimap", "DEBUG_SAULO creature scale %.3f -> size class %d", scale, minimap_creature_size_class(scale));
 }
 
 static void minimap_creatures(uint32_t scratch) {
@@ -273,7 +256,6 @@ static void minimap_creatures(uint32_t scratch) {
         all[count].y = animals[i].y;
         all[count].threat = minimap_creature_kind(0, animals[i].engaged) == MM_CREATURE_THREAT;
         all[count].size = minimap_creature_size_class(animals[i].scale);
-        minimap_note_scale(animals[i].scale);
         count++;
     }
     D.hud.creature_count = minimap_creatures_select(D.hud.player_pos[0], D.hud.player_pos[1],

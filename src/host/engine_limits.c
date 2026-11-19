@@ -64,7 +64,7 @@ static engine_frame_slot_t s_kept_3d[OBJECT_SLOTS];
 #define IMPOSTOR_STATE_SLOTS 16384u
 #define REBUILD_FRAMES 120u
 static engine_impostor_state_t s_impostors[IMPOSTOR_STATE_SLOTS], s_hidden[IMPOSTOR_STATE_SLOTS];
-static struct { /* DEBUG_SAULO: what makes a drawn object appear, vanish or change */
+static struct { /* What makes a drawn object appear, vanish or change */
     unsigned long long requests, impostor_answers, became, dropped, rebuilt, group_became, group_dropped;
     unsigned long long distance_culled, distance_restored, subpixel_rejects, subpixel_hidden;
     uint32_t frame;
@@ -197,7 +197,7 @@ void engine_limits_summary(unsigned long long hardware_draw_calls) {
         host_log("graphics", "guest hardware renderer accepted %u times, rejected %u times: the game fell back to "
                  "its software renderer", s_accepted, s_rejected);
     else if (s_accepted)
-        host_log("graphics", "guest hardware renderer accepted %u times, never rejected: hardware path remained active "
+        host_log_perf("graphics", "guest hardware renderer accepted %u times, never rejected: hardware path remained active "
                  "through gameplay (%llu hardware draw calls)", s_accepted, hardware_draw_calls);
 }
 
@@ -330,7 +330,6 @@ static engine_partition_t partition_view(uint32_t partition) {
 static uint32_t frame_key(void) { return MEM32(PARTITION_FRAME) + 1u; }
 
 /* bInRange(distance squared): a static mesh too small to cover a pixel or two is left out as well. */
-/* DEBUG_SAULO */
 static void note_visibility(uint32_t partition, int drawn, int subpixel) {
     uint32_t frame = frame_key(), since;
     int known = engine_impostor_known(s_hidden, IMPOSTOR_STATE_SLOTS, partition, frame);
@@ -442,13 +441,13 @@ static void should_cache(void) {
 
 void engine_limits_cache_summary(void) {
     if (!s_cache_stats.requests) return;
-    host_log("perf-detail", "DEBUG_SAULO image cache: %llu bShouldCache answers, %llu impostor | 3D -> impostor %llu, "
+    host_log("perf-detail", "image cache: %llu bShouldCache answers, %llu impostor | 3D -> impostor %llu, "
              "impostor -> 3D %llu (switch %.0f px, back to 3D %.0f px), impostors rebuilt within %u frames of being "
              "dropped %llu | peak impostors in a frame %u | an impostor is built when it is chosen, never shown unready",
              s_cache_stats.requests, s_cache_stats.impostor_answers, s_cache_stats.became, s_cache_stats.dropped,
              ENGINE_IMPOSTOR_SWITCH_PX, ENGINE_IMPOSTOR_RETURN_PX, REBUILD_FRAMES, s_cache_stats.rebuilt,
              s_cache_stats.peak);
-    host_log("perf-detail", "DEBUG_SAULO pop-in sources (meshes seen in consecutive frames): 3D -> impostor %llu (of "
+    host_log("perf-detail", "pop-in sources (meshes seen in consecutive frames): 3D -> impostor %llu (of "
              "them group impostors %llu), impostor -> 3D %llu (groups %llu) | culled by distance %llu, back within "
              "distance %llu | hidden under %.1f px %llu (%llu sub-pixel answers) | LOD transitions: not visible to the "
              "host (the mesh LOD choice has no override)", s_cache_stats.became, s_cache_stats.group_became,

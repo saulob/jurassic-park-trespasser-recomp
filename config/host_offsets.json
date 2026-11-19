@@ -1234,6 +1234,20 @@
   },
   {
    "file": "src/host/cpu_polygons.c",
+   "name": "RASTER_HEIGHT",
+   "value": "0xC",
+   "struct": "CRaster",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CRaster+CRasterBase+CRefObj: 93 functions, 1 without a counterpart; +0xc used by 26 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CRaster+CRasterBase+CRefObj: 93 functions, 0 without a counterpart; +0xc used by 27 identical functions"
+   }
+  },
+  {
+   "file": "src/host/cpu_polygons.c",
    "name": "RASTER_VERTEX_SIZE",
    "value": "0x28",
    "struct": "RasterVertex",
@@ -1244,6 +1258,20 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "RasterVertex: 1 functions, 0 without a counterpart; constant0x28 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/cpu_polygons.c",
+   "name": "SCREEN_RENDER_RASTER",
+   "value": "0x4",
+   "struct": "CScreenRenderDWI",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CScreenRenderDWI+CScreenRender: 31 functions, 0 without a counterpart; +0x4 used by 14 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CScreenRenderDWI+CScreenRender: 31 functions, 0 without a counterpart; +0x4 used by 14 identical functions"
    }
   },
   {
@@ -3672,8 +3700,8 @@
    "descriptor": "GLAYOUT_BOX_POOL_STRIDE",
    "struct": "BoxPool",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxPool: the array's stride 0x1090 is built by the same address arithmetic (94 accesses in 1.0.116, 94 here)"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3686,8 +3714,8 @@
    "value": "0x80",
    "struct": "BoxObject",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxObject: 49 functions, 3 without a counterpart; +0x80 used by 2 identical functions"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3700,8 +3728,8 @@
    "value": "0xCD",
    "struct": "BoxObject",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxObject: 49 functions, 3 without a counterpart; +0xcd used by 9 identical functions"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3714,9 +3742,8 @@
    "value": "0xD8",
    "struct": "BoxPoolTable",
    "es-117": {
-    "status": "unmoved",
-    "value": "0xD8",
-    "evidence": "sub-box i keeps six floats at box+0xD8+0x18*i: 0x004E9780 and 0x004EACCB (BoxBox) read [i*0x18+0xDC] and [+0xE0] (y, z of the first triple) and [+0xE4]..[+0xEC] (the second), and 0x004DC0B0/0x004DE3A0/0x004DF7D0 take the second triple with lea [ebx+i*0x18+0xE4]; those functions are byte-identical in the ES executable. 1.0.116 has no access with displacement 0xD8 itself, so x is proven only through its triple"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3729,8 +3756,8 @@
    "value": "0x18",
    "struct": "BoxBox",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxBox: 4 functions, 0 without a counterpart; constant0x18 used by 1 identical functions"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3743,8 +3770,8 @@
    "value": "0x1C8",
    "struct": "BoxObject",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxObject: 49 functions, 3 without a counterpart; +0x1c8 used by 8 identical functions"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3757,8 +3784,8 @@
    "value": "0x24",
    "struct": "BoxBox",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxBox: 4 functions, 0 without a counterpart; constant0x24 used by 1 identical functions"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -3771,8 +3798,8 @@
    "value": "0xFB4",
    "struct": "BoxObject",
    "es-117": {
-    "status": "unmoved",
-    "evidence": "BoxObject: 49 functions, 3 without a counterpart; +0xfb4 used by 3 identical functions"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -4240,6 +4267,34 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "PelvisData: the array's stride 0xdc is built by the same address arithmetic (222 accesses in 1.0.116, 227 here)"
+   }
+  },
+  {
+   "file": "src/host/physics_fixes.c",
+   "name": "PLAYER_HAND_PHASE",
+   "value": "0xE28",
+   "struct": "CPlayer",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe28 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe28 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/physics_fixes.c",
+   "name": "PLAYER_GRAB",
+   "value": "0xE30",
+   "struct": "CPlayer",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe30 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe30 used by 1 identical functions"
    }
   },
   {
@@ -5456,17 +5511,17 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    201,
-    213,
-    279,
-    279,
-    280,
-    281,
-    294,
-    295,
-    295,
-    603,
-    637
+    205,
+    218,
+    284,
+    284,
+    285,
+    286,
+    299,
+    300,
+    300,
+    628,
+    662
    ],
    "es-117": {
     "status": "unmoved",
@@ -5485,15 +5540,15 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    225,
-    277,
-    277,
-    293,
-    411,
-    423,
-    604,
-    612,
-    638
+    230,
+    282,
+    282,
+    298,
+    416,
+    428,
+    629,
+    637,
+    663
    ],
    "es-117": {
     "status": "unmoved",
@@ -5512,7 +5567,7 @@
    "value": "0x14",
    "literal": true,
    "lines": [
-    391
+    396
    ],
    "struct": "CMessage",
    "es-117": {
@@ -5530,7 +5585,7 @@
    "value": "0x20",
    "literal": true,
    "lines": [
-    217
+    222
    ],
    "es-117": {
     "status": "unmoved",
@@ -5730,9 +5785,9 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    248,
-    287,
-    292
+    251,
+    290,
+    295
    ],
    "es-117": {
     "status": "unmoved",
@@ -5791,8 +5846,8 @@
    "literal": true,
    "lines": [
     376,
-    493,
-    494
+    481,
+    482
    ],
    "struct": "SInput",
    "es-117": {
@@ -5860,11 +5915,55 @@
   },
   {
    "file": "src/host/cpu_polygons.c",
+   "name": "@0x4",
+   "value": "0x4",
+   "literal": true,
+   "lines": [
+    384,
+    389,
+    394,
+    407
+   ],
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x4",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x4 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x4",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x4 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/cpu_polygons.c",
+   "name": "@0x8",
+   "value": "0x8",
+   "literal": true,
+   "lines": [
+    390,
+    412
+   ],
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x8",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x8 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x8",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x8 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/cpu_polygons.c",
    "name": "@0xc",
    "value": "0xC",
    "literal": true,
    "lines": [
-    43
+    391,
+    413,
+    478
    ],
    "struct": "RasterVertex",
    "es-117": {
@@ -5882,7 +5981,9 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    44
+    392,
+    408,
+    479
    ],
    "struct": "RasterVertex",
    "es-117": {
@@ -5895,13 +5996,51 @@
    }
   },
   {
+   "file": "src/host/cpu_polygons.c",
+   "name": "@0x14",
+   "value": "0x14",
+   "literal": true,
+   "lines": [
+    409
+   ],
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x14",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x14 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x14",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x14 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/cpu_polygons.c",
+   "name": "@0x18",
+   "value": "0x18",
+   "literal": true,
+   "lines": [
+    410
+   ],
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x18",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x18 used by 6 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x18",
+    "evidence": "port: port:cpu_polygons.c: 7 functions, 0 without a counterpart; +0x18 used by 6 identical functions"
+   }
+  },
+  {
    "file": "src/host/engine_limits.c",
    "name": "@0x8",
    "value": "0x8",
    "literal": true,
    "lines": [
-    161,
-    175
+    172,
+    186
    ],
    "es-117": {
     "status": "unmoved",
@@ -5920,8 +6059,8 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    162,
-    180
+    173,
+    191
    ],
    "es-117": {
     "status": "unmoved",
@@ -5940,8 +6079,8 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    163,
-    176
+    174,
+    187
    ],
    "es-117": {
     "status": "unmoved",
@@ -5979,7 +6118,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    388
+    358
    ],
    "es-117": {
     "status": "unmoved",
@@ -6126,12 +6265,11 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    137
+    164
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x10",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6144,12 +6282,11 @@
    "value": "0x24",
    "literal": true,
    "lines": [
-    137
+    164
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x24",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6162,12 +6299,11 @@
    "value": "0x28",
    "literal": true,
    "lines": [
-    114
+    141
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x28",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6180,12 +6316,11 @@
    "value": "0x30",
    "literal": true,
    "lines": [
-    137
+    164
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x30",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6198,12 +6333,11 @@
    "value": "0x4C",
    "literal": true,
    "lines": [
-    138
+    165
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x4C",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6216,12 +6350,11 @@
    "value": "0x6C",
    "literal": true,
    "lines": [
-    138
+    165
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x6C",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6234,12 +6367,11 @@
    "value": "0x70",
    "literal": true,
    "lines": [
-    118
+    145
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x70",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6252,12 +6384,11 @@
    "value": "0x74",
    "literal": true,
    "lines": [
-    118
+    145
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x74",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6270,12 +6401,11 @@
    "value": "0x7C",
    "literal": true,
    "lines": [
-    115
+    142
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x7C",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6288,12 +6418,11 @@
    "value": "0x80",
    "literal": true,
    "lines": [
-    118
+    145
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x80",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6306,12 +6435,11 @@
    "value": "0x84",
    "literal": true,
    "lines": [
-    138
+    165
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x84",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6324,12 +6452,11 @@
    "value": "0x88",
    "literal": true,
    "lines": [
-    114
+    141
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x88",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6342,12 +6469,11 @@
    "value": "0x8C",
    "literal": true,
    "lines": [
-    115
+    142
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0x8C",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6360,12 +6486,11 @@
    "value": "0xA0",
    "literal": true,
    "lines": [
-    115
+    142
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0xA0",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6378,12 +6503,11 @@
    "value": "0xB4",
    "literal": true,
    "lines": [
-    114
+    141
    ],
    "es-117": {
-    "status": "unmoved",
-    "value": "0xB4",
-    "evidence": "port: the 1 guest functions patch117_physics.c overrides are byte-identical, so is what they read"
+    "status": "gated",
+    "evidence": "every use is in code that runs only when a patch group this profile does not apply is on"
    },
    "ptbr-117": {
     "status": "gated",
@@ -6472,10 +6596,12 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    73,
-    83,
-    119,
-    143
+    100,
+    106,
+    190,
+    200,
+    247,
+    276
    ],
    "es-117": {
     "status": "unmoved",
@@ -6494,7 +6620,8 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    73
+    107,
+    190
    ],
    "es-117": {
     "status": "unmoved",
@@ -6761,7 +6888,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    84
+    85
    ],
    "es-117": {
     "status": "unmoved",
@@ -6780,8 +6907,8 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    83,
-    85
+    84,
+    86
    ],
    "es-117": {
     "status": "unmoved",
@@ -6800,7 +6927,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    83
+    84
    ],
    "es-117": {
     "status": "unmoved",

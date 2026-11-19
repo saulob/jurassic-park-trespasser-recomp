@@ -91,7 +91,8 @@
     "PLAYER_REACH_CROUCH"
    ],
    "files": [
-    "physics_watch.c"
+    "physics_watch.c",
+    "physics_fixes.c"
    ],
    "class": "CPlayer"
   },
@@ -1222,6 +1223,15 @@
     "cheats.c"
    ],
    "class": "CAnimate"
+  },
+  {
+   "names": [
+    "SCREEN_RENDER_RASTER"
+   ],
+   "files": [
+    "cpu_polygons.c"
+   ],
+   "class": "CScreenRenderDWI"
   }
  ],
  "sets": {

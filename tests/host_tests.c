@@ -2371,7 +2371,7 @@ static void test_texture_simd_mips(void) {
     CHECK(!chains_bad);
 }
 
-/* DEBUG_SAULO: reference against vectorised on a 128x128 texture, printed only. */
+/* Reference against vectorised on a 128x128 texture, printed only. */
 static void bench_texture_simd(void) {
     static uint16_t src[128 * 128];
     static uint32_t dst[128 * 128], mip[128 * 128];

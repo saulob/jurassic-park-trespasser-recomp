@@ -471,7 +471,6 @@ static void log_load(void) {
     char bars[160];
     int n = 0;
     if (L.loads_logged >= LOG_LIMIT) return;
-    guest_threads_trace("level load finished"); /* DEBUG_SAULO */
     if (++L.loads_logged == LOG_LIMIT) host_log("loading", "loading log limit reached");
     if (!L.shown) return;
     bars[0] = 0;

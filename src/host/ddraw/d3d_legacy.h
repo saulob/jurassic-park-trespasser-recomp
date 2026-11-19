@@ -71,7 +71,7 @@ void d3dr_end_scene(d3d_device_t* dev);
 /* A state the open batch was drawn with is about to change: D3DR_CHANGE_* and, for render or stage states, which. */
 enum { D3DR_CHANGE_RENDER, D3DR_CHANGE_STAGE, D3DR_CHANGE_VIEWPORT, D3DR_CHANGES };
 void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD value);
-/* DEBUG_SAULO: a render state change that kept the open batch. */
+/* A render state change that kept the open batch. */
 void d3dr_state_kept_batch(d3d_device_t* dev);
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count);

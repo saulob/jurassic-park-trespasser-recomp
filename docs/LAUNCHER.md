@@ -40,9 +40,9 @@ online page.
 
 | Folder | Holds | Default |
 |---|---|---|
-| game | the installed versions in `versions\<id>\` (an installation made before versions existed stays directly in it), never written by the port at run time | `game\` (`--game`, `TRESPASSER_GAME_DIR`) |
+| game | the installed versions in `versions\<id>\` (an installation made before versions existed stays directly in it), never written by the port at run time | `game\` next to the program (`--game`, `TRESPASSER_GAME_DIR`; development builds and `tools\build.ps1 -Run`: the repository's `game\`) |
 | user data | `launcher\trespasser.ini`; `saves\`: `recomp-registry.txt` (the game's registry), `SAVEGAME.*`, level swap files ([user-data](user-data.md)) | `user_data\` next to the program (`--user_data_root`, `TRESPASSER_USER_DATA_ROOT`; `build\user_data` with `tools\build.ps1 -Run`) |
-| logs | one `trespasser_recomp_NNN.log` per run | `build\logs\` (`--log-dir`, `--log-file`) |
+| logs | one `trespasser_recomp_NNN.log` per run | `logs\` next to the program (`--log-dir`, `--log-file`; development builds: `build\logs\`) |
 
 The game builds its save and swap paths from the registry value `Installed Directory` and reads its data from
 `Data Drive`\data. The host answers `Installed Directory` with the selected version's saves folder

@@ -293,6 +293,10 @@ for ($i = 0; $i -lt $LoaderArgs.Count; $i++) {
 if ($forwarded -notcontains '--user_data_root' -and -not ($forwarded | Where-Object { $_ -like '--user_data_root=*' })) {
     $forwarded = @('--user_data_root', (Join-Path $root 'build\user_data')) + $forwarded
 }
+# A Release program looks for game\ next to itself; development runs use the repository's.
+if ($forwarded -notcontains '--game' -and -not $env:TRESPASSER_GAME_DIR) {
+    $forwarded = @('--game', (Join-Path $root 'game')) + $forwarded
+}
 $runArguments = @('--run', '--log-file', $script:RunLogPath) + $forwarded
 $quiet = -not $VerboseRuntime
 $code = $null
