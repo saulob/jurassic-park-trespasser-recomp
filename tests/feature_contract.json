@@ -1,0 +1,185 @@
+{
+  "comment": "Every current feature and the suite that answers for it. tools\\test.ps1 checks that each suite exists and that its test source still contains the pattern, and that every suite owns a feature or is listed as infrastructure.",
+  "features": [
+    { "id": "sdl3-platform", "name": "SDL3 platform: single init and quit, window adoption", "owners": [
+      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "SDL_InitSubSystem" } ] },
+    { "id": "sdl3-pin", "name": "SDL 3.4.20 contract", "owners": [
+      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "3\\.4\\.20" },
+      { "suite": "tests\\build_script_tests.ps1", "file": "tests/build_script_tests.ps1", "pattern": "3\\.4\\.20" } ] },
+    { "id": "mouse-capture-focus", "name": "Relative mouse mode, focus, pointer recapture, Alt+Tab", "owners": [
+      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "recapture" },
+      { "suite": "input_tests", "file": "tests/input_tests.c", "pattern": "relative" },
+      { "suite": "video_focus_tests", "file": "tests/video_focus_tests.c", "pattern": "(?i)focus" } ] },
+    { "id": "hotkeys", "name": "Keyboard mapping and port hotkeys (F5, F7, F8, F10, F11)", "owners": [
+      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "KEY_HOST_QUICK_SAVE" },
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)hotkey" } ] },
+    { "id": "gamepad", "name": "Gamepad mapping, hotplug, disconnect and reconnect, glyphs, prompts", "owners": [
+      { "suite": "gamepad_tests", "file": "tests/gamepad_tests.c", "pattern": "(?i)hotplug" } ] },
+    { "id": "mouse-sensitivity", "name": "Mouse sensitivity 0.25-4.00 step 0.05, launcher only", "owners": [
+      { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "jpt_mouse_sensitivity_clamp" },
+      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "no_in_game_mouse_sensitivity_row" } ] },
+    { "id": "invert-mouse", "name": "Invert mouse and relative deltas", "owners": [
+      { "suite": "input_tests", "file": "tests/input_tests.c", "pattern": "(?i)invert" } ] },
+    { "id": "fov", "name": "Field of view 60-110, default 75, Hor+, 4:3 reference", "owners": [
+      { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "jpt_fov_clamp" },
+      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "JPT_FOV_MIN" } ] },
+    { "id": "quick-save-load", "name": "Quick Save F7 / Quick Load F8, SAVEGAME.QCK", "owners": [
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "qs_is_quick_file" } ] },
+    { "id": "normal-saves", "name": "Normal save and load lists, save pictures", "owners": [
+      { "suite": "frontend_tests", "file": "tests/save_preview_tests.c", "pattern": "SAVEGAME" } ] },
+    { "id": "portable-user-data", "name": "Portable user_data: saves, cache, logs, configuration", "owners": [
+      { "suite": "user_data_tests", "file": "tests/user_data_tests.cpp", "pattern": "user_data" } ] },
+    { "id": "config-migration", "name": "Settings file migration and defaults", "owners": [
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "settings_version" } ] },
+    { "id": "d3d11-renderer", "name": "Direct3D 11 renderer: device policy, formats, render states, shutdown", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)d3d" },
+      { "suite": "com_tests", "file": "tests/com_tests.c", "pattern": "(?i)direct3d" },
+      { "suite": "video_tests", "file": "tests/video_tests.c", "pattern": "(?i)warp" } ] },
+    { "id": "software-renderer", "name": "Software renderer: RGB565, presentation, D3D11-only features unavailable", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "RGB565" },
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "Direct3DEffectsAvailable|software" } ] },
+    { "id": "water-refraction", "name": "Water Refraction: Direct3D 11 pass and host water kernels", "owners": [
+      { "suite": "ce_gpu_tests", "file": "tests/ce_gpu_tests.c", "pattern": "(?i)water" },
+      { "suite": "water_tests", "file": "tests/water_tests.c", "pattern": "water_rows" } ] },
+    { "id": "enhanced-sky", "name": "Enhanced Sky", "owners": [
+      { "suite": "ce_gpu_tests", "file": "tests/ce_gpu_tests.c", "pattern": "(?i)sky" },
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)sky" } ] },
+    { "id": "ambient-occlusion", "name": "Ambient occlusion Off, Low, Medium, High, Ultra", "owners": [
+      { "suite": "ao_tests", "file": "tests/ao_tests.cpp", "pattern": "JPT_AO_ULTRA" } ] },
+    { "id": "texture-filtering", "name": "Texture filtering Original to Anisotropic 16x", "owners": [
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)texture_filter|anisotropic" },
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)anisotropic|filter" } ] },
+    { "id": "anti-aliasing", "name": "MSAA choices", "owners": [
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)msaa" },
+      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "msaa" } ] },
+    { "id": "gpu-selection", "name": "GPU choice: enumeration, duplicate names, old configuration", "owners": [
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "jpt_gpu_resolve" } ] },
+    { "id": "render-resolution-aspect", "name": "Render resolution, aspect ratio, presentation", "owners": [
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)render_preset|jpt_aspect" },
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)aspect" } ] },
+    { "id": "terrain", "name": "Terrain textures, far clip, Maximum object detail", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)terrain" },
+      { "suite": "patch117_tests", "file": "tests/patch117_tests.c", "pattern": "(?i)terrain|TrrPixelTol" } ] },
+    { "id": "loading-screens", "name": "HD loading screens, level image, blank-present hold", "owners": [
+      { "suite": "frontend_tests", "file": "tests/loading_tests.c", "pattern": "(?i)loading" } ] },
+    { "id": "frontend-hd", "name": "HD front end made of the game's own bitmaps", "owners": [
+      { "suite": "frontend_tests", "file": "tests/frontend_art_tests.c", "pattern": "(?i)frontend" } ] },
+    { "id": "video-hd", "name": "HD video presentation and focus", "owners": [
+      { "suite": "video_tests", "file": "tests/video_tests.c", "pattern": "(?i)video" },
+      { "suite": "video_focus_tests", "file": "tests/video_focus_tests.c", "pattern": "(?i)video" } ] },
+    { "id": "skip-intro", "name": "Skip Intro", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)skip.?intro|NoVideo" } ] },
+    { "id": "video-subtitles", "name": "Video subtitles: cues, timelines, retail fingerprints", "owners": [
+      { "suite": "video_subtitle_tests", "file": "tests/video_subtitle_tests.c", "pattern": "(?i)cue" },
+      { "suite": "tests\\test_video_timelines.py", "file": "tests/test_video_timelines.py", "pattern": "(?i)cue" } ] },
+    { "id": "subtitles-captions", "name": "Caption table, 405 corrected captions, timing, language mapping", "owners": [
+      { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "(?i)caption" },
+      { "suite": "l10n_tests", "file": "tests/l10n_coverage_tests.c", "pattern": "(?i)caption" },
+      { "suite": "tests\\test_caption_counts.py", "file": "tests/test_caption_counts.py", "pattern": "retail_comparison" } ] },
+    { "id": "restored-audio", "name": "Restored audio records: only used samples, integrity, mapping", "owners": [
+      { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "(?i)restored" },
+      { "suite": "tests\\test_caption_counts.py", "file": "tests/test_caption_counts.py", "pattern": "restored_records" } ] },
+    { "id": "directsound-a3d", "name": "DirectSound is the system's, A3D is refused", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "a3d\\.dll" } ] },
+    { "id": "safe-mode", "name": "Legacy Safe Mode suppressed, developer override", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)safe.?mode" },
+      { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "(?i)safe.?mode" } ] },
+    { "id": "disk-space-bypass", "name": "Legacy 100 MB disk-space check bypass", "owners": [
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "legacy_disk_check_passes" } ] },
+    { "id": "ddf-menu-text", "name": "DDF menu text: canonical source, cache, no saves\\menu", "owners": [
+      { "suite": "frontend_tests", "file": "tests/frontend_bridge_tests.c", "pattern": "(?i)ddf" },
+      { "suite": "l10n_tests", "file": "tests/l10n_tests.c", "pattern": "(?i)ddf" } ] },
+    { "id": "filesystem", "name": "Portable paths, CreateFile mapping, LZOpenFile, Patch 1.1 and DDF interception", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)CreateFile" },
+      { "suite": "patch117_tests", "file": "tests/patch117_tests.c", "pattern": "LZOpen" } ] },
+    { "id": "dual-stow", "name": "Trespasser CE dual stow", "owners": [
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)stow" } ] },
+    { "id": "active-ai", "name": "Active AI Original 3 / Enhanced 6", "owners": [
+      { "suite": "active_ai_tests", "file": "tests/active_ai_tests.c", "pattern": "jpt_active_ai_limits|active_ai" } ] },
+    { "id": "max-object-detail", "name": "Maximum object detail", "owners": [
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)object.?detail" } ] },
+    { "id": "footstep-fix", "name": "Footstep and collision sounds after load or restart", "owners": [
+      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)footstep|collision" } ] },
+    { "id": "patch-1.1", "name": "Official Patch 1.1: terrain tolerances, bAddChild, jump, hand, box-box, wake, placements", "owners": [
+      { "suite": "patch117_tests", "file": "tests/patch117_tests.c", "pattern": "(?i)fingerprint" } ] },
+    { "id": "hand-physics", "name": "Hand carrier, crouch and physics", "owners": [
+      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "hand carrier" } ] },
+    { "id": "cheats", "name": "Every cheat: table, handler, F10 row, translation, persistence, builds", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/cheats_tests.c", "pattern": "jpt_cheats" },
+      { "suite": "tests\\test_cheat_parity.py", "file": "tests/test_cheat_parity.py", "pattern": "jpt_cheats" } ] },
+    { "id": "f10-menu", "name": "F10 panel: order, labels, toggles, actions, navigation, translations", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "dm_" } ] },
+    { "id": "f5-minimap-toggle", "name": "F5 / L3+R3 minimap toggle, no Debug Menu", "owners": [
+      { "suite": "tests\\test_minimap_controls.py", "file": "tests/test_minimap_controls.py", "pattern": "F5" } ] },
+    { "id": "objectives", "name": "Objectives: texts, language, current objective selection", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/objective_tests.c", "pattern": "(?i)objective" },
+      { "suite": "tests\\test_objectives_retail.py", "file": "tests/test_objectives_retail.py", "pattern": "(?i)objective" } ] },
+    { "id": "minimap-compass", "name": "Minimap geometry, bounds, markers, compass", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/minimap_tests.c", "pattern": "(?i)minimap" },
+      { "suite": "debug_menu_tests", "file": "tests/compass_tests.c", "pattern": "(?i)compass" },
+      { "suite": "tests\\test_minimap_map.py", "file": "tests/test_minimap_map.py", "pattern": "(?i)minimap" },
+      { "suite": "tests\\test_minimap_bounds.py", "file": "tests/test_minimap_bounds.py", "pattern": "(?i)bounds" } ] },
+    { "id": "overlay-menus", "name": "Port overlay, menu layout and menu text", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/overlay_tests.c", "pattern": "(?i)overlay" },
+      { "suite": "debug_menu_tests", "file": "tests/menu_layout_tests.c", "pattern": "(?i)layout" } ] },
+    { "id": "physics-telemetry", "name": "Temporary player telemetry (DEBUG_SAULO)", "owners": [
+      { "suite": "debug_menu_tests", "file": "tests/physics_watch_tests.c", "pattern": "DEBUG_SAULO" } ] },
+    { "id": "menu-sound", "name": "Menu selection click sound", "owners": [
+      { "suite": "menu_audio_tests", "file": "tests/menu_audio_tests.c", "pattern": "(?i)menu" } ] },
+    { "id": "launcher", "name": "Launcher pages, settings, installer, play gate", "owners": [
+      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)page" } ] },
+    { "id": "launcher-setting-parity", "name": "Launcher and runtime agree on every setting", "owners": [
+      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "launcher_defaults_equal_runtime_defaults" } ] },
+    { "id": "translations", "name": "Seven languages: game text, menus, captions, interface", "owners": [
+      { "suite": "l10n_tests", "file": "tests/l10n_tests.c", "pattern": "(?i)GameStrings" },
+      { "suite": "tests\\test_language_parity.py", "file": "tests/test_language_parity.py", "pattern": "interface_files" } ] },
+    { "id": "logging", "name": "Normal log, --perf-log, F9 snapshot, failed_d3d_calls, exit code", "owners": [
+      { "suite": "log_tests", "file": "tests/log_tests.c", "pattern": "perf-log" } ] },
+    { "id": "builds-parity", "name": "Supported builds: profiles, fingerprints, addresses, offsets, overrides, patch sites", "owners": [
+      { "suite": "tests\\test_build_parity.py", "file": "tests/test_build_parity.py", "pattern": "every_supported_build_is_whole" },
+      { "suite": "profile_dispatch_tests", "file": "tests/profile_dispatch_tests.c", "pattern": "(?i)lift" },
+      { "suite": "tools\\check_profiles.py", "file": "tools/check_profiles.py", "pattern": "BROKEN" },
+      { "suite": "tools\\host_offsets.py", "file": "tools/host_offsets.py", "pattern": "manifest out of date" },
+      { "suite": "tests\\test_profiles.py", "file": "tests/test_profiles.py", "pattern": "playable" },
+      { "suite": "tests\\test_layout.py", "file": "tests/test_layout.py", "pattern": "(?i)offset" } ] },
+    { "id": "lift-mechanism", "name": "Lifts as artifacts, stable entries, hooks, overrides, staging, single host", "owners": [
+      { "suite": "override_tests_incremental", "file": "tests/override_tests.c", "pattern": "(?i)stable" },
+      { "suite": "override_tests_non_incremental", "file": "tests/override_tests.c", "pattern": "(?i)stable" },
+      { "suite": "tools\\lifts.py verify --content", "file": "tools/lifts.py", "pattern": "verify" },
+      { "suite": "tools\\gva_convert.py --check", "file": "tools/gva_convert.py", "pattern": "--check" },
+      { "suite": "tools\\gen_guest_va.py --check", "file": "tools/gen_guest_va.py", "pattern": "--check" },
+      { "suite": "tools\\gen_guest_layout.py", "file": "tools/gen_guest_layout.py", "pattern": "GLAYOUT" },
+      { "suite": "tools\\lift_hooks.py", "file": "tools/lift_hooks.py", "pattern": "RECOMP_LIFT_HOOK" },
+      { "suite": "tools\\stable_entries.py src\\recomp\\gen", "file": "tools/stable_entries.py", "pattern": "stable" },
+      { "suite": "tests\\test_lifts.py", "file": "tests/test_lifts.py", "pattern": "(?i)lift" },
+      { "suite": "tests\\test_lift_hooks.py", "file": "tests/test_lift_hooks.py", "pattern": "(?i)hook" },
+      { "suite": "tests\\test_lift_staging.py", "file": "tests/test_lift_staging.py", "pattern": "(?i)staging" },
+      { "suite": "tests\\test_stable_entries.py", "file": "tests/test_stable_entries.py", "pattern": "(?i)stable" },
+      { "suite": "tests\\test_override_installs.py", "file": "tests/test_override_installs.py", "pattern": "(?i)override" },
+      { "suite": "tests\\test_single_host.py", "file": "tests/test_single_host.py", "pattern": "(?i)lift" },
+      { "suite": "tests\\test_no_original_executable.py", "file": "tests/test_no_original_executable.py", "pattern": "(?i)executable" } ] },
+    { "id": "renderer-fixed", "name": "The renderer chosen at start stays until exit", "owners": [
+      { "suite": "tests\\test_renderer_fixed.py", "file": "tests/test_renderer_fixed.py", "pattern": "(?i)renderer" } ] },
+    { "id": "x87-runtime", "name": "Patched x87 runtime", "owners": [
+      { "suite": "x87_tests", "file": "tests/x87_tests.c", "pattern": "(?i)x87" } ] },
+    { "id": "x64-groundwork", "name": "x64 host groundwork", "owners": [
+      { "suite": "x64_tests", "file": "tests/x64_tests.c", "pattern": "(?i)guest" } ] },
+    { "id": "warning-gate", "name": "Compiler command lines of the test targets: no contradicting flags, no muted warnings in project code", "owners": [
+      { "suite": "tests\\test_compile_commands.py", "file": "tests/test_compile_commands.py", "pattern": "contradict" } ] },
+    { "id": "build-script", "name": "tools\\build.ps1: parameters, configurations, run arguments, user_data, SDL pin, test targets", "owners": [
+      { "suite": "tests\\build_script_tests.ps1", "file": "tests/build_script_tests.ps1", "pattern": "user_data_root" } ] },
+    { "id": "release-contract", "name": "Release contract: version, licenses, forbidden files, no developer paths", "owners": [
+      { "suite": "release contract", "file": null, "pattern": null },
+      { "suite": "tools\\test-release-check.ps1", "file": "tools/test-release-check.ps1", "pattern": "DEBUG_SAULO" } ] },
+    { "id": "repository-hygiene", "name": "Repository hygiene and whitespace", "owners": [
+      { "suite": "repository hygiene", "file": null, "pattern": null },
+      { "suite": "git diff --check", "file": null, "pattern": null } ] },
+    { "id": "test-gate", "name": "The gate itself: coverage, self-test, working tree unchanged", "owners": [
+      { "suite": "tests\\gate_tests.ps1", "file": "tests/gate_tests.ps1", "pattern": "-List" },
+      { "suite": "every test is wired in", "file": null, "pattern": null },
+      { "suite": "working tree unchanged", "file": null, "pattern": null } ] }
+  ],
+  "infrastructure": [
+    { "suite": "feature coverage", "reason": "the check of this file" }
+  ]
+}

@@ -141,6 +141,50 @@ function Invoke-Python([string]$Script, [string[]]$Arguments = @(), [scriptblock
     return Invoke-Logged $python.Exe (@($python.Args) + @($path) + $Arguments) $Show
 }
 
+$script:MsvcMarker = '--jpt-msvc-environment--'
+$script:MsvcBaseline = $null
+
+# vcvarsall.bat expands PATH inside cmd lines limited to 8191 characters, so it always starts from the same clean baseline:
+# the environment of the first call, without repeated PATH entries (and, when still long, without folders that do not exist)
+# and without the state of an earlier vcvarsall.
+$script:MsvcNames = 'PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'EXTERNAL_INCLUDE'
+
+function Get-CleanPathValue([string]$Path) {
+    $seen = @{}
+    $entries = @(foreach ($entry in ($Path -split ';')) {
+        $key = $entry.TrimEnd('\').ToLowerInvariant()
+        if ($entry -and -not $seen.ContainsKey($key)) { $seen[$key] = $true; $entry }
+    })
+    $joined = $entries -join ';'
+    if ($joined.Length -gt 6000) { $joined = (@($entries | Where-Object { Test-Path -LiteralPath $_ -PathType Container })) -join ';' }
+    return $joined
+}
+
+function Remove-DuplicatePathEntries { $env:PATH = Get-CleanPathValue $env:PATH }
+
+function Reset-MsvcEnvironment {
+    if (-not $script:MsvcBaseline) {
+        $script:MsvcBaseline = @{}
+        foreach ($name in $script:MsvcNames) { $script:MsvcBaseline[$name] = [Environment]::GetEnvironmentVariable($name) }
+        $script:MsvcBaseline['PATH'] = Get-CleanPathValue $script:MsvcBaseline['PATH']
+    }
+    foreach ($name in $script:MsvcNames) { [Environment]::SetEnvironmentVariable($name, $script:MsvcBaseline[$name]) }
+    foreach ($variable in @(Get-ChildItem Env: | Where-Object { $_.Name -like 'VSCMD_*' })) { Remove-Item -LiteralPath "Env:$($variable.Name)" }
+}
+
+function Get-ProcessEnvironment {
+    $saved = @{}
+    foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) { if (-not "$($entry.Key)".StartsWith('=') -and $entry.Value) { $saved[$entry.Key] = $entry.Value } }
+    return $saved
+}
+
+function Restore-ProcessEnvironment($Saved) {
+    foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
+        if (-not "$name".StartsWith('=') -and -not $Saved.ContainsKey($name) -and [Environment]::GetEnvironmentVariable($name)) { [Environment]::SetEnvironmentVariable($name, $null) }
+    }
+    foreach ($name in $Saved.Keys) { [Environment]::SetEnvironmentVariable($name, $Saved[$name]) }
+}
+
 # Switches this session to the x64-hosted x86 MSVC toolchain. The 32-bit-hosted compiler runs out of memory on the lifted C.
 # x86 uses the x64-hosted cross tools (amd64_x86), x64 the native ones (amd64).
 function Enter-Msvc([ValidateSet('x86', 'x64')][string]$Arch = 'x86') {
@@ -157,8 +201,15 @@ function Enter-Msvc([ValidateSet('x86', 'x64')][string]$Arch = 'x86') {
 
     $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvarsall.bat'
     if (-not (Test-Path -LiteralPath $vcvars)) { Stop-Tool "Missing $vcvars" }
-    $environment = & cmd.exe /c "`"$vcvars`" $vcvarsArch >nul 2>&1 && set"
-    if ($LASTEXITCODE -ne 0) { Stop-Tool "vcvarsall.bat $vcvarsArch failed: the MSVC $Arch tools or the Windows SDK are not installed." }
+    Reset-MsvcEnvironment
+    $environment = @(& cmd.exe /c "`"$vcvars`" $vcvarsArch 2>&1 && echo $script:MsvcMarker && set")
+    $code = $LASTEXITCODE
+    $marker = [array]::IndexOf(@($environment | ForEach-Object { "$_".TrimEnd() }), $script:MsvcMarker)
+    if ($code -ne 0 -or $marker -lt 0) {
+        $reason = (@($environment | Where-Object { $_ -match '^\[ERROR|too long|syntax of the command' }) | Select-Object -First 3) -join ' | '
+        Stop-Tool "vcvarsall.bat $vcvarsArch failed for $Arch (exit $code, PATH $($env:PATH.Length) chars before the call)$(if ($reason) { ": $reason" })."
+    }
+    $environment = $environment[($marker + 1)..($environment.Count - 1)]
     foreach ($entry in $environment) {
         if ($entry -match '^([^=]+)=(.*)$') { Set-Item -LiteralPath "Env:$($Matches[1])" -Value $Matches[2] }
     }

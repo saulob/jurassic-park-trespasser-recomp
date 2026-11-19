@@ -236,8 +236,9 @@ adjusted caption timing, which also restores previously cut dialogue lines.
 
 What the port took from it:
 
-- **Corrected caption timings.** Of the 402 voice captions of the retail `Stream.tpa`, 328 are corrected (303 only in
-  timing, 25 also in line breaks, pauses or text); the port applies the corrected captions to the English game
+- **Corrected caption timings.** Of the 402 voice captions of the retail `Stream.tpa`, 328 are corrected (309 only in
+  timing, 19 also in line breaks or text); with the 3 captions the retail file lacked for audio it has and the 5
+  restored records the canonical table holds 410 samples; the port applies the corrected captions to the English game
   and gives every other language the same temporal events, so a caption appears and ends at the same moment in English,
   Brazilian Portuguese, French, German, Spanish, Russian and Italian. Where the fix splits, merges or adds a caption
   line, the translations were split, merged or given the same pause. The timings of the Russian release, which used
@@ -296,6 +297,26 @@ them is included, and the build does not need them. The English text of the narr
 and the English Stream TPA Fix's; Jill's lines follow the *Trespasser Voiceover List 3.0* by tatu (TresCom) and the
 retail audio. The Italian lines are those of the Italian reference; the other languages reuse the port's existing
 translations of the same captions where they exist, and the rest was translated for the port.
+
+## Testing
+
+`.\tools\test.ps1` is the one command that validates the whole project. It builds only the test programs
+(incrementally), runs every suite and ends with `ALL TESTS PASSED` or a list of what failed (exit code 1):
+
+```powershell
+.\tools\test.ps1                    # everything
+.\tools\test.ps1 -List              # the sections and suites, nothing is built or run
+.\tools\test.ps1 -Filter cheats     # only suites whose section, name or description contains the text
+.\tools\test.ps1 -Detail            # also show the output of passing suites
+.\tools\test.ps1 -Release           # also validate the release artifacts already in dist\ (never packages)
+.\tools\test.ps1 -Full              # water_tests without --quick (about five minutes more)
+```
+
+It is headless: it never starts the game or the launcher, opens a window, reads a controller, plays audio or uses the
+network, and it works from any folder. It checks that every test target, script and tool is wired in, that every
+supported build, language, cheat and setting has its row, and that no suite changed the working tree. A suite that
+needs game data that is not installed says so (`DATA UNAVAILABLE`, or a skipped part in the summary); it is never
+reported as a pass. [Building](docs/BUILD.md#headless-tests) lists what each suite covers.
 
 ## Credits
 

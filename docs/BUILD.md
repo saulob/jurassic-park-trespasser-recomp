@@ -148,6 +148,11 @@ game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `
 
 ## Headless tests
 
+`.\tools\test.ps1` runs all of them (and the Python and PowerShell suites, the contract checks and the repository
+gates) with one summary; `-List` shows each suite and what it covers, `-Filter <text>` runs a few. It compiles the test
+programs incrementally and nothing else: no game, launcher, package or release is built. The commands below are what it
+runs, for running one suite by hand.
+
 Small programs check the host without a window, a GPU device, the game or audio; they are not
 part of the default build:
 

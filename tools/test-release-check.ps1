@@ -21,7 +21,7 @@ function New-Release([string]$Name) {
 function Add-Item([string]$Dir, [string]$Relative, [string]$Text = 'x') {
     $path = Join-Path $Dir $Relative
     New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
-    Set-Content -LiteralPath $path -Value $Text -NoNewline
+    [IO.File]::WriteAllText($path, $Text, [Text.Encoding]::GetEncoding(28591))
 }
 
 function Expect([string]$Name, [bool]$Clean, [scriptblock]$Setup) {
@@ -54,6 +54,17 @@ try {
     Expect 'game files' $false { param($d) Add-Item $d 'game\data\be.scn' }
     Expect 'debug marker' $false { param($d) Add-Item $d 'notes.txt' 'DEBUG_SAULO' }
     Expect 'local path' $false { param($d) Add-Item $d 'notes.txt' $Root }
+    Expect 'forward slash local path' $false { param($d) Add-Item $d 'notes.txt' $Root.Replace('\', '/') }
+    Expect 'user profile path' $false { param($d) Add-Item $d 'notes.txt' "$env:USERPROFILE\AppData" }
+    Expect 'development source folder' $false { param($d) Add-Item $d 'notes.txt' ('E:\Decomp_' + 'Downloads\translations') }
+    Expect 'unexpected pdb' $false { param($d) Add-Item $d 'trespasser_recomp.pdb' }
+    Expect 'crash dump' $false { param($d) Add-Item $d 'trespasser_recomp.dmp' }
+    Expect 'incremental link state' $false { param($d) Add-Item $d 'trespasser_recomp.ilk' }
+    Expect 'temporary file' $false { param($d) Add-Item $d 'assets\work.tmp' }
+    Expect 'backup file' $false { param($d) Add-Item $d 'README.txt.bak' }
+    Expect 'game audio' $false { param($d) Add-Item $d 'data\Stream.tpa' }
+    Expect 'disc image' $false { param($d) Add-Item $d 'trespasser.iso' }
+    Expect 'licenses are shipped' $true { param($d) Add-Item $d 'licenses\THIRD-PARTY-LICENSES.txt' 'MIT' }
 
     # A ZIP of a fresh release passes; with user_data it does not.
     Add-Type -AssemblyName System.IO.Compression.FileSystem

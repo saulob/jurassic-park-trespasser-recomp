@@ -668,6 +668,7 @@ add_executable(water_tests EXCLUDE_FROM_ALL tests/water_tests.c src/host/water_k
 target_include_directories(water_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
 target_compile_definitions(water_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
   ${TRESPASSER_X87_MODEL})
+target_compile_options(water_tests PRIVATE /W3)
 set_source_files_properties(tests/water_tests.c PROPERTIES COMPILE_OPTIONS "/W3")
 set_source_files_properties(${WATER_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
 set_source_files_properties(${WATER_LIFTED_ALT} PROPERTIES COMPILE_OPTIONS "/w;${WATER_ALT_OPT}")
