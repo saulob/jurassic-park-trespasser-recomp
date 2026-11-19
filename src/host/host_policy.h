@@ -46,7 +46,7 @@ typedef struct {
 
 input_state_t input_state_from(const input_signals_t* s);
 const char* input_state_name(input_state_t state);
-/* Only focused gameplay takes relative Raw Input, hides the cursor and confines it to the picture. */
+/* Only focused gameplay takes relative mouse motion, hides the cursor and confines it. */
 int input_captured(input_state_t state);
 /* In gameplay the game reads a cursor it re-centres itself; elsewhere it follows the real one. */
 int input_cursor_virtual(input_state_t state);
@@ -62,7 +62,7 @@ int input_pad_hides_pointer(input_state_t state, int pad_focus);
 /* A capture waits while a button is held outside the picture (the click that activated the window
  * on its title bar), so that drag is not pulled into the view. */
 int input_should_clip(input_state_t state, int pointer_in_view, int button_held);
-/* The one place relative pointer motion lands, the mouse's (Raw Input) and the right stick's (whole counts) alike: the
+/* The one place relative pointer motion lands, the mouse's (SDL relative motion) and the right stick's (whole counts) alike: the
  * virtual cursor CInput reads and re-centres, moved only while gameplay holds the pointer. 1 when it moved. */
 int pointer_add_relative(input_state_t state, long* x, long* y, long dx, long dy);
 /* The game takes its pointer back from a state where its cursor was the real one: the virtual cursor starts at the
@@ -74,6 +74,31 @@ typedef struct {
     double rest_x, rest_y;
 } mouse_scale_t;
 void mouse_scale_counts(mouse_scale_t* m, float sensitivity, long dx, long dy, long* out_x, long* out_y);
+
+/* SDL's relative mouse motion (platform.c) for the virtual cursor: only motion SDL stamped while relative mode was on
+ * and after this capture began, so motion queued before a recapture (Quick Save, Quick Load, a menu, focus regained)
+ * never moves the view. */
+int relative_motion_accepted(int relative_on, uint64_t event_ns, uint64_t relative_since_ns);
+/* SDL reports motion as floats: whole counts go on, the fraction carries to the next motion. */
+typedef struct {
+    double rest_x, rest_y;
+} motion_counts_t;
+void motion_counts(motion_counts_t* m, float dx, float dy, long* out_x, long* out_y);
+/* Messages SDL's window procedure answers itself (repaint validation, background erase, DPI sizing, the system menu
+ * key, touch, drops) instead of passing them on, the position changes after which SDL would rewrite the window's style
+ * from its own flags (F11's borderless style is the host's), and the mouse messages, whose pointer is the host's and
+ * whose relative motion SDL reads from the device: the host sends them straight to the game. */
+int window_message_skips_sdl(unsigned msg);
+
+/* SDL's lifetime in the host: started once, stopped once, and only on the thread that started it (its video thread). */
+typedef struct {
+    int started, stopped;
+    unsigned long thread;
+} sdl_life_t;
+int sdl_life_may_start(const sdl_life_t* l);
+void sdl_life_started(sdl_life_t* l, unsigned long thread);
+int sdl_life_may_stop(const sdl_life_t* l, unsigned long thread);
+void sdl_life_stopped(sdl_life_t* l);
 
 typedef enum {
     KEY_TO_GAME,

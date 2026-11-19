@@ -242,7 +242,7 @@ static int load_game_data(void) {
 
 typedef struct {
     int hand;          /* the left mouse button, or LT, held at this read */
-    long count_x;      /* mouse: Raw Input counts since the last read */
+    long count_x;      /* mouse: relative counts since the last read */
     long count_y;
     float stick_x;     /* gamepad: the right stick (-1..1, up negative) */
     float stick_y;
@@ -300,7 +300,7 @@ static frame_t run_step(rig_t* r, const step_t* s) {
     frame_t f;
     int dx = 0, dy = 0;
     memset(&pad, 0, sizeof pad);
-    /* Between reads: the mouse's buttons and Raw Input, or the controller's state. */
+    /* Between reads: the mouse's buttons and relative motion, or the controller's state. */
     if (!r->pads) {
         if (s->hand && !H.down[VK_LBUTTON]) H.since[VK_LBUTTON] = 1;
         H.down[VK_LBUTTON] = (uint8_t)(s->hand != 0);

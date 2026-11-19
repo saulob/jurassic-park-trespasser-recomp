@@ -7,6 +7,7 @@
  */
 #include "host.h"
 #include "gamepad.h"
+#include "platform.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -132,6 +133,8 @@ static __declspec(noreturn) void host_finish(int host_code) {
     io_trace_release_swap_files();
     present_release();
     window_host_exited();
+    window_host_detach_platform();
+    platform_stop();
     diagnostics_process_ending();
     host_log("exit", "exit code %d", host_code);
     ExitProcess((UINT)host_code);

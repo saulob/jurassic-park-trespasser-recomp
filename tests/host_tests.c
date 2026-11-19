@@ -73,7 +73,7 @@ static void test_input_state(void) {
     CHECK(!strcmp(input_state_name(INPUT_GAMEPLAY_RELEASED), "INPUT_GAMEPLAY_RELEASED"));
 }
 
-/* The cursor is confined (and Raw Input drives the view) exactly when the window host would clip. */
+/* The cursor is confined (and relative motion drives the view) exactly when the window host would clip. */
 static int clips(guest_ui_t ui, int focused, int minimized, int transition, int size_move, int shutdown) {
     input_signals_t sig;
     sig.shutdown = shutdown;
@@ -250,7 +250,7 @@ static void test_keys(void) {
     CHECK(key_policy(0x0102, 0x1B, 0, 0, 0) == KEY_TO_GAME);
 }
 
-/* The mouse's Raw Input and the right stick's counts land in the same cursor, only while gameplay holds it. */
+/* The mouse's relative motion and the right stick's counts land in the same cursor, only while gameplay holds it. */
 static void test_pointer_relative(void) {
     long x = 400, y = 300;
     CHECK(pointer_add_relative(INPUT_GAMEPLAY_CAPTURED, &x, &y, 20, -3) && x == 420 && y == 297);

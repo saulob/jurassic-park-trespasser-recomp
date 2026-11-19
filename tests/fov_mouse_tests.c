@@ -281,9 +281,9 @@ static void test_sources(void) {
     CHECK(strstr(window, "widescreen_apply_fov();") != NULL, "the UI loop applies a change on the next safe frame");
     CHECK(strstr(window, "void window_host_pad_relative(int dx, int dy) { add_relative(dx, dy); }") != NULL,
           "the gamepad's look keeps its own sensitivity");
-    CHECK(strstr(window, "mouse_relative(input.data.mouse.lLastX, input.data.mouse.lLastY)") &&
+    CHECK(strstr(window, "mouse_relative(x, y);") &&
               strstr(window, "mouse_relative(client.x - s.last_move.x, client.y - s.last_move.y)"),
-          "Raw Input and cursor motion both take the sensitivity");
+          "SDL's relative motion and cursor motion both take the sensitivity");
     {
         const char *graphics = strstr(launcher, "void PageGraphics("), *resolution = strstr(launcher, "\"Render resolution\", kRenderResolutionHelp"),
                    *fov = strstr(launcher, "        FieldOfViewRow(ui);"), *aa = strstr(launcher, "        AntiAliasingRow(ui);"),

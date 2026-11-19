@@ -9,11 +9,11 @@ The launcher is the one of Dragon's Crown Pro PC and 13 Sentinels: Aegis Rim PC.
 [TRG Launcher](https://github.com/TekRantGaming/trg-launcher) 1.1.0 with their patch series
 (`launcher/patches/trg-launcher`, the 19 patches of 13 Sentinels), in an SDL3 window with SDL's software renderer and
 Dear ImGui's SDL3 backends. The host, placement, header art, page icons, Play gate and page layout are their files
-with this port's names. SDL 3.4.10 (their version), Dear ImGui and TRG are fetched by `tools\build.ps1` at the commits
+with this port's names. SDL 3.4.20, Dear ImGui and TRG are fetched by `tools\build.ps1` at the commits
 in `config/launcher_deps.txt` into `external\` (not committed); SDL is built as a static library, since MSVC x86 has
 no SDL package. TRG's downloader is not built: the launcher makes no network request. Only one SDL window and one ImGui
 context exist at a time, and all of SDL is shut down (`SDL_Quit`) before the game's window and Direct3D 11 device
-exist.
+exist; the game starts SDL again on its own thread (docs/ARCHITECTURE.md, Platform).
 
 What differs, because the game differs: the game window is the host's Win32 window, so the Monitor list is the one
 that window uses (primary first, then the system's order); images are decoded with SDL's own `SDL_LoadPNG` instead of

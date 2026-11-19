@@ -2,7 +2,8 @@
  * Gamepads through SDL3, always together with the keyboard and mouse. Gameplay gets the gamepad as the game's own
  * input: the right stick as mouse motion in the cursor CInput reads, then the buttons and the left stick into its
  * SInput (command bits, analog move) after the keyboard has written them, so every remapped key keeps working. Menus
- * are driven through the game's own pointer and clicks (gamepad_menu.c). Every SDL call happens on the guest thread.
+ * are driven through the game's own pointer and clicks (gamepad_menu.c). SDL is started by platform.c; every SDL call
+ * happens on the guest thread.
  */
 #include "guest_va.h"
 #include "host.h"
@@ -18,6 +19,7 @@
 #include "minimap.h"
 #include "overlay_policy.h"
 #include "physics_watch.h"
+#include "platform.h"
 #include "tutorial_prompts.h"
 
 #define CINPUT_READ_VA GVA(0x005F80B0)
@@ -38,7 +40,7 @@ typedef enum { MODE_NONE, MODE_GAMEPLAY, MODE_MENU, MODE_VIDEO } ui_mode_t;
 
 static struct {
     jpt_gamepad_settings_t cfg;
-    int sdl;  /* 0 not started, 1 ready, -1 unavailable */
+    int opened;
     SDL_Gamepad* pads[PAD_ROSTER_MAX];
     char names[PAD_ROSTER_MAX][64];
     pad_activity_t activity[PAD_ROSTER_MAX];
@@ -214,59 +216,27 @@ static void open_connected(void) {
     SDL_free(ids);
 }
 
-/* Only connections are taken from SDL's queue; state is read directly, so the per-input events are turned off. */
-static void quiet_events(void) {
-    static const Uint32 noisy[] = {
-        SDL_EVENT_JOYSTICK_AXIS_MOTION,  SDL_EVENT_JOYSTICK_BALL_MOTION,     SDL_EVENT_JOYSTICK_HAT_MOTION,
-        SDL_EVENT_JOYSTICK_BUTTON_DOWN,  SDL_EVENT_JOYSTICK_BUTTON_UP,      SDL_EVENT_JOYSTICK_BATTERY_UPDATED,
-        SDL_EVENT_GAMEPAD_AXIS_MOTION,   SDL_EVENT_GAMEPAD_BUTTON_DOWN,     SDL_EVENT_GAMEPAD_BUTTON_UP,
-        SDL_EVENT_GAMEPAD_TOUCHPAD_DOWN, SDL_EVENT_GAMEPAD_TOUCHPAD_MOTION, SDL_EVENT_GAMEPAD_TOUCHPAD_UP,
-        SDL_EVENT_GAMEPAD_SENSOR_UPDATE,
-    };
-    for (size_t i = 0; i < sizeof noisy / sizeof noisy[0]; i++) SDL_SetEventEnabled(noisy[i], false);
-}
-
-static int ensure_sdl(void) {
-    int version;
-    if (G.sdl) return G.sdl > 0;
-    version = SDL_GetVersion();
-    /* SDL's raw input joystick driver reads the thread's whole raw input buffer, the game's mouse included. */
-    SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT, "0");
-    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
-        G.sdl = -1;
-        host_log("gamepad", "SDL %d.%d.%d could not start its gamepad support (%s): keyboard and mouse only",
-                 SDL_VERSIONNUM_MAJOR(version), SDL_VERSIONNUM_MINOR(version), SDL_VERSIONNUM_MICRO(version),
-                 SDL_GetError());
-        return 0;
+static int pads_ready(void) {
+    if (!platform_gamepads_ready()) return 0;
+    if (!G.opened) {
+        G.opened = 1;
+        open_connected();
+        if (!pad_roster_count(&G.roster)) host_log("gamepad", "no controller connected yet");
     }
-    G.sdl = 1;
-    quiet_events();
-    host_log("gamepad", "SDL %d.%d.%d gamepads ready, connections followed while the game runs; the keyboard and mouse "
-             "stay active", SDL_VERSIONNUM_MAJOR(version), SDL_VERSIONNUM_MINOR(version), SDL_VERSIONNUM_MICRO(version));
-    open_connected();
-    if (!pad_roster_count(&G.roster)) host_log("gamepad", "no controller connected yet");
     return 1;
 }
 
-static void take_events(void) {
-    SDL_Event events[16];
-    int n;
-    SDL_PumpEvents();
-    while ((n = SDL_PeepEvents(events, 16, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST)) > 0)
-        for (int i = 0; i < n; i++) {
-            if (events[i].type == SDL_EVENT_GAMEPAD_ADDED) open_pad(events[i].gdevice.which);
-            else if (events[i].type == SDL_EVENT_GAMEPAD_REMOVED) close_pad(events[i].gdevice.which);
-        }
-}
+void gamepad_device_added(uint32_t id) { open_pad((SDL_JoystickID)id); }
+
+void gamepad_device_removed(uint32_t id) { close_pad((SDL_JoystickID)id); }
 
 static void sample(int64_t now) {
     int focused;
     if (G.sampled && seconds_between(G.sampled, now) < SAMPLE_INTERVAL_SECONDS) return;
     G.sampled = now;
     memset(&G.state, 0, sizeof G.state);
-    if (!ensure_sdl()) return;
-    take_events();
+    platform_pump();
+    if (!pads_ready()) return;
     focused = window_host_input_focused();
     for (int slot = 0; slot < PAD_ROSTER_MAX; slot++) {
         pad_state_t st;
@@ -549,7 +519,7 @@ void gamepad_prompts(gamepad_prompts_t* out) {
 
 int gamepad_rumble(float low, float high, unsigned ms) {
     int active = G.roster.active;
-    if (G.sdl <= 0 || active < 0 || !G.pads[active]) return 0;
+    if (!platform_gamepads_ready() || active < 0 || !G.pads[active]) return 0;
     low = low < 0 ? 0 : low > 1 ? 1 : low;
     high = high < 0 ? 0 : high > 1 ? 1 : high;
     return SDL_RumbleGamepad(G.pads[active], (Uint16)(low * 65535.0f), (Uint16)(high * 65535.0f), ms);
@@ -558,5 +528,5 @@ int gamepad_rumble(float low, float high, unsigned ms) {
 void gamepad_summary(void) {
     host_log("gamepad", "summary: %u connected, %u disconnected, %u device changes, %lu gameplay frames with gamepad "
              "input%s", G.connections, G.disconnections, G.tracker.switches, G.play_frames,
-             G.sdl < 0 ? " (SDL gamepad support unavailable)" : "");
+             platform_gamepads_ready() ? "" : " (SDL gamepad support unavailable)");
 }

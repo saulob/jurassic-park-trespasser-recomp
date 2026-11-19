@@ -1,5 +1,6 @@
-# Launcher sources fetched by tools\build.ps1 (git-ignored), at these commits; launcher\patches\<name> is applied in order.
+# Sources fetched by tools\build.ps1 (git-ignored), at these commits; launcher\patches\<name> is applied in order.
+# SDL is release-3.4.20, a static library of the launcher and the game.
 # path                  url                                                commit
 external/imgui          https://github.com/ocornut/imgui.git               f1cc2ae15e53a861a874c3034aae6798fde194ab
 external/trg-launcher   https://github.com/TekRantGaming/trg-launcher.git  b384a28c712c9320eea8f9d50639dec49981b6c1
-external/SDL            https://github.com/libsdl-org/SDL.git              8e37db5e797b6167f3a00d697d816a684bd259c7
+external/SDL            https://github.com/libsdl-org/SDL.git              f00dc919ca35b9756316e86c4777392de442f9b2

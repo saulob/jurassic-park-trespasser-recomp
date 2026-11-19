@@ -69,6 +69,7 @@ set(HOST_SOURCES
   src/host/io_trace.c
   src/host/menu_audio_policy.c
   src/host/window_host.c
+  src/host/platform.c
   src/host/window_title.c
   src/host/gamepad.c
   src/host/gamepad_menu.c
@@ -491,6 +492,15 @@ add_executable(host_tests EXCLUDE_FROM_ALL tests/host_tests.c src/host/host_poli
 target_include_directories(host_tests PRIVATE src/host src/common)
 target_compile_options(host_tests PRIVATE /W3)
 target_compile_definitions(host_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The SDL3 platform layer's decisions (mouse motion after recaptures, message routing past SDL, SDL's lifetime, hotkeys,
+# controller hotplug) and where the host starts, pumps and stops SDL (headless, no SDL):
+#   ninja -C <build dir> platform_tests && platform_tests.exe
+add_executable(platform_tests EXCLUDE_FROM_ALL tests/platform_tests.c src/host/host_policy.c src/host/gamepad_policy.c
+  src/host/pad_glyphs.c src/host/overlay_policy.c)
+target_include_directories(platform_tests PRIVATE src/host)
+target_link_libraries(platform_tests PRIVATE jpt_common)
+target_compile_options(platform_tests PRIVATE /W3)
+target_compile_definitions(platform_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 # The menus' selection sound read from the retail executable, and the lookup of the file it is loaded from (headless):
 #   ninja -C <build dir> menu_audio_tests && menu_audio_tests.exe
 add_executable(menu_audio_tests EXCLUDE_FROM_ALL tests/menu_audio_tests.c src/host/menu_audio_policy.c src/common/jpt_hash.c)
@@ -667,8 +677,8 @@ set_source_files_properties(tests/input_tests.c PROPERTIES COMPILE_OPTIONS "/W3"
 set_source_files_properties(${INPUT_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
 target_link_options(input_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
 
-foreach(host_test host_tests ce_tests fov_mouse_tests input_tests frontend_tests gamepad_tests debug_menu_tests video_tests
-        active_ai_tests patch117_tests water_tests com_tests ao_tests video_subtitle_tests)
+foreach(host_test host_tests platform_tests ce_tests fov_mouse_tests input_tests frontend_tests gamepad_tests debug_menu_tests
+        video_tests active_ai_tests patch117_tests water_tests com_tests ao_tests video_subtitle_tests)
   target_link_libraries(${host_test} PRIVATE jpt_profile)
   target_include_directories(${host_test} PRIVATE tests)
 endforeach()

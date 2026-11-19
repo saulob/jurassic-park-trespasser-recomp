@@ -18,6 +18,7 @@
 #include "jpt_user_data.h"
 #include "l10n.h"
 #include "loading_hd.h"
+#include "platform.h"
 #include "stream_audio.h"
 #include "recomp_trace.h"
 
@@ -258,8 +259,14 @@ static int parse_options(int argc, char** argv, options_t* o) {
     return 1;
 }
 
+/* SDL starts here: the game creates and pumps its window on this thread, which makes it SDL's video thread. */
 static DWORD WINAPI guest_main(LPVOID unused) {
     (void)unused;
+    if (!platform_start()) {
+        MessageBoxA(NULL, "SDL could not start its video subsystem; the log names the reason.",
+                    "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR);
+        return HOST_EXIT_SETUP;
+    }
     native32_call_guest(lift_entry_va, 0, NULL);
     host_log("guest", "entry point returned, eax=%08X", g_eax);
     return (DWORD)host_exit_code_for_guest_return((int)g_eax);

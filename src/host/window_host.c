@@ -5,9 +5,12 @@
  * aspect ratio; the rest of the client is black.
  *
  * The game's cursor is virtual: GetCursorPos/SetCursorPos read and write a position in display
- * pixels and never move the real cursor. In menus it follows the real cursor; in focused gameplay
- * it moves by Raw Input deltas while the real cursor is hidden and confined to the picture, and
- * any other state frees it. The game's own capture, ClipCursor and disabled Close are not applied.
+ * pixels. In menus it follows the real cursor; in focused gameplay it moves by SDL's relative mouse
+ * motion while SDL hides and confines the real cursor, and any other state frees it. The game's own
+ * capture, ClipCursor and disabled Close are not applied.
+ *
+ * The window is also an SDL window (platform.c). The host's procedure stays in front of SDL's, so it
+ * sees every message first; what it passes on goes through SDL to the game.
  *
  * Closing (Alt+F4, the X button, WM_CLOSE) leads the game out through its own quit path from inside
  * its message pump while the window stays up; WinMain then returns and exit_policy.c finishes.
@@ -21,6 +24,7 @@
 #include "minimap.h"
 #include "overlay_policy.h"
 #include "physics_watch.h"
+#include "platform.h"
 #include "tutorial_prompts.h"
 #include "window_title.h"
 
@@ -90,7 +94,7 @@ static struct {
 
 static struct {
     HWND game, surface;
-    WNDPROC previous;
+    WNDPROC next, game_proc;
     int fbw, fbh;
     int ui_canvas;
     int title_w[2], title_h[2];
@@ -101,11 +105,10 @@ static struct {
     guest_ui_view_t guest;
     shutdown_state_t shutdown;
     int cursor_count;
-    int clipped;
+    int relative, relative_refused;
+    uint64_t relative_since;
+    motion_counts_t motion;
     DWORD clip_hold_until;
-    int raw_input;
-    int raw_abs_valid;
-    LONG raw_abs_x, raw_abs_y;
     POINT last_move;
     int last_move_valid;
     POINT cursor;
@@ -418,32 +421,43 @@ static void refresh_pointer_shape(void) {
     else show_client_cursor();
 }
 
-static int mouse_button_held(void) {
-    return GetAsyncKeyState(VK_LBUTTON) < 0 || GetAsyncKeyState(VK_RBUTTON) < 0 || GetAsyncKeyState(VK_MBUTTON) < 0;
+/* Every change of mouse mode starts a new motion base: SDL moves the real cursor back when relative mode ends, and that
+ * move must not become mouse-look. */
+static void set_relative(int on) {
+    s.last_move_valid = 0;
+    memset(&s.motion, 0, sizeof s.motion);
+    if (on == s.relative) return;
+    if (on && !platform_relative_mouse(1)) {
+        s.relative_refused = 1;
+        host_log("input", "SDL relative mouse mode unavailable: mouse-look uses cursor motion confined to the picture");
+        return;
+    }
+    if (!on) platform_relative_mouse(0);
+    s.relative = on;
+    if (on) s.relative_since = platform_ticks_ns();
 }
 
-static void release_clip(void) {
-    if (s.clipped) ClipCursor(NULL);
-    s.clipped = 0;
+static void release_mouse(void) {
+    if (s.relative) set_relative(0);
+    platform_confine_mouse(NULL);
 }
 
-/* ClipCursor exists only in INPUT_GAMEPLAY_CAPTURED, and only to the picture on the screen. */
-static void apply_clip(void) {
+/* Mouse-look exists only in INPUT_GAMEPLAY_CAPTURED: SDL's relative mode, or, where SDL refuses it, cursor motion with
+ * the cursor confined to the picture. */
+static void apply_mouse(void) {
     int hold = s.clip_hold_until && (LONG)(GetTickCount() - s.clip_hold_until) < 0;
     if (!hold) s.clip_hold_until = 0;
     if (!hold && view_valid() && GetForegroundWindow() == s.game &&
-        input_should_clip(s.state, pointer_over_view(), mouse_button_held())) {
-        RECT r, current;
-        view_rect_on_screen(&r);
-        if (!s.clipped || !GetClipCursor(&current) || !EqualRect(&current, &r)) ClipCursor(&r);
-        s.clipped = 1;
+        input_should_clip(s.state, pointer_over_view(), platform_mouse_buttons_held())) {
+        if (!s.relative && !s.relative_refused) set_relative(1);
+        if (s.relative_refused) platform_confine_mouse(&s.view);
     } else {
-        release_clip();
+        release_mouse();
     }
 }
 
 static void release_everything(void) {
-    release_clip();
+    release_mouse();
     if (GetCapture() == s.game && s.game) ReleaseCapture();
 }
 
@@ -453,13 +467,10 @@ void window_host_level_load_done(void) {
     int active;
     if (!s.game || !activation_after_load(&s.activation, &active)) return;
     host_log("focus", "deferred %s delivered after the level load", active ? "display restore" : "deactivation");
-    CallWindowProcA(s.previous, s.game, WM_ACTIVATEAPP, active, 0);
+    CallWindowProcA(s.game_proc, s.game, WM_ACTIVATEAPP, active, 0);
 }
 
-void window_host_release_cursor(void) {
-    release_everything();
-    ClipCursor(NULL);
-}
+void window_host_release_cursor(void) { release_everything(); }
 
 static const char* ui_text(const guest_ui_view_t* g) {
     return g->top_vtable ? guest_ui_class_name(g->top_vtable) : "no window yet";
@@ -483,6 +494,7 @@ static void update_input(const char* why) {
     input_signals_t signals;
     guest_ui_view_t guest;
     input_state_t next;
+    int changed = 0;
     if (!s.game) return;
     guest_ui_probe(&guest);
     if (guest.top != s.guest.top) trace_modal(&s.guest, &guest);
@@ -512,18 +524,20 @@ static void update_input(const char* why) {
         }
         pointer_recapture(s.state, next, &s.cursor.x, &s.cursor.y, s.fbw, s.fbh);
         memset(&s.mouse_scale, 0, sizeof s.mouse_scale);
+        memset(&s.motion, 0, sizeof s.motion);
         s.last_move_valid = 0;
-        s.raw_abs_valid = 0;
         s.menu_mouse_valid = 0;
         if (input_cursor_virtual(next)) s.pad_cursor = 0;
         s.state = next;
-        refresh_pointer_shape();
+        changed = 1;
     }
     if (gamepad_menu_focus() != s.pad_focus) {
         s.pad_focus = !s.pad_focus;
-        refresh_pointer_shape();
+        changed = 1;
     }
-    apply_clip();
+    apply_mouse();
+    /* After the mouse mode: SDL sets its own cursor when relative mode changes. */
+    if (changed) refresh_pointer_shape();
 }
 
 static const char* renderer_text(void) { return d3dr_name(); }
@@ -672,7 +686,7 @@ static void toggle_fullscreen(void) {
     if (shutdown_active(&s.shutdown)) return;
     s.transition = 1;
     update_input("F11 transition");
-    release_clip();
+    release_mouse();
     if (s.fullscreen) leave_fullscreen();
     else enter_fullscreen();
     layout_surface();
@@ -772,6 +786,15 @@ static void mouse_relative(LONG dx, LONG dy) {
 
 void window_host_set_mouse_sensitivity(float value) { s.mouse_sensitivity = jpt_mouse_sensitivity_clamp(value); }
 
+void window_host_mouse_motion(float dx, float dy, uint64_t when_ns) {
+    long x, y;
+    if (!relative_motion_accepted(s.relative, when_ns, s.relative_since)) return;
+    motion_counts(&s.motion, dx, dy, &x, &y);
+    if (!x && !y) return;
+    gamepad_note_mouse_motion((int)x, (int)y);
+    mouse_relative(x, y);
+}
+
 int window_host_input_focused(void) {
     return s.game && s.active && s.focused && GetForegroundWindow() == s.game && !shutdown_active(&s.shutdown) &&
            !IsIconic(s.game);
@@ -822,7 +845,7 @@ static LRESULT pad_mouse(HWND window, WPARAM kind) {
     WPARAM keys = kind == PAD_MOUSE_UP ? 0 : MK_LBUTTON;
     if (kind > PAD_MOUSE_MOVE || !virtual_input_active()) return 0;
     update_input("gamepad");
-    return CallWindowProcA(s.previous, window, msgs[kind], keys, pack_point(game_cursor()));
+    return CallWindowProcA(s.game_proc, window, msgs[kind], keys, pack_point(game_cursor()));
 }
 
 static int is_press(UINT msg) {
@@ -840,12 +863,12 @@ static int route_mouse(UINT msg, LPARAM* lparam) {
         return 1;
     }
     update_input("mouse");
-    if (!s.raw_input && msg == WM_MOUSEMOVE && !input_captured(s.state)) {
+    if (msg == WM_MOUSEMOVE && !input_captured(s.state)) {
         if (s.menu_mouse_valid) gamepad_note_mouse_motion(client.x - s.menu_mouse.x, client.y - s.menu_mouse.y);
         s.menu_mouse = client;
         s.menu_mouse_valid = 1;
     }
-    if (!s.raw_input && msg == WM_MOUSEMOVE && input_captured(s.state)) {
+    if (!s.relative && msg == WM_MOUSEMOVE && input_captured(s.state)) {
         if (s.last_move_valid) mouse_relative(client.x - s.last_move.x, client.y - s.last_move.y);
         s.last_move = client;
         s.last_move_valid = 1;
@@ -854,44 +877,6 @@ static int route_mouse(UINT msg, LPARAM* lparam) {
     if (is_press(msg)) gamepad_note_mouse_button();
     *lparam = pack_point(input_cursor_virtual(s.state) ? s.cursor : client_to_display(client));
     return 1;
-}
-
-static void register_raw_input(HWND window) {
-    RAWINPUTDEVICE device;
-    device.usUsagePage = 0x01;
-    device.usUsage = 0x02;
-    device.dwFlags = 0;
-    device.hwndTarget = window;
-    s.raw_input = RegisterRawInputDevices(&device, 1, sizeof device) != 0;
-    if (s.raw_input)
-        host_log("input", "Raw Input mouse registered: gameplay mouse-look uses relative device motion; the cursor is "
-                 "hidden and confined to the picture only in INPUT_GAMEPLAY_CAPTURED and never moved");
-    else
-        host_log("input", "Raw Input unavailable (error %lu): mouse-look uses cursor motion deltas instead", GetLastError());
-}
-
-static void read_raw_input(HRAWINPUT handle) {
-    RAWINPUT input;
-    UINT size = sizeof input;
-    if (GetRawInputData(handle, RID_INPUT, &input, &size, sizeof(RAWINPUTHEADER)) == (UINT)-1 ||
-        input.header.dwType != RIM_TYPEMOUSE)
-        return;
-    if (input.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) {
-        int virtual_desktop = (input.data.mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
-        int w = GetSystemMetrics(virtual_desktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
-        int h = GetSystemMetrics(virtual_desktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
-        LONG x = MulDiv(input.data.mouse.lLastX, w, 65535), y = MulDiv(input.data.mouse.lLastY, h, 65535);
-        if (s.raw_abs_valid) {
-            gamepad_note_mouse_motion((int)(x - s.raw_abs_x), (int)(y - s.raw_abs_y));
-            mouse_relative(x - s.raw_abs_x, y - s.raw_abs_y);
-        }
-        s.raw_abs_x = x;
-        s.raw_abs_y = y;
-        s.raw_abs_valid = 1;
-    } else {
-        gamepad_note_mouse_motion((int)input.data.mouse.lLastX, (int)input.data.mouse.lLastY);
-        mouse_relative(input.data.mouse.lLastX, input.data.mouse.lLastY);
-    }
 }
 
 static void log_key(UINT msg, WPARAM vk, LPARAM lparam, const char* fate) {
@@ -939,7 +924,7 @@ static void request_close(HWND window, const char* source) {
     release_everything();
     update_input("closing");
     guest_threads_log("before quit");
-    CallWindowProcA(s.previous, window, WM_CLOSE, 0, 0);
+    CallWindowProcA(s.game_proc, window, WM_CLOSE, 0, 0);
     advance(SHUTDOWN_GUEST_QUIT_REQUESTED, source);
     start_shutdown_watchdog();
 }
@@ -949,7 +934,7 @@ static void reactivate_for_quit(const guest_ui_view_t* v) {
     s.quit_reactivations++;
     quit_log("the game is inactive (%s): reactivated so its pump returns to its loops", ui_text(v));
     activation_delivered(&s.activation, 1);
-    CallWindowProcA(s.previous, s.game, WM_ACTIVATEAPP, TRUE, 0);
+    CallWindowProcA(s.game_proc, s.game, WM_ACTIVATEAPP, TRUE, 0);
 }
 
 static void synthesize_skip(MSG* msg) {
@@ -1075,7 +1060,7 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
     }
     if (input_captured(s.state) && key_opens_game_window(msg, (unsigned)wparam, repeat)) {
         s.clip_hold_until = GetTickCount() + CLIP_HOLD_MS;
-        release_clip();
+        release_mouse();
     }
     switch (action) {
     case KEY_HOST_FULLSCREEN:
@@ -1157,9 +1142,6 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         if (video_test_visible()) return 0;
         if (debug_menu_char(wparam)) return 0;
         break;
-    case WM_INPUT:
-        read_raw_input((HRAWINPUT)lparam);
-        return DefWindowProcA(window, msg, wparam, lparam);
     case WM_GETMINMAXINFO:
         if (s.fullscreen) cover_limits(window, (MINMAXINFO*)lparam);
         else limit_minimum(window, (MINMAXINFO*)lparam);
@@ -1193,7 +1175,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         if (msg == WM_ACTIVATEAPP) s.active = wparam != 0;
         if (msg == WM_SETFOCUS) s.focused = 1;
         if (msg == WM_KILLFOCUS) s.focused = 0;
-        if ((msg == WM_ACTIVATEAPP && !s.active) || msg == WM_KILLFOCUS) release_clip();
+        if ((msg == WM_ACTIVATEAPP && !s.active) || msg == WM_KILLFOCUS) release_mouse();
         update_input(msg == WM_ACTIVATEAPP ? (s.active ? "activated" : "deactivated")
                      : msg == WM_SETFOCUS  ? "focus"
                      : msg == WM_KILLFOCUS ? "focus lost"
@@ -1250,7 +1232,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
             request_close(window, (GetKeyState(VK_MENU) & 0x8000) ? "Alt+F4" : "title bar close button or system menu");
             return 0;
         }
-        if (command == SC_MINIMIZE) release_clip();
+        if (command == SC_MINIMIZE) release_mouse();
         if (command == SC_SIZE || command == SC_MOVE || command == SC_MINIMIZE || command == SC_MAXIMIZE ||
             command == SC_RESTORE)
             return DefWindowProcA(window, msg, wparam, lparam);
@@ -1264,10 +1246,6 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         KillTimer(window, POLICY_TIMER_ID);
         release_everything();
         present_release();
-        break;
-    case WM_MOVE:
-    case WM_WINDOWPOSCHANGED:
-        if (s.clipped) apply_clip();
         break;
     case WM_MOUSEMOVE:
     case WM_LBUTTONDOWN:
@@ -1293,12 +1271,13 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         if (virtual_input_active() && !route_mouse(msg, &lparam)) return 0;
         break;
     }
-    result = CallWindowProcA(s.previous, window, msg, wparam, lparam);
-    switch (msg) {
-    case WM_NCDESTROY:
+    result = CallWindowProcA(window_message_skips_sdl(msg) ? s.game_proc : s.next, window, msg, wparam, lparam);
+    /* SDL shows its own cursor when the window gains focus. */
+    if (msg == WM_ACTIVATE || msg == WM_SETFOCUS) refresh_pointer_shape();
+    if (msg == WM_NCDESTROY) {
+        platform_window_detach();
         s.game = NULL;
         s.surface = NULL;
-        break;
     }
     return result;
 }
@@ -1322,12 +1301,28 @@ static HWND create_surface(HWND parent) {
                            instance, NULL);
 }
 
+static void hook(HWND window) {
+    s.next = (WNDPROC)GetWindowLongPtrA(window, GWLP_WNDPROC);
+    SetWindowLongPtrA(window, GWLP_WNDPROC, (LONG_PTR)host_proc);
+}
+
+/* Letting SDL go puts the game's procedure back over the host's, so the host hooks the window again. */
+static void detach_platform(HWND window) {
+    if (!platform_window_attached()) return;
+    release_mouse();
+    platform_window_detach();
+    if (window && IsWindow(window)) hook(window);
+}
+
+void window_host_detach_platform(void) { detach_platform(s.game); }
+
 static void attach(HWND window) {
     s.game = window;
     activation_defer_init(&s.activation);
     s.active = 1;
-    s.previous = (WNDPROC)GetWindowLongPtrA(window, GWLP_WNDPROC);
-    SetWindowLongPtrA(window, GWLP_WNDPROC, (LONG_PTR)host_proc);
+    s.game_proc = (WNDPROC)GetWindowLongPtrA(window, GWLP_WNDPROC);
+    platform_window_attach(window);
+    hook(window);
     s.focused = GetFocus() == window;
     s.surface = create_surface(window);
     SetTimer(window, POLICY_TIMER_ID, POLICY_INTERVAL_MS, NULL);
@@ -1337,7 +1332,8 @@ static void attach(HWND window) {
              "presentation surface %s", (uint32_t)(uintptr_t)window, s.surface ? "created" : "NOT created");
     host_log("hotkeys", "F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F10 Cheats | "
              "F11 Fullscreen | Esc Menu");
-    register_raw_input(window);
+    host_log("input", "SDL3 mouse: relative mode for gameplay mouse-look, the cursor hidden and confined in "
+             "INPUT_GAMEPLAY_CAPTURED only; keyboard: the game's own key messages, host keys taken from them first");
     if (s.cfg.borderless) {
         enter_fullscreen();
         layout_surface();
@@ -1425,6 +1421,7 @@ void shim_DestroyWindow(void) {
                  s.shutdown.source ? s.shutdown.source : "the game");
         release_everything();
         update_input("closing");
+        detach_platform(window);
     }
     g_eax = (uint32_t)DestroyWindow(window);
     GUEST_RETURN_STDCALL(1);
@@ -1533,6 +1530,7 @@ void shim_GetCursorPos(void) {
     POINT* out = (POINT*)GUEST_PTR(0);
     BOOL ok = TRUE;
     if (virtual_input_active()) {
+        platform_pump();
         update_input("GetCursorPos");
         if (g_cur_func == UI_LOOP) {
             int64_t section = perf_section_begin();

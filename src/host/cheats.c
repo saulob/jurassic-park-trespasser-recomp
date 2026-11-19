@@ -16,6 +16,7 @@
 #include "gamepad.h"
 #include "jpt_tr.h"
 #include "physics_watch.h"
+#include "platform.h"
 
 #define WORLD GVA(0x0073F444)
 #define WORLD_CAMERA 0x14u
@@ -239,7 +240,7 @@ static void apply(const char* level, uint32_t scratch) {
     C.applied = 1;
 }
 
-static int held(int vk) { return GetAsyncKeyState(vk) < 0; }
+static int held(int vk) { return platform_vk_held((unsigned)vk); }
 
 /* The game's own keys make S walk forward; the free camera's WASD is literal, the stick comes through CInput. */
 static void free_camera_keys(ch_freecam_input_t* in) {

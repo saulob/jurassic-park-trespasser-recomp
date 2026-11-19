@@ -180,6 +180,55 @@ void mouse_scale_counts(mouse_scale_t* m, float sensitivity, long dx, long dy, l
     m->rest_y = y - (double)*out_y;
 }
 
+int relative_motion_accepted(int relative_on, uint64_t event_ns, uint64_t relative_since_ns) {
+    return relative_on && event_ns >= relative_since_ns;
+}
+
+void motion_counts(motion_counts_t* m, float dx, float dy, long* out_x, long* out_y) {
+    double x = m->rest_x + dx, y = m->rest_y + dy;
+    *out_x = (long)x;
+    *out_y = (long)y;
+    m->rest_x = x - (double)*out_x;
+    m->rest_y = y - (double)*out_y;
+}
+
+int window_message_skips_sdl(unsigned msg) {
+    enum {
+        PAINT = 0x000F, ERASEBKGND = 0x0014, MOUSEACTIVATE = 0x0021, WINDOWPOSCHANGING = 0x0046,
+        WINDOWPOSCHANGED = 0x0047, NCCALCSIZE = 0x0083, NCHITTEST = 0x0084, MOUSEFIRST = 0x0200, MOUSELAST = 0x020E,
+        SYSCOMMAND = 0x0112, DROPFILES = 0x0233, TOUCH = 0x0240, TABLET_GESTURE_STATUS = 0x02CC, DPICHANGED = 0x02E0,
+        GETDPISCALEDSIZE = 0x02E4
+    };
+    if (msg >= MOUSEFIRST && msg <= MOUSELAST) return 1;
+    switch (msg) {
+    case PAINT:
+    case ERASEBKGND:
+    case MOUSEACTIVATE:
+    case WINDOWPOSCHANGING:
+    case WINDOWPOSCHANGED:
+    case NCCALCSIZE:
+    case NCHITTEST:
+    case SYSCOMMAND:
+    case DROPFILES:
+    case TOUCH:
+    case TABLET_GESTURE_STATUS:
+    case DPICHANGED:
+    case GETDPISCALEDSIZE: return 1;
+    default: return 0;
+    }
+}
+
+int sdl_life_may_start(const sdl_life_t* l) { return !l->started && !l->stopped; }
+
+void sdl_life_started(sdl_life_t* l, unsigned long thread) {
+    l->started = 1;
+    l->thread = thread;
+}
+
+int sdl_life_may_stop(const sdl_life_t* l, unsigned long thread) { return l->started && !l->stopped && thread == l->thread; }
+
+void sdl_life_stopped(sdl_life_t* l) { l->stopped = 1; }
+
 void open_press_reset(open_press_t* p) { memset(p, 0, sizeof *p); }
 
 void activation_defer_init(activation_defer_t* a) {

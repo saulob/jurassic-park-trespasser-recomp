@@ -61,7 +61,7 @@ lines were written for the port (PC port completion).
 | capstone, pefile | BSD-3-Clause, MIT | Python libraries, installed by the user |
 | [ocornut/imgui](https://github.com/ocornut/imgui) | MIT | fetched at a pinned commit into `external/` (not committed); compiled into the launcher |
 | [TekRantGaming/trg-launcher](https://github.com/TekRantGaming/trg-launcher) | MIT | fetched at a pinned commit into `external/` (not committed) and patched with `launcher/patches/trg-launcher`, the series of Dragon's Crown Pro PC and 13 Sentinels |
-| [libsdl-org/SDL](https://github.com/libsdl-org/SDL) 3.4.10 | zlib | fetched at a pinned commit into `external/` (not committed); built as a static library for the launcher window |
+| [libsdl-org/SDL](https://github.com/libsdl-org/SDL) 3.4.20 | zlib | fetched at a pinned commit into `external/` (not committed); built as a static library for the launcher window and the game's window input and gamepads |
 | [GameTechDev/ASSAO](https://github.com/GameTechDev/ASSAO) at `c21d57a95b43c700ee01a2eb18f5589d7becefb2` | MIT | vendored in `third_party/assao` (three files of the DX11 effect, licence and provenance in its README); compiled into the host as the D3D11 renderer's ambient occlusion |
 | [memononen/nanosvg](https://github.com/memononen/nanosvg) | zlib | vendored in `launcher/third_party/nanosvg` (from 13 Sentinels), draws the sidebar icons |
 | Launcher icons and sponsor heart | CC0, CC BY (`display.svg`), MIT (`bug-report.svg`) | `assets/launcher`; sources in `assets/launcher/icons/SOURCES.md`, notices in `packaging/licenses/THIRD-PARTY-LICENSES.txt` |

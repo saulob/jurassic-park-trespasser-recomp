@@ -8,7 +8,7 @@ Compiled into trespasser_recomp.exe
 
 pcrecomp                    MIT. Copyright (c) 2026 sp00nz.             https://github.com/sp00nznet/pcrecomp
 Dear ImGui 1.92.9b          MIT. Copyright (c) 2014-2025 Omar Cornut.   https://github.com/ocornut/imgui
-SDL 3.4.10                  zlib. Copyright (C) 1997-2026 Sam Lantinga. https://github.com/libsdl-org/SDL
+SDL 3.4.20                  zlib. Copyright (C) 1997-2026 Sam Lantinga. https://github.com/libsdl-org/SDL
 nanosvg                     zlib. Copyright (c) 2013-14 Mikko Mononen.  launcher/third_party/nanosvg/LICENSE.txt
 Intel ASSAO                 MIT. Copyright (c) 2016 Intel.              third_party/assao/LICENSE
 
@@ -36,6 +36,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+SDL 3.4.20 (https://github.com/libsdl-org/SDL, release-3.4.20, f00dc919ca35b9756316e86c4777392de442f9b2)
+  zlib License. Copyright (C) 1997-2026 Sam Lantinga. The launcher window, the game window's mouse and the gamepads.
+
+Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
 
 TRG Launcher 1.1.0 (https://github.com/TekRantGaming/trg-launcher, b384a28c712c9320eea8f9d50639dec49981b6c1)
   MIT License. Copyright (c) 2026 TekRantGaming.

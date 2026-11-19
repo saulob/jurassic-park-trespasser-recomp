@@ -26,6 +26,9 @@ void gamepad_ui_loop(void);
 void gamepad_video_loop(void);
 /* The host's policy timer: connections are noticed while no frame runs. */
 void gamepad_idle(void);
+/* platform_pump: SDL's connection events, by SDL joystick instance id. */
+void gamepad_device_added(uint32_t id);
+void gamepad_device_removed(uint32_t id);
 
 /* The controller in use's buttons (JPT_PAD_BIT) at the last sample; 0 without one. */
 uint32_t gamepad_buttons(void);

@@ -481,11 +481,15 @@ void window_host_post_mouse(int kind);
 /* The game's pointer in menus, in its own coordinates, placed by the gamepad until the mouse is used. */
 void window_host_set_pad_cursor(int x, int y);
 void window_host_release_pad_cursor(void);
-/* Mouse counts from the right stick, into the same cursor the raw mouse moves in gameplay (the device stays the
+/* Mouse counts from the right stick, into the same cursor the mouse moves in gameplay (the device stays the
  * pad). */
 void window_host_pad_relative(int dx, int dy);
 /* Mouse sensitivity for the mouse's own motion in gameplay (both axes; the gamepad keeps its own). */
 void window_host_set_mouse_sensitivity(float value);
+/* platform_pump: SDL's mouse motion, its timestamp in SDL nanoseconds. */
+void window_host_mouse_motion(float dx, float dy, uint64_t when_ns);
+/* Before SDL stops: the game's window stops being an SDL window and keeps the host's procedure. */
+void window_host_detach_platform(void);
 int window_host_game_cursor(int* x, int* y);
 /* surface: the game's IDirectDrawSurface of its screen. 1 when drawn; 0 leaves the copy to the game. */
 int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h);

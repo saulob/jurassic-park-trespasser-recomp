@@ -404,9 +404,39 @@ window's Credits button runs (`0x004163D5`): menu music and its timer off, a `CV
 with the game's own name string, music and timer back. The request forces that one `Play`: ORIGINAL starts no HD
 session (every present is the game's own), HD the normal one; the next `Play` is AUTO again.
 
+## Platform (SDL3)
+
+`src/host/platform.c` is the host's one use of SDL's lifetime: SDL 3.4.20, linked statically (`config/launcher_deps.txt`
+pins the commit; no `SDL3.dll` exists). The launcher runs SDL on the main thread and quits it completely; the game then
+starts it again on the guest thread before any guest code, because the game creates and pumps its window there, which
+makes that thread SDL's video thread. Video and gamepads only: the game keeps its DirectSound (the system `DSound.dll`),
+so SDL audio is not started. `SDL_WINDOWS_ENABLE_MESSAGELOOP` is 0: SDL never calls `PeekMessage`, the game's own loop
+is the only message loop, and SDL's window procedure turns the messages it dispatches into SDL events. `platform_pump`
+drains them on the guest thread (in `GetCursorPos` before every read of the cursor, and with each gamepad sample): mouse
+motion goes to `window_host.c`, controller connections to `gamepad.c`; everything else is dropped or never queued. SDL
+stops in the host's cleanup, on the same thread, after the window stops being an SDL window. A failure to start SDL's
+video ends the run with `HOST_EXIT_SETUP` and SDL's error in the log; a failure of its gamepads leaves the keyboard and
+mouse.
+
+What stays Win32 and why: the guest's own window API (`CreateWindowExA`, its window procedure, `PeekMessageA`,
+`GetCursorPos`, `ShowCursor`, `ClipCursor`...) is a contract of the lifted code and keeps its shims; the keyboard the game
+reads is its own key messages and `GetAsyncKeyState`, so the host's keys are taken from those messages before SDL and the
+game see them; the window's placement, DPI, letterbox child and F11 are the host procedure's, in front of SDL's; the D3D11
+swap chain needs the presentation child's `HWND`.
+
 ## Window
 
-`src/host/window_host.c`. The game creates one popup window at (0,0), 640x480, and from then on
+`src/host/window_host.c`. The window is also an SDL window (`SDL_CreateWindowWithProperties` with
+`SDL_PROP_WINDOW_CREATE_WIN32_HWND_POINTER`): SDL's procedure goes in front of the game's and the host's in front of
+SDL's, so the host sees every message first. Messages SDL would answer itself instead of passing on (`WM_PAINT`'s
+validation, `WM_ERASEBKGND`, `WM_NCCALCSIZE`, `WM_NCHITTEST`, `WM_SYSCOMMAND`, `WM_DPICHANGED`, `WM_GETDPISCALEDSIZE`,
+touch, drops; `window_message_skips_sdl`) go straight to the game's procedure, and so do `WM_WINDOWPOSCHANGING` and
+`WM_WINDOWPOSCHANGED`, after which SDL would rewrite the style from its own flags over F11's borderless one (SDL takes
+the client rectangle from the window itself when it confines the cursor), and the mouse messages (the pointer is the
+host's; SDL reads relative motion from the device), and so do the messages the host makes for
+the game (gamepad clicks, deferred activation, `WM_CLOSE`). SDL's touch registration is undone and its drop events are
+off, so the window behaves as before. Letting SDL go puts the game's procedure back, so the host hooks the window again.
+ The game creates one popup window at (0,0), 640x480, and from then on
 treats it as the whole screen. `CreateWindowExA` is shimmed, so that popup is created as an
 ordinary overlapped window (title bar, sizing frame, minimize/maximize/close), centered in the work
 area of the Monitor setting's monitor, at the Window size setting (pixels) or, with Auto, at that
@@ -652,11 +682,13 @@ on it answer that way. The game's cursor is virtual and the real cursor is never
   size / picture size)`, clamped to the display), so the game's own drawn cursor and its buttons work.
 - Gameplay: the game re-centres its cursor every frame (`0x005F80B0`) and steers by the distance.
   `INPUT_GAMEPLAY_CAPTURED` (`CGameWnd` in front, not stopped, window focused and not minimised) is
-  the only state with relative Raw Input (`WM_INPUT`; cursor deltas if Raw Input is unavailable), a
-  hidden cursor and `ClipCursor` to the picture on the screen, windowed or full screen. The real
-  cursor is never moved. Every other state calls `ClipCursor(NULL)`: Esc and F1 free it on
-  their key-down (then `CInGameOptionsWnd`, `CHintWnd` make it `INPUT_DIALOG`), and
-  so do Alt+Tab, focus loss, minimising, F11 (re-clipped to the new picture afterwards), a move or
+  the only state with SDL's relative mouse mode (SDL hides the cursor, confines it and reads the device on its own raw
+  input thread; cursor deltas confined by `SDL_SetWindowMouseRect` to the picture if SDL refuses relative mode),
+  windowed or full screen. Motion reaches the virtual cursor only when SDL stamped it after this capture began
+  (`relative_motion_accepted`), so nothing queued before a recapture (Quick Save, Quick Load, a menu, Alt+Tab) turns
+  the view, and every change of mode starts a new motion base. Every other state ends relative mode (SDL puts the real
+  cursor back where it was): Esc and F1 free it on their key-down (then `CInGameOptionsWnd`, `CHintWnd` make it `INPUT_DIALOG`), and
+  so do Alt+Tab, focus loss, minimising, F11 (captured again afterwards), a move or
   size loop and closing. Returning to `CGameWnd` recaptures. A capture that starts while a button
   is held outside the picture (the click on the title bar that activated the window) waits for the
   release.
@@ -673,11 +705,12 @@ on it answer that way. The game's cursor is virtual and the real cursor is never
 ### Gamepad
 
 `src/host/gamepad.c`, `gamepad_menu.c`, `gamepad_policy.c` (no SDL, no window: tested by `gamepad_tests`) and
-`pad_glyphs.c`. SDL3 (the launcher's static SDL) is started for gamepads only (`SDL_INIT_GAMEPAD`, no SDL video and no
-SDL window) on the guest thread, the first time it is needed; every SDL call stays on that thread. A failure leaves the
-keyboard and mouse as they are. SDL's raw input joystick driver stays off: it reads the thread's whole raw input buffer,
-the game's mouse included. Only connection events are taken from SDL's queue (the per-input events are turned off);
-buttons and axes are read directly once per frame.
+`pad_glyphs.c`. SDL3 gamepads (`SDL_GetGamepads`, `SDL_OpenGamepad`, `SDL_GetGamepadButton`, `SDL_GetGamepadAxis`)
+through SDL's own backends; nothing in the host names XInput or a controller brand's API, so any `SDL_Gamepad` works.
+`platform.c` starts SDL's gamepad subsystem with its video; every SDL call stays on the guest thread. A failure leaves the
+keyboard and mouse as they are. SDL's raw input joystick driver stays off: it reads the thread's whole raw input buffer.
+Only connection events are taken from SDL's queue (the per-input events are turned off); buttons and axes are read
+directly once per frame.
 
 - Gameplay: `CInput::tinReadDefaultControls` (`0x005F80B0`, an optional override) runs as it is, then the gamepad is
   added to its `SInput` (`CInput + 8`: elapsed, rotate x/y, move x/y, state, hit). Movement is analog through the game's
