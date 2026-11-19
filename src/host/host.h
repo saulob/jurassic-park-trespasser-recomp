@@ -291,6 +291,7 @@ void d3dr_text_box(HDC dc, const RECT* box);
 /* ui_canvas.c: the game's 640x480 menus and dialogs on a larger game screen draw into an offscreen canvas the
  * renderer scales over the frame. */
 void ui_canvas_install(void);
+void menu_audio_install(void);
 /* engine_limits.c */
 void engine_limits_keep_original(void);
 int engine_limits_original(void);

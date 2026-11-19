@@ -1232,6 +1232,17 @@
     "cpu_polygons.c"
    ],
    "class": "CScreenRenderDWI"
+  },
+  {
+   "names": [
+    "WINDOW_SELECTION_SAMPLE",
+    "SAMPLE_VOLUME_DB",
+    "SAMPLE_ATTENUATION_DB"
+   ],
+   "files": [
+    "menu_audio.c"
+   ],
+   "set": "SelectionSound"
   }
  ],
  "sets": {
@@ -1503,6 +1514,14 @@
   "TextLayout": {
    "functions": [
     "0050E8C0"
+   ]
+  },
+  "SelectionSound": {
+   "functions": [
+    "00414D50",
+    "00414EF0",
+    "0043CE40",
+    "0043D7E0"
    ]
   }
  }

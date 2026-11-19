@@ -68,6 +68,7 @@ set(HOST_SOURCES
   src/host/registry.c
   src/host/io_trace.c
   src/host/menu_audio_policy.c
+  src/host/menu_audio.c
   src/host/window_host.c
   src/host/platform.c
   src/host/window_title.c

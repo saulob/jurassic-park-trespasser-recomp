@@ -14,6 +14,7 @@ GUEST_OVERRIDE(00411FC0, REQUIRED) /* window centring (ui_canvas.c) */
 GUEST_OVERRIDE(004129C0, REQUIRED) /* RasterBlt (ui_canvas.c) */
 GUEST_OVERRIDE(00413160, OPTIONAL) /* screen message (loading_hd.c) */
 GUEST_OVERRIDE(004143B0, OPTIONAL) /* level load (loading_hd.c) */
+GUEST_OVERRIDE(00414E50, OPTIONAL) /* menu selection sound loader, menu-only volume (menu_audio.c) */
 GUEST_OVERRIDE(00415BD0, OPTIONAL) /* CLoaderWnd draw and present (loading_hd.c) */
 GUEST_OVERRIDE(00417420, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
 GUEST_OVERRIDE(004174A0, REQUIRED) /* UI windows (ui_canvas.c) */

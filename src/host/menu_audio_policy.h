@@ -8,4 +8,11 @@
  * `path` is that file. */
 int menu_audio_source(const char* path, const char* installed_dir, const char* game_dir, char* out, size_t cap);
 
+/* Amplitude of the menus' selection sound relative to the game's own level. */
+#define MENU_EFFECT_GAIN 0.5f
+
+/* The argument for the game's sample volume setter (dB, added to the sample's attenuation) that leaves a sample whose
+ * volume is current_db at MENU_EFFECT_GAIN of its amplitude. */
+float menu_effect_volume_arg(float current_db, float attenuation_db);
+
 #endif

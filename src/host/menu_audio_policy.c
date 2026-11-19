@@ -1,5 +1,6 @@
 #include "menu_audio_policy.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -26,4 +27,8 @@ int menu_audio_source(const char* path, const char* installed_dir, const char* g
     if (!same_text(path, installed_dir, dir) || path[dir] != '\\' || !same_text(path + dir + 1, name, sizeof name - 1)) return 0;
     n = snprintf(out, cap, "%s\\data\\Menu.tpa", game_dir);
     return n > 0 && (size_t)n < cap;
+}
+
+float menu_effect_volume_arg(float current_db, float attenuation_db) {
+    return current_db - attenuation_db + 20.0f * log10f(MENU_EFFECT_GAIN);
 }

@@ -621,6 +621,7 @@ int main(int argc, char** argv) {
     cpu_polygons_install();
     gamepad_install();
     l10n_install();
+    menu_audio_install();
     if (!guest_overrides_check()) return HOST_EXIT_SETUP;
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
     host_log("guest", "entering the CRT entry point 0x%08X", lift_entry_va);

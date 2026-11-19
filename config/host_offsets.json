@@ -3681,6 +3681,48 @@
    }
   },
   {
+   "file": "src/host/menu_audio.c",
+   "name": "WINDOW_SELECTION_SAMPLE",
+   "value": "0x160",
+   "struct": "SelectionSound",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SelectionSound: 4 functions, 0 without a counterpart; +0x160 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SelectionSound: 4 functions, 0 without a counterpart; +0x160 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/menu_audio.c",
+   "name": "SAMPLE_VOLUME_DB",
+   "value": "0xC",
+   "struct": "SelectionSound",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SelectionSound: 4 functions, 0 without a counterpart; +0xc used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SelectionSound: 4 functions, 0 without a counterpart; +0xc used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/menu_audio.c",
+   "name": "SAMPLE_ATTENUATION_DB",
+   "value": "0x5C",
+   "struct": "SelectionSound",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SelectionSound: 4 functions, 0 without a counterpart; +0x5c used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SelectionSound: 4 functions, 0 without a counterpart; +0x5c used by 2 identical functions"
+   }
+  },
+  {
    "file": "src/host/objectives.c",
    "name": "NAME_BYTES",
    "value": "0x40",

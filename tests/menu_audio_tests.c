@@ -1,5 +1,6 @@
 /* The menus' selection sound, from the retail executable and Menu.tpa read as plain files (nothing runs, nothing plays),
  * and the host's lookup of the file the menus load it from. The retail checks are skipped when the game is not there. */
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,8 @@
 #define SOUND_STOP 0x0043D850u
 #define SOUND_PLAY 0x0043D280u
 #define SOUND_LOAD 0x00414D50u
+#define SAMPLE_CTOR 0x0043CE40u
+#define SOUND_SET_VOLUME 0x0043D7E0u
 #define MENU_AUDIO_OPEN 0x004148F0u
 #define WINDOW_NOTIFY 0x00415400u
 #define SAVE_WINDOW_FULL_NAME 0x00411000u
@@ -289,8 +292,24 @@ static void file_lookup(void) {
           "missing arguments are refused");
 }
 
+static void effect_gain(void) {
+    float arg = menu_effect_volume_arg(0.0f, 0.0f), shifted = menu_effect_volume_arg(-3.0f, -2.0f);
+    CHECK(MENU_EFFECT_GAIN == 0.5f, "the menu effect gain is half");
+    CHECK(fabsf(powf(10.0f, arg / 20.0f) - 0.5f) < 1e-4f && fabsf(arg + 6.0206f) < 1e-3f, "full volume becomes half the amplitude, -6.02 dB");
+    CHECK(fabsf((shifted + -2.0f) - (-3.0f - 6.0206f)) < 1e-3f, "the setter's own attenuation is accounted for");
+    if (g_exe) {
+        static const uint8_t store_sample[] = { 0x89, 0x86, 0x60, 0x01, 0x00, 0x00 };
+        static const uint8_t ctor_zero[] = { 0x89, 0x5E, 0x5C, 0x89, 0x5E, 0x0C };
+        static const uint8_t setter_head[] = { 0x56, 0x8B, 0xF1, 0x57, 0x8B, 0x7E, 0x18 };
+        CHECK(bytes_at(SOUND_LOAD + 0x26, store_sample, sizeof store_sample), "the loader stores the sample at window+0x160");
+        CHECK(bytes_at(SAMPLE_CTOR + 0x35, ctor_zero, sizeof ctor_zero), "a new sample starts at 0 dB with no attenuation");
+        CHECK(bytes_at(SOUND_SET_VOLUME, setter_head, sizeof setter_head), "the sample volume setter is where the host calls it");
+    }
+}
+
 int main(void) {
     g_exe = read_file(GAME_DIR "trespass.exe", &g_exe_size);
+    effect_gain();
     if (g_exe) {
         retail_executable();
         menu_sounds();
