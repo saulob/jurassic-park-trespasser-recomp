@@ -95,6 +95,52 @@ double jpt_hor_plus_scale(int guest_w, int guest_h);
 /* Where content of content_w x content_h is shown in a client area: letterboxed (centred, shape kept) or stretched. */
 jpt_rect_t jpt_present_rect(int client_w, int client_h, int content_w, int content_h, int stretch);
 
+/* How the game's screen is shown in the host window. The host client size belongs to the user and the platform and
+ * takes effect at once; a change of the game's screen size only changes the view, and only when the first frame of the
+ * new screen (the one carrying its generation) is about to be shown: until then the active screen keeps describing the
+ * picture on display. */
+typedef struct {
+    jpt_size_t host;
+    jpt_size_t guest;
+    unsigned generation;
+    int stretch;
+    jpt_rect_t view;
+    int has_pending;
+    jpt_size_t pending_guest;
+    unsigned pending_generation;
+} jpt_presentation_t;
+
+void jpt_presentation_init(jpt_presentation_t* p, int stretch);
+/* Both return 1 when the view changed; a size that is not positive is ignored. */
+int jpt_presentation_set_host(jpt_presentation_t* p, int client_w, int client_h);
+int jpt_presentation_set_guest(jpt_presentation_t* p, int guest_w, int guest_h);
+/* The game asks for a screen of its own. With nothing shown yet it is active at once (returns 1); the size already
+ * active cancels a pending request; any other size becomes pending under this generation, replacing an earlier one. */
+int jpt_presentation_request_guest(jpt_presentation_t* p, int guest_w, int guest_h, unsigned generation);
+/* A frame of this generation is about to be shown: the pending screen becomes active. Returns 1 when it did. Frames of
+ * any other generation change nothing. */
+int jpt_presentation_commit(jpt_presentation_t* p, unsigned generation);
+/* The client size a window that follows the game's shape (Window size Auto, Letterbox) takes for a screen: the width
+ * kept, the height of the screen's shape, reduced to fit the work area with its frame. Unchanged for a size that is not
+ * positive. */
+jpt_size_t jpt_auto_client(jpt_size_t client, jpt_size_t guest, int frame_w, int frame_h, int work_w, int work_h);
+
+typedef struct {
+    int committed; /* the pending screen became active */
+    int resize;    /* the host client became `client`: the window must be resized to it */
+    jpt_size_t client;
+} jpt_commit_t;
+
+/* jpt_presentation_commit, and with follow_guest the host client takes the new screen's shape in the same step, so the
+ * view, the mouse transform and the window geometry change together. */
+jpt_commit_t jpt_presentation_commit_frame(jpt_presentation_t* p, unsigned generation, int follow_guest, int frame_w,
+                                           int frame_h, int work_w, int work_h);
+/* The view the next committed screen will have in the current host, the active one when nothing is pending. */
+jpt_rect_t jpt_presentation_next_view(const jpt_presentation_t* p);
+/* The active screen's pixel under a host client pixel (rounded down); 0 when it is outside the view or nothing is
+ * shown. */
+int jpt_presentation_to_guest(const jpt_presentation_t* p, int client_x, int client_y, int* guest_x, int* guest_y);
+
 typedef struct {
     const char* key;
     int width, height; /* 0x0 for auto */

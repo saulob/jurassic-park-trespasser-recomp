@@ -111,6 +111,7 @@ Add-Suite $s 'script' 'tests\build_script_tests.ps1' 'tools\build.ps1 statically
 
 $s = 'Platform'
 Add-Exes $s @(
+    , @('presentation_tests', 'window presentation: pending screen committed with the first frame of its generation, Auto window follows the game shape only then, fixed size never, mouse mapping, DPI, degenerate sizes', 100)
     , @('platform_tests', 'SDL 3.4.20 contract, single init and quit, window adoption, relative mouse policy, focus, recapture, DirectSound and A3D policy', 500)
     , @('host_tests', 'input and capture state machine, hotkeys, shutdown, Safe Mode, filesystem mapping, readbacks, D3D6 to D3D11 translation, shaders, hand and physics', 400000)
     , @('x87_tests', 'the patched runtime: x87 ring, inline rounding, per-site call cache', 50)

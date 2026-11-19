@@ -4150,7 +4150,7 @@ static int ao_frame_for(d3dr_target_t* t) {
 }
 
 static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height, ID3D11SamplerState* sampler,
-                        const DDGAMMARAMP* gamma, int vsync) {
+                        const DDGAMMARAMP* gamma, int vsync, unsigned generation) {
     static int s_held_logged;
     ID3D11RenderTargetView* rtv;
     if (!window_host_frames_allowed()) return 1;
@@ -4173,7 +4173,7 @@ static int present_view(HWND window, ID3D11ShaderResourceView* srv, UINT width, 
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
     R.bound.valid = 0;
-    return present_submit(vsync);
+    return present_submit(vsync, generation);
 }
 
 static void keep_last_frame(d3dr_target_t* t) {
@@ -4827,7 +4827,8 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
     resolved_view(t);
     keep_last_frame(t);
     R.ao.frame = ao_frame_for(t) ? t : NULL;
-    present_view(d->window, t->single_srv, t->width, t->height, R.point_clamp, &d->gamma, vsync);
+    present_view(d->window, t->single_srv, t->width, t->height, R.point_clamp, &d->gamma, vsync,
+                 front->display_generation);
     R.ao.frame = NULL;
     t->ao_scene = 0;
     R.ao.marking = R.ao.level != JPT_AO_OFF && assao_ready();
@@ -4855,7 +4856,7 @@ int d3dr_flip(dd_surface_t* front, int vsync) {
 }
 
 void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
-                      const DDGAMMARAMP* gamma, int vsync) {
+                      const DDGAMMARAMP* gamma, int vsync, unsigned generation) {
     UINT w = (UINT)(source->right - source->left), h = (UINT)(source->bottom - source->top), out_w, out_h;
     unsigned long selfmod_now = selfmod_entries();
     if (!ensure_device() || format->dwRGBBitCount != 16 || !w || !h) return;
@@ -4890,6 +4891,6 @@ void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
     upload_picture(R.screen, R.screen_scratch, w, h);
     choose_size(w, h, &out_w, &out_h);
     R.subtitle.pending = video_subtitles_for_screen((int)w, (int)h, (int)out_w, (int)out_h);
-    if (present_view(window, R.screen_srv, out_w, out_h, R.linear_clamp, gamma, vsync)) R.frames_dib++;
+    if (present_view(window, R.screen_srv, out_w, out_h, R.linear_clamp, gamma, vsync, generation)) R.frames_dib++;
     R.subtitle.pending = NULL;
 }

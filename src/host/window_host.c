@@ -2,7 +2,8 @@
  * The game treats its window as the whole screen. Here that window is an ordinary resizable one,
  * and the game keeps seeing the virtual display as a screen of its own: client == screen ==
  * (0,0)-(width,height). Pictures are shown by a mouse-transparent child window with the display's
- * aspect ratio; the rest of the client is black.
+ * aspect ratio; the rest of the client is black. A change of the game's screen size takes effect when the first
+ * frame of the new screen is presented (window_host_frame_commit), never before.
  *
  * The game's cursor is virtual: GetCursorPos/SetCursorPos read and write a position in display
  * pixels. In menus it follows the real cursor; in focused gameplay it moves by SDL's relative mouse
@@ -100,6 +101,8 @@ static struct {
     int title_w[2], title_h[2];
     int virtual_on;
     RECT view;
+    jpt_presentation_t pres;
+    jpt_presentation_t logged;
     int fullscreen, active, focused, size_move, transition;
     input_state_t state;
     guest_ui_view_t guest;
@@ -163,6 +166,7 @@ void window_host_init(void) {
     fps_counter_init(&s.fps, s.qpc_frequency.QuadPart, qpc_now());
     shutdown_init(&s.shutdown);
     s.state = INPUT_MENU;
+    jpt_presentation_init(&s.pres, 0);
     s.cfg.monitor = 1;
     s.cfg.show_fps = 1;
     if (set_context && set_context(DPI_CONTEXT_PER_MONITOR_V2))
@@ -178,6 +182,7 @@ void window_host_configure(int borderless, int monitor, int window_w, int window
     s.cfg.window_w = window_w;
     s.cfg.window_h = window_h;
     s.cfg.stretch = stretch;
+    s.pres.stretch = stretch != 0;
     s.cfg.show_fps = show_fps;
     s.cfg.show_resolution = show_resolution;
     strncpy(s.cfg.settings_path, settings_path ? settings_path : "", sizeof s.cfg.settings_path - 1);
@@ -218,11 +223,6 @@ static void frame_extents(DWORD style, DWORD exstyle, UINT dpi, int* width, int*
     else AdjustWindowRectEx(&r, style, FALSE, exstyle);
     *width = r.right - r.left;
     *height = r.bottom - r.top;
-}
-
-static long floor_div(long a, long b) {
-    long q = a / b;
-    return (a % b != 0 && ((a < 0) != (b < 0))) ? q - 1 : q;
 }
 
 static long round_div(long a, long b) { return (a + b / 2) / b; }
@@ -274,6 +274,10 @@ static void initial_placement(int content_w, int content_h, DWORD style, DWORD e
 
 static int display_known(void) { return s.fbw > 0 && s.fbh > 0; }
 
+static int active_w(void) { return s.pres.guest.width; }
+
+static int active_h(void) { return s.pres.guest.height; }
+
 static int virtual_window(HWND window) { return s.game && window == s.game && s.virtual_on && display_known(); }
 
 static int view_valid(void) { return s.view.right > s.view.left && s.view.bottom > s.view.top; }
@@ -286,7 +290,7 @@ static int ui_canvas_active(void) { return s.ui_canvas && (s.state == INPUT_MENU
 static POINT pad_cursor_on_display(void) {
     POINT d = s.pad_at;
     if (ui_canvas_active()) {
-        jpt_ui_canvas_t canvas = jpt_ui_canvas(s.fbw, s.fbh);
+        jpt_ui_canvas_t canvas = jpt_ui_canvas(active_w(), active_h());
         int x, y;
         jpt_ui_to_frame(&canvas, (int)s.pad_at.x, (int)s.pad_at.y, &x, &y);
         d.x = x;
@@ -296,12 +300,13 @@ static POINT pad_cursor_on_display(void) {
 }
 
 static POINT client_to_display(POINT c) {
-    POINT v;
-    long view_w = s.view.right - s.view.left, view_h = s.view.bottom - s.view.top;
-    v.x = (LONG)floor_div((long)(c.x - s.view.left) * s.fbw, view_w);
-    v.y = (LONG)floor_div((long)(c.y - s.view.top) * s.fbh, view_h);
+    POINT v = { 0, 0 };
+    int x, y;
+    jpt_presentation_to_guest(&s.pres, (int)c.x, (int)c.y, &x, &y);
+    v.x = x;
+    v.y = y;
     if (ui_canvas_active()) {
-        jpt_ui_canvas_t canvas = jpt_ui_canvas(s.fbw, s.fbh);
+        jpt_ui_canvas_t canvas = jpt_ui_canvas(active_w(), active_h());
         int x, y;
         jpt_ui_to_canvas(&canvas, (int)v.x, (int)v.y, &x, &y);
         v.x = x;
@@ -320,15 +325,6 @@ static POINT screen_to_client_point(POINT p) {
 
 static POINT screen_to_display(POINT p) { return client_to_display(screen_to_client_point(p)); }
 
-static void compute_view(const RECT* client, RECT* view) {
-    int cw = client->right - client->left, ch = client->bottom - client->top;
-    jpt_rect_t r = jpt_present_rect(cw, ch, display_known() ? s.fbw : 0, display_known() ? s.fbh : 0, s.cfg.stretch);
-    view->left = client->left + r.left;
-    view->top = client->top + r.top;
-    view->right = client->left + r.right;
-    view->bottom = client->top + r.bottom;
-}
-
 static void paint_background(void) {
     HDC dc = GetDC(s.game);
     RECT r;
@@ -338,10 +334,24 @@ static void paint_background(void) {
     ReleaseDC(s.game, dc);
 }
 
+static void log_presentation(void) {
+    const jpt_presentation_t* p = &s.pres;
+    if (p->host.width <= 0 || p->guest.width <= 0) return;
+    if (s.logged.host.width == p->host.width && s.logged.host.height == p->host.height &&
+        s.logged.guest.width == p->guest.width && s.logged.guest.height == p->guest.height &&
+        !memcmp(&s.logged.view, &p->view, sizeof p->view))
+        return;
+    s.logged = *p;
+    host_log("window", "Presentation: host %dx%d, guest %dx%d generation %u, viewport %dx%d at %d,%d (%s)", p->host.width,
+             p->host.height, p->guest.width, p->guest.height, p->generation, p->view.right - p->view.left,
+             p->view.bottom - p->view.top, p->view.left, p->view.top, p->stretch ? "Stretch" : "Letterbox");
+}
+
 static void layout_surface(void) {
     RECT client, view;
     if (!s.game || !GetClientRect(s.game, &client) || client.right <= 0 || client.bottom <= 0) return;
-    compute_view(&client, &view);
+    jpt_presentation_set_host(&s.pres, client.right, client.bottom);
+    SetRect(&view, s.pres.view.left, s.pres.view.top, s.pres.view.right, s.pres.view.bottom);
     if (EqualRect(&view, &s.view)) return;
     s.view = view;
     if (s.surface)
@@ -522,7 +532,7 @@ static void update_input(const char* why) {
             s.captures++;
             s.clip_hold_until = 0;
         }
-        pointer_recapture(s.state, next, &s.cursor.x, &s.cursor.y, s.fbw, s.fbh);
+        pointer_recapture(s.state, next, &s.cursor.x, &s.cursor.y, active_w(), active_h());
         memset(&s.mouse_scale, 0, sizeof s.mouse_scale);
         memset(&s.motion, 0, sizeof s.motion);
         s.last_move_valid = 0;
@@ -581,19 +591,16 @@ void window_host_set_ui_canvas(int on) { s.ui_canvas = on != 0; }
 
 int window_host_pointer(int* x, int* y) {
     POINT p, c;
-    long view_w = s.view.right - s.view.left, view_h = s.view.bottom - s.view.top;
     if (!virtual_input_active() || input_cursor_virtual(s.state)) return 0;
     if (s.pad_cursor) {
         p = pad_cursor_on_display();
         *x = (int)p.x;
         *y = (int)p.y;
-        return *x >= 0 && *y >= 0 && *x < s.fbw && *y < s.fbh;
+        return *x >= 0 && *y >= 0 && *x < active_w() && *y < active_h();
     }
     if (!GetCursorPos(&p)) return 0;
     c = screen_to_client_point(p);
-    *x = (int)floor_div((long)(c.x - s.view.left) * s.fbw, view_w);
-    *y = (int)floor_div((long)(c.y - s.view.top) * s.fbh, view_h);
-    return *x >= 0 && *y >= 0 && *x < s.fbw && *y < s.fbh;
+    return jpt_presentation_to_guest(&s.pres, (int)c.x, (int)c.y, x, y);
 }
 
 void window_host_display_size(int* width, int* height) {
@@ -616,8 +623,9 @@ int window_host_view_rect(RECT* view) {
 }
 
 void window_host_view_size(int* width, int* height) {
-    *width = view_valid() ? (int)(s.view.right - s.view.left) : 0;
-    *height = view_valid() ? (int)(s.view.bottom - s.view.top) : 0;
+    jpt_rect_t next = jpt_presentation_next_view(&s.pres);
+    *width = next.right > next.left ? next.right - next.left : 0;
+    *height = next.bottom > next.top ? next.bottom - next.top : 0;
 }
 
 static void cover_monitor(void) {
@@ -701,7 +709,7 @@ static void constrain_sizing(HWND window, WPARAM edge, RECT* r) {
     UINT dpi = window_dpi(window);
     int frame_w, frame_h;
     long cw, ch, max_w, max_h, min_w;
-    if (!display_known() || fixed_window_size() || s.cfg.stretch) return;
+    if (active_w() <= 0 || fixed_window_size() || s.cfg.stretch) return;
     memset(&mi, 0, sizeof mi);
     mi.cbSize = sizeof mi;
     GetMonitorInfoA(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &mi);
@@ -712,13 +720,13 @@ static void constrain_sizing(HWND window, WPARAM edge, RECT* r) {
     min_w = MulDiv(MIN_CONTENT_WIDTH, (int)dpi, BASE_DPI);
     cw = (r->right - r->left) - frame_w;
     ch = (r->bottom - r->top) - frame_h;
-    if (edge == WMSZ_TOP || edge == WMSZ_BOTTOM) cw = round_div(ch * s.fbw, s.fbh);
+    if (edge == WMSZ_TOP || edge == WMSZ_BOTTOM) cw = round_div(ch * active_w(), active_h());
     if (cw < min_w) cw = min_w;
     if (cw > max_w) cw = max_w;
-    ch = round_div(cw * s.fbh, s.fbw);
+    ch = round_div(cw * active_h(), active_w());
     if (ch > max_h) {
         ch = max_h;
-        cw = round_div(ch * s.fbw, s.fbh);
+        cw = round_div(ch * active_w(), active_h());
     }
     if (edge == WMSZ_LEFT || edge == WMSZ_TOPLEFT || edge == WMSZ_BOTTOMLEFT) r->left = r->right - (LONG)(cw + frame_w);
     else r->right = r->left + (LONG)(cw + frame_w);
@@ -741,7 +749,7 @@ static void limit_minimum(HWND window, MINMAXINFO* info) {
     UINT dpi = window_dpi(window);
     int frame_w, frame_h;
     long min_w = MulDiv(MIN_CONTENT_WIDTH, (int)dpi, BASE_DPI);
-    long min_h = display_known() ? round_div(min_w * s.fbh, s.fbw) : round_div(min_w * 3, 4);
+    long min_h = active_w() > 0 ? round_div(min_w * active_h(), active_w()) : round_div(min_w * 3, 4);
     frame_extents((DWORD)GetWindowLongPtrA(window, GWL_STYLE), (DWORD)GetWindowLongPtrA(window, GWL_EXSTYLE), dpi,
                   &frame_w, &frame_h);
     info->ptMinTrackSize.x = (LONG)(min_w + frame_w);
@@ -767,8 +775,8 @@ static POINT game_cursor(void) {
         s.cursor = screen_to_display(real);
         if (s.cursor.x < 0) s.cursor.x = 0;
         if (s.cursor.y < 0) s.cursor.y = 0;
-        if (s.cursor.x >= s.fbw) s.cursor.x = s.fbw - 1;
-        if (s.cursor.y >= s.fbh) s.cursor.y = s.fbh - 1;
+        if (s.cursor.x >= active_w()) s.cursor.x = active_w() - 1;
+        if (s.cursor.y >= active_h()) s.cursor.y = active_h() - 1;
     }
     return s.cursor;
 }
@@ -801,7 +809,7 @@ int window_host_input_focused(void) {
 }
 
 void window_host_set_pad_cursor(int x, int y) {
-    int w = ui_canvas_active() ? JPT_UI_CANVAS_W : s.fbw, h = ui_canvas_active() ? JPT_UI_CANVAS_H : s.fbh;
+    int w = ui_canvas_active() ? JPT_UI_CANVAS_W : active_w(), h = ui_canvas_active() ? JPT_UI_CANVAS_H : active_h();
     if (!display_known() || input_cursor_virtual(s.state)) return;
     s.pad_at.x = x < 0 ? 0 : x >= w ? w - 1 : x;
     s.pad_at.y = y < 0 ? 0 : y >= h ? h - 1 : y;
@@ -1151,6 +1159,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         return TRUE;
     case WM_SIZE:
         layout_surface();
+        if (!s.size_move) log_presentation();
         update_input("resize");
         break;
     case WM_ERASEBKGND: {
@@ -1165,6 +1174,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         break;
     case WM_EXITSIZEMOVE:
         s.size_move = 0;
+        log_presentation();
         update_input("move/resize done");
         break;
     case WM_ACTIVATE:
@@ -1344,36 +1354,70 @@ HWND window_host_game_window(void) { return s.game; }
 
 HWND window_host_surface(HWND window) { return s.surface && window == s.game ? s.surface : window; }
 
-void window_host_set_display(HWND window, int width, int height) {
-    int aspect_changed;
+static int window_follows_guest(void) {
+    return s.game && !fixed_window_size() && !s.cfg.stretch && !s.fullscreen && !IsZoomed(s.game) && !IsIconic(s.game);
+}
+
+static void window_frame_and_work(int* frame_w, int* frame_h, int* work_w, int* work_h) {
+    MONITORINFO mi;
+    memset(&mi, 0, sizeof mi);
+    mi.cbSize = sizeof mi;
+    GetMonitorInfoA(MonitorFromWindow(s.game, MONITOR_DEFAULTTONEAREST), &mi);
+    frame_extents((DWORD)GetWindowLongPtrA(s.game, GWL_STYLE), (DWORD)GetWindowLongPtrA(s.game, GWL_EXSTYLE),
+                  window_dpi(s.game), frame_w, frame_h);
+    *work_w = mi.rcWork.right - mi.rcWork.left;
+    *work_h = mi.rcWork.bottom - mi.rcWork.top;
+}
+
+static void log_pending_presentation(unsigned generation) {
+    jpt_size_t target = s.pres.host;
+    if (window_follows_guest()) {
+        int frame_w, frame_h, work_w, work_h;
+        window_frame_and_work(&frame_w, &frame_h, &work_w, &work_h);
+        target = jpt_auto_client(s.pres.host, s.pres.pending_guest, frame_w, frame_h, work_w, work_h);
+    }
+    host_log("window", "Presentation pending: guest %dx%d generation %u, host target %dx%d", s.pres.pending_guest.width,
+             s.pres.pending_guest.height, generation, target.width, target.height);
+}
+
+void window_host_set_display(HWND window, int width, int height, unsigned generation) {
+    int active, known;
     if (window != s.game || !window || width <= 0 || height <= 0) return;
-    aspect_changed = display_known() && (long)s.fbw * height != (long)s.fbh * width && !fixed_window_size() &&
-                     !s.cfg.stretch;
+    known = s.pres.has_pending && s.pres.pending_generation == generation;
     s.fbw = width;
     s.fbh = height;
     s.virtual_on = 1;
     s.cursor.x = width / 2;
     s.cursor.y = height / 2;
     s.pad_cursor = 0;
-    if (aspect_changed && !s.fullscreen && !IsZoomed(window) && !IsIconic(window)) {
-        RECT client, outer;
-        GetClientRect(window, &client);
-        GetWindowRect(window, &outer);
-        SetWindowPos(window, NULL, 0, 0, outer.right - outer.left,
-                     (outer.bottom - outer.top) - client.bottom + (int)round_div((long)client.right * height, width),
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    active = jpt_presentation_request_guest(&s.pres, width, height, generation);
+    if (s.pres.has_pending) {
+        if (!known) log_pending_presentation(generation);
+        return;
     }
-    s.view.right = s.view.left;
+    if (active) s.view.right = s.view.left;
     layout_surface();
     update_input("display mode");
     refresh_title();
-    {
-        RECT client = { 0, 0, 0, 0 };
-        GetClientRect(window, &client);
-        host_log("window", "game screen %dx%d; presentation %ldx%ld in a %ldx%ld client (%s)", width, height,
-                 s.view.right - s.view.left, s.view.bottom - s.view.top, client.right, client.bottom,
-                 s.cfg.stretch ? "Stretch" : "Letterbox");
-    }
+    log_presentation();
+}
+
+/* Called just before the frame is presented: the window, the view and the mouse mapping change in this one step. */
+void window_host_frame_commit(unsigned generation) {
+    jpt_commit_t commit;
+    int frame_w = 0, frame_h = 0, work_w = 0, work_h = 0, follow;
+    if (!s.game || !s.pres.has_pending || s.pres.pending_generation != generation) return;
+    follow = window_follows_guest();
+    if (follow) window_frame_and_work(&frame_w, &frame_h, &work_w, &work_h);
+    commit = jpt_presentation_commit_frame(&s.pres, generation, follow, frame_w, frame_h, work_w, work_h);
+    if (!commit.committed) return;
+    if (commit.resize)
+        SetWindowPos(s.game, NULL, 0, 0, commit.client.width + frame_w, commit.client.height + frame_h,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    layout_surface();
+    update_input("presentation");
+    refresh_title();
+    log_presentation();
 }
 
 void window_host_clear_display(HWND window) {

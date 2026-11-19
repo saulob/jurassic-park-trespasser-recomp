@@ -40,6 +40,10 @@ static int desktop_frequency(void) {
     return EnumDisplaySettingsA(NULL, ENUM_CURRENT_SETTINGS, &mode) ? (int)mode.dmDisplayFrequency : 60;
 }
 
+static unsigned s_display_generation;
+
+unsigned dd_display_generation(void) { return s_display_generation; }
+
 void dd_display_size(const dd_device_t* d, DWORD* width, DWORD* height) {
     if (d->mode_set) {
         *width = d->mode_width;
@@ -112,7 +116,7 @@ static void fill_mode_desc(DDSURFACEDESC2* desc, DWORD size, DWORD width, DWORD 
 static void sync_window_display(dd_device_t* d) {
     if (!d->window) return;
     if ((d->coop & DDSCL_FULLSCREEN) && d->mode_set)
-        window_host_set_display(d->window, (int)d->mode_width, (int)d->mode_height);
+        window_host_set_display(d->window, (int)d->mode_width, (int)d->mode_height, s_display_generation);
     else
         window_host_clear_display(d->window);
 }
@@ -413,6 +417,7 @@ static HRESULT set_display_mode(void* This, DWORD width, DWORD height, DWORD bpp
         d->mode_width = width;
         d->mode_height = height;
         d->mode_set = 1;
+        s_display_generation++;
         dd_device_mode_changed(d);
     }
     dd_log("SetDisplayMode %lux%lux%lu (refresh %lu): virtual mode set, RGB565", width, height, bpp, refresh);

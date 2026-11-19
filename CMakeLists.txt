@@ -511,6 +511,12 @@ target_link_libraries(log_tests PRIVATE jpt_common)
 target_compile_options(log_tests PRIVATE /W3)
 target_compile_definitions(log_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"" RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
   ${TRESPASSER_X87_MODEL})
+# Window presentation policy: the game's screen size changes the window only with its first presented frame (headless):
+#   ninja -C <build dir> presentation_tests && presentation_tests.exe
+add_executable(presentation_tests EXCLUDE_FROM_ALL tests/presentation_tests.c src/common/jpt_display.c)
+target_include_directories(presentation_tests PRIVATE src/common)
+target_compile_options(presentation_tests PRIVATE /W3)
+target_compile_definitions(presentation_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 # The SDL3 platform layer's decisions (mouse motion after recaptures, message routing past SDL, SDL's lifetime, hotkeys,
 # controller hotplug) and where the host starts, pumps and stops SDL (headless, no SDL):
 #   ninja -C <build dir> platform_tests && platform_tests.exe

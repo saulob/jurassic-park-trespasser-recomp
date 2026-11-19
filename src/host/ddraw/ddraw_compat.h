@@ -47,6 +47,7 @@ struct dd_surface {
     dd_surface_t* next;
     int orphaned;
     int lost;
+    unsigned display_generation;
     DWORD caps;
     DWORD back_buffers;
     DWORD width, height;
@@ -128,6 +129,8 @@ int dd_format_bytes(const DDPIXELFORMAT* pf);
 int dd_format_equal(const DDPIXELFORMAT* a, const DDPIXELFORMAT* b);
 
 void dd_display_size(const dd_device_t* d, DWORD* width, DWORD* height);
+/* Changes with every new virtual display size; a surface carries the one it was made or restored under. */
+unsigned dd_display_generation(void);
 HRESULT dd_create_surface(dd_device_t* d, const DDSURFACEDESC* desc, int version, void** out);
 void* dd_surface_face(dd_surface_t* s, int version);
 void dd_surface_added(dd_device_t* d);
@@ -174,7 +177,7 @@ typedef struct {
 
 int present_adapter(dd_adapter_t* out);
 void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
-                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync);
+                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation);
 void present_release(void);
 
 #endif

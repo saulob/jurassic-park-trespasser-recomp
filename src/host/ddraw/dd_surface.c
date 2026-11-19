@@ -158,6 +158,7 @@ static dd_surface_t* new_surface(dd_device_t* d, DWORD width, DWORD height, cons
     s->s4.version = 4;
     d3d_surface_init_texture_face(s);
     s->device = d;
+    s->display_generation = dd_display_generation();
     s->width = width;
     s->height = height;
     s->format = *format;
@@ -189,7 +190,8 @@ void dd_present(dd_surface_t* front, int vsync) {
     }
     if (!window) return;
     GdiFlush();
-    present_frame(window, front->bits, front->pitch, &source, &front->format, &d->gamma, d->gamma_changed, vsync);
+    present_frame(window, front->bits, front->pitch, &source, &front->format, &d->gamma, d->gamma_changed, vsync,
+                  front->display_generation);
     d->gamma_changed = 0;
 }
 
@@ -905,6 +907,7 @@ static HRESULT STDMETHODCALLTYPE s_Restore(IDirectDrawSurface* This) {
     dd_display_size(s->device, &width, &height);
     if (s->width != width || s->height != height) DD_RETURN(DDERR_WRONGMODE);
     s->lost = 0;
+    s->display_generation = dd_display_generation();
     DD_RETURN(DD_OK);
 }
 

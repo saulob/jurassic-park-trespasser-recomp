@@ -207,6 +207,104 @@ jpt_rect_t jpt_present_rect(int client_w, int client_h, int content_w, int conte
     return r;
 }
 
+void jpt_presentation_init(jpt_presentation_t* p, int stretch) {
+    memset(p, 0, sizeof *p);
+    p->stretch = stretch != 0;
+}
+
+static int presentation_relayout(jpt_presentation_t* p) {
+    jpt_rect_t view = jpt_present_rect(p->host.width, p->host.height, p->guest.width, p->guest.height, p->stretch);
+    int changed = memcmp(&view, &p->view, sizeof view) != 0;
+    p->view = view;
+    return changed;
+}
+
+int jpt_presentation_set_host(jpt_presentation_t* p, int client_w, int client_h) {
+    if (client_w <= 0 || client_h <= 0) return 0;
+    p->host.width = client_w;
+    p->host.height = client_h;
+    return presentation_relayout(p);
+}
+
+int jpt_presentation_set_guest(jpt_presentation_t* p, int guest_w, int guest_h) {
+    if (guest_w <= 0 || guest_h <= 0) return 0;
+    p->guest.width = guest_w;
+    p->guest.height = guest_h;
+    return presentation_relayout(p);
+}
+
+int jpt_presentation_request_guest(jpt_presentation_t* p, int guest_w, int guest_h, unsigned generation) {
+    if (guest_w <= 0 || guest_h <= 0) return 0;
+    if (p->guest.width <= 0) {
+        p->generation = generation;
+        p->has_pending = 0;
+        jpt_presentation_set_guest(p, guest_w, guest_h);
+        return 1;
+    }
+    if (p->guest.width == guest_w && p->guest.height == guest_h) {
+        p->has_pending = 0;
+        p->generation = generation;
+        return 0;
+    }
+    p->has_pending = 1;
+    p->pending_guest.width = guest_w;
+    p->pending_guest.height = guest_h;
+    p->pending_generation = generation;
+    return 0;
+}
+
+int jpt_presentation_commit(jpt_presentation_t* p, unsigned generation) {
+    if (!p->has_pending || p->pending_generation != generation) return 0;
+    p->has_pending = 0;
+    p->generation = generation;
+    jpt_presentation_set_guest(p, p->pending_guest.width, p->pending_guest.height);
+    return 1;
+}
+
+jpt_size_t jpt_auto_client(jpt_size_t client, jpt_size_t guest, int frame_w, int frame_h, int work_w, int work_h) {
+    jpt_size_t out = client;
+    if (client.width <= 0 || client.height <= 0 || guest.width <= 0 || guest.height <= 0) return client;
+    out.height = (int)(((long long)client.width * guest.height + guest.width / 2) / guest.width);
+    if (out.height < 1) out.height = 1;
+    if (out.height == client.height) return client;
+    return jpt_fit_window(out, frame_w, frame_h, work_w, work_h);
+}
+
+jpt_commit_t jpt_presentation_commit_frame(jpt_presentation_t* p, unsigned generation, int follow_guest, int frame_w,
+                                           int frame_h, int work_w, int work_h) {
+    jpt_commit_t result = { 0, 0, { 0, 0 } };
+    if (!p->has_pending || p->pending_generation != generation) return result;
+    if (follow_guest) {
+        jpt_size_t target = jpt_auto_client(p->host, p->pending_guest, frame_w, frame_h, work_w, work_h);
+        if (target.width != p->host.width || target.height != p->host.height) {
+            result.resize = 1;
+            result.client = target;
+            p->host = target;
+        }
+    }
+    result.committed = jpt_presentation_commit(p, generation);
+    return result;
+}
+
+jpt_rect_t jpt_presentation_next_view(const jpt_presentation_t* p) {
+    jpt_presentation_t next = *p;
+    if (next.has_pending) jpt_presentation_commit(&next, next.pending_generation);
+    return next.view;
+}
+
+int jpt_presentation_to_guest(const jpt_presentation_t* p, int client_x, int client_y, int* guest_x, int* guest_y) {
+    long long view_w = (long long)p->view.right - p->view.left, view_h = (long long)p->view.bottom - p->view.top;
+    long long nx, ny, x, y;
+    if (view_w <= 0 || view_h <= 0 || p->guest.width <= 0 || p->guest.height <= 0) return 0;
+    nx = ((long long)client_x - p->view.left) * p->guest.width;
+    ny = ((long long)client_y - p->view.top) * p->guest.height;
+    x = nx / view_w - ((nx % view_w != 0 && nx < 0) ? 1 : 0);
+    y = ny / view_h - ((ny % view_h != 0 && ny < 0) ? 1 : 0);
+    *guest_x = (int)x;
+    *guest_y = (int)y;
+    return x >= 0 && y >= 0 && x < p->guest.width && y < p->guest.height;
+}
+
 jpt_size_t jpt_fit_window(jpt_size_t client, int frame_w, int frame_h, int work_w, int work_h) {
     long long fit_w = (long long)work_w - frame_w, fit_h = (long long)work_h - frame_h;
     if (client.width <= 0 || client.height <= 0 || fit_w <= 0 || fit_h <= 0) return client;

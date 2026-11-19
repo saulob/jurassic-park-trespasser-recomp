@@ -447,10 +447,19 @@ window procedure still receives the messages it received before.
 - DPI: the process is per-monitor v2 aware (`SetProcessDpiAwarenessContext`, before any window
   exists), so window, cursor and monitor coordinates are physical pixels. `WM_DPICHANGED` applies
   the suggested rectangle; frame size, work area and minimum size use the window's own DPI.
-- Size: with Window size Auto and Letterbox, `WM_SIZING` keeps the client at the display's aspect
-  ratio inside the monitor's work area (a fixed Window size is resized freely and letterboxed); `WM_GETMINMAXINFO` sets a minimum client width of 320
-  pixels at 96 dpi. Maximizing fills the work area; the picture keeps its aspect ratio and the
-  rest is black.
+- Size: the window is created once (Window size, or Auto at the first screen's size). With Window size Auto and
+  Letterbox its client follows the shape of the game's screen (menu 640x480 at 960x720, gameplay 2560x1440 at
+  960x540: width kept, height of the screen's shape, reduced to fit the work area; `jpt_auto_client`) and `WM_SIZING`
+  keeps that shape while the user drags. A fixed Window size, Stretch, full screen and a maximized window are never
+  resized by the game; the picture is letterboxed or pillarboxed in them (`jpt_presentation_t`,
+  `src/common/jpt_display.c`).
+  A screen change is pending until the first frame of the new screen is about to be presented: every DirectDraw
+  surface carries the display generation it was made under, the presenters pass it to `window_host_frame_commit`
+  just before `IDXGISwapChain::Present`, and in that one step the window is resized (Auto only, same position),
+  then the child surface and the mouse mapping switch. Until then the old picture keeps its window and its shape.
+  Host changes (resize, F11, DPI) apply at once.
+  `WM_GETMINMAXINFO` sets a minimum client width of 320 pixels at 96 dpi. Log line `Presentation:`
+  names host, guest and viewport whenever one of them changes.
 - Presentation surface: the swap chain belongs to a child window that fills the largest area of
   the client with the display's aspect ratio, centered (Presentation Stretch: the whole client;
   the cursor mapping follows the same rectangle). DXGI stretches the swap chain to it, so

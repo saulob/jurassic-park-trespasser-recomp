@@ -22,7 +22,9 @@ const char* ddraw_hresult_text(uint32_t hr, char* buf, size_t cap) {
     buf[cap - 1] = 0;
     return buf;
 }
-void window_host_set_display(HWND window, int width, int height) { (void)window; (void)width; (void)height; }
+void window_host_set_display(HWND window, int width, int height, unsigned generation) {
+    (void)window; (void)width; (void)height; (void)generation;
+}
 void window_host_clear_display(HWND window) { (void)window; }
 int present_adapter(dd_adapter_t* out) {
     memset(out, 0, sizeof *out);
@@ -30,8 +32,9 @@ int present_adapter(dd_adapter_t* out) {
     return 1;
 }
 void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
-                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync) {
+                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation) {
     (void)window; (void)bits; (void)pitch; (void)source; (void)format; (void)gamma; (void)gamma_changed; (void)vsync;
+    (void)generation;
 }
 int d3dr_hardware(void) { return 1; }
 HRESULT d3dr_attach(d3d_device_t* dev) {

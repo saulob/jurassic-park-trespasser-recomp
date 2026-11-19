@@ -360,7 +360,7 @@ static void handle_present_result(HRESULT hr) {
 }
 
 void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
-                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync) {
+                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation) {
     UINT width = (UINT)(source->right - source->left), height = (UINT)(source->bottom - source->top);
     HWND target = window_host_surface(window);
     ID3D11Texture2D* staging;
@@ -376,7 +376,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         return;
     }
     if (d3dr_hardware()) {
-        d3dr_present_dib(window, bits, pitch, source, format, gamma, vsync);
+        d3dr_present_dib(window, bits, pitch, source, format, gamma, vsync, generation);
         return;
     }
     if (!ensure_resources(target, width, height)) return;
@@ -420,6 +420,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         }
     }
     ID3D11Texture2D_Release(back);
+    window_host_frame_commit(generation);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);
     if (hr != S_OK) return;
@@ -448,7 +449,7 @@ ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height) {
     return s_p.back_rtv;
 }
 
-int present_submit(int vsync) {
+int present_submit(int vsync, unsigned generation) {
     HRESULT hr;
     LARGE_INTEGER start;
     if (!s_p.swapchain) return 0;
@@ -459,6 +460,7 @@ int present_submit(int vsync) {
         perf_section_end(PS_HUD_DRAW, section);
     }
     QueryPerformanceCounter(&start);
+    window_host_frame_commit(generation);
     hr = IDXGISwapChain_Present(s_p.swapchain, vsync && s_vsync ? 1 : 0, 0);
     handle_present_result(hr);
     if (hr != S_OK) return 0;

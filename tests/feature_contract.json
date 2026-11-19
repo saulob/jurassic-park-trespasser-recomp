@@ -10,6 +10,8 @@
       { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "recapture" },
       { "suite": "input_tests", "file": "tests/input_tests.c", "pattern": "relative" },
       { "suite": "video_focus_tests", "file": "tests/video_focus_tests.c", "pattern": "(?i)focus" } ] },
+    { "id": "window-presentation", "name": "Stable window presentation: pending screen and Auto window size committed with the first frame of the new screen, 4:3 pillarbox, mouse mapping", "owners": [
+      { "suite": "presentation_tests", "file": "tests/presentation_tests.c", "pattern": "test_old_frame_never_meets_the_new_window" } ] },
     { "id": "hotkeys", "name": "Keyboard mapping and port hotkeys (F5, F7, F8, F10, F11)", "owners": [
       { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "KEY_HOST_QUICK_SAVE" },
       { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)hotkey" } ] },

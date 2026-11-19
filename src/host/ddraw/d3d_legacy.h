@@ -90,7 +90,7 @@ void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src);
 /* The game's UI canvas (RGB565, TSYNC_UNWRITTEN texels transparent) drawn over every presented frame; NULL ends it. */
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
 void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
-                      const DDGAMMARAMP* gamma, int vsync);
+                      const DDGAMMARAMP* gamma, int vsync, unsigned generation);
 
 /* d3d11_present.c, shared with the renderer */
 struct ID3D11Device;
@@ -99,6 +99,6 @@ struct ID3D11RenderTargetView;
 int present_device(struct ID3D11Device** device, struct ID3D11DeviceContext** context);
 unsigned present_device_generation(void);
 struct ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height);
-int present_submit(int vsync);
+int present_submit(int vsync, unsigned generation);
 
 #endif

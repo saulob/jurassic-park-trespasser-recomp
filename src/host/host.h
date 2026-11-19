@@ -113,7 +113,9 @@ void window_host_configure(int borderless, int monitor, int window_w, int window
                            int show_resolution,
                            const char* settings_path);
 int window_host_monitor_size(int monitor, int* width, int* height);
-void window_host_set_display(HWND window, int width, int height);
+/* The game's screen size; the presentation follows it when a frame of this generation is about to be shown. */
+void window_host_set_display(HWND window, int width, int height, unsigned generation);
+void window_host_frame_commit(unsigned generation);
 void window_host_clear_display(HWND window);
 HWND window_host_surface(HWND window);
 void window_host_frame_presented(void);
