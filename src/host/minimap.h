@@ -74,11 +74,16 @@ extern "C" {
 #define MM_CREATURE_SIZE_FACTORS { 0.75f, 1.0f, 1.25f, 1.5f }
 #define MM_CREATURE_OUTLINE_PX 1.0f
 
-/* A vehicle is a small rectangle, about 5 x 3 px at 1080p and never below 4 x 2.5 px. */
-#define MM_VEHICLE_LENGTH_K 0.038f
-#define MM_VEHICLE_WIDTH_K 0.022f
-#define MM_VEHICLE_MIN_LENGTH_PX 4.0f
-#define MM_VEHICLE_MIN_WIDTH_PX 2.5f
+/* A vehicle is a rectangle by size class, as fractions of the minimap radius: about 8 x 5, 9 x 6 and 12 x 7 px at 1080p. */
+#define MM_VEHICLE_SMALL 0
+#define MM_VEHICLE_MEDIUM 1
+#define MM_VEHICLE_LARGE 2
+#define MM_VEHICLE_CLASSES 3
+#define MM_VEHICLE_LENGTH_K { 0.059f, 0.067f, 0.089f }
+#define MM_VEHICLE_WIDTH_K { 0.037f, 0.044f, 0.052f }
+#define MM_VEHICLE_MIN_LENGTH_PX { 6.0f, 7.0f, 9.0f }
+#define MM_VEHICLE_MIN_WIDTH_PX { 3.5f, 4.5f, 5.0f }
+#define MM_VEHICLE_OUTLINE_PX 1.0f
 
 /* Landmarks are drawn at least this thick on screen. */
 #define MM_LANDMARK_MIN_PX 3.0f
@@ -104,9 +109,10 @@ typedef struct {
     uint8_t kind;
 } minimap_landmark_t;
 
-/* A ground vehicle: its centre in world metres and the unit direction of its long side. */
+/* A ground vehicle: its centre in world metres, the unit direction of its long side and its size class. */
 typedef struct {
     float x, y, ax, ay;
+    int size;
 } minimap_vehicle_t;
 
 typedef struct {
@@ -178,7 +184,7 @@ void minimap_layer_visit(const minimap_frame_t* f, const minimap_bounds_t* b, co
                          minimap_poly_fn fn, void* user);
 /* The landmark clipped to the minimap circle as a convex screen polygon; the point count, 0 when nothing is visible. */
 int minimap_landmark_polygon(const minimap_frame_t* f, const minimap_landmark_t* landmark, minimap_point_t out[MM_CLIP_MAX]);
-/* The vehicle's rectangle on screen, along its direction, clipped to the circle; the point count, 0 when nothing is visible. */
+/* The vehicle's whole rectangle on screen, along its direction; 4, or 0 when any corner (outline included) is outside the circle. */
 int minimap_vehicle_polygon(const minimap_frame_t* f, const minimap_vehicle_t* vehicle, minimap_point_t out[MM_CLIP_MAX]);
 /* Convex screen polygon clipped to the circle; the point count, 0 when nothing is visible. */
 int minimap_clip_polygon(const minimap_frame_t* f, const minimap_point_t* in, int count, minimap_point_t out[MM_CLIP_MAX]);

@@ -1314,7 +1314,7 @@ static void polygon_box(const minimap_point_t* p, int n, float* width, float* he
 static void test_vehicles(void) {
     minimap_frame_t f;
     minimap_point_t pts[MM_CLIP_MAX];
-    const minimap_vehicle_t along_x = { 20.0f, 0.0f, 1.0f, 0.0f }, along_y = { 20.0f, 0.0f, 0.0f, 1.0f };
+    const minimap_vehicle_t along_x = { 20.0f, 0.0f, 1.0f, 0.0f, 0 }, along_y = { 20.0f, 0.0f, 0.0f, 1.0f, 0 };
     float width, height, mid_x, mid_y;
     int n;
     frame_at(&f, 0.0f, 0.0f, MM_ZOOM);
@@ -1325,7 +1325,7 @@ static void test_vehicles(void) {
         polygon_box(pts, 4, &width, &height, &mid_x, &mid_y);
         CHECK(width > height * 1.4f, "a vehicle along east is wider than tall on a north-up map (%.1f x %.1f)", width, height);
         CHECK(near(polygon_area(pts, 4), width * height, 1e-2f), "the vehicle polygon is an axis-aligned rectangle");
-        CHECK(width <= 8.0f && height <= 5.0f, "the vehicle marker is small (%.1f x %.1f px)", width, height);
+        CHECK(width >= 7.0f && width <= 12.0f && height >= 4.0f && height <= 8.0f, "the vehicle marker is a clear rectangle (%.1f x %.1f px)", width, height);
         CHECK(near(mid_x, CX + 20.0f * f.scale, 1e-2f) && near(mid_y, CY, 1e-2f), "the vehicle is centred on its world position");
     }
     n = minimap_vehicle_polygon(&f, &along_y, pts);
@@ -1356,27 +1356,66 @@ static void test_vehicles(void) {
         CHECK(minimap_vehicle_polygon(&f, NULL, pts) == 0 && minimap_vehicle_polygon(NULL, &along_x, pts) == 0,
               "no vehicle or frame: nothing drawn");
     }
-    for (int angle = 0; angle < 360; angle += 15) {
-        const float rad = (float)angle * 0.0174532925f;
-        for (int step = 0; step < 40; step++) {
-            const float edge = RADIUS / f.scale + (float)(step - 20) * 0.4f;
-            const minimap_vehicle_t v = { edge * cosf(rad), edge * sinf(rad), cosf(rad * 3.0f), sinf(rad * 3.0f) };
-            n = minimap_vehicle_polygon(&f, &v, pts);
-            for (int k = 0; k < n; k++)
-                CHECK(hypotf(pts[k].x - CX, pts[k].y - CY) <= RADIUS + 1e-2f,
-                      "a vehicle on the edge never draws outside the circle (angle %d, step %d)", angle, step);
+    {
+        minimap_frame_t big;
+        const float want_length[3] = { 8.0f, 9.0f, 12.0f }, want_width[3] = { 5.0f, 6.0f, 7.0f };
+        float last_area = 0.0f;
+        minimap_frame(&big, CX, CY, 135.0f, 0.0f, 0.0f, MM_ZOOM);
+        for (int size = 0; size < MM_VEHICLE_CLASSES; size++) {
+            for (int degrees = 0; degrees < 360; degrees += 45) {
+                const float rad = (float)degrees * 0.0174532925f;
+                const minimap_vehicle_t v = { 20.0f, 10.0f, cosf(rad), sinf(rad), size };
+                float length, side;
+                n = minimap_vehicle_polygon(&big, &v, pts);
+                CHECK(n == 4, "size %d at %d degrees is drawn whole", size, degrees);
+                if (n != 4) continue;
+                length = hypotf(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+                side = hypotf(pts[2].x - pts[1].x, pts[2].y - pts[1].y);
+                CHECK(near(length, want_length[size], 0.7f) && near(side, want_width[size], 0.7f),
+                      "size %d at %d degrees is %.1f x %.1f px (want %.0f x %.0f)", size, degrees, length, side,
+                      want_length[size], want_width[size]);
+                CHECK(side >= 4.5f, "size %d at %d degrees never thins to a line (%.1f px)", size, degrees, side);
+            }
+            {
+                const minimap_vehicle_t v = { 20.0f, 10.0f, 1.0f, 0.0f, size };
+                n = minimap_vehicle_polygon(&big, &v, pts);
+                CHECK(n == 4 && polygon_area(pts, 4) > last_area, "a bigger vehicle class has a bigger rectangle");
+                if (n == 4) last_area = polygon_area(pts, 4);
+            }
         }
     }
+    for (int size = 0; size < MM_VEHICLE_CLASSES; size++) {
+        int shown_inside = 0, shown_edge = 0;
+        for (int angle = 0; angle < 360; angle += 15) {
+            const float rad = (float)angle * 0.0174532925f;
+            for (int step = 0; step < 60; step++) {
+                const float edge = RADIUS / f.scale + (float)(step - 40) * 0.4f;
+                const minimap_vehicle_t v = { edge * cosf(rad), edge * sinf(rad), cosf(rad * 3.0f), sinf(rad * 3.0f), size };
+                n = minimap_vehicle_polygon(&f, &v, pts);
+                CHECK(n == 0 || n == 4, "a vehicle is drawn whole or not at all (%d points)", n);
+                for (int k = 0; k < n; k++)
+                    CHECK(hypotf(pts[k].x - CX, pts[k].y - CY) <= RADIUS - MM_VEHICLE_OUTLINE_PX + 1e-2f,
+                          "a vehicle never draws outside the circle (size %d, angle %d, step %d)", size, angle, step);
+                if (step == 0 && n == 4) shown_inside++;
+                if (step == 7 && n == 4) shown_edge++;
+            }
+        }
+        CHECK(shown_inside == 24, "size %d: a vehicle well inside is always drawn (%d of 24)", size, shown_inside);
+        CHECK(shown_edge > 0, "size %d: 10 px from the rim it is still drawn when its corners fit (%d)", size, shown_edge);
+    }
     {
-        const minimap_vehicle_t on_edge = { RADIUS / f.scale, 0.0f, 1.0f, 0.0f };
-        n = minimap_vehicle_polygon(&f, &on_edge, pts);
-        CHECK(n >= 3, "a vehicle half over the edge is clipped, not dropped");
+        const minimap_vehicle_t near_edge_small = { (RADIUS - 8.0f) / f.scale, 0.0f, 0.0f, 1.0f, MM_VEHICLE_SMALL },
+                                near_edge_large = { (RADIUS - 4.0f) / f.scale, 0.0f, 1.0f, 0.0f, MM_VEHICLE_LARGE },
+                                outside = { (RADIUS + 20.0f) / f.scale, 0.0f, 1.0f, 0.0f, MM_VEHICLE_LARGE };
+        CHECK(minimap_vehicle_polygon(&f, &near_edge_small, pts) == 4, "a small vehicle near the rim keeps its full size");
+        CHECK(minimap_vehicle_polygon(&f, &near_edge_large, pts) == 0, "a large one whose corner would cross the rim is dropped");
+        CHECK(minimap_vehicle_polygon(&f, &outside, pts) == 0, "a vehicle outside the circle is not drawn");
     }
     {
         minimap_frame_t small;
         minimap_frame(&small, CX, CY, 48.0f, 0.0f, 0.0f, MM_ZOOM);
         n = minimap_vehicle_polygon(&small, &along_x, pts);
-        CHECK(n == 4 && polygon_area(pts, 4) >= MM_VEHICLE_MIN_LENGTH_PX * MM_VEHICLE_MIN_WIDTH_PX - 1e-2f,
+        CHECK(n == 4 && hypotf(pts[1].x - pts[0].x, pts[1].y - pts[0].y) >= 6.0f && hypotf(pts[2].x - pts[1].x, pts[2].y - pts[1].y) >= 3.5f,
               "on a small minimap the vehicle keeps its minimum size");
     }
     {
@@ -1402,6 +1441,7 @@ static void test_vehicle_data(void) {
             CHECK(a->x >= b->min_x && a->x <= b->max_x && a->y >= b->min_y && a->y <= b->max_y,
                   "%s: vehicle %d lies inside the level bounds", k_levels[i], v);
             CHECK(near(hypotf(a->ax, a->ay), 1.0f, 0.01f), "%s: vehicle %d has a unit direction", k_levels[i], v);
+            CHECK(a->size >= 0 && a->size < MM_VEHICLE_CLASSES, "%s: vehicle %d has a size class", k_levels[i], v);
             for (int w = v + 1; w < m->vehicle_count; w++)
                 CHECK(hypotf(a->x - m->vehicles[w].x, a->y - m->vehicles[w].y) >= 3.0f,
                       "%s: vehicles %d and %d are one vehicle drawn twice", k_levels[i], v, w);
@@ -1409,6 +1449,13 @@ static void test_vehicle_data(void) {
         }
     }
     CHECK(minimap_map("IJ") && minimap_map("IJ")->vehicle_count >= 10, "Isla Nublar's jeeps, trucks and Unimog are on its map");
+    {
+        int count[MM_VEHICLE_CLASSES] = { 0 };
+        const minimap_level_map_t* ij = minimap_map("IJ");
+        for (int v = 0; ij && v < ij->vehicle_count; v++) count[ij->vehicles[v].size]++;
+        CHECK(count[MM_VEHICLE_SMALL] > 0 && count[MM_VEHICLE_MEDIUM] > 0 && count[MM_VEHICLE_LARGE] >= 5,
+              "Isla Nublar has small, medium and large vehicles (%d, %d, %d)", count[0], count[1], count[2]);
+    }
     CHECK(minimap_map("BE") && minimap_map("BE")->vehicle_count >= 3, "the beach level has its trucks");
     CHECK(total >= 30, "the levels have vehicles to show (%d)", total);
 }

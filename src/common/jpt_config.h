@@ -34,8 +34,6 @@ extern "C" {
 #define JPT_KEY_SHOW_FPS "show_fps"
 #define JPT_KEY_SKIP_INTRO "skip_intro"
 #define JPT_KEY_VIDEO_SUBTITLES "video_subtitles"
-/* John Hammond's voice-over and its captions are not played; Off is the retail behaviour. */
-#define JPT_KEY_DISABLE_HAMMOND_NARRATION "disable_hammond_narration"
 #define JPT_KEY_SHOW_RESOLUTION_TITLE "show_resolution_title"
 /* A language code (jpt_l10n_languages): the game's text and subtitles where it has them, English elsewhere. Each game
  * version keeps its own choice under language_<id>; this key is the choice made before that (and --language). */
@@ -130,7 +128,6 @@ typedef struct {
     int show_resolution_title;
     int skip_intro;
     int video_subtitles;
-    int disable_hammond_narration;
     int dual_stow;
     int max_object_detail;
     int active_ai_enhanced; /* 0: the retail 3 active animals, 1: 6 */
@@ -155,7 +152,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (31 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (30 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

@@ -425,7 +425,10 @@ float minimap_creature_marker_radius(float minimap_radius, int size_class) {
 }
 
 int minimap_vehicle_polygon(const minimap_frame_t* f, const minimap_vehicle_t* v, minimap_point_t out[MM_CLIP_MAX]) {
-    float cx, cy, dx, dy, half_length, half_width, axis;
+    static const float length_k[MM_VEHICLE_CLASSES] = MM_VEHICLE_LENGTH_K, width_k[MM_VEHICLE_CLASSES] = MM_VEHICLE_WIDTH_K,
+                       min_length[MM_VEHICLE_CLASSES] = MM_VEHICLE_MIN_LENGTH_PX, min_width[MM_VEHICLE_CLASSES] = MM_VEHICLE_MIN_WIDTH_PX;
+    float cx, cy, dx, dy, half_length, half_width, axis, limit;
+    int size;
     minimap_point_t c[4];
     if (!f || !v || !isfinite(v->x) || !isfinite(v->y) || !isfinite(v->ax) || !isfinite(v->ay)) return 0;
     axis = hypotf(v->ax, v->ay);
@@ -433,13 +436,18 @@ int minimap_vehicle_polygon(const minimap_frame_t* f, const minimap_vehicle_t* v
     minimap_to_screen(f, v->x, v->y, &cx, &cy);
     dx = (v->ax * f->up_y - v->ay * f->up_x) / axis;
     dy = -(v->ax * f->up_x + v->ay * f->up_y) / axis;
-    half_length = fmaxf(f->radius * MM_VEHICLE_LENGTH_K, MM_VEHICLE_MIN_LENGTH_PX) * 0.5f;
-    half_width = fmaxf(f->radius * MM_VEHICLE_WIDTH_K, MM_VEHICLE_MIN_WIDTH_PX) * 0.5f;
+    size = v->size >= 0 && v->size < MM_VEHICLE_CLASSES ? v->size : MM_VEHICLE_SMALL;
+    half_length = fmaxf(f->radius * length_k[size], min_length[size]) * 0.5f;
+    half_width = fmaxf(f->radius * width_k[size], min_width[size]) * 0.5f;
     c[0] = (minimap_point_t){ cx - dx * half_length + dy * half_width, cy - dy * half_length - dx * half_width };
     c[1] = (minimap_point_t){ cx + dx * half_length + dy * half_width, cy + dy * half_length - dx * half_width };
     c[2] = (minimap_point_t){ cx + dx * half_length - dy * half_width, cy + dy * half_length + dx * half_width };
     c[3] = (minimap_point_t){ cx - dx * half_length - dy * half_width, cy - dy * half_length + dx * half_width };
-    return minimap_clip_polygon(f, c, 4, out);
+    limit = f->radius - MM_VEHICLE_OUTLINE_PX;
+    for (int i = 0; i < 4; i++)
+        if (hypotf(c[i].x - f->cx, c[i].y - f->cy) > limit) return 0;
+    memcpy(out, c, sizeof c);
+    return 4;
 }
 
 int minimap_creature_place(const minimap_frame_t* f, const minimap_creature_t* creature, float* sx, float* sy) {

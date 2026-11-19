@@ -3653,20 +3653,6 @@
    }
   },
   {
-   "file": "src/host/narration.c",
-   "name": "VOICE_OVER_SAMPLE",
-   "value": "0x8",
-   "struct": "CVoiceOverAction",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CVoiceOverAction+CAction+CRefObj: 87 functions, 3 without a counterpart; +0x8 used by 56 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CVoiceOverAction+CAction+CRefObj: 87 functions, 0 without a counterpart; +0x8 used by 58 identical functions"
-   }
-  },
-  {
    "file": "src/host/objectives.c",
    "name": "NAME_BYTES",
    "value": "0x40",

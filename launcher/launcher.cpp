@@ -95,9 +95,6 @@ constexpr char kMinimapHelp[] =
     "faces. North is always up. F5, or L3 + R3 on a gamepad, shows or hides it while playing.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
-constexpr char kDisableHammondNarrationHelp[] =
-    "Turns off John Hammond's narration, voice and subtitles. Anne's voice and subtitles, sound effects and music are "
-    "not affected.";
 constexpr char kVideoSubtitlesHelp[] =
     "Shows subtitles in the game's language over the intro, the New Game video and the ending, where people speak.";
 constexpr char kMaxObjectDetailHelp[] =
@@ -949,7 +946,6 @@ private:
         ui.Combo("Language", kLanguageHelp, LanguageKey().c_str(), EffectiveLanguage().c_str(), languages);
         ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
         ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
-        ui.Toggle("Disable Hammond Narration", kDisableHammondNarrationHelp, JPT_KEY_DISABLE_HAMMOND_NARRATION, false, "Off", "On");
         ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
         ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
         ui.Toggle("Enable Minimap", kMinimapHelp, JPT_KEY_MINIMAP, true, "Off", "On");

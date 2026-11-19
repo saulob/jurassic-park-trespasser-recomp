@@ -576,12 +576,10 @@ int main(int argc, char** argv) {
     loading_hd_install();
     video_hd_install();
     video_hd_skip_intro(cfg.skip_intro);
-    narration_configure(cfg.disable_hammond_narration);
     video_subtitles_configure(cfg.video_subtitles, game_dir);
     minimap_configure(cfg.minimap);
     physics_fixes_install();
     ce_gameplay_install();
-    narration_install();
     active_ai_install();
     patch117_install();
     patch117_player_install();

@@ -141,8 +141,6 @@ set(HOST_SOURCES
   src/host/ce_gameplay.c
   src/host/active_ai_policy.c
   src/host/active_ai.c
-  src/host/narration_policy.c
-  src/host/narration.c
   src/host/patch117_policy.c
   src/host/patch117_objects.c
   src/host/patch117.c
@@ -177,7 +175,7 @@ set(PCRECOMP_SOURCES
 )
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
-add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_hammond.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
+add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c
   src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
@@ -527,13 +525,6 @@ target_include_directories(ce_tests PRIVATE src/host)
 target_link_libraries(ce_tests PRIVATE jpt_common)
 target_compile_options(ce_tests PRIVATE /W3)
 target_compile_definitions(ce_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-# Disable Hammond Narration: the sample set, the switch, the setting and the retail facts the hook relies on (headless):
-#   ninja -C <build dir> narration_tests && narration_tests.exe
-add_executable(narration_tests EXCLUDE_FROM_ALL tests/narration_tests.c src/host/narration_policy.c)
-target_include_directories(narration_tests PRIVATE src/host)
-target_link_libraries(narration_tests PRIVATE jpt_common)
-target_compile_options(narration_tests PRIVATE /W3)
-target_compile_definitions(narration_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 # Active AI: limits, loop orders, the physics box guard, the save block and the retail lint (headless):
 #   ninja -C <build dir> active_ai_tests && active_ai_tests.exe
 add_executable(active_ai_tests EXCLUDE_FROM_ALL tests/active_ai_tests.c src/host/active_ai_policy.c)

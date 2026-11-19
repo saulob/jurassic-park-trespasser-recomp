@@ -713,15 +713,6 @@
   },
   {
    "names": [
-    "VOICE_OVER_SAMPLE"
-   ],
-   "files": [
-    "narration.c"
-   ],
-   "class": "CVoiceOverAction"
-  },
-  {
-   "names": [
     "ANIMAL_PHYSICS",
     "INSTANCE_SCALE"
    ],

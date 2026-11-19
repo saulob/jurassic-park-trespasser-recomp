@@ -181,7 +181,6 @@ recomp_func_t recomp_lookup_manual(uint32_t va) {
     recomp_func_t fn = selfmod_lookup(va);
     unsigned slot;
     if (fn) return fn;
-    if ((fn = narration_lookup(va)) != NULL) return fn;
     if (va < lift_text_start || va >= lift_text_end) return outside_text(va);
     slot = (va * 2654435761u) >> (32 - DISPATCH_CACHE_BITS);
     if (s_dispatch_cache[slot].va == va) {

@@ -120,17 +120,27 @@ class Vehicles(unittest.TestCase):
         for name in self.NOT_BODIES:
             self.assertFalse(minimap_map.VEHICLE_BODY.match(name), name)
 
+    def test_size_classes(self):
+        size = minimap_map.vehicle_size
+        for name in ("PtruckBody00-04", "PMercedesUnimoBody00-01"):
+            self.assertEqual(size(name), minimap_map.VEHICLE_LARGE, name)
+        for name in ("PHJeepCrshSuvy00-910", "PHunterJeepSuvy00-00", "PHJeepCrshed00-02"):
+            self.assertEqual(size(name), minimap_map.VEHICLE_MEDIUM, name)
+        for name in ("PHjeepOpenBody00-01", "PHjeepOpenBodyHack00-00", "PHjeepSLDseatBody00-00", "PHunterJeep00-00",
+                     "PHunterJeepCrashed00-02"):
+            self.assertEqual(size(name), minimap_map.VEHICLE_SMALL, name)
+
     def test_the_bodies_of_one_vehicle_give_one_marker(self):
-        near = [(10.0, 10.0, 1.0, 0.0), (11.5, 10.5, 0.0, 1.0), (12.0, 9.0, 1.0, 0.0)]
+        near = [(10.0, 10.0, 1.0, 0.0, 2), (11.5, 10.5, 0.0, 1.0, 2), (12.0, 9.0, 1.0, 0.0, 2)]
         self.assertEqual(len(minimap_map.merge_vehicles(near)), 1)
 
     def test_separate_vehicles_stay_separate(self):
-        apart = [(0.0, 0.0, 1.0, 0.0), (4.2, 0.0, 1.0, 0.0), (100.0, 5.0, 0.0, 1.0)]
+        apart = [(0.0, 0.0, 1.0, 0.0, 0), (4.2, 0.0, 1.0, 0.0, 1), (100.0, 5.0, 0.0, 1.0, 2)]
         self.assertEqual(len(minimap_map.merge_vehicles(apart)), 3)
 
     def test_merging_keeps_the_first_marker(self):
-        kept = minimap_map.merge_vehicles([(5.0, 5.0, 1.0, 0.0), (6.0, 5.0, 0.0, 1.0)])
-        self.assertEqual(kept, [(5.0, 5.0, 1.0, 0.0)])
+        kept = minimap_map.merge_vehicles([(5.0, 5.0, 1.0, 0.0, 2), (6.0, 5.0, 0.0, 1.0, 0)])
+        self.assertEqual(kept, [(5.0, 5.0, 1.0, 0.0, 2)])
 
 
 @unittest.skipUnless((DATA / "be.scn").exists(), "retail level data not installed")
@@ -284,7 +294,8 @@ class MinimapMap(unittest.TestCase):
         self.assertEqual(counts["SUM"], 0)
         for lv in self.levels:
             b = minimap_bounds.bounds_for(DATA, lv["id"].lower())
-            for x, y, ax, ay in lv["vehicles"]:
+            for x, y, ax, ay, size in lv["vehicles"]:
+                self.assertIn(size, (0, 1, 2))
                 self.assertTrue(b["min_x"] <= x <= b["max_x"] and b["min_y"] <= y <= b["max_y"], (lv["id"], x, y))
                 self.assertAlmostEqual(math.hypot(ax, ay), 1.0, delta=0.01)
             for i, a in enumerate(lv["vehicles"]):
@@ -293,7 +304,7 @@ class MinimapMap(unittest.TestCase):
 
     def test_a_vehicle_is_not_a_landmark(self):
         for lv in self.levels:
-            for x, y, _ax, _ay in lv["vehicles"]:
+            for x, y, _ax, _ay, _size in lv["vehicles"]:
                 for kind, q in lv["landmarks"]:
                     if kind in (BUILDING, GATE):
                         cx, cy = sum(p[0] for p in q) / 4, sum(p[1] for p in q) / 4
