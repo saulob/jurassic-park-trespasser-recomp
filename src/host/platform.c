@@ -62,7 +62,6 @@ int platform_start(void) {
     } else {
         host_log("gamepad", "SDL3 gamepad support could not start (%s): keyboard and mouse only", SDL_GetError());
     }
-    host_log("audio", "the game's DirectSound is the system DSound.dll; SDL audio is not started");
     return 1;
 }
 

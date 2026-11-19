@@ -15,7 +15,7 @@ inputs only), mapped as data and never executed as a program.
 | `MSVCRT.dll`, `USER32`, `KERNEL32`, `GDI32`, `ADVAPI32`, `LZ32`, `WINMM`, `COMCTL32` | the real 32-bit system DLLs | **Windows** |
 | `DDRAW` (DirectDraw) | a virtual 16 bpp display in the host, presented with D3D11 (`src/host/ddraw/`); the system `ddraw.dll` is loaded but its exports are routed away | **host implementation** |
 | `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` | the original DLLs from the disc, loaded by the Windows loader | **original binaries** |
-| `DSound.dll` | whatever `LoadLibrary` finds on the machine; `A3d.dll` is never loaded (the host answers "not found") | Windows, optional |
+| `DSound.dll` | DirectSound compatibility objects in the host over a small mixer and SDL3 audio (`src/host/audio/`); the system `DSound.dll` is never loaded, `A3d.dll` is refused (the host answers "not found") | **host implementation** |
 | Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `user_data\saves\recomp-registry.txt`; `Installed Directory` (saves, level swap files) is `user_data\saves\`, `Data Drive` is `game\` | **host implementation** |
 | The original installer | the launcher reads the player's disc image itself (docs/LAUNCHER.md) | **host implementation** |
 | Image loading, import binding, calls between lifted and native code, threads | pcrecomp `native32` | host runtime |
@@ -409,8 +409,8 @@ session (every present is the game's own), HD the normal one; the next `Play` is
 `src/host/platform.c` is the host's one use of SDL's lifetime: SDL 3.4.20, linked statically (`config/launcher_deps.txt`
 pins the commit; no `SDL3.dll` exists). The launcher runs SDL on the main thread and quits it completely; the game then
 starts it again on the guest thread before any guest code, because the game creates and pumps its window there, which
-makes that thread SDL's video thread. Video and gamepads only: the game keeps its DirectSound (the system `DSound.dll`),
-so SDL audio is not started. `SDL_WINDOWS_ENABLE_MESSAGELOOP` is 0: SDL never calls `PeekMessage`, the game's own loop
+makes that thread SDL's video thread. Video and gamepads start with the platform; audio starts with the game's first
+`DirectSoundCreate` (see Audio). `SDL_WINDOWS_ENABLE_MESSAGELOOP` is 0: SDL never calls `PeekMessage`, the game's own loop
 is the only message loop, and SDL's window procedure turns the messages it dispatches into SDL events. `platform_pump`
 drains them on the guest thread (in `GetCursorPos` before every read of the cursor, and with each gamepad sample): mouse
 motion goes to `window_host.c`, controller connections to `gamepad.c`; everything else is dropped or never queued. SDL
@@ -987,3 +987,26 @@ length-error handler calls `exit(1)`, for one) is an error and becomes 7, with i
 `ExitProcess` passes its code through, logged. The log line also says how the quit started: the
 game's own menu, the title bar's close button or system menu, or Alt+F4. Faults, the watchdog and
 unresolved targets keep their reports and codes.
+
+## Audio (SDL3)
+
+The game loads `DSound.dll` with `LoadLibraryA`, takes `DirectSoundCreate` from `GetProcAddress` and calls COM methods
+through the returned vtables. `SMACKW32.DLL` does the same for the video audio, on the game's own `IDirectSound`. The host
+answers all of it itself, so DirectSound is never used at run time:
+
+* `shim_LoadLibraryA`, `shim_GetProcAddress` and `shim_FreeLibrary` (`io_trace.c`) give the game a module handle of the
+  host's and `compat_DirectSoundCreate`; SMACKW32's own kernel32 imports of the same three calls are patched
+  (`dsound_imports.c`) to the same answers.
+* `src/host/audio/dsound_compat.c` is the guest ABI: COM objects with the standard vtables for exactly what the retail
+  code calls (`IDirectSound`, the primary and secondary `IDirectSoundBuffer`, `IDirectSound3DBuffer`,
+  `IDirectSound3DListener`); every other slot answers `DSERR_UNSUPPORTED`. Volume is hundredths of a decibel
+  (`audio_policy.c`), so the menu click's -6.02 dB is a gain of 0.5.
+* `audio_mixer.c` mixes the buffers (8/16-bit, mono/stereo, loops, Lock regions that wrap, a play cursor that follows the
+  output, frequency by linear resampling, per-voice gain, 3D gains from `audio_spatial.c`) to float stereo at the primary
+  format's rate, 22050 Hz.
+* `sdl_audio.c` is the only SDL part: one device stream whose callback mixes on demand, with SDL's driver list limited to
+  WASAPI. The guest ABI and the backend meet at `audio_backend.h`, which is where a Linux build supplies its own
+  (SDL's other drivers) without touching the compatibility layer.
+
+The audio stops (`dsound_compat_shutdown`) before SDL quits: the device stream is destroyed first, then the mixer, and
+every buffer still held by the game reports `DSERR_BUFFERLOST` instead of touching freed memory.

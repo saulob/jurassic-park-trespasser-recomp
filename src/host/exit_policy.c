@@ -7,6 +7,7 @@
  */
 #include "host.h"
 #include "gamepad.h"
+#include "audio/audio_host.h"
 #include "platform.h"
 
 #include <stdio.h>
@@ -110,6 +111,7 @@ static __declspec(noreturn) void host_finish(int host_code) {
     present_release();
     window_host_exited();
     window_host_detach_platform();
+    dsound_compat_shutdown();
     platform_stop();
     diagnostics_process_ending();
     host_log("exit", "exit code %d", host_code);

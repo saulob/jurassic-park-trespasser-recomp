@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "audio/audio_host.h"
+#include "audio/dsound_imports.h"
+#include "audio/sdl_audio.h"
 #include "cheats.h"
 #include "ddraw/d3d_legacy.h"
 #include "gamepad.h"
@@ -77,6 +80,8 @@ static native32_shim_t s_shims[] = {
     { "LZSeek", shim_LZSeek },
     { "LZClose", shim_LZClose },
     { "LoadLibraryA", shim_LoadLibraryA },
+    { "GetProcAddress", shim_GetProcAddress },
+    { "FreeLibrary", shim_FreeLibrary },
     { "fopen", shim_fopen },
     { "_open", shim_open },
     { "DeleteFileA", shim_DeleteFileA },
@@ -566,6 +571,9 @@ int main(int argc, char** argv) {
         return HOST_EXIT_SETUP;
     }
     host_log("imports", "import table bound: see the [bind] line above for native/shimmed counts");
+    dsound_compat_install(sdl_audio_backend());
+    if (dsound_patch_imports(GetModuleHandleA("smackw32.dll")) != 3)
+        host_log("audio", "SMACKW32.DLL does not resolve DirectSound through the host: its audio may use the system");
     if (!guest_env_apply_command_line() || !io_trace_init()) {
         host_log("host", "msvcrt.dll lacks _acmdln, fopen or _open; cannot set up the guest CRT");
         return HOST_EXIT_SETUP;

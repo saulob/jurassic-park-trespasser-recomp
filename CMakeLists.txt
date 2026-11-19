@@ -69,6 +69,12 @@ set(HOST_SOURCES
   src/host/io_trace.c
   src/host/menu_audio_policy.c
   src/host/menu_audio.c
+  src/host/audio/audio_policy.c
+  src/host/audio/audio_mixer.c
+  src/host/audio/audio_spatial.c
+  src/host/audio/sdl_audio.c
+  src/host/audio/dsound_compat.c
+  src/host/audio/dsound_imports.c
   src/host/window_host.c
   src/host/platform.c
   src/host/window_title.c
@@ -532,6 +538,22 @@ add_executable(menu_audio_tests EXCLUDE_FROM_ALL tests/menu_audio_tests.c src/ho
 target_include_directories(menu_audio_tests PRIVATE src/host src/common)
 target_compile_options(menu_audio_tests PRIVATE /W3)
 target_compile_definitions(menu_audio_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+# The audio path without a device: DirectSound volume and frequency semantics, the mixer on synthetic buffers, 3D math, the
+# PCM formats of the game, and the rules that keep DirectSound out of the backend (headless, nothing is played):
+#   ninja -C <build dir> audio_tests && audio_tests.exe
+add_executable(audio_tests EXCLUDE_FROM_ALL tests/audio_tests.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c
+  src/host/audio/audio_spatial.c src/host/menu_audio_policy.c)
+target_include_directories(audio_tests PRIVATE src/host src/host/audio)
+target_compile_options(audio_tests PRIVATE /W3)
+target_compile_definitions(audio_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+# The DirectSound objects the guest and Smacker call, through their vtables, over a mixer with no device; the import gate
+# that keeps the system DSound.dll from loading (headless):
+#   ninja -C <build dir> dsound_compat_tests && dsound_compat_tests.exe
+add_executable(dsound_compat_tests EXCLUDE_FROM_ALL tests/dsound_compat_tests.c src/host/audio/dsound_compat.c
+  src/host/audio/dsound_imports.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c)
+target_include_directories(dsound_compat_tests PRIVATE src/host/audio)
+target_compile_options(dsound_compat_tests PRIVATE /W3)
+target_compile_definitions(dsound_compat_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The HD frontend's and loading screen's layout, pointer mapping and painter (headless: GDI draws into memory only):
 #   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c

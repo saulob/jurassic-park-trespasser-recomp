@@ -81,8 +81,17 @@
     { "id": "restored-audio", "name": "Restored audio records: only used samples, integrity, mapping", "owners": [
       { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "(?i)restored" },
       { "suite": "tests\\test_caption_counts.py", "file": "tests/test_caption_counts.py", "pattern": "restored_records" } ] },
-    { "id": "directsound-a3d", "name": "DirectSound is the system's, A3D is refused", "owners": [
+    { "id": "a3d-refused", "name": "A3D is refused: A3d.dll is never loaded", "owners": [
       { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "a3d\\.dll" } ] },
+    { "id": "sdl3-audio-backend", "name": "SDL3 audio backend: WASAPI device stream, deterministic mixer, DirectSound semantics for volume, loops, frequency and cursors", "owners": [
+      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "wasapi" },
+      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_loop_stop_restart" } ] },
+    { "id": "directsound-guest-compat", "name": "DirectSound guest compatibility: host objects behind DirectSoundCreate, the game's and Smacker's vtable slots, 3D listener and buffers", "owners": [
+      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "EAX probe" },
+      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "streaming_like_smacker" } ] },
+    { "id": "no-system-dsound", "name": "No dependency on the system DSound.dll: import gate, SMACKW32 imports patched, no DirectSound in the backend", "owners": [
+      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "never loaded" },
+      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_no_directsound_in_backend" } ] },
     { "id": "safe-mode", "name": "Legacy Safe Mode suppressed, developer override", "owners": [
       { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)safe.?mode" },
       { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "(?i)safe.?mode" } ] },
@@ -127,7 +136,9 @@
     { "id": "physics-telemetry", "name": "Temporary player telemetry (DEBUG_SAULO)", "owners": [
       { "suite": "debug_menu_tests", "file": "tests/physics_watch_tests.c", "pattern": "DEBUG_SAULO" } ] },
     { "id": "menu-sound", "name": "Menu selection click sound", "owners": [
-      { "suite": "menu_audio_tests", "file": "tests/menu_audio_tests.c", "pattern": "(?i)menu" } ] },
+      { "suite": "menu_audio_tests", "file": "tests/menu_audio_tests.c", "pattern": "(?i)menu" },
+      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_menu_click" },
+      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "menu click" } ] },
     { "id": "launcher", "name": "Launcher pages, settings, installer, play gate", "owners": [
       { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)page" } ] },
     { "id": "launcher-setting-parity", "name": "Launcher and runtime agree on every setting", "owners": [

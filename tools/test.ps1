@@ -168,6 +168,8 @@ Add-Exes $s @(
     , @('stream_tests', 'restored audio records, virtual Stream.tpa, caption timings per language', 4000)
     , @('video_subtitle_tests', 'video subtitle cues, timelines and retail fingerprints per language', 2000)
     , @('menu_audio_tests', 'menu click sound redirect')
+    , @('audio_tests', 'SDL3 audio path without a device: DirectSound volume and frequency, menu click -6.02 dB, mixer, loops, 3D math, game PCM formats, no DirectSound in the backend', 200)
+    , @('dsound_compat_tests', 'DirectSound COM objects at the slots the guest and Smacker call, over a mixer with no device: init, buffers, Lock wrap, 3D, threads, shutdown, DSound.dll import gate', 150)
 )
 Add-Python $s @(
     , @('test_language_parity.py', 'every language has an interface file with English''s keys, game text, captions and a credit')

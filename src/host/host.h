@@ -61,6 +61,8 @@ void shim_LZRead(void);
 void shim_LZSeek(void);
 void shim_LZClose(void);
 void shim_LoadLibraryA(void);
+void shim_GetProcAddress(void);
+void shim_FreeLibrary(void);
 void shim_fopen(void);
 void shim_open(void);
 void shim_DeleteFileA(void);

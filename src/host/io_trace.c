@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "audio/audio_policy.h"
+#include "audio/dsound_imports.h"
 #include "frontend_hd.h"
 #include "l10n.h"
 #include "menu_audio_policy.h"
@@ -239,9 +241,26 @@ void shim_LoadLibraryA(void) {
         GUEST_RETURN_STDCALL(1);
         return;
     }
+    if (audio_is_dsound_library(name)) {
+        g_eax = (uint32_t)(uintptr_t)dsound_host_module();
+        GUEST_RETURN_STDCALL(1);
+        return;
+    }
     module = LoadLibraryA(name);
     report("LoadLibraryA", name, module != NULL, GetLastError());
     g_eax = (uint32_t)(uintptr_t)module;
+    GUEST_RETURN_STDCALL(1);
+}
+
+void shim_GetProcAddress(void) {
+    HMODULE module = (HMODULE)GUEST_PTR(0);
+    const char* name = (const char*)GUEST_PTR(1);
+    g_eax = (uint32_t)(uintptr_t)dsound_get_proc_address(module, name);
+    GUEST_RETURN_STDCALL(2);
+}
+
+void shim_FreeLibrary(void) {
+    g_eax = (uint32_t)dsound_free_library((HMODULE)GUEST_PTR(0));
     GUEST_RETURN_STDCALL(1);
 }
 
