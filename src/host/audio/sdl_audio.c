@@ -2,6 +2,9 @@
 
 #include <SDL3/SDL.h>
 
+#include "audio_log.h"
+#include "audio_policy.h"
+
 #define CHUNK_FRAMES 1024
 #define DEVICE_SAMPLE_FRAMES "1024"
 
@@ -51,18 +54,30 @@ static void sdl_close(void) {
     SDL_zero(A);
 }
 
+static void apply_driver_policy(void) {
+    const char* explicit_driver = SDL_getenv("SDL_AUDIODRIVER");
+    audio_driver_choice_t choice =
+        audio_choose_driver(jpt_current_platform(), explicit_driver, audio_headless_requested(SDL_getenv("JPT_AUDIO_HEADLESS")));
+    if (choice.hint) SDL_SetHint(SDL_HINT_AUDIO_DRIVER, choice.hint);
+}
+
 static audio_mixer_t* sdl_open(uint32_t rate) {
     audio_lock_ops_t ops = { NULL, mixer_lock, mixer_unlock };
     SDL_AudioSpec spec = stream_spec(rate);
     if (!rate || A.mixer) return NULL;
-    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "wasapi");
+    apply_driver_policy();
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, DEVICE_SAMPLE_FRAMES);
     A.subsystem = SDL_InitSubSystem(SDL_INIT_AUDIO);
-    if (!A.subsystem) return NULL;
+    if (!A.subsystem) {
+        host_log("audio", "SDL3 audio could not start: %s", SDL_GetError());
+        return NULL;
+    }
     A.mutex = SDL_CreateMutex();
     A.mixer = A.mutex ? audio_mixer_create(rate, &ops) : NULL;
     if (A.mixer) A.stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, feed, NULL);
     if (!A.stream || !SDL_ResumeAudioStreamDevice(A.stream)) {
+        host_log("audio", "SDL3 audio device could not be opened (driver %s): %s", SDL_GetCurrentAudioDriver(),
+                 SDL_GetError());
         sdl_close();
         return NULL;
     }

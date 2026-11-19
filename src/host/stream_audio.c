@@ -7,8 +7,6 @@
 #include "jpt_restored_audio.h"
 #include "l10n_assets.h"
 
-#define MAX_VIRTUAL_FILES 4
-
 typedef struct {
     HANDLE handle;
     stream_pack_t* pack;
@@ -24,7 +22,8 @@ static struct {
     stream_caption_t* captions;
     uint8_t** caption_blocks;
     int caption_count, caption_cap;
-    virtual_file_t files[MAX_VIRTUAL_FILES];
+    virtual_file_t files[STREAM_PACK_MAX_VIEWS];
+    int stats_logged;
 } S;
 
 static int read_handle(void* ctx, uint64_t offset, void* buf, size_t n) {
@@ -104,19 +103,12 @@ stream_pack_t* stream_audio_open_view(HANDLE file, uint64_t size) {
     return pack;
 }
 
-static int is_stream_tpa(const char* path) {
-    const char* name = path ? strrchr(path, '\\') : NULL;
-    const char* slash = path ? strrchr(path, '/') : NULL;
-    if (slash && (!name || slash > name)) name = slash;
-    name = name ? name + 1 : path;
-    return name && !_stricmp(name, "Stream.tpa");
-}
-
 void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flags) {
     LARGE_INTEGER size;
     stream_pack_stats_t stats;
     stream_pack_t* pack;
-    if (file == INVALID_HANDLE_VALUE || !is_stream_tpa(path) || (access & GENERIC_WRITE) || (flags & FILE_FLAG_OVERLAPPED)) return;
+    int log_stats;
+    if (file == INVALID_HANDLE_VALUE || !stream_pack_serves_open(path, access, flags)) return;
     if (!GetFileSizeEx(file, &size)) return;
     stream_audio_init();
     pack = stream_pack_open(read_handle, file, (uint64_t)size.QuadPart, S.audio, S.audio_count, S.captions, S.caption_count, &stats);
@@ -125,7 +117,7 @@ void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flag
         return;
     }
     EnterCriticalSection(&S.lock);
-    for (int i = 0; i < MAX_VIRTUAL_FILES; i++) {
+    for (int i = 0; i < STREAM_PACK_MAX_VIEWS; i++) {
         if (S.files[i].handle) continue;
         S.files[i].handle = file;
         S.files[i].pack = pack;
@@ -133,20 +125,24 @@ void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flag
         pack = NULL;
         break;
     }
+    log_stats = !pack && !S.stats_logged;
+    if (log_stats) S.stats_logged = 1;
     LeaveCriticalSection(&S.lock);
     if (pack) {
         stream_pack_close(pack);
+        host_log("audio", "Stream.tpa: more than %d handles open, this one reads the player's file as it is", STREAM_PACK_MAX_VIEWS);
         return;
     }
-    host_log("audio", "Stream.tpa: %d captions corrected, %d restored samples added, %d replaced, %d left as in the player's file", stats.captions_applied,
-             stats.audio_added, stats.audio_replaced, stats.audio_kept);
+    if (log_stats)
+        host_log("audio", "Stream.tpa: %d captions corrected, %d restored samples added, %d replaced, %d left as in the player's file",
+                 stats.captions_applied, stats.audio_added, stats.audio_replaced, stats.audio_kept);
 }
 
 void stream_audio_detach(HANDLE file) {
     stream_pack_t* pack = NULL;
     if (!S.ready) return;
     EnterCriticalSection(&S.lock);
-    for (int i = 0; i < MAX_VIRTUAL_FILES; i++) {
+    for (int i = 0; i < STREAM_PACK_MAX_VIEWS; i++) {
         if (S.files[i].handle != file) continue;
         pack = S.files[i].pack;
         memset(&S.files[i], 0, sizeof S.files[i]);
@@ -156,7 +152,7 @@ void stream_audio_detach(HANDLE file) {
 }
 
 static virtual_file_t* find_file(HANDLE file) {
-    for (int i = 0; i < MAX_VIRTUAL_FILES; i++)
+    for (int i = 0; i < STREAM_PACK_MAX_VIEWS; i++)
         if (S.files[i].handle == file) return &S.files[i];
     return NULL;
 }

@@ -8,7 +8,7 @@
 
 /* Loads the embedded restored audio and the English captions. Safe to call twice. */
 void stream_audio_init(void);
-/* Called with every handle the game opens: Stream.tpa read-only becomes virtual. */
+/* Called with every handle the game opens: each one stream_pack_serves_open accepts reads the virtual view. */
 void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flags);
 void stream_audio_detach(HANDLE file);
 /* The virtual view of a Stream.tpa handle of the host's own (the caption scan), or NULL; free with stream_pack_close. */

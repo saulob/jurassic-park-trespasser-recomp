@@ -14,7 +14,7 @@
 #include <string.h>
 
 #include "audio/audio_policy.h"
-#include "audio/dsound_imports.h"
+#include "audio/platform/windows_dsound_imports.h"
 #include "frontend_hd.h"
 #include "l10n.h"
 #include "menu_audio_policy.h"

@@ -58,6 +58,8 @@ endif()
 # are project artifacts (lifts/, tools/lifts.py): unpacked here, never generated from a game executable.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(JptLifts)
+set(JPT_REPO_ROOT "${CMAKE_SOURCE_DIR}")
+include(JptAudio)
 jpt_unpack_lifts("${CMAKE_SOURCE_DIR}")
 set(GEN_SOURCES_116 ${lift116_SOURCES})
 
@@ -69,12 +71,8 @@ set(HOST_SOURCES
   src/host/io_trace.c
   src/host/menu_audio_policy.c
   src/host/menu_audio.c
-  src/host/audio/audio_policy.c
-  src/host/audio/audio_mixer.c
-  src/host/audio/audio_spatial.c
-  src/host/audio/sdl_audio.c
-  src/host/audio/dsound_compat.c
-  src/host/audio/dsound_imports.c
+  ${JPT_AUDIO_PORTABLE_SOURCES}
+  ${JPT_AUDIO_PLATFORM_SOURCES}
   src/host/window_host.c
   src/host/platform.c
   src/host/window_title.c
@@ -546,14 +544,62 @@ add_executable(audio_tests EXCLUDE_FROM_ALL tests/audio_tests.c src/host/audio/a
 target_include_directories(audio_tests PRIVATE src/host src/host/audio)
 target_compile_options(audio_tests PRIVATE /W3)
 target_compile_definitions(audio_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-# The DirectSound objects the guest and Smacker call, through their vtables, over a mixer with no device; the import gate
-# that keeps the system DSound.dll from loading (headless):
-#   ninja -C <build dir> dsound_compat_tests && dsound_compat_tests.exe
-add_executable(dsound_compat_tests EXCLUDE_FROM_ALL tests/dsound_compat_tests.c src/host/audio/dsound_compat.c
-  src/host/audio/dsound_imports.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c)
+# The platform-independent audio decisions (SDL3 driver policy per platform, the start-up log line), PCM streams and voices
+# over caller-owned memory (headless, nothing is played): ninja -C <build dir> audio_portable_tests && audio_portable_tests.exe
+add_executable(audio_portable_tests EXCLUDE_FROM_ALL tests/audio_portable_tests.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c)
+target_include_directories(audio_portable_tests PRIVATE src/host/audio)
+target_compile_options(audio_portable_tests PRIVATE /W3)
+target_compile_definitions(audio_portable_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The real SDL3 backend on SDL's dummy driver: explicit and headless driver choice, the device thread pulling the mixer,
+# rate change, reopen, an unknown driver (headless, no device, no sound): ninja -C <build dir> audio_backend_tests
+add_executable(audio_backend_tests EXCLUDE_FROM_ALL tests/audio_backend_tests.c src/host/audio/sdl_audio.c src/host/audio/audio_mixer.c
+  src/host/audio/audio_policy.c)
+target_include_directories(audio_backend_tests PRIVATE src/host/audio)
+target_link_libraries(audio_backend_tests PRIVATE SDL3::SDL3-static)
+target_compile_options(audio_backend_tests PRIVATE /W3)
+target_compile_definitions(audio_backend_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The portable DirectSound layer through guest vtables over a mixer with no device, in guest memory that is not the host's
+# (the same source runs on Linux): ninja -C <build dir> dsound_compat_tests && dsound_compat_tests.exe
+add_executable(dsound_compat_tests EXCLUDE_FROM_ALL tests/dsound_compat_tests.c src/host/audio/dsound_compat.c src/host/audio/audio_policy.c
+  src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c src/host/audio/audio_sync.c)
 target_include_directories(dsound_compat_tests PRIVATE src/host/audio)
+target_link_libraries(dsound_compat_tests PRIVATE SDL3::SDL3-static)
 target_compile_options(dsound_compat_tests PRIVATE /W3)
 target_compile_definitions(dsound_compat_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# Voice-over playback as the retail game drives it for a Hammond narration: a looping 22050 Hz mono 16-bit stream filled from the
+# play cursor at -5 dB, with music and effects, 3D, frequency and one-shot cases (synthetic audio, headless, nothing is played):
+#   ninja -C <build dir> hammond_voiceover_tests && hammond_voiceover_tests.exe
+add_executable(hammond_voiceover_tests EXCLUDE_FROM_ALL tests/hammond_voiceover_tests.c src/host/audio/dsound_compat.c src/host/audio/audio_policy.c
+  src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c src/host/audio/audio_sync.c)
+target_include_directories(hammond_voiceover_tests PRIVATE src/host/audio)
+target_link_libraries(hammond_voiceover_tests PRIVATE SDL3::SDL3-static)
+target_compile_options(hammond_voiceover_tests PRIVATE /W3)
+target_compile_definitions(hammond_voiceover_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The 32-bit Windows binding of that layer: the ABI against dsound.h, the stdcall entry points, the DSound.dll import gate
+# (headless): ninja -C <build dir> dsound_bridge_tests && dsound_bridge_tests.exe
+add_executable(dsound_bridge_tests EXCLUDE_FROM_ALL tests/dsound_bridge_tests.c tests/dsound_windows_abi.c ${JPT_AUDIO_WINDOWS_SOURCES}
+  src/host/audio/dsound_compat.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c src/host/audio/audio_sync.c)
+target_include_directories(dsound_bridge_tests PRIVATE src/host/audio)
+target_link_libraries(dsound_bridge_tests PRIVATE SDL3::SDL3-static)
+target_compile_options(dsound_bridge_tests PRIVATE /W3)
+target_compile_definitions(dsound_bridge_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The Smacker HLE: the 14 exports of SMACKW32.DLL the game imports over a synthetic decoder, a fake clock and the real mixer
+# (headless, no game file, nothing is played): ninja -C <build dir> smacker_tests && smacker_tests.exe
+add_executable(smacker_tests EXCLUDE_FROM_ALL tests/smacker_tests.c ${JPT_SMACKER_PORTABLE_SOURCES} src/host/audio/dsound_compat.c
+  src/host/audio/audio_policy.c src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c src/host/audio/audio_sync.c)
+target_include_directories(smacker_tests PRIVATE src/host/audio src/host/video)
+target_link_libraries(smacker_tests PRIVATE SDL3::SDL3-static)
+target_compile_options(smacker_tests PRIVATE /W3)
+target_compile_definitions(smacker_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The boundary of the FFmpeg Smacker backend (versions, licences, decoders, refusal of bad files). FFmpeg is found through
+# pkg-config or -DFFMPEG_ROOT=; without it the suite reports DATA UNAVAILABLE: ninja -C <build dir> smacker_ffmpeg_tests
+add_executable(smacker_ffmpeg_tests EXCLUDE_FROM_ALL tests/smacker_ffmpeg_tests.c ${JPT_SMACKER_PORTABLE_SOURCES} src/host/audio/audio_policy.c
+  src/host/audio/audio_mixer.c src/host/audio/audio_spatial.c src/host/audio/audio_sync.c src/host/audio/dsound_compat.c)
+target_include_directories(smacker_ffmpeg_tests PRIVATE src/host/audio src/host/video)
+target_link_libraries(smacker_ffmpeg_tests PRIVATE SDL3::SDL3-static)
+target_compile_options(smacker_ffmpeg_tests PRIVATE /W3)
+target_compile_definitions(smacker_ffmpeg_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+jpt_smacker_use_ffmpeg(smacker_ffmpeg_tests)
 # The HD frontend's and loading screen's layout, pointer mapping and painter (headless: GDI draws into memory only):
 #   ninja -C <build dir> frontend_tests && frontend_tests.exe [--dump <dir>]
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c

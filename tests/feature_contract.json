@@ -83,15 +83,45 @@
       { "suite": "tests\\test_caption_counts.py", "file": "tests/test_caption_counts.py", "pattern": "restored_records" } ] },
     { "id": "a3d-refused", "name": "A3D is refused: A3d.dll is never loaded", "owners": [
       { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "a3d\\.dll" } ] },
-    { "id": "sdl3-audio-backend", "name": "SDL3 audio backend: WASAPI device stream, deterministic mixer, DirectSound semantics for volume, loops, frequency and cursors", "owners": [
-      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "wasapi" },
-      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_loop_stop_restart" } ] },
+    { "id": "sdl3-audio-backend", "name": "SDL3 audio backend: device stream pulling a deterministic mixer, DirectSound semantics for volume, loops, frequency and cursors", "owners": [
+      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "SDL_OpenAudioDeviceStream" },
+      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_loop_stop_restart" },
+      { "suite": "audio_backend_tests", "file": "tests/audio_backend_tests.c", "pattern": "plays_through_the_device" } ] },
     { "id": "directsound-guest-compat", "name": "DirectSound guest compatibility: host objects behind DirectSoundCreate, the game's and Smacker's vtable slots, 3D listener and buffers", "owners": [
       { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "EAX probe" },
       { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "streaming_like_smacker" } ] },
     { "id": "no-system-dsound", "name": "No dependency on the system DSound.dll: import gate, SMACKW32 imports patched, no DirectSound in the backend", "owners": [
-      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "never loaded" },
+      { "suite": "dsound_bridge_tests", "file": "tests/dsound_bridge_tests.c", "pattern": "never loaded" },
       { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_no_directsound_in_backend" } ] },
+    { "id": "hammond-voice-over", "name": "Voice-over (Hammond narration) through the audio backend: streaming buffer of the record format, play-cursor refills, volume, frequency, one-shot, 3D, and every Stream.tpa handle of the game's stream pool reading the same virtual view; a normal part of the game, never a toggle", "owners": [
+      { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "test_game_handle_pool" },
+      { "suite": "hammond_voiceover_tests", "file": "tests/hammond_voiceover_tests.c", "pattern": "test_streaming_voice_over" },
+      { "suite": "hammond_voiceover_tests", "file": "tests/hammond_voiceover_tests.c", "pattern": "test_voice_over_buffer_contract" } ] },
+    { "id": "cross-platform-audio-abi", "name": "Cross-platform DirectSound ABI: fixed-width guest structures, guest addresses and an object table instead of host pointers, one SDL mutex, layout asserts, Windows ABI cross-checked against dsound.h", "owners": [
+      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "test_guest_addresses_never_leak_host_pointers" },
+      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "test_table_rejects_forged_and_stale_objects" },
+      { "suite": "dsound_bridge_tests", "file": "tests/dsound_bridge_tests.c", "pattern": "test_abi_matches_dsound_h" },
+      { "suite": "tests\\test_audio_portability.py", "file": "tests/test_audio_portability.py", "pattern": "test_no_pointer_squeezed_into_32_bits" },
+      { "suite": "tests\\test_audio_portability.py", "file": "tests/test_audio_portability.py", "pattern": "test_the_one_lock_is_the_sdl_mutex" } ] },
+    { "id": "platform-audio-driver-policy", "name": "SDL3 audio driver policy: WASAPI only on Windows, SDL's automatic choice elsewhere, SDL_AUDIODRIVER respected, dummy for headless runs, one start-up log line", "owners": [
+      { "suite": "audio_portable_tests", "file": "tests/audio_portable_tests.c", "pattern": "test_driver_policy" },
+      { "suite": "audio_backend_tests", "file": "tests/audio_backend_tests.c", "pattern": "JPT_AUDIO_HEADLESS" },
+      { "suite": "audio_backend_tests", "file": "tests/audio_backend_tests.c", "pattern": "test_unknown_driver_is_not_replaced" } ] },
+    { "id": "smacker-hle-contract", "name": "Smacker HLE: the 14 SMACKW32 exports the game imports, the Smack structure, frames, changed rectangles, Y-interlace, the clock and the end of the video", "owners": [
+      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_exports" },
+      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_the_player_loop" },
+      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_changed_rectangles" } ] },
+    { "id": "smacker-audio-through-sdl-mixer", "name": "Smacker audio through the game's SDL3 mixer: PCM streams, queue lead, audio clock, no second output", "owners": [
+      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_audio_enters_the_mixer" },
+      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_with_the_directsound_layer" },
+      { "suite": "audio_portable_tests", "file": "tests/audio_portable_tests.c", "pattern": "test_streams" } ] },
+    { "id": "smacker-binding-by-platform", "name": "Smacker binding by platform: the original DLL on Windows, the HLE on Linux, no SMACKW32.DLL, Wine or native loading on Linux", "owners": [
+      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "Windows keeps the original SMACKW32.DLL" },
+      { "suite": "tests\\test_audio_portability.py", "file": "tests/test_audio_portability.py", "pattern": "test_smacker_hle_never_loads_a_dll_or_wine" } ] },
+    { "id": "ffmpeg-smacker-boundary", "name": "FFmpeg Smacker backend boundary: versions, licences, demuxer and decoders, refusal of undecodable files", "owners": [
+      { "suite": "smacker_ffmpeg_tests", "file": "tests/smacker_ffmpeg_tests.c", "pattern": "Smacker video decoder" } ] },
+    { "id": "linux-audio-probe", "name": "Portable audio and Smacker layers compiled with -Werror and run natively on Linux (GCC and Clang) on SDL3 dummy audio", "owners": [
+      { "suite": "linux audio probe", "file": "tests/linux/CMakeLists.txt", "pattern": "UNIX AND NOT APPLE" } ] },
     { "id": "safe-mode", "name": "Legacy Safe Mode suppressed, developer override", "owners": [
       { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)safe.?mode" },
       { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "(?i)safe.?mode" } ] },

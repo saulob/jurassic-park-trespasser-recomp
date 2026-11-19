@@ -1,16 +1,16 @@
-#include "dsound_imports.h"
+#include "windows_dsound_imports.h"
 
 #include <string.h>
 
-#include "audio_policy.h"
-#include "dsound_compat.h"
+#include "../audio_policy.h"
+#include "windows_dsound_bridge.h"
 
 static const char s_module_token = 0;
 
 HMODULE dsound_host_module(void) { return (HMODULE)&s_module_token; }
 
 FARPROC dsound_host_proc(const char* name) {
-    return audio_is_dsound_create(name) ? (FARPROC)compat_DirectSoundCreate : NULL;
+    return audio_is_dsound_create(name) ? (FARPROC)jpt_dsound_create : NULL;
 }
 
 HMODULE WINAPI dsound_load_library_a(LPCSTR name) {

@@ -168,14 +168,22 @@ Add-Exes $s @(
     , @('stream_tests', 'restored audio records, virtual Stream.tpa, caption timings per language', 4000)
     , @('video_subtitle_tests', 'video subtitle cues, timelines and retail fingerprints per language', 2000)
     , @('menu_audio_tests', 'menu click sound redirect')
-    , @('audio_tests', 'SDL3 audio path without a device: DirectSound volume and frequency, menu click -6.02 dB, mixer, loops, 3D math, game PCM formats, no DirectSound in the backend', 200)
-    , @('dsound_compat_tests', 'DirectSound COM objects at the slots the guest and Smacker call, over a mixer with no device: init, buffers, Lock wrap, 3D, threads, shutdown, DSound.dll import gate', 150)
+    , @('audio_tests', 'SDL3 audio path without a device: DirectSound volume and frequency, menu click -6.02 dB, mixer, loops, 3D math, game PCM formats, no DirectSound or driver name in the backend', 200)
+    , @('audio_portable_tests', 'platform-independent audio: SDL3 driver policy per platform and SDL_AUDIODRIVER override, start-up log line, PCM streams, voices over guest memory', 60)
+    , @('audio_backend_tests', 'the real SDL3 backend on the dummy driver: explicit and headless driver, device thread pulling the mixer, rate change, reopen, unknown driver', 14)
+    , @('dsound_compat_tests', 'portable DirectSound over guest vtables in non-host memory: init, buffers, Lock wrap, 3D, object table (forged and stale), threads, shutdown, no leaks', 380)
+    , @('hammond_voiceover_tests', 'Hammond voice-over through the DirectSound layer: the real record format, streaming refills from the play cursor, -5 dB, 3D, frequency, one-shot, with music and effects', 100)
+    , @('dsound_bridge_tests', '32-bit Windows binding: ABI against dsound.h, stdcall entry points, native calls through the vtable, DSound.dll import gate', 130)
+    , @('smacker_tests', 'Smacker HLE: the 14 imported exports, Smack structure, frames, rectangles, 4x4 block rule, Y-interlace, clock, PCM into the shared mixer, binding by platform', 150)
+    , @('smacker_ffmpeg_tests', 'FFmpeg Smacker backend boundary: versions, licences, decoders, refused files (DATA UNAVAILABLE without FFmpeg)', 1)
 )
 Add-Python $s @(
     , @('test_language_parity.py', 'every language has an interface file with English''s keys, game text, captions and a credit')
     , @('test_video_timelines.py', 'dubbed video cue tables', $true)
     , @('test_caption_counts.py', 'caption and restored-audio numbers derived from the data and stated correctly by README and LEGAL')
+    , @('test_audio_portability.py', 'portable audio and Smacker layers: no Windows header, type, lock or loader, no pointer in 32 bits, source lists by platform')
 )
+Add-Suite $s 'check' 'linux audio probe' 'the portable audio and Smacker layers built (-Werror) and run natively on Linux with GCC and Clang, on SDL3 dummy audio (WSL; DATA UNAVAILABLE without it)' @{ Run = 'Test-LinuxAudioProbe' }
 
 $s = 'Launcher'
 Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
@@ -205,6 +213,8 @@ $helperTestFiles = @{
     'tests\override_fixture_list.h' = 'fixture list included by override_fixture.c'
     'tests\lift_resolution_check.cmake' = 'CMake script run by the build to check lift resolution'
     'tests\feature_contract.json' = 'the feature contract read by the feature coverage check'
+    'tests\dsound_guest_harness.h' = 'shared harness of dsound_compat_tests and hammond_voiceover_tests'
+    'tests\dsound_abi_pairs.h' = 'list of ABI values compared by dsound_bridge_tests and dsound_windows_abi.c'
 }
 $toolRole = @{
     'tools\_common.ps1' = 'helper dot-sourced by the tool scripts'
@@ -239,6 +249,7 @@ $toolRole = @{
     'tools\stream_fix_pack.cpp' = 'developer tool target, not a test'
     'tools\translation_pack.cpp' = 'developer tool target, not a test'
     'tools\extract_lifted.cmake' = 'build helper'
+    'tools\linux_audio_probe.sh' = 'run in WSL by the linux audio probe check'
 }
 
 function Group-InOrder([object[]]$Items) {
@@ -583,6 +594,22 @@ function Test-Coverage {
     $excluded = @($known | Where-Object { $excludedTargets.ContainsKey($_) })
     $summary = "$($known.Count - $excluded.Count) test targets, $(@($allSuites | Where-Object { $_.Kind -in 'python', 'script' -and $_.Name -like 'tests\*' }).Count) test scripts and every tool classified; all run"
     return New-Result 0 (@($summary) + $notes + ($excluded | ForEach-Object { "excluded $_ : $($excludedTargets[$_])" }))
+}
+
+function Test-LinuxAudioProbe {
+    $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+    if (-not $wsl) { return New-Result 0 @('linux audio probe: skipped - DATA UNAVAILABLE (wsl.exe is not installed)') }
+    $clean = { param($lines) @($lines | ForEach-Object { ($_ -replace "`0", '').TrimEnd() } | Where-Object { $_ -ne '' }) }
+    $probe = Invoke-Process 'wsl.exe' @('--', 'bash', '-c', 'command -v cmake >/dev/null && command -v ninja >/dev/null && (command -v gcc >/dev/null || command -v clang >/dev/null) && echo toolchain-ready') $root 120
+    if (-not (@(& $clean $probe.Lines) -contains 'toolchain-ready')) { return New-Result 0 @('linux audio probe: skipped - DATA UNAVAILABLE (no WSL distribution with cmake, ninja and gcc or clang)') }
+    $script = @(& $clean (Invoke-Process 'wsl.exe' @('wslpath', '-a', ((Join-Path $root 'tools\linux_audio_probe.sh') -replace '\\', '/')) $root 60).Lines)
+    $repo = @(& $clean (Invoke-Process 'wsl.exe' @('wslpath', '-a', ($root -replace '\\', '/')) $root 60).Lines)
+    if ($script.Count -ne 1 -or $repo.Count -ne 1) { return New-Result 1 @('linux audio probe: wslpath did not answer') }
+    $run = Invoke-Process 'wsl.exe' @('--', 'bash', $script[0], $repo[0]) $root 1500
+    $lines = @(& $clean $run.Lines)
+    if ($run.Code -ne 0) { return [pscustomobject]@{ Code = 1; Lines = $lines; Command = $run.Command } }
+    $summary = @($lines | Where-Object { $_ -match '^linux audio probe: ' })
+    return New-Result 0 (@($lines | Where-Object { $_ -match 'skipped|DATA UNAVAILABLE|note:' }) + @($summary[-1]))
 }
 
 function Test-FeatureContract {

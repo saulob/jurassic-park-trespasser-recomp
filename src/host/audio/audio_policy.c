@@ -1,6 +1,7 @@
 #include "audio_policy.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 int audio_clamp_volume(int hundredths_db) {
@@ -42,4 +43,27 @@ int audio_is_dsound_library(const char* name) {
 
 int audio_is_dsound_create(const char* name) {
     return name && (uintptr_t)name > 0xFFFF && !strcmp(name, "DirectSoundCreate");
+}
+
+audio_driver_choice_t audio_choose_driver(jpt_platform_t platform, const char* sdl_audio_driver, int headless) {
+    audio_driver_choice_t choice = { NULL, AUDIO_DRIVER_AUTOMATIC };
+    if (sdl_audio_driver && *sdl_audio_driver) {
+        choice.source = AUDIO_DRIVER_EXPLICIT;
+    } else if (headless) {
+        choice.hint = "dummy";
+        choice.source = AUDIO_DRIVER_HEADLESS;
+    } else if (platform == JPT_PLATFORM_WINDOWS) {
+        choice.hint = "wasapi";
+        choice.source = AUDIO_DRIVER_PLATFORM;
+    }
+    return choice;
+}
+
+int audio_headless_requested(const char* value) {
+    return value && (!strcmp(value, "1") || same_text(value, "true"));
+}
+
+int audio_backend_line(char* out, unsigned capacity, uint32_t rate, const char* driver) {
+    return snprintf(out, capacity, "Audio: SDL3 backend initialized, %u Hz, stereo, driver %s", (unsigned)rate,
+                    driver && *driver ? driver : "unknown");
 }

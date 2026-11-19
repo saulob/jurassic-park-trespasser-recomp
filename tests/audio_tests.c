@@ -521,7 +521,9 @@ static void scan_tree(const char* relative_dir, char names[][MAX_PATH], int* cou
 
 static int allowed_to_name_dsound(const char* path) {
     static const char* const allowed[] = { "src/host/audio/dsound_compat.c", "src/host/audio/dsound_compat.h",
-                                           "src/host/audio/dsound_imports.c", "src/host/audio/dsound_imports.h",
+                                           "src/host/audio/dsound_abi.h", "src/host/audio/dsound_methods.h",
+                                           "src/host/audio/platform/windows_dsound_bridge.c", "src/host/audio/platform/windows_dsound_bridge.h",
+                                           "src/host/audio/platform/windows_dsound_imports.c", "src/host/audio/platform/windows_dsound_imports.h",
                                            "src/host/audio/audio_policy.c", "src/host/audio/audio_policy.h" };
     for (size_t i = 0; i < sizeof allowed / sizeof allowed[0]; i++)
         if (!_stricmp(path, allowed[i])) return 1;
@@ -532,7 +534,8 @@ static void test_no_directsound_in_backend(void) {
     static const char* const portable[] = { "src/host/audio/audio_mixer.c", "src/host/audio/audio_mixer.h",
                                             "src/host/audio/audio_spatial.c", "src/host/audio/audio_spatial.h",
                                             "src/host/audio/audio_backend.h", "src/host/audio/sdl_audio.c",
-                                            "src/host/audio/sdl_audio.h" };
+                                            "src/host/audio/sdl_audio.h", "src/host/audio/audio_sync.c",
+                                            "src/host/audio/audio_sync.h" };
     static const char* const forbidden_in_backend[] = { "dsound", "DirectSound", "windows.h", "<dsound", "XAudio", "OpenAL",
                                                         "miniaudio", "FMOD", "waveOut", "winmm" };
     static const char* const forbidden_everywhere[] = { "DirectSoundCreate", "dsound.dll", "dsound.lib", "dsound.h" };
@@ -560,7 +563,10 @@ static void test_sdl_backend_contract(void) {
     char* cmake = read_text("CMakeLists.txt");
     CHECK(sdl != NULL && cmake != NULL, "sources readable");
     if (sdl) {
-        CHECK(strstr(sdl, "SDL_HINT_AUDIO_DRIVER, \"wasapi\"") != NULL, "SDL is told to use WASAPI only: its DirectSound driver is never a fallback");
+        CHECK(strstr(sdl, "wasapi") == NULL && strstr(sdl, "pipewire") == NULL && strstr(sdl, "alsa") == NULL && strstr(sdl, "pulse") == NULL,
+              "sdl_audio.c names no driver: the policy (audio_policy.c) does");
+        CHECK(strstr(sdl, "audio_choose_driver(") != NULL && strstr(sdl, "SDL_getenv(\"SDL_AUDIODRIVER\")") != NULL && strstr(sdl, "if (choice.hint) SDL_SetHint(SDL_HINT_AUDIO_DRIVER") != NULL,
+              "the driver comes from the policy, and an explicit SDL_AUDIODRIVER is never overridden");
         CHECK(strstr(sdl, "SDL_AUDIO_F32") && strstr(sdl, "SDL_OpenAudioDeviceStream") && strstr(sdl, "SDL_INIT_AUDIO"), "one SDL3 device stream of float samples");
         CHECK(strstr(sdl, "SDL_DestroyAudioStream(A.stream);\n    audio_mixer_destroy") != NULL,
               "the device stream is destroyed before the mixer its callback reads");
@@ -569,8 +575,8 @@ static void test_sdl_backend_contract(void) {
     if (cmake) {
         CHECK(!contains_nocase(cmake, "dsound.lib") && !contains_nocase(cmake, "target_link_libraries(trespasser_recomp PRIVATE dsound"),
               "the program links no dsound import library");
-        CHECK(strstr(cmake, "src/host/audio/dsound_compat.c") != NULL && strstr(cmake, "src/host/audio/sdl_audio.c") != NULL,
-              "the program builds the compatibility layer and the SDL backend");
+        CHECK(strstr(cmake, "JPT_AUDIO_PORTABLE_SOURCES") != NULL && strstr(cmake, "JPT_AUDIO_PLATFORM_SOURCES") != NULL,
+              "the program builds the portable audio sources and the platform bridge from the lists of cmake/JptAudio.cmake");
     }
     free(sdl);
     free(cmake);
@@ -584,8 +590,8 @@ static void test_wiring(void) {
     CHECK(platform && !strstr(platform, "SDL audio is not started") && !strstr(platform, "SDL_INIT_AUDIO"), "platform.c no longer claims the system DSound");
     CHECK(io && strstr(io, "audio_is_dsound_library(name)") && strstr(io, "dsound_host_module()"), "the game's LoadLibraryA gets the host's DSound");
     CHECK(io && strstr(io, "shim_GetProcAddress") && strstr(io, "dsound_get_proc_address"), "the game's GetProcAddress gets the host's DirectSoundCreate");
-    CHECK(main_c && strstr(main_c, "dsound_compat_install(sdl_audio_backend())") && strstr(main_c, "dsound_patch_imports"),
-          "main installs the SDL backend and patches SMACKW32's imports");
+    CHECK(main_c && strstr(main_c, "jpt_dsound_bridge_install(sdl_audio_backend())") && strstr(main_c, "dsound_patch_imports"),
+          "main installs the SDL backend through the Windows bridge and patches SMACKW32's imports");
     CHECK(main_c && strstr(main_c, "{ \"GetProcAddress\", shim_GetProcAddress }") && strstr(main_c, "{ \"FreeLibrary\", shim_FreeLibrary }"), "both shims are bound");
     CHECK(exit_c && strstr(exit_c, "dsound_compat_shutdown();") != NULL, "exit stops the audio");
     if (exit_c) {

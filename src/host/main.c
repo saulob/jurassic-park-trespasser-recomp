@@ -10,7 +10,8 @@
 #include <string.h>
 
 #include "audio/audio_host.h"
-#include "audio/dsound_imports.h"
+#include "audio/platform/windows_dsound_bridge.h"
+#include "audio/platform/windows_dsound_imports.h"
 #include "audio/sdl_audio.h"
 #include "cheats.h"
 #include "ddraw/d3d_legacy.h"
@@ -571,7 +572,7 @@ int main(int argc, char** argv) {
         return HOST_EXIT_SETUP;
     }
     host_log("imports", "import table bound: see the [bind] line above for native/shimmed counts");
-    dsound_compat_install(sdl_audio_backend());
+    if (!jpt_dsound_bridge_install(sdl_audio_backend())) host_log("audio", "the DirectSound compatibility layer could not be installed");
     if (dsound_patch_imports(GetModuleHandleA("smackw32.dll")) != 3)
         host_log("audio", "SMACKW32.DLL does not resolve DirectSound through the host: its audio may use the system");
     if (!guest_env_apply_command_line() || !io_trace_init()) {

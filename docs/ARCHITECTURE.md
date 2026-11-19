@@ -14,7 +14,7 @@ inputs only), mapped as data and never executed as a program.
 | `.rdata`, `.data`, `.rsrc` | mapped at their original addresses, used in place | original data |
 | `MSVCRT.dll`, `USER32`, `KERNEL32`, `GDI32`, `ADVAPI32`, `LZ32`, `WINMM`, `COMCTL32` | the real 32-bit system DLLs | **Windows** |
 | `DDRAW` (DirectDraw) | a virtual 16 bpp display in the host, presented with D3D11 (`src/host/ddraw/`); the system `ddraw.dll` is loaded but its exports are routed away | **host implementation** |
-| `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` | the original DLLs from the disc, loaded by the Windows loader | **original binaries** |
+| `MSVCIRT.DLL`, `SMACKW32.DLL`, `Processor.dll` | the original DLLs from the disc, loaded by the Windows loader (on Windows; Linux answers the Smacker exports in the host: see Audio) | **original binaries** |
 | `DSound.dll` | DirectSound compatibility objects in the host over a small mixer and SDL3 audio (`src/host/audio/`); the system `DSound.dll` is never loaded, `A3d.dll` is refused (the host answers "not found") | **host implementation** |
 | Registry key `HKLM\Software\DreamWorks Interactive\Trespasser` | a text file, `user_data\saves\recomp-registry.txt`; `Installed Directory` (saves, level swap files) is `user_data\saves\`, `Data Drive` is `game\` | **host implementation** |
 | The original installer | the launcher reads the player's disc image itself (docs/LAUNCHER.md) | **host implementation** |
@@ -988,25 +988,118 @@ length-error handler calls `exit(1)`, for one) is an error and becomes 7, with i
 game's own menu, the title bar's close button or system menu, or Alt+F4. Faults, the watchdog and
 unresolved targets keep their reports and codes.
 
-## Audio (SDL3)
+## Audio (SDL3) and Smacker
+
+The audio and the Smacker video layers are written to build for Windows x86 (the playable host) and for Linux x86_64
+(not yet playable: `tests/linux` builds and tests them natively, headless). Nothing under `src/host/audio` (except
+`platform/`), `src/host/abi` and `src/host/video/smacker_*` includes a Windows header, uses a Windows type, lock or atomic,
+loads a DLL or squeezes a pointer into 32 bits; `tests/test_audio_portability.py` fails the gate if that changes.
+
+### Guest DirectSound ABI and the host mixer
 
 The game loads `DSound.dll` with `LoadLibraryA`, takes `DirectSoundCreate` from `GetProcAddress` and calls COM methods
-through the returned vtables. `SMACKW32.DLL` does the same for the video audio, on the game's own `IDirectSound`. The host
-answers all of it itself, so DirectSound is never used at run time:
+through the returned vtables; `SMACKW32.DLL` does the same for the video audio, on the game's own `IDirectSound`. The host
+answers all of it itself, so DirectSound is never used at run time.
 
-* `shim_LoadLibraryA`, `shim_GetProcAddress` and `shim_FreeLibrary` (`io_trace.c`) give the game a module handle of the
-  host's and `compat_DirectSoundCreate`; SMACKW32's own kernel32 imports of the same three calls are patched
-  (`dsound_imports.c`) to the same answers.
-* `src/host/audio/dsound_compat.c` is the guest ABI: COM objects with the standard vtables for exactly what the retail
-  code calls (`IDirectSound`, the primary and secondary `IDirectSoundBuffer`, `IDirectSound3DBuffer`,
-  `IDirectSound3DListener`); every other slot answers `DSERR_UNSUPPORTED`. Volume is hundredths of a decibel
-  (`audio_policy.c`), so the menu click's -6.02 dB is a gain of 0.5.
+* `src/host/abi/guest_ops.h`: the host's view of guest memory (`resolve`, `alloc`, `release` over 32-bit guest addresses).
+  A guest address is never a host pointer and no host pointer is ever stored in guest memory: the 32-bit Windows host maps
+  one onto the other (`platform/windows_dsound_bridge.c`), a 64-bit host resolves through its guest window.
+* `dsound_abi.h`: the part of DirectSound the game observes, in fixed-width types with layout asserts (GUID, WAVEFORMATEX,
+  DSBUFFERDESC, DSCAPS, result codes, flags). `tests/dsound_bridge_tests.c` compares every value, size and vtable offset with
+  the real `dsound.h`.
+* `dsound_methods.h`: every entry the guest can reach (`DSM_*`), in vtable order, with its stack words. The guest sees COM
+  objects that are blocks of guest memory, `[vtable address][token]`; the vtables hold the entry addresses the platform
+  supplies. `dsound_compat_call(method, words)` runs one call; a host object is found through a table keyed by the token
+  (slot, generation, face), so a forged, stale or foreign address finds nothing. `dsound_compat.c` implements exactly what
+  the retail code calls (`IDirectSound`, the primary and secondary `IDirectSoundBuffer`, `IDirectSound3DBuffer`,
+  `IDirectSound3DListener`); every other slot answers `DSERR_UNSUPPORTED`. Sample memory is guest memory too, so `Lock`
+  returns guest addresses.
+* Synchronisation is one SDL3 mutex (`audio_sync.c`) over the layer's state and the mixer's own lock, taken in that order;
+  the audio callback only takes the mixer's. No Win32 critical section or Interlocked call remains.
 * `audio_mixer.c` mixes the buffers (8/16-bit, mono/stereo, loops, Lock regions that wrap, a play cursor that follows the
-  output, frequency by linear resampling, per-voice gain, 3D gains from `audio_spatial.c`) to float stereo at the primary
-  format's rate, 22050 Hz.
-* `sdl_audio.c` is the only SDL part: one device stream whose callback mixes on demand, with SDL's driver list limited to
-  WASAPI. The guest ABI and the backend meet at `audio_backend.h`, which is where a Linux build supplies its own
-  (SDL's other drivers) without touching the compatibility layer.
+  output, frequency by linear resampling, per-voice gain, 3D gains from `audio_spatial.c`) and the PCM streams of the videos
+  (`audio_stream_*`: a ring filled by one thread, played once, with its own gain, pause and a played-frames clock) to float
+  stereo at the primary format's rate, 22050 Hz. Volume is hundredths of a decibel (`audio_policy.c`), so the menu click's
+  -6.02 dB is a gain of 0.5.
+* Windows x86 binding (`src/host/audio/platform/`): `windows_dsound_bridge.c` makes one stdcall entry point per `DSM_*` from
+  the method list and forwards its stack words (floats are their bit patterns); `windows_dsound_imports.c` answers the game's
+  `LoadLibraryA`, `GetProcAddress` and `FreeLibrary` for `DSound.dll` (`shim_*` in `io_trace.c`) and patches SMACKW32's own
+  imports of the same three calls. A 64-bit host will supply thunk addresses instead (`docs/X64_MIGRATION.md`).
 
-The audio stops (`dsound_compat_shutdown`) before SDL quits: the device stream is destroyed first, then the mixer, and
-every buffer still held by the game reports `DSERR_BUFFERLOST` instead of touching freed memory.
+### SDL3 backend and driver policy
+
+`sdl_audio.c` is the only SDL part: one device stream whose callback mixes on demand. Which driver SDL is asked for is
+`audio_choose_driver` (`audio_policy.c`):
+
+| Situation | Driver |
+|---|---|
+| `SDL_AUDIODRIVER` set (user or environment) | respected as is: SDL reads it, no hint is set, a driver SDL does not have fails and is logged, nothing replaces it |
+| `JPT_AUDIO_HEADLESS=1` | SDL's `dummy` driver: no device, no sound |
+| Windows | `wasapi` only; SDL's DirectSound and WinMM drivers are never a fallback |
+| Linux and anything else | no hint: SDL picks the driver its build and the system offer (PipeWire, PulseAudio, ALSA, ...); nothing names one |
+
+The gate runs with `SDL_AUDIODRIVER=dummy`. One log line per run: `Audio: SDL3 backend initialized, 22050 Hz, stereo, driver
+<driver>`. The audio stops (`dsound_compat_shutdown`) before SDL quits: the device stream is destroyed first, then the
+mixer, and every buffer still held by the game reports `DSERR_BUFFERLOST` instead of touching freed memory. A Smacker HLE
+(below) is shut down before the audio.
+
+### Smacker
+
+The executable imports 14 functions from `SMACKW32.DLL`, all called by the video player `CVideoWnd::Play` (`0x00418AE0`) and
+its frame step (`0x004188C0`), by their stdcall names: `_SmackOpen@12`, `_SmackClose@4`, `_SmackSoundOnOff@8`,
+`_SmackWait@4`, `_SmackNextFrame@4`, `_SmackDoFrame@4`, `_SmackToBuffer@28`, `_SmackToBufferRect@8`,
+`_SmackSoundUseDirectSound@4`, and five that only the player's second path uses (`_SmackBufferOpen@24`,
+`_SmackBufferNewPalette@12`, `_SmackBufferBlit@32`, `_SmackBufferClose@4`, `_SmackColorRemapWithTrans@20`), taken when the
+primary surface has no memory, which the host never gives. The player opens each file as a Windows file handle
+(`SMACKFILEHANDLE | SMACKNEEDVOLUME | SMACKTRACKS` = `0xFF040`; it closes the handle itself), asks for 565 output
+(`0xC0000000`, or `0x80000000` for 555) into its 640x480 raster, and loops `SmackWait`, `SmackDoFrame`, the rectangles,
+`SmackNextFrame` until frame count - 1. The original's `SmackWait` waits one frame time on its first call, then follows the
+sound card's position when audio plays and `timeGetTime` otherwise.
+
+* **Windows (the playable host):** the original `SMACKW32.DLL` runs, as before. Its audio already goes through the layer
+  above: the DLL's `DirectSoundCreate` is the host's, so the video's PCM enters the same mixer and SDL3 device as the game's.
+  `smk_binding_for_platform` says so, and the HLE is not part of the executable.
+* **Linux (`smk_binding_for_platform`):** `src/host/video/smacker_compat.c` implements the 14 exports in the host, with the
+  Smack structure at the offsets the game and `video_hd.c` read (version, size, frames, frame rate, flags, new-palette flag,
+  palette, frame number, last rectangle), over a decoder backend (`smacker_backend.h`: positional source, next picture,
+  next PCM per track) and the game's own `IDirectSound` as the switch for sound (`SmackSoundUseDirectSound`). No Wine, no
+  Proton, no `dlopen` of a Windows DLL, no PE loading; `tests/test_audio_portability.py` keeps those words out of the code.
+  The platform supplies the entry addresses, the file source (a guest handle or a name) and the clock.
+  * Picture: 8-bit palette indexes and the palette come from the backend at the stored size; Y-interlaced files (`newgame`)
+    write each stored row to every second row, Y-doubled ones repeat it, and the structure reports the shown height. RGB565
+    or RGB555 conversion goes through the palette; a destination of 8 bits gets the indexes. Rectangles are reported in
+    destination coordinates, one per frame. Like the original, a 4x4 block is converted and written only when a pixel of it
+    changed, so a block that did not change keeps the colour it was written with after a palette change.
+  * Audio: one `audio_stream` per selected track of the shared mixer (never a second device), kept about 500 ms ahead of
+    what has played; the first `SmackWait` starts it. The audio's played-frames count is the video's clock while the sound
+    plays; a device that stops for 400 ms or more, a finished track or `SmackSoundOnOff(0)` hands the clock to the wall clock,
+    so the picture never waits for a clock that stopped. Frames are decoded once, in order; `SmackClose` closes the streams.
+  * Palette: the structure's palette and new-palette flag follow the decoder's palette each frame; conversion uses the
+    palette in force for the blocks that are written.
+  * Measured against the original DLL on the four retail videos (a developer comparison, not part of the gate: game files are
+    never used by tests): header, frame count, rate and the palette of every frame are identical; the index pictures of the
+    frames checked are identical; the RGB565 raster of `credits` (1303 frames) and `win` (606) is identical frame by frame;
+    `tpassintro` differs in 6 of 1585 frames (16-304 pixels of 307,200, up to 40 levels in one channel) and `newgame` in 381
+    of 1085 (about 1,200-2,100 pixels, up to 12 levels), always in the frames where the original repainted more than the
+    changed blocks (the rule that decides this was found by comparison and is not fully known). The rectangles are tighter
+    than the original's.
+* **FFmpeg boundary (`smacker_backend_ffmpeg.c`):** libavformat's `smk` demuxer and libavcodec's `smackvid` and `smackaud`
+  decoders, through the libraries (never the `ffmpeg` program), reading the file through a custom IO over the source and
+  skipping the stream the instance does not need (one instance decodes video, another audio, so audio can run ahead of the
+  picture). Libraries: libavformat, libavcodec, libavutil; libswscale and libswresample are not used (the picture stays
+  PAL8, the audio stays in the file's format). Found by pkg-config or `-DFFMPEG_ROOT=`; a build without them has no backend
+  (`smk_ffmpeg_backend()` is NULL) and the suite says DATA UNAVAILABLE. Tested against FFmpeg 6.1.1 (libavformat 60.16.100,
+  libavcodec 60.31.102, libavutil 58.29.100). The Smacker demuxer and decoders are LGPL-2.1-or-later; a distribution's
+  FFmpeg is usually built with GPL parts enabled, which is fine for development (`smacker_ffmpeg_tests` prints a note) but a
+  release must link an LGPL-only build (`--disable-gpl --disable-nonfree`, only the `smk` demuxer and the two decoders
+  needed), as shared libraries next to the program with the LGPL-2.1 text and the source offer for the version shipped. The
+  Windows release links no FFmpeg.
+
+### Building and testing it
+
+`cmake/JptAudio.cmake` holds the source lists: portable audio, portable Smacker, Windows bridge, Linux (empty) and the one
+chosen by platform; the game build and `tests/linux/CMakeLists.txt` (`UNIX AND NOT APPLE`) both take them from it. The
+Windows gate compiles the same portable test programs (`dsound_compat_tests`, `smacker_tests`, `audio_portable_tests`,
+`audio_backend_tests`) beside the Windows-only ones (`dsound_bridge_tests`); `tools/linux_audio_probe.sh` builds the portable
+layers with `-Werror` under GCC and Clang in WSL, outside the repository, and runs them on SDL's dummy driver (the gate's
+`linux audio probe` check; DATA UNAVAILABLE without a Linux toolchain).

@@ -10,6 +10,15 @@ licence allows and it says so in the file; everything else listed here was a ref
 | [sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp) | the static recompiler and its runtime (fetched, patched in `patches/pcrecomp`) |
 | [sp00nznet/trespasser](https://github.com/sp00nznet/trespasser) | the first reconnaissance of the target |
 
+## Audio and Smacker portability
+
+| Reference | Kind | Used for |
+|---|---|---|
+| [sp00nznet/pcrecomp `runtime/win32hle`](https://github.com/sp00nznet/pcrecomp/tree/main/runtime/win32hle) (`README.md`, `dsound.c`, `dsound_selftest.c`, `bink.c`) | architecture (reading only) | the split of guest Win32 ABI, guest memory, COM objects, host synchronisation, audio mixer and video decoder; guest objects independent of host objects; no code copied, SDL3 here and not its SDL2 |
+| [FFmpeg](https://ffmpeg.org/) `libavformat/smacker.c` (Smacker demuxer) | library and documentation | the demuxer behind the Linux Smacker backend (LGPL-2.1-or-later), used through the libraries |
+| FFmpeg `libavcodec/smacker.c` (`smackvid`, `smackaud`) | library and documentation | the Smacker video and audio decoders behind the Linux Smacker backend (LGPL-2.1-or-later), used through the libraries |
+| [SDL3 audio](https://wiki.libsdl.org/SDL3/CategoryAudio) | documentation | device streams, `SDL_HINT_AUDIO_DRIVER` and `SDL_AUDIODRIVER`, the dummy driver |
+
 ## Gamepad and prompts
 
 | Reference | Kind | Used for |

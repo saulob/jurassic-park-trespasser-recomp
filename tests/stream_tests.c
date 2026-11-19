@@ -196,6 +196,82 @@ static void test_synthetic_pack(void) {
     free(retail.data);
 }
 
+/* ---- the game's handles on Stream.tpa */
+
+#define POOL_HANDLES 8u
+
+/* What ReadFile gives the game on a handle the view does not serve: the real file's bytes, short at its end; the audio
+ * thread pads a short read with silence. */
+static void read_real(const blob_t* file, uint64_t offset, uint8_t* out, size_t n) {
+    size_t got = offset < file->size ? (size_t)(file->size - offset) : 0;
+    if (got > n) got = n;
+    memset(out, 0, n);
+    if (got) memcpy(out, file->data + offset, got);
+}
+
+/* The CAudio pack loader opens Stream.tpa read-only for the directory (0x0043A9C1), then seven more times read-write for
+ * its stream handle pool (0x0043AF91); a voice-over playing while music holds the first handle streams through the next. */
+static void test_game_handle_pool(void) {
+    static const uint32_t ids[2] = {0x1111, 0x2222};
+    static const int with_caption[2] = {1, 0};
+    static const uint32_t units[1] = {7};
+    static const char* const lines[1] = {"Fixed"};
+    blob_t retail = make_retail(ids, 2, with_caption);
+    uint8_t block[256], added_payload[16], added_record[300], dir[0x18 + 3 * 0x38];
+    size_t block_size, added_size;
+    stream_audio_t audio[1];
+    stream_caption_t caption;
+    stream_pack_t* views[2 * POOL_HANDLES];
+    stream_pack_stats_t stats;
+    const char* path = "S:\\game\\versions\\en-116\\data\\Stream.tpa";
+
+    block_of(lines, units, 1, block, &block_size);
+    for (int i = 0; i < 16; i++) added_payload[i] = (uint8_t)(0xA0 + i);
+    added_size = build_record(added_record, 0x4444, units, lines, 1, added_payload, sizeof added_payload, 0x110);
+    audio[0] = (stream_audio_t){0x4444, added_record, added_size, "-"};
+    caption = (stream_caption_t){0x1111, block, block_size};
+
+    for (uint32_t k = 0; k < 2 * POOL_HANDLES; k++) {
+        const uint32_t access = k % POOL_HANDLES == 0 ? GENERIC_READ : GENERIC_READ | GENERIC_WRITE;
+        views[k] = stream_pack_serves_open(path, access, FILE_FLAG_SEQUENTIAL_SCAN)
+                       ? stream_pack_open(read_blob, &retail, retail.size, audio, 1, &caption, 1, &stats)
+                       : NULL;
+    }
+    CHECK(2 * POOL_HANDLES <= STREAM_PACK_MAX_VIEWS);
+    CHECK(views[0] != NULL && stats.captions_applied == 1 && stats.audio_added == 1);
+    if (!views[0]) {
+        free(retail.data);
+        return;
+    }
+    CHECK(stream_pack_read(views[0], 0, dir, sizeof dir) == (long)sizeof dir);
+    for (uint32_t s = 0; s < 2; s++) {
+        const uint8_t* e = dir + 0x18 + (size_t)s * 0x38;
+        const uint32_t offset = rd32(e + 4), header = rd32(e + 0x1C);
+        const uint8_t* expected = retail.data + rd32(retail.data + 0x18 + (size_t)s * 0x38 + 4) + rd32(retail.data + 0x18 + (size_t)s * 0x38 + 0x1C);
+        for (uint32_t k = 0; k < 2 * POOL_HANDLES; k++) {
+            uint8_t payload[40];
+            if (views[k]) CHECK(stream_pack_read(views[k], (uint64_t)offset + header, payload, sizeof payload) == (long)sizeof payload);
+            else read_real(&retail, (uint64_t)offset + header, payload, sizeof payload);
+            if (memcmp(payload, expected, sizeof payload)) {
+                s_failures++;
+                printf("FAIL %s:%d: sample %04X streamed through pool handle %u is not its audio (%s)\n", __FILE__, __LINE__, ids[s], k,
+                       views[k] ? "virtual view" : "real file at the view's offset");
+            }
+            s_checks++;
+        }
+    }
+    for (uint32_t k = 0; k < 2 * POOL_HANDLES; k++) stream_pack_close(views[k]);
+
+    CHECK(stream_pack_serves_open("data/STREAM.TPA", GENERIC_READ, 0));
+    CHECK(stream_pack_serves_open("Stream.tpa", GENERIC_READ | GENERIC_WRITE, FILE_FLAG_RANDOM_ACCESS));
+    CHECK(!stream_pack_serves_open(path, GENERIC_READ, FILE_FLAG_OVERLAPPED));
+    CHECK(!stream_pack_serves_open(path, GENERIC_WRITE, 0));
+    CHECK(!stream_pack_serves_open("S:\\data\\Effects.tpa", GENERIC_READ, 0));
+    CHECK(!stream_pack_serves_open("S:\\data\\Stream.tpa.bak", GENERIC_READ, 0));
+    CHECK(!stream_pack_serves_open(NULL, GENERIC_READ, 0));
+    free(retail.data);
+}
+
 /* ---- the embedded restored audio */
 
 static const uint8_t* s_manifest;
@@ -678,6 +754,7 @@ static void test_no_development_path(void) {
 int main(void) {
     test_synthetic_pack();
     test_caption_into_a_sample_without_one();
+    test_game_handle_pool();
     test_release_views();
     test_embedded_audio();
     test_retail_view();

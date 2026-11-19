@@ -4,6 +4,20 @@
     {"file": "src/host/debug_menu_policy.c", "name": "VK_DOWN_", "reason": "virtual key code"},
     {"file": "src/host/host_policy.c", "name": "LOCK_FLAG_WRITEONLY", "reason": "DirectDraw lock flag"},
     {"file": "src/host/text_layout.h", "name": "TL_ALIGN_BOTTOM", "reason": "host text layout flag"},
-    {"file": "src/host/engine_limits.c", "name": "TERRAIN_TEXTURE_MEM_BYTES", "reason": "byte length of SetTextureMemSize's code, compared before the host calls it"}
+    {"file": "src/host/engine_limits.c", "name": "TERRAIN_TEXTURE_MEM_BYTES", "reason": "byte length of SetTextureMemSize's code, compared before the host calls it"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_WIDTH", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_HEIGHT", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_FRAMES", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RATE", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_FLAGS", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_NEW_PALETTE", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_PALETTE", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_FRAME_NUMBER", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RECT_X", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RECT_Y", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RECT_W", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RECT_H", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_compat.h", "name": "SMK_STRUCT_BYTES", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
+    {"file": "src/host/video/smacker_header.c", "name": "HEADER_RATE_TRACK0", "reason": "offset in the Smacker file header, fixed by the file format"}
   ]
 }
