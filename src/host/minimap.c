@@ -411,11 +411,44 @@ int minimap_creatures_select(float player_x, float player_y, float range, const 
     return n;
 }
 
+int minimap_creature_size_class(float scale) {
+    if (!isfinite(scale) || !(scale > 0.0f)) return MM_SIZE_STANDARD;
+    if (scale < MM_SCALE_STANDARD) return 0;
+    if (scale < MM_SCALE_MEDIUM) return 1;
+    return scale < MM_SCALE_LARGE ? 2 : 3;
+}
+
+float minimap_creature_marker_radius(float minimap_radius, int size_class) {
+    static const float factor[MM_SIZE_CLASSES] = MM_CREATURE_SIZE_FACTORS;
+    if (size_class < 0 || size_class >= MM_SIZE_CLASSES) size_class = MM_SIZE_STANDARD;
+    return minimap_radius * MM_CREATURE_K * factor[size_class];
+}
+
+int minimap_vehicle_polygon(const minimap_frame_t* f, const minimap_vehicle_t* v, minimap_point_t out[MM_CLIP_MAX]) {
+    float cx, cy, dx, dy, half_length, half_width, axis;
+    minimap_point_t c[4];
+    if (!f || !v || !isfinite(v->x) || !isfinite(v->y) || !isfinite(v->ax) || !isfinite(v->ay)) return 0;
+    axis = hypotf(v->ax, v->ay);
+    if (!(axis > 1e-6f)) return 0;
+    minimap_to_screen(f, v->x, v->y, &cx, &cy);
+    dx = (v->ax * f->up_y - v->ay * f->up_x) / axis;
+    dy = -(v->ax * f->up_x + v->ay * f->up_y) / axis;
+    half_length = fmaxf(f->radius * MM_VEHICLE_LENGTH_K, MM_VEHICLE_MIN_LENGTH_PX) * 0.5f;
+    half_width = fmaxf(f->radius * MM_VEHICLE_WIDTH_K, MM_VEHICLE_MIN_WIDTH_PX) * 0.5f;
+    c[0] = (minimap_point_t){ cx - dx * half_length + dy * half_width, cy - dy * half_length - dx * half_width };
+    c[1] = (minimap_point_t){ cx + dx * half_length + dy * half_width, cy + dy * half_length - dx * half_width };
+    c[2] = (minimap_point_t){ cx + dx * half_length - dy * half_width, cy + dy * half_length + dx * half_width };
+    c[3] = (minimap_point_t){ cx - dx * half_length - dy * half_width, cy - dy * half_length + dx * half_width };
+    return minimap_clip_polygon(f, c, 4, out);
+}
+
 int minimap_creature_place(const minimap_frame_t* f, const minimap_creature_t* creature, float* sx, float* sy) {
     float x, y;
     if (!creature || !isfinite(creature->x) || !isfinite(creature->y)) return 0;
     minimap_to_screen(f, creature->x, creature->y, &x, &y);
-    if (hypotf(x - f->cx, y - f->cy) > f->radius - f->radius * MM_CREATURE_K) return 0;
+    if (hypotf(x - f->cx, y - f->cy) >
+        f->radius - minimap_creature_marker_radius(f->radius, creature->size) - MM_CREATURE_OUTLINE_PX)
+        return 0;
     if (sx) *sx = x;
     if (sy) *sy = y;
     return 1;

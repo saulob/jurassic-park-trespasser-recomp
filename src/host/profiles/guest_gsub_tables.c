@@ -3,23 +3,29 @@
 
 typedef void (*jpt_gsub_fn_t)(void);
 
+void lift116_sub_0046CD80(void);
 void lift116_sub_0050C9C0(void);
 void lift116_sub_00626BA0(void);
+void lift_es117_sub_00452400(void);
 void lift_es117_sub_004F2950(void);
 void lift_es117_sub_0060D2C0(void);
+void lift_ptbr117_sub_004525C0(void);
 void lift_ptbr117_sub_004F3DA0(void);
 void lift_ptbr117_sub_0060F7D0(void);
 
 const jpt_gsub_fn_t jpt_gsub_by_lift[JPT_LIFT_COUNT][JPT_GSUB_COUNT] = {
     [JPT_LIFT_116] = {
+        lift116_sub_0046CD80,
         lift116_sub_0050C9C0,
         lift116_sub_00626BA0,
     },
     [JPT_LIFT_ES117] = {
+        lift_es117_sub_00452400,
         lift_es117_sub_004F2950,
         lift_es117_sub_0060D2C0,
     },
     [JPT_LIFT_PTBR117] = {
+        lift_ptbr117_sub_004525C0,
         lift_ptbr117_sub_004F3DA0,
         lift_ptbr117_sub_0060F7D0,
     },

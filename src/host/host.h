@@ -81,6 +81,11 @@ recomp_func_t ddraw_compat_lookup(uint32_t va);
 int d3d_method_in_place(uint32_t va);
 int ddraw_compat_last_call(char* out, int cap);
 
+/* narration.c: Disable Hammond Narration (key disable_hammond_narration); the dispatch asks it for the voice-over action. */
+void narration_configure(int disabled);
+void narration_install(void);
+recomp_func_t narration_lookup(uint32_t va);
+
 int selfmod_init(void);
 recomp_func_t selfmod_lookup(uint32_t va);
 /* While set, every SelfMod entry goes to the host function the interceptor returns instead of the native code. */
@@ -407,6 +412,7 @@ void active_ai_configure(int enhanced);
 /* The living animals the game's AI holds, awake (engaged) or not, with their world position; read-only. */
 typedef struct {
     float x, y;
+    float scale; /* the instance's scale: how big the animal is */
     int engaged;
 } host_animal_t;
 int active_ai_animals(uint32_t scratch, host_animal_t* out, int max);

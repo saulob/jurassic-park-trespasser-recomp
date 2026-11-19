@@ -103,6 +103,36 @@ class Classification(unittest.TestCase):
         self.assertFalse(minimap_map.is_land_object(obj("TrnObj_Ocean3", "CTerrainObj")))
 
 
+class Vehicles(unittest.TestCase):
+    BODIES = ("PHJeepCrshed00-00", "PHJeepCrshSuvy00-910", "PHunterJeepCrashed00-02", "PHunterJeepSuvy00-00",
+              "PHunterJeep00-00", "PHjeepOpenBody00-01", "PHjeepOpenBodyHack00-00", "PHjeepSLDseatBody00-00",
+              "PtruckBody00-04", "PMercedesUnimoBody00-01")
+    NOT_BODIES = ("PtruckDoorL00-00", "PtruckHood00-00", "PtruckLoorR-00", "PHunterJeepDoorL-00", "PHunterJeepDoorR00-00",
+                  "PHjeepOpenSeat01-00", "PHjeepOpenStWeel00-00", "PHjeepOpenwindow00-00", "PMercedesUnimoBdoor00-00",
+                  "FMercTruck27-00", "FPTruck14-00", "$FPHjeepBody01-00", "PAplaneCrate00", "PHelicopter06-00",
+                  "Phelicopter00-00", "SMonoRailTrack4-00", "TRocB_16InchDia-01", "PCrate00-00", "Pdoor00-00", "Pbox-00")
+
+    def test_a_vehicle_body_is_recognised(self):
+        for name in self.BODIES:
+            self.assertTrue(minimap_map.VEHICLE_BODY.match(name), name)
+
+    def test_parts_and_common_objects_are_not_vehicles(self):
+        for name in self.NOT_BODIES:
+            self.assertFalse(minimap_map.VEHICLE_BODY.match(name), name)
+
+    def test_the_bodies_of_one_vehicle_give_one_marker(self):
+        near = [(10.0, 10.0, 1.0, 0.0), (11.5, 10.5, 0.0, 1.0), (12.0, 9.0, 1.0, 0.0)]
+        self.assertEqual(len(minimap_map.merge_vehicles(near)), 1)
+
+    def test_separate_vehicles_stay_separate(self):
+        apart = [(0.0, 0.0, 1.0, 0.0), (4.2, 0.0, 1.0, 0.0), (100.0, 5.0, 0.0, 1.0)]
+        self.assertEqual(len(minimap_map.merge_vehicles(apart)), 3)
+
+    def test_merging_keeps_the_first_marker(self):
+        kept = minimap_map.merge_vehicles([(5.0, 5.0, 1.0, 0.0), (6.0, 5.0, 0.0, 1.0)])
+        self.assertEqual(kept, [(5.0, 5.0, 1.0, 0.0)])
+
+
 @unittest.skipUnless((DATA / "be.scn").exists(), "retail level data not installed")
 class MinimapMap(unittest.TestCase):
     @classmethod
@@ -244,6 +274,30 @@ class MinimapMap(unittest.TestCase):
             first = self.by_id[name.upper()]
             self.assertEqual(first["runs"], again["runs"], name)
             self.assertEqual(first["landmarks"], again["landmarks"], name)
+
+    def test_vehicles_are_the_retail_ones(self):
+        counts = {lv["id"]: len(lv["vehicles"]) for lv in self.levels}
+        self.assertGreaterEqual(counts["IJ"], 10)
+        self.assertGreaterEqual(counts["BE"], 3)
+        self.assertGreaterEqual(counts["AS"], 5)
+        self.assertGreaterEqual(counts["JR"], 3)
+        self.assertEqual(counts["SUM"], 0)
+        for lv in self.levels:
+            b = minimap_bounds.bounds_for(DATA, lv["id"].lower())
+            for x, y, ax, ay in lv["vehicles"]:
+                self.assertTrue(b["min_x"] <= x <= b["max_x"] and b["min_y"] <= y <= b["max_y"], (lv["id"], x, y))
+                self.assertAlmostEqual(math.hypot(ax, ay), 1.0, delta=0.01)
+            for i, a in enumerate(lv["vehicles"]):
+                for other in lv["vehicles"][i + 1:]:
+                    self.assertGreaterEqual(math.hypot(a[0] - other[0], a[1] - other[1]), minimap_map.VEHICLE_MERGE_M)
+
+    def test_a_vehicle_is_not_a_landmark(self):
+        for lv in self.levels:
+            for x, y, _ax, _ay in lv["vehicles"]:
+                for kind, q in lv["landmarks"]:
+                    if kind in (BUILDING, GATE):
+                        cx, cy = sum(p[0] for p in q) / 4, sum(p[1] for p in q) / 4
+                        self.assertGreater(math.hypot(x - cx, y - cy), 1.0, (lv["id"], x, y))
 
     def test_committed_file_matches_a_fresh_generation(self):
         original = minimap_map.OUT

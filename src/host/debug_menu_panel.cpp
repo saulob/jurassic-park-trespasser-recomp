@@ -639,12 +639,27 @@ void minimap_waypoint_marker(ImDrawList* dl, const minimap_frame_t& fr, const cp
     objective_arrow(dl, t, 1.0f, 1.0f);
 }
 
+void minimap_vehicle_markers(ImDrawList* dl, const minimap_frame_t& fr, const minimap_level_map_t& m) {
+    const ImU32 fill = colour(ImVec4(MM_COLOR_VEHICLE, 1.0f), 1.0f), edge = colour(ImVec4(0.0f, 0.0f, 0.0f, 0.85f), 1.0f);
+    for (int i = 0; i < m.vehicle_count; i++) {
+        minimap_point_t pts[MM_CLIP_MAX];
+        const int n = minimap_vehicle_polygon(&fr, &m.vehicles[i], pts);
+        if (n < 3) continue;
+        const ImDrawListFlags flags = dl->Flags;
+        dl->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+        fill_polygon(dl, pts, n, fill);
+        dl->Flags = flags;
+        for (int k = 0; k < n; k++) dl->PathLineTo(ImVec2(pts[k].x, pts[k].y));
+        dl->PathStroke(edge, ImDrawFlags_Closed, 1.0f);
+    }
+}
+
 void minimap_creature_markers(ImDrawList* dl, const minimap_frame_t& fr, const cp_hud_t& h) {
-    const float k = fr.radius * MM_CREATURE_K;
     for (int i = 0; i < h.creature_count; i++) {
         float x, y;
         if (!minimap_creature_place(&fr, &h.creatures[i], &x, &y)) continue;
-        dl->AddCircleFilled(ImVec2(x, y), k + 1.0f, colour(ImVec4(0.0f, 0.0f, 0.0f, 0.85f), 1.0f), 12);
+        const float k = minimap_creature_marker_radius(fr.radius, h.creatures[i].size);
+        dl->AddCircleFilled(ImVec2(x, y), k + MM_CREATURE_OUTLINE_PX, colour(ImVec4(0.0f, 0.0f, 0.0f, 0.85f), 1.0f), 12);
         dl->AddCircleFilled(ImVec2(x, y), k, colour(h.creatures[i].threat ? ImVec4(MM_COLOR_THREAT, 1.0f)
                                                                           : ImVec4(MM_COLOR_PASSIVE, 1.0f), 1.0f), 12);
     }
@@ -691,6 +706,7 @@ void minimap(const dmp_frame_t* f) {
         }
     }
 
+    minimap_vehicle_markers(dl, fr, *m);
     minimap_creature_markers(dl, fr, h);
     if (h.waypoint) minimap_waypoint_marker(dl, fr, h);
 

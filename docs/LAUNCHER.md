@@ -178,6 +178,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `show_resolution_title` | 1, 0 | 0 |
 | `skip_intro` | 1, 0 | 0 |
 | `video_subtitles` | 1, 0 | 1 |
+| `disable_hammond_narration` | 1, 0 | 0 |
 | `cheat_movement_speed` | 0.5, 1, 1.5, 2, 3, 5, 7.5, 10 | 1 |
 | `cheat_jump_height` | 0.5, 1, 1.5, 2, 3, 5 | 1 |
 | `cheat_invulnerability`, `cheat_infinite_ammo`, `cheat_freeze_dinosaurs`, `cheat_super_health` | 1, 0 | 0 |
@@ -451,6 +452,14 @@ is not part of this work.
   give On): the spoken lines of `tpassintro.smk`, `newgame.smk` and `win.smk` in the game's language, drawn over the
   picture; `credits.smk` has no dialogue. Only the retail files (size and SHA-256 of their first 64 KiB) get them. Read
   when the game starts. Log: `[video-subtitles] enabled`, `tpassintro.smk timeline: 16 cues`.
+- **Disable Hammond Narration** (Gameplay; key `disable_hammond_narration`, Off by default, which is the retail
+  behaviour): John Hammond's voice-overs are not started, so neither his voice nor his captions appear. Every
+  voice-over of the level scripts goes through one action (`CVoiceOverAction`, execute `0x0046CD80`) that holds the
+  sample's ID; Hammond's samples are the ones named `VH<number>` (the ID is the CRC-32 of the lower-case name), and
+  the action is skipped for them. Anne's `VA` lines, the `VC H.. - A..` conversations (both speakers in one sample),
+  effects, music and ambience are never touched. Read when the game starts; `narration_set_disabled` applies to the
+  next voice-over at once, a line already playing is left to finish. Log: `Disable Hammond Narration on`,
+  `voice-over sample ... not started`.
 - Draw distance, LOD, texture sizes, texture memory and generated mipmaps are not settings: they are part of the
   Direct3D 11 renderer (see the README and `[graphics]` in the log).
 

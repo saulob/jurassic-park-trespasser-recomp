@@ -75,6 +75,7 @@
 #define SYS_THINK_DUE 0x31CCu
 
 #define ANIMAL_PHYSICS 0x28u
+#define INSTANCE_SCALE 0x4Cu
 #define PHYSICS_INFO 0xCu
 #define ANIMAL_PARTS 0xACu
 #define ANIMAL_BRAIN 0xDCu
@@ -205,6 +206,7 @@ static int note_animal(uint32_t animal, int active, uint32_t scratch, host_anima
     read_vec(position(animal, scratch), at);
     out[n].x = at[0];
     out[n].y = at[1];
+    out[n].scale = rdf(animal + INSTANCE_SCALE);
     out[n].engaged = minimap_creature_engaged(active, s_player_ready,
                                               dist3(at, s_player), rdf(brain_of(animal) + BRAIN_KEEP_RADIUS));
     return n + 1;

@@ -292,6 +292,11 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   the 1.0.116 address in every lift), and the host defines the function once. A hook sees and may change the guest registers, flags and memory, then the instruction
   runs as lifted; a listed address no lifted body holds fails the lift. The official v1.1 fixes use them
   (`patch117_player.c`, `patch117_physics.c`).
+- Disable Hammond Narration (`narration.c`, `narration_policy.c`, `jpt_hammond.c`): CVoiceOverAction's execute function
+  (`0x0046CD80`, vtable slot 2, no stable entry) is answered by the dispatch (`recomp_lookup_manual` asks
+  `narration_lookup`) with a host function that returns without running it when the action's sample ID (+8) is one of
+  Hammond's (`VH<n>` names hashed as `jpt_sample_id`). The sample is never started, so its voice and its captions (which
+  ride on the sample) never appear; every other action runs the lifted body.
 - `guest_overrides.c` also installs the host kernels: the water texture rows (`0x0060E3F0`) and the CSimWaveVar2D step (`0x00638670`, `water_kernels.c`),
   the occlusion test (`0x00630D90`, `occlusion_kernel.c`) and the per-polygon Direct3D submission (`0x00559240`,
   `polygon_submit.c`: address modes, the lit and fogged D3DTLVERTEX fan, render states and DrawPrimitive, each call
@@ -473,7 +478,10 @@ are the mover's `CPlacement3`; yaw is the heading of `(0, 1, 0)` turned as LOC's
 
 The minimap (`minimap.c`, drawn by the panel) is a circle at a fixed 2x zoom. F5 (`KEY_HOST_MINIMAP`) and the L3 + R3
 chord (`gamepad.c`, `minimap_chord_pressed`) both call `window_host_toggle_minimap`, which flips the one state, saves
-`minimap` to `trespasser.ini` and posts the HUD notice.
+`minimap` to `trespasser.ini` and posts the HUD notice. A creature's dot is one of four sizes from the instance scale
+(`CInstance` +0x4C, read with the position in `active_ai.c`; `minimap_creature_size_class`). Vehicles are not read from
+the game: `tools/minimap_map.py` writes each level's vehicle bodies (jeeps, trucks, the Unimog; one marker per body,
+doors and other parts are other objects) into `minimap_map.inc` as a centre and the long axis of the footprint.
 
 ### One interface at a time
 

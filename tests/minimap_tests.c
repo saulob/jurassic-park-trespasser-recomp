@@ -1232,7 +1232,191 @@ static void test_independent_visibility(void) {
     minimap_configure(1);
 }
 
+static void test_creature_sizes(void) {
+    const float scales[] = { 0.4f, 1.9f, 2.5f, 3.06f, 4.46f, 4.86f, 5.66f, 6.24f, 7.84f, 15.0f };
+    const int expected[] = { 0, 0, 1, 1, 2, 2, 2, 3, 3, 3 };
+    float last = 0.0f;
+    minimap_frame_t f;
+    minimap_creature_t c = { 0.0f, 0.0f, 0, 0 };
+    float sx, sy;
+    for (int i = 0; i < COUNT(scales); i++)
+        CHECK(minimap_creature_size_class(scales[i]) == expected[i], "scale %.2f is size class %d (got %d)", scales[i],
+              expected[i], minimap_creature_size_class(scales[i]));
+    CHECK(minimap_creature_size_class(2.478f) == minimap_creature_size_class(3.056f), "the retail raptors share a class");
+    CHECK(minimap_creature_size_class(6.24f) == minimap_creature_size_class(7.84f), "the retail T. rex scales share a class");
+    CHECK(minimap_creature_size_class(5.66f) > minimap_creature_size_class(3.056f) &&
+              minimap_creature_size_class(6.24f) > minimap_creature_size_class(5.66f),
+          "a bigger animal never gets a smaller class");
+    CHECK(minimap_creature_size_class(1000.0f) == MM_SIZE_CLASSES - 1, "an extreme scale clamps to the largest class");
+    CHECK(minimap_creature_size_class(0.0f) == MM_SIZE_STANDARD && minimap_creature_size_class(-3.0f) == MM_SIZE_STANDARD &&
+              minimap_creature_size_class(NAN) == MM_SIZE_STANDARD && minimap_creature_size_class(INFINITY) == MM_SIZE_STANDARD,
+          "a zero, negative or non-finite scale falls back to the standard class");
+
+    for (int k = 0; k < MM_SIZE_CLASSES; k++) {
+        const float r = minimap_creature_marker_radius(135.0f, k);
+        CHECK(r > last, "the marker radius grows with the class (%d: %.2f px)", k, r);
+        last = r;
+    }
+    CHECK(near(minimap_creature_marker_radius(135.0f, MM_SIZE_STANDARD), 135.0f * MM_CREATURE_K, 1e-4f),
+          "the standard class keeps the previous marker size");
+    CHECK(near(minimap_creature_marker_radius(135.0f, 0) - minimap_creature_marker_radius(135.0f, 1), -1.0f, 0.1f) &&
+              near(minimap_creature_marker_radius(135.0f, 2) - minimap_creature_marker_radius(135.0f, 1), 1.0f, 0.1f) &&
+              near(minimap_creature_marker_radius(135.0f, 3) - minimap_creature_marker_radius(135.0f, 1), 2.0f, 0.1f),
+          "against the standard marker at 1080p: small is 1 px less, medium 1 px more, the largest 2 px more");
+    CHECK(minimap_creature_marker_radius(135.0f, -1) == minimap_creature_marker_radius(135.0f, MM_SIZE_STANDARD) &&
+              minimap_creature_marker_radius(135.0f, 99) == minimap_creature_marker_radius(135.0f, MM_SIZE_STANDARD),
+          "an out-of-range class is drawn standard");
+    CHECK(minimap_creature_marker_radius(135.0f, 3) < 135.0f * 0.06f, "no marker is enormous");
+    CHECK(near(minimap_creature_marker_radius(270.0f, 2), 2.0f * minimap_creature_marker_radius(135.0f, 2), 1e-4f),
+          "the marker scales with the minimap size");
+
+    frame_at(&f, 0.0f, 0.0f, MM_ZOOM);
+    for (int k = 0; k < MM_SIZE_CLASSES; k++) {
+        const float r = minimap_creature_marker_radius(RADIUS, k) + MM_CREATURE_OUTLINE_PX;
+        float out_at;
+        c.size = k;
+        for (out_at = 0.0f; out_at < 1000.0f; out_at += 0.05f) {
+            c.x = 0.0f;
+            c.y = out_at;
+            if (!minimap_creature_place(&f, &c, &sx, &sy)) break;
+            CHECK(hypotf(sx - CX, sy - CY) + r <= RADIUS + 1e-2f, "size %d: a placed marker lies wholly inside the circle", k);
+        }
+        CHECK(out_at < 1000.0f, "size %d: a creature far from the player is not placed", k);
+    }
+    c.x = 0.0f;
+    c.y = (RADIUS - minimap_creature_marker_radius(RADIUS, 0) - MM_CREATURE_OUTLINE_PX - 0.2f) / f.scale;
+    c.size = 0;
+    CHECK(minimap_creature_place(&f, &c, &sx, &sy), "a small marker fits where a large one does not");
+    c.size = 3;
+    CHECK(!minimap_creature_place(&f, &c, &sx, &sy), "a large marker is dropped sooner at the edge");
+}
+
+static float polygon_area(const minimap_point_t* p, int n) {
+    float a = 0.0f;
+    for (int i = 0; i < n; i++) a += p[i].x * p[(i + 1) % n].y - p[(i + 1) % n].x * p[i].y;
+    return fabsf(a) * 0.5f;
+}
+
+static void polygon_box(const minimap_point_t* p, int n, float* width, float* height, float* mid_x, float* mid_y) {
+    float min_x = p[0].x, max_x = p[0].x, min_y = p[0].y, max_y = p[0].y;
+    for (int i = 1; i < n; i++) {
+        if (p[i].x < min_x) min_x = p[i].x;
+        if (p[i].x > max_x) max_x = p[i].x;
+        if (p[i].y < min_y) min_y = p[i].y;
+        if (p[i].y > max_y) max_y = p[i].y;
+    }
+    *width = max_x - min_x;
+    *height = max_y - min_y;
+    *mid_x = (min_x + max_x) * 0.5f;
+    *mid_y = (min_y + max_y) * 0.5f;
+}
+
+static void test_vehicles(void) {
+    minimap_frame_t f;
+    minimap_point_t pts[MM_CLIP_MAX];
+    const minimap_vehicle_t along_x = { 20.0f, 0.0f, 1.0f, 0.0f }, along_y = { 20.0f, 0.0f, 0.0f, 1.0f };
+    float width, height, mid_x, mid_y;
+    int n;
+    frame_at(&f, 0.0f, 0.0f, MM_ZOOM);
+
+    n = minimap_vehicle_polygon(&f, &along_x, pts);
+    CHECK(n == 4, "a vehicle is a rectangle (%d points)", n);
+    if (n == 4) {
+        polygon_box(pts, 4, &width, &height, &mid_x, &mid_y);
+        CHECK(width > height * 1.4f, "a vehicle along east is wider than tall on a north-up map (%.1f x %.1f)", width, height);
+        CHECK(near(polygon_area(pts, 4), width * height, 1e-2f), "the vehicle polygon is an axis-aligned rectangle");
+        CHECK(width <= 8.0f && height <= 5.0f, "the vehicle marker is small (%.1f x %.1f px)", width, height);
+        CHECK(near(mid_x, CX + 20.0f * f.scale, 1e-2f) && near(mid_y, CY, 1e-2f), "the vehicle is centred on its world position");
+    }
+    n = minimap_vehicle_polygon(&f, &along_y, pts);
+    CHECK(n == 4, "a vehicle along north is a rectangle too");
+    if (n == 4) {
+        polygon_box(pts, 4, &width, &height, &mid_x, &mid_y);
+        CHECK(height > width * 1.4f, "a vehicle along north is taller than wide");
+    }
+    {
+        minimap_frame_t g;
+        frame_at(&g, 0.0f, 0.0f, MM_ZOOM);
+        minimap_face(&g, 90.0f);
+        n = minimap_vehicle_polygon(&g, &along_x, pts);
+        CHECK(n == 4, "player-up keeps the vehicle drawn (%d points)", n);
+        if (n == 4) {
+            polygon_box(pts, 4, &width, &height, &mid_x, &mid_y);
+            CHECK(height > width * 1.4f, "facing east, a vehicle along east points up the map");
+        }
+    }
+
+    {
+        const minimap_vehicle_t far_away = { 5000.0f, 0.0f, 1.0f, 0.0f }, bad = { NAN, 0.0f, 1.0f, 0.0f },
+                                no_axis = { 20.0f, 0.0f, 0.0f, 0.0f }, bad_axis = { 20.0f, 0.0f, INFINITY, 0.0f };
+        CHECK(minimap_vehicle_polygon(&f, &far_away, pts) == 0, "a vehicle outside the circle is not drawn");
+        CHECK(minimap_vehicle_polygon(&f, &bad, pts) == 0, "a non-finite vehicle is not drawn");
+        CHECK(minimap_vehicle_polygon(&f, &no_axis, pts) == 0 && minimap_vehicle_polygon(&f, &bad_axis, pts) == 0,
+              "a vehicle without a usable direction is not drawn");
+        CHECK(minimap_vehicle_polygon(&f, NULL, pts) == 0 && minimap_vehicle_polygon(NULL, &along_x, pts) == 0,
+              "no vehicle or frame: nothing drawn");
+    }
+    for (int angle = 0; angle < 360; angle += 15) {
+        const float rad = (float)angle * 0.0174532925f;
+        for (int step = 0; step < 40; step++) {
+            const float edge = RADIUS / f.scale + (float)(step - 20) * 0.4f;
+            const minimap_vehicle_t v = { edge * cosf(rad), edge * sinf(rad), cosf(rad * 3.0f), sinf(rad * 3.0f) };
+            n = minimap_vehicle_polygon(&f, &v, pts);
+            for (int k = 0; k < n; k++)
+                CHECK(hypotf(pts[k].x - CX, pts[k].y - CY) <= RADIUS + 1e-2f,
+                      "a vehicle on the edge never draws outside the circle (angle %d, step %d)", angle, step);
+        }
+    }
+    {
+        const minimap_vehicle_t on_edge = { RADIUS / f.scale, 0.0f, 1.0f, 0.0f };
+        n = minimap_vehicle_polygon(&f, &on_edge, pts);
+        CHECK(n >= 3, "a vehicle half over the edge is clipped, not dropped");
+    }
+    {
+        minimap_frame_t small;
+        minimap_frame(&small, CX, CY, 48.0f, 0.0f, 0.0f, MM_ZOOM);
+        n = minimap_vehicle_polygon(&small, &along_x, pts);
+        CHECK(n == 4 && polygon_area(pts, 4) >= MM_VEHICLE_MIN_LENGTH_PX * MM_VEHICLE_MIN_WIDTH_PX - 1e-2f,
+              "on a small minimap the vehicle keeps its minimum size");
+    }
+    {
+        const float vehicle[3] = { MM_COLOR_VEHICLE }, threat[3] = { MM_COLOR_THREAT }, passive[3] = { MM_COLOR_PASSIVE },
+                    objective[3] = { MM_COLOR_OBJECTIVE }, player[3] = { MM_COLOR_PLAYER }, land[3] = { MM_COLOR_LAND },
+                    water[3] = { MM_COLOR_WATER }, building[3] = { MM_COLOR_BUILDING };
+        const float* others[7] = { threat, passive, objective, player, land, water, building };
+        for (int i = 0; i < 7; i++)
+            CHECK(fabsf(vehicle[0] - others[i][0]) + fabsf(vehicle[1] - others[i][1]) + fabsf(vehicle[2] - others[i][2]) > 0.4f,
+                  "the vehicle colour differs from the other map colours (%d)", i);
+    }
+}
+
+static void test_vehicle_data(void) {
+    int total = 0;
+    for (int i = 0; i < COUNT(k_levels); i++) {
+        const minimap_level_map_t* m = minimap_map(k_levels[i]);
+        const minimap_bounds_t* b = minimap_bounds(k_levels[i]);
+        if (!m || !b) continue;
+        CHECK((m->vehicles == NULL) == (m->vehicle_count == 0), "%s: the vehicle table and its count agree", k_levels[i]);
+        for (int v = 0; v < m->vehicle_count; v++) {
+            const minimap_vehicle_t* a = &m->vehicles[v];
+            CHECK(a->x >= b->min_x && a->x <= b->max_x && a->y >= b->min_y && a->y <= b->max_y,
+                  "%s: vehicle %d lies inside the level bounds", k_levels[i], v);
+            CHECK(near(hypotf(a->ax, a->ay), 1.0f, 0.01f), "%s: vehicle %d has a unit direction", k_levels[i], v);
+            for (int w = v + 1; w < m->vehicle_count; w++)
+                CHECK(hypotf(a->x - m->vehicles[w].x, a->y - m->vehicles[w].y) >= 3.0f,
+                      "%s: vehicles %d and %d are one vehicle drawn twice", k_levels[i], v, w);
+            total++;
+        }
+    }
+    CHECK(minimap_map("IJ") && minimap_map("IJ")->vehicle_count >= 10, "Isla Nublar's jeeps, trucks and Unimog are on its map");
+    CHECK(minimap_map("BE") && minimap_map("BE")->vehicle_count >= 3, "the beach level has its trucks");
+    CHECK(total >= 30, "the levels have vehicles to show (%d)", total);
+}
+
 void minimap_tests(int* checks, int* failures) {
+    test_creature_sizes();
+    test_vehicles();
+    test_vehicle_data();
     test_bounds();
     test_maps();
     test_same_transform();

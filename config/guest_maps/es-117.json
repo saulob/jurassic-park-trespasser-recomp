@@ -600,6 +600,13 @@
    "via": "hash",
    "where": "src/host/tutorial_prompts.c:24"
   },
+  "0046CD80": {
+   "class": "identical",
+   "to": "00452400",
+   "function": "0046CD80",
+   "via": "hash",
+   "where": "src/host/narration.c:12"
+  },
   "00472B60": {
    "class": "identical",
    "to": "004581A0",

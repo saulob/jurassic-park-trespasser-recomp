@@ -53,6 +53,7 @@ extern "C" {
 #define MM_COLOR_LANDMARK_EDGE 0.07f, 0.07f, 0.08f
 #define MM_COLOR_PLAYER 1.0f, 1.0f, 1.0f
 #define MM_COLOR_OBJECTIVE 1.0f, 0.84f, 0.22f
+#define MM_COLOR_VEHICLE 0.96f, 0.46f, 0.06f
 #define MM_COLOR_THREAT 0.92f, 0.16f, 0.14f
 #define MM_COLOR_PASSIVE 0.42f, 0.88f, 0.30f
 
@@ -61,6 +62,23 @@ extern "C" {
 #define MM_CREATURE_RANGE_MAX_M 90.0f
 #define MM_CREATURE_RANGE_VIEW 0.75f
 #define MM_CREATURE_K 0.03f
+
+/* A creature's size class comes from its instance scale (retail: raptors 2.5-3.1, Triceratops, Stegosaurus and
+ * Parasaurolophus 4.6-5.7, Albertosaurus and T. rex 6.2-7.8, Brachiosaurus 10-15) and scales the marker radius
+ * MM_CREATURE_K: about -1, 0, +1 and +2 px at 1080p. */
+#define MM_SIZE_CLASSES 4
+#define MM_SIZE_STANDARD 1
+#define MM_SCALE_STANDARD 2.0f
+#define MM_SCALE_MEDIUM 4.0f
+#define MM_SCALE_LARGE 6.0f
+#define MM_CREATURE_SIZE_FACTORS { 0.75f, 1.0f, 1.25f, 1.5f }
+#define MM_CREATURE_OUTLINE_PX 1.0f
+
+/* A vehicle is a small rectangle, about 5 x 3 px at 1080p and never below 4 x 2.5 px. */
+#define MM_VEHICLE_LENGTH_K 0.038f
+#define MM_VEHICLE_WIDTH_K 0.022f
+#define MM_VEHICLE_MIN_LENGTH_PX 4.0f
+#define MM_VEHICLE_MIN_WIDTH_PX 2.5f
 
 /* Landmarks are drawn at least this thick on screen. */
 #define MM_LANDMARK_MIN_PX 3.0f
@@ -86,6 +104,11 @@ typedef struct {
     uint8_t kind;
 } minimap_landmark_t;
 
+/* A ground vehicle: its centre in world metres and the unit direction of its long side. */
+typedef struct {
+    float x, y, ax, ay;
+} minimap_vehicle_t;
+
 typedef struct {
     const char* id;
     uint16_t cols, rows;
@@ -93,6 +116,8 @@ typedef struct {
     uint16_t count;
     const minimap_landmark_t* landmarks;
     uint16_t landmark_count;
+    const minimap_vehicle_t* vehicles;
+    uint16_t vehicle_count;
 } minimap_level_map_t;
 
 typedef enum { MM_CREATURE_NONE, MM_CREATURE_PASSIVE, MM_CREATURE_THREAT } minimap_creature_kind_t;
@@ -100,6 +125,7 @@ typedef enum { MM_CREATURE_NONE, MM_CREATURE_PASSIVE, MM_CREATURE_THREAT } minim
 typedef struct {
     float x, y;
     int threat;
+    int size; /* a size class, 0 .. MM_SIZE_CLASSES - 1 */
 } minimap_creature_t;
 
 /* The player-centred transform: the player's world position is always the circle's centre (screen y grows down). The
@@ -152,6 +178,8 @@ void minimap_layer_visit(const minimap_frame_t* f, const minimap_bounds_t* b, co
                          minimap_poly_fn fn, void* user);
 /* The landmark clipped to the minimap circle as a convex screen polygon; the point count, 0 when nothing is visible. */
 int minimap_landmark_polygon(const minimap_frame_t* f, const minimap_landmark_t* landmark, minimap_point_t out[MM_CLIP_MAX]);
+/* The vehicle's rectangle on screen, along its direction, clipped to the circle; the point count, 0 when nothing is visible. */
+int minimap_vehicle_polygon(const minimap_frame_t* f, const minimap_vehicle_t* vehicle, minimap_point_t out[MM_CLIP_MAX]);
 /* Convex screen polygon clipped to the circle; the point count, 0 when nothing is visible. */
 int minimap_clip_polygon(const minimap_frame_t* f, const minimap_point_t* in, int count, minimap_point_t out[MM_CLIP_MAX]);
 /* Screen rect clipped to the circle; the point count, 0 when nothing is visible. */
@@ -169,7 +197,11 @@ float minimap_creature_range(float zoom);
 /* The nearest finite candidates within range metres of the player, nearest first, at most max. */
 int minimap_creatures_select(float player_x, float player_y, float range, const minimap_creature_t* in, int count,
                              minimap_creature_t* out, int max);
-/* The creature's screen position; 0 when it is outside the circle (it is then not drawn). */
+/* The size class of a creature of this instance scale; a scale that is not a positive finite number is the standard class. */
+int minimap_creature_size_class(float scale);
+/* The marker radius in pixels of a size class on a minimap of this radius (an out-of-range class is the standard one). */
+float minimap_creature_marker_radius(float minimap_radius, int size_class);
+/* The creature's screen position; 0 when its whole marker, outline included, is not inside the circle (it is then not drawn). */
 int minimap_creature_place(const minimap_frame_t* f, const minimap_creature_t* creature, float* sx, float* sy);
 /* Unit screen direction of a heading in degrees (0 = north = up, 90 = east = right). */
 void minimap_heading_dir(float heading_deg, float* dx, float* dy);

@@ -254,6 +254,20 @@
   },
   {
    "file": "src/host/active_ai.c",
+   "name": "INSTANCE_SCALE",
+   "value": "0x4C",
+   "struct": "CInstance",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x4c used by 8 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x4c used by 6 identical functions"
+   }
+  },
+  {
+   "file": "src/host/active_ai.c",
    "name": "PHYSICS_INFO",
    "value": "0xC",
    "struct": "CInfo",
@@ -3636,6 +3650,20 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "CRaster+CRasterBase+CRefObj: 93 functions, 0 without a counterpart; +0x18 used by 24 identical functions"
+   }
+  },
+  {
+   "file": "src/host/narration.c",
+   "name": "VOICE_OVER_SAMPLE",
+   "value": "0x8",
+   "struct": "CVoiceOverAction",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CVoiceOverAction+CAction+CRefObj: 87 functions, 3 without a counterpart; +0x8 used by 56 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CVoiceOverAction+CAction+CRefObj: 87 functions, 0 without a counterpart; +0x8 used by 58 identical functions"
    }
   },
   {

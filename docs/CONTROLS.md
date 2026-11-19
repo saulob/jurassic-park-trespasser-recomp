@@ -62,6 +62,12 @@ shows the same setting as **Enable Minimap** (on by default). A line under the c
 Off". F5 and L3 + R3 do nothing in a host panel or the controls card. M belongs to the game again; = and - no longer resize the 3D view. L3 or R3
 alone act as bound, 50 ms after the press: the pair is waited for that long so the chord never also crouches.
 
+Living creatures near Anne are dots, red while their brain is awake and engaged and green otherwise. A dot grows with
+the animal's size in four steps (the instance's scale, about 1 px less than a raptor's for a small animal and 1 and 2 px
+more for medium and large ones at 1080p: raptors are the standard dot, Triceratops, Stegosaurus and Parasaurolophus
+medium, Albertosaurus, T. rex and Brachiosaurus the largest). Ground vehicles (the jeeps, trucks and Unimog of the
+levels) are small orange rectangles along the vehicle's long side, one for each, at the place the level puts them.
+
 ### Compass and objectives
 
 The compass at the top of the picture shows where the camera faces (north is the world's +Y; Free Camera
