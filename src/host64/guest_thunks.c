@@ -1,10 +1,8 @@
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
 #include <stdlib.h>
 #include <string.h>
 
 #include "guest_thunks.h"
+#include "host_os.h"
 
 #define MAX_THUNKS ((GM_THUNK_HI - GM_THUNK_LO) / HT_STRIDE)
 #define MAX_OBJECTS 65536
@@ -26,7 +24,7 @@ static thunk_t* s_thunks;
 static int s_nthunks;
 static object_t s_objects[MAX_OBJECTS];
 static int s_nobjects, s_live;
-static SRWLOCK s_lock = SRWLOCK_INIT;
+static hos_rwlock_t s_lock = HOS_RWLOCK_INIT;
 
 int ht_init(void) {
     if (!s_thunks) s_thunks = (thunk_t*)calloc(MAX_THUNKS, sizeof *s_thunks);
@@ -34,18 +32,18 @@ int ht_init(void) {
 }
 
 void ht_reset(void) {
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     if (s_thunks) memset(s_thunks, 0, MAX_THUNKS * sizeof *s_thunks);
     s_nthunks = 0;
     memset(s_objects, 0, sizeof s_objects);
     s_nobjects = s_live = 0;
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
 }
 
 uint32_t ht_register(const char* name, ht_fn_t fn, int argc, int conv, void* user) {
     uint32_t va = 0;
     if (!fn || argc < 0 || argc > HT_MAX_ARGS || !ht_init()) return 0;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     if ((uint32_t)s_nthunks < MAX_THUNKS) {
         thunk_t* t = &s_thunks[s_nthunks];
         t->name = name;
@@ -55,7 +53,7 @@ uint32_t ht_register(const char* name, ht_fn_t fn, int argc, int conv, void* use
         t->conv = conv;
         va = GM_THUNK_LO + HT_STRIDE * (uint32_t)s_nthunks++;
     }
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
     return va;
 }
 
@@ -68,6 +66,16 @@ static const thunk_t* lookup(uint32_t va) {
 
 int ht_is_thunk(uint32_t va) { return lookup(va) != NULL; }
 
+int ht_is_raw(uint32_t va) {
+    const thunk_t* t = lookup(va);
+    return t && t->conv == HT_RAW;
+}
+
+void ht_call_raw(uint32_t va) {
+    const thunk_t* t = lookup(va);
+    if (t && t->conv == HT_RAW) t->fn(NULL, t->user);
+}
+
 const char* ht_name(uint32_t va) {
     const thunk_t* t = lookup(va);
     return t ? t->name : NULL;
@@ -75,18 +83,25 @@ const char* ht_name(uint32_t va) {
 
 int ht_count(void) { return s_nthunks; }
 
-int ht_invoke(uint32_t va, uint32_t* esp, uint32_t* eax, uint32_t* edx) {
+int ht_invoke_ex(uint32_t va, uint32_t* esp, uint32_t ecx, uint32_t* eax, uint32_t* edx) {
     const thunk_t* t = lookup(va);
-    uint32_t args[HT_MAX_ARGS];
+    uint32_t args[HT_ARGS_CAPACITY];
+    uint32_t* stack_args = args;
     uint64_t r;
     if (!t) return 0;
-    if (!gp_copy_in(args, *esp + 4, 4u * (uint32_t)t->argc) && t->argc) return 0;
+    if (t->conv == HT_THISCALL) {
+        args[0] = ecx;
+        stack_args = args + 1;
+    }
+    if (t->argc && !gp_copy_in(stack_args, *esp + 4, 4u * (uint32_t)t->argc)) return 0;
     r = t->fn(args, t->user);
     *eax = (uint32_t)r;
     if (edx) *edx = (uint32_t)(r >> 32);
-    *esp += 4u + (t->conv == HT_STDCALL ? 4u * (uint32_t)t->argc : 0u);
+    *esp += 4u + (t->conv == HT_CDECL ? 0u : 4u * (uint32_t)t->argc);
     return 1;
 }
+
+int ht_invoke(uint32_t va, uint32_t* esp, uint32_t* eax, uint32_t* edx) { return ht_invoke_ex(va, esp, 0, eax, edx); }
 
 uint32_t ht_vtable(const ht_method_t* methods, int n, void* user) {
     uint32_t vt = gm_heap_alloc(4u * (uint32_t)n, 1);
@@ -109,7 +124,7 @@ uint32_t ht_object_new(uint32_t vtable, uint32_t guest_size, void* host_obj) {
     if (guest_size < 8 || !host_obj) return 0;
     obj = gm_heap_alloc(guest_size, 1);
     if (!obj) return 0;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     for (i = 0; i < s_nobjects; i++)
         if (!s_objects[i].host) break;
     if (i == s_nobjects && s_nobjects < MAX_OBJECTS) s_nobjects++;
@@ -119,7 +134,7 @@ uint32_t ht_object_new(uint32_t vtable, uint32_t guest_size, void* host_obj) {
         s_live++;
         slot = HANDLE_TAG | (uint32_t)i;
     }
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
     if (!slot) {
         gm_heap_free(obj);
         return 0;
@@ -139,28 +154,28 @@ static int slot_of(uint32_t guest_obj) {
 void* ht_object_host(uint32_t guest_obj) {
     void* host = NULL;
     int i;
-    AcquireSRWLockShared(&s_lock);
+    hos_rdlock(&s_lock);
     i = slot_of(guest_obj);
     if (i >= 0 && s_objects[i].guest == guest_obj) host = s_objects[i].host;
-    ReleaseSRWLockShared(&s_lock);
+    hos_unlock_rd(&s_lock);
     return host;
 }
 
 uint32_t ht_object_of(const void* host_obj) {
     uint32_t g = 0;
-    AcquireSRWLockShared(&s_lock);
+    hos_rdlock(&s_lock);
     for (int i = 0; i < s_nobjects; i++)
         if (s_objects[i].host == host_obj) {
             g = s_objects[i].guest;
             break;
         }
-    ReleaseSRWLockShared(&s_lock);
+    hos_unlock_rd(&s_lock);
     return g;
 }
 
 int ht_object_free(uint32_t guest_obj) {
     int i, ok = 0;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     i = slot_of(guest_obj);
     if (i >= 0 && s_objects[i].guest == guest_obj) {
         s_objects[i].host = NULL;
@@ -168,7 +183,7 @@ int ht_object_free(uint32_t guest_obj) {
         s_live--;
         ok = 1;
     }
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
     if (ok) {
         gp_write_u32(guest_obj + 4, 0);
         gm_heap_free(guest_obj);

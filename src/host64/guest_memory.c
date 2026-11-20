@@ -1,22 +1,20 @@
 /*
- * See guest_memory.h. Windows x64 only: the window is one VirtualAlloc reservation, and guest
- * VirtualAlloc/VirtualFree map onto commits and decommits inside it.
+ * See guest_memory.h. The window is one address-space reservation (host_os.h): guest VirtualAlloc/VirtualFree map
+ * onto commits and decommits inside it, on Windows x64 and on 64-bit POSIX alike.
  *
  * The reservation table, the 64 KB first fit and the heap's size classes are adapted from
  * pcrecomp runtime/win32hle/guest_mem.c (MIT); the PE structures come from its pe_format.h.
  */
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "guest_memory.h"
+#include "host_os.h"
 #include "pe_format.h"
 
-#if !defined(_WIN64)
-#error "src/host64 is the 64-bit host: build it for x64"
+#if UINTPTR_MAX != 0xFFFFFFFFFFFFFFFFull
+#error "src/host64 is the 64-bit host"
 #endif
 
 #define MAX_REGIONS 8192
@@ -28,34 +26,30 @@ typedef struct {
 } region_t;
 
 static uint8_t* s_base;
-static SRWLOCK s_lock = SRWLOCK_INIT;
+static hos_rwlock_t s_lock = HOS_RWLOCK_INIT;
 static region_t s_rgn[MAX_REGIONS];
 static int s_nrgn;
-static volatile LONG s_bad_va;
+static volatile int32_t s_bad_va;
 
 int gm_ready(void) { return s_base != NULL; }
 uint8_t* gm_base(void) { return s_base; }
 unsigned gm_bad_va_count(void) { return (unsigned)s_bad_va; }
 
+static void heap_reset(void);
+
 int gm_init(uint64_t preferred_base, int require) {
     if (s_base) return 1;
-    if (preferred_base)
-        s_base = (uint8_t*)VirtualAlloc((void*)(uintptr_t)preferred_base, (SIZE_T)(GM_SPAN + TAIL_GUARD),
-                                        MEM_RESERVE, PAGE_NOACCESS);
-    if (!s_base && preferred_base && require) return 0;
-    if (!s_base) s_base = (uint8_t*)VirtualAlloc(NULL, (SIZE_T)(GM_SPAN + TAIL_GUARD), MEM_RESERVE, PAGE_NOACCESS);
+    s_base = hos_reserve(preferred_base, (size_t)(GM_SPAN + TAIL_GUARD), require);
     s_nrgn = 0;
+    heap_reset();
     return s_base != NULL;
 }
 
 void gm_shutdown(void) {
-    if (s_base) VirtualFree(s_base, 0, MEM_RELEASE);
+    if (s_base) hos_release(s_base, (size_t)(GM_SPAN + TAIL_GUARD));
     s_base = NULL;
     s_nrgn = 0;
-}
-
-static DWORD win_prot(int prot) {
-    return prot == GM_PROT_RW ? PAGE_READWRITE : prot == GM_PROT_R ? PAGE_READONLY : PAGE_NOACCESS;
+    heap_reset();
 }
 
 static int overlaps(uint64_t lo, uint64_t hi) {
@@ -122,49 +116,48 @@ static uint32_t reserve_locked(uint32_t va, uint32_t size, const char* tag) {
 
 uint32_t gm_reserve(uint32_t va, uint32_t size, const char* tag) {
     uint32_t r;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     r = reserve_locked(va, size, tag);
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
     return r;
 }
 
 static int inside_one_region(uint32_t va, uint32_t size) {
     int i;
     if (!size) return 0;
-    AcquireSRWLockShared(&s_lock);
+    hos_rdlock(&s_lock);
     i = find_region(va);
     i = i >= 0 && (uint64_t)va + size <= s_rgn[i].hi;
-    ReleaseSRWLockShared(&s_lock);
+    hos_unlock_rd(&s_lock);
     return i;
 }
 
 int gm_commit(uint32_t va, uint32_t size, int prot) {
     if (!inside_one_region(va, size)) return 0;
-    return VirtualAlloc(s_base + va, size, MEM_COMMIT, win_prot(prot)) != NULL;
+    return hos_commit(s_base + va, size, prot);
 }
 
 int gm_decommit(uint32_t va, uint32_t size) {
     if (!inside_one_region(va, size)) return 0;
-    return VirtualFree(s_base + va, size, MEM_DECOMMIT) != 0;
+    return hos_decommit(s_base + va, size);
 }
 
 int gm_protect(uint32_t va, uint32_t size, int prot) {
-    DWORD old;
     if (!inside_one_region(va, size)) return 0;
-    return VirtualProtect(s_base + va, size, win_prot(prot), &old) != 0;
+    return hos_protect(s_base + va, size, prot);
 }
 
 int gm_release(uint32_t va) {
     int i, ok = 0;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     i = find_region(va);
     if (i >= 0 && s_rgn[i].lo == va) {
-        VirtualFree(s_base + s_rgn[i].lo, (SIZE_T)(s_rgn[i].hi - s_rgn[i].lo), MEM_DECOMMIT);
+        hos_decommit(s_base + s_rgn[i].lo, (size_t)(s_rgn[i].hi - s_rgn[i].lo));
         memmove(&s_rgn[i], &s_rgn[i + 1], sizeof s_rgn[0] * (size_t)(s_nrgn - i - 1));
         s_nrgn--;
         ok = 1;
     }
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
     return ok;
 }
 
@@ -182,14 +175,14 @@ uint32_t gm_alloc_pages(uint32_t va, uint32_t size, const char* tag) {
 
 int gm_region(uint32_t va, uint32_t* lo, uint32_t* size, const char** tag) {
     int i;
-    AcquireSRWLockShared(&s_lock);
+    hos_rdlock(&s_lock);
     i = find_region(va);
     if (i >= 0) {
         if (lo) *lo = (uint32_t)s_rgn[i].lo;
         if (size) *size = (uint32_t)(s_rgn[i].hi - s_rgn[i].lo);
         if (tag) *tag = s_rgn[i].tag;
     }
-    ReleaseSRWLockShared(&s_lock);
+    hos_unlock_rd(&s_lock);
     return i >= 0;
 }
 
@@ -202,19 +195,7 @@ void* gm_ptr(uint32_t va, uint32_t len) {
 
 void* gm_ptr_checked(uint32_t va, uint32_t len, int writable) {
     uint8_t* p = (uint8_t*)gm_ptr(va, len);
-    uint64_t at, end;
-    if (!p) return NULL;
-    at = (uint64_t)(uintptr_t)p;
-    end = at + (len ? len : 1);
-    while (at < end) {
-        MEMORY_BASIC_INFORMATION mbi;
-        DWORD ok = writable ? (PAGE_READWRITE | PAGE_WRITECOPY) : (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY);
-        if (!VirtualQuery((void*)(uintptr_t)at, &mbi, sizeof mbi) || mbi.State != MEM_COMMIT || !(mbi.Protect & ok) ||
-            (mbi.Protect & PAGE_GUARD))
-            return NULL;
-        at = (uint64_t)(uintptr_t)mbi.BaseAddress + mbi.RegionSize;
-    }
-    return p;
+    return p && hos_accessible(p, len, writable) ? p : NULL;
 }
 
 int gm_contains(const void* p, size_t len) {
@@ -225,7 +206,7 @@ int gm_contains(const void* p, size_t len) {
 uint32_t gm_va(const void* p) {
     if (!p) return 0;
     if (!gm_contains(p, 1)) {
-        InterlockedIncrement(&s_bad_va);
+        hos_atomic_inc(&s_bad_va);
         return 0;
     }
     return (uint32_t)((uintptr_t)p - (uintptr_t)s_base);
@@ -242,6 +223,11 @@ uint32_t gm_va(const void* p) {
 
 static uint32_t s_free[NCLASS];
 static uint32_t s_carve, s_carve_end;
+
+static void heap_reset(void) {
+    memset(s_free, 0, sizeof s_free);
+    s_carve = s_carve_end = 0;
+}
 
 static uint32_t class_size(int c) {
     int k;
@@ -269,7 +255,7 @@ static uint32_t small_alloc_locked(int c) {
     if (!s_carve || s_carve + sz > s_carve_end) {
         uint32_t r = reserve_locked(0, CARVE, "heap");
         if (!r) return 0;
-        if (!VirtualAlloc(s_base + r, CARVE, MEM_COMMIT, PAGE_READWRITE)) return 0;
+        if (!hos_commit(s_base + r, CARVE, HOS_PROT_RW)) return 0;
         s_carve = r;
         s_carve_end = r + CARVE;
     }
@@ -285,14 +271,14 @@ uint32_t gm_heap_alloc(uint32_t n, int zero) {
     if (!s_base || n > 0xFFFFFFFFu - GM_GRANULARITY - HDR) return 0;
     total = n + HDR;
     c = total <= SMALL_MAX ? class_of(total) : -1;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     if (c >= 0) {
         va = small_alloc_locked(c);
     } else {
         va = reserve_locked(0, total, "heap-large");
-        if (va && !VirtualAlloc(s_base + va, total, MEM_COMMIT, PAGE_READWRITE)) va = 0;
+        if (va && !hos_commit(s_base + va, (total + GM_PAGE - 1) & ~(GM_PAGE - 1), HOS_PROT_RW)) va = 0;
     }
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
     if (!va) return 0;
     h = hdr(va);
     h[0] = n;
@@ -317,11 +303,11 @@ void gm_heap_free(uint32_t va) {
     if (!va || !gm_heap_ok(va)) return;
     h = hdr(va - HDR);
     h[1] = 0;
-    AcquireSRWLockExclusive(&s_lock);
+    hos_wrlock(&s_lock);
     if (h[2] == LARGE) {
         int i = find_region(va - HDR);
         if (i >= 0) {
-            VirtualFree(s_base + s_rgn[i].lo, (SIZE_T)(s_rgn[i].hi - s_rgn[i].lo), MEM_DECOMMIT);
+            hos_decommit(s_base + s_rgn[i].lo, (size_t)(s_rgn[i].hi - s_rgn[i].lo));
             memmove(&s_rgn[i], &s_rgn[i + 1], sizeof s_rgn[0] * (size_t)(s_nrgn - i - 1));
             s_nrgn--;
         }
@@ -329,7 +315,7 @@ void gm_heap_free(uint32_t va) {
         *(uint32_t*)(s_base + va) = s_free[h[2]];
         s_free[h[2]] = va - HDR;
     }
-    ReleaseSRWLockExclusive(&s_lock);
+    hos_unlock_wr(&s_lock);
 }
 
 static uint32_t capacity(const uint32_t* h) {
@@ -357,7 +343,7 @@ uint32_t gm_heap_realloc(uint32_t va, uint32_t n, int zero) {
 /* ---- scratch ---- */
 
 #define SCRATCH 0x40000u
-static __declspec(thread) uint32_t t_scr_lo, t_scr_top;
+static HOS_THREAD_LOCAL uint32_t t_scr_lo, t_scr_top;
 
 uint32_t gm_scratch_mark(void) { return t_scr_top; }
 
@@ -518,24 +504,23 @@ int gm_pe_map_memory(const uint8_t* file, size_t len, int mode, uint32_t at, gm_
 }
 
 int gm_pe_map(const char* path, int mode, uint32_t at, gm_image_t* img, char* err, size_t errlen) {
-    HANDLE f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    LARGE_INTEGER size;
+    FILE* f = fopen(path, "rb");
+    long size;
     uint8_t* buf;
-    DWORD got = 0;
     int r;
-    if (f == INVALID_HANDLE_VALUE) return set_err(err, errlen, "cannot open file"), -5;
-    if (!GetFileSizeEx(f, &size) || size.QuadPart <= 0 || size.QuadPart > 0x7FFFFFFF) {
-        CloseHandle(f);
+    if (!f) return set_err(err, errlen, "cannot open file"), -5;
+    if (fseek(f, 0, SEEK_END) != 0 || (size = ftell(f)) <= 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
         return set_err(err, errlen, "bad file size"), -5;
     }
-    buf = (uint8_t*)malloc((size_t)size.QuadPart);
-    if (!buf || !ReadFile(f, buf, (DWORD)size.QuadPart, &got, NULL) || got != (DWORD)size.QuadPart) {
+    buf = (uint8_t*)malloc((size_t)size);
+    if (!buf || fread(buf, 1, (size_t)size, f) != (size_t)size) {
         free(buf);
-        CloseHandle(f);
+        fclose(f);
         return set_err(err, errlen, "read failed"), -5;
     }
-    CloseHandle(f);
-    r = gm_pe_map_memory(buf, (size_t)size.QuadPart, mode, at, img, err, errlen);
+    fclose(f);
+    r = gm_pe_map_memory(buf, (size_t)size, mode, at, img, err, errlen);
     free(buf);
     return r;
 }

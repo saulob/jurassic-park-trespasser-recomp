@@ -216,7 +216,20 @@ static int build_vtables(void) {
     return 1;
 }
 
+/* A new session after dsound_compat_shutdown: the objects of the old one lived in guest memory that is gone. */
+static void session_reset(void) {
+    for (uint32_t i = 0; i < S.slot_count; i++) free(S.slots[i].object);
+    free(S.slots);
+    S.slots = NULL;
+    S.slot_count = S.slot_capacity = S.free_slots = 0;
+    S.buffers = NULL;
+    S.mixer = NULL;
+    S.down = S.ready = S.announced = 0;
+    memset(&S.counts, 0, sizeof S.counts);
+}
+
 int dsound_compat_install(const audio_backend_t* backend, const dsound_binding_t* binding) {
+    if (S.down) session_reset();
     if (!backend || !binding || !jpt_guest_ops_valid(&binding->guest) || !binding->method_address) return 0;
     if (S.mixer) return 0;
     if (!S.mutex) S.mutex = audio_mutex_create();

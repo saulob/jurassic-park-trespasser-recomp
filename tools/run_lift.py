@@ -3,8 +3,9 @@
 
 Adapted from sp00nznet/themovies run_lift.py (MIT); drives pcrecomp's generate.py and lift32.
 
-SelfMod is deliberately not lifted: it patches its own immediates at run time, so the host
-runs its original bytes (src/host/selfmod.c). Calls into it lift as RECOMP_ICALL.
+SelfMod is lifted separately by tools/lift_selfmod.py into recomp_selfmod.c of the same folder (its own dispatch
+table, <lift>_selfmod_dispatch_table). The Windows host still runs the section's original bytes (src/host/selfmod.c); calls
+into it lift as RECOMP_ICALL either way.
 
 Every symbol the lift defines carries the lift's prefix (lift116_sub_<va>, lift_es117_sub_<va>, ...) so the program
 links all the lifts at once. The functions of src/host/guest_override_list.h lift as <lift>_lifted_sub_<va>
@@ -27,6 +28,8 @@ from pathlib import Path
 from common import (ANALYSIS_DIR, BASELINE_PROFILE, GEN_DIR, LIFT_ID, LIFT_PREFIX, PROFILE_ID, TARGET, decoder_fixups,
                     extra_entries, lift_format, require_target_exe, use_pcrecomp)
 import lift_hooks
+import lift_module
+import lift_selfmod
 from lift_staging import LiftPublishError, create_staging, finish_staging, publish, sweep_staging
 from stable_entries import check_folder, listed_overrides, rename_definition
 
@@ -87,13 +90,17 @@ def decodable_code(raw, code_start):
     """The section bytes with each known undecodable encoding swapped for its canonical twin."""
     code = bytearray(raw)
     fixups = decoder_fixups()
+    applied = 0
     for fix in fixups:
         off = int(fix["va"], 16) - code_start
+        if not 0 <= off < len(code):
+            continue
+        applied += 1
         expect, decode_as = bytes.fromhex(fix["expect"]), bytes.fromhex(fix["decode_as"])
         if len(expect) != len(decode_as) or bytes(code[off:off + len(expect)]) != expect:
             sys.exit(f"decoder fixup at {fix['va']} does not match this binary")
         code[off:off + len(expect)] = decode_as
-    return bytes(code), len(fixups)
+    return bytes(code), applied
 
 
 def scan_generated(folder, entries, selfmod):
@@ -187,12 +194,12 @@ def main():
     out = create_staging(args.staging_root)
     sweep_staging(args.staging_root, keep=out, legacy_dir=args.gen_dir)
     try:
-        run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t_start)
+        run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t_start, exe, info)
     finally:
         finish_staging(out)
 
 
-def run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t0):
+def run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t0, exe, info):
     stable, renamed = set(listed_overrides()), set()
 
     entries, chunk, errors, dirty, file_idx = [], [], [], [], 0
@@ -296,6 +303,10 @@ def run(args, out, md, code, cs, ce, selfmod, byaddr, chosen, lifter, t0):
 
     write_header(out, entries, lift_hooks.listed_hooks())
     write_dispatch(out, entries, (cs, ce), selfmod)
+    selfmod_report = lift_selfmod.emit(out, exe, info, {addr for addr, _ in entries})
+    print(f"[*] SelfMod lifted: {selfmod_report['entries']} entries, {selfmod_report['patch_sites']} patch sites")
+    for module in lift_module.emit(out):
+        print(f"[*] guest module {module['name']} lifted: {module['entries']} functions, {module['exports']} exports")
 
     unresolved, lines, unimplemented = scan_generated(out, entries, selfmod)
     _, stable_problems = check_folder(out)

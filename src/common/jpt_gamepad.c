@@ -1,4 +1,5 @@
 #include "jpt_gamepad.h"
+#include "jpt_compat.h"
 
 #include <ctype.h>
 #include <stdio.h>

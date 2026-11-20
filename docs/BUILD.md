@@ -206,3 +206,8 @@ are in `user_data\launcher\trespasser.ini`. Development runs (`build.ps1 -Run`, 
 | `=== fault ... ===` | a real defect; the report below it is the starting point |
 
 After changing only `src\host\`, `.\tools\build.ps1` recompiles just that.
+
+## Linux (bring-up)
+
+`tools/build-linux.sh` builds the Linux x86_64 executable and `tools/test-linux.sh` runs the Linux gate, headless. The Linux
+host cannot run the game yet; `docs/LINUX.md` lists what exists, what was measured and what is missing.

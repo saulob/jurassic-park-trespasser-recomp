@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(trespasser_recomp VERSION 0.1.0 LANGUAGES C CXX)
 
+if(UNIX AND NOT APPLE)
+  include(cmake/JptLinux.cmake)
+  return()
+endif()
+
 if(NOT MSVC)
   message(FATAL_ERROR "pcrecomp's native32 runtime is MSVC x86 inline assembly: build with cl (see tools/build.ps1)")
 endif()
@@ -9,7 +14,7 @@ endif()
 # (docs/X64_MIGRATION.md). The playable host below stays 32-bit.
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(PCRECOMP "${CMAKE_SOURCE_DIR}/external/pcrecomp" CACHE PATH "pcrecomp checkout (tools/fetch_pcrecomp.py)")
-  add_library(host64 STATIC src/host64/guest_memory.c src/host64/guest_ptr.c src/host64/guest_thunks.c)
+  add_library(host64 STATIC src/host64/guest_memory.c src/host64/guest_ptr.c src/host64/guest_thunks.c src/host64/host_os_win.c)
   target_include_directories(host64 PUBLIC src/host64 ${PCRECOMP}/runtime/win32hle)
   target_compile_options(host64 PRIVATE /W3)
   target_compile_definitions(host64 PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -20,6 +25,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     TRESPASSER_DEFAULT_GAME_DIR="${CMAKE_SOURCE_DIR}/game")
   add_executable(x64_tests EXCLUDE_FROM_ALL tests/x64_tests.c)
   target_link_libraries(x64_tests PRIVATE host64)
+  target_include_directories(x64_tests PRIVATE tests)
   target_compile_options(x64_tests PRIVATE /W3)
   target_compile_definitions(x64_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
   return()
@@ -183,7 +189,7 @@ set(PCRECOMP_SOURCES
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
-  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c
+  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
   src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
@@ -545,6 +551,23 @@ add_executable(audio_tests EXCLUDE_FROM_ALL tests/audio_tests.c src/host/audio/a
 target_include_directories(audio_tests PRIVATE src/host src/host/audio)
 target_compile_options(audio_tests PRIVATE /W3)
 target_compile_definitions(audio_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+# tests/linux_hle_tests.c, tests/linux_paths_tests.c, tests/linux_call_spine_tests.c (with tests/linux_fake_guest.c),
+# tests/linux_guest_ptr_tests.c, tests/linux_module_tests.c, tests/linux_boot_tests.c, tests/linux_user32_tests.c,
+# tests/linux_gdi_tests.c, tests/linux_ddraw_tests.c (these three with tests/linux_fake_guest.c and tests/linux_win32_harness.h) and
+# tests/linux_present_tests.c, tests/linux_crash_tests.c, tests/linux_audio_stress_tests.c and tests/linux_shutdown_tests.c are Linux-only: cmake/JptLinux.cmake builds them.
+# Portable runtime pieces of the Linux host that also build here (headless): guest path resolution, the registry store,
+# and synchronisation over SDL3: ninja -C <build dir> vpath_tests sync_tests reg_store_tests
+add_executable(vpath_tests EXCLUDE_FROM_ALL tests/vpath_tests.c src/common/jpt_vpath.c src/common/jpt_fs_win.c)
+target_include_directories(vpath_tests PRIVATE src/common)
+add_executable(reg_store_tests EXCLUDE_FROM_ALL tests/reg_store_tests.c src/common/jpt_reg_store.c src/common/jpt_fs_win.c)
+target_include_directories(reg_store_tests PRIVATE src/common)
+add_executable(sync_tests EXCLUDE_FROM_ALL tests/sync_tests.c src/common/jpt_sync.c)
+target_include_directories(sync_tests PRIVATE src/common)
+target_link_libraries(sync_tests PRIVATE SDL3::SDL3-static)
+foreach(portable_test vpath_tests reg_store_tests sync_tests)
+  target_compile_options(${portable_test} PRIVATE /W3)
+  target_compile_definitions(${portable_test} PRIVATE _CRT_SECURE_NO_WARNINGS)
+endforeach()
 # The platform-independent audio decisions (SDL3 driver policy per platform, the start-up log line), PCM streams and voices
 # over caller-owned memory (headless, nothing is played): ninja -C <build dir> audio_portable_tests && audio_portable_tests.exe
 add_executable(audio_portable_tests EXCLUDE_FROM_ALL tests/audio_portable_tests.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c)

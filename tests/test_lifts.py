@@ -44,7 +44,9 @@ class LiftArtifacts(unittest.TestCase):
         for lift, entry in lifts.read_manifest()["lifts"].items():
             names = [name for name, _ in lifts.archive_files(lifts.LIFTS_DIR / entry["archive"])]
             self.assertEqual(names, sorted(names), lift)
-            self.assertTrue(all(n.startswith("recomp_") and n.endswith((".c", ".h")) for n in names), lift)
+            self.assertTrue(all(n.startswith("recomp_") and n.endswith((".c", ".h", ".json")) for n in names), lift)
+            modules = set(entry.get("modules", {}))
+            self.assertEqual({n[len("recomp_"):-len(".json")] for n in names if n.endswith(".json")}, modules, lift)
             self.assertIn("recomp_dispatch.c", names)
             self.assertIn("recomp_funcs.h", names)
 

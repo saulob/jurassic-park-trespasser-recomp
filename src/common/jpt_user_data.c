@@ -1,12 +1,13 @@
-#define WIN32_LEAN_AND_MEAN
 #include "jpt_user_data.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <windows.h>
+
+#include "jpt_compat.h"
+#include "jpt_fs.h"
 
 int jpt_make_dirs(const char* path) {
-    char buf[MAX_PATH];
+    char buf[JPT_PATH_MAX];
     size_t n = strlen(path);
     if (!n || n >= sizeof buf) return 0;
     strcpy(buf, path);
@@ -15,52 +16,51 @@ int jpt_make_dirs(const char* path) {
         if ((*p == '\\' || *p == '/') && p[-1] != ':') {
             char c = *p;
             *p = 0;
-            CreateDirectoryA(buf, NULL);
+            jpt_fs_mkdir(buf);
             *p = c;
         }
     }
-    CreateDirectoryA(buf, NULL);
-    {
-        DWORD attributes = GetFileAttributesA(buf);
-        return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
-    }
+    return jpt_fs_mkdir(buf);
 }
 
 int jpt_is_user_file(const char* name) {
     return !_stricmp(name, JPT_REGISTRY_FILE) || !_strnicmp(name, "SAVEGAME.", 9);
 }
 
+typedef struct {
+    const char* from;
+    const char* user_dir;
+    jpt_log_fn log;
+    int copied, failed;
+} carry_t;
+
 static void say(jpt_log_fn log, const char* fmt, const char* a, const char* b) {
-    char line[3 * MAX_PATH];
+    char line[3 * JPT_PATH_MAX];
     if (!log) return;
     _snprintf(line, sizeof line - 1, fmt, a, b);
     line[sizeof line - 1] = 0;
     log(line);
 }
 
+static void carry_one(const char* name, int is_dir, void* user) {
+    carry_t* c = (carry_t*)user;
+    char src[JPT_PATH_MAX], dst[JPT_PATH_MAX];
+    if (is_dir || !jpt_is_user_file(name)) return;
+    _snprintf(src, sizeof src - 1, "%s/%s", c->from, name);
+    _snprintf(dst, sizeof dst - 1, "%s/%s", c->user_dir, name);
+    src[sizeof src - 1] = dst[sizeof dst - 1] = 0;
+    if (jpt_fs_exists(dst)) return;
+    if (!jpt_make_dirs(c->user_dir) || !jpt_fs_copy_new(src, dst)) {
+        say(c->log, "could not copy %s to %s", src, dst);
+        c->failed = 1;
+        return;
+    }
+    say(c->log, "%s copied to %s", src, dst);
+    c->copied++;
+}
+
 int jpt_carry_user_files(const char* from, const char* user_dir, jpt_log_fn log) {
-    char pattern[MAX_PATH], src[MAX_PATH], dst[MAX_PATH];
-    WIN32_FIND_DATAA found;
-    HANDLE search;
-    int copied = 0, failed = 0;
-    _snprintf(pattern, sizeof pattern - 1, "%s\\*", from);
-    pattern[sizeof pattern - 1] = 0;
-    search = FindFirstFileA(pattern, &found);
-    if (search == INVALID_HANDLE_VALUE) return 0;
-    do {
-        if ((found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || !jpt_is_user_file(found.cFileName)) continue;
-        _snprintf(src, sizeof src - 1, "%s\\%s", from, found.cFileName);
-        _snprintf(dst, sizeof dst - 1, "%s\\%s", user_dir, found.cFileName);
-        src[sizeof src - 1] = dst[sizeof dst - 1] = 0;
-        if (GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES) continue;
-        if (!jpt_make_dirs(user_dir) || !CopyFileA(src, dst, TRUE)) {
-            say(log, "could not copy %s to %s", src, dst);
-            failed = 1;
-            continue;
-        }
-        say(log, "%s copied to %s", src, dst);
-        copied++;
-    } while (FindNextFileA(search, &found));
-    FindClose(search);
-    return failed ? -1 : copied;
+    carry_t c = { from, user_dir, log, 0, 0 };
+    if (!jpt_fs_list(from, carry_one, &c)) return 0;
+    return c.failed ? -1 : c.copied;
 }

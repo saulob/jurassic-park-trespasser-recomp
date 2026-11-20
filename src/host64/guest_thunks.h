@@ -19,13 +19,17 @@
 extern "C" {
 #endif
 
-enum { HT_STDCALL = 0, HT_CDECL = 1 };
+/* HT_THISCALL: x86 MSVC thiscall, `this` in ecx and the callee pops the stack arguments; args[0] is `this`. */
+/* HT_RAW: the host function works on the guest register file itself (a CRT helper with its own register convention such as _EH_prolog)
+ * and leaves esp and eax as it wants; the spine calls it with no arguments and pops nothing. */
+enum { HT_STDCALL = 0, HT_CDECL = 1, HT_THISCALL = 2, HT_RAW = 3 };
 
 /* The arguments as the guest pushed them (args[0] is the first, `this` for a COM method).
  * The low 32 bits of the result go to eax, the high 32 to edx. */
 typedef uint64_t (*ht_fn_t)(const uint32_t* args, void* user);
 
 #define HT_MAX_ARGS 16
+#define HT_ARGS_CAPACITY (HT_MAX_ARGS + 1)
 #define HT_STRIDE 16u
 
 int ht_init(void);
@@ -33,6 +37,9 @@ void ht_reset(void);
 
 uint32_t ht_register(const char* name, ht_fn_t fn, int argc, int conv, void* user);
 int ht_is_thunk(uint32_t va);
+int ht_is_raw(uint32_t va);
+/* Runs a HT_RAW thunk. */
+void ht_call_raw(uint32_t va);
 const char* ht_name(uint32_t va);
 int ht_count(void);
 
@@ -41,6 +48,8 @@ int ht_count(void);
  * address and arguments; cdecl: the return address only). 0 if va is not a thunk or the
  * stack is not readable. */
 int ht_invoke(uint32_t va, uint32_t* esp, uint32_t* eax, uint32_t* edx);
+/* The same with the guest's ecx, which a thiscall thunk receives as `this`. */
+int ht_invoke_ex(uint32_t va, uint32_t* esp, uint32_t ecx, uint32_t* eax, uint32_t* edx);
 
 /* A vtable in guest memory whose slots are thunks; returns its VA. */
 typedef struct {

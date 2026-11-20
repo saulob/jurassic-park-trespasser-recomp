@@ -1,4 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
 #include "jpt_config.h"
 
 #include <ctype.h>
@@ -6,9 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
 
+#include "jpt_compat.h"
 #include "jpt_display.h"
+#include "jpt_fs.h"
 
 #define MAX_LINE 1024
 #define APPEND_HEADER "# Set by Trespasser Recompiled"
@@ -446,7 +446,7 @@ static int set_line(lines_t* l, const char* key, const char* value, int* header)
 }
 
 int jpt_ini_set(const char* path, const char* const* keys, const char* const* values, int count) {
-    char tmp[MAX_PATH + 8];
+    char tmp[JPT_PATH_MAX + 8];
     lines_t l = { 0 };
     FILE* f;
     int ok = read_lines(path, &l) >= 0, header = 0;
@@ -461,8 +461,8 @@ int jpt_ini_set(const char* path, const char* const* keys, const char* const* va
         ok = f != NULL;
         for (int i = 0; ok && i < l.count; i++) ok = fprintf(f, "%s\n", l.lines[i]) >= 0;
         if (f) ok = fclose(f) == 0 && ok;
-        ok = ok && MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-        if (!ok) DeleteFileA(tmp);
+        ok = ok && jpt_fs_replace(tmp, path);
+        if (!ok) jpt_fs_remove(tmp);
     }
     free_lines(&l);
     return ok;
@@ -506,7 +506,7 @@ int jpt_config_migrate_language(const char* path) {
     const char* values[3] = { NULL, NULL, NULL };
     char text[JPT_L10N_CODE_MAX], subtitles[JPT_L10N_CODE_MAX], language[JPT_L10N_CODE_MAX];
     int has_text, has_subtitles, first = 0;
-    if (!path || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return 0;
+    if (!path || !jpt_fs_exists(path)) return 0;
     has_text = jpt_ini_get(path, keys[1], text, sizeof text);
     has_subtitles = jpt_ini_get(path, keys[2], subtitles, sizeof subtitles);
     if (!has_text && !has_subtitles) return 0;
@@ -522,7 +522,7 @@ int jpt_config_migrate_language(const char* path) {
 int jpt_config_migrate(const char* path) {
     char version[16];
     int reset = 0;
-    if (!path || GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return JPT_MIGRATED_NOTHING;
+    if (!path || !jpt_fs_exists(path)) return JPT_MIGRATED_NOTHING;
     if (!jpt_ini_get(path, JPT_KEY_SETTINGS_VERSION, version, sizeof version))
         return reset_experimental(path) ? JPT_MIGRATED_EXPERIMENTAL : JPT_MIGRATED_NOTHING;
     if (atoi(version) >= atoi(JPT_SETTINGS_VERSION)) return JPT_MIGRATED_NOTHING;

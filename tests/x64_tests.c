@@ -7,16 +7,28 @@
  *
  * Image tests are skipped when the game files are absent.
  */
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "fault_guard.h"
 #include "guest_memory.h"
 #include "guest_ptr.h"
 #include "guest_thunks.h"
+#include "pe_format.h"
+
+#ifdef _WIN32
+#define jpt_stricmp _stricmp
+#else
+#include <strings.h>
+#define jpt_stricmp strcasecmp
+#endif
+
+static int file_exists(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (f) fclose(f);
+    return f != NULL;
+}
 
 static int s_pass, s_fail, s_skip;
 
@@ -32,25 +44,6 @@ static int s_pass, s_fail, s_skip;
 static void skip(const char* why) {
     s_skip++;
     printf("  SKIP %s\n", why);
-}
-
-static int faults_on_read(const volatile uint8_t* p) {
-    __try {
-        volatile uint8_t v = *p;
-        (void)v;
-    } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
-        return 1;
-    }
-    return 0;
-}
-
-static int faults_on_write(volatile uint8_t* p) {
-    __try {
-        *p = 1;
-    } __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
-        return 1;
-    }
-    return 0;
 }
 
 static void test_window(void) {
@@ -169,16 +162,43 @@ typedef struct {
 } guest_msg_t;
 GP_GUEST_LAYOUT(guest_msg_t, 28);
 
+#ifdef _WIN32
+typedef MSG host_msg_t;
+#else
+typedef struct {
+    void* hwnd;
+    uint32_t message;
+    uint64_t wParam;
+    int64_t lParam;
+    uint32_t time;
+    struct {
+        int32_t x, y;
+    } pt;
+} host_msg_t;
+#endif
+
+static void host_module_range(uint64_t* lo, uint64_t* hi) {
+#ifdef _WIN32
+    HMODULE self = GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)((uint8_t*)self + ((IMAGE_DOS_HEADER*)self)->e_lfanew);
+    *lo = (uint64_t)(uintptr_t)self;
+    *hi = *lo + nt->OptionalHeader.SizeOfImage;
+#else
+    static int anchor;
+    *lo = (uint64_t)(uintptr_t)&anchor & ~0xFFFFFull;
+    *hi = *lo + 0x200000ull;
+#endif
+}
+
 static void test_marshalling(void) {
     static int host_static;
     uint32_t slot = gm_heap_alloc(64, 1), hits[4], n;
     uint64_t value;
     guest_ptr_t where;
-    HMODULE self = GetModuleHandleA(NULL);
-    IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)((uint8_t*)self + ((IMAGE_DOS_HEADER*)self)->e_lfanew);
-    uint64_t mod_lo = (uint64_t)(uintptr_t)self, mod_hi = mod_lo + nt->OptionalHeader.SizeOfImage;
+    uint64_t mod_lo, mod_hi;
     guest_msg_t gm = {0x00010024u, 0x0200u, 1, 0x00200010u, 1234, 16, 32}, back;
-    MSG host;
+    host_msg_t host;
+    host_module_range(&mod_lo, &mod_hi);
     printf("[ptr] marshalling and leak checks\n");
     gp_leak_reset();
     CHECK(gp_store_ptr(slot, gm_ptr(slot + 8, 4)));
@@ -206,14 +226,14 @@ static void test_marshalling(void) {
     CHECK(gm_scan_qwords(GM_ANY_LO, GM_ANY_HI - GM_ANY_LO, mod_lo, mod_hi, hits, 4) == 0);
 
     /* A guest MSG is 28 bytes, the host's 48: it crosses by copy, handles sign-extended. */
-    CHECK(sizeof(MSG) != sizeof(guest_msg_t));
+    CHECK(sizeof(host_msg_t) != sizeof(guest_msg_t));
     CHECK(GP_COPY_OUT(slot, gm));
     memset(&back, 0, sizeof back);
     CHECK(GP_COPY_IN(back, slot));
-    host.hwnd = (HWND)(intptr_t)(int32_t)back.hwnd;
+    host.hwnd = (void*)(intptr_t)(int32_t)back.hwnd;
     host.message = back.message;
     host.wParam = back.wParam;
-    host.lParam = (LPARAM)(int32_t)back.lParam;
+    host.lParam = (int32_t)back.lParam;
     host.time = back.time;
     host.pt.x = back.x;
     host.pt.y = back.y;
@@ -240,11 +260,11 @@ static uint32_t resolve(const char* dll, const char* name, uint16_t ordinal, voi
     bind_ctx_t* c = (bind_ctx_t*)user;
     char* label;
     size_t n;
-    if (name && c->smack && !_stricmp(dll, "smackw32.dll")) {
+    if (name && c->smack && !jpt_stricmp(dll, "smackw32.dll")) {
         c->guest_exports++;
         return gm_pe_export(c->smack, name, 0);
     }
-    if (name && c->irt && !_stricmp(dll, "MSVCIRT.dll")) {
+    if (name && c->irt && !jpt_stricmp(dll, "MSVCIRT.dll")) {
         c->guest_exports++;
         return gm_pe_export(c->irt, name, 0);
     }
@@ -267,18 +287,18 @@ static int read_file_dword(const char* path, uint32_t off, uint32_t* out) {
 }
 
 static void test_images(const char* dir) {
-    char exe[MAX_PATH], smk[MAX_PATH], prc[MAX_PATH], irt[MAX_PATH], err[128];
+    char exe[1100], smk[1100], prc[1100], irt[1100], err[128];
     gm_image_t timg, simg, pimg, iimg;
     const gm_section_t* sm;
     bind_ctx_t ctx;
     uint32_t bound = 0, iat, slot, d;
     int unresolved, have_smack, have_proc, have_irt;
     printf("[pe] retail images from %s\n", dir);
-    snprintf(exe, sizeof exe, "%s\\trespass.exe", dir);
-    snprintf(smk, sizeof smk, "%s\\SMACKW32.DLL", dir);
-    snprintf(prc, sizeof prc, "%s\\Processor.dll", dir);
-    snprintf(irt, sizeof irt, "%s\\MSVCIRT.DLL", dir);
-    if (GetFileAttributesA(exe) == INVALID_FILE_ATTRIBUTES) {
+    snprintf(exe, sizeof exe, "%s/trespass.exe", dir);
+    snprintf(smk, sizeof smk, "%s/SMACKW32.DLL", dir);
+    snprintf(prc, sizeof prc, "%s/Processor.dll", dir);
+    snprintf(irt, sizeof irt, "%s/MSVCIRT.DLL", dir);
+    if (!file_exists(exe)) {
         skip("trespass.exe not found: image tests");
         return;
     }
@@ -302,9 +322,9 @@ static void test_images(const char* dir) {
     CHECK(gm_pe_map(exe, GM_PE_PREFERRED, 0, &simg, err, sizeof err) != 0);
 
     memset(&ctx, 0, sizeof ctx);
-    have_smack = GetFileAttributesA(smk) != INVALID_FILE_ATTRIBUTES;
-    have_proc = GetFileAttributesA(prc) != INVALID_FILE_ATTRIBUTES;
-    have_irt = GetFileAttributesA(irt) != INVALID_FILE_ATTRIBUTES;
+    have_smack = file_exists(smk);
+    have_proc = file_exists(prc);
+    have_irt = file_exists(irt);
     if (have_smack) {
         CHECK(gm_pe_map(smk, GM_PE_ANYWHERE, 0, &simg, err, sizeof err) == 0);
         CHECK(simg.base == 0x10000000u && simg.relocated_dwords == 0);
@@ -330,9 +350,9 @@ static void test_images(const char* dir) {
             for (i = 0; i < pimg.nsections; i++) {
                 s = &pimg.sections[i];
                 if (pimg.base + first_reloc_rva >= s->va && pimg.base + first_reloc_rva < s->va + s->raw_size) {
-                    IMAGE_DOS_HEADER dos;
-                    IMAGE_NT_HEADERS32 nt;
-                    IMAGE_SECTION_HEADER sh;
+                    pe_dos_header dos;
+                    pe_nt_headers32 nt;
+                    pe_section_header sh;
                     FILE* f = fopen(prc, "rb");
                     if (f && fread(&dos, sizeof dos, 1, f) == 1 && !fseek(f, dos.e_lfanew, SEEK_SET) &&
                         fread(&nt, sizeof nt, 1, f) == 1) {
@@ -377,10 +397,9 @@ static void test_images(const char* dir) {
         }
         CHECK(ok);
         {
-            HMODULE self = GetModuleHandleA(NULL);
-            IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)((uint8_t*)self + ((IMAGE_DOS_HEADER*)self)->e_lfanew);
-            uint64_t lo = (uint64_t)(uintptr_t)self;
-            k = (int)gm_scan_qwords(timg.base, timg.span, lo, lo + nt->OptionalHeader.SizeOfImage, NULL, 0);
+            uint64_t lo, hi;
+            host_module_range(&lo, &hi);
+            k = (int)gm_scan_qwords(timg.base, timg.span, lo, hi, NULL, 0);
             CHECK(k == 0);
         }
     }
@@ -559,10 +578,9 @@ static void test_com(void) {
 }
 
 int main(int argc, char** argv) {
-    char dir[MAX_PATH];
-    DWORD n = GetEnvironmentVariableA("TRESPASSER_GAME_DIR", dir, sizeof dir);
-    if (argc > 1) snprintf(dir, sizeof dir, "%s", argv[1]);
-    else if (!n || n >= sizeof dir) snprintf(dir, sizeof dir, "game");
+    char dir[1024];
+    const char* env = getenv("TRESPASSER_GAME_DIR");
+    snprintf(dir, sizeof dir, "%s", argc > 1 ? argv[1] : env && *env ? env : "game");
     setvbuf(stdout, NULL, _IONBF, 0);
     printf("x64_tests: %d-bit host\n", (int)(sizeof(void*) * 8));
     test_window();

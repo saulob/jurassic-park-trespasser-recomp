@@ -1,4 +1,5 @@
 #include "jpt_l10n.h"
+#include "jpt_compat.h"
 
 #include <stdio.h>
 #include <stdlib.h>

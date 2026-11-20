@@ -1,4 +1,5 @@
 #include "jpt_game_version.h"
+#include "jpt_compat.h"
 
 #include <stdio.h>
 #include <string.h>

@@ -1,0 +1,44 @@
+{
+  "comment": "Classification of the project's headless suites for the Linux gate (tools/test-linux.sh). portable: the same source runs on Windows and Linux. linux_specific: only meaningful on Linux. windows_specific: needs a Windows header, DLL or device and is covered only by tools/test.ps1; a pass there proves nothing about Linux. runtime_only: no headless suite can prove it; it is tested by running the program.",
+  "portable": [
+    "x64_tests", "vpath_tests", "sync_tests", "reg_store_tests", "audio_portable_tests", "audio_backend_tests",
+    "dsound_compat_tests", "hammond_voiceover_tests", "smacker_tests", "smacker_ffmpeg_tests", "menu_audio_tests",
+    "gamepad_tests", "ce_tests", "active_ai_tests", "profile_dispatch_tests"
+  ],
+  "linux_specific": ["linux_paths_tests", "linux_hle_tests", "linux_call_spine_tests", "linux_guest_ptr_tests", "linux_boot_tests", "linux_module_tests",
+                     "linux_user32_tests", "linux_gdi_tests", "linux_ddraw_tests", "linux_present_tests", "linux_crash_tests", "linux_audio_stress_tests", "linux_shutdown_tests"],
+  "windows_specific": {
+    "ao_tests": "ImGui D3D11 effect host",
+    "audio_tests": "includes windows.h (DirectSound ABI against the Windows SDK)",
+    "ce_gpu_tests": "D3D11 device (WARP)",
+    "com_tests": "DirectDraw host objects over GDI",
+    "debug_menu_tests": "includes windows.h",
+    "dsound_bridge_tests": "the 32-bit Windows binding of DirectSound",
+    "fov_mouse_tests": "includes windows.h",
+    "frontend_tests": "GDI painter",
+    "host_tests": "includes windows.h",
+    "input_tests": "includes windows.h and the lifted input path",
+    "l10n_tests": "includes windows.h",
+    "launcher_tests": "the launcher's Win32 sources",
+    "log_tests": "host.h includes windows.h",
+    "override_tests": "pcrecomp native32 (MSVC x86)",
+    "patch117_tests": "includes windows.h",
+    "platform_tests": "includes io.h",
+    "presentation_tests": "needs JPT_SOURCE_DIR and the Windows source list",
+    "stream_tests": "includes windows.h",
+    "user_data_tests": "the launcher's Windows sources",
+    "video_focus_tests": "includes windows.h",
+    "video_subtitle_tests": "includes windows.h",
+    "video_tests": "includes windows.h and D3D11",
+    "water_tests": "includes windows.h and the lifted water code",
+    "x87_tests": "built against pcrecomp's flat-memory 32-bit model"
+  },
+  "runtime_only": [
+    "SDL3 window, fullscreen and presentation on a real display",
+    "keyboard, mouse and gamepad on real devices",
+    "audio through PipeWire, PulseAudio or ALSA",
+    "intro and Smacker video playback",
+    "New Game, Beach, gameplay, minimap, subtitles",
+    "Save and Load, level transition, shutdown"
+  ]
+}

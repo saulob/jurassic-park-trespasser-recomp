@@ -122,7 +122,7 @@ class CompileCommands(unittest.TestCase):
 
     def test_every_test_source_is_compiled_by_some_target(self):
         names = {relative(source) for _, source in compile_commands(load_lines())}
-        sources = {f"tests/{p.name}" for p in gs.TESTS.iterdir() if re.search(r"_tests\.(c|cpp)$", p.name) and p.name != "x64_tests.c"}
+        sources = {f"tests/{p.name}" for p in gs.TESTS.iterdir() if re.search(r"_tests\.(c|cpp)$", p.name) and p.name != "x64_tests.c" and not p.name.startswith("linux_")}
         self.assertEqual(sorted(sources - names), [])
 
 

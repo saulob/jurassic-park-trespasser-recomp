@@ -102,6 +102,9 @@ Add-Python $s @(
     , @('test_lift_hooks.py', 'lift hook list and placement')
     , @('test_lift_staging.py', 'lift staging, publishing changed files only, cleanup')
     , @('test_stable_entries.py', 'stable-entry renaming and check')
+    , @('test_guest_module_lift.py', 'lifted guest DLL (MSVCIRT): config and manifest facts, sorted prefixed table, every jump target a lifted entry, no symbol collision, every code export and every code address held in its data lifted, no TLS, no forwarders')
+    , @('test_selfmod_lift.py', 'lifted SelfMod: range, 46 entries equal to the executable, dispatch coverage of every lifted caller, cross-range calls, 44 patch sites as guest loads, nothing unlifted')
+    , @('test_linux_native_rules.py', 'Linux host source rules: no native x86 execution or executable mapping, no guest address used as a host pointer')
     , @('test_override_installs.py', 'every literal override install is a listed stable entry')
     , @('test_single_host.py', 'one executable carries every lift')
     , @('test_no_original_executable.py', 'no original executable is needed by the build, launcher, runtime or release')
@@ -135,6 +138,11 @@ Add-Python $s @(, @('test_renderer_fixed.py', 'the renderer chosen at start stay
 
 $s = 'Memory, filesystem and saves'
 Add-Exes $s @(, @('user_data_tests', 'portable user_data root, --user_data_root, an unwritable root is an error, migration of the old folder', 150))
+Add-Exes $s @(
+    , @('vpath_tests', 'guest paths over a case-sensitive host: case-insensitive match, separators, containment, create mode, directory cache', 40)
+    , @('reg_store_tests', 'registry value store: round trip, Windows-written file, fixed-width format', 25)
+    , @('sync_tests', 'events, semaphores, mutexes, waits, threads, critical sections, monotonic clock and timers over SDL3', 45)
+)
 
 $s = 'Graphics'
 Add-Exes $s @(
@@ -215,6 +223,10 @@ $helperTestFiles = @{
     'tests\feature_contract.json' = 'the feature contract read by the feature coverage check'
     'tests\dsound_guest_harness.h' = 'shared harness of dsound_compat_tests and hammond_voiceover_tests'
     'tests\dsound_abi_pairs.h' = 'list of ABI values compared by dsound_bridge_tests and dsound_windows_abi.c'
+    'tests\linux_fake_guest.h' = 'guest functions in the lifter style used by the Linux call spine tests'
+    'tests\linux_win32_harness.h' = 'shared set-up of the Linux user32, gdi32 and ddraw suites'
+    'tests\fault_guard.h' = 'shared helper of x64_tests: access-violation probes on Windows and POSIX'
+    'tests\linux_suites.json' = 'classification of the suites for tools/test-linux.sh'
 }
 $toolRole = @{
     'tools\_common.ps1' = 'helper dot-sourced by the tool scripts'
@@ -250,6 +262,15 @@ $toolRole = @{
     'tools\translation_pack.cpp' = 'developer tool target, not a test'
     'tools\extract_lifted.cmake' = 'build helper'
     'tools\linux_audio_probe.sh' = 'run in WSL by the linux audio probe check'
+    'tools\build-linux.sh' = 'builds the Linux executable: Linux only, never run by this gate'
+    'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL or on Linux'
+    'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
+    'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
+    'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
+    'tools\linux_lifted_link_report.py' = 'maintainer: what the lifted guest needs from a Linux host, run by tools/test-linux.sh'
+    'tools\linux_suite_scan.py' = 'maintainer: which suites compile on Linux'
+    'tools\lift_module.py' = 'maintainer: lifts the guest DLLs of config/guest_modules.json; run by tools/run_lift.py, checked by tests\test_guest_module_lift.py'
+    'tools\lift_selfmod.py' = 'maintainer: lifts the SelfMod section; run by tools/run_lift.py, checked by tests\test_selfmod_lift.py'
 }
 
 function Group-InOrder([object[]]$Items) {

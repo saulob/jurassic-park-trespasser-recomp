@@ -1,4 +1,5 @@
 #include "jpt_tr.h"
+#include "jpt_compat.h"
 
 #include <stdlib.h>
 #include <string.h>

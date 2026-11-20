@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -I -c \"print\\([hex\\(x\\) for x in [5577184,5586064,5591072,6111568,6115424,6557024]]\\)\")",
+      "Bash(objdump -d -M intel --start-address=0x640D60 --stop-address=0x640FE0 game/trespass.exe)"
+    ]
+  }
+}

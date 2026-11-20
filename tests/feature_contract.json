@@ -1,6 +1,23 @@
 {
   "comment": "Every current feature and the suite that answers for it. tools\\test.ps1 checks that each suite exists and that its test source still contains the pattern, and that every suite owns a feature or is listed as infrastructure.",
   "features": [
+    { "id": "portable-guest-paths", "name": "Guest paths over a case-sensitive host: case-insensitive resolution inside the root, containment, create mode", "owners": [
+      { "suite": "vpath_tests", "file": "tests/vpath_tests.c", "pattern": "test_containment" },
+      { "suite": "vpath_tests", "file": "tests/vpath_tests.c", "pattern": "test_case_and_separators" } ] },
+    { "id": "portable-registry-store", "name": "Virtual registry file: fixed-width values, readable across platforms", "owners": [
+      { "suite": "reg_store_tests", "file": "tests/reg_store_tests.c", "pattern": "test_windows_written_file" } ] },
+    { "id": "portable-synchronisation", "name": "Win32-style waits, events, mutexes, critical sections, clocks and timers over SDL3", "owners": [
+      { "suite": "sync_tests", "file": "tests/sync_tests.c", "pattern": "test_abandoned_mutex" },
+      { "suite": "sync_tests", "file": "tests/sync_tests.c", "pattern": "test_clocks_and_timers" } ] },
+    { "id": "lifted-guest-dll", "name": "Guest DLL lifted to C (MSVCIRT): exports, relocations, vtable pointers and the call graph covered, manifest and config facts, no symbol collision", "owners": [
+      { "suite": "tests\\test_guest_module_lift.py", "file": "tests/test_guest_module_lift.py", "pattern": "test_the_dll_is_the_supported_one_and_fully_covered" },
+      { "suite": "tests\\test_guest_module_lift.py", "file": "tests/test_guest_module_lift.py", "pattern": "test_no_symbol_collides_with_the_executable_lift" } ] },
+    { "id": "lifted-selfmod", "name": "SelfMod lifted to C: 46 entries in their own dispatch table, every lifted caller covered, 44 patch sites as guest memory, no native x86", "owners": [
+      { "suite": "tests\\test_selfmod_lift.py", "file": "tests/test_selfmod_lift.py", "pattern": "test_every_lifted_caller_target_has_a_dispatch_entry" },
+      { "suite": "tests\\test_selfmod_lift.py", "file": "tests/test_selfmod_lift.py", "pattern": "test_patch_sites_are_guest_memory_loads" } ] },
+    { "id": "linux-native-rules", "name": "Linux host: no native x86 execution, no guest address used as a host pointer", "owners": [
+      { "suite": "tests\\test_linux_native_rules.py", "file": "tests/test_linux_native_rules.py", "pattern": "test_no_native_x86_execution" },
+      { "suite": "tests\\test_linux_native_rules.py", "file": "tests/test_linux_native_rules.py", "pattern": "test_no_guest_address_treated_as_a_host_pointer" } ] },
     { "id": "sdl3-platform", "name": "SDL3 platform: single init and quit, window adoption", "owners": [
       { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "SDL_InitSubSystem" } ] },
     { "id": "sdl3-pin", "name": "SDL 3.4.20 contract", "owners": [

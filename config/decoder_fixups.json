@@ -54,6 +54,72 @@
       "expect": "dcd8",
       "decode_as": "d8d8",
       "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i)"
+    },
+    {
+      "va": "0x0063BDD4",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x0063CF6D",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x0063D99B",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x0063E837",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x0063F2A3",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x00640233",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x00640CA8",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x006425BB",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x006430FA",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x00643E56",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
+    },
+    {
+      "va": "0x00644851",
+      "expect": "dcd8",
+      "decode_as": "d8d8",
+      "meaning": "fcomp st(0) (undocumented DC D8+i alias of D8 D8+i), SelfMod"
     }
   ]
 }

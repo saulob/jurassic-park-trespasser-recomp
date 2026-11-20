@@ -1,0 +1,32 @@
+{
+  "about": "Guest DLLs lifted to C by tools/lift_module.py. The DLL is a development input; the lift carries no bytes of it. At run time the installed copy is mapped at its base and must match sha256.",
+  "modules": {
+    "msvcirt": {
+      "file": "MSVCIRT.DLL",
+      "lifts": [
+        "lift116"
+      ],
+      "prefix": "msvcirt_",
+      "sha256": "647f7534aaaedffa93534e4cb9b24bfcf91524828ff0364d88973be58139e255",
+      "file_version": "6.0.8168.0",
+      "image_base": "0x780A0000",
+      "image_size": "0x00012000",
+      "timestamp": 898109146,
+      "entry_rva": "0x00001000",
+      "text": {
+        "rva": "0x1000",
+        "size": "0x71E2"
+      },
+      "exports": 445,
+      "code_exports": 390,
+      "data_exports": 55,
+      "forwarded_exports": 0,
+      "export_fingerprint": "2fb7c97512b3900384655f0e50382b8e720d19e19630c9b7a7c8c72a81a6722e",
+      "imports": {
+        "MSVCRT.dll": 43,
+        "KERNEL32.dll": 5
+      },
+      "tls": false
+    }
+  }
+}

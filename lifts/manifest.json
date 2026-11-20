@@ -4,13 +4,30 @@
    "profile": "en-116",
    "gen_dir": "gen",
    "archive": "lift116.tar.xz",
-   "archive_sha256": "c390055f5caeadb8c9b3c408e837a916cd89ffac4260aa67212bef9f9d265b00",
-   "content_sha256": "bd5c22658c333e26fe23e62da10d05819dd757a2e355a7a749fc599648ae2454",
-   "files": 74,
+   "archive_sha256": "c213b51b1e227fdd71595c2cc9e042961bab69fa949f68da0d1d414ba171bfeb",
+   "content_sha256": "e0caafe7b909a2a03293740b42f4b1811e40606d176075bea0788f021cbca7e3",
+   "files": 77,
    "functions": 17767,
    "format": 2,
    "source_profile": "en-116",
-   "source_sha256": "d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed"
+   "source_sha256": "d88bb548d8f7c893de2d5a2ffb69fa513a3d75b7e5c336990b63ec5cad5679ed",
+   "modules": {
+    "msvcirt": {
+     "sha256": "647f7534aaaedffa93534e4cb9b24bfcf91524828ff0364d88973be58139e255",
+     "image_base": "0x780A0000",
+     "image_size": "0x00012000",
+     "entry": "0x780A1000",
+     "text": [
+      "0x780A1000",
+      "0x780A81E2"
+     ],
+     "entries": 578,
+     "exports": 445,
+     "code_exports": 390,
+     "data_exports": 55,
+     "export_fingerprint": "2fb7c97512b3900384655f0e50382b8e720d19e19630c9b7a7c8c72a81a6722e"
+    }
+   }
   },
   "lift_es117": {
    "profile": "es-117",

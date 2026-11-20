@@ -1,4 +1,5 @@
 #include "jpt_display.h"
+#include "jpt_compat.h"
 
 #include <math.h>
 #include <stdio.h>

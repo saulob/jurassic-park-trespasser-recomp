@@ -75,6 +75,17 @@ def archive_files(archive):
         return [(m.name, tar.extractfile(m).read()) for m in tar.getmembers() if m.isfile()]
 
 
+def module_facts(files):
+    """The guest DLLs a lift carries (recomp_<module>.json, written by tools/lift_module.py), for the manifest."""
+    out = {}
+    for name, data in files:
+        if re.fullmatch(r"recomp_\w+\.json", name):
+            facts = json.loads(data.decode("utf-8"))
+            out[facts["name"]] = {k: facts[k] for k in ("sha256", "image_base", "image_size", "entry", "text", "entries", "exports",
+                                                       "code_exports", "data_exports", "export_fingerprint")}
+    return out
+
+
 def pack(lift):
     entry = next((e for e in LIFTS if e[0] == lift), None)
     if not entry:
@@ -101,10 +112,13 @@ def pack(lift):
     archive = LIFTS_DIR / f"{lift}.tar.xz"
     archive.write_bytes(buf.getvalue())
     manifest = read_manifest()
+    modules = module_facts(files)
     manifest["lifts"][lift] = {
         "profile": meta.group(2), "gen_dir": gen_dir, "archive": archive.name, "archive_sha256": sha256_file(archive),
         "content_sha256": content_digest(files), "files": len(files), "functions": int(meta.group(5)),
         "format": int(meta.group(4)), "source_profile": meta.group(2), "source_sha256": meta.group(3)}
+    if modules:
+        manifest["lifts"][lift]["modules"] = modules
     manifest["lifts"] = dict(sorted(manifest["lifts"].items()))
     MANIFEST.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8", newline="\n")
     print(f"{archive.relative_to(ROOT)}: {len(files)} files, {archive.stat().st_size >> 10} KiB, "
@@ -133,6 +147,8 @@ def problems(check_content):
             files = archive_files(archive)
             if content_digest(files) != entry["content_sha256"] or len(files) != entry["files"]:
                 out.append(f"{lift}: the archive's content does not match the manifest")
+            if module_facts(files) != entry.get("modules", {}):
+                out.append(f"{lift}: the guest modules in the archive are not the ones the manifest records")
             dispatch = dict(files).get("recomp_dispatch.c", b"").decode("utf-8", "replace")
             if f'"{lift}", "{profile}", "{entry["source_sha256"]}"' not in dispatch:
                 out.append(f"{lift}: recomp_dispatch.c carries other metadata than the manifest")

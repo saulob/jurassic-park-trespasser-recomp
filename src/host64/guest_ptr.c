@@ -1,9 +1,7 @@
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
 #include "guest_ptr.h"
+#include "host_os.h"
 
-static volatile LONG s_leaks;
+static volatile int32_t s_leaks;
 static const char* s_last_what;
 static uint64_t s_last_value;
 static guest_ptr_t s_last_where;
@@ -16,7 +14,7 @@ void gp_leak_reset(void) {
 }
 
 void gp_note_leak(const char* what, uint64_t value, guest_ptr_t where) {
-    InterlockedIncrement(&s_leaks);
+    hos_atomic_inc(&s_leaks);
     s_last_what = what;
     s_last_value = value;
     s_last_where = where;

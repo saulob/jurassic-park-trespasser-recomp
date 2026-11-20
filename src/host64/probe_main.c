@@ -5,9 +5,6 @@
  *
  *   trespasser_x64_probe [game_dir]
  */
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +12,13 @@
 #include "guest_memory.h"
 #include "guest_ptr.h"
 #include "guest_thunks.h"
+
+#ifdef _WIN32
+#define probe_stricmp _stricmp
+#else
+#include <strings.h>
+#define probe_stricmp strcasecmp
+#endif
 
 #ifndef TRESPASSER_DEFAULT_GAME_DIR
 #define TRESPASSER_DEFAULT_GAME_DIR "game"
@@ -52,7 +56,7 @@ static uint64_t not_implemented(const uint32_t* args, void* user) {
 
 static dll_stat_t* stat_for(probe_t* p, const char* dll) {
     for (int i = 0; i < p->ndll; i++)
-        if (!_stricmp(p->dll[i].name, dll)) return &p->dll[i];
+        if (!probe_stricmp(p->dll[i].name, dll)) return &p->dll[i];
     if (p->ndll == MAX_DLLS) return NULL;
     snprintf(p->dll[p->ndll].name, sizeof p->dll[0].name, "%s", dll);
     return &p->dll[p->ndll++];
@@ -66,8 +70,8 @@ static uint32_t resolve(const char* dll, const char* name, uint16_t ordinal, voi
     size_t n;
     uint32_t va;
     if (s) s->imports++;
-    if (!_stricmp(dll, "smackw32.dll")) img = p->smack;
-    if (!_stricmp(dll, "msvcirt.dll")) img = p->irt;
+    if (!probe_stricmp(dll, "smackw32.dll")) img = p->smack;
+    if (!probe_stricmp(dll, "msvcirt.dll")) img = p->irt;
     if (img) {
         va = gm_pe_export(img, name, name ? 0 : ordinal);
         if (va && s) s->guest++;
@@ -84,7 +88,7 @@ static uint32_t resolve(const char* dll, const char* name, uint16_t ordinal, voi
 }
 
 static int map_optional(const char* dir, const char* file, int mode, gm_image_t* img) {
-    char path[MAX_PATH], err[128];
+    char path[1024], err[128];
     snprintf(path, sizeof path, "%s\\%s", dir, file);
     if (gm_pe_map(path, mode, 0, img, err, sizeof err)) {
         printf("  %-14s not mapped: %s\n", file, err);
