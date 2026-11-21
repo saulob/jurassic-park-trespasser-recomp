@@ -10,7 +10,7 @@ export SDL_AUDIODRIVER=dummy
 total=0
 failures=0
 ran=0
-tests="audio_portable_tests audio_backend_tests dsound_compat_tests hammond_voiceover_tests smacker_tests smacker_ffmpeg_tests"
+tests="audio_portable_tests audio_pacer_tests audio_backend_tests dsound_compat_tests hammond_voiceover_tests smacker_tests smacker_ffmpeg_tests"
 
 for cc in gcc clang; do
   if ! command -v "$cc" >/dev/null 2>&1; then

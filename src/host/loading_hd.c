@@ -5,8 +5,8 @@
  * it. The "Loading Level" line the game writes on the front before a level change (0x00413040) gets a plaque the same
  * way. Whatever the layer cannot show is left to the game's own screen.
  */
-#include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "frontend_platform.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -108,7 +108,7 @@ static int read_art(uint32_t loader, ld_scene_t* s) {
     if (bpp != 16 || !bits || w < ART_W || h < ART_H || w > 16384 || h > 16384 || pitch < w ||
         !guest_readable(bits, (pitch * (h - 1) + w) * 2u))
         return 0;
-    s->art565 = (const uint16_t*)(uintptr_t)bits + (size_t)((int)h / 2 - ART_H / 2) * pitch + ((int)w / 2 - ART_W / 2);
+    s->art565 = (const uint16_t*)ADDR(bits) + (size_t)((int)h / 2 - ART_H / 2) * pitch + ((int)w / 2 - ART_W / 2);
     s->art_w = ART_W;
     s->art_h = ART_H;
     s->art_pitch = (int)pitch;
@@ -219,7 +219,7 @@ static void read_bar(uint32_t c, int32_t id, fe_rect_t r, bar_t* bars, int* coun
     b->lo = (int32_t)peek32(c + BAR_MIN);
     b->hi = (int32_t)peek32(c + BAR_MAX);
     b->pos = (int32_t)peek32(c + BAR_POS);
-    b->color = guest_readable(c + BAR_COLOR, 2) ? rgb_of_565(*(const volatile uint16_t*)(uintptr_t)(c + BAR_COLOR)) : 0xFF4100;
+    b->color = guest_readable(c + BAR_COLOR, 2) ? rgb_of_565(*(const volatile uint16_t*)ADDR(c + BAR_COLOR)) : 0xFF4100;
 }
 
 static void make_gauge(ld_gauge_t* g, const bar_t* bar, caption_t* caption) {
@@ -292,17 +292,24 @@ int loading_hd_read(uint32_t loader, int screen_w, int screen_h, ld_scene_t* s, 
     return 1;
 }
 
+#ifdef _WIN32
+#define ART_SUBFOLDER "assets\\frontend\\loading_hd\\"
+#else
+#define ART_SUBFOLDER "assets/frontend/loading_hd/"
+#endif
+
 static void art_folder(char* out, size_t cap) {
-    char* slash;
     out[0] = 0;
-    if (!GetModuleFileNameA(NULL, out, (DWORD)cap)) return;
-    slash = strrchr(out, '\\');
-    if (!slash) {
+    if (!fe_host_exe_dir(out, cap)) {
         out[0] = 0;
         return;
     }
-    slash[1] = 0;
-    strncat(out, "assets\\frontend\\loading_hd\\", cap - strlen(out) - 1);
+    strncat(out, ART_SUBFOLDER, cap - strlen(out) - 1);
+}
+
+static const char* base_name(const char* path) {
+    const char *a = strrchr(path, '\\'), *b = strrchr(path, '/'), *slash = a > b ? a : b;
+    return slash ? slash + 1 : path;
 }
 
 /* The slot's HD picture, if one was drawn: <exe>\assets\frontend\loading_hd\<slot>.png or .jpg, decoded once a load at
@@ -313,14 +320,14 @@ static void load_hd_art(int screen_w, int screen_h, const char* slot) {
     ld_layout_t l;
     fe_rect_t box;
     L.art_tried = 1;
-    strncpy(L.art_slot, slot, sizeof L.art_slot - 1);
+    snprintf(L.art_slot, sizeof L.art_slot, "%s", slot);
     art_folder(folder, sizeof folder);
     ld_layout_make(&l, screen_w, screen_h, 0, 0);
     box = fe_view_rect(&l.view, l.photo);
     for (int i = 0; folder[0] && i < 2; i++) {
         if (_snprintf(L.art_path, sizeof L.art_path - 1, "%s%s%s", folder, slot, k_types[i]) < 0) continue;
         L.art_path[sizeof L.art_path - 1] = 0;
-        if (GetFileAttributesA(L.art_path) == INVALID_FILE_ATTRIBUTES) continue;
+        if (!fe_host_file_exists(L.art_path)) continue;
         if (sp_image_load(L.art_path, (box.right - box.left) * 2, box.bottom - box.top, &L.art)) return;
         host_log("loading", "warning: HD art %s could not be read: the game's picture is shown", L.art_path);
     }
@@ -354,7 +361,7 @@ static void log_first_paint(const ld_scene_t* s, double ms) {
         host_log("loading", "\"%s\" shown on a plaque at %dx%d (painted in %.1f ms)", s->message, s->screen_w, s->screen_h, ms);
     else if (s->art32)
         host_log("loading", "level \"%s\": HD loading screen at %dx%d using %s (%dx%d, painted in %.1f ms)", L.scene, s->screen_w,
-                 s->screen_h, strrchr(L.art_path, '\\') ? strrchr(L.art_path, '\\') + 1 : L.art_path, s->art_w, s->art_h, ms);
+                 s->screen_h, base_name(L.art_path), s->art_w, s->art_h, ms);
     else
         host_log("loading", "level \"%s\": HD loading screen at %dx%d using %s_0.tga (painted in %.1f ms)", L.scene, s->screen_w,
                  s->screen_h, L.slot[0] ? L.slot : "the game's picture", ms);
@@ -366,39 +373,35 @@ static int show(const ld_scene_t* now) {
     fe_painter_t* painter = frontend_hd_painter(&threads);
     ld_layout_t l;
     fe_rect_t dirty, clip;
-    RECT box;
-    LARGE_INTEGER t0, t1, freq;
-    if (d3dr_frontend_failed()) return refuse("the renderer could not show the HD layer");
+    double t0, painted;
+    if (fe_host_layer_failed()) return refuse("the renderer could not show the HD layer");
     if (!painter) return refuse("the HD painter could not start");
     if (!ensure_layer(now->screen_w, now->screen_h)) return refuse("no memory for the HD layer");
     ld_layout_scene(&l, now);
     diff = ld_scene_diff(L.have_previous ? &L.previous : NULL, now, &l, &dirty);
     clip = diff == LD_DIFF_ALL ? fe_rect(0, 0, now->screen_w, now->screen_h) : dirty;
-    QueryPerformanceCounter(&t0);
+    t0 = fe_host_ms();
     if (!fe_rect_empty(clip) && !fe_paint_loading(painter, now, L.layer, now->screen_w, clip, threads)) {
         L.have_previous = 0;
         return refuse("the HD layer could not be painted");
     }
-    QueryPerformanceCounter(&t1);
-    QueryPerformanceFrequency(&freq);
-    if (diff == LD_DIFF_ALL) log_first_paint(now, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)freq.QuadPart);
+    painted = fe_host_ms() - t0;
+    if (diff == LD_DIFF_ALL) log_first_paint(now, painted);
     L.previous = *now;
     L.have_previous = 1;
     L.refusal[0] = 0;
-    box.left = clip.left;
-    box.top = clip.top;
-    box.right = clip.right;
-    box.bottom = clip.bottom;
-    d3dr_set_frontend(L.layer, now->screen_w, now->screen_h, fe_rect_empty(clip) ? NULL : &box);
+    fe_host_layer(L.layer, now->screen_w, now->screen_h, fe_rect_empty(clip) ? NULL : &clip);
     return 1;
 }
 
 int loading_hd_screen(int* w, int* h) {
     uint32_t raster;
-    if (!d3dr_hardware() || !guest_display_built() || !read32(SCREEN_RASTER, &raster) || !raster) return 0;
-    *w = (int)peek32(raster + RASTER_DISPLAY_W);
-    *h = (int)peek32(raster + RASTER_DISPLAY_H);
-    return *w > 0 && *h > 0 && *w <= 16384 && *h <= 16384;
+    int guest_w, guest_h;
+    if (!fe_host_layer_available() || !fe_host_display_built() || !read32(SCREEN_RASTER, &raster) || !raster) return 0;
+    guest_w = (int)peek32(raster + RASTER_DISPLAY_W);
+    guest_h = (int)peek32(raster + RASTER_DISPLAY_H);
+    if (guest_w <= 0 || guest_h <= 0 || guest_w > 16384 || guest_h > 16384) return 0;
+    return fe_host_loading_size(guest_w, guest_h, w, h) && *w > 0 && *h > 0 && *w <= 16384 && *h <= 16384;
 }
 
 static void release(void) {
@@ -413,7 +416,7 @@ static void release(void) {
     L.art_tried = 0;
     L.painted_logged = 0;
     L.art_slot[0] = L.art_path[0] = 0;
-    d3dr_frontend_release();
+    fe_host_layer_release();
 }
 
 static void loader_draw(void) {
@@ -427,7 +430,7 @@ static void loader_draw(void) {
     }
     if (loading_hd_screen(&w, &h) && loading_hd_read(loader, w, h, &now, slot, sizeof slot)) {
         if (!L.scene[0] && !guest_read_string(SCENE_NAME, L.scene, sizeof L.scene)) L.scene[0] = 0;
-        if (!L.slot[0]) strncpy(L.slot, slot, sizeof L.slot - 1);
+        if (!L.slot[0]) snprintf(L.slot, sizeof L.slot, "%s", slot);
         use_hd_art(&now, slot);
         hd = show(&now);
     }
@@ -438,7 +441,7 @@ static void loader_draw(void) {
     L.drawing = 1;
     L.draw_lifted();
     L.drawing = 0;
-    if (hd) d3dr_set_frontend(NULL, 0, 0, NULL);
+    if (hd) fe_host_layer(NULL, 0, 0, NULL);
 }
 
 static void screen_message(void) {
@@ -456,7 +459,7 @@ static void screen_message(void) {
         now.screen_h = h;
         if (translated) snprintf(now.message, sizeof now.message, "%s", translated);
         if (translated ||
-            LoadStringA((HINSTANCE)(uintptr_t)peek32(GAME_INSTANCE), LOADING_LEVEL_STRING, now.message, sizeof now.message) > 0) {
+            guest_load_string(LOADING_LEVEL_STRING, now.message, sizeof now.message)) {
             frontend_hd_release();
             hd = show(&now);
         }
@@ -464,7 +467,7 @@ static void screen_message(void) {
     L.messaging = 1;
     L.message_lifted();
     L.messaging = 0;
-    if (hd) d3dr_set_frontend(NULL, 0, 0, NULL);
+    if (hd) fe_host_layer(NULL, 0, 0, NULL);
 }
 
 static void log_load(void) {
@@ -487,31 +490,30 @@ static void level_load(void) {
         L.level_lifted();
         return;
     }
-    if (d3dr_hardware()) {
+    if (fe_host_layer_available()) {
         frontend_hd_release();
-        load_hold_arm(&L.hold, GetTickCount());
+        load_hold_arm(&L.hold, fe_host_tick());
     }
     L.loading = 1;
     L.updates = 0;
     L.shown = 0;
     L.omitted = 0;
     L.scene[0] = L.slot[0] = L.refusal[0] = 0;
-    d3dr_texture_polygon_reset();
+    fe_host_level_load_begin();
     L.level_lifted();
-    d3dr_texture_polygon_reset();
-    d3dr_texture_polygon_warm();
+    fe_host_level_loaded();
     L.loading = 0;
-    window_host_level_load_done();
+    fe_host_level_load_done();
     log_load();
     release();
-    if (d3dr_hardware()) load_hold_arm(&L.hold, GetTickCount());
+    if (fe_host_layer_available()) load_hold_arm(&L.hold, fe_host_tick());
     else load_hold_release(&L.hold);
 }
 
 int loading_hd_level_loading(void) { return L.loading; }
 
 int loading_hd_present_held(void) {
-    int held = load_hold_present(&L.hold, L.drawing || L.messaging, GetTickCount());
+    int held = load_hold_present(&L.hold, L.drawing || L.messaging, fe_host_tick());
     if (held) {
         L.held++;
         if (!L.held_logged++) host_log("loading", "a blank present around a level load was held: the loading picture stays up");

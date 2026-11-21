@@ -34,6 +34,9 @@ typedef struct {
     int x, y;
     uint32_t vk, scancode;
     int down, repeat;
+    int relative;    /* LX_EV_MOUSE_MOVE in relative mode: dx and dy are the motion, x and y mean nothing */
+    int synthetic;   /* made by the host (the gamepad), not by the user's keyboard or mouse: no device switch */
+    float dx, dy;
 } lx_event_t;
 
 typedef struct {
@@ -57,7 +60,11 @@ struct lx_window_backend {
     void (*present)(lx_window_backend_t* b, const lx_frame_t* frame);
     void (*set_cursor_visible)(lx_window_backend_t* b, int visible);
     void (*set_mouse_grab)(lx_window_backend_t* b, int grab);
+    /* Relative mouse mode: the pointer stays inside and hidden and motion arrives as deltas (gameplay's mouse look). */
+    void (*set_relative_mouse)(lx_window_backend_t* b, int on);
     void (*destroy)(lx_window_backend_t* b);
+    /* F11, a key of the shared hotkey table: windowed and fullscreen swap. */
+    void (*toggle_fullscreen)(lx_window_backend_t* b);
 };
 
 /* The window the guest's windows use. A backend is installed before the guest runs; with none, the virtual one is. */
@@ -66,12 +73,14 @@ lx_window_backend_t* lx_window_backend(void);
 
 /* A backend with no window and no display. It counts what it was asked to do and returns the events a test queued. */
 typedef struct {
-    int opened, visible, width, height, cursor_visible, grabbed;
+    int opened, visible, width, height, cursor_visible, grabbed, relative;
+    unsigned grab_calls, relative_changes, cursor_changes;
     char title[128];
     unsigned presents;
     lx_frame_t last; /* the pixels pointer is cleared: only the geometry is kept */
     uint32_t last_checksum;
     unsigned events_returned;
+    unsigned fullscreen_toggles;
 } lx_virtual_state_t;
 
 lx_window_backend_t* lx_virtual_backend(void);
@@ -90,6 +99,10 @@ int lx_present_to_guest(int client_w, int client_h, int guest_w, int guest_h, in
 
 #ifdef JPT_LINUX_SDL_VIDEO
 lx_window_backend_t* lx_sdl_backend(void);
+/* Whether the SDL window is fullscreen now. */
+int lx_sdl_fullscreen(void);
+/* Whether the backend is in relative mouse mode. */
+int lx_sdl_relative(void);
 #endif
 
 #endif

@@ -6,7 +6,8 @@
     "@0x8"
    ],
    "files": [
-    "tutorial_prompts.c"
+    "tutorial_prompts.c",
+    "overlay_text.c"
    ],
    "set": "TextLayout"
   },
@@ -145,7 +146,8 @@
    ],
    "files": [
     "guest_ui.c",
-    "video_test.c"
+    "video_test.c",
+    "guest_ui_actions.c"
    ],
    "class": "CUIWnd"
   },
@@ -226,10 +228,13 @@
   {
    "names": [
     "CARD_CATEGORY",
-    "HINT_CATEGORY"
+    "HINT_CATEGORY",
+    "OVERLAY_CARD_CATEGORY",
+    "OVERLAY_HINT_CATEGORY"
    ],
    "files": [
-    "tutorial_prompts.c"
+    "tutorial_prompts.c",
+    "overlay_text.h"
    ],
    "category": "HOST_CONSTANT",
    "reason": "overlay category ids the host picks; the game only compares them"
@@ -461,7 +466,8 @@
    "files": [
     "cheats.c",
     "debug_menu.c",
-    "ce_gameplay.c"
+    "ce_gameplay.c",
+    "ce_quick.c"
    ],
    "set": "CWorldFlags"
   },
@@ -472,7 +478,8 @@
     "loading_hd.c",
     "ui_canvas.c",
     "guest_ui.c",
-    "window_host.c"
+    "window_host.c",
+    "guest_ui_actions.c"
    ],
    "names": [
     "WND_RECT",
@@ -600,7 +607,8 @@
     "ui_canvas.c",
     "cpu_polygons.c",
     "game_text.c",
-    "tutorial_prompts.c"
+    "tutorial_prompts.c",
+    "overlay_text.c"
    ],
    "names": [
     "RASTER_H",
@@ -627,7 +635,8 @@
     "loading_hd.c",
     "cpu_polygons.c",
     "game_text.c",
-    "tutorial_prompts.c"
+    "tutorial_prompts.c",
+    "overlay_text.c"
    ],
    "names": [
     "RASTER_DISPLAY_W",
@@ -649,7 +658,8 @@
   },
   {
    "files": [
-    "guest_ui.c"
+    "guest_ui.c",
+    "guest_ui_model.c"
    ],
    "names": [
     "GAME_WND_STOPPED_OFFSET"
@@ -800,7 +810,8 @@
     "cheats.c",
     "debug_menu.c",
     "physics_watch.c",
-    "ce_gameplay.c"
+    "ce_gameplay.c",
+    "ce_quick.c"
    ],
    "set": "CWorld"
   },
@@ -893,7 +904,8 @@
    ],
    "files": [
     "debug_menu.c",
-    "ce_gameplay.c"
+    "ce_gameplay.c",
+    "ce_quick.c"
    ],
    "class": "CPlayer",
    "kind": "slot"
@@ -903,7 +915,8 @@
     "END_MODAL_SLOT"
    ],
    "files": [
-    "guest_ui.c"
+    "guest_ui.c",
+    "guest_ui_actions.c"
    ],
    "class": "CUIWnd",
    "kind": "slot"
@@ -916,7 +929,9 @@
    ],
    "files": [
     "guest_ui.c",
-    "frontend_hd.c"
+    "guest_ui_model.c",
+    "frontend_hd.c",
+    "guest_ui_actions.c"
    ],
    "set": "CUIManager"
   },
@@ -1022,7 +1037,8 @@
     "OVERLAY_LIST"
    ],
    "files": [
-    "tutorial_prompts.c"
+    "tutorial_prompts.c",
+    "overlay_text.c"
    ],
    "class": "CTextOverlay"
   },
@@ -1243,6 +1259,16 @@
     "menu_audio.c"
    ],
    "set": "SelectionSound"
+  },
+  {
+   "names": [
+    "OVERLAY_BLOB_MAX"
+   ],
+   "files": [
+    "overlay_text.h"
+   ],
+   "category": "HOST_CONSTANT",
+   "reason": "the largest laid-out text blob the host reads"
   }
  ],
  "sets": {

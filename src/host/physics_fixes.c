@@ -5,7 +5,8 @@
  * keeps only the vertical part of the contact responses Pelvic_IDOF reads (host_policy.h).
  */
 #include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 
 #include "cheats.h"
 #include "perf_sections.h"

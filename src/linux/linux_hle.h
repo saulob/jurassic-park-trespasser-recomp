@@ -55,6 +55,15 @@ unsigned hle_stubbed_count(void);
 int hle_signature(const char* dll, const char* name, int* argc, int* conv);
 /* The host file descriptor behind a guest file HANDLE, -1 when it is not one. */
 int hle_file_fd(uint32_t handle);
+/* The name the guest gave when it opened a file handle. 0 when it is not one. */
+int hle_file_name(uint32_t handle, char* out, size_t capacity);
+/* Handles the guest holds open now, by kind (leak checks); stream_views counts the Stream.tpa views among the files. */
+typedef struct {
+    unsigned files, finds, threads, waitables, stream_views;
+} hle_handle_stats_t;
+void hle_handle_stats(hle_handle_stats_t* out);
+/* Guest threads that have not returned yet. */
+unsigned hle_guest_threads_live(void);
 /* The game folder as the guest sees it. */
 jpt_vpath_t* hle_vpath(void);
 

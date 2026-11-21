@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "guest_features.h"
 #include "guest_ptr.h"
 #include "jpt_fs.h"
 #include "linux_log.h"
@@ -96,6 +97,33 @@ unsigned lx_lz32_open_count(void) {
     return n;
 }
 
+typedef struct {
+    const uint8_t* data;
+    size_t size;
+} expanded_view_t;
+
+static uint8_t* expanded_copy(void* context, size_t expanded_size) {
+    const expanded_view_t* view = (const expanded_view_t*)context;
+    uint8_t* copy;
+    if (expanded_size != view->size) return NULL;
+    copy = (uint8_t*)malloc(expanded_size ? expanded_size : 1);
+    if (copy) memcpy(copy, view->data, expanded_size);
+    return copy;
+}
+
+/* The retail level files of the official Patch 1.1 are served fixed: the same bytes the Windows host serves through its LZ calls. */
+static void serve_fixed_level(const char* host_path, const uint8_t* raw, size_t raw_size, uint8_t** data, size_t* size) {
+    expanded_view_t view;
+    size_t fixed_size = 0;
+    uint8_t* fixed;
+    if (!patch117_file_wanted(host_path)) return;
+    view.data = *data, view.size = *size;
+    fixed = patch117_level_bytes(host_path, raw, raw_size, expanded_copy, &view, &fixed_size);
+    if (!fixed) return;
+    if (*data != raw) free(*data);
+    *data = fixed, *size = fixed_size;
+}
+
 static uint64_t z_LZOpenFileA(const uint32_t* a, void* u) {
     const char* name = gp_string(a[0], 260);
     char host[JPT_PATH_MAX];
@@ -111,8 +139,9 @@ static uint64_t z_LZOpenFileA(const uint32_t* a, void* u) {
     raw = slot < 0 ? NULL : read_file(host, &size);
     if (!raw) return HFILE_ERROR;
     data = expand(raw, size, &expanded);
-    if (data) free(raw);
-    else data = raw, expanded = size;
+    if (!data) data = raw, expanded = size;
+    serve_fixed_level(host, raw, size, &data, &expanded);
+    if (data != raw) free(raw);
     s_file[slot].used = 1, s_file[slot].data = data, s_file[slot].size = expanded, s_file[slot].pos = 0;
     if (a[1]) {
         memset(info, 0, sizeof info);

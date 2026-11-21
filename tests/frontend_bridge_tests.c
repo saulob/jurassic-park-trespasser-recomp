@@ -207,6 +207,12 @@ int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t
 static int g_hardware = 1;
 int d3dr_hardware(void) { return g_hardware; }
 int guest_display_built(void) { return 1; }
+int guest_load_string(unsigned id, char* out, int cap) {
+    (void)id;
+    (void)out;
+    (void)cap;
+    return 0;
+}
 
 static int g_pad_in_use;
 static jpt_gamepad_settings_t g_pad_settings;

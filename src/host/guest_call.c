@@ -1,6 +1,9 @@
 /* Calls into lifted code from the host, at a point where the game itself could make them (its UI loop). */
 #include "host.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 #define CALL_LOG_LIMIT 8
 
 static int s_logs;
@@ -32,4 +35,28 @@ int guest_call_virtual(uint32_t self, uint32_t slot, const uint32_t* args, int c
     uint32_t vtable, fn;
     if (!self || !guest_read32(self, &vtable) || !guest_read32(vtable + slot, &fn)) return 0;
     return guest_call(fn, self, args, count, 0, result);
+}
+
+uint32_t guest_scratch(unsigned slot, uint32_t size) {
+    static uint8_t* s_buffer[4];
+    static uint32_t s_size[4];
+    if (slot >= 4 || !size) return 0;
+    if (s_size[slot] < size) {
+        free(s_buffer[slot]);
+        s_buffer[slot] = (uint8_t*)malloc(size);
+        s_size[slot] = s_buffer[slot] ? size : 0;
+    }
+    return (uint32_t)(uintptr_t)s_buffer[slot];
+}
+
+uint32_t guest_keep(const void* data, uint32_t size) {
+    (void)size;
+    return (uint32_t)(uintptr_t)data;
+}
+
+int guest_host_path(const char* guest_path, char* out, size_t cap) {
+    size_t n = guest_path ? strlen(guest_path) : 0;
+    if (n >= cap) return 0;
+    memcpy(out, guest_path, n + 1);
+    return 1;
 }

@@ -2,12 +2,14 @@
 
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "guest_memory.h"
 #include "jpt_fs.h"
 #include "linux_log.h"
+#include "linux_video_subtitles.h"
 #include "smacker_compat.h"
 
 typedef struct {
@@ -78,6 +80,31 @@ static void close_source(void* context, smk_source_t* source) {
     source->context = NULL;
 }
 
+static void log_line(void* context, const char* line) {
+    (void)context;
+    lx_log("Linux SMACK", "%s", line);
+}
+
+static int handle_name(void* context, uint32_t handle, char* out, size_t capacity) {
+    (void)context;
+    return hle_file_name(handle, out, capacity);
+}
+
+static void video_opened(void* context, uint32_t video, const char* name, const smk_source_t* source, uint32_t frames) {
+    (void)context, (void)frames;
+    lx_vsub_opened(video, name, source);
+}
+
+static void video_frame(void* context, uint32_t video, uint32_t frame, int32_t x, int32_t y, int32_t w, int32_t h) {
+    (void)context;
+    lx_vsub_frame(video, frame, x, y, w, h);
+}
+
+static void video_closed(void* context, uint32_t video) {
+    (void)context;
+    lx_vsub_closed(video);
+}
+
 static uint64_t now_us(void* context) {
     struct timespec ts;
     (void)context;
@@ -85,21 +112,37 @@ static uint64_t now_us(void* context) {
     return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
 }
 
+static int s_play_videos;
+
 int lx_smack_can_decode(void) { return smk_ffmpeg_backend() != NULL; }
+void lx_smack_set_play_videos(int play) { s_play_videos = play; }
+int lx_smack_videos_enabled(void) { return s_play_videos && lx_smack_can_decode(); }
 
 void hle_smack_init(void) {
     smk_host_t host = { { NULL, guest_resolve, guest_alloc, guest_release }, smk_ffmpeg_backend(), open_handle, open_path, close_source,
-                        smk_dsound_mixer_for_device, now_us, NULL };
+                        smk_dsound_mixer_for_device, now_us, NULL, log_line, handle_name, video_opened, video_frame, video_closed };
+    smacker_hle_stats_reset();
     if (!host.backend) {
-        lx_log("Linux SMACK", "no FFmpeg in this build: Smacker videos are not decoded (NoVideo is answered 1)");
+        lx_log("Linux SMACK", "no FFmpeg in this build (JPT_HAS_FFMPEG=0): Smacker videos are not decoded and the game skips them (NoVideo = 1); install libavformat-dev libavcodec-dev libavutil-dev and rebuild");
         return;
     }
     s_installed = smacker_hle_install(&host);
-    if (!s_installed) lx_log("Linux SMACK", "the Smacker HLE could not be installed");
+    if (!s_installed) {
+        lx_log("Linux SMACK", "the Smacker HLE could not be installed");
+        return;
+    }
+    {
+        char libraries[512];
+        smk_ffmpeg_describe(libraries, sizeof libraries);
+        lx_log("Linux SMACK", "Smacker video decoded by FFmpeg: %s", libraries);
+        if (strstr(libraries, "GPL") && !strstr(libraries, "LGPL"))
+            lx_log("Linux SMACK", "this FFmpeg is not LGPL-only: fine for development, a release must ship an LGPL-only build");
+    }
 }
 
 void hle_smack_shutdown(void) {
     if (s_installed) smacker_hle_shutdown();
+    lx_vsub_reset();
     s_installed = 0;
 }
 

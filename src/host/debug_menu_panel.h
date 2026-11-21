@@ -1,6 +1,9 @@
 #ifndef TRESPASSER_DEBUG_MENU_PANEL_H
 #define TRESPASSER_DEBUG_MENU_PANEL_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "debug_menu_layout.h"
 #include "debug_menu_policy.h"
 
@@ -45,6 +48,10 @@ extern "C" {
 void dmp_draw(struct ID3D11Device* device, struct ID3D11DeviceContext* context, struct ID3D11RenderTargetView* target,
               int bb_w, int bb_h, const dmp_frame_t* frame);
 void dmp_release(void);
+/* The same frame drawn by the CPU into 32-bit XRGB pixels (width x height, pitch in pixels): the host without a GPU device. */
+void dmp_draw_software(uint32_t* pixels, int width, int height, int pitch_pixels, const dmp_frame_t* frame);
+/* The same, from the bytes of a TrueType face. */
+void dmp_set_fallback_font_memory(const void* ttf, size_t size);
 /* Where the last drawn menu can be clicked; not valid when no menu was drawn. */
 const dml_hits_t* dmp_hits(void);
 /* How many layout errors Dear ImGui has reported to the panel's context. */

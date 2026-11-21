@@ -8,6 +8,7 @@
 #include "jpt_sync.h"
 
 static FILE* s_file;
+static int s_quiet;
 static char s_path[JPT_PATH_MAX];
 
 int lx_log_open(const char* dir, const char* file) {
@@ -24,6 +25,8 @@ int lx_log_open(const char* dir, const char* file) {
     return s_file != NULL;
 }
 
+void lx_log_quiet(int quiet) { s_quiet = quiet; }
+
 const char* lx_log_path(void) { return s_path; }
 int lx_log_fd(void) { return s_file ? fileno(s_file) : -1; }
 
@@ -31,7 +34,7 @@ static void log_line(const char* tag, const char* fmt, va_list args) {
     char line[2048];
     int n = snprintf(line, sizeof line, "[%8.3f] [%s] ", (double)jpt_time_ms() / 1000.0, tag);
     if (n > 0 && (size_t)n < sizeof line) vsnprintf(line + n, sizeof line - (size_t)n, fmt, args);
-    fprintf(stderr, "%s\n", line);
+    if (!s_quiet) fprintf(stderr, "%s\n", line);
     if (s_file) {
         fprintf(s_file, "%s\n", line);
         fflush(s_file);

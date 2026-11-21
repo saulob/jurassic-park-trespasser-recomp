@@ -3,12 +3,13 @@
  * each frame and the clicks its window gets. So focus is the game's own pointer placed on a control (the control
  * shows its own hover picture) and A is a click there; sliders are dragged and lists scrolled with their own arrows.
  */
-#include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "host_input.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "frontend_layout.h"
 #include "gamepad.h"
@@ -178,7 +179,7 @@ static int read_controls(uint32_t window, uint32_t* out, unsigned* count) {
     if (!begin || end < begin || (end - begin) % 4 || (end - begin) / 4 > MAX_CONTROLS || !guest_readable(begin, end - begin))
         return 0;
     *count = (end - begin) / 4;
-    for (unsigned i = 0; i < *count; i++) out[i] = ((const uint32_t*)(uintptr_t)begin)[i];
+    for (unsigned i = 0; i < *count; i++) out[i] = ((const uint32_t*)ADDR(begin))[i];
     return 1;
 }
 
@@ -250,7 +251,7 @@ static void set_focus(const target_t* t) {
 static void point_at(int x, int y) {
     M.px = (float)x;
     M.py = (float)y;
-    window_host_set_pad_cursor(x, y);
+    host_pad_cursor_set(x, y);
 }
 
 static void queue(int x, int y, int set_pointer, int mouse, int then_up) {
@@ -267,16 +268,16 @@ static void queue(int x, int y, int set_pointer, int mouse, int then_up) {
 static void run_step(void) {
     const step_t* st = &M.steps[M.step_at++];
     if (st->set_pointer) point_at(st->x, st->y);
-    if (st->mouse != MOUSE_NONE) window_host_post_mouse(st->mouse);
-    if (st->then_up) window_host_post_mouse(PAD_MOUSE_UP);
+    if (st->mouse != MOUSE_NONE) host_post_mouse(st->mouse);
+    if (st->then_up) host_post_mouse(HOST_MOUSE_UP);
     if (M.step_at >= M.step_count) M.step_count = M.step_at = 0;
 }
 
-static void click_at(pad_rect_t r) { queue(centre_x(r), centre_y(r), 1, PAD_MOUSE_DOWN, 1); }
+static void click_at(pad_rect_t r) { queue(centre_x(r), centre_y(r), 1, HOST_MOUSE_DOWN, 1); }
 
 static int initial_target(const scan_t* s) {
     int x, y, best = -1;
-    if (window_host_game_cursor(&x, &y))
+    if (host_game_cursor(&x, &y))
         for (int i = 0; i < s->count; i++)
             if (inside(s->targets[i].rect, x, y)) return i;
     for (int l = 0; l < s->list_count; l++)
@@ -326,7 +327,7 @@ static int list_step(const scan_t* s, const target_t* t, pad_nav_dir_t dir) {
         M.focus_row = t->row;
         return 0;
     }
-    queue(centre_x(ar), centre_y(ar), 1, PAD_MOUSE_DOWN, 1);
+    queue(centre_x(ar), centre_y(ar), 1, HOST_MOUSE_DOWN, 1);
     click_at(t->rect);
     return 1;
 }
@@ -342,9 +343,9 @@ static void slider_step(const target_t* t, pad_nav_dir_t dir) {
     to = from + (dir == PAD_NAV_RIGHT ? step : -step);
     if (to < t->rect.left + thumb_w / 2) to = t->rect.left + thumb_w / 2;
     if (to > t->rect.right - (thumb_w + 1) / 2) to = t->rect.right - (thumb_w + 1) / 2;
-    queue(from, y, 1, PAD_MOUSE_DOWN, 0);
-    queue(to, y, 1, PAD_MOUSE_MOVE, 0);
-    queue(to, y, 1, PAD_MOUSE_UP, 0);
+    queue(from, y, 1, HOST_MOUSE_DOWN, 0);
+    queue(to, y, 1, HOST_MOUSE_MOVE, 0);
+    queue(to, y, 1, HOST_MOUSE_UP, 0);
 }
 
 static void navigate(const scan_t* s, pad_nav_dir_t dir) {
@@ -381,12 +382,17 @@ static const char* edit_text(uint32_t edit, char* buf, int cap) {
 
 /* CSaveGameWnd saves only under a typed name: the gamepad types one, through the window's own WM_CHAR handling. */
 static void type_save_name(void) {
-    SYSTEMTIME t;
     char name[SAVE_NAME_MAX + 1];
-    GetLocalTime(&t);
-    _snprintf(name, sizeof name - 1, "%04u-%02u-%02u %02u:%02u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute);
-    name[sizeof name - 1] = 0;
-    for (const char* p = name; *p; p++) window_host_post_char(*p);
+    const time_t now = time(NULL);
+    struct tm local;
+    memset(&local, 0, sizeof local);
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    strftime(name, sizeof name, "%Y-%m-%d %H:%M", &local);
+    for (const char* p = name; *p; p++) host_post_char(*p);
 }
 
 static uint32_t save_name_box(const scan_t* s) {
@@ -412,7 +418,7 @@ static void activate(const scan_t* s) {
     char text[64];
     if (cur < 0) {
         if (!M.pointer_free) return;
-        window_host_post_mouse(PAD_MOUSE_DOWN);
+        host_post_mouse(HOST_MOUSE_DOWN);
         M.a_down = 1;
         return;
     }
@@ -420,15 +426,15 @@ static void activate(const scan_t* s) {
     point_at(centre_x(t->rect), centre_y(t->rect));
     if (t->kind == T_ROW) {
         const list_t* l = list_of(s, t->control);
-        window_host_post_mouse(l && l->selected == t->row ? PAD_MOUSE_DOUBLE : PAD_MOUSE_DOWN);
-        window_host_post_mouse(PAD_MOUSE_UP);
+        host_post_mouse(l && l->selected == t->row ? HOST_MOUSE_DOUBLE : HOST_MOUSE_DOWN);
+        host_post_mouse(HOST_MOUSE_UP);
         return;
     }
     if (t->kind == T_EDIT && s->window_vt == VT_SAVE_WND && !edit_text(t->control, text, sizeof text)[0]) {
         type_save_name();
         return;
     }
-    window_host_post_mouse(PAD_MOUSE_DOWN);
+    host_post_mouse(HOST_MOUSE_DOWN);
     M.a_down = 1;
 }
 
@@ -439,7 +445,7 @@ static void move_pointer(const pad_state_t* pad, float dt, float deadzone) {
     if (m <= 0.0f || dt <= 0.0f) return;
     if (!M.pointer_free) {
         int gx, gy;
-        if (window_host_game_cursor(&gx, &gy)) {
+        if (host_game_cursor(&gx, &gy)) {
             M.px = (float)gx;
             M.py = (float)gy;
         }
@@ -448,7 +454,7 @@ static void move_pointer(const pad_state_t* pad, float dt, float deadzone) {
     M.pointer_free = 1;
     M.px += x / m * pad_look_curve(m) * POINTER_SPEED * dt;
     M.py += y / m * pad_look_curve(m) * POINTER_SPEED * dt;
-    window_host_set_pad_cursor((int)floorf(M.px + 0.5f), (int)floorf(M.py + 0.5f));
+    host_pad_cursor_set((int)floorf(M.px + 0.5f), (int)floorf(M.py + 0.5f));
 }
 
 void gamepad_menu_reset(void) {
@@ -484,11 +490,11 @@ void gamepad_menu_frame(const pad_state_t* pad, uint32_t held, uint32_t pressed,
         return;
     }
     if (M.a_down && (released & JPT_PAD_BIT(JPT_PAD_SOUTH))) {
-        window_host_post_mouse(PAD_MOUSE_UP);
+        host_post_mouse(HOST_MOUSE_UP);
         M.a_down = 0;
     }
     if (pressed & (JPT_PAD_BIT(JPT_PAD_EAST) | JPT_PAD_BIT(JPT_PAD_START))) {
-        window_host_post_key(VK_ESCAPE);
+        host_post_key(HOST_VK_ESCAPE);
         return;
     }
     if (device_gamepad && M.auto_focus && s.count) {

@@ -149,7 +149,8 @@ game's own `1` (WinMain's success value) is reported as 0; see "Exit codes" in `
 ## Headless tests
 
 `.\tools\test.ps1` runs all of them (and the Python and PowerShell suites, the contract checks and the repository
-gates) with one summary; `-List` shows each suite and what it covers, `-Filter <text>` runs a few. It compiles the test
+gates), then the Linux gate in WSL (`tools/test-linux.sh`, found and called through `wslpath`), then the Windows/Linux feature
+parity, with one summary and a progress line with an ETA; `-List` shows each suite and what it covers, `-Filter <text>` runs a few. It compiles the test
 programs incrementally and nothing else: no game, launcher, package or release is built. The commands below are what it
 runs, for running one suite by hand.
 
@@ -210,4 +211,9 @@ After changing only `src\host\`, `.\tools\build.ps1` recompiles just that.
 ## Linux (bring-up)
 
 `tools/build-linux.sh` builds the Linux x86_64 executable and `tools/test-linux.sh` runs the Linux gate, headless. The Linux
-host cannot run the game yet; `docs/LINUX.md` lists what exists, what was measured and what is missing.
+host runs the game in a window (`--run`); `docs/LINUX.md` lists what exists, what was measured and what is missing.
+
+FFmpeg (`libavformat`, `libavcodec`, `libavutil`) is optional: with it the game's Smacker videos play, without it the build works and the
+game skips them. Install `libavformat-dev libavcodec-dev libavutil-dev` (Ubuntu/Debian), or point the configure step at a prefix with
+`JPT_CMAKE_ARGS=-DFFMPEG_ROOT=<prefix> tools/build-linux.sh`. A release must use an LGPL-only FFmpeg (`-DJPT_FFMPEG_REQUIRE_LGPL=ON`
+checks it).

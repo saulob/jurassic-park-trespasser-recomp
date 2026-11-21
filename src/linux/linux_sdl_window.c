@@ -1,10 +1,14 @@
 /* The SDL3 window backend: one window, one renderer, one streaming texture. The guest's RGB565 frame is uploaded unchanged and
  * the renderer places it where jpt_presentation says (letterboxed); SDL chooses the window system (X11 or Wayland). Only the
  * executable installs this backend; the headless suites never open it. */
+#include <string.h>
+
 #include <SDL3/SDL.h>
 
 #include "linux_log.h"
+#include "linux_mouse.h"
 #include "linux_crash.h"
+#include "host_policy.h"
 #include "linux_window.h"
 
 typedef struct {
@@ -14,7 +18,9 @@ typedef struct {
     int tex_w, tex_h;
     lx_pixel_format_t tex_format;
     int fullscreen, out_w, out_h, guest_w, guest_h;
-    int mouse_grab;
+    int mouse_grab, relative;
+    uint64_t relative_since_ns;
+    motion_counts_t counts;
     int video_up;
 } sdl_state_t;
 
@@ -108,6 +114,7 @@ static void sdl_close(lx_window_backend_t* b) {
     if (s.renderer) SDL_DestroyRenderer(s.renderer);
     if (s.window) SDL_DestroyWindow(s.window);
     s.texture = NULL, s.renderer = NULL, s.window = NULL;
+    s.relative = 0;
     s.tex_w = s.tex_h = 0;
 }
 
@@ -142,7 +149,13 @@ static void to_client(float x, float y, int* cx, int* cy) {
     *cy = wh > 0 ? (int)(y * (float)s.out_h / (float)wh) : (int)y;
 }
 
-static void toggle_fullscreen(void) {
+int lx_sdl_relative(void) { return s.relative; }
+
+int lx_sdl_fullscreen(void) { return s.window && (SDL_GetWindowFlags(s.window) & SDL_WINDOW_FULLSCREEN) != 0; }
+
+static void sdl_toggle_fullscreen(lx_window_backend_t* b) {
+    (void)b;
+    if (!s.window) return;
     s.fullscreen = !s.fullscreen;
     SDL_SetWindowFullscreen(s.window, s.fullscreen != 0);
 }
@@ -167,10 +180,6 @@ static int sdl_next_event(lx_window_backend_t* b, int timeout_ms, lx_event_t* ev
                 ev->kind = LX_EV_CLOSE, ev->vk = 1;
                 return 1;
             }
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_F11 && !e.key.repeat) {
-                toggle_fullscreen();
-                break;
-            }
             if (!vk) break;
             ev->kind = LX_EV_KEY, ev->vk = vk, ev->scancode = (uint32_t)e.key.scancode, ev->down = e.key.down, ev->repeat = e.key.repeat;
             return 1;
@@ -182,7 +191,20 @@ static int sdl_next_event(lx_window_backend_t* b, int timeout_ms, lx_event_t* ev
             }
             break;
         case SDL_EVENT_MOUSE_MOTION:
+            lx_mouse_note(LX_MN_RAW_MOTION);
             ev->kind = LX_EV_MOUSE_MOVE;
+            if (s.relative) {
+                int ww = 0, wh = 0;
+                long cx, cy;
+                if (!relative_motion_accepted(s.relative, e.motion.timestamp, s.relative_since_ns)) break;
+                SDL_GetWindowSize(s.window, &ww, &wh);
+                refresh_output();
+                motion_counts(&s.counts, ww > 0 ? e.motion.xrel * (float)s.out_w / (float)ww : e.motion.xrel,
+                              wh > 0 ? e.motion.yrel * (float)s.out_h / (float)wh : e.motion.yrel, &cx, &cy);
+                if (!cx && !cy) break;
+                ev->relative = 1, ev->dx = (float)cx, ev->dy = (float)cy;
+                return 1;
+            }
             to_client(e.motion.x, e.motion.y, &ev->x, &ev->y);
             return 1;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -255,6 +277,18 @@ static void sdl_set_mouse_grab(lx_window_backend_t* b, int grab) {
     if (s.window) SDL_SetWindowMouseGrab(s.window, grab != 0);
 }
 
+static void sdl_set_relative_mouse(lx_window_backend_t* b, int on) {
+    (void)b;
+    if (!s.window || s.relative == (on != 0)) return;
+    if (!SDL_SetWindowRelativeMouseMode(s.window, on != 0)) {
+        lx_log("Linux presentation", "SDL3 relative mouse mode: %s", SDL_GetError());
+        return;
+    }
+    s.relative = on != 0;
+    s.relative_since_ns = SDL_GetTicksNS();
+    memset(&s.counts, 0, sizeof s.counts);
+}
+
 static void sdl_destroy(lx_window_backend_t* b) {
     sdl_close(b);
     if (s.video_up) SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -262,6 +296,6 @@ static void sdl_destroy(lx_window_backend_t* b) {
 }
 
 static lx_window_backend_t s_backend = { "SDL3", sdl_open, sdl_close, sdl_set_title, sdl_set_client_size, sdl_client_size, sdl_set_visible,
-                                         sdl_next_event, sdl_present, sdl_set_cursor_visible, sdl_set_mouse_grab, sdl_destroy };
+                                         sdl_next_event, sdl_present, sdl_set_cursor_visible, sdl_set_mouse_grab, sdl_set_relative_mouse, sdl_destroy, sdl_toggle_fullscreen };
 
 lx_window_backend_t* lx_sdl_backend(void) { return &s_backend; }

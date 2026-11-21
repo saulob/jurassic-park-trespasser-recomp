@@ -20,6 +20,8 @@ static int font_ready(void) {
 
 void lx_text_set_codepage(int codepage) { s_codepage = codepage == 1251 ? 1251 : 1252; }
 
+int lx_text_codepage(void) { return s_codepage; }
+
 static int to_unicode(uint8_t c) {
     static const uint16_t cp1252[32] = { 0x20AC, 0x20, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x20,
                                          0x017D, 0x20, 0x20, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A,
@@ -54,12 +56,14 @@ void lx_text_metrics(float scale, lx_text_metrics_t* out) {
     out->max_width = (int)ceilf((float)(x1 - x0) * scale);
 }
 
-int lx_text_advance(float scale, uint8_t ch, int bold) {
+int lx_text_unicode_advance(float scale, int codepoint) {
     int adv = 0, lsb = 0;
     if (!font_ready()) return 0;
-    stbtt_GetCodepointHMetrics(&s_font, to_unicode(ch), &adv, &lsb);
-    return (int)lroundf((float)adv * scale) + (bold ? 1 : 0);
+    stbtt_GetCodepointHMetrics(&s_font, codepoint, &adv, &lsb);
+    return (int)lroundf((float)adv * scale);
 }
+
+int lx_text_advance(float scale, uint8_t ch, int bold) { return lx_text_unicode_advance(scale, to_unicode(ch)) + (bold ? 1 : 0); }
 
 int lx_text_width(float scale, const char* s, int n, int bold) {
     int w = 0;
@@ -67,11 +71,10 @@ int lx_text_width(float scale, const char* s, int n, int bold) {
     return w;
 }
 
-void lx_text_glyph(float scale, uint8_t ch, int bold, int x, int baseline, lx_text_pixel_fn put, void* ctx) {
+void lx_text_unicode_glyph(float scale, int cp, int x, int baseline, lx_text_pixel_fn put, void* ctx) {
     static unsigned char bitmap[GLYPH_MAX * GLYPH_MAX];
-    int cp, x0, y0, x1, y1, w, h;
-    if (!font_ready() || ch == ' ') return;
-    cp = to_unicode(ch);
+    int x0, y0, x1, y1, w, h;
+    if (!font_ready() || cp == ' ') return;
     stbtt_GetCodepointBitmapBox(&s_font, cp, scale, scale, &x0, &y0, &x1, &y1);
     w = x1 - x0, h = y1 - y0;
     if (w <= 0 || h <= 0 || w > GLYPH_MAX || h > GLYPH_MAX) return;
@@ -81,6 +84,10 @@ void lx_text_glyph(float scale, uint8_t ch, int bold, int x, int baseline, lx_te
             int cov = bitmap[row * GLYPH_MAX + col];
             if (!cov) continue;
             put(ctx, x + x0 + col, baseline + y0 + row, cov);
-            if (bold) put(ctx, x + x0 + col + 1, baseline + y0 + row, cov);
         }
+}
+
+void lx_text_glyph(float scale, uint8_t ch, int bold, int x, int baseline, lx_text_pixel_fn put, void* ctx) {
+    lx_text_unicode_glyph(scale, to_unicode(ch), x, baseline, put, ctx);
+    if (bold) lx_text_unicode_glyph(scale, to_unicode(ch), x + 1, baseline, put, ctx);
 }

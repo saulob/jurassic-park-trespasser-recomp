@@ -1,6 +1,6 @@
 /* The HD frontend's painter: the game's own menu pictures scaled to the screen (frontend_art.c) and its text set at the
- * screen's resolution from the system's TrueType fonts; the loading screen's scene is painted here too. Works on memory
- * only (GDI for glyphs), so it runs headless. */
+ * screen's resolution from the system's TrueType fonts (the embedded face where there is no GDI); the loading screen's
+ * scene is painted here too. Works on memory only (GDI for glyphs on Windows), so it runs headless. */
 #ifndef FRONTEND_ASSETS_H
 #define FRONTEND_ASSETS_H
 

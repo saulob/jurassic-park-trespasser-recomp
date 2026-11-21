@@ -1,4 +1,6 @@
+#include "l10n.h"
 #include "linux_hle.h"
+#include "stream_vfile.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -17,6 +19,7 @@
 #include "jpt_fs.h"
 #include "jpt_sync.h"
 #include "linux_crash.h"
+#include "linux_frontend.h"
 #include "linux_log.h"
 #include "linux_modules.h"
 #include "linux_msvcrt.h"
@@ -43,6 +46,8 @@
 #define ERROR_MOD_NOT_FOUND 126u
 #define ERROR_ALREADY_EXISTS 183u
 #define ERROR_NO_MORE_FILES 18u
+#define ERROR_READ_FAULT 30u
+#define ERROR_NEGATIVE_SEEK 131u
 
 #define GENERIC_READ 0x80000000u
 #define GENERIC_WRITE 0x40000000u
@@ -96,6 +101,8 @@ typedef struct {
     jpt_thread_t* thread;
     gthread_t* guest_thread;
     int fd;
+    stream_vfile_t* vfile;
+    char* guest_name;
     char** names;
     int count, next;
     char dir[JPT_PATH_MAX];
@@ -413,7 +420,11 @@ static uint64_t k_WaitForMultipleObjects(const uint32_t* a, void* u) {
 static void close_handle_object(handle_t* h) {
     if (h->kind == H_THREAD) jpt_thread_detach(h->thread);
     if (h->kind == H_WAITABLE) jpt_waitable_free(h->waitable);
-    if (h->kind == H_FILE) close(h->fd);
+    if (h->kind == H_FILE) {
+        stream_vfile_close(h->vfile);
+        free(h->guest_name);
+        close(h->fd);
+    }
     if (h->kind == H_FIND) {
         for (int i = 0; i < h->count; i++) free(h->names[i]);
         free(h->names);
@@ -472,7 +483,13 @@ static uint64_t k_DeleteCriticalSection(const uint32_t* a, void* u) {
 static uint64_t k_EnterCriticalSection(const uint32_t* a, void* u) {
     jpt_cs_t* cs = cs_for(a[0], 1);
     (void)u;
-    if (cs) jpt_cs_enter(cs);
+    if (cs && !jpt_cs_try_enter(cs)) {
+        /* The owner may have let go of the machine (a blocking call, a yield) and need it back to leave the section. */
+        lx_blocking_t b;
+        lx_blocking_begin(&b);
+        jpt_cs_enter(cs);
+        lx_blocking_end(&b);
+    }
     return 0;
 }
 
@@ -716,17 +733,37 @@ static int resolve(const char* guest, int create, char* host, size_t cap) {
     return 0;
 }
 
+static int pread_exact(void* context, uint64_t offset, void* buffer, size_t bytes) {
+    int fd = (int)(intptr_t)context;
+    uint8_t* out = (uint8_t*)buffer;
+    size_t done = 0;
+    while (done < bytes) {
+        ssize_t n = pread(fd, out + done, bytes - done, (off_t)(offset + done));
+        if (n <= 0) return 0;
+        done += (size_t)n;
+    }
+    return 1;
+}
+
+static stream_vfile_t* open_stream_view(int fd) {
+    struct stat st;
+    if (fstat(fd, &st) != 0) return NULL;
+    return stream_vfile_open(pread_exact, (void*)(intptr_t)fd, (uint64_t)st.st_size);
+}
+
 static uint64_t k_CreateFileA(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     uint32_t access = a[1], disposition = a[4];
-    char host[JPT_PATH_MAX];
-    int flags = 0, fd;
+    char host[JPT_PATH_MAX], translated[JPT_PATH_MAX];
+    int flags = 0, fd, served;
     handle_t h;
     (void)u;
     if (!name || !s_vpath) return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
     flags = (access & GENERIC_WRITE) ? ((access & GENERIC_READ) ? O_RDWR : O_WRONLY) : O_RDONLY;
-    if (!resolve(name, disposition != OPEN_EXISTING && disposition != TRUNCATE_EXISTING, host, sizeof host))
-        return INVALID_HANDLE;
+    served = disposition == OPEN_EXISTING && stream_pack_serves_open(name, access, a[5]);
+    if (served) flags = O_RDONLY;
+    if (!resolve(name, disposition != OPEN_EXISTING && disposition != TRUNCATE_EXISTING, host, sizeof host)) return INVALID_HANDLE;
+    if (disposition == OPEN_EXISTING && l10n_menu_file(name, translated, sizeof translated)) memcpy(host, translated, strlen(translated) + 1), served = 0;
     switch (disposition) {
     case CREATE_NEW: flags |= O_CREAT | O_EXCL; break;
     case CREATE_ALWAYS: flags |= O_CREAT | O_TRUNC; break;
@@ -736,14 +773,22 @@ static uint64_t k_CreateFileA(const uint32_t* a, void* u) {
     default: return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
     }
     fd = open(host, flags | O_CLOEXEC, 0666);
+    if (fd < 0 && disposition == OPEN_EXISTING && (flags & (O_WRONLY | O_RDWR)) && (errno == EACCES || errno == EROFS)) {
+        /* A game folder on a read-only medium: the game opens its data files read-write, and only ever reads them. */
+        if (!(flags & O_WRONLY)) fd = open(host, O_RDONLY | O_CLOEXEC);
+    }
     if (fd < 0) return set_error(error_of_errno()), INVALID_HANDLE;
     if (flags & O_CREAT) jpt_vpath_invalidate(s_vpath, host);
     memset(&h, 0, sizeof h);
     h.kind = H_FILE;
     h.fd = fd;
+    if (served) h.vfile = open_stream_view(fd);
+    h.guest_name = strdup(name);
     {
         uint32_t v = new_handle(&h);
         if (!v) {
+            stream_vfile_close(h.vfile);
+            free(h.guest_name);
             close(fd);
             return INVALID_HANDLE;
         }
@@ -754,6 +799,13 @@ static uint64_t k_CreateFileA(const uint32_t* a, void* u) {
 static handle_t* file_of(uint32_t value) {
     handle_t* h = handle_at(value);
     return h && h->kind == H_FILE ? h : NULL;
+}
+
+int hle_file_name(uint32_t handle, char* out, size_t capacity) {
+    const handle_t* h = file_of(handle);
+    if (!h || !h->guest_name || strlen(h->guest_name) >= capacity) return 0;
+    strcpy(out, h->guest_name);
+    return 1;
 }
 
 int hle_file_fd(uint32_t handle) {
@@ -768,6 +820,12 @@ static uint64_t k_ReadFile(const uint32_t* a, void* u) {
     (void)u;
     if (!h) return set_error(ERROR_INVALID_HANDLE), 0;
     if (a[2] && !buf) return set_error(ERROR_INVALID_PARAMETER), 0;
+    if (h->vfile) {
+        uint32_t got = 0;
+        if (!stream_vfile_read(h->vfile, buf, a[2], &got)) return set_error(ERROR_READ_FAULT), 0;
+        if (a[3]) gp_write_u32(a[3], got);
+        return 1;
+    }
     n = a[2] ? read(h->fd, buf, a[2]) : 0;
     if (n < 0) return set_error(error_of_errno()), 0;
     if (a[3]) gp_write_u32(a[3], (uint32_t)n);
@@ -781,6 +839,7 @@ static uint64_t k_WriteFile(const uint32_t* a, void* u) {
     (void)u;
     if (!h) return set_error(ERROR_INVALID_HANDLE), 0;
     if (a[2] && !buf) return set_error(ERROR_INVALID_PARAMETER), 0;
+    if (h->vfile) return set_error(ERROR_ACCESS_DENIED), 0;
     n = a[2] ? write(h->fd, buf, a[2]) : 0;
     if (n < 0) return set_error(error_of_errno()), 0;
     if (a[3]) gp_write_u32(a[3], (uint32_t)n);
@@ -795,6 +854,13 @@ static uint64_t k_SetFilePointer(const uint32_t* a, void* u) {
     (void)u;
     if (!h) return set_error(ERROR_INVALID_HANDLE), INVALID_HANDLE;
     if (a[2] && gp_read_u32(a[2], &high)) distance = (int64_t)((uint64_t)high << 32 | a[1]);
+    if (h->vfile) {
+        uint64_t position = 0;
+        if (!stream_vfile_seek(h->vfile, distance, a[3], &position)) return set_error(ERROR_NEGATIVE_SEEK), INVALID_HANDLE;
+        if (a[2]) gp_write_u32(a[2], (uint32_t)(position >> 32));
+        set_error(0);
+        return (uint32_t)position;
+    }
     at = lseek(h->fd, (off_t)distance, a[3] == 1 ? SEEK_CUR : a[3] == 2 ? SEEK_END : SEEK_SET);
     if (at < 0) return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
     if (a[2]) gp_write_u32(a[2], (uint32_t)((uint64_t)at >> 32));
@@ -806,6 +872,7 @@ static uint64_t k_GetFileSize(const uint32_t* a, void* u) {
     struct stat st;
     (void)u;
     if (!h || fstat(h->fd, &st) != 0) return set_error(ERROR_INVALID_HANDLE), INVALID_HANDLE;
+    if (h->vfile) st.st_size = (off_t)stream_vfile_size(h->vfile);
     if (a[1]) gp_write_u32(a[1], (uint32_t)((uint64_t)st.st_size >> 32));
     return (uint32_t)st.st_size;
 }
@@ -864,6 +931,7 @@ static uint64_t k_DeleteFileA(const uint32_t* a, void* u) {
     if (!name || !s_vpath || !resolve(name, 0, host, sizeof host)) return 0;
     if (unlink(host) != 0) return set_error(error_of_errno()), 0;
     jpt_vpath_invalidate(s_vpath, host);
+    lx_frontend_file_deleted(name);
     return 1;
 }
 
@@ -1142,6 +1210,8 @@ const hle_entry_t* hle_find(const char* dll, const char* name) {
     return NULL;
 }
 
+static void stream_log(const char* line) { lx_log("Linux STREAM", "%s", line); }
+
 void hle_init(jpt_vpath_t* vpath, uint32_t image_base, const char* exe_guest_path) {
     s_vpath = vpath;
     s_image_base = image_base;
@@ -1152,6 +1222,7 @@ void hle_init(jpt_vpath_t* vpath, uint32_t image_base, const char* exe_guest_pat
     hle_gdi32_init();
     hle_ddraw_init();
     hle_smack_init();
+    stream_catalog_init(stream_log);
     snprintf(s_exe_path, sizeof s_exe_path, "%s", exe_guest_path ? exe_guest_path : "");
     s_nmodules = 0;
     for (size_t i = 0; i < sizeof k_known_modules / sizeof k_known_modules[0] && s_nmodules < MAX_MODULES; i++)
@@ -1176,6 +1247,23 @@ void hle_shutdown(void) {
     hle_ddraw_shutdown();
     hle_lz32_shutdown();
     s_vpath = NULL;
+}
+
+unsigned hle_guest_threads_live(void) { return (unsigned)__atomic_load_n(&s_gthreads_live, __ATOMIC_SEQ_CST); }
+
+void hle_handle_stats(hle_handle_stats_t* out) {
+    memset(out, 0, sizeof *out);
+    hos_wrlock(&s_lock);
+    for (int i = 0; i < MAX_HANDLES; i++) {
+        switch (s_handles[i].kind) {
+        case H_FILE: out->files++; if (s_handles[i].vfile) out->stream_views++; break;
+        case H_FIND: out->finds++; break;
+        case H_THREAD: out->threads++; break;
+        case H_WAITABLE: out->waitables++; break;
+        default: break;
+        }
+    }
+    hos_unlock_wr(&s_lock);
 }
 
 void hle_retire_guest_threads(void) { s_run++; }

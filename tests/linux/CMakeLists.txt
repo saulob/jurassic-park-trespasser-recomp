@@ -37,6 +37,7 @@ add_subdirectory("${JPT_REPO_ROOT}/external/SDL" "${CMAKE_BINARY_DIR}/SDL" EXCLU
 set(JPT_WARNINGS -Wall -Wextra -Wpedantic -Wshadow -Werror)
 set(JPT_AUDIO_CORE
   ${JPT_REPO_ROOT}/src/host/audio/audio_policy.c
+  ${JPT_REPO_ROOT}/src/host/audio/audio_pacer.c
   ${JPT_REPO_ROOT}/src/host/audio/audio_mixer.c
   ${JPT_REPO_ROOT}/src/host/audio/audio_spatial.c
   ${JPT_REPO_ROOT}/src/host/audio/audio_sync.c
@@ -54,8 +55,9 @@ endfunction()
 
 enable_testing()
 jpt_probe(audio_portable_tests ${JPT_REPO_ROOT}/src/host/audio/audio_policy.c ${JPT_REPO_ROOT}/src/host/audio/audio_mixer.c)
+jpt_probe(audio_pacer_tests ${JPT_REPO_ROOT}/src/host/audio/audio_pacer.c)
 jpt_probe(audio_backend_tests ${JPT_REPO_ROOT}/src/host/audio/sdl_audio.c ${JPT_REPO_ROOT}/src/host/audio/audio_mixer.c
-  ${JPT_REPO_ROOT}/src/host/audio/audio_policy.c)
+  ${JPT_REPO_ROOT}/src/host/audio/audio_policy.c ${JPT_REPO_ROOT}/src/host/audio/audio_pacer.c)
 jpt_probe(dsound_compat_tests ${JPT_AUDIO_CORE})
 jpt_probe(hammond_voiceover_tests ${JPT_AUDIO_CORE})
 jpt_probe(smacker_tests ${JPT_AUDIO_CORE} ${JPT_SMACKER_PORTABLE_SOURCES})

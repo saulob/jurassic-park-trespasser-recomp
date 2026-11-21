@@ -4,8 +4,8 @@
  * hit tests, hover, values and callbacks stay in its objects, and its canvas is shown instead whenever a window or a
  * control is not one the frontend knows.
  */
-#include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "frontend_platform.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -200,7 +200,7 @@ static uint32_t peek32(uint32_t va) {
 
 static int read8(uint32_t va, uint8_t* out) {
     if (!guest_readable(va, 1)) return 0;
-    *out = *(const volatile uint8_t*)(uintptr_t)va;
+    *out = *(const volatile uint8_t*)ADDR(va);
     return 1;
 }
 
@@ -239,7 +239,7 @@ static int read_image(uint32_t raster, const uint16_t** bits, int* w, int* h, in
     if (bpp != 16 || !rb || rw == 0 || rh == 0 || rw > 4096 || rh > 4096 || rp < rw ||
         !guest_readable(rb, (rp * (rh - 1) + rw) * 2u))
         return 0;
-    *bits = (const uint16_t*)(uintptr_t)rb;
+    *bits = (const uint16_t*)ADDR(rb);
     *w = (int)rw;
     *h = (int)rh;
     *pitch = (int)rp;
@@ -719,7 +719,7 @@ static int read_controls(uint32_t window, uint32_t* out, unsigned* count) {
         (end - begin) % 4 || (end - begin) / 4 > MAX_CONTROLS || !guest_readable(begin, end - begin))
         return 0;
     *count = (end - begin) / 4;
-    for (unsigned i = 0; i < *count; i++) out[i] = ((const uint32_t*)(uintptr_t)begin)[i];
+    for (unsigned i = 0; i < *count; i++) out[i] = ((const uint32_t*)ADDR(begin))[i];
     return 1;
 }
 
@@ -737,8 +737,7 @@ static int read_controls(uint32_t window, uint32_t* out, unsigned* count) {
 
 typedef struct {
     char path[MAX_PATH];
-    FILETIME written;
-    DWORD size;
+    uint64_t written, size;
     sp_image_t image;
     int used;
 } preview_slot_t;
@@ -755,8 +754,7 @@ static struct {
 
 /* The saves' file name before the number: the game lists <Installed Directory><string 10>.* */
 static const char* save_base(void) {
-    if (!P.base[0] && !LoadStringA((HINSTANCE)(uintptr_t)peek32(GAME_INSTANCE), SAVE_NAME_STRING, P.base, sizeof P.base))
-        strcpy(P.base, "SAVEGAME");
+    if (!P.base[0] && !guest_load_string(SAVE_NAME_STRING, P.base, sizeof P.base)) strcpy(P.base, "SAVEGAME");
     return P.base;
 }
 
@@ -777,7 +775,7 @@ static int selected_save(const reader_t* r, char* out, size_t cap) {
     if (selected < 0 || end < begin || (end - begin) % SAVE_ENTRY_SIZE || (uint32_t)selected >= (end - begin) / SAVE_ENTRY_SIZE)
         return 0;
     if (!guest_read_string(begin + (uint32_t)selected * SAVE_ENTRY_SIZE + SAVE_ENTRY_FILE, name, sizeof name)) return 0;
-    return save_path(io_trace_user_folder(), name, out, cap);
+    return save_path(fe_host_user_folder(), name, out, cap);
 }
 
 static void forget_preview(const char* path) {
@@ -791,22 +789,20 @@ static void forget_preview(const char* path) {
 /* The decoded HD picture of a save, kept while its file is unchanged; NULL when it has none or it is unreadable. */
 static const preview_slot_t* preview_of(const char* path) {
     char file[MAX_PATH];
-    WIN32_FILE_ATTRIBUTE_DATA info;
+    uint64_t written, size;
     preview_slot_t* slot;
-    if (!save_preview_path(path, file, sizeof file) || !GetFileAttributesExA(file, GetFileExInfoStandard, &info)) return NULL;
+    if (!save_preview_path(path, file, sizeof file) || !fe_host_file_stamp(file, &written, &size)) return NULL;
     for (int i = 0; i < PREVIEW_SLOTS; i++) {
         slot = &P.slots[i];
-        if (slot->used && !_stricmp(slot->path, path) && !CompareFileTime(&slot->written, &info.ftLastWriteTime) &&
-            slot->size == info.nFileSizeLow)
+        if (slot->used && !_stricmp(slot->path, path) && slot->written == written && slot->size == size)
             return slot->image.pixels ? slot : NULL;
     }
     slot = &P.slots[P.next];
     P.next = (P.next + 1) % PREVIEW_SLOTS;
     save_preview_free(&slot->image);
-    strncpy(slot->path, path, sizeof slot->path - 1);
-    slot->path[sizeof slot->path - 1] = 0;
-    slot->written = info.ftLastWriteTime;
-    slot->size = info.nFileSizeLow;
+    snprintf(slot->path, sizeof slot->path, "%s", path);
+    slot->written = written;
+    slot->size = size;
     slot->used = 1;
     if (!save_preview_load(path, &slot->image)) log_limited("a save picture could not be read, the game's thumbnail is shown: %s", file);
     return slot->image.pixels ? slot : NULL;
@@ -817,7 +813,7 @@ static const sp_image_t* frozen_preview(void) {
     int w, h;
     long pitch;
     uint32_t hash;
-    if (!ui_frozen_picture(&bits, &w, &h, &pitch)) return NULL;
+    if (!fe_host_frozen_picture(&bits, &w, &h, &pitch)) return NULL;
     hash = fe_hash_pixels(bits, w, h, (int)pitch, 13);
     if (P.frozen.pixels && P.frozen_bits == bits && P.frozen_hash == hash) return &P.frozen;
     save_preview_free(&P.frozen);
@@ -934,17 +930,15 @@ void frontend_hd_save_opened(const char* path, const char* user_dir) {
     const uint16_t* bits;
     int w, h;
     long pitch;
-    LARGE_INTEGER t0, t1, freq;
+    double t0;
     if (!path || !save_preview_is_save(path, user_dir, save_base())) return;
     forget_preview(path);
-    QueryPerformanceCounter(&t0);
-    if (ui_frozen_picture(&bits, &w, &h, &pitch) && save_preview_write(path, bits, w, h, pitch)) {
+    t0 = fe_host_ms();
+    if (fe_host_frozen_picture(&bits, &w, &h, &pitch) && save_preview_write(path, bits, w, h, pitch)) {
         sp_size_t size = save_preview_size(w, h);
-        QueryPerformanceCounter(&t1);
-        QueryPerformanceFrequency(&freq);
         if (P.written_logged++ < 4)
             host_log("frontend", "HD picture of %s: %dx%d from the %dx%d game picture in %.1f ms", path, size.width,
-                     size.height, w, h, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)freq.QuadPart);
+                     size.height, w, h, fe_host_ms() - t0);
     } else if (!P.failed_logged++) {
         host_log("frontend", "warning: no HD picture for %s (the save itself is unaffected; Load shows its thumbnail)", path);
     }
@@ -1059,7 +1053,7 @@ int frontend_hd_read_scene_for(fe_scene_t* s, int screen_w, int screen_h, int la
         (end - begin) % 4 || (end - begin) / 4 > MAX_STACK || !guest_readable(begin, end - begin))
         return 0;
     depth = (end - begin) / 4;
-    for (unsigned i = 0; i < depth; i++) stack[i] = ((const uint32_t*)(uintptr_t)begin)[i];
+    for (unsigned i = 0; i < depth; i++) stack[i] = ((const uint32_t*)ADDR(begin))[i];
     r.cursor_x = (int32_t)peek32(manager + MGR_CURSOR_X);
     r.cursor_y = (int32_t)peek32(manager + MGR_CURSOR_Y);
     s->cursor_x = r.cursor_x;
@@ -1088,7 +1082,6 @@ static int pointer_shown(void) {
 }
 
 static int ensure_painter(void) {
-    SYSTEM_INFO si;
     if (F.painter) return 1;
     if (F.painter_failed) return 0;
     F.painter = fe_painter_create();
@@ -1097,8 +1090,7 @@ static int ensure_painter(void) {
         host_log("frontend", "the HD menus could not start (fonts or memory): the game's own menus are shown");
         return 0;
     }
-    GetSystemInfo(&si);
-    F.threads = si.dwNumberOfProcessors > 8 ? 8 : (int)si.dwNumberOfProcessors;
+    F.threads = fe_host_cpu_count() > 8 ? 8 : fe_host_cpu_count();
     if (F.threads < 1) F.threads = 1;
     host_log("frontend", "HD menus: plaques \"%s\", labels \"%s\", text \"%s\", %d painting threads",
              fe_painter_face(F.painter, FE_FONT_PLAQUE), fe_painter_face(F.painter, FE_FONT_LABEL),
@@ -1165,13 +1157,13 @@ static void update_pointer(const fe_scene_t* s) {
         F.cursor_raster = raster;
         F.cursor_generation++;
     }
-    if (!pointer_shown() || gamepad_menu_focus() || !window_host_pointer(&x, &y)) {
-        d3dr_set_frontend_pointer(NULL, 0, 0, 0, 0);
+    if (!pointer_shown() || fe_host_pad_focus() || !fe_host_pointer_position(&x, &y)) {
+        fe_host_pointer(NULL, 0, 0, 0, 0);
         return;
     }
     x = (int)((long long)x * s->screen_w / s->guest_w);
     y = (int)((long long)y * s->screen_h / s->guest_h);
-    d3dr_set_frontend_pointer(F.cursor, F.cursor_size, F.cursor_generation, x - F.cursor_hot_x, y - F.cursor_hot_y);
+    fe_host_pointer(F.cursor, F.cursor_size, F.cursor_generation, x - F.cursor_hot_x, y - F.cursor_hot_y);
 }
 
 static void release_all(void) {
@@ -1183,23 +1175,22 @@ static void release_all(void) {
     F.have_previous = 0;
     fe_painter_trim(F.painter);
     release_pictures();
-    d3dr_frontend_release();
+    fe_host_layer_release();
 }
 
 int frontend_hd_frame(int screen_w, int screen_h) {
     fe_scene_t* now = &F.scenes[F.current ^ 1];
     const fe_scene_t* before = F.have_previous ? &F.scenes[F.current] : NULL;
     fe_rect_t dirty, clip;
-    RECT box;
     int diff, frame_w = 0, frame_h = 0, layer_w, layer_h;
-    LARGE_INTEGER t0, t1, freq;
+    double t0, painted;
     F.idle_frames = 0;
-    if (d3dr_frontend_failed()) {
+    if (fe_host_layer_failed()) {
         refuse("the renderer could not show the HD layer");
         return 0;
     }
     if (screen_w <= 0 || screen_h <= 0 || !ensure_painter()) return 0;
-    if (!d3dr_frame_size(screen_w, screen_h, &frame_w, &frame_h)) frame_w = frame_h = 0;
+    if (!fe_host_frame_size(screen_w, screen_h, &frame_w, &frame_h)) frame_w = frame_h = 0;
     frontend_hd_layer_size(screen_w, screen_h, frame_w, frame_h, &layer_w, &layer_h);
     if (!frontend_hd_read_scene_for(now, screen_w, screen_h, layer_w, layer_h)) {
         if (!F.last_refusal[0]) refuse("a window the frontend could not read");
@@ -1216,35 +1207,30 @@ int frontend_hd_frame(int screen_w, int screen_h) {
         fe_view_t v = fe_view_make_for(screen_w, screen_h, layer_w, layer_h);
         clip = fe_rect_intersect(fe_view_rect(&v, dirty), fe_rect(0, 0, layer_w, layer_h));
     } else clip = fe_rect(0, 0, 0, 0);
-    QueryPerformanceCounter(&t0);
+    t0 = fe_host_ms();
     if (!fe_rect_empty(clip) && !fe_paint(F.painter, now, F.layer, layer_w, clip, F.threads)) {
         refuse("the HD layer could not be painted");
         F.have_previous = 0;
         return 0;
     }
-    QueryPerformanceCounter(&t1);
+    painted = fe_host_ms() - t0;
     if (diff == FE_DIFF_ALL && F.sizes_logged < 4) {
-        QueryPerformanceFrequency(&freq);
         F.sizes_logged++;
         host_log("frontend", "HD menus at %dx%d over the %dx%d game screen (canvas scale %.3f): painted in %.1f ms", layer_w,
-                 layer_h, screen_w, screen_h, fe_view_make_for(screen_w, screen_h, layer_w, layer_h).sy, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)freq.QuadPart);
+                 layer_h, screen_w, screen_h, fe_view_make_for(screen_w, screen_h, layer_w, layer_h).sy, painted);
     }
     F.current ^= 1;
     F.have_previous = 1;
     F.last_refusal[0] = 0;
-    box.left = clip.left;
-    box.top = clip.top;
-    box.right = clip.right;
-    box.bottom = clip.bottom;
-    d3dr_set_frontend(F.layer, layer_w, layer_h, fe_rect_empty(clip) ? NULL : &box);
+    fe_host_layer(F.layer, layer_w, layer_h, fe_rect_empty(clip) ? NULL : &clip);
     update_pointer(now);
     F.shown = 1;
     return 1;
 }
 
 void frontend_hd_frame_done(void) {
-    d3dr_set_frontend(NULL, 0, 0, NULL);
-    d3dr_set_frontend_pointer(NULL, 0, 0, 0, 0);
+    fe_host_layer(NULL, 0, 0, NULL);
+    fe_host_pointer(NULL, 0, 0, 0, 0);
 }
 
 void frontend_hd_idle(void) {

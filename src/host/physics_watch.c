@@ -2,8 +2,7 @@
  * DEBUG_SAULO: temporary telemetry of Anne's body and hand, read from memory only. The pelvis state is
  * Pel[pelvis][dof][value, velocity, acceleration] (OT pelvis_def.h: BODY 0, BODY_EULER 3, MOUTH 21, RIGHT_HAND 25).
  */
-#include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -12,6 +11,7 @@
 #include "cheats.h"
 #include "debug_menu_policy.h"
 #include "jpt_gamepad.h"
+#include "jpt_sync.h"
 #include "physics_watch.h"
 #include "physics_watch_policy.h"
 
@@ -61,7 +61,6 @@ static struct {
     int requested, snapshots, invalid_logs, invalid, started, alive, hand_near, pelvis, lost_logs;
     pw_peaks_t peaks, drift;
     pw_snapshot_t last;
-    LARGE_INTEGER frequency;
 } W;
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
@@ -88,12 +87,7 @@ static int presence(uint32_t instance, dm_placement_t* out) {
     return 1;
 }
 
-static double seconds(void) {
-    LARGE_INTEGER now;
-    if (!W.frequency.QuadPart) QueryPerformanceFrequency(&W.frequency);
-    QueryPerformanceCounter(&now);
-    return (double)now.QuadPart / (double)W.frequency.QuadPart;
-}
+static double seconds(void) { return (double)jpt_time_ms() / 1000.0; }
 
 static void capture(pw_snapshot_t* s, const char* reason, const pw_input_t* in) {
     ch_state_t want;

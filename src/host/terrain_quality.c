@@ -5,8 +5,9 @@
  * variables once per call to build its evaluation constants, so the modern values are in place for that call only:
  * levels, save games and the software renderer keep their own.
  */
-#include "guest_va.h"
-#include "host.h"
+#include "engine_mode.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 #include "perf_sections.h"
 
 #include <string.h>

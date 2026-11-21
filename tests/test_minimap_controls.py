@@ -35,19 +35,22 @@ class MinimapControls(unittest.TestCase):
     def test_f5_and_the_chord_share_one_toggle(self):
         window = read(HOST / "window_host.c")
         pad = read(HOST / "gamepad.c")
-        toggle = window[window.index("void window_host_toggle_minimap(") :]
+        shared = read(HOST / "overlay.c")
+        toggle = shared[shared.index("void overlay_toggle_minimap(") :]
         toggle = toggle[: toggle.index("\n}\n")]
         self.assertIn("minimap_toggle()", toggle)
-        self.assertIn("save_minimap(on)", toggle)
+        self.assertIn("jpt_ini_set(settings_path", toggle)
         self.assertIn("minimap_toggle_allowed(", toggle)
-        self.assertEqual(window.count("minimap_toggle()"), 1)
+        self.assertEqual(shared.count("minimap_toggle()"), 1)
+        self.assertIn("overlay_toggle_minimap(source, s.cfg.settings_path)", window)
         self.assertIn('window_host_toggle_minimap("F5")', window)
-        self.assertIn('window_host_toggle_minimap("L3 + R3")', pad)
+        self.assertIn('lx_features_toggle_minimap("F5")', read(ROOT / "src" / "linux" / "linux_hostkeys.c"))
+        ui = read(HOST / "gamepad_ui.c")
+        self.assertIn("window_host_toggle_minimap(source)", pad)
+        self.assertIn('in->toggle_minimap("L3 + R3")', ui)
+        self.assertIn('lx_features_toggle_minimap', read(ROOT / "src" / "linux" / "linux_gamepad.c"))
         self.assertIn("pad_chord_update(&G.chord, MM_PAD_CHORD,", pad)
-        save = window[window.index("static void save_minimap(") :]
-        save = save[: save.index("\n}\n")]
-        self.assertIn("JPT_KEY_MINIMAP", save)
-        self.assertIn("jpt_ini_set(s.cfg.settings_path", save)
+        self.assertIn("JPT_KEY_MINIMAP", toggle)
 
     def test_the_launcher_writes_the_same_setting(self):
         launcher = read(LAUNCHER / "launcher.cpp")

@@ -11,14 +11,24 @@
 #include "jpt_vpath.h"
 #include "linux_advapi32.h"
 #include "linux_dsound.h"
+#include "linux_ddraw.h"
+#include "dsound_compat.h"
+#include "smacker_compat.h"
+#include "linux_gamepad.h"
 #include "linux_guest_quit.h"
 #include "linux_shutdown.h"
 #include "linux_hle.h"
 #include "jpt_user_data.h"
+#include "linux_features.h"
 #include "linux_lift116.h"
+#include "linux_overrides.h"
 #include "linux_log.h"
 #include "linux_modules.h"
+#include "linux_mouse.h"
 #include "linux_screen.h"
+#include "linux_settings.h"
+#include "linux_smack.h"
+#include "linux_video_subtitles.h"
 #include "linux_spine.h"
 #include "linux_user32.h"
 
@@ -158,6 +168,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     const uint32_t* reached;
     const lx_module_def_t* module_defs;
     size_t module_count;
+    jpt_config_t settings;
 
     memset(r, 0, sizeof *r);
     if (!vp || !jpt_vpath_mount(vp, 'C', o->game_dir)) return finish(r, LX_BOOT_SETUP_FAILED, "cannot map the game folder");
@@ -181,8 +192,8 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     free(bytes);
     r->entry = img.entry;
     r->selfmod_entries = (unsigned)lx_lift116_selfmod_table().count;
-    r->hooks_not_installed = lx_lift116_hook_count();
-    r->overrides_not_installed = lx_lift116_override_count();
+    r->lift_hooks = lx_lift116_hook_count();
+    r->overrides_listed = lx_lift116_override_count();
     if (img.base != meta->image_base || img.entry != meta->entry_va) {
         gm_shutdown();
         jpt_vpath_free(vp);
@@ -197,7 +208,10 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
         return finish(r, LX_BOOT_SETUP_FAILED, err);
     }
     lx_dsound_set_headless(o->backend == NULL);
+    lx_smack_set_play_videos(o->play_videos);
+    lx_vsub_init(o->settings_file, o->version ? o->version : "en-116");
     hle_init(vp, img.base, "C:\\trespass.exe");
+    lx_settings_load(o->settings_file, &settings);
     hle_set_exit_handler(on_exit_request);
     prepare_saves(vp, o);
     lx_window_set_backend(o->backend);
@@ -206,13 +220,44 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     lx_screen_set_frame_limit(o->unbounded ? 0 : o->frame_limit ? o->frame_limit : 1);
     lx_user32_set_idle_limit(o->unbounded ? 0 : o->idle_limit ? o->idle_limit : 200000);
     lx_spine_init(lx_lift116_main_table(), lx_lift116_selfmod_table());
+    char cache_dir[JPT_PATH_MAX];
+    snprintf(cache_dir, sizeof cache_dir, "%s/cache", o->user_root ? o->user_root : "user_data");
+    if (o->use_features) lx_lift116_register_overrides();
+    if (o->use_features && !lx_features_start(&settings, o->game_dir, o->version, o->settings_file, cache_dir)) {
+        gm_shutdown();
+        jpt_vpath_free(vp);
+        return finish(r, LX_BOOT_SETUP_FAILED, "the host features cannot be installed over the lifted game");
+    }
+#ifdef JPT_LINUX_SDL_VIDEO
+    if (o->use_gamepad) {
+        jpt_gamepad_settings_t pad_settings = settings.gamepad;
+        lx_gamepad_init(&pad_settings);
+    }
+#endif
+    if (o->use_features) {
+        override_counts_t counts_now;
+        if (!guest_overrides_check()) {
+            lx_features_stop();
+            gm_shutdown();
+            jpt_vpath_free(vp);
+            return finish(r, LX_BOOT_SETUP_FAILED, "a required override of the lifted game is missing");
+        }
+        counts_now = lx_overrides_counts();
+        r->overrides_installed = counts_now.installed;
+        r->overrides_required = counts_now.required_installed;
+        lx_user32_set_ui_loop(lx_host_ui_loop);
+    }
     if (!lx_modules_bind(&r->module_imports, &r->module_imports_implemented))
         return finish(r, LX_BOOT_SETUP_FAILED, "a guest module's imports cannot be bound");
     gm_pe_bind(&img, bind_import, &counts, NULL);
     r->imports_total = counts.total;
     r->imports_implemented = counts.implemented;
-    lx_log("Linux guest", "entry %08X, SelfMod lifted entries %u, %u lift hooks and %u overrides not installed", r->entry,
-           r->selfmod_entries, r->hooks_not_installed, r->overrides_not_installed);
+    lx_log("Linux guest", "entry %08X, SelfMod lifted entries %u", r->entry, r->selfmod_entries);
+    if (o->use_features)
+        lx_log("Linux features", "%u/%u overrides installed (%u required), %u/%u lift hooks active", r->overrides_installed,
+               r->overrides_listed, r->overrides_required, r->lift_hooks, lx_lift116_hook_count());
+    else
+        lx_log("Linux features", "host features off: the lifted game runs as retail (%u overrides listed, %u lift hooks)", r->overrides_listed, r->lift_hooks);
     lx_log("Linux HLE", "resolved %u/%u", r->imports_implemented, r->imports_total);
 
     thread = lx_thread_new(GUEST_STACK_BYTES);
@@ -227,6 +272,15 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     call.entry = r->entry;
     run_status = lx_run(run_entry, &call);
     status = run_status == LX_OK ? finish(r, LX_BOOT_EXITED, "the entry point returned") : classify(lx_diag(), r);
+    {
+        hle_handle_stats_t handles;
+        dsound_compat_counts_t audio;
+        hle_handle_stats(&handles);
+        dsound_compat_counts(&audio);
+        r->at_stop.files = handles.files, r->at_stop.stream_views = handles.stream_views, r->at_stop.finds = handles.finds;
+        r->at_stop.ddraw_surfaces = lx_ddraw_surface_count(), r->at_stop.audio_buffers = audio.buffers_live;
+        r->at_stop.guest_threads = hle_guest_threads_live(), r->at_stop.smack_objects = smacker_open_count();
+    }
     lx_shutdown_begin();
     r->quit_reason = (int)lx_shutdown_reason();
     r->host_ended_guest = lx_shutdown_forced_ends();
@@ -242,6 +296,13 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     threads_ended = hle_join_guest_threads(THREAD_JOIN_MS);
     lx_thread_free(thread);
     hle_shutdown();
+#ifdef JPT_LINUX_SDL_VIDEO
+    lx_gamepad_log_summary();
+    lx_gamepad_shutdown();
+#endif
+    lx_mouse_log_summary();
+    lx_user32_set_ui_loop(NULL);
+    lx_features_stop();
     lx_screen_window_close();
     lx_modules_reset();
     jpt_vpath_free(vp);

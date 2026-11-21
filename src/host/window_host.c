@@ -669,26 +669,7 @@ static void save_display_mode(void) {
         host_log("window", "could not save display_mode to %s", s.cfg.settings_path);
 }
 
-static void save_minimap(int on) {
-    const char* key = JPT_KEY_MINIMAP;
-    const char* value = on ? "1" : "0";
-    if (!s.cfg.settings_path[0]) return;
-    if (jpt_ini_set(s.cfg.settings_path, &key, &value, 1))
-        host_log("window", "minimap = %s saved to %s", value, s.cfg.settings_path);
-    else
-        host_log("window", "could not save minimap to %s", s.cfg.settings_path);
-}
-
-void window_host_toggle_minimap(const char* source) {
-    guest_ui_view_t g;
-    int on;
-    guest_ui_probe(&g);
-    if (!minimap_toggle_allowed(g.ui == GUEST_UI_GAMEPLAY, debug_menu_open_menu(), tutorial_prompts_card_shown())) return;
-    on = minimap_toggle();
-    save_minimap(on);
-    debug_menu_notice(jpt_tr(on ? "Minimap On" : "Minimap Off"));
-    host_log("minimap", "%s: %s", source, on ? "on" : "off");
-}
+void window_host_toggle_minimap(const char* source) { overlay_toggle_minimap(source, s.cfg.settings_path); }
 
 void window_host_set_frame_counter(int on) { s.frame_counter = on != 0; }
 
@@ -1166,7 +1147,7 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
     case WM_CHAR:
     case WM_DEADCHAR:
         if (video_test_visible()) return 0;
-        if (debug_menu_char(wparam)) return 0;
+        if (debug_menu_char((char)wparam)) return 0;
         break;
     case WM_GETMINMAXINFO:
         if (s.fullscreen) cover_limits(window, (MINMAXINFO*)lparam);

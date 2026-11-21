@@ -195,6 +195,8 @@ void registry_software_water(void) { s_software_water = 1; }
 
 void registry_skip_video(int on) { s_skip_video = on; }
 
+void guest_skip_video(int on) { registry_skip_video(on); }
+
 void registry_legacy_safemode_dialog(void) { s_legacy_safemode = 1; }
 
 int registry_legacy_safemode_enabled(void) { return s_legacy_safemode; }

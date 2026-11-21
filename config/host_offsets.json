@@ -575,34 +575,6 @@
   },
   {
    "file": "src/host/ce_gameplay.c",
-   "name": "WORLD_LOAD_PENDING",
-   "value": "0x38",
-   "struct": "CWorldFlags",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CWorldFlags: 6 functions, 0 without a counterpart; +0x38 used by 3 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CWorldFlags: 6 functions, 0 without a counterpart; +0x38 used by 3 identical functions"
-   }
-  },
-  {
-   "file": "src/host/ce_gameplay.c",
-   "name": "PLAYER_DEAD_SLOT",
-   "value": "0x1FC",
-   "struct": "CPlayer",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CPlayer vtable: slot 127 holds a function matched by its code in both builds"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CPlayer vtable: slot 127 holds a function matched by its code in both builds"
-   }
-  },
-  {
-   "file": "src/host/ce_gameplay.c",
    "name": "SAVE_WND_LIST",
    "value": "0x3C",
    "struct": "CSaveGameWnd",
@@ -882,19 +854,6 @@
    }
   },
   {
-   "file": "src/host/ce_gameplay.c",
-   "name": "SCRATCH_BYTES",
-   "value": "0x200",
-   "es-117": {
-    "status": "not_guest",
-    "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
-   },
-   "ptbr-117": {
-    "status": "not_guest",
-    "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
-   }
-  },
-  {
    "file": "src/host/ce_graphics.c",
    "name": "SKY_FOG_HIGH",
    "value": "0x2C",
@@ -962,6 +921,47 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "CSky: 5 functions, 0 without a counterpart; +0x4c used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/ce_quick.c",
+   "name": "WORLD_LOAD_PENDING",
+   "value": "0x38",
+   "struct": "CWorldFlags",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CWorldFlags: 6 functions, 0 without a counterpart; +0x38 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CWorldFlags: 6 functions, 0 without a counterpart; +0x38 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/ce_quick.c",
+   "name": "PLAYER_DEAD_SLOT",
+   "value": "0x1FC",
+   "struct": "CPlayer",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer vtable: slot 127 holds a function matched by its code in both builds"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer vtable: slot 127 holds a function matched by its code in both builds"
+   }
+  },
+  {
+   "file": "src/host/ce_quick.c",
+   "name": "SCRATCH_BYTES",
+   "value": "0x200",
+   "es-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
+   },
+   "ptbr-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
    }
   },
   {
@@ -3108,21 +3108,7 @@
    }
   },
   {
-   "file": "src/host/guest_ui.c",
-   "name": "MANAGER_OFFSET",
-   "value": "0x8",
-   "struct": "CUIManager",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x8 used by 4 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x8 used by 4 identical functions"
-   }
-  },
-  {
-   "file": "src/host/guest_ui.c",
+   "file": "src/host/guest_ui_actions.c",
    "name": "MANAGER_ACTIVE_OFFSET",
    "value": "0x4",
    "struct": "CUIManager",
@@ -3136,7 +3122,7 @@
    }
   },
   {
-   "file": "src/host/guest_ui.c",
+   "file": "src/host/guest_ui_actions.c",
    "name": "MANAGER_MENU_FLAG_OFFSET",
    "value": "0x20",
    "struct": "CUIManager",
@@ -3150,49 +3136,7 @@
    }
   },
   {
-   "file": "src/host/guest_ui.c",
-   "name": "STACK_BEGIN_OFFSET",
-   "value": "0x38",
-   "struct": "CUIManager",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x38 used by 1 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x38 used by 1 identical functions"
-   }
-  },
-  {
-   "file": "src/host/guest_ui.c",
-   "name": "STACK_END_OFFSET",
-   "value": "0x3C",
-   "struct": "CUIManager",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x3c used by 1 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x3c used by 1 identical functions"
-   }
-  },
-  {
-   "file": "src/host/guest_ui.c",
-   "name": "GAME_WND_STOPPED_OFFSET",
-   "value": "0x30",
-   "struct": "CGameWnd",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CGameWnd+CUIWnd+CUICtrlCallback: 99 functions, 0 without a counterpart; +0x30 used by 3 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CGameWnd+CUIWnd+CUICtrlCallback: 99 functions, 0 without a counterpart; +0x30 used by 3 identical functions"
-   }
-  },
-  {
-   "file": "src/host/guest_ui.c",
+   "file": "src/host/guest_ui_actions.c",
    "name": "END_MODAL_SLOT",
    "value": "0x4C",
    "struct": "CUIWnd",
@@ -3206,7 +3150,7 @@
    }
   },
   {
-   "file": "src/host/guest_ui.c",
+   "file": "src/host/guest_ui_actions.c",
    "name": "WND_DONE_OFFSET",
    "value": "0x8",
    "struct": "CUIWnd",
@@ -3220,7 +3164,7 @@
    }
   },
   {
-   "file": "src/host/guest_ui.c",
+   "file": "src/host/guest_ui_actions.c",
    "name": "WND_RESULT_OFFSET",
    "value": "0xC",
    "struct": "CUIWnd",
@@ -3231,6 +3175,62 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "CUIWnd+CUICtrlCallback: 53 functions, 0 without a counterpart; +0xc used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/guest_ui_model.c",
+   "name": "MANAGER_OFFSET",
+   "value": "0x8",
+   "struct": "CUIManager",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x8 used by 4 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x8 used by 4 identical functions"
+   }
+  },
+  {
+   "file": "src/host/guest_ui_model.c",
+   "name": "STACK_BEGIN_OFFSET",
+   "value": "0x38",
+   "struct": "CUIManager",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x38 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x38 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/guest_ui_model.c",
+   "name": "STACK_END_OFFSET",
+   "value": "0x3C",
+   "struct": "CUIManager",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x3c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CUIManager: 6 functions, 0 without a counterpart; +0x3c used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/guest_ui_model.c",
+   "name": "GAME_WND_STOPPED_OFFSET",
+   "value": "0x30",
+   "struct": "CGameWnd",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CGameWnd+CUIWnd+CUICtrlCallback: 99 functions, 0 without a counterpart; +0x30 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CGameWnd+CUIWnd+CUICtrlCallback: 99 functions, 0 without a counterpart; +0x30 used by 3 identical functions"
    }
   },
   {
@@ -3733,6 +3733,143 @@
    "ptbr-117": {
     "status": "not_guest",
     "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "RASTER_HEIGHT",
+   "value": "0xC",
+   "struct": "CRaster",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CRaster+CRasterBase+CRefObj: 93 functions, 1 without a counterpart; +0xc used by 26 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CRaster+CRasterBase+CRefObj: 93 functions, 0 without a counterpart; +0xc used by 27 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "RASTER_TOP",
+   "value": "0x8C",
+   "struct": "CRasterWin",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CRasterWin+CRasterVid+CRaster: 147 functions, 1 without a counterpart; +0x8c used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CRasterWin+CRasterVid+CRaster: 147 functions, 0 without a counterpart; +0x8c used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "OVERLAY_LIST",
+   "value": "0x54",
+   "struct": "CTextOverlay",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x54 used by 21 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x54 used by 21 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "NODE_BLOB",
+   "value": "0xC",
+   "struct": "CTextOverlay",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0xc used by 89 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0xc used by 84 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "NODE_FLAGS",
+   "value": "0x1C",
+   "struct": "CTextOverlay",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x1c used by 144 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x1c used by 134 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "NODE_CATEGORY",
+   "value": "0x24",
+   "struct": "CTextOverlay",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x24 used by 42 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x24 used by 37 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "NODE_WAITING",
+   "value": "0x400",
+   "struct": "CTextOverlay",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x400 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTextOverlay+CSubsystem+CEntity: 400 functions, 0 without a counterpart; +0x400 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.h",
+   "name": "OVERLAY_BLOB_MAX",
+   "value": "0x2000",
+   "es-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: the largest laid-out text blob the host reads"
+   },
+   "ptbr-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: the largest laid-out text blob the host reads"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.h",
+   "name": "OVERLAY_CARD_CATEGORY",
+   "value": "0x4A50",
+   "es-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: overlay category ids the host picks; the game only compares them"
+   },
+   "ptbr-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: overlay category ids the host picks; the game only compares them"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.h",
+   "name": "OVERLAY_HINT_CATEGORY",
+   "value": "0x4A51",
+   "es-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: overlay category ids the host picks; the game only compares them"
+   },
+   "ptbr-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: overlay category ids the host picks; the game only compares them"
    }
   },
   {
@@ -5553,17 +5690,17 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    205,
-    218,
-    284,
-    284,
+    206,
+    219,
+    285,
     285,
     286,
-    299,
+    287,
     300,
-    300,
-    628,
-    662
+    301,
+    301,
+    629,
+    663
    ],
    "es-117": {
     "status": "unmoved",
@@ -5582,15 +5719,15 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    230,
-    282,
-    282,
-    298,
-    416,
-    428,
-    629,
-    637,
-    663
+    231,
+    283,
+    283,
+    299,
+    417,
+    429,
+    630,
+    638,
+    664
    ],
    "es-117": {
     "status": "unmoved",
@@ -5609,7 +5746,7 @@
    "value": "0x14",
    "literal": true,
    "lines": [
-    396
+    397
    ],
    "struct": "CMessage",
    "es-117": {
@@ -5627,7 +5764,7 @@
    "value": "0x20",
    "literal": true,
    "lines": [
-    222
+    223
    ],
    "es-117": {
     "status": "unmoved",
@@ -5827,9 +5964,9 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    251,
-    290,
-    295
+    96,
+    131,
+    136
    ],
    "es-117": {
     "status": "unmoved",
@@ -5887,9 +6024,9 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    376,
-    481,
-    482
+    373,
+    478,
+    479
    ],
    "struct": "SInput",
    "es-117": {
@@ -5907,7 +6044,7 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    377
+    374
    ],
    "struct": "SInput",
    "es-117": {
@@ -5925,7 +6062,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    378
+    375
    ],
    "struct": "SInput",
    "es-117": {
@@ -5943,7 +6080,7 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    379
+    376
    ],
    "struct": "SInput",
    "es-117": {
@@ -6160,7 +6297,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    358
+    320
    ],
    "es-117": {
     "status": "unmoved",
@@ -6179,11 +6316,11 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    487,
-    490,
-    517,
-    523,
-    525
+    602,
+    605,
+    632,
+    638,
+    640
    ],
    "es-117": {
     "status": "unmoved",
@@ -6302,12 +6439,50 @@
    }
   },
   {
+   "file": "src/host/overlay_text.c",
+   "name": "@0x4",
+   "value": "0x4",
+   "literal": true,
+   "lines": [
+    23,
+    30,
+    68
+   ],
+   "struct": "TextLayout",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x4 used by 0 identical and 1 aligned functions, none moved"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x4 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/overlay_text.c",
+   "name": "@0x8",
+   "value": "0x8",
+   "literal": true,
+   "lines": [
+    31
+   ],
+   "struct": "TextLayout",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
    "file": "src/host/patch117_physics.c",
    "name": "@0x10",
    "value": "0x10",
    "literal": true,
    "lines": [
-    164
+    165
    ],
    "es-117": {
     "status": "gated",
@@ -6324,7 +6499,7 @@
    "value": "0x24",
    "literal": true,
    "lines": [
-    164
+    165
    ],
    "es-117": {
     "status": "gated",
@@ -6341,7 +6516,7 @@
    "value": "0x28",
    "literal": true,
    "lines": [
-    141
+    142
    ],
    "es-117": {
     "status": "gated",
@@ -6358,7 +6533,7 @@
    "value": "0x30",
    "literal": true,
    "lines": [
-    164
+    165
    ],
    "es-117": {
     "status": "gated",
@@ -6375,7 +6550,7 @@
    "value": "0x4C",
    "literal": true,
    "lines": [
-    165
+    166
    ],
    "es-117": {
     "status": "gated",
@@ -6392,7 +6567,7 @@
    "value": "0x6C",
    "literal": true,
    "lines": [
-    165
+    166
    ],
    "es-117": {
     "status": "gated",
@@ -6409,7 +6584,7 @@
    "value": "0x70",
    "literal": true,
    "lines": [
-    145
+    146
    ],
    "es-117": {
     "status": "gated",
@@ -6426,7 +6601,7 @@
    "value": "0x74",
    "literal": true,
    "lines": [
-    145
+    146
    ],
    "es-117": {
     "status": "gated",
@@ -6443,7 +6618,7 @@
    "value": "0x7C",
    "literal": true,
    "lines": [
-    142
+    143
    ],
    "es-117": {
     "status": "gated",
@@ -6460,7 +6635,7 @@
    "value": "0x80",
    "literal": true,
    "lines": [
-    145
+    146
    ],
    "es-117": {
     "status": "gated",
@@ -6477,7 +6652,7 @@
    "value": "0x84",
    "literal": true,
    "lines": [
-    165
+    166
    ],
    "es-117": {
     "status": "gated",
@@ -6494,7 +6669,7 @@
    "value": "0x88",
    "literal": true,
    "lines": [
-    141
+    142
    ],
    "es-117": {
     "status": "gated",
@@ -6511,7 +6686,7 @@
    "value": "0x8C",
    "literal": true,
    "lines": [
-    142
+    143
    ],
    "es-117": {
     "status": "gated",
@@ -6528,7 +6703,7 @@
    "value": "0xA0",
    "literal": true,
    "lines": [
-    142
+    143
    ],
    "es-117": {
     "status": "gated",
@@ -6545,7 +6720,7 @@
    "value": "0xB4",
    "literal": true,
    "lines": [
-    141
+    142
    ],
    "es-117": {
     "status": "gated",
@@ -6562,10 +6737,10 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    277,
-    331,
-    354,
-    371
+    278,
+    332,
+    355,
+    372
    ],
    "es-117": {
     "status": "gated",
@@ -6582,12 +6757,12 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    148,
-    265,
-    265,
-    332,
-    396,
-    412
+    149,
+    266,
+    266,
+    333,
+    397,
+    413
    ],
    "es-117": {
     "status": "gated",
@@ -6604,7 +6779,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    252
+    253
    ],
    "es-117": {
     "status": "gated",
@@ -6621,7 +6796,7 @@
    "value": "0x1C",
    "literal": true,
    "lines": [
-    253
+    254
    ],
    "es-117": {
     "status": "gated",
@@ -6638,12 +6813,12 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    100,
-    106,
-    190,
-    200,
-    247,
-    276
+    101,
+    107,
+    191,
+    201,
+    248,
+    277
    ],
    "es-117": {
     "status": "unmoved",
@@ -6662,8 +6837,8 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    107,
-    190
+    108,
+    191
    ],
    "es-117": {
     "status": "unmoved",
@@ -6930,7 +7105,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    85
+    86
    ],
    "es-117": {
     "status": "unmoved",
@@ -6949,8 +7124,8 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    84,
-    86
+    85,
+    87
    ],
    "es-117": {
     "status": "unmoved",
@@ -6969,7 +7144,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    84
+    85
    ],
    "es-117": {
     "status": "unmoved",
@@ -6988,11 +7163,8 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    153,
-    160,
-    226,
-    509,
-    854
+    204,
+    487
    ],
    "struct": "TextLayout",
    "es-117": {
@@ -7002,24 +7174,6 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x4 used by 0 identical and 1 aligned functions, none moved"
-   }
-  },
-  {
-   "file": "src/host/tutorial_prompts.c",
-   "name": "@0x8",
-   "value": "0x8",
-   "literal": true,
-   "lines": [
-    161
-   ],
-   "struct": "TextLayout",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "TextLayout: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
    }
   },
   {
@@ -7480,8 +7634,8 @@
    "lines": [
     53,
     53,
-    71,
-    166
+    72,
+    176
    ],
    "es-117": {
     "status": "unmoved",

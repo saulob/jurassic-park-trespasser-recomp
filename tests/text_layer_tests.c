@@ -250,7 +250,7 @@ static char* read_file(const char* root, const char* path) {
 static void test_shared_order(const char* root) {
     char* panel = read_file(root, "src/host/debug_menu_panel.cpp");
     char* present = read_file(root, "src/host/ddraw/d3d11_present.c");
-    char* menu = read_file(root, "src/host/debug_menu.c");
+    char* menu = read_file(root, "src/host/debug_menu_win.c");
     char* renderer = read_file(root, "src/host/ddraw/d3d11_renderer.c");
     char* dd_surface = read_file(root, "src/host/ddraw/dd_surface.c");
     const char *hud, *text, *counter, *window;

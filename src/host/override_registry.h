@@ -63,6 +63,8 @@ override_entry_t* override_registry_find(override_registry_t* r, uint32_t va);
  * install before the target executable was verified, no usable replacement or a second install. */
 int override_registry_install(override_registry_t* r, uint32_t va, override_fn_t replacement, override_fn_t* lifted);
 override_counts_t override_registry_counts(const override_registry_t* r);
+/* Every entry back on its lifted body, unused, and the refusals forgotten: a run in the same process starts clean. */
+void override_registry_reset(override_registry_t* r);
 const char* override_refusal_text(override_refusal_t why);
 
 #endif

@@ -37,6 +37,9 @@ if(JPT_LINUX_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=. -ffile-prefix-map=${CMAKE_BINARY_DIR}=build)
+if(FFMPEG_ROOT)
+  add_compile_options(-ffile-prefix-map=${FFMPEG_ROOT}=ffmpeg)
+endif()
 
 # SDL3 from the pinned checkout, static: the window, the keyboard and mouse, the gamepad and the audio come from it and
 # SDL chooses the window system and the audio driver itself.
@@ -81,7 +84,7 @@ target_link_libraries(jpt_common_linux PUBLIC SDL3::SDL3-static m)
 
 set(JPT_RECOMP_DEFINES RECOMP_LOCAL_REGS RECOMP_X87_RING RECOMP_X87_RING_DEPTH RECOMP_ICALL_SITE_RANGE)
 set(AUDIO_DIR ${CMAKE_SOURCE_DIR}/src/host/audio)
-set(JPT_AUDIO_CORE ${AUDIO_DIR}/audio_policy.c ${AUDIO_DIR}/audio_mixer.c ${AUDIO_DIR}/audio_spatial.c
+set(JPT_AUDIO_CORE ${AUDIO_DIR}/audio_policy.c ${AUDIO_DIR}/audio_pacer.c ${AUDIO_DIR}/audio_mixer.c ${AUDIO_DIR}/audio_spatial.c
   ${AUDIO_DIR}/audio_sync.c ${AUDIO_DIR}/dsound_compat.c)
 set(JPT_LINUX_FONT_C ${CMAKE_BINARY_DIR}/generated/lx_font_data.c)
 add_custom_command(OUTPUT ${JPT_LINUX_FONT_C}
@@ -89,20 +92,74 @@ add_custom_command(OUTPUT ${JPT_LINUX_FONT_C}
           -DSYMBOL=lx_font_data -P ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake
   DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake ${CMAKE_SOURCE_DIR}/external/imgui/misc/fonts/DroidSans.ttf
   COMMENT "embedding the text face")
-add_library(jpt_linux_core STATIC src/linux/linux_hle.c src/linux/linux_paths.c src/linux/linux_log.c src/linux/linux_crash.c src/linux/linux_shutdown.c src/linux/linux_guest_quit.c src/linux/linux_spine.c src/linux/linux_msvcrt.c src/linux/linux_modules.c src/linux/linux_msvcrt_io.c src/linux/linux_user32.c src/linux/linux_advapi32.c src/linux/linux_signatures.c src/linux/linux_processor.c src/linux/linux_window.c src/linux/linux_screen.c src/linux/linux_gdi32.c src/linux/linux_text.c src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} src/linux/linux_dsound.c src/linux/linux_smack.c ${JPT_AUDIO_CORE} ${AUDIO_DIR}/sdl_audio.c ${JPT_SMACKER_PORTABLE_SOURCES} src/linux/linux_ddraw.c src/linux/linux_lz32.c src/linux/linux_resource.c)
+# The translated text and the restored audio, embedded as in the Windows build (assets/translations, assets/restored_audio).
+function(jpt_embed_directory glob_expr list_file source_file symbol)
+  file(GLOB inputs CONFIGURE_DEPENDS ${glob_expr})
+  list(SORT inputs)
+  file(CONFIGURE OUTPUT ${list_file} CONTENT "${inputs}")
+  add_custom_command(OUTPUT ${source_file}
+    COMMAND ${CMAKE_COMMAND} -DINPUT_LIST=${list_file} -DOUTPUT=${source_file} -DSYMBOL=${symbol}
+            -P ${CMAKE_SOURCE_DIR}/cmake/embed_files_c.cmake
+    DEPENDS ${list_file} ${inputs} ${CMAKE_SOURCE_DIR}/cmake/embed_files_c.cmake
+    COMMENT "embedding ${symbol}")
+endfunction()
+set(JPT_LINUX_TRANSLATIONS_C ${CMAKE_BINARY_DIR}/generated/lx_translations.c)
+set(JPT_LINUX_RESTORED_C ${CMAKE_BINARY_DIR}/generated/lx_restored_audio.c)
+jpt_embed_directory("${CMAKE_SOURCE_DIR}/assets/translations/*.txt" ${CMAKE_BINARY_DIR}/generated/lx_translations.txt
+                    ${JPT_LINUX_TRANSLATIONS_C} lx_translation_files)
+jpt_embed_directory("${CMAKE_SOURCE_DIR}/assets/restored_audio/*" ${CMAKE_BINARY_DIR}/generated/lx_restored_audio.txt
+                    ${JPT_LINUX_RESTORED_C} lx_restored_audio_files)
+set(JPT_STREAM_SOURCES src/host/stream_pack.c src/host/stream_vfile.c src/linux/linux_assets.c
+                       ${JPT_LINUX_TRANSLATIONS_C} ${JPT_LINUX_RESTORED_C})
+# The host features written against guest_abi.h (src/host/guest_abi.h): the same sources the Windows host builds, over the Linux
+# implementation of that interface (src/linux/linux_host.c, linux_overrides.c).
+set(JPT_GUEST_FEATURE_SOURCES
+  src/host/guest_features.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c
+  src/host/patch117.c src/host/patch117_objects.c src/host/patch117_physics.c src/host/patch117_player.c
+  src/host/patch117_rules.c src/host/patch117_policy.c src/host/physics_fixes.c src/host/physics_watch.c
+  src/host/physics_watch_policy.c src/host/terrain_quality.c src/host/widescreen.c src/host/fov_policy.c
+  src/host/perf_sections.c src/host/override_registry.c src/host/cheats.c src/host/cheats_policy.c src/host/skip_intro.c
+  src/host/debug_menu.c src/host/debug_menu_policy.c src/host/objectives.c
+  src/host/objective_policy.c src/host/overlay.c src/host/overlay_policy.c
+  src/host/overlay_text.c src/host/guest_ui_actions.c src/host/water_kernels.c
+  src/linux/linux_host.c src/linux/linux_overrides.c src/linux/linux_engine.c src/linux/linux_features.c src/linux/linux_panel.c src/host/l10n.c)
+# Dear ImGui and the host's panel code (src/host/debug_menu_panel.cpp, the one the Windows host draws with) over a CPU backend
+# (src/host/imgui_software.cpp). C++17 without exceptions or RTTI; the C++ runtime is linked statically, so the executable needs no
+# libstdc++ of the machine.
+set(JPT_IMGUI_DIR ${CMAKE_SOURCE_DIR}/external/imgui)
+add_library(jpt_imgui_linux STATIC ${JPT_IMGUI_DIR}/imgui.cpp ${JPT_IMGUI_DIR}/imgui_draw.cpp ${JPT_IMGUI_DIR}/imgui_tables.cpp
+  ${JPT_IMGUI_DIR}/imgui_widgets.cpp)
+target_include_directories(jpt_imgui_linux SYSTEM PUBLIC ${JPT_IMGUI_DIR})
+set_target_properties(jpt_imgui_linux PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_compile_options(jpt_imgui_linux PRIVATE -w -fno-exceptions -fno-rtti)
+add_library(jpt_panel_model_linux STATIC src/host/minimap.c src/host/compass_policy.c src/host/debug_menu_layout.c)
+target_include_directories(jpt_panel_model_linux PUBLIC src/host)
+target_compile_options(jpt_panel_model_linux PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
+target_link_libraries(jpt_panel_model_linux PUBLIC jpt_common_linux)
+add_library(jpt_panel_linux STATIC src/host/debug_menu_panel.cpp src/host/imgui_software.cpp)
+target_include_directories(jpt_panel_linux PUBLIC src/host)
+target_include_directories(jpt_panel_linux PRIVATE src/common)
+set_target_properties(jpt_panel_linux PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_compile_options(jpt_panel_linux PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti -include ${CMAKE_SOURCE_DIR}/src/common/jpt_compat.h)
+target_link_libraries(jpt_panel_linux PUBLIC jpt_imgui_linux jpt_panel_model_linux)
+
+add_library(jpt_linux_core STATIC ${JPT_STREAM_SOURCES} src/linux/linux_hle.c src/linux/linux_paths.c src/linux/linux_log.c src/linux/linux_crash.c src/linux/linux_shutdown.c src/linux/linux_guest_quit.c src/linux/linux_spine.c src/linux/linux_msvcrt.c src/linux/linux_modules.c src/linux/linux_msvcrt_io.c src/linux/linux_user32.c src/linux/linux_advapi32.c src/linux/linux_signatures.c src/linux/linux_processor.c src/linux/linux_window.c src/linux/linux_screen.c src/linux/linux_gdi32.c src/linux/linux_text.c src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} src/linux/linux_dsound.c src/linux/linux_smack.c src/linux/linux_video_subtitles.c src/linux/linux_mouse.c src/linux/linux_guest_ui.c src/linux/linux_overlay.c src/linux/linux_quick.c src/linux/linux_hostkeys.c src/linux/linux_settings.c src/host/guest_ui_model.c src/host/host_policy.c src/host/ce_policy.c src/host/window_title.c ${JPT_GUEST_FEATURE_SOURCES} ${JPT_AUDIO_CORE} ${AUDIO_DIR}/sdl_audio.c ${JPT_SMACKER_PORTABLE_SOURCES} src/linux/linux_ddraw.c src/linux/linux_lz32.c src/linux/linux_resource.c)
 if(JPT_LINUX_SDL_VIDEO)
-  target_sources(jpt_linux_core PRIVATE src/linux/linux_sdl_window.c)
+  target_sources(jpt_linux_core PRIVATE src/linux/linux_sdl_window.c src/linux/linux_gamepad.c src/host/pad_sdl.c src/host/gamepad_policy.c src/host/gamepad_ui.c src/host/gamepad_menu.c src/host/frontend_layout.c src/host/frontend_assets.c src/host/frontend_art.c src/host/frontend_plaque.c src/host/frontend_text_stb.c src/host/loading_layout.c src/host/pad_glyphs.c src/host/save_preview.c src/host/frontend_hd.c src/host/loading_hd.c src/linux/linux_frontend.c src/linux/linux_card.c)
   target_compile_definitions(jpt_linux_core PUBLIC JPT_LINUX_SDL_VIDEO=1)
 endif()
-target_include_directories(jpt_linux_core PUBLIC src/linux src/host)
-target_include_directories(jpt_linux_core PRIVATE external/imgui ${AUDIO_DIR} src/host/video)
+target_include_directories(jpt_linux_core PUBLIC src/linux src/host src/common)
+target_include_directories(jpt_linux_core PRIVATE external/imgui)
+target_include_directories(jpt_linux_core PUBLIC ${AUDIO_DIR} src/host/video)
 jpt_smacker_use_ffmpeg(jpt_linux_core)
 set_source_files_properties(src/linux/linux_crash.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
-set_source_files_properties(src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} PROPERTIES COMPILE_OPTIONS "-w")
+set_source_files_properties(src/host/save_preview.c PROPERTIES COMPILE_OPTIONS "-I${CMAKE_SOURCE_DIR}/external/SDL/src/video")
+set_source_files_properties(src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} ${JPT_LINUX_TRANSLATIONS_C} ${JPT_LINUX_RESTORED_C} PROPERTIES COMPILE_OPTIONS "-w")
 target_include_directories(jpt_linux_core SYSTEM PUBLIC ${PCRECOMP}/runtime/recomp32)
 target_compile_definitions(jpt_linux_core PUBLIC ${JPT_RECOMP_DEFINES})
 target_compile_options(jpt_linux_core PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
-target_link_libraries(jpt_linux_core PUBLIC jpt_host64 jpt_common_linux)
+target_link_libraries(jpt_linux_core PUBLIC jpt_panel_linux jpt_host64 jpt_common_linux jpt_profile_linux)
+target_link_options(jpt_linux_core PUBLIC -static-libstdc++ -static-libgcc)
 
 add_library(jpt_profile_linux STATIC src/host/active_profile.c src/host/profiles/guest_profile_data.c)
 target_include_directories(jpt_profile_linux PUBLIC src/host)
@@ -133,8 +190,9 @@ jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)
 jpt_linux_test(reg_store_tests SOURCES tests/reg_store_tests.c LIBS jpt_common_linux)
 jpt_linux_test(audio_portable_tests SOURCES tests/audio_portable_tests.c ${AUDIO_DIR}/audio_policy.c ${AUDIO_DIR}/audio_mixer.c
   LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})
+jpt_linux_test(audio_pacer_tests SOURCES tests/audio_pacer_tests.c ${AUDIO_DIR}/audio_pacer.c LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})
 jpt_linux_test(audio_backend_tests SOURCES tests/audio_backend_tests.c ${AUDIO_DIR}/sdl_audio.c ${AUDIO_DIR}/audio_mixer.c
-  ${AUDIO_DIR}/audio_policy.c LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})
+  ${AUDIO_DIR}/audio_policy.c ${AUDIO_DIR}/audio_pacer.c LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})
 jpt_linux_test(dsound_compat_tests SOURCES tests/dsound_compat_tests.c ${JPT_AUDIO_CORE} LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})
 jpt_linux_test(hammond_voiceover_tests SOURCES tests/hammond_voiceover_tests.c ${JPT_AUDIO_CORE} LIBS SDL3::SDL3-static
   INCLUDES ${AUDIO_DIR})
@@ -149,11 +207,22 @@ jpt_linux_test(gamepad_tests SOURCES tests/gamepad_tests.c src/host/gamepad_poli
   LIBS jpt_profile_linux INCLUDES src/host tests)
 jpt_linux_test(ce_tests SOURCES tests/ce_tests.c src/host/ce_policy.c src/host/ce_effects.c src/host/host_policy.c
   LIBS jpt_profile_linux INCLUDES src/host tests)
+jpt_linux_test(input_context_tests SOURCES tests/input_context_tests.c src/host/guest_ui_model.c src/host/host_policy.c LIBS jpt_profile_linux INCLUDES src/host tests)
+jpt_linux_test(hotkey_tests SOURCES tests/hotkey_tests.c src/host/host_policy.c LIBS jpt_profile_linux INCLUDES src/host tests)
 jpt_linux_test(active_ai_tests SOURCES tests/active_ai_tests.c src/host/active_ai_policy.c LIBS jpt_profile_linux INCLUDES src/host tests)
 
 jpt_linux_test(profile_dispatch_tests SOURCES tests/profile_dispatch_tests.c LIBS jpt_profile_linux INCLUDES tests)
 jpt_linux_test(linux_paths_tests SOURCES tests/linux_paths_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_hle_tests SOURCES tests/linux_hle_tests.c LIBS jpt_linux_core)
+jpt_linux_test(linux_video_subtitle_tests SOURCES tests/linux_video_subtitle_tests.c LIBS jpt_linux_core)
+jpt_linux_test(linux_overrides_tests SOURCES tests/linux_overrides_tests.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_panel_tests SOURCES tests/linux_panel_tests.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_frontend_tests SOURCES tests/linux_frontend_tests.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_hotkey_tests SOURCES tests/linux_hotkey_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_mouse_tests SOURCES tests/linux_mouse_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_cs_tests SOURCES tests/linux_cs_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_stream_tests SOURCES tests/linux_stream_tests.c LIBS jpt_linux_core)
+jpt_linux_test(linux_save_files_tests SOURCES tests/linux_save_files_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_guest_ptr_tests SOURCES tests/linux_guest_ptr_tests.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_call_spine_tests SOURCES tests/linux_call_spine_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core)
 jpt_linux_test(linux_user32_tests SOURCES tests/linux_user32_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
@@ -161,6 +230,10 @@ jpt_linux_test(linux_gdi_tests SOURCES tests/linux_gdi_tests.c tests/linux_fake_
 jpt_linux_test(linux_ddraw_tests SOURCES tests/linux_ddraw_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_present_tests SOURCES tests/linux_present_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_crash_tests SOURCES tests/linux_crash_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+if(JPT_LINUX_SDL_VIDEO)
+  jpt_linux_test(linux_sdl_window_tests SOURCES tests/linux_sdl_window_tests.c LIBS jpt_linux_core)
+  jpt_linux_test(linux_gamepad_tests SOURCES tests/linux_gamepad_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+endif()
 jpt_linux_test(linux_audio_stress_tests SOURCES tests/linux_audio_stress_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests ${AUDIO_DIR})
 set_source_files_properties(tests/linux_fake_guest.c PROPERTIES COMPILE_OPTIONS "-w")
 
@@ -181,16 +254,30 @@ if(JPT_LINUX_LIFTED)
 
   # The lifted guest with its Linux bindings and the bootstrap, one archive so the guest's references to the runtime
   # (jpt_linux_core) and the bindings' references to the lifted bodies resolve in either order.
-  add_library(jpt_linux_guest STATIC $<TARGET_OBJECTS:jpt_lifted_objects> src/linux/linux_lift116.c src/linux/linux_boot.c)
+  add_library(jpt_linux_guest STATIC $<TARGET_OBJECTS:jpt_lifted_objects> src/linux/linux_lift116.c src/linux/linux_boot.c src/linux/linux_override_table.c)
   target_compile_options(jpt_linux_guest PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
   target_link_libraries(jpt_linux_guest PUBLIC jpt_linux_core)
   jpt_linux_test(linux_boot_tests SOURCES tests/linux_boot_tests.c LIBS jpt_linux_guest)
   jpt_linux_test(linux_shutdown_tests SOURCES tests/linux_shutdown_tests.c tests/linux_fake_guest.c LIBS jpt_linux_guest INCLUDES tests)
   jpt_linux_test(linux_module_tests SOURCES tests/linux_module_tests.c LIBS jpt_linux_guest)
+  jpt_linux_test(linux_session_tests SOURCES tests/linux_session_tests.c LIBS jpt_linux_guest)
+  jpt_linux_test(linux_features_tests SOURCES tests/linux_features_tests.c LIBS jpt_linux_guest INCLUDES src/host)
+  jpt_linux_test(linux_video_tests SOURCES tests/linux_video_tests.c LIBS jpt_linux_guest INCLUDES src/host/video src/host/audio)
 endif()
 
 # ---- the executable ----------------------------------------------------------------------------------------------
-add_executable(trespasser_recomp src/linux/linux_main.c)
+find_program(JPT_PYTHON NAMES python3 python REQUIRED)
+set(JPT_BUILD_INFO_DIR ${CMAKE_BINARY_DIR}/buildinfo)
+add_custom_target(jpt_build_info
+  COMMAND ${JPT_PYTHON} -I ${CMAKE_SOURCE_DIR}/tools/gen_build_info.py --out ${JPT_BUILD_INFO_DIR}/jpt_build_info.h
+          --version ${PROJECT_VERSION} --compiler "${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}"
+          --target "linux-${CMAKE_SYSTEM_PROCESSOR}" --config "${CMAKE_BUILD_TYPE}"
+  BYPRODUCTS ${JPT_BUILD_INFO_DIR}/jpt_build_info.h
+  VERBATIM)
+add_executable(trespasser_recomp src/linux/linux_main.c src/linux/linux_selfcheck.c)
+add_dependencies(trespasser_recomp jpt_build_info)
+jpt_smacker_use_ffmpeg(trespasser_recomp)
+target_include_directories(trespasser_recomp PRIVATE ${JPT_BUILD_INFO_DIR})
 target_compile_options(trespasser_recomp PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
 if(JPT_LINUX_LIFTED)
   target_compile_definitions(trespasser_recomp PRIVATE JPT_LINUX_GUEST=1)
@@ -199,4 +286,4 @@ else()
   target_link_libraries(trespasser_recomp PRIVATE jpt_linux_core)
 endif()
 set_target_properties(trespasser_recomp PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-                      BUILD_RPATH "" INSTALL_RPATH "")
+                      BUILD_RPATH "" INSTALL_RPATH "" SKIP_BUILD_RPATH ON)

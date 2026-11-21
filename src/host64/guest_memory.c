@@ -414,9 +414,12 @@ static uint32_t apply_relocs(uint32_t base, uint32_t rva, uint32_t size, int32_t
         ent = (const uint16_t*)(blk + 1);
         for (i = 0; i < count; i++) {
             if ((ent[i] >> 12) == PE_REL_HIGHLOW) {
-                uint32_t* p = (uint32_t*)gm_ptr(base + blk->VirtualAddress + (ent[i] & 0x0FFFu), 4);
+                void* p = gm_ptr(base + blk->VirtualAddress + (ent[i] & 0x0FFFu), 4);
                 if (p) {
-                    *p += (uint32_t)delta;
+                    uint32_t value;
+                    memcpy(&value, p, sizeof value);
+                    value += (uint32_t)delta;
+                    memcpy(p, &value, sizeof value);
                     n++;
                 }
             }

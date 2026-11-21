@@ -474,6 +474,41 @@ static uint32_t over(uint32_t d, uint32_t s) {
     return out;
 }
 
+/* Chamfer distance (3-4) from the glyphs' cores: the outline is a ring of r pixels with a soft edge. */
+void jvs_outline(const uint32_t* glyphs, int w, int h, int r, uint16_t* scratch, uint32_t* out) {
+    uint16_t* d = scratch;
+    const uint16_t unreached = 0x7FFF;
+    for (int i = 0; i < w * h; i++) d[i] = (glyphs[i] & 0xFF) >= 128 ? 0 : unreached;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            uint16_t* p = d + y * w + x;
+            if (x > 0 && p[-1] + 3 < *p) *p = (uint16_t)(p[-1] + 3);
+            if (y > 0) {
+                if (p[-w] + 3 < *p) *p = (uint16_t)(p[-w] + 3);
+                if (x > 0 && p[-w - 1] + 4 < *p) *p = (uint16_t)(p[-w - 1] + 4);
+                if (x + 1 < w && p[-w + 1] + 4 < *p) *p = (uint16_t)(p[-w + 1] + 4);
+            }
+        }
+    for (int y = h - 1; y >= 0; y--)
+        for (int x = w - 1; x >= 0; x--) {
+            uint16_t* p = d + y * w + x;
+            if (x + 1 < w && p[1] + 3 < *p) *p = (uint16_t)(p[1] + 3);
+            if (y + 1 < h) {
+                if (p[w] + 3 < *p) *p = (uint16_t)(p[w] + 3);
+                if (x + 1 < w && p[w + 1] + 4 < *p) *p = (uint16_t)(p[w + 1] + 4);
+                if (x > 0 && p[w - 1] + 4 < *p) *p = (uint16_t)(p[w - 1] + 4);
+            }
+        }
+    for (int i = 0; i < w * h; i++) {
+        int fill = (int)(glyphs[i] & 0xFF), ring = (r * 3 + 3 - d[i]) * 255 / 3, alpha, col;
+        ring = ring < 0 ? 0 : ring > 255 ? 255 : ring;
+        ring = ring * JVS_OUTLINE_OPACITY / 255;
+        alpha = fill + ring * (255 - fill) / 255;
+        col = fill;
+        out[i] = (uint32_t)alpha << 24 | (uint32_t)col << 16 | (uint32_t)col << 8 | (uint32_t)col;
+    }
+}
+
 void jvs_blend(uint32_t* target, long target_pitch_pixels, int target_w, int target_h, const uint32_t* image, int image_w,
                int image_h, int x, int y) {
     int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;

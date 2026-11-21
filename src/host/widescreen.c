@@ -3,8 +3,8 @@
  * camera, with the render cameras copied from it, keeps the vertical field of view of the 4:3 view (Hor+). The camera
  * projects, clips and culls before anything becomes a D3DTLVERTEX or a software span, so both renderers follow.
  */
-#include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 #include "host_policy.h"
 
 #include <math.h>
@@ -60,7 +60,8 @@ static int has_main_view(uint32_t self, uint32_t props) {
  * the caller's values, because callers copy them, edit and set them again, and savegames keep the angle. */
 static void camera_set_properties(void) {
     uint32_t self = g_ecx, slot = g_esp + 4, props = MEM32(slot);
-    uint8_t copy[PROPS_SIZE];
+    uint32_t copy_va;
+    uint8_t* copy;
     float w, h, tan_half, aspect;
     double scale, view_tan;
     if (g_alias_entry || !props || !MEM8(props + PROP_PERSPECTIVE) || !has_main_view(self, props)) {
@@ -78,10 +79,16 @@ static void camera_set_properties(void) {
         s_set_properties_lifted();
         return;
     }
+    copy_va = guest_scratch(0, PROPS_SIZE);
+    if (!copy_va) {
+        s_set_properties_lifted();
+        return;
+    }
+    copy = (uint8_t*)ADDR(copy_va);
     memcpy(copy, (const void*)ADDR(props), PROPS_SIZE);
     *(float*)(copy + PROP_TAN_HALF_WIDTH) = (float)view_tan;
     if (scale > 1.0) *(float*)(copy + PROP_ASPECT) = w / h;
-    MEM32(slot) = (uint32_t)(uintptr_t)copy;
+    MEM32(slot) = copy_va;
     s_set_properties_lifted();
     MEM32(slot) = props;
     wrf(self + PROPS_IN_CAMERA + PROP_TAN_HALF_WIDTH, tan_half);
@@ -93,9 +100,12 @@ static void camera_set_properties(void) {
                  fov_vertical_degrees(view_tan / scale));
 }
 
-int widescreen_install(int aspect) {
+int widescreen_install_modes(void) {
+    return guest_override_install(ENUM_MODES_VA, enum_modes_uncapped, &s_enum_modes_lifted);
+}
+
+int widescreen_install_camera(int aspect) {
     int wide = aspect > 0 && aspect < JPT_ASPECT_COUNT;
-    if (!guest_override_install(ENUM_MODES_VA, enum_modes_uncapped, &s_enum_modes_lifted)) return 0;
     if (!guest_override_install(CAMERA_SET_PROPERTIES_VA, camera_set_properties, &s_set_properties_lifted)) return 0;
     s_installed = 1;
     s_wide = wide;

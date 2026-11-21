@@ -75,7 +75,16 @@ static void test_explicit_driver(void) {
     CHECK(mixer != NULL && audio_mixer_rate(mixer) == 22050, "the backend opens on an explicit SDL_AUDIODRIVER");
     CHECK(!strcmp(b->name(), "dummy"), "and SDL reports the driver it was asked for (%s)", b->name());
     CHECK(b->open(22050) == NULL, "a second open while one is running is refused");
-    CHECK(plays_through_the_device(mixer), "SDL's audio thread pulls the mixer: a PCM stream is consumed with no call from the test");
+    CHECK(plays_through_the_device(mixer), "the device consumes the mixer's output: a PCM stream moves with no call from the test");
+    {
+        audio_pacer_stats_t st;
+        SDL_Delay(500);
+        sdl_audio_stats(&st);
+        CHECK(st.ticks > 20 && st.mixed_frames >= st.ticks * 128u && st.target_periods >= AUDIO_PACER_MIN_PERIODS,
+              "the producer thread runs on its own steady clock (%llu wake-ups, %llu frames mixed)", (unsigned long long)st.ticks, (unsigned long long)st.mixed_frames);
+        CHECK(st.underruns <= 1 && st.backlog_drops == 0, "and the dummy device it feeds sees at most the start-up underrun (%llu) and no backlog drop (%llu)",
+              (unsigned long long)st.underruns, (unsigned long long)st.backlog_drops);
+    }
     b->set_rate(44100);
     CHECK(audio_mixer_rate(mixer) == 44100, "the rate follows the primary format");
     b->set_rate(0);

@@ -4,7 +4,8 @@
  * already holds but never reaches) and ignore-collision pairs waking each other. Off leaves the 116 code untouched.
  */
 #include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 
 #include <float.h>
 #include <string.h>

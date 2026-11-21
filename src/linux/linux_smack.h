@@ -12,5 +12,8 @@ void hle_smack_init(void);
 void hle_smack_shutdown(void);
 /* 1 when the build can decode Smacker video (FFmpeg linked in). */
 int lx_smack_can_decode(void);
+/* Whether the game may play its videos: the build can decode them and the run asked for them (headless suites do not). */
+void lx_smack_set_play_videos(int play);
+int lx_smack_videos_enabled(void);
 
 #endif

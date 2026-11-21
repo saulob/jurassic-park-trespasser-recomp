@@ -47,7 +47,6 @@ typedef struct {
 static struct {
     recomp_func_t play_lifted;
     vl_play_mode_t forced;
-    int skip_intro;
     vl_session_t session;
     uint32_t player;
     char name[64];
@@ -401,33 +400,16 @@ void video_hd_release(void) {
 
 void video_hd_force(int mode) { V.forced = (vl_play_mode_t)mode; }
 
-void video_hd_skip_intro(int enabled) { V.skip_intro = enabled; }
-
-/* The game's own NoVideo branch: one message pumped, Play returns 1 and the caller goes on as after the video. */
-static void skip_opening(intro_video_t video) {
-    registry_skip_video(1);
-    V.play_lifted();
-    registry_skip_video(0);
-    host_log("video", "%s skipped (Skip Intro): the game's own no-video path, %s", intro_video_name(video),
-             video == INTRO_STARTUP ? "the main menu follows" : "the level loads next");
-    if (g_eax != 1) host_log("video", "warning: Play returned %u for the skipped %s", g_eax, intro_video_name(video));
-}
-
 static void play(void) {
     char guest_name[64];
     vl_play_mode_t mode;
-    intro_video_t intro;
     if (g_alias_entry) {
         V.play_lifted();
         return;
     }
     mode = vl_play_mode_take(&V.forced);
     if (!guest_read_string(MEM32(g_esp + 4), guest_name, sizeof guest_name)) guest_name[0] = 0;
-    intro = intro_video_of(guest_name);
-    if (skip_intro_applies(V.skip_intro, intro, mode != VL_PLAY_AUTO)) {
-        skip_opening(intro);
-        return;
-    }
+    if (skip_intro_try(guest_name, mode != VL_PLAY_AUTO, V.play_lifted)) return;
     vl_display_name(guest_name, V.name, sizeof V.name);
     if (!vl_play_uses_session(mode)) {
         host_log("video", "%s: the game's own presentation (Video Test, ORIGINAL)", V.name);

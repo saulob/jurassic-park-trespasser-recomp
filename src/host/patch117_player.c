@@ -4,7 +4,8 @@
  * running untouched. The rules themselves are in patch117_rules.c.
  */
 #include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 
 #include <string.h>
 

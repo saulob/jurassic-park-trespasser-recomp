@@ -1,258 +1,3916 @@
 {
-  "comment": "Every current feature and the suite that answers for it. tools\\test.ps1 checks that each suite exists and that its test source still contains the pattern, and that every suite owns a feature or is listed as infrastructure.",
-  "features": [
-    { "id": "portable-guest-paths", "name": "Guest paths over a case-sensitive host: case-insensitive resolution inside the root, containment, create mode", "owners": [
-      { "suite": "vpath_tests", "file": "tests/vpath_tests.c", "pattern": "test_containment" },
-      { "suite": "vpath_tests", "file": "tests/vpath_tests.c", "pattern": "test_case_and_separators" } ] },
-    { "id": "portable-registry-store", "name": "Virtual registry file: fixed-width values, readable across platforms", "owners": [
-      { "suite": "reg_store_tests", "file": "tests/reg_store_tests.c", "pattern": "test_windows_written_file" } ] },
-    { "id": "portable-synchronisation", "name": "Win32-style waits, events, mutexes, critical sections, clocks and timers over SDL3", "owners": [
-      { "suite": "sync_tests", "file": "tests/sync_tests.c", "pattern": "test_abandoned_mutex" },
-      { "suite": "sync_tests", "file": "tests/sync_tests.c", "pattern": "test_clocks_and_timers" } ] },
-    { "id": "lifted-guest-dll", "name": "Guest DLL lifted to C (MSVCIRT): exports, relocations, vtable pointers and the call graph covered, manifest and config facts, no symbol collision", "owners": [
-      { "suite": "tests\\test_guest_module_lift.py", "file": "tests/test_guest_module_lift.py", "pattern": "test_the_dll_is_the_supported_one_and_fully_covered" },
-      { "suite": "tests\\test_guest_module_lift.py", "file": "tests/test_guest_module_lift.py", "pattern": "test_no_symbol_collides_with_the_executable_lift" } ] },
-    { "id": "lifted-selfmod", "name": "SelfMod lifted to C: 46 entries in their own dispatch table, every lifted caller covered, 44 patch sites as guest memory, no native x86", "owners": [
-      { "suite": "tests\\test_selfmod_lift.py", "file": "tests/test_selfmod_lift.py", "pattern": "test_every_lifted_caller_target_has_a_dispatch_entry" },
-      { "suite": "tests\\test_selfmod_lift.py", "file": "tests/test_selfmod_lift.py", "pattern": "test_patch_sites_are_guest_memory_loads" } ] },
-    { "id": "linux-native-rules", "name": "Linux host: no native x86 execution, no guest address used as a host pointer", "owners": [
-      { "suite": "tests\\test_linux_native_rules.py", "file": "tests/test_linux_native_rules.py", "pattern": "test_no_native_x86_execution" },
-      { "suite": "tests\\test_linux_native_rules.py", "file": "tests/test_linux_native_rules.py", "pattern": "test_no_guest_address_treated_as_a_host_pointer" } ] },
-    { "id": "sdl3-platform", "name": "SDL3 platform: single init and quit, window adoption", "owners": [
-      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "SDL_InitSubSystem" } ] },
-    { "id": "sdl3-pin", "name": "SDL 3.4.20 contract", "owners": [
-      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "3\\.4\\.20" },
-      { "suite": "tests\\build_script_tests.ps1", "file": "tests/build_script_tests.ps1", "pattern": "3\\.4\\.20" } ] },
-    { "id": "mouse-capture-focus", "name": "Relative mouse mode, focus, pointer recapture, Alt+Tab", "owners": [
-      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "recapture" },
-      { "suite": "input_tests", "file": "tests/input_tests.c", "pattern": "relative" },
-      { "suite": "video_focus_tests", "file": "tests/video_focus_tests.c", "pattern": "(?i)focus" } ] },
-    { "id": "window-presentation", "name": "Stable window presentation: pending screen and Auto window size committed with the first frame of the new screen, 4:3 pillarbox, mouse mapping", "owners": [
-      { "suite": "presentation_tests", "file": "tests/presentation_tests.c", "pattern": "test_old_frame_never_meets_the_new_window" } ] },
-    { "id": "hotkeys", "name": "Keyboard mapping and port hotkeys (F5, F7, F8, F10, F11)", "owners": [
-      { "suite": "platform_tests", "file": "tests/platform_tests.c", "pattern": "KEY_HOST_QUICK_SAVE" },
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)hotkey" } ] },
-    { "id": "gamepad", "name": "Gamepad mapping, hotplug, disconnect and reconnect, glyphs, prompts", "owners": [
-      { "suite": "gamepad_tests", "file": "tests/gamepad_tests.c", "pattern": "(?i)hotplug" } ] },
-    { "id": "mouse-sensitivity", "name": "Mouse sensitivity 0.25-4.00 step 0.05, launcher only", "owners": [
-      { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "jpt_mouse_sensitivity_clamp" },
-      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "no_in_game_mouse_sensitivity_row" } ] },
-    { "id": "invert-mouse", "name": "Invert mouse and relative deltas", "owners": [
-      { "suite": "input_tests", "file": "tests/input_tests.c", "pattern": "(?i)invert" } ] },
-    { "id": "fov", "name": "Field of view 60-110, default 75, Hor+, 4:3 reference", "owners": [
-      { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "jpt_fov_clamp" },
-      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "JPT_FOV_MIN" } ] },
-    { "id": "quick-save-load", "name": "Quick Save F7 / Quick Load F8, SAVEGAME.QCK", "owners": [
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "qs_is_quick_file" } ] },
-    { "id": "normal-saves", "name": "Normal save and load lists, save pictures", "owners": [
-      { "suite": "frontend_tests", "file": "tests/save_preview_tests.c", "pattern": "SAVEGAME" } ] },
-    { "id": "portable-user-data", "name": "Portable user_data: saves, cache, logs, configuration", "owners": [
-      { "suite": "user_data_tests", "file": "tests/user_data_tests.cpp", "pattern": "user_data" } ] },
-    { "id": "config-migration", "name": "Settings file migration and defaults", "owners": [
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "settings_version" } ] },
-    { "id": "d3d11-renderer", "name": "Direct3D 11 renderer: device policy, formats, render states, shutdown", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)d3d" },
-      { "suite": "com_tests", "file": "tests/com_tests.c", "pattern": "(?i)direct3d" },
-      { "suite": "video_tests", "file": "tests/video_tests.c", "pattern": "(?i)warp" } ] },
-    { "id": "software-renderer", "name": "Software renderer: RGB565, presentation, D3D11-only features unavailable", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "RGB565" },
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "Direct3DEffectsAvailable|software" } ] },
-    { "id": "water-refraction", "name": "Water Refraction: Direct3D 11 pass and host water kernels", "owners": [
-      { "suite": "ce_gpu_tests", "file": "tests/ce_gpu_tests.c", "pattern": "(?i)water" },
-      { "suite": "water_tests", "file": "tests/water_tests.c", "pattern": "water_rows" } ] },
-    { "id": "enhanced-sky", "name": "Enhanced Sky", "owners": [
-      { "suite": "ce_gpu_tests", "file": "tests/ce_gpu_tests.c", "pattern": "(?i)sky" },
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)sky" } ] },
-    { "id": "ambient-occlusion", "name": "Ambient occlusion Off, Low, Medium, High, Ultra", "owners": [
-      { "suite": "ao_tests", "file": "tests/ao_tests.cpp", "pattern": "JPT_AO_ULTRA" } ] },
-    { "id": "texture-filtering", "name": "Texture filtering Original to Anisotropic 16x", "owners": [
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)texture_filter|anisotropic" },
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)anisotropic|filter" } ] },
-    { "id": "anti-aliasing", "name": "MSAA choices", "owners": [
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)msaa" },
-      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "msaa" } ] },
-    { "id": "gpu-selection", "name": "GPU choice: enumeration, duplicate names, old configuration", "owners": [
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "jpt_gpu_resolve" } ] },
-    { "id": "render-resolution-aspect", "name": "Render resolution, aspect ratio, presentation", "owners": [
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)render_preset|jpt_aspect" },
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)aspect" } ] },
-    { "id": "terrain", "name": "Terrain textures, far clip, Maximum object detail", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)terrain" },
-      { "suite": "patch117_tests", "file": "tests/patch117_tests.c", "pattern": "(?i)terrain|TrrPixelTol" } ] },
-    { "id": "loading-screens", "name": "HD loading screens, level image, blank-present hold", "owners": [
-      { "suite": "frontend_tests", "file": "tests/loading_tests.c", "pattern": "(?i)loading" } ] },
-    { "id": "frontend-hd", "name": "HD front end made of the game's own bitmaps", "owners": [
-      { "suite": "frontend_tests", "file": "tests/frontend_art_tests.c", "pattern": "(?i)frontend" } ] },
-    { "id": "video-hd", "name": "HD video presentation and focus", "owners": [
-      { "suite": "video_tests", "file": "tests/video_tests.c", "pattern": "(?i)video" },
-      { "suite": "video_focus_tests", "file": "tests/video_focus_tests.c", "pattern": "(?i)video" } ] },
-    { "id": "skip-intro", "name": "Skip Intro", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)skip.?intro|NoVideo" } ] },
-    { "id": "video-subtitles", "name": "Video subtitles: cues, timelines, retail fingerprints", "owners": [
-      { "suite": "video_subtitle_tests", "file": "tests/video_subtitle_tests.c", "pattern": "(?i)cue" },
-      { "suite": "tests\\test_video_timelines.py", "file": "tests/test_video_timelines.py", "pattern": "(?i)cue" } ] },
-    { "id": "subtitles-captions", "name": "Caption table, 405 corrected captions, timing, language mapping", "owners": [
-      { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "(?i)caption" },
-      { "suite": "l10n_tests", "file": "tests/l10n_coverage_tests.c", "pattern": "(?i)caption" },
-      { "suite": "tests\\test_caption_counts.py", "file": "tests/test_caption_counts.py", "pattern": "retail_comparison" } ] },
-    { "id": "restored-audio", "name": "Restored audio records: only used samples, integrity, mapping", "owners": [
-      { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "(?i)restored" },
-      { "suite": "tests\\test_caption_counts.py", "file": "tests/test_caption_counts.py", "pattern": "restored_records" } ] },
-    { "id": "a3d-refused", "name": "A3D is refused: A3d.dll is never loaded", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "a3d\\.dll" } ] },
-    { "id": "sdl3-audio-backend", "name": "SDL3 audio backend: device stream pulling a deterministic mixer, DirectSound semantics for volume, loops, frequency and cursors", "owners": [
-      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "SDL_OpenAudioDeviceStream" },
-      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_loop_stop_restart" },
-      { "suite": "audio_backend_tests", "file": "tests/audio_backend_tests.c", "pattern": "plays_through_the_device" } ] },
-    { "id": "directsound-guest-compat", "name": "DirectSound guest compatibility: host objects behind DirectSoundCreate, the game's and Smacker's vtable slots, 3D listener and buffers", "owners": [
-      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "EAX probe" },
-      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "streaming_like_smacker" } ] },
-    { "id": "no-system-dsound", "name": "No dependency on the system DSound.dll: import gate, SMACKW32 imports patched, no DirectSound in the backend", "owners": [
-      { "suite": "dsound_bridge_tests", "file": "tests/dsound_bridge_tests.c", "pattern": "never loaded" },
-      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_no_directsound_in_backend" } ] },
-    { "id": "hammond-voice-over", "name": "Voice-over (Hammond narration) through the audio backend: streaming buffer of the record format, play-cursor refills, volume, frequency, one-shot, 3D, and every Stream.tpa handle of the game's stream pool reading the same virtual view; a normal part of the game, never a toggle", "owners": [
-      { "suite": "stream_tests", "file": "tests/stream_tests.c", "pattern": "test_game_handle_pool" },
-      { "suite": "hammond_voiceover_tests", "file": "tests/hammond_voiceover_tests.c", "pattern": "test_streaming_voice_over" },
-      { "suite": "hammond_voiceover_tests", "file": "tests/hammond_voiceover_tests.c", "pattern": "test_voice_over_buffer_contract" } ] },
-    { "id": "cross-platform-audio-abi", "name": "Cross-platform DirectSound ABI: fixed-width guest structures, guest addresses and an object table instead of host pointers, one SDL mutex, layout asserts, Windows ABI cross-checked against dsound.h", "owners": [
-      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "test_guest_addresses_never_leak_host_pointers" },
-      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "test_table_rejects_forged_and_stale_objects" },
-      { "suite": "dsound_bridge_tests", "file": "tests/dsound_bridge_tests.c", "pattern": "test_abi_matches_dsound_h" },
-      { "suite": "tests\\test_audio_portability.py", "file": "tests/test_audio_portability.py", "pattern": "test_no_pointer_squeezed_into_32_bits" },
-      { "suite": "tests\\test_audio_portability.py", "file": "tests/test_audio_portability.py", "pattern": "test_the_one_lock_is_the_sdl_mutex" } ] },
-    { "id": "platform-audio-driver-policy", "name": "SDL3 audio driver policy: WASAPI only on Windows, SDL's automatic choice elsewhere, SDL_AUDIODRIVER respected, dummy for headless runs, one start-up log line", "owners": [
-      { "suite": "audio_portable_tests", "file": "tests/audio_portable_tests.c", "pattern": "test_driver_policy" },
-      { "suite": "audio_backend_tests", "file": "tests/audio_backend_tests.c", "pattern": "JPT_AUDIO_HEADLESS" },
-      { "suite": "audio_backend_tests", "file": "tests/audio_backend_tests.c", "pattern": "test_unknown_driver_is_not_replaced" } ] },
-    { "id": "smacker-hle-contract", "name": "Smacker HLE: the 14 SMACKW32 exports the game imports, the Smack structure, frames, changed rectangles, Y-interlace, the clock and the end of the video", "owners": [
-      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_exports" },
-      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_the_player_loop" },
-      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_changed_rectangles" } ] },
-    { "id": "smacker-audio-through-sdl-mixer", "name": "Smacker audio through the game's SDL3 mixer: PCM streams, queue lead, audio clock, no second output", "owners": [
-      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_audio_enters_the_mixer" },
-      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "test_with_the_directsound_layer" },
-      { "suite": "audio_portable_tests", "file": "tests/audio_portable_tests.c", "pattern": "test_streams" } ] },
-    { "id": "smacker-binding-by-platform", "name": "Smacker binding by platform: the original DLL on Windows, the HLE on Linux, no SMACKW32.DLL, Wine or native loading on Linux", "owners": [
-      { "suite": "smacker_tests", "file": "tests/smacker_tests.c", "pattern": "Windows keeps the original SMACKW32.DLL" },
-      { "suite": "tests\\test_audio_portability.py", "file": "tests/test_audio_portability.py", "pattern": "test_smacker_hle_never_loads_a_dll_or_wine" } ] },
-    { "id": "ffmpeg-smacker-boundary", "name": "FFmpeg Smacker backend boundary: versions, licences, demuxer and decoders, refusal of undecodable files", "owners": [
-      { "suite": "smacker_ffmpeg_tests", "file": "tests/smacker_ffmpeg_tests.c", "pattern": "Smacker video decoder" } ] },
-    { "id": "linux-audio-probe", "name": "Portable audio and Smacker layers compiled with -Werror and run natively on Linux (GCC and Clang) on SDL3 dummy audio", "owners": [
-      { "suite": "linux audio probe", "file": "tests/linux/CMakeLists.txt", "pattern": "UNIX AND NOT APPLE" } ] },
-    { "id": "safe-mode", "name": "Legacy Safe Mode suppressed, developer override", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)safe.?mode" },
-      { "suite": "fov_mouse_tests", "file": "tests/fov_mouse_tests.c", "pattern": "(?i)safe.?mode" } ] },
-    { "id": "disk-space-bypass", "name": "Legacy 100 MB disk-space check bypass", "owners": [
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "legacy_disk_check_passes" } ] },
-    { "id": "ddf-menu-text", "name": "DDF menu text: canonical source, cache, no saves\\menu", "owners": [
-      { "suite": "frontend_tests", "file": "tests/frontend_bridge_tests.c", "pattern": "(?i)ddf" },
-      { "suite": "l10n_tests", "file": "tests/l10n_tests.c", "pattern": "(?i)ddf" } ] },
-    { "id": "filesystem", "name": "Portable paths, CreateFile mapping, LZOpenFile, Patch 1.1 and DDF interception", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "(?i)CreateFile" },
-      { "suite": "patch117_tests", "file": "tests/patch117_tests.c", "pattern": "LZOpen" } ] },
-    { "id": "dual-stow", "name": "Trespasser CE dual stow", "owners": [
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)stow" } ] },
-    { "id": "active-ai", "name": "Active AI Original 3 / Enhanced 6", "owners": [
-      { "suite": "active_ai_tests", "file": "tests/active_ai_tests.c", "pattern": "jpt_active_ai_limits|active_ai" } ] },
-    { "id": "max-object-detail", "name": "Maximum object detail", "owners": [
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)object.?detail" } ] },
-    { "id": "footstep-fix", "name": "Footstep and collision sounds after load or restart", "owners": [
-      { "suite": "ce_tests", "file": "tests/ce_tests.c", "pattern": "(?i)footstep|collision" } ] },
-    { "id": "patch-1.1", "name": "Official Patch 1.1: terrain tolerances, bAddChild, jump, hand, box-box, wake, placements", "owners": [
-      { "suite": "patch117_tests", "file": "tests/patch117_tests.c", "pattern": "(?i)fingerprint" } ] },
-    { "id": "hand-physics", "name": "Hand carrier, crouch and physics", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "hand carrier" } ] },
-    { "id": "cheats", "name": "Every cheat: table, handler, F10 row, translation, persistence, builds", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/cheats_tests.c", "pattern": "jpt_cheats" },
-      { "suite": "tests\\test_cheat_parity.py", "file": "tests/test_cheat_parity.py", "pattern": "jpt_cheats" } ] },
-    { "id": "f10-menu", "name": "F10 panel: order, labels, toggles, actions, navigation, translations", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "dm_" } ] },
-    { "id": "f5-minimap-toggle", "name": "F5 / L3+R3 minimap toggle, no Debug Menu", "owners": [
-      { "suite": "tests\\test_minimap_controls.py", "file": "tests/test_minimap_controls.py", "pattern": "F5" } ] },
-    { "id": "objectives", "name": "Objectives: texts, language, current objective selection", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/objective_tests.c", "pattern": "(?i)objective" },
-      { "suite": "tests\\test_objectives_retail.py", "file": "tests/test_objectives_retail.py", "pattern": "(?i)objective" } ] },
-    { "id": "minimap-compass", "name": "Minimap geometry, bounds, markers, compass", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/minimap_tests.c", "pattern": "(?i)minimap" },
-      { "suite": "debug_menu_tests", "file": "tests/compass_tests.c", "pattern": "(?i)compass" },
-      { "suite": "tests\\test_minimap_map.py", "file": "tests/test_minimap_map.py", "pattern": "(?i)minimap" },
-      { "suite": "tests\\test_minimap_bounds.py", "file": "tests/test_minimap_bounds.py", "pattern": "(?i)bounds" } ] },
-    { "id": "overlay-menus", "name": "Port overlay, menu layout and menu text", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/overlay_tests.c", "pattern": "(?i)overlay" },
-      { "suite": "debug_menu_tests", "file": "tests/menu_layout_tests.c", "pattern": "(?i)layout" } ] },
-    { "id": "physics-telemetry", "name": "Temporary player telemetry (DEBUG_SAULO)", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/physics_watch_tests.c", "pattern": "DEBUG_SAULO" } ] },
-    { "id": "menu-sound", "name": "Menu selection click sound", "owners": [
-      { "suite": "menu_audio_tests", "file": "tests/menu_audio_tests.c", "pattern": "(?i)menu" },
-      { "suite": "audio_tests", "file": "tests/audio_tests.c", "pattern": "test_menu_click" },
-      { "suite": "dsound_compat_tests", "file": "tests/dsound_compat_tests.c", "pattern": "menu click" } ] },
-    { "id": "launcher", "name": "Launcher pages, settings, installer, play gate", "owners": [
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "(?i)page" } ] },
-    { "id": "launcher-setting-parity", "name": "Launcher and runtime agree on every setting", "owners": [
-      { "suite": "tests\\test_setting_parity.py", "file": "tests/test_setting_parity.py", "pattern": "launcher_defaults_equal_runtime_defaults" } ] },
-    { "id": "translations", "name": "Seven languages: game text, menus, captions, interface", "owners": [
-      { "suite": "l10n_tests", "file": "tests/l10n_tests.c", "pattern": "(?i)GameStrings" },
-      { "suite": "tests\\test_language_parity.py", "file": "tests/test_language_parity.py", "pattern": "interface_files" } ] },
-    { "id": "logging", "name": "Normal log, --perf-log, F9 snapshot, failed_d3d_calls, exit code", "owners": [
-      { "suite": "log_tests", "file": "tests/log_tests.c", "pattern": "perf-log" } ] },
-    { "id": "builds-parity", "name": "Supported builds: profiles, fingerprints, addresses, offsets, overrides, patch sites", "owners": [
-      { "suite": "tests\\test_build_parity.py", "file": "tests/test_build_parity.py", "pattern": "every_supported_build_is_whole" },
-      { "suite": "profile_dispatch_tests", "file": "tests/profile_dispatch_tests.c", "pattern": "(?i)lift" },
-      { "suite": "tools\\check_profiles.py", "file": "tools/check_profiles.py", "pattern": "BROKEN" },
-      { "suite": "tools\\host_offsets.py", "file": "tools/host_offsets.py", "pattern": "manifest out of date" },
-      { "suite": "tests\\test_profiles.py", "file": "tests/test_profiles.py", "pattern": "playable" },
-      { "suite": "tests\\test_layout.py", "file": "tests/test_layout.py", "pattern": "(?i)offset" } ] },
-    { "id": "lift-mechanism", "name": "Lifts as artifacts, stable entries, hooks, overrides, staging, single host", "owners": [
-      { "suite": "override_tests_incremental", "file": "tests/override_tests.c", "pattern": "(?i)stable" },
-      { "suite": "override_tests_non_incremental", "file": "tests/override_tests.c", "pattern": "(?i)stable" },
-      { "suite": "tools\\lifts.py verify --content", "file": "tools/lifts.py", "pattern": "verify" },
-      { "suite": "tools\\gva_convert.py --check", "file": "tools/gva_convert.py", "pattern": "--check" },
-      { "suite": "tools\\gen_guest_va.py --check", "file": "tools/gen_guest_va.py", "pattern": "--check" },
-      { "suite": "tools\\gen_guest_layout.py", "file": "tools/gen_guest_layout.py", "pattern": "GLAYOUT" },
-      { "suite": "tools\\lift_hooks.py", "file": "tools/lift_hooks.py", "pattern": "RECOMP_LIFT_HOOK" },
-      { "suite": "tools\\stable_entries.py src\\recomp\\gen", "file": "tools/stable_entries.py", "pattern": "stable" },
-      { "suite": "tests\\test_lifts.py", "file": "tests/test_lifts.py", "pattern": "(?i)lift" },
-      { "suite": "tests\\test_lift_hooks.py", "file": "tests/test_lift_hooks.py", "pattern": "(?i)hook" },
-      { "suite": "tests\\test_lift_staging.py", "file": "tests/test_lift_staging.py", "pattern": "(?i)staging" },
-      { "suite": "tests\\test_stable_entries.py", "file": "tests/test_stable_entries.py", "pattern": "(?i)stable" },
-      { "suite": "tests\\test_override_installs.py", "file": "tests/test_override_installs.py", "pattern": "(?i)override" },
-      { "suite": "tests\\test_single_host.py", "file": "tests/test_single_host.py", "pattern": "(?i)lift" },
-      { "suite": "tests\\test_no_original_executable.py", "file": "tests/test_no_original_executable.py", "pattern": "(?i)executable" } ] },
-    { "id": "renderer-fixed", "name": "The renderer chosen at start stays until exit", "owners": [
-      { "suite": "tests\\test_renderer_fixed.py", "file": "tests/test_renderer_fixed.py", "pattern": "(?i)renderer" } ] },
-    { "id": "x87-runtime", "name": "Patched x87 runtime", "owners": [
-      { "suite": "x87_tests", "file": "tests/x87_tests.c", "pattern": "(?i)x87" } ] },
-    { "id": "x64-groundwork", "name": "x64 host groundwork", "owners": [
-      { "suite": "x64_tests", "file": "tests/x64_tests.c", "pattern": "(?i)guest" } ] },
-    { "id": "warning-gate", "name": "Compiler command lines of the test targets: no contradicting flags, no muted warnings in project code", "owners": [
-      { "suite": "tests\\test_compile_commands.py", "file": "tests/test_compile_commands.py", "pattern": "contradict" } ] },
-    { "id": "build-script", "name": "tools\\build.ps1: parameters, configurations, run arguments, user_data, SDL pin, test targets", "owners": [
-      { "suite": "tests\\build_script_tests.ps1", "file": "tests/build_script_tests.ps1", "pattern": "user_data_root" } ] },
-    { "id": "release-contract", "name": "Release contract: version, licenses, forbidden files, no developer paths", "owners": [
-      { "suite": "release contract", "file": null, "pattern": null },
-      { "suite": "tools\\test-release-check.ps1", "file": "tools/test-release-check.ps1", "pattern": "DEBUG_SAULO" } ] },
-    { "id": "repository-hygiene", "name": "Repository hygiene and whitespace", "owners": [
-      { "suite": "repository hygiene", "file": null, "pattern": null },
-      { "suite": "git diff --check", "file": null, "pattern": null } ] },
-    { "id": "test-gate", "name": "The gate itself: coverage, self-test, working tree unchanged", "owners": [
-      { "suite": "tests\\gate_tests.ps1", "file": "tests/gate_tests.ps1", "pattern": "-List" },
-      { "suite": "every test is wired in", "file": null, "pattern": null },
-      { "suite": "working tree unchanged", "file": null, "pattern": null } ] },
-    { "id": "frame-counter", "name": "F6 in-game frame counter: key policy, shared FPS text, top right panel, launcher default Off", "owners": [
-      { "suite": "host_tests", "file": "tests/host_tests.c", "pattern": "KEY_HOST_FRAME_COUNTER" },
-      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "frame counter" },
-      { "suite": "launcher_tests", "file": "tests/launcher_tests.cpp", "pattern": "Frame counter" } ] },
-    { "id": "overlay-draw-order", "name": "Overlay draw order: HUD, the game's text over the minimap, counter, then Cheats and Objectives windows", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "over the minimap" },
-      { "suite": "debug_menu_tests", "file": "tests/menu_layout_tests.c", "pattern": "test_docked_panel" } ] },
-    { "id": "text-layer-both-renderers", "name": "The game's text as its own layer in the D3D11 and the Software renderer: no old pixels, no rectangle of the old frame, one draw order", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/text_layer_tests.c", "pattern": "software renderer" },
-      { "suite": "debug_menu_tests", "file": "tests/text_layer_tests.c", "pattern": "test_shared_order" } ] },
-    { "id": "objectives-sizing", "name": "Objectives window width and type: 38 em, at most 60 % of the view, every scale", "owners": [
-      { "suite": "debug_menu_tests", "file": "tests/menu_layout_tests.c", "pattern": "test_objectives_width" },
-      { "suite": "debug_menu_tests", "file": "tests/debug_menu_tests.c", "pattern": "Objectives window" } ] }
-  ],
-  "infrastructure": [
-    { "suite": "feature coverage", "reason": "the check of this file" }
-  ]
+ "schema": 2,
+ "comment": "Every feature of the port, per platform. A feature is global (it must behave the same on Windows and Linux), windows or linux (it exists on one platform only, and the other says PLATFORM_ONLY with the reason). shared evidence is a suite that runs on both platforms and must pass on both; windows and linux evidence are suites of one platform. A platform status is PASS (every evidence suite exists, names the feature, and passed in this run), FAIL, BLOCKED (with the reason: nothing proves it on that platform yet) or PLATFORM_ONLY. A global feature whose two platforms differ fails the gate: tools\\test.ps1 prints FEATURE and FEATURE_PARITY lines for each one.",
+ "features": [
+  {
+   "id": "boot-guest",
+   "name": "The lifted guest boots: entry point, dispatch tables, imports bound, SelfMod entries, start-up through its window and display into its loop",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "profile_dispatch_tests",
+      "file": "tests/profile_dispatch_tests.c",
+      "pattern": "(?i)lift"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_boot_tests",
+      "file": "tests/linux_boot_tests.c",
+      "pattern": "SelfMod entries"
+     },
+     {
+      "suite": "linux_session_tests",
+      "file": "tests/linux_session_tests.c",
+      "pattern": "Quit to the desktop"
+     }
+    ]
+   }
+  },
+  {
+   "id": "supported-builds",
+   "name": "Supported builds: profiles, fingerprints, lifts, addresses, offsets, patch sites",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_build_parity.py",
+     "file": "tests/test_build_parity.py",
+     "pattern": "every_supported_build_is_whole"
+    },
+    {
+     "suite": "tests\\test_profiles.py",
+     "file": "tests/test_profiles.py",
+     "pattern": "playable"
+    },
+    {
+     "suite": "tests\\test_layout.py",
+     "file": "tests/test_layout.py",
+     "pattern": "(?i)offset"
+    },
+    {
+     "suite": "tools\\check_profiles.py",
+     "file": "tools/check_profiles.py",
+     "pattern": "BROKEN"
+    },
+    {
+     "suite": "tools\\host_offsets.py",
+     "file": "tools/host_offsets.py",
+     "pattern": "manifest out of date"
+    },
+    {
+     "suite": "profile_dispatch_tests",
+     "file": "tests/profile_dispatch_tests.c",
+     "pattern": "(?i)lift"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "lift-mechanism",
+   "name": "Lifts as artifacts: stable entries, hooks, staging, single host, no original executable",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tools\\lifts.py verify --content",
+     "file": "tools/lifts.py",
+     "pattern": "verify"
+    },
+    {
+     "suite": "tools\\gva_convert.py --check",
+     "file": "tools/gva_convert.py",
+     "pattern": "--check"
+    },
+    {
+     "suite": "tools\\gen_guest_va.py --check",
+     "file": "tools/gen_guest_va.py",
+     "pattern": "--check"
+    },
+    {
+     "suite": "tools\\gen_guest_layout.py",
+     "file": "tools/gen_guest_layout.py",
+     "pattern": "GLAYOUT"
+    },
+    {
+     "suite": "tools\\lift_hooks.py",
+     "file": "tools/lift_hooks.py",
+     "pattern": "RECOMP_LIFT_HOOK"
+    },
+    {
+     "suite": "tools\\stable_entries.py src\\recomp\\gen",
+     "file": "tools/stable_entries.py",
+     "pattern": "stable"
+    },
+    {
+     "suite": "tests\\test_lifts.py",
+     "file": "tests/test_lifts.py",
+     "pattern": "(?i)lift"
+    },
+    {
+     "suite": "tests\\test_lift_hooks.py",
+     "file": "tests/test_lift_hooks.py",
+     "pattern": "(?i)hook"
+    },
+    {
+     "suite": "tests\\test_lift_staging.py",
+     "file": "tests/test_lift_staging.py",
+     "pattern": "(?i)staging"
+    },
+    {
+     "suite": "tests\\test_stable_entries.py",
+     "file": "tests/test_stable_entries.py",
+     "pattern": "(?i)stable"
+    },
+    {
+     "suite": "tests\\test_override_installs.py",
+     "file": "tests/test_override_installs.py",
+     "pattern": "(?i)override"
+    },
+    {
+     "suite": "tests\\test_single_host.py",
+     "file": "tests/test_single_host.py",
+     "pattern": "(?i)lift"
+    },
+    {
+     "suite": "tests\\test_no_original_executable.py",
+     "file": "tests/test_no_original_executable.py",
+     "pattern": "(?i)executable"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "override_tests_incremental",
+      "file": "tests/override_tests.c",
+      "pattern": "(?i)stable"
+     },
+     {
+      "suite": "override_tests_non_incremental",
+      "file": "tests/override_tests.c",
+      "pattern": "(?i)stable"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "guest-abi",
+   "name": "Guest ABI: stdcall, cdecl and thiscall calls, register preservation, guest pointers far from host pointers, 32-bit guest address space",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "x64_tests",
+      "file": "tests/x64_tests.c",
+      "pattern": "(?i)guest"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_call_spine_tests",
+      "file": "tests/linux_call_spine_tests.c",
+      "pattern": "test_stdcall"
+     },
+     {
+      "suite": "linux_guest_ptr_tests",
+      "file": "tests/linux_guest_ptr_tests.c",
+      "pattern": "test_conversions_refuse_mistakes"
+     },
+     {
+      "suite": "x64_tests",
+      "file": "tests/x64_tests.c",
+      "pattern": "(?i)guest"
+     }
+    ]
+   }
+  },
+  {
+   "id": "x64-groundwork",
+   "name": "x64 host groundwork: guest address space, pointer marshalling, leak detection, COM handles",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "x64_tests",
+     "file": "tests/x64_tests.c",
+     "pattern": "(?i)guest"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "guest-modules",
+   "name": "Guest DLLs lifted to C (MSVCIRT): exports, relocations, vtable pointers, no symbol collision, loaded as a module",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_guest_module_lift.py",
+     "file": "tests/test_guest_module_lift.py",
+     "pattern": "test_the_dll_is_the_supported_one_and_fully_covered"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_module_tests",
+      "file": "tests/linux_module_tests.c",
+      "pattern": "test_lookup_and_exports"
+     }
+    ]
+   }
+  },
+  {
+   "id": "lifted-selfmod",
+   "name": "SelfMod lifted to C: 46 entries in their own dispatch table, 44 patch sites as guest memory, no native x86",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_selfmod_lift.py",
+     "file": "tests/test_selfmod_lift.py",
+     "pattern": "test_patch_sites_are_guest_memory_loads"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [],
+    "runtime": [
+     "selfmod"
+    ]
+   }
+  },
+  {
+   "id": "no-native-x86",
+   "name": "No native x86 execution and no guest address used as a host pointer in the Linux host",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_linux_native_rules.py",
+     "file": "tests/test_linux_native_rules.py",
+     "pattern": "test_no_native_x86_execution"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "x87-runtime",
+   "name": "Patched x87 runtime",
+   "owner": "platform",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "x87_tests",
+      "file": "tests/x87_tests.c",
+      "pattern": "(?i)x87"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the x87 ring is validated against pcrecomp's flat 32-bit model; the Linux host runs the lifted code through the 64-bit runtime of its own call spine"
+   }
+  },
+  {
+   "id": "filesystem",
+   "name": "Guest filesystem: CreateFile mapping, LZOpenFile, Patch 1.1 and DDF interception",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)CreateFile"
+     },
+     {
+      "suite": "patch117_tests",
+      "file": "tests/patch117_tests.c",
+      "pattern": "LZOpen"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_hle_tests",
+      "file": "tests/linux_hle_tests.c",
+      "pattern": "test_files"
+     },
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_prepare"
+     }
+    ]
+   }
+  },
+  {
+   "id": "portable-guest-paths",
+   "name": "Guest paths over a case-sensitive host: case-insensitive resolution inside the root, containment, create mode",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vpath_tests",
+     "file": "tests/vpath_tests.c",
+     "pattern": "test_containment"
+    },
+    {
+     "suite": "vpath_tests",
+     "file": "tests/vpath_tests.c",
+     "pattern": "test_case_and_separators"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "registry",
+   "name": "Virtual registry file: fixed-width values, readable across platforms",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "reg_store_tests",
+     "file": "tests/reg_store_tests.c",
+     "pattern": "test_windows_written_file"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_hle_tests",
+      "file": "tests/linux_hle_tests.c",
+      "pattern": "test_files"
+     }
+    ]
+   }
+  },
+  {
+   "id": "portable-synchronisation",
+   "name": "Win32-style waits, events, mutexes, critical sections, clocks and timers over SDL3",
+   "owner": "platform",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "sync_tests",
+     "file": "tests/sync_tests.c",
+     "pattern": "test_abandoned_mutex"
+    },
+    {
+     "suite": "sync_tests",
+     "file": "tests/sync_tests.c",
+     "pattern": "test_clocks_and_timers"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_cs_tests",
+      "file": "tests/linux_cs_tests.c",
+      "pattern": "went round"
+     },
+     {
+      "suite": "linux_hle_tests",
+      "file": "tests/linux_hle_tests.c",
+      "pattern": "test_synchronisation"
+     }
+    ]
+   }
+  },
+  {
+   "id": "config-settings",
+   "name": "Settings: the same names, defaults and ranges in the launcher and the runtime",
+   "owner": "config",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_setting_parity.py",
+     "file": "tests/test_setting_parity.py",
+     "pattern": "launcher_defaults_equal_runtime_defaults"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "settings_version"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "user-data",
+   "name": "Portable user_data: saves, cache, logs, configuration",
+   "owner": "config",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "user_data_tests",
+      "file": "tests/user_data_tests.cpp",
+      "pattern": "user_data"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_choice"
+     },
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_prepare"
+     }
+    ]
+   }
+  },
+  {
+   "id": "logs",
+   "name": "One log per run in the saved logs folder, no performance lines unless asked, the exit code in it",
+   "owner": "config",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "log_tests",
+      "file": "tests/log_tests.c",
+      "pattern": "perf-log"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_shutdown_tests",
+      "file": "tests/linux_shutdown_tests.c",
+      "pattern": "test_game"
+     },
+     {
+      "suite": "linux_crash_tests",
+      "file": "tests/linux_crash_tests.c",
+      "pattern": "test_report"
+     }
+    ]
+   }
+  },
+  {
+   "id": "save-load",
+   "name": "Normal save and load lists, SAVEGAME files, save pictures",
+   "owner": "save",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "frontend_tests",
+      "file": "tests/save_preview_tests.c",
+      "pattern": "SAVEGAME"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_save_files_tests",
+      "file": "tests/linux_save_files_tests.c",
+      "pattern": "SAVEGAME"
+     },
+     {
+      "suite": "linux_session_tests",
+      "file": "tests/linux_session_tests.c",
+      "pattern": "the Save wrote SAVEGAME"
+     }
+    ]
+   }
+  },
+  {
+   "id": "quick-save-load",
+   "name": "Quick Save F7 / Quick Load F8 with SAVEGAME.QCK",
+   "owner": "save",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "ce_tests",
+     "file": "tests/ce_tests.c",
+     "pattern": "qs_is_quick_file"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "qs_is_quick_file"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_hotkey_tests",
+      "file": "tests/linux_hotkey_tests.c",
+      "pattern": "Quick Save asks the game"
+     },
+     {
+      "suite": "linux_hotkey_tests",
+      "file": "tests/linux_hotkey_tests.c",
+      "pattern": "test_quick_load"
+     }
+    ]
+   }
+  },
+  {
+   "id": "hotkey-table",
+   "name": "One hotkey table for both platforms: F2, F3, F4, F5, F6, F7, F8, F10, F11, Alt+F4, with the Quick keys of trespasser.ini winning",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "hotkey_tests",
+     "file": "tests/hotkey_tests.c",
+     "pattern": "KEY_HOST_OBJECTIVES"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "KEY_HOST_QUICK_SAVE"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_hotkey_tests",
+      "file": "tests/linux_hotkey_tests.c",
+      "pattern": "F6"
+     }
+    ]
+   }
+  },
+  {
+   "id": "translations",
+   "name": "Seven languages: game text, menus, captions, interface",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_language_parity.py",
+     "file": "tests/test_language_parity.py",
+     "pattern": "interface_files"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "l10n_tests",
+      "file": "tests/l10n_tests.c",
+      "pattern": "(?i)GameStrings"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_video_subtitle_tests",
+      "file": "tests/linux_video_subtitle_tests.c",
+      "pattern": "test_languages"
+     }
+    ]
+   }
+  },
+  {
+   "id": "subtitles-captions",
+   "name": "Caption table, corrected captions, timing, language mapping",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_caption_counts.py",
+     "file": "tests/test_caption_counts.py",
+     "pattern": "retail_comparison"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "stream_tests",
+      "file": "tests/stream_tests.c",
+      "pattern": "(?i)caption"
+     },
+     {
+      "suite": "l10n_tests",
+      "file": "tests/l10n_coverage_tests.c",
+      "pattern": "(?i)caption"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_stream_tests",
+      "file": "tests/linux_stream_tests.c",
+      "pattern": "test_retail"
+     }
+    ]
+   }
+  },
+  {
+   "id": "restored-audio",
+   "name": "Restored audio records: only used samples, integrity, mapping",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_caption_counts.py",
+     "file": "tests/test_caption_counts.py",
+     "pattern": "restored_records"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "stream_tests",
+      "file": "tests/stream_tests.c",
+      "pattern": "(?i)restored"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_stream_tests",
+      "file": "tests/linux_stream_tests.c",
+      "pattern": "test_synthetic_pool"
+     }
+    ]
+   }
+  },
+  {
+   "id": "stream-tpa",
+   "name": "Virtual Stream.tpa: directory, virtual size, restored and corrected records, handle pool, end of file",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "stream_tests",
+      "file": "tests/stream_tests.c",
+      "pattern": "test_game_handle_pool"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_stream_tests",
+      "file": "tests/linux_stream_tests.c",
+      "pattern": "test_limits_and_lifetime"
+     },
+     {
+      "suite": "linux_stream_tests",
+      "file": "tests/linux_stream_tests.c",
+      "pattern": "test_read_only_file_and_foreign_files"
+     }
+    ],
+    "runtime": [
+     "stream_tpa"
+    ]
+   }
+  },
+  {
+   "id": "video-subtitles",
+   "name": "Video subtitles: cues, timelines, retail fingerprints, per language",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_video_timelines.py",
+     "file": "tests/test_video_timelines.py",
+     "pattern": "(?i)cue"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_subtitle_tests",
+      "file": "tests/video_subtitle_tests.c",
+      "pattern": "(?i)cue"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_video_subtitle_tests",
+      "file": "tests/linux_video_subtitle_tests.c",
+      "pattern": "test_coverage"
+     },
+     {
+      "suite": "linux_video_subtitle_tests",
+      "file": "tests/linux_video_subtitle_tests.c",
+      "pattern": "test_session"
+     }
+    ],
+    "runtime": [
+     "video_subtitles"
+    ]
+   }
+  },
+  {
+   "id": "gameplay-captions",
+   "name": "Gameplay captions drawn over the game in every language, Cyrillic included",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "l10n_tests",
+      "file": "tests/l10n_tests.c",
+      "pattern": "(?i)caption"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_video_subtitle_tests",
+      "file": "tests/linux_video_subtitle_tests.c",
+      "pattern": "test_cyrillic"
+     },
+     {
+      "suite": "linux_video_subtitle_tests",
+      "file": "tests/linux_video_subtitle_tests.c",
+      "pattern": "test_overlay"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ddf-menu-text",
+   "name": "DDF menu text: canonical source, cache, no saves\\menu",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "frontend_tests",
+      "file": "tests/frontend_bridge_tests.c",
+      "pattern": "(?i)ddf"
+     },
+     {
+      "suite": "l10n_tests",
+      "file": "tests/l10n_tests.c",
+      "pattern": "(?i)ddf"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "French labels are put into the DDF files"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "never the source"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "translation layer without a failure"
+     }
+    ]
+   }
+  },
+  {
+   "id": "sdl3-audio",
+   "name": "SDL3 audio backend: a device stream fed by the mixer, DirectSound semantics for volume, loops, frequency and cursors",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "audio_backend_tests",
+     "file": "tests/audio_backend_tests.c",
+     "pattern": "plays_through_the_device"
+    },
+    {
+     "suite": "audio_portable_tests",
+     "file": "tests/audio_portable_tests.c",
+     "pattern": "test_streams"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "audio_tests",
+      "file": "tests/audio_tests.c",
+      "pattern": "SDL_OpenAudioDeviceStream"
+     },
+     {
+      "suite": "audio_tests",
+      "file": "tests/audio_tests.c",
+      "pattern": "test_loop_stop_restart"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [],
+    "runtime": [
+     "audio_sdl_stream"
+    ]
+   }
+  },
+  {
+   "id": "audio-queue-pacing",
+   "name": "The queue between the mixer and the device: steady cadence, a target of two periods that grows with underruns, silence on underrun, backlog dropped, drift corrected, telemetry",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "audio_pacer_tests",
+     "file": "tests/audio_pacer_tests.c",
+     "pattern": "test_bursty_device"
+    },
+    {
+     "suite": "audio_backend_tests",
+     "file": "tests/audio_backend_tests.c",
+     "pattern": "steady clock"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_audio_stress_tests",
+      "file": "tests/linux_audio_stress_tests.c",
+      "pattern": "test_shutdown_cycles"
+     }
+    ],
+    "runtime": [
+     "audio_pacer"
+    ]
+   }
+  },
+  {
+   "id": "audio-resampling",
+   "name": "22050 Hz source converted by SDL to the device's rate with pitch and duration kept (Hammond, effects, music, Smacker)",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "audio_pacer_tests",
+     "file": "tests/audio_pacer_tests.c",
+     "pattern": "test_conversion_keeps_pitch_and_length"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "directsound-compat",
+   "name": "DirectSound guest compatibility: the game's and Smacker's vtable slots, buffers, duplicates, Lock/Unlock, loops, 3D listener",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "dsound_compat_tests",
+     "file": "tests/dsound_compat_tests.c",
+     "pattern": "streaming_like_smacker"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "dsound_compat_tests",
+      "file": "tests/dsound_compat_tests.c",
+      "pattern": "EAX probe"
+     },
+     {
+      "suite": "dsound_compat_tests",
+      "file": "tests/dsound_compat_tests.c",
+      "pattern": "streaming_like_smacker"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_audio_stress_tests",
+      "file": "tests/linux_audio_stress_tests.c",
+      "pattern": "second_guest_thread"
+     }
+    ]
+   }
+  },
+  {
+   "id": "audio-3d",
+   "name": "3D audio: listener, attenuation and pan of 3D buffers",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "dsound_compat_tests",
+     "file": "tests/dsound_compat_tests.c",
+     "pattern": "(?i)3d"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "audio_tests",
+      "file": "tests/audio_tests.c",
+      "pattern": "(?i)3d"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "audio-volume-frequency",
+   "name": "Volume in hundredths of a decibel and frequency, the same calculations on both platforms",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "audio_portable_tests",
+     "file": "tests/audio_portable_tests.c",
+     "pattern": "test_driver_policy"
+    },
+    {
+     "suite": "dsound_compat_tests",
+     "file": "tests/dsound_compat_tests.c",
+     "pattern": "(?i)volume"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "audio_tests",
+      "file": "tests/audio_tests.c",
+      "pattern": "(?i)volume"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "hammond-voice-over",
+   "name": "Hammond voice-over through the audio backend: streaming buffer, play-cursor refills, volume, frequency, one-shot, 3D",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "hammond_voiceover_tests",
+     "file": "tests/hammond_voiceover_tests.c",
+     "pattern": "test_streaming_voice_over"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "stream_tests",
+      "file": "tests/stream_tests.c",
+      "pattern": "test_game_handle_pool"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_stream_tests",
+      "file": "tests/linux_stream_tests.c",
+      "pattern": "test_synthetic_pool"
+     }
+    ]
+   }
+  },
+  {
+   "id": "menu-sound",
+   "name": "Menu selection click sound",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "menu_audio_tests",
+     "file": "tests/menu_audio_tests.c",
+     "pattern": "(?i)menu"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "menu_audio_tests",
+      "file": "tests/menu_audio_tests.c",
+      "pattern": "(?i)menu"
+     },
+     {
+      "suite": "audio_tests",
+      "file": "tests/audio_tests.c",
+      "pattern": "test_menu_click"
+     },
+     {
+      "suite": "dsound_compat_tests",
+      "file": "tests/dsound_compat_tests.c",
+      "pattern": "menu click"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "audio-driver-policy",
+   "name": "SDL3 audio driver policy: WASAPI on Windows, SDL's choice elsewhere, SDL_AUDIODRIVER respected, headless dummy",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "audio_portable_tests",
+     "file": "tests/audio_portable_tests.c",
+     "pattern": "test_driver_policy"
+    },
+    {
+     "suite": "audio_backend_tests",
+     "file": "tests/audio_backend_tests.c",
+     "pattern": "JPT_AUDIO_HEADLESS"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "audio-abi-portability",
+   "name": "Cross-platform DirectSound ABI: fixed-width structures, guest addresses instead of host pointers, one lock",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "dsound_compat_tests",
+     "file": "tests/dsound_compat_tests.c",
+     "pattern": "test_guest_addresses_never_leak_host_pointers"
+    },
+    {
+     "suite": "tests\\test_audio_portability.py",
+     "file": "tests/test_audio_portability.py",
+     "pattern": "test_no_pointer_squeezed_into_32_bits"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "dsound_bridge_tests",
+      "file": "tests/dsound_bridge_tests.c",
+      "pattern": "test_abi_matches_dsound_h"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "no-system-dsound",
+   "name": "No dependency on a system DirectSound: the host answers DirectSoundCreate itself",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "dsound_bridge_tests",
+      "file": "tests/dsound_bridge_tests.c",
+      "pattern": "never loaded"
+     },
+     {
+      "suite": "audio_tests",
+      "file": "tests/audio_tests.c",
+      "pattern": "test_no_directsound_in_backend"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "elf no Windows DLL",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "linux_hle_tests",
+      "file": "tests/linux_hle_tests.c",
+      "pattern": "test_modules_and_missing"
+     }
+    ]
+   }
+  },
+  {
+   "id": "a3d-refused",
+   "name": "A3D is refused: A3d.dll is never loaded",
+   "owner": "audio",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "a3d\\.dll"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_hle_tests",
+      "file": "tests/linux_hle_tests.c",
+      "pattern": "test_modules_and_missing"
+     }
+    ]
+   }
+  },
+  {
+   "id": "smacker",
+   "name": "Smacker HLE: the 14 exports the game imports, the Smack structure, frames, rectangles, Y-interlace, the clock, the end of the video",
+   "owner": "video",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "smacker_tests",
+     "file": "tests/smacker_tests.c",
+     "pattern": "test_exports"
+    },
+    {
+     "suite": "smacker_tests",
+     "file": "tests/smacker_tests.c",
+     "pattern": "test_the_player_loop"
+    },
+    {
+     "suite": "smacker_tests",
+     "file": "tests/smacker_tests.c",
+     "pattern": "test_changed_rectangles"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "video-audio",
+   "name": "Video audio through the game's mixer: PCM streams, queue lead, the audio clock, no second output",
+   "owner": "video",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "smacker_tests",
+     "file": "tests/smacker_tests.c",
+     "pattern": "test_audio_enters_the_mixer"
+    },
+    {
+     "suite": "smacker_tests",
+     "file": "tests/smacker_tests.c",
+     "pattern": "test_with_the_directsound_layer"
+    },
+    {
+     "suite": "audio_portable_tests",
+     "file": "tests/audio_portable_tests.c",
+     "pattern": "test_streams"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "smacker-binding",
+   "name": "Smacker binding by platform: the original DLL on Windows, the HLE on Linux, never Wine or a native load on Linux",
+   "owner": "video",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "smacker_tests",
+     "file": "tests/smacker_tests.c",
+     "pattern": "Windows keeps the original SMACKW32.DLL"
+    },
+    {
+     "suite": "tests\\test_audio_portability.py",
+     "file": "tests/test_audio_portability.py",
+     "pattern": "test_smacker_hle_never_loads_a_dll_or_wine"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "video-playback",
+   "name": "The intro and cut-scene videos play: Smacker open, frames, audio, subtitles, skip, close",
+   "owner": "video",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "smacker_tests",
+      "file": "tests/smacker_tests.c",
+      "pattern": "test_the_player_loop"
+     },
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "(?i)video"
+     },
+     {
+      "suite": "video_focus_tests",
+      "file": "tests/video_focus_tests.c",
+      "pattern": "(?i)video"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_video_tests",
+      "file": "tests/linux_video_tests.c",
+      "pattern": "intro video was decoded"
+     },
+     {
+      "suite": "smacker_ffmpeg_tests",
+      "file": "tests/smacker_ffmpeg_tests.c",
+      "pattern": "Smacker video decoder"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ffmpeg",
+   "name": "FFmpeg Smacker backend: versions, licences, demuxer and decoders, refusal of undecodable files; available to the build",
+   "owner": "video",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [
+     {
+      "suite": "smacker_ffmpeg_tests",
+      "file": "tests/smacker_ffmpeg_tests.c",
+      "pattern": "Smacker video decoder"
+     }
+    ],
+    "reason": "Windows keeps the original SMACKW32.DLL"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "smacker_ffmpeg_tests",
+      "file": "tests/smacker_ffmpeg_tests.c",
+      "pattern": "Smacker video decoder"
+     }
+    ],
+    "runtime": [
+     "ffmpeg_smacker"
+    ]
+   }
+  },
+  {
+   "id": "video-hd",
+   "name": "HD video presentation (D3D11 passes) and focus",
+   "owner": "video",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "(?i)video"
+     },
+     {
+      "suite": "video_focus_tests",
+      "file": "tests/video_focus_tests.c",
+      "pattern": "(?i)video"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the HD pass is a Direct3D 11 effect; Linux presents the decoded frames through the software path"
+   }
+  },
+  {
+   "id": "skip-intro",
+   "name": "Skip Intro",
+   "owner": "video",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)skip.?intro|NoVideo"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "Skip Intro answered the opening"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "Skip Intro: NoVideo reads 1"
+     }
+    ]
+   }
+  },
+  {
+   "id": "window",
+   "name": "One game window of the guest's shape: title, client size, visibility, close",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "presentation_tests",
+      "file": "tests/presentation_tests.c",
+      "pattern": "test_old_frame_never_meets_the_new_window"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_user32_tests",
+      "file": "tests/linux_user32_tests.c",
+      "pattern": "test_window_creation"
+     },
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "a second window opens"
+     }
+    ]
+   }
+  },
+  {
+   "id": "presentation",
+   "name": "Stable window presentation: the pending screen committed with the first frame of its generation, 4:3 pillarbox, mouse mapping",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "presentation_tests",
+      "file": "tests/presentation_tests.c",
+      "pattern": "test_old_frame_never_meets_the_new_window"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_transition"
+     },
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_mapping"
+     }
+    ]
+   }
+  },
+  {
+   "id": "window-sizing",
+   "name": "Window sizing: the Auto size follows the game's shape, a fixed size never, resizable with the picture kept",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "presentation_tests",
+      "file": "tests/presentation_tests.c",
+      "pattern": "test_old_frame_never_meets_the_new_window"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_views"
+     }
+    ]
+   }
+  },
+  {
+   "id": "sdl3-platform",
+   "name": "SDL3 platform: single init and quit, window adoption, the SDL 3.4.20 contract",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "SDL_InitSubSystem"
+     },
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "3\\.4\\.20"
+     },
+     {
+      "suite": "tests\\build_script_tests.ps1",
+      "file": "tests/build_script_tests.ps1",
+      "pattern": "3\\.4\\.20"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "SDL_VERSIONNUM"
+     }
+    ]
+   }
+  },
+  {
+   "id": "fullscreen",
+   "name": "F11 fullscreen, as a key of the shared table and never a key of the game",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "hotkey_tests",
+     "file": "tests/hotkey_tests.c",
+     "pattern": "KEY_HOST_FULLSCREEN"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "KEY_HOST_FULLSCREEN"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "F11"
+     }
+    ]
+   }
+  },
+  {
+   "id": "software-renderer",
+   "name": "Software renderer: RGB565 surfaces, flips and blits of DirectDraw, presentation; D3D11-only features unavailable",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "RGB565"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "Direct3DEffectsAvailable|software"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_ddraw_tests",
+      "file": "tests/linux_ddraw_tests.c",
+      "pattern": "test_flip_chain"
+     },
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_views"
+     },
+     {
+      "suite": "linux_gdi_tests",
+      "file": "tests/linux_gdi_tests.c",
+      "pattern": "test_dib_and_blit"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d3d11-renderer",
+   "name": "Direct3D 11 renderer: device policy, formats, render states, shutdown",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)d3d"
+     },
+     {
+      "suite": "com_tests",
+      "file": "tests/com_tests.c",
+      "pattern": "(?i)direct3d"
+     },
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "(?i)warp"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Direct3D 11 is Windows only; Linux presents the software renderer through SDL3 and Vulkan is future work"
+   }
+  },
+  {
+   "id": "vulkan-renderer",
+   "name": "Vulkan renderer (placeholder)",
+   "owner": "render",
+   "scope": "planned",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "BLOCKED",
+    "evidence": [],
+    "reason": "future work: neither platform has it, and this release does not claim it"
+   },
+   "linux": {
+    "status": "BLOCKED",
+    "evidence": [],
+    "reason": "future work: neither platform has it, and this release does not claim it"
+   }
+  },
+  {
+   "id": "water-refraction",
+   "name": "Water Refraction: Direct3D 11 pass and host water kernels",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_gpu_tests",
+      "file": "tests/ce_gpu_tests.c",
+      "pattern": "(?i)water"
+     },
+     {
+      "suite": "water_tests",
+      "file": "tests/water_tests.c",
+      "pattern": "water_rows"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+   }
+  },
+  {
+   "id": "enhanced-sky",
+   "name": "Enhanced Sky",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_gpu_tests",
+      "file": "tests/ce_gpu_tests.c",
+      "pattern": "(?i)sky"
+     },
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "(?i)sky"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+   }
+  },
+  {
+   "id": "ambient-occlusion",
+   "name": "Ambient occlusion Off, Low, Medium, High, Ultra",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ao_tests",
+      "file": "tests/ao_tests.cpp",
+      "pattern": "JPT_AO_ULTRA"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+   }
+  },
+  {
+   "id": "texture-filtering",
+   "name": "Texture filtering Original to Anisotropic 16x",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "(?i)texture_filter|anisotropic"
+     },
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)anisotropic|filter"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+   }
+  },
+  {
+   "id": "anti-aliasing",
+   "name": "MSAA choices",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "(?i)msaa"
+     },
+     {
+      "suite": "tests\\test_setting_parity.py",
+      "file": "tests/test_setting_parity.py",
+      "pattern": "msaa"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+   }
+  },
+  {
+   "id": "gpu-selection",
+   "name": "GPU choice: DXGI enumeration, duplicate names, old configuration",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "jpt_gpu_resolve"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+   }
+  },
+  {
+   "id": "render-resolution-aspect",
+   "name": "Render resolution, aspect ratio and presentation of the game's 4:3 picture",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "(?i)render_preset|jpt_aspect"
+     },
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)aspect"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_views"
+     }
+    ]
+   }
+  },
+  {
+   "id": "terrain",
+   "name": "Terrain textures, far clip, Maximum object detail",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)terrain"
+     },
+     {
+      "suite": "patch117_tests",
+      "file": "tests/patch117_tests.c",
+      "pattern": "(?i)terrain|TrrPixelTol"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "CQuadRootTIN::Update ran through the terrain override"
+     }
+    ]
+   }
+  },
+  {
+   "id": "loading-screens",
+   "name": "HD loading screens, level image, blank-present hold",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "frontend_tests",
+      "file": "tests/loading_tests.c",
+      "pattern": "(?i)loading"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_loading"
+     },
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "the loading layer replaces the guest's picture 1:1"
+     }
+    ],
+    "runtime": [
+     "loading_hd"
+    ]
+   }
+  },
+  {
+   "id": "frontend-hd",
+   "name": "HD front end made of the game's own bitmaps",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "frontend_tests",
+      "file": "tests/frontend_art_tests.c",
+      "pattern": "(?i)frontend"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_scene_reading"
+     },
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_painter"
+     },
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_compose_geometry"
+     },
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_pointer_and_mapping"
+     },
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_session"
+     },
+     {
+      "suite": "linux_save_files_tests",
+      "file": "tests/linux_save_files_tests.c",
+      "pattern": "test_save_pictures"
+     }
+    ],
+    "runtime": [
+     "frontend_hd",
+     "save_pictures"
+    ]
+   }
+  },
+  {
+   "id": "keyboard",
+   "name": "Keyboard: SDL scancodes become the virtual keys the game reads; text input for the save name",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "KEY_HOST_QUICK_SAVE"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "A is virtual key"
+     },
+     {
+      "suite": "linux_user32_tests",
+      "file": "tests/linux_user32_tests.c",
+      "pattern": "test_input"
+     }
+    ]
+   }
+  },
+  {
+   "id": "mouse",
+   "name": "Mouse in menus and in the level: absolute positions for pointers, relative motion for the look, clicks where the pointer is",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "input_context_tests",
+     "file": "tests/input_context_tests.c",
+     "pattern": "pointer_add_relative"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "input_tests",
+      "file": "tests/input_tests.c",
+      "pattern": "relative"
+     },
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "recapture"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_mouse_tests",
+      "file": "tests/linux_mouse_tests.c",
+      "pattern": "a click lands where the pointer moved to"
+     }
+    ],
+    "runtime": [
+     "absolute_pointer"
+    ]
+   }
+  },
+  {
+   "id": "input-context",
+   "name": "The input context is what the game shows (its window stack): the video and menus keep the free pointer, the level takes relative mode, a dialog gives it back",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "input_context_tests",
+     "file": "tests/input_context_tests.c",
+     "pattern": "the level paused"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)input"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_mouse_tests",
+      "file": "tests/linux_mouse_tests.c",
+      "pattern": "test_level_and_pause"
+     }
+    ],
+    "runtime": [
+     "input_context"
+    ]
+   }
+  },
+  {
+   "id": "relative-mouse",
+   "name": "Relative mouse mode: on in the level, off in menus, dialogs, a lost focus and at quit; SDL adapter; focus restored follows the context",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "input_context_tests",
+     "file": "tests/input_context_tests.c",
+     "pattern": "test_focus_and_shutdown"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "recapture"
+     },
+     {
+      "suite": "input_tests",
+      "file": "tests/input_tests.c",
+      "pattern": "relative"
+     },
+     {
+      "suite": "video_focus_tests",
+      "file": "tests/video_focus_tests.c",
+      "pattern": "(?i)focus"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_mouse_tests",
+      "file": "tests/linux_mouse_tests.c",
+      "pattern": "test_focus"
+     },
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "set_relative_mouse"
+     }
+    ],
+    "runtime": [
+     "relative_gameplay"
+    ]
+   }
+  },
+  {
+   "id": "cursor",
+   "name": "The pointer: hidden over the picture when the game hides its own cursor, never grabbed",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "platform_tests",
+      "file": "tests/platform_tests.c",
+      "pattern": "recapture"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_mouse_tests",
+      "file": "tests/linux_mouse_tests.c",
+      "pattern": "its hidden cursor hides the host pointer"
+     },
+     {
+      "suite": "linux_user32_tests",
+      "file": "tests/linux_user32_tests.c",
+      "pattern": "test_cursor_and_clip"
+     }
+    ]
+   }
+  },
+  {
+   "id": "mouse-sensitivity",
+   "name": "Mouse sensitivity 0.25-4.00 step 0.05, applied to the look, launcher only",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_setting_parity.py",
+     "file": "tests/test_setting_parity.py",
+     "pattern": "no_in_game_mouse_sensitivity_row"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "fov_mouse_tests",
+      "file": "tests/fov_mouse_tests.c",
+      "pattern": "jpt_mouse_sensitivity_clamp"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_mouse_tests",
+      "file": "tests/linux_mouse_tests.c",
+      "pattern": "sensitivity"
+     }
+    ]
+   }
+  },
+  {
+   "id": "invert-mouse",
+   "name": "Invert mouse and relative deltas",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "input_tests",
+      "file": "tests/input_tests.c",
+      "pattern": "(?i)invert"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "Invert Mouse read from the game"
+     },
+     {
+      "suite": "gamepad_tests",
+      "file": "tests/gamepad_tests.c",
+      "pattern": "InvertMouse"
+     }
+    ]
+   }
+  },
+  {
+   "id": "gamepad",
+   "name": "Gamepad mapping, deadzones, gameplay and menu focus",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "gamepad_tests",
+     "file": "tests/gamepad_tests.c",
+     "pattern": "(?i)hotplug"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "test_gameplay"
+     },
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "test_connection_and_mapping"
+     }
+    ],
+    "runtime": [
+     "gamepad_layer"
+    ]
+   }
+  },
+  {
+   "id": "gamepad-hotplug",
+   "name": "Gamepad hotplug: connection, disconnect and reconnect, one connection counted",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "gamepad_tests",
+     "file": "tests/gamepad_tests.c",
+     "pattern": "(?i)hotplug"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "test_hotplug"
+     }
+    ]
+   }
+  },
+  {
+   "id": "gamepad-rumble",
+   "name": "Rumble adapter of the gamepad (the strengths a host asks for as the motors take them; the retail game never asks)",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "gamepad_tests",
+     "file": "tests/gamepad_tests.c",
+     "pattern": "pad_rumble_motors"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "gamepad_tests",
+      "file": "tests/gamepad_tests.c",
+      "pattern": "pad_rumble_motors"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "gamepad_tests",
+      "file": "tests/gamepad_tests.c",
+      "pattern": "pad_rumble_motors"
+     },
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "test_rumble"
+     }
+    ]
+   }
+  },
+  {
+   "id": "controls-card",
+   "name": "F2 / View controls card and its hint: one model, the device's own bindings and glyphs, translated",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "gamepad_tests",
+     "file": "tests/gamepad_tests.c",
+     "pattern": "the controls card, laid out by the host"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "test_card"
+     },
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "View opens the controls card"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "test_f2_card"
+     }
+    ],
+    "runtime": [
+     "controls_card"
+    ]
+   }
+  },
+  {
+   "id": "gamepad-menu-navigation",
+   "name": "Gamepad focus in the game's menus: D-pad and left stick, A click, B Escape, mouse and pad sharing the pointer",
+   "owner": "input",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "gamepad_tests",
+     "file": "tests/gamepad_tests.c",
+     "pattern": "pad_nav_pick"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "test_menu_navigation"
+     }
+    ],
+    "runtime": [
+     "gamepad_menu"
+    ]
+   }
+  },
+  {
+   "id": "russian-text",
+   "name": "Russian (code page 1251) drawn by the host: interface, front end, loading screen, controls card, panels, subtitles",
+   "owner": "l10n",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "frontend_tests",
+      "file": "tests/frontend_l10n_tests.c",
+      "pattern": "(?i)russian|cyrillic|\\bru\\b"
+     },
+     {
+      "suite": "l10n_tests",
+      "file": "tests/l10n_tests.c",
+      "pattern": "1251"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "the code page decides the glyphs"
+     },
+     {
+      "suite": "linux_frontend_tests",
+      "file": "tests/linux_frontend_tests.c",
+      "pattern": "the card is drawn in Russian"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "test_russian_text"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "test_russian_panel"
+     },
+     {
+      "suite": "linux_video_subtitle_tests",
+      "file": "tests/linux_video_subtitle_tests.c",
+      "pattern": "test_cyrillic"
+     },
+     {
+      "suite": "linux_gdi_tests",
+      "file": "tests/linux_gdi_tests.c",
+      "pattern": "code page 1251"
+     }
+    ],
+    "runtime": [
+     "russian_text"
+    ]
+   }
+  },
+  {
+   "id": "fov",
+   "name": "Field of view 60-110, default 75, Hor+, 4:3 reference",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "fov_mouse_tests",
+      "file": "tests/fov_mouse_tests.c",
+      "pattern": "jpt_fov_clamp"
+     },
+     {
+      "suite": "tests\\test_setting_parity.py",
+      "file": "tests/test_setting_parity.py",
+      "pattern": "JPT_FOV_MIN"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "main camera took the field of view of the settings"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "tan\\(half width\\)"
+     }
+    ]
+   }
+  },
+  {
+   "id": "frame-counter",
+   "name": "F6 frame counter: the shared FPS text, its panel, the same toggle",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "hotkey_tests",
+     "file": "tests/hotkey_tests.c",
+     "pattern": "KEY_HOST_FRAME_COUNTER"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "KEY_HOST_FRAME_COUNTER"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "frame counter"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "Frame counter"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_hotkey_tests",
+      "file": "tests/linux_hotkey_tests.c",
+      "pattern": "test_frame_counter"
+     }
+    ]
+   }
+  },
+  {
+   "id": "objectives",
+   "name": "F3 Objectives: texts, language, the current objective selection",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_objectives_retail.py",
+     "file": "tests/test_objectives_retail.py",
+     "pattern": "(?i)objective"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/objective_tests.c",
+      "pattern": "(?i)objective"
+     },
+     {
+      "suite": "tests\\test_objectives_retail.py",
+      "file": "tests/test_objectives_retail.py",
+      "pattern": "(?i)objective"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "Objectives is a window in the middle of the picture"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "F3 opened Objectives with the level"
+     }
+    ]
+   }
+  },
+  {
+   "id": "minimap",
+   "name": "F5 minimap and compass: geometry, bounds, markers",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_minimap_map.py",
+     "file": "tests/test_minimap_map.py",
+     "pattern": "(?i)minimap"
+    },
+    {
+     "suite": "tests\\test_minimap_bounds.py",
+     "file": "tests/test_minimap_bounds.py",
+     "pattern": "(?i)bounds"
+    },
+    {
+     "suite": "tests\\test_minimap_controls.py",
+     "file": "tests/test_minimap_controls.py",
+     "pattern": "F5"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/minimap_tests.c",
+      "pattern": "(?i)minimap"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/compass_tests.c",
+      "pattern": "(?i)compass"
+     },
+     {
+      "suite": "tests\\test_minimap_map.py",
+      "file": "tests/test_minimap_map.py",
+      "pattern": "(?i)minimap"
+     },
+     {
+      "suite": "tests\\test_minimap_bounds.py",
+      "file": "tests/test_minimap_bounds.py",
+      "pattern": "(?i)bounds"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "the player's arrow is white at the minimap's centre"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "the disc has its rim at the radius the shared geometry gives"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "the land, the water and the landmarks of the level"
+     }
+    ]
+   }
+  },
+  {
+   "id": "cheats",
+   "name": "F10 Cheats: table, handlers, panel, translations, persistence",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_cheat_parity.py",
+     "file": "tests/test_cheat_parity.py",
+     "pattern": "jpt_cheats"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/cheats_tests.c",
+      "pattern": "jpt_cheats"
+     },
+     {
+      "suite": "tests\\test_cheat_parity.py",
+      "file": "tests/test_cheat_parity.py",
+      "pattern": "jpt_cheats"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "dm_"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "saved Invulnerability cheat reached the game"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "F10 opened the Cheats panel over the running level"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "a click on the close button closes it"
+     }
+    ]
+   }
+  },
+  {
+   "id": "overlay-menus",
+   "name": "Port overlay: draw order, layout, text layer over the minimap",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/overlay_tests.c",
+      "pattern": "(?i)overlay"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/menu_layout_tests.c",
+      "pattern": "(?i)layout"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "over the minimap"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/menu_layout_tests.c",
+      "pattern": "test_docked_panel"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/text_layer_tests.c",
+      "pattern": "software renderer"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/text_layer_tests.c",
+      "pattern": "test_shared_order"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/menu_layout_tests.c",
+      "pattern": "test_objectives_width"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "Objectives window"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "docked in the top right corner, as on Windows"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "the panel's body is painted"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "the frame counter alone is something to draw"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "the compass strip is drawn along the top of the picture"
+     }
+    ]
+   }
+  },
+  {
+   "id": "physics-telemetry",
+   "name": "Temporary player telemetry (DEBUG_SAULO)",
+   "owner": "overlay",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/physics_watch_tests.c",
+      "pattern": "DEBUG_SAULO"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Windows-only diagnostic, to be removed"
+   }
+  },
+  {
+   "id": "dual-stow",
+   "name": "Trespasser CE dual stow",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "(?i)stow"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "Rotate Arm held with both slots full"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "AROUND"
+     }
+    ]
+   }
+  },
+  {
+   "id": "active-ai",
+   "name": "Active AI Original 3 / Enhanced 6",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "active_ai_tests",
+      "file": "tests/active_ai_tests.c",
+      "pattern": "jpt_active_ai_limits|active_ai"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "Active AI ran on the game"
+     },
+     {
+      "suite": "active_ai_tests",
+      "file": "tests/active_ai_tests.c",
+      "pattern": "jpt_active_ai_limits|active_ai"
+     }
+    ]
+   }
+  },
+  {
+   "id": "max-object-detail",
+   "name": "Maximum object detail",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "(?i)object.?detail"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "Maximum object detail cleared"
+     }
+    ]
+   }
+  },
+  {
+   "id": "footstep-fix",
+   "name": "Footstep and collision sounds after load or restart",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "(?i)footstep|collision"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "re-arms the collision sounds"
+     }
+    ]
+   }
+  },
+  {
+   "id": "patch-1.1",
+   "name": "Official Patch 1.1: terrain tolerances, bAddChild, jump, hand, box-box, wake, placements",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "patch117_tests",
+      "file": "tests/patch117_tests.c",
+      "pattern": "(?i)fingerprint"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "level fixes were applied to the level the LZ calls served"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "a nested call takes its caller's flag"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "broad-phase lift hook of the official Patch 1.1"
+     }
+    ]
+   }
+  },
+  {
+   "id": "hand-physics",
+   "name": "Hand carrier, crouch and physics",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "hand carrier"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "Pelvic_IDOF override"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ce-features",
+   "name": "Trespasser CE features as a whole: dual stow, Active AI, object detail, footsteps, legacy disk check",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "ce_tests",
+     "file": "tests/ce_tests.c",
+     "pattern": "legacy_disk_check_passes"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "(?i)stow"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "Dual stow"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "Active AI ran"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "Maximum object detail"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "re-arms the collision sounds"
+     }
+    ]
+   }
+  },
+  {
+   "id": "host-overrides",
+   "name": "The host's overrides and lift hooks of the lifted game are installed and called through stable entries",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "override_tests_incremental",
+      "file": "tests/override_tests.c",
+      "pattern": "(?i)stable"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "the override list is sorted, unique"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "a second override on the same function is refused"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "after the rollback the stable entry runs the lifted body again"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "every shared override is installed on the lifted game"
+     }
+    ],
+    "runtime": [
+     "override_registry",
+     "lift_hooks",
+     "host_features"
+    ]
+   }
+  },
+  {
+   "id": "safe-mode",
+   "name": "Legacy Safe Mode suppressed, developer override",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)safe.?mode"
+     },
+     {
+      "suite": "fov_mouse_tests",
+      "file": "tests/fov_mouse_tests.c",
+      "pattern": "(?i)safe.?mode"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "Safe Mode is suppressed"
+     }
+    ]
+   }
+  },
+  {
+   "id": "disk-space-bypass",
+   "name": "Legacy 100 MB disk-space check bypass",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "ce_tests",
+     "file": "tests/ce_tests.c",
+     "pattern": "legacy_disk_check_passes"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "legacy_disk_check_passes"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "disk-space check answers"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "legacy disk-space check was bypassed"
+     }
+    ]
+   }
+  },
+  {
+   "id": "shutdown",
+   "name": "Shutdown: the window's X, Alt+F4, SIGINT and SIGTERM lead the game out through its own quit path; one orderly exit",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)shutdown"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_shutdown_tests",
+      "file": "tests/linux_shutdown_tests.c",
+      "pattern": "test_state_machine"
+     },
+     {
+      "suite": "linux_shutdown_tests",
+      "file": "tests/linux_shutdown_tests.c",
+      "pattern": "test_signals"
+     }
+    ]
+   }
+  },
+  {
+   "id": "crash-diagnostics",
+   "name": "A crash leaves a report of the guest and the host",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "log_tests",
+      "file": "tests/log_tests.c",
+      "pattern": "failed_d3d_calls"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_crash_tests",
+      "file": "tests/linux_crash_tests.c",
+      "pattern": "test_real_fault"
+     }
+    ]
+   }
+  },
+  {
+   "id": "level-loading",
+   "name": "Level loading and transition through the game's own loader",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "frontend_tests",
+      "file": "tests/loading_tests.c",
+      "pattern": "(?i)loading"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_session_tests",
+      "file": "tests/linux_session_tests.c",
+      "pattern": "the first level is a picture"
+     }
+    ]
+   }
+  },
+  {
+   "id": "session",
+   "name": "Menu, New Game, level, Save, Load, return to the menu, New Game again, quit, the process left clean",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "(?i)shutdown"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_session_tests",
+      "file": "tests/linux_session_tests.c",
+      "pattern": "the script ran to its Quit to the desktop"
+     },
+     {
+      "suite": "linux_session_tests",
+      "file": "tests/linux_session_tests.c",
+      "pattern": "does not grow the process"
+     }
+    ]
+   }
+  },
+  {
+   "id": "resource-cleanup",
+   "name": "Resources freed at exit: DirectSound buffers, mixer, SDL audio, guest threads",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "dsound_compat_tests",
+     "file": "tests/dsound_compat_tests.c",
+     "pattern": "(?i)leak"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "x64_tests",
+      "file": "tests/x64_tests.c",
+      "pattern": "(?i)leak"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_audio_stress_tests",
+      "file": "tests/linux_audio_stress_tests.c",
+      "pattern": "every buffer was released"
+     }
+    ]
+   }
+  },
+  {
+   "id": "launcher",
+   "name": "Launcher pages, settings, installer, play gate",
+   "owner": "launcher",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "(?i)page"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "settings_version"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "jpt_gpu_resolve"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the Linux launcher is the next branch (feature/linux-feature-parity); the runtime reads the same trespasser.ini settings"
+   }
+  },
+  {
+   "id": "patch-1.1-policy",
+   "name": "Official Patch 1.1 fingerprints and policy",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "patch117_tests",
+      "file": "tests/patch117_tests.c",
+      "pattern": "(?i)fingerprint"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "an executable other than the one lift116 was built from"
+     },
+     {
+      "suite": "linux_overrides_tests",
+      "file": "tests/linux_overrides_tests.c",
+      "pattern": "unverified"
+     },
+     {
+      "suite": "linux_features_tests",
+      "file": "tests/linux_features_tests.c",
+      "pattern": "level fixes were applied"
+     }
+    ]
+   }
+  },
+  {
+   "id": "renderer-fixed",
+   "name": "The renderer chosen at start stays until exit",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_renderer_fixed.py",
+     "file": "tests/test_renderer_fixed.py",
+     "pattern": "(?i)renderer"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "warning-gate",
+   "name": "Compiler command lines of the test targets: no contradicting flags, no muted warnings in project code",
+   "owner": "build",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_compile_commands.py",
+      "file": "tests/test_compile_commands.py",
+      "pattern": "contradict"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the Windows half checks MSVC command lines; the Linux build is compiled -Wall -Wextra -Werror by the Linux gate"
+   }
+  },
+  {
+   "id": "build-script",
+   "name": "tools\\build.ps1: parameters, configurations, run arguments, user_data, SDL pin, test targets",
+   "owner": "build",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\build_script_tests.ps1",
+      "file": "tests/build_script_tests.ps1",
+      "pattern": "user_data_root"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "tools/build-linux.sh is the Linux counterpart and is exercised by the Linux gate itself"
+   }
+  },
+  {
+   "id": "linux-build",
+   "name": "The Linux executable and the headless suites build incrementally on the baseline system",
+   "owner": "build",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Linux only"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "lifted guest link",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "glibc-baseline",
+   "name": "The Linux executable needs no glibc newer than 2.31 (Ubuntu 20.04)",
+   "owner": "build",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Linux only"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "elf glibc <= 2.31",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "elf-hygiene",
+   "name": "The Linux executable: x86_64 PIE, no rpath, no local paths, only libpthread, libdl, libm and libc",
+   "owner": "build",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Linux only"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "elf architecture",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "elf dependencies",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "elf rpath/runpath",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "elf local paths",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "linux-runtime-artifact",
+   "name": "The Linux binary that runs is the one the gate validated: provenance, headless self-check, canonical staging",
+   "owner": "build",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_linux_artifact.py",
+     "file": "tests/test_linux_artifact.py",
+     "pattern": "(?i)stage"
+    }
+   ],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Linux only"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "elf self-check",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "elf build provenance",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "elf feature contract",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "no-wine",
+   "name": "No Wine, Proton, Winelib or native Windows DLL execution",
+   "owner": "build",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Linux only"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "elf no Wine/Proton",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "elf no Windows DLL",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "release-contract",
+   "name": "Release contract: version, licenses, forbidden files, no developer paths",
+   "owner": "build",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "release contract",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "tools\\test-release-check.ps1",
+      "file": "tools/test-release-check.ps1",
+      "pattern": "DEBUG_SAULO"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the release package is Windows only in this task; AppImage comes with the release branch"
+   }
+  },
+  {
+   "id": "repository-hygiene",
+   "name": "Repository hygiene and whitespace",
+   "owner": "build",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "repository hygiene",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "git diff --check",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "a repository-wide check run once, on Windows"
+   }
+  },
+  {
+   "id": "test-gate",
+   "name": "The gate itself: coverage, self-test, working tree unchanged",
+   "owner": "build",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\gate_tests.ps1",
+      "file": "tests/gate_tests.ps1",
+      "pattern": "-List"
+     },
+     {
+      "suite": "every test is wired in",
+      "file": null,
+      "pattern": null
+     },
+     {
+      "suite": "working tree unchanged",
+      "file": null,
+      "pattern": null
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the gate is one program, run from Windows"
+   }
+  },
+  {
+   "id": "linux-audio-probe",
+   "name": "Portable audio and Smacker layers compiled with -Werror and run natively on Linux (GCC and Clang) on SDL3 dummy audio",
+   "owner": "audio",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [
+     {
+      "suite": "linux audio probe",
+      "file": "tests/linux/CMakeLists.txt",
+      "pattern": "UNIX AND NOT APPLE"
+     }
+    ],
+    "reason": "Linux only"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "audio_portable_tests",
+      "file": "tests/audio_portable_tests.c",
+      "pattern": "test_driver_policy"
+     },
+     {
+      "suite": "audio_backend_tests",
+      "file": "tests/audio_backend_tests.c",
+      "pattern": "plays_through_the_device"
+     }
+    ]
+   }
+  }
+ ],
+ "infrastructure": [
+  {
+   "suite": "feature coverage",
+   "reason": "the check of this file"
+  },
+  {
+   "suite": "linux feature coverage",
+   "reason": "the Linux half of that check"
+  }
+ ]
 }

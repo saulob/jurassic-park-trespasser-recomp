@@ -26,12 +26,16 @@ typedef struct {
     const char* version; /* default en-116 */
     const char* user_root;
     const char* saves_dir; /* the game's "Installed Directory"; default <user_root>/saves */
+    const char* settings_file; /* trespasser.ini: the language and the video subtitles switch; NULL = the defaults */
     lx_window_backend_t* backend; /* the host window; NULL = the virtual backend (no window) */
     int unbounded;         /* run until the guest exits: no frame and no idle limit */
+    int use_features;      /* the host features over the lifted game (src/host guest_features.h); the executable turns them on */
+    int use_gamepad;       /* SDL3 gamepads drive the game's input (the executable); headless suites leave them off */
+    int play_videos;       /* let the game play its Smacker videos (needs FFmpeg in the build); 0 answers NoVideo = 1 */
     unsigned frame_limit;  /* stop after this many presented frames; default 1 */
     void (*frame_hook)(unsigned frame, void* user); /* after each presented frame */
     void* hook_user;
-    unsigned idle_limit;   /* stop after this many empty PeekMessage calls; default 200000 */
+    unsigned idle_limit;   /* stop after this many empty PeekMessage calls; default 200000, 0xFFFFFFFF never */
 } lx_boot_options_t;
 
 typedef struct {
@@ -39,9 +43,12 @@ typedef struct {
     char detail[200];       /* module!function of the missing import, or the reason */
     uint32_t entry, guest_eip, caller, exit_code;
     unsigned imports_total, imports_implemented, imports_reached;
-    unsigned selfmod_entries, hooks_not_installed, overrides_not_installed;
+    unsigned selfmod_entries, lift_hooks, overrides_listed, overrides_installed, overrides_required;
     int quit_reason, cleanup_complete;
     unsigned host_ended_guest, windows_ended_by_host;
+    struct {
+        unsigned files, stream_views, finds, ddraw_surfaces, audio_buffers, guest_threads, smack_objects;
+    } at_stop; /* what the guest still held when it stopped, before the host released anything */
     unsigned modules, module_functions, module_imports, module_imports_implemented, dll_attach_count;
 } lx_boot_result_t;
 

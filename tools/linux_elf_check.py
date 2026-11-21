@@ -21,6 +21,8 @@ from pathlib import Path
 
 ALLOWED_LIBS = {"libc.so.6", "libm.so.6", "libpthread.so.0", "libdl.so.2", "librt.so.1", "ld-linux-x86-64.so.2",
                 "libgcc_s.so.1", "libstdc++.so.6"}
+# FFmpeg's three libraries are the optional Smacker decoder: dynamic, found by the system's loader, never through an RPATH.
+FFMPEG_LIB = re.compile(r"^lib(avformat|avcodec|avutil)\.so\.\d+$")
 GUEST_MODULE_NAMES = {"kernel32.dll", "user32.dll", "gdi32.dll", "advapi32.dll", "ddraw.dll", "dsound.dll", "winmm.dll",
                       "msvcrt.dll", "smackw32.dll", "processor.dll", "msvcirt.dll", "lz32.dll", "comctl32.dll", "a3d.dll"}
 LOCAL_PATH_PATTERNS = [rb"/home/[A-Za-z0-9_.-]+/", rb"/mnt/[a-z]/", rb"/Users/[A-Za-z0-9_.-]+/", rb"[A-Za-z]:\\\\?VisualStudio",
@@ -66,7 +68,7 @@ def check_glibc(path, baseline):
 def check_dependencies(path, allow):
     out = run(["readelf", "-d", str(path)])
     needed = re.findall(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]", out)
-    unexpected = [n for n in needed if n not in allow]
+    unexpected = [n for n in needed if n not in allow and not FFMPEG_LIB.match(n)]
     rpath = re.findall(r"\((?:RPATH|RUNPATH)\)\s+Library (?:rpath|runpath): \[([^\]]*)\]", out)
     return needed, unexpected, rpath
 

@@ -12,6 +12,7 @@
 #include "guest_memory.h"
 #include "guest_ptr.h"
 #include "jpt_fs.h"
+#include "linux_frontend.h"
 #include "linux_hle.h"
 #include "linux_log.h"
 #include "linux_msvcrt.h"
@@ -102,6 +103,7 @@ static uint64_t io__sopen(const uint32_t* a, void* u) {
     fd = open(host, flags | O_CLOEXEC, 0666);
     if (fd < 0) return (uint32_t)-1;
     if (mode & O_CREAT_G) jpt_vpath_invalidate(hle_vpath(), host);
+    if ((mode & O_CREAT_G) && (mode & O_TRUNC_G)) lx_frontend_file_created(name);
     for (int i = 3; i < MAX_FDS; i++)
         if (s_fds[i] < 0) {
             s_fds[i] = fd;
@@ -109,6 +111,31 @@ static uint64_t io__sopen(const uint32_t* a, void* u) {
         }
     close(fd);
     return (uint32_t)-1;
+}
+
+static uint64_t io__open(const uint32_t* a, void* u) { return io__sopen(a, u); }
+
+static uint64_t io_remove(const uint32_t* a, void* u) {
+    const char* name = cstr(a[0]);
+    char host[JPT_PATH_MAX];
+    (void)u;
+    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    if (!jpt_fs_remove(host)) return (uint32_t)-1;
+    jpt_vpath_invalidate(hle_vpath(), host);
+    return 0;
+}
+
+static uint64_t io_rename(const uint32_t* a, void* u) {
+    const char *from = cstr(a[0]), *to_name;
+    char source[JPT_PATH_MAX], target[JPT_PATH_MAX];
+    (void)u;
+    if (!from || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), from, 0, source, sizeof source) != JPT_VP_OK) return (uint32_t)-1;
+    to_name = cstr(a[1]);
+    if (!to_name || jpt_vpath_resolve(hle_vpath(), to_name, 1, target, sizeof target) != JPT_VP_OK) return (uint32_t)-1;
+    if (rename(source, target) != 0) return (uint32_t)-1;
+    jpt_vpath_invalidate(hle_vpath(), source);
+    jpt_vpath_invalidate(hle_vpath(), target);
+    return 0;
 }
 
 static uint64_t io__read(const uint32_t* a, void* u) {
@@ -458,7 +485,7 @@ static uint64_t io_fprintf(const uint32_t* a, void* u) {
 #define IO(fn, argc) { "msvcrt.dll", #fn, io_##fn, argc, HT_CDECL }
 
 static const hle_entry_t k_io_table[] = {
-    IO(_splitpath, 5), IO(_getcwd, 2), IO(_chdir, 1), IO(_mkdir, 1), IO(_sopen, 4), IO(_read, 3), IO(_write, 3), IO(_close, 1), IO(_lseek, 3), IO(_setmode, 2),
+    IO(_splitpath, 5), IO(_getcwd, 2), IO(_chdir, 1), IO(_mkdir, 1), IO(_sopen, 4), IO(_open, 3), IO(remove, 1), IO(rename, 2), IO(_read, 3), IO(_write, 3), IO(_close, 1), IO(_lseek, 3), IO(_setmode, 2),
     IO(fputc, 2), IO(fgetc, 1), IO(fwrite, 4), IO(fread, 4), IO(fseek, 3), IO(ftell, 1), IO(fflush, 1),
     IO(strtol, 3), IO(strtoul, 3), IO(strtod, 2), IO(sprintf, 16), IO(printf, 16), IO(fprintf, 16),
 };

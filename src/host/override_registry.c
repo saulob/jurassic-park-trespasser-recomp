@@ -48,6 +48,15 @@ int override_registry_install(override_registry_t* r, uint32_t va, override_fn_t
     return refuse(r, va, why, e->need == OVERRIDE_REQUIRED);
 }
 
+void override_registry_reset(override_registry_t* r) {
+    for (unsigned i = 0; i < r->count; i++) {
+        *r->entries[i].entry = r->entries[i].lifted;
+        r->entries[i].state = OVERRIDE_UNUSED;
+    }
+    r->target_verified = 0;
+    r->refusal_count = 0;
+}
+
 override_counts_t override_registry_counts(const override_registry_t* r) {
     override_counts_t c = { 0 };
     c.listed = r->count;

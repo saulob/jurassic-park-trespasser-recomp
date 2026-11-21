@@ -6,6 +6,7 @@
 #include <strings.h>
 
 #include "guest_ptr.h"
+#include "host_policy.h"
 #include "jpt_reg_store.h"
 #include "linux_advapi32.h"
 #include "linux_log.h"
@@ -43,12 +44,17 @@ typedef struct {
     uint8_t data[8];
 } policy_t;
 
+static int s_skip_video;
+
+void guest_skip_video(int on) { s_skip_video = on; }
+
 static int dword_policy(const char* name, int stored, policy_t* p) {
     uint32_t value;
-    if (!strcasecmp(name, "Safemode") || !strcasecmp(name, "AudioEnable3D") || !strcasecmp(name, "Use D3D")) value = 0;
+    if (!strcasecmp(name, "Safemode") && safemode_value_virtual(0)) value = 0;
+    else if (!strcasecmp(name, "AudioEnable3D") || !strcasecmp(name, "Use D3D")) value = 0;
     else if (!strcasecmp(name, "DDrawCertIgnore") && !stored) value = 1;
     else if (!strcasecmp(name, "UseSubTitles") && !stored) value = 1;
-    else if (!strcasecmp(name, "NoVideo") && !lx_smack_can_decode()) value = 1;
+    else if (!strcasecmp(name, "NoVideo") && (s_skip_video || !lx_smack_videos_enabled())) value = 1;
     else return 0;
     p->type = JPT_REG_DWORD;
     p->size = 4;

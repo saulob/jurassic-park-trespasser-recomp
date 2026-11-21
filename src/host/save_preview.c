@@ -1,9 +1,20 @@
 #include "save_preview.h"
 
+#ifdef _WIN32
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <wincodec.h>
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <SDL3/SDL_surface.h>
+
+#include "guest_abi.h"
+
+#define MAX_PATH 1024
+#endif
 
 #include <ctype.h>
 #include <math.h>
@@ -12,7 +23,11 @@
 #include <string.h>
 
 #define PREVIEW_DIR "previews"
+#ifdef _WIN32
 #define PREVIEW_EXT ".jpg"
+#else
+#define PREVIEW_EXT ".png"
+#endif
 #define JPEG_QUALITY 0.9f
 #define MAX_SIDE 4096
 
@@ -103,6 +118,7 @@ static uint8_t* downscale(const uint16_t* src, int sw, int sh, long pitch, int d
     return out;
 }
 
+#ifdef _WIN32
 /* 1: this call initialised COM and must uninitialise it; 0: the thread already had it; -1: COM is unavailable. */
 static int com_enter(void) {
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
@@ -188,6 +204,57 @@ int save_preview_write(const char* save_path, const uint16_t* rgb565, int w, int
     return ok;
 }
 
+#else
+
+/* A save's picture is a PNG beside the save, written through a temporary file; paths are the game's own and resolve to host files. */
+static int host_file(const char* guest_path, char* out, size_t cap) { return guest_host_path(guest_path, out, cap); }
+
+/* Where a save's picture is written: the save's own folder resolves (it exists), the picture goes in its previews folder, which is made. */
+static int host_new_preview(const char* save_path, char* out, size_t cap) {
+    const char* slash = file_part(save_path);
+    char folder[MAX_PATH], host_folder[MAX_PATH];
+    size_t n, keep;
+    if (!slash || !slash[1]) return 0;
+    n = (size_t)(slash - save_path) + 1;
+    if (n >= sizeof folder) return 0;
+    memcpy(folder, save_path, n);
+    folder[n] = 0;
+    if (!host_file(folder, host_folder, sizeof host_folder)) return 0;
+    keep = strlen(host_folder);
+    while (keep > 1 && host_folder[keep - 1] == '/') host_folder[--keep] = 0;
+    if (snprintf(out, cap, "%s/%s", host_folder, PREVIEW_DIR) >= (int)cap) return 0;
+    mkdir(out, 0777);
+    return snprintf(out, cap, "%s/%s/%s%s", host_folder, PREVIEW_DIR, slash + 1, PREVIEW_EXT) < (int)cap;
+}
+
+static int bgr_surface(uint8_t* bgr, int w, int h, SDL_Surface** out) {
+    SDL_Surface* s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_BGR24);
+    if (!s) return 0;
+    for (int y = 0; y < h; y++) memcpy((uint8_t*)s->pixels + (size_t)y * (size_t)s->pitch, bgr + (size_t)y * (size_t)w * 3, (size_t)w * 3);
+    *out = s;
+    return 1;
+}
+
+int save_preview_write(const char* save_path, const uint16_t* rgb565, int w, int h, long pitch) {
+    char host[MAX_PATH], temp[MAX_PATH + 8];
+    sp_size_t size = save_preview_size(w, h);
+    uint8_t* bgr;
+    SDL_Surface* surface = NULL;
+    int ok = 0;
+    if (!rgb565 || w <= 0 || h <= 0 || pitch < w || !host_new_preview(save_path, host, sizeof host)) return 0;
+    snprintf(temp, sizeof temp, "%s.tmp", host);
+    bgr = downscale(rgb565, w, h, pitch, size.width, size.height);
+    if (!bgr) return 0;
+    if (bgr_surface(bgr, size.width, size.height, &surface)) {
+        ok = SDL_SavePNG(surface, temp) && rename(temp, host) == 0;
+        SDL_DestroySurface(surface);
+    }
+    if (!ok) unlink(temp);
+    free(bgr);
+    return ok;
+}
+#endif
+
 int save_preview_shrink(const uint16_t* rgb565, int w, int h, long pitch, sp_image_t* out) {
     sp_size_t size = save_preview_size(w, h);
     uint8_t* bgr;
@@ -207,6 +274,7 @@ int save_preview_shrink(const uint16_t* rgb565, int w, int h, long pitch, sp_ima
     return 1;
 }
 
+#ifdef _WIN32
 int save_preview_delete(const char* save_path) {
     char path[MAX_PATH];
     if (!save_preview_path(save_path, path, sizeof path)) return 0;
@@ -286,6 +354,112 @@ int sp_image_load(const char* path, int fit_w, int fit_h, sp_image_t* out) {
     com_leave(entered);
     return ok;
 }
+
+#else
+
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG
+#define STBI_NO_GIF
+#define STBI_NO_STDIO
+#define STBI_NO_LINEAR
+#define STBI_NO_HDR
+#define STBI_FAILURE_USERMSG
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#include "stb_image.h"
+#pragma GCC diagnostic pop
+
+#define MAX_ART_SIDE 16384
+
+int save_preview_delete(const char* save_path) {
+    char path[MAX_PATH], host[MAX_PATH];
+    if (!save_preview_path(save_path, path, sizeof path) || !guest_host_path(path, host, sizeof host)) return 0;
+    return unlink(host) == 0;
+}
+
+static uint8_t* read_file(const char* host, size_t* size) {
+    FILE* f = fopen(host, "rb");
+    uint8_t* data;
+    long length;
+    if (!f) return NULL;
+    if (fseek(f, 0, SEEK_END) || (length = ftell(f)) <= 0 || length > (64L << 20) || fseek(f, 0, SEEK_SET)) {
+        fclose(f);
+        return NULL;
+    }
+    data = (uint8_t*)malloc((size_t)length);
+    if (data && fread(data, 1, (size_t)length, f) != (size_t)length) {
+        free(data);
+        data = NULL;
+    }
+    fclose(f);
+    *size = (size_t)length;
+    return data;
+}
+
+/* The picture as opaque BGRA, area-averaged down to fit fit_w x fit_h when it is larger (fit 0: as stored, at most MAX_SIDE). */
+static int decode(const char* host, int fit_w, int fit_h, sp_image_t* out) {
+    size_t size = 0;
+    uint8_t *file = read_file(host, &size), *rgba;
+    int w = 0, h = 0, n = 0, limit = fit_w > 0 && fit_h > 0 ? MAX_ART_SIDE : MAX_SIDE, dw, dh;
+    if (!file) return 0;
+    rgba = stbi_load_from_memory(file, (int)size, &w, &h, &n, 4);
+    free(file);
+    if (!rgba) return 0;
+    if (w <= 0 || h <= 0 || w > limit || h > limit) {
+        stbi_image_free(rgba);
+        return 0;
+    }
+    dw = w;
+    dh = h;
+    if (fit_w > 0 && fit_h > 0 && (w > fit_w || h > fit_h)) {
+        double k = (double)fit_w / w < (double)fit_h / h ? (double)fit_w / w : (double)fit_h / h;
+        dw = (int)(w * k + 0.5);
+        dh = (int)(h * k + 0.5);
+        if (dw < 1) dw = 1;
+        if (dh < 1) dh = 1;
+    }
+    out->pixels = (uint32_t*)malloc((size_t)dw * dh * 4);
+    if (!out->pixels) {
+        stbi_image_free(rgba);
+        return 0;
+    }
+    for (int y = 0; y < dh; y++) {
+        const int y0 = (int)((long long)y * h / dh), y1 = (int)(((long long)y + 1) * h / dh) > y0 ? (int)(((long long)y + 1) * h / dh) : y0 + 1;
+        for (int x = 0; x < dw; x++) {
+            const int x0 = (int)((long long)x * w / dw), x1 = (int)(((long long)x + 1) * w / dw) > x0 ? (int)(((long long)x + 1) * w / dw) : x0 + 1;
+            unsigned sum[3] = { 0, 0, 0 }, count = 0;
+            for (int sy = y0; sy < y1 && sy < h; sy++)
+                for (int sx = x0; sx < x1 && sx < w; sx++) {
+                    const uint8_t* p = rgba + ((size_t)sy * (size_t)w + (size_t)sx) * 4;
+                    sum[0] += p[0], sum[1] += p[1], sum[2] += p[2], count++;
+                }
+            if (!count) count = 1;
+            out->pixels[(size_t)y * dw + x] = 0xFF000000u | ((sum[0] / count) << 16) | ((sum[1] / count) << 8) | (sum[2] / count);
+        }
+    }
+    out->width = dw;
+    out->height = dh;
+    stbi_image_free(rgba);
+    return 1;
+}
+
+int save_preview_load(const char* save_path, sp_image_t* out) {
+    char path[MAX_PATH], host[MAX_PATH];
+    memset(out, 0, sizeof *out);
+    if (!save_preview_path(save_path, path, sizeof path) || !guest_host_path(path, host, sizeof host)) return 0;
+    return decode(host, 0, 0, out);
+}
+
+int sp_image_load(const char* path, int fit_w, int fit_h, sp_image_t* out) {
+    char host[MAX_PATH];
+    memset(out, 0, sizeof *out);
+    if (!path || fit_w <= 0 || fit_h <= 0) return 0;
+    if (!guest_host_path(path, host, sizeof host)) snprintf(host, sizeof host, "%s", path);
+    return decode(host, fit_w, fit_h, out);
+}
+#endif
 
 void save_preview_free(sp_image_t* image) {
     free(image->pixels);

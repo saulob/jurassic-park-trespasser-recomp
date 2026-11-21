@@ -611,6 +611,18 @@ static void test_blend(void) {
     CHECK(target[0] == 0xFFFFFFFFu, "fully outside: nothing");
 }
 
+static void test_outline(void) {
+    uint32_t glyphs[49], out[49];
+    uint16_t scratch[49];
+    memset(glyphs, 0, sizeof glyphs);
+    glyphs[3 * 7 + 3] = 0xFFu;
+    jvs_outline(glyphs, 7, 7, 1, scratch, out);
+    CHECK(out[3 * 7 + 3] == 0xFFFFFFFFu, "a solid glyph pixel is opaque white");
+    CHECK(out[3 * 7 + 4] == 0xEB000000u, "next to it: the outline, 235 of 255 opaque (0x%08X)", out[3 * 7 + 4]);
+    CHECK(out[2 * 7 + 4] == 0x9C000000u, "on the diagonal: a softer edge (0x%08X)", out[2 * 7 + 4]);
+    CHECK(out[3 * 7 + 6] == 0u && out[0] == 0u, "beyond the outline: nothing");
+}
+
 static int contains(const char* relative, const char* needle) {
     char* text = read_file(relative, NULL);
     int found = text && strstr(text, needle) != NULL;
@@ -671,7 +683,7 @@ static void test_no_reference_material(void) {
 
 static void test_wiring(void) {
     const char* video = "src/host/video_hd.c";
-    CHECK(before(video, "skip_opening(intro);\n        return;", "video_subtitles_begin(guest_name);"),
+    CHECK(before(video, "if (skip_intro_try(guest_name, mode != VL_PLAY_AUTO, V.play_lifted)) return;", "video_subtitles_begin(guest_name);"),
           "Skip Intro returns before any subtitle session");
     CHECK(before(video, "video_subtitles_begin(guest_name);\n    V.play_lifted();\n    video_subtitles_end();",
                  "vl_session_end(&V.session);"),
@@ -717,6 +729,7 @@ int main(void) {
     test_wrap();
     test_layout();
     test_blend();
+    test_outline();
     test_no_reference_material();
     test_wiring();
     printf("video_subtitle_tests: %d checks, %d failures\n", g_checks, g_failures);

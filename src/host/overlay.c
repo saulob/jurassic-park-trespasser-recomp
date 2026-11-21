@@ -3,8 +3,12 @@
  * Objectives and Cheats. Requests from keys and the gamepad run in the game's UI loop, the previous
  * interface closed first; the game's Hint (F1) is let through only once nothing of the host is left on the picture.
  */
-#include "host.h"
-
+#include "debug_menu.h"
+#include "guest_abi.h"
+#include "host_input.h"
+#include "jpt_config.h"
+#include "jpt_tr.h"
+#include "minimap.h"
 #include "overlay_policy.h"
 #include "tutorial_prompts.h"
 
@@ -68,7 +72,7 @@ void overlay_ui_loop(void) {
         }
         if (O.active != OV_NONE && ++O.hint_wait <= HINT_WAIT_PASSES) return;
         O.hint_wait = 0;
-        window_host_post_key(VK_F1);
+        host_post_key(HOST_VK_F1);
         return;
     }
     if (O.request == OV_NONE && !O.source) return;
@@ -76,7 +80,7 @@ void overlay_ui_loop(void) {
     if (plan.close != OV_NONE) close_kind(plan.close);
     if (plan.open == OV_HINT) {
         if (plan.close != OV_NONE) O.hint_wait = 1;
-        else window_host_post_key(VK_F1);
+        else host_post_key(HOST_VK_F1);
     } else if (plan.open != OV_NONE) {
         open_kind(plan.open);
     }
@@ -84,25 +88,40 @@ void overlay_ui_loop(void) {
         note("%s -> %s (%s)", ov_name(plan.close), ov_name(plan.open), O.source ? O.source : "?");
     O.request = OV_NONE;
     O.source = NULL;
-    if (plan.close != OV_NONE || plan.open != OV_NONE) gamepad_overlay_changed();
+    if (plan.close != OV_NONE || plan.open != OV_NONE) host_overlay_changed();
+}
+
+void overlay_toggle_minimap(const char* source, const char* settings_path) {
+    guest_ui_view_t g;
+    const char* key = JPT_KEY_MINIMAP;
+    const char* value;
+    int on;
+    guest_ui_probe(&g);
+    if (!minimap_toggle_allowed(g.ui == GUEST_UI_GAMEPLAY, debug_menu_open_menu(), tutorial_prompts_card_shown())) return;
+    on = minimap_toggle();
+    value = on ? "1" : "0";
+    if (settings_path && settings_path[0]) {
+        if (jpt_ini_set(settings_path, &key, &value, 1)) host_log("window", "minimap = %s saved to %s", value, settings_path);
+        else host_log("window", "could not save minimap to %s", settings_path);
+    }
+    debug_menu_notice(jpt_tr(on ? "Minimap On" : "Minimap Off"));
+    host_log("minimap", "%s: %s", source, on ? "on" : "off");
 }
 
 ov_kind_t overlay_active(void) { return O.active; }
 
 int overlay_blocks_gameplay(void) { return debug_menu_blocks_gameplay() || O.card || O.hint_wait; }
 
-int overlay_key(UINT msg, WPARAM wparam, LPARAM lparam) {
-    int down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN, repeat = (lparam & 0x40000000) != 0;
-    unsigned vk = (unsigned)wparam & 0xFFu;
-    if (msg != WM_KEYDOWN && msg != WM_KEYUP && msg != WM_SYSKEYDOWN && msg != WM_SYSKEYUP) return 0;
+int overlay_key_event(unsigned vk, int down, int repeat) {
+    vk &= 0xFFu;
     if (ov_keys_filter(&O.keys, vk, down)) return 1;
     if (!down || repeat) return 0;
-    if (vk == VK_F1 && (O.active != OV_NONE || debug_menu_visible())) {
+    if (vk == HOST_VK_F1 && (O.active != OV_NONE || debug_menu_visible())) {
         ov_keys_take(&O.keys, vk);
         overlay_request(OV_HINT, "F1");
         return 1;
     }
-    if (vk == VK_ESCAPE && O.active == OV_CONTROLS) {
+    if (vk == HOST_VK_ESCAPE && O.active == OV_CONTROLS) {
         ov_keys_take(&O.keys, vk);
         overlay_request(OV_NONE, "Esc");
         note("%s closed by %s, %s held back until released", "controls", "Esc", "Esc");

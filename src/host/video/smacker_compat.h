@@ -70,7 +70,24 @@ typedef struct {
     audio_mixer_t* (*mixer_for_device)(void* context, uint32_t device);
     uint64_t (*now_us)(void* context);
     void* context;
+    /* Optional: one line per open and close, for the host's log. */
+    void (*log)(void* context, const char* line);
+    /* Optional: the name of the file behind a SMACKFILEHANDLE the game opened. 0 when unknown. */
+    int (*handle_name)(void* context, uint32_t handle, char* out, size_t capacity);
+    /* Optional: a video's life for the host's overlays. `frame` is the frame on screen, in the destination's pixels at (x, y, w, h). */
+    void (*video_opened)(void* context, uint32_t video, const char* name, const smk_source_t* source, uint32_t frames);
+    void (*video_frame)(void* context, uint32_t video, uint32_t frame, int32_t x, int32_t y, int32_t w, int32_t h);
+    void (*video_closed)(void* context, uint32_t video);
 } smk_host_t;
+
+/* What the HLE did since the last reset (kept across smacker_hle_shutdown): the test and log evidence of a real playback. */
+typedef struct {
+    uint32_t opened, closed, open_failed;
+    uint64_t frames_decoded, frames_advanced, audio_bytes_pushed;
+    uint32_t audio_streams, ended_by_eof;
+} smk_stats_t;
+void smacker_hle_stats(smk_stats_t* out);
+void smacker_hle_stats_reset(void);
 
 /* The mixer of the DirectSound layer when `device` is one of its devices: the host callback of a build that also runs
  * the game audio through dsound_compat. */

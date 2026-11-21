@@ -6,7 +6,8 @@
  * retail pool). Original installs only the Stealth Mode wrappers of the two perception entries.
  */
 #include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 
 #include <math.h>
 #include <string.h>

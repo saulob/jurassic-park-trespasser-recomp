@@ -3,9 +3,11 @@
 # starts the program, a window, a sound or the launcher. One log per run in build/logs/linux_build_NNN.log.
 #
 #   tools/build-linux.sh [--config RelWithDebInfo|Debug|Release] [--cc gcc|clang] [--no-lifted] [--tests] [--clean]
-#                        [--jobs N] [--build-dir DIR]
+#                        [--jobs N] [--build-dir DIR] [--sanitize]
+# JPT_CMAKE_ARGS adds arguments to the configure step (for example -DFFMPEG_ROOT=<prefix> when FFmpeg is not installed system-wide).
 #
-# The executable is build/linux/bin/trespasser_recomp (or DIR/bin). Needs cmake 3.20+, ninja or make, a C compiler,
+# The executable is build/linux-work/bin/trespasser_recomp (or DIR/bin): a work product, never the artifact to run. The artifact is
+# build/linux/bin/trespasser_recomp, staged only by tools/test.ps1 (or tools/test-linux.sh --stage) after the gate passed. Needs cmake 3.20+, ninja or make, a C compiler,
 # python3, and the pcrecomp checkout in external/pcrecomp (tools/fetch_pcrecomp.py).
 set -euo pipefail
 
@@ -15,8 +17,9 @@ cc=${CC:-gcc}
 lifted=ON
 tests=0
 clean=0
+sanitize=0
 jobs=$(nproc 2>/dev/null || echo 4)
-build_dir=$repo/build/linux
+build_dir=$repo/build/linux-work
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -25,8 +28,9 @@ while [ $# -gt 0 ]; do
     --no-lifted) lifted=OFF; shift ;;
     --tests) tests=1; shift ;;
     --clean) clean=1; shift ;;
+    --sanitize) sanitize=1; shift ;;
     --jobs) jobs=$2; shift 2 ;;
-    --build-dir) build_dir=$(cd "$(dirname "$2")" 2>/dev/null && pwd)/$(basename "$2"); shift 2 ;;
+    --build-dir) mkdir -p "$(dirname "$2")"; build_dir=$(cd "$(dirname "$2")" 2>/dev/null && pwd)/$(basename "$2"); shift 2 ;;
     -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "build-linux: unknown option $1" >&2; exit 2 ;;
   esac
@@ -65,12 +69,15 @@ case "$cc" in
   gcc*) export CXX=${cc/gcc/g++} ;;
   *) export CXX=c++ ;;
 esac
+sanitize_args=()
+[ "$sanitize" = 1 ] && sanitize_args=(-DJPT_LINUX_SANITIZE=ON)
 targets=(trespasser_recomp)
 [ "$lifted" = ON ] && targets+=(jpt_lifted_linux)
 [ "$tests" = 1 ] && targets+=(jpt_linux_tests)
 
 {
-  cmake -S "$repo" -B "$build_dir" -G "$generator" -DCMAKE_BUILD_TYPE="$config" -DJPT_LINUX_LIFTED="$lifted"
+  # shellcheck disable=SC2086
+  cmake -S "$repo" -B "$build_dir" -G "$generator" -DCMAKE_BUILD_TYPE="$config" -DJPT_LINUX_LIFTED="$lifted" "${sanitize_args[@]}" ${JPT_CMAKE_ARGS:-}
   cmake --build "$build_dir" --parallel "$jobs" --target "${targets[@]}"
 } >>"$log" 2>&1 || {
   echo "build-linux: FAILED, last lines of $log:" >&2

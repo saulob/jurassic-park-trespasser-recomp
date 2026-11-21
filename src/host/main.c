@@ -522,17 +522,14 @@ int main(int argc, char** argv) {
     }
     log_settings(&cfg, box, monitor_w, monitor_h);
     stream_audio_init();
-    l10n_init(user.cache_dir, game_dir, cfg.language, version);
+    l10n_init(user.cache_dir, game_dir, game_dir, cfg.language, version);
     gamepad_configure(&cfg.gamepad);
     key_policy_set_quick_keys(cfg.hotkey_vk[JPT_HOTKEY_QUICK_SAVE], cfg.hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
-    ce_gameplay_configure(cfg.dual_stow, cfg.max_object_detail);
-    active_ai_configure(cfg.active_ai_enhanced);
-    patch117_configure(cfg.official_patch_117);
-    patch117_player_configure(cfg.official_patch_117);
-    patch117_physics_configure(cfg.official_patch_117);
+    guest_features_configure(&cfg);
     cheats_start(cfg.cheat);
     if (!guest_overrides_enable()) return HOST_EXIT_SETUP;
 
+    debug_menu_windows_init();
     window_host_set_frame_counter(cfg.show_frame_counter);
     window_host_configure(cfg.borderless, cfg.monitor, cfg.window_w, cfg.window_h, cfg.stretch, cfg.show_fps,
                           cfg.show_resolution_title,
@@ -568,6 +565,7 @@ int main(int argc, char** argv) {
 
     guest_registry_init(game_dir, user.saves_dir);
     io_trace_user_dir(user.saves_dir);
+    l10n_set_user_folder(user.saves_dir);
     if (native32_bind(JPT_GUEST_IMAGE_BASE, s_shims, (int)(sizeof s_shims / sizeof s_shims[0]))) {
         host_log("imports", "unresolved imports (listed above as [bind] lines); refusing to run");
         return HOST_EXIT_SETUP;
@@ -601,8 +599,7 @@ int main(int argc, char** argv) {
     {
         jpt_size_t hardware = jpt_gameplay_mode(box, cfg.aspect, 1), software = jpt_gameplay_mode(box, cfg.aspect, 0);
         jpt_size_t hardware_title = jpt_title_size(box, hardware, 1);
-        widescreen_set_fov(cfg.fov);
-        if (!widescreen_install(cfg.aspect)) hardware = software = jpt_gameplay_mode(box, 0, 0);
+        if (!widescreen_install_modes() || !widescreen_install_camera(cfg.aspect)) hardware = software = jpt_gameplay_mode(box, 0, 0);
         registry_gameplay_sizes(hardware.width, hardware.height, software.width, software.height);
         dd_set_gameplay_modes((DWORD)hardware.width, (DWORD)hardware.height, (DWORD)software.width,
                               (DWORD)software.height);
@@ -613,15 +610,9 @@ int main(int argc, char** argv) {
     ui_canvas_install();
     loading_hd_install();
     video_hd_install();
-    video_hd_skip_intro(cfg.skip_intro);
     video_subtitles_configure(cfg.video_subtitles, game_dir);
     minimap_configure(cfg.minimap);
-    physics_fixes_install();
-    ce_gameplay_install();
-    active_ai_install();
-    patch117_install();
-    patch117_player_install();
-    patch117_physics_install();
+    guest_features_install();
     host_log("ce", "active AI: %s", active_ai_installed() ? "enhanced (6)" : "original (3)");
     ce_graphics_install(d3dr_hardware());
     engine_limits_install(d3dr_hardware());

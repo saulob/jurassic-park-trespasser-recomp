@@ -487,7 +487,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
         return;
     }
     ID3D11DeviceContext_CopyResource(s_p.context, (ID3D11Resource*)back, (ID3D11Resource*)staging);
-    if (video_test_visible() || debug_menu_overlay_wanted()) {
+    if (video_test_visible() || debug_menu_overlay_is_wanted()) {
         ID3D11RenderTargetView* view = NULL;
         if (SUCCEEDED(ID3D11Device_CreateRenderTargetView(s_p.device, (ID3D11Resource*)back, NULL, &view))) {
             video_test_overlay(s_p.device, s_p.context, view, (int)width, (int)height);

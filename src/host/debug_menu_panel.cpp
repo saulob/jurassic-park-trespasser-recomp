@@ -1,15 +1,23 @@
 // Cheats, Objectives, the compass, the objective markers and the minimap: Dear ImGui on the game's own D3D11 device, drawn into the back buffer
 // before its Present. Input never reaches ImGui: the menu's state is debug_menu_policy.c's.
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include <d3d11.h>
+#endif
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
+#include <chrono>
+
+#ifdef _WIN32
 #include "backends/imgui_impl_dx11.h"
+#else
+#include "imgui_software.h"
+#endif
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -21,14 +29,16 @@ namespace {
 
 struct Panel {
     ImGuiContext* context = nullptr;
-    ID3D11Device* device = nullptr;
-    LARGE_INTEGER frequency{}, last{};
+    const void* device = nullptr;
+    std::chrono::steady_clock::time_point last{};
     float scale = 0.0f;
     ImFont* vector = nullptr;
 };
 
 Panel g_panel;
-char g_fallback_font[MAX_PATH];
+char g_fallback_font[512];
+const void* g_fallback_memory = nullptr;
+size_t g_fallback_memory_size = 0;
 
 const ImVec4 kSection(0.95f, 0.72f, 0.30f, 1.0f);
 const ImVec4 kSelected(1.0f, 1.0f, 1.0f, 1.0f);
@@ -59,14 +69,14 @@ bool current() {
 
 void shut_down() {
     if (!current()) return;
+#ifdef _WIN32
     ImGui_ImplDX11_Shutdown();
+#endif
     ImGui::DestroyContext(g_panel.context);
     g_panel = Panel();
 }
 
-bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
-    if (g_panel.context && g_panel.device == device) return current();
-    shut_down();
+void create_context() {
     g_panel.context = ImGui::CreateContext();
     ImGui::SetCurrentContext(g_panel.context);
     ImGuiIO& io = ImGui::GetIO();
@@ -74,16 +84,31 @@ bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
     io.LogFilename = nullptr;
     ImGui::GetCurrentContext()->ErrorCallback = count_imgui_error;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoMouse;
+}
+
+#ifdef _WIN32
+bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
+    if (g_panel.context && g_panel.device == device) return current();
+    shut_down();
+    create_context();
     if (!ImGui_ImplDX11_Init(device, context)) {
         ImGui::DestroyContext(g_panel.context);
         g_panel = Panel();
         return false;
     }
     g_panel.device = device;
-    QueryPerformanceFrequency(&g_panel.frequency);
-    QueryPerformanceCounter(&g_panel.last);
+    g_panel.last = std::chrono::steady_clock::now();
     return true;
 }
+#else
+bool start_software() {
+    if (g_panel.context) return current();
+    create_context();
+    imgui_software_init(ImGui::GetIO());
+    g_panel.last = std::chrono::steady_clock::now();
+    return true;
+}
+#endif
 
 void apply_scale(float scale) {
     if (scale == g_panel.scale) return;
@@ -96,9 +121,8 @@ void apply_scale(float scale) {
 }
 
 float frame_seconds() {
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    float dt = (float)(now.QuadPart - g_panel.last.QuadPart) / (float)g_panel.frequency.QuadPart;
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    float dt = std::chrono::duration<float>(now - g_panel.last).count();
     g_panel.last = now;
     return dt < 1e-4f ? 1e-4f : dt > 0.25f ? 0.25f : dt;
 }
@@ -266,7 +290,7 @@ struct Table {
 
 Table measure(const dmp_frame_t* f) {
     Table t;
-    char line[DM_TEXT_MAX * 2 + 4];
+    char line[512];
     for (int i = 0; i < f->row_count; i++) {
         const dm_row_t& r = f->rows[i];
         t.body_h += row_height(r);
@@ -484,7 +508,12 @@ void fonts() {
     if (g_panel.vector) return;
     if (io.Fonts->Fonts.empty()) io.Fonts->AddFontDefault();
     g_panel.vector = io.Fonts->AddFontDefaultVector();
-    if (g_fallback_font[0]) {
+    if (g_fallback_memory) {
+        ImFontConfig merge;
+        merge.MergeMode = true;
+        merge.FontDataOwnedByAtlas = false;
+        io.Fonts->AddFontFromMemoryTTF(const_cast<void*>(g_fallback_memory), (int)g_fallback_memory_size, 0.0f, &merge);
+    } else if (g_fallback_font[0]) {
         ImFontConfig merge;
         merge.MergeMode = true;
         io.Fonts->AddFontFromFileTTF(g_fallback_font, 0.0f, &merge);
@@ -785,8 +814,20 @@ void minimap(const dmp_frame_t* f) {
     dl->AddCircle(ImVec2(cx, cy), radius - 1.5f, colour(ImVec4(0.78f, 0.84f, 0.72f, 0.55f), 1.0f), MM_CLIP_SIDES, 1.0f);
 }
 
+// The HUD, then the game's text, then the counter, then the windows (the background list is under every window).
+void draw_ui(const dmp_frame_t* f) {
+    if (hud_shown(f)) {
+        compass(f);
+        minimap(f);
+        text_layer(ImGui::GetBackgroundDrawList(), f);
+    }
+    frame_counter(ImGui::GetBackgroundDrawList(), f);
+    if (f->menu) menu(f);
+}
+
 }  // namespace
 
+#ifdef _WIN32
 extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11RenderTargetView* target, int bb_w,
                          int bb_h, const dmp_frame_t* f) {
     ID3D11RenderTargetView* previous = nullptr;
@@ -804,14 +845,7 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     fonts();
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
-    // The background list is under every window: the HUD, then the game's text, then the counter, then the windows.
-    if (hud_shown(f)) {
-        compass(f);
-        minimap(f);
-        text_layer(ImGui::GetBackgroundDrawList(), f);
-    }
-    frame_counter(ImGui::GetBackgroundDrawList(), f);
-    if (f->menu) menu(f);
+    draw_ui(f);
     ImGui::Render();
     context->OMGetRenderTargets(1, &previous, &previous_depth);
     context->OMSetRenderTargets(1, &target, nullptr);
@@ -820,6 +854,25 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     if (previous) previous->Release();
     if (previous_depth) previous_depth->Release();
 }
+#else
+extern "C" void dmp_draw_software(uint32_t* pixels, int width, int height, int pitch_pixels, const dmp_frame_t* f) {
+    g_hits.valid = 0;
+    if (!f->menu || f->objectives) g_stable.open = false;
+    if (!pixels || width <= 0 || height <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return;
+    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return;
+    if (!start_software()) return;
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(f->view_w, f->view_h);
+    io.DisplayFramebufferScale = ImVec2((float)width / f->view_w, (float)height / f->view_h);
+    io.DeltaTime = frame_seconds();
+    apply_scale(f->dpi_scale > 0.0f ? f->dpi_scale : 1.0f);
+    fonts();
+    ImGui::NewFrame();
+    draw_ui(f);
+    ImGui::Render();
+    imgui_software_render(ImGui::GetDrawData(), pixels, width, height, pitch_pixels);
+}
+#endif
 
 extern "C" void dmp_release(void) {
     g_hits.valid = 0;
@@ -832,4 +885,9 @@ extern "C" int dmp_imgui_errors(void) { return g_imgui_errors; }
 
 extern "C" void dmp_set_fallback_font(const char* path) {
     snprintf(g_fallback_font, sizeof g_fallback_font, "%s", path ? path : "");
+}
+
+extern "C" void dmp_set_fallback_font_memory(const void* ttf, size_t size) {
+    g_fallback_memory = ttf;
+    g_fallback_memory_size = size;
 }

@@ -1727,7 +1727,18 @@ static void test_chord(void) {
     CHECK(!chord_step(&c, 0, 100, &out) && out == 0);
 }
 
+static void test_rumble_motors(void) {
+    uint16_t lo, hi;
+    pad_rumble_motors(0.0f, 1.0f, &lo, &hi);
+    CHECK(lo == 0 && hi == 65535); /* pad_rumble_motors: the ends of the range are the ends of 16 bits */
+    pad_rumble_motors(0.5f, 0.25f, &lo, &hi);
+    CHECK(lo == 32767 && hi == 16383); /* pad_rumble_motors: strengths are scaled linearly to 16 bits */
+    pad_rumble_motors(-2.0f, 7.0f, &lo, &hi);
+    CHECK(lo == 0 && hi == 65535); /* pad_rumble_motors: strengths outside 0..1 are clamped, never wrapped */
+}
+
 int main(void) {
+    test_rumble_motors();
     test_profile_activate();
     test_chord();
     test_last_device();

@@ -16,8 +16,10 @@
 
 #include "cheats.h"
 #include "gamepad.h"
+#include "gamepad_ui.h"
 #include "minimap.h"
 #include "overlay_policy.h"
+#include "pad_sdl.h"
 #include "physics_watch.h"
 #include "platform.h"
 #include "tutorial_prompts.h"
@@ -36,8 +38,6 @@
 #define NEUTRAL_LOG_LIMIT 24
 #define HAND_LOG_LIMIT 40
 
-typedef enum { MODE_NONE, MODE_GAMEPLAY, MODE_MENU, MODE_VIDEO } ui_mode_t;
-
 static struct {
     jpt_gamepad_settings_t cfg;
     int opened;
@@ -49,21 +49,18 @@ static struct {
     pad_state_t state;
     int64_t sampled, frequency;
     recomp_func_t cinput_lifted;
-    pad_edges_t ui_edges;
+    gamepad_ui_t ui;
     pad_play_t play;
     int64_t last_play;
-    int left_gameplay, neutral_logs, hand_logs;
+    int neutral_logs, hand_logs;
     ov_commands_t commands;
     struct {
         int lt, mouse, guest, masked, look_wait, blocked;
     } hand;
     int frame_ready, frame_looked;
-    int hint_shown;
     pad_chord_t chord;
     int chord_fire;
     uint8_t triggers_held[2];
-    ui_mode_t ui_mode;
-    uint32_t ui_top;
     int64_t last_ui;
     unsigned connections, disconnections, switch_logs;
     unsigned long play_frames;
@@ -137,29 +134,6 @@ void gamepad_note_mouse_motion(int dx, int dy) {
     to_keyboard_mouse(pad_tracker_mouse_motion(&G.tracker, dx, dy, GetTickCount()));
 }
 
-static jpt_pad_type_t pad_type(SDL_GamepadType t) {
-    return t > SDL_GAMEPAD_TYPE_UNKNOWN && (int)t < (int)JPT_PAD_TYPE_COUNT ? (jpt_pad_type_t)t : JPT_PAD_TYPE_UNKNOWN;
-}
-
-static float axis(SDL_Gamepad* g, SDL_GamepadAxis a) {
-    float v = SDL_GetGamepadAxis(g, a) / 32767.0f;
-    return v < -1.0f ? -1.0f : v > 1.0f ? 1.0f : v;
-}
-
-static void read_pad(SDL_Gamepad* g, pad_state_t* s) {
-    memset(s, 0, sizeof *s);
-    for (int b = 0; b <= JPT_PAD_DPAD_RIGHT; b++)
-        if (SDL_GetGamepadButton(g, (SDL_GamepadButton)b)) s->buttons |= JPT_PAD_BIT(b);
-    s->lx = axis(g, SDL_GAMEPAD_AXIS_LEFTX);
-    s->ly = axis(g, SDL_GAMEPAD_AXIS_LEFTY);
-    s->rx = axis(g, SDL_GAMEPAD_AXIS_RIGHTX);
-    s->ry = axis(g, SDL_GAMEPAD_AXIS_RIGHTY);
-    s->lt = axis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
-    s->rt = axis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-    if (s->lt < 0) s->lt = 0;
-    if (s->rt < 0) s->rt = 0;
-}
-
 static const char* slot_family(int slot) { return jpt_pad_family_name((jpt_pad_family_t)G.roster.slots[slot].family); }
 
 static void open_pad(SDL_JoystickID id) {
@@ -175,7 +149,7 @@ static void open_pad(SDL_JoystickID id) {
         return;
     }
     name = SDL_GetGamepadName(g);
-    family = jpt_pad_family_of(pad_type(SDL_GetGamepadType(g)), SDL_GetGamepadVendor(g), SDL_GetGamepadProduct(g), name);
+    family = jpt_pad_family_of(pad_sdl_type(SDL_GetGamepadType(g)), SDL_GetGamepadVendor(g), SDL_GetGamepadProduct(g), name);
     slot = pad_roster_add(&G.roster, (uint32_t)id, family);
     if (slot < 0) {
         SDL_CloseGamepad(g);
@@ -185,7 +159,7 @@ static void open_pad(SDL_JoystickID id) {
     _snprintf(G.names[slot], sizeof G.names[slot] - 1, "%s", name ? name : "unnamed controller");
     G.names[slot][sizeof G.names[slot] - 1] = 0;
     pad_activity_reset(&G.activity[slot]);
-    read_pad(g, &st);
+    pad_sdl_read(g, &st);
     pad_activity_update(&G.activity[slot], &st, stick_deadzone(), trigger_deadzone());
     rumble = SDL_GetBooleanProperty(SDL_GetGamepadProperties(g), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
     G.connections++;
@@ -241,7 +215,7 @@ static void sample(int64_t now) {
     for (int slot = 0; slot < PAD_ROSTER_MAX; slot++) {
         pad_state_t st;
         if (!G.roster.slots[slot].used || !G.pads[slot]) continue;
-        read_pad(G.pads[slot], &st);
+        pad_sdl_read(G.pads[slot], &st);
         if (pad_activity_update(&G.activity[slot], &st, stick_deadzone(), trigger_deadzone()) && focused) {
             if (pad_roster_activity(&G.roster, slot))
                 host_log("gamepad", "now using the %s controller: %s", slot_family(slot), G.names[slot]);
@@ -264,19 +238,7 @@ uint32_t gamepad_buttons(void) { return G.state.buttons; }
 static float rdf(uint32_t va) { return *(float*)ADDR(va); }
 static void wrf(uint32_t va, float v) { *(float*)ADDR(va) = v; }
 
-static int bound(int action, uint32_t buttons) { return pad_bound(&G.cfg, action, buttons); }
-
-static const char* button_name(uint32_t buttons) {
-    if (buttons & JPT_PAD_BIT(JPT_PAD_EAST)) return "B";
-    if (buttons & JPT_PAD_BIT(JPT_PAD_START)) return "Menu";
-    return "View";
-}
-
 /* Hint goes through the game's own F1 (CGameWnd::OnKey opens CHintWnd) once overlay.c has closed the host's. */
-static int shortcut(int control, uint32_t pressed) {
-    return (pressed & JPT_PAD_BIT(control)) && jpt_pad_control_free(&G.cfg, control);
-}
-
 /* Before CInput reads: this frame's pad, and the right stick as mouse motion in the cursor it is about to read. */
 static void gameplay_before_read(void) {
     int64_t now = now_qpc();
@@ -284,8 +246,8 @@ static void gameplay_before_read(void) {
     pad_read_t kind;
     int dx, dy;
     sample(now);
-    kind = pad_read_kind(!G.last_play, G.left_gameplay, window_host_input_focused(), dt);
-    G.left_gameplay = 0;
+    kind = pad_read_kind(!G.last_play, G.ui.left_gameplay, window_host_input_focused(), dt);
+    G.ui.left_gameplay = 0;
     G.last_play = now;
     pad_play_before(&G.play, kind, &G.state, buttons_now(), &G.cfg, (float)dt, MEM8(INVERT_MOUSE_VA) != 0, &dx,
                     &dy);
@@ -409,7 +371,7 @@ static void cinput_read(void) {
         return;
     }
     blocked = overlay_blocks_gameplay();
-    resumed = G.left_gameplay && !blocked;
+    resumed = G.ui.left_gameplay && !blocked;
     if (blocked != G.commands.blocked)
         gameplay_neutral(blocked ? "a host interface opened" : "a host interface closed");
     else if (resumed)
@@ -432,81 +394,36 @@ int gamepad_install(void) {
     return 1;
 }
 
-static ui_mode_t mode_of(const guest_ui_view_t* v) {
-    if (v->kind == GUEST_WND_LOADER || v->kind == GUEST_WND_VIDEO) return MODE_NONE;
-    if (v->ui == GUEST_UI_GAMEPLAY) return MODE_GAMEPLAY;
-    if (v->ui == GUEST_UI_MENU || v->ui == GUEST_UI_DIALOG) return MODE_MENU;
-    return MODE_NONE;
-}
+static void toggle_minimap_from_pad(const char* source) { window_host_toggle_minimap(source); }
 
 void gamepad_ui_loop(void) {
-    guest_ui_view_t v;
+    gamepad_ui_in_t in;
     int64_t now = now_qpc();
-    uint32_t buttons, held, pressed, released, before;
-    int chord;
     double dt = G.last_ui ? seconds_between(G.last_ui, now) : 0.0;
-    ui_mode_t mode;
     G.last_ui = now;
     sample(now);
-    guest_ui_probe(&v);
-    mode = mode_of(&v);
-    buttons = buttons_now();
-    if (mode != G.ui_mode || v.top != G.ui_top) {
-        pad_edges_reset(&G.ui_edges, buttons);
-        if (mode == MODE_MENU) gamepad_menu_reset();
-        G.ui_mode = mode;
-        G.ui_top = v.top;
-    }
-    before = G.ui_edges.previous;
-    held = pad_edges_update(&G.ui_edges, buttons, &pressed);
-    released = before & ~held;
-    chord = G.chord_fire;
+    in.pad = &G.state;
+    in.cfg = &G.cfg;
+    in.buttons = buttons_now();
+    in.now_ms = GetTickCount();
+    in.dt = (float)dt;
+    in.device_gamepad = G.tracker.device == PAD_DEVICE_GAMEPAD;
+    in.chord = G.chord_fire;
     G.chord_fire = 0;
-    if (debug_menu_visible() && mode != MODE_NONE) {
-        if (mode == MODE_MENU) G.left_gameplay = 1;
-        if (debug_menu_open_menu() == 2 && shortcut(JPT_PAD_HINT_CONTROL, pressed))
-            overlay_request(OV_HINT, "D-pad Left");
-        else debug_menu_pad(held, pressed);
-    } else if (mode == MODE_GAMEPLAY && tutorial_prompts_card_shown()) {
-        const uint32_t close = JPT_PAD_BIT(JPT_PAD_BACK) | JPT_PAD_BIT(JPT_PAD_EAST) | JPT_PAD_BIT(JPT_PAD_START);
-        if (pressed & close) overlay_request(OV_NONE, button_name(pressed & close));
-        else if (shortcut(JPT_PAD_HINT_CONTROL, pressed)) overlay_request(OV_HINT, "D-pad Left");
-        else if (shortcut(JPT_PAD_OBJECTIVES_CONTROL, pressed)) overlay_request(OV_OBJECTIVES, "D-pad Right");
-    } else if (mode == MODE_GAMEPLAY) {
-        if (pressed & JPT_PAD_BIT(JPT_PAD_START)) window_host_post_key(VK_ESCAPE);
-        if (pressed & JPT_PAD_BIT(JPT_PAD_BACK)) overlay_request(OV_CONTROLS, "View");
-        else if (!G.hint_shown) G.hint_shown = tutorial_prompts_hint();
-        if (bound(JPT_ACT_JUMP, pressed)) window_host_post_key(VK_SPACE);
-        if (shortcut(JPT_PAD_HINT_CONTROL, pressed)) overlay_request(OV_HINT, "D-pad Left");
-        else if (shortcut(JPT_PAD_OBJECTIVES_CONTROL, pressed)) overlay_request(OV_OBJECTIVES, "D-pad Right");
-        else if (shortcut(JPT_PAD_SHOW_OBJECTIVE_CONTROL, pressed)) debug_menu_show_objective();
-        if (chord) window_host_toggle_minimap("L3 + R3");
-    } else {
-        G.left_gameplay = 1;
-        if (mode == MODE_MENU)
-            gamepad_menu_frame(&G.state, held, pressed, released, G.tracker.device == PAD_DEVICE_GAMEPAD,
-                               GetTickCount(), (float)(dt > 0.1 ? 0.1 : dt), stick_deadzone());
-    }
+    in.stick_deadzone = stick_deadzone();
+    in.toggle_minimap = toggle_minimap_from_pad;
+    gamepad_ui_step(&G.ui, &in);
 }
 
-void gamepad_overlay_changed(void) { pad_edges_reset(&G.ui_edges, buttons_now()); }
+void gamepad_overlay_changed(void) { gamepad_ui_overlay_changed(&G.ui, buttons_now()); }
 
 void gamepad_video_loop(void) {
-    const uint32_t skip = JPT_PAD_BIT(JPT_PAD_SOUTH) | JPT_PAD_BIT(JPT_PAD_EAST) | JPT_PAD_BIT(JPT_PAD_START);
-    uint32_t pressed;
-    G.left_gameplay = 1;
     sample(now_qpc());
-    if (G.ui_mode != MODE_VIDEO) {
-        pad_edges_reset(&G.ui_edges, buttons_now());
-        G.ui_mode = MODE_VIDEO;
-        G.ui_top = 0;
-    }
-    pad_edges_update(&G.ui_edges, buttons_now(), &pressed);
-    if (pressed & skip) window_host_post_key_up(VK_ESCAPE);
+    gamepad_ui_video(&G.ui, buttons_now());
 }
 
 int gamepad_menu_focus(void) {
-    return G.tracker.device == PAD_DEVICE_GAMEPAD && G.ui_mode == MODE_MENU && !gamepad_menu_pointer_free();
+    return G.tracker.device == PAD_DEVICE_GAMEPAD && G.ui.mode == GUI_MENU && !gamepad_menu_pointer_free();
 }
 
 void gamepad_prompts(gamepad_prompts_t* out) {
@@ -519,10 +436,10 @@ void gamepad_prompts(gamepad_prompts_t* out) {
 
 int gamepad_rumble(float low, float high, unsigned ms) {
     int active = G.roster.active;
+    uint16_t motor_low, motor_high;
     if (!platform_gamepads_ready() || active < 0 || !G.pads[active]) return 0;
-    low = low < 0 ? 0 : low > 1 ? 1 : low;
-    high = high < 0 ? 0 : high > 1 ? 1 : high;
-    return SDL_RumbleGamepad(G.pads[active], (Uint16)(low * 65535.0f), (Uint16)(high * 65535.0f), ms);
+    pad_rumble_motors(low, high, &motor_low, &motor_high);
+    return SDL_RumbleGamepad(G.pads[active], motor_low, motor_high, ms);
 }
 
 void gamepad_summary(void) {

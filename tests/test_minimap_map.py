@@ -310,6 +310,7 @@ class MinimapMap(unittest.TestCase):
                         cx, cy = sum(p[0] for p in q) / 4, sum(p[1] for p in q) / 4
                         self.assertGreater(math.hypot(x - cx, y - cy), 1.0, (lv["id"], x, y))
 
+    @unittest.skipIf(sys.version_info < (3, 10), "math.hypot rounds differently before Python 3.10, which moves ties of the wall merge: the committed file comes from the project's Python")
     def test_committed_file_matches_a_fresh_generation(self):
         original = minimap_map.OUT
         with tempfile.TemporaryDirectory() as folder:
@@ -317,7 +318,7 @@ class MinimapMap(unittest.TestCase):
             minimap_map.OUT = temp
             try:
                 minimap_map.emit(self.levels)
-                self.assertEqual(temp.read_bytes(), INC.read_bytes())
+                self.assertEqual(temp.read_bytes().replace(b"\r\n", b"\n"), INC.read_bytes().replace(b"\r\n", b"\n"))
             finally:
                 minimap_map.OUT = original
 

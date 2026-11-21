@@ -137,21 +137,21 @@ int minimap_clip_polygon(const minimap_frame_t* f, const minimap_point_t* in, in
     prepare_normals();
     for (int e = 0; e < MM_CLIP_SIDES && n > 0; e++) {
         const float nx = s_normals[e].nx, ny = s_normals[e].ny;
-        int count = 0;
+        int kept = 0;
         for (int i = 0; i < n; i++) {
             const minimap_point_t p = src[i], q = src[(i + 1) % n];
             const float dp = nx * (p.x - f->cx) + ny * (p.y - f->cy) - apothem;
             const float dq = nx * (q.x - f->cx) + ny * (q.y - f->cy) - apothem;
-            if (dp <= 0.0f && count < MM_CLIP_MAX) dst[count++] = p;
-            if ((dp <= 0.0f) != (dq <= 0.0f) && count < MM_CLIP_MAX) {
+            if (dp <= 0.0f && kept < MM_CLIP_MAX) dst[kept++] = p;
+            if ((dp <= 0.0f) != (dq <= 0.0f) && kept < MM_CLIP_MAX) {
                 const float t = dp / (dp - dq);
-                dst[count].x = p.x + (q.x - p.x) * t;
-                dst[count].y = p.y + (q.y - p.y) * t;
-                count++;
+                dst[kept].x = p.x + (q.x - p.x) * t;
+                dst[kept].y = p.y + (q.y - p.y) * t;
+                kept++;
             }
         }
         { minimap_point_t* t = src; src = dst; dst = t; }
-        n = count;
+        n = kept;
     }
     if (n < 3) return 0;
     memcpy(out, src, (size_t)n * sizeof *out);

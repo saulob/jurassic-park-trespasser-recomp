@@ -3,13 +3,20 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "active_profile.h"
+#include "debug_menu.h"
 #include "guest_memory.h"
 #include "guest_ptr.h"
 #include "jpt_sync.h"
+#include "l10n.h"
+#include "linux_features.h"
+#include "linux_gamepad.h"
 #include "linux_gdi32.h"
 #include "linux_guest_quit.h"
+#include "linux_hostkeys.h"
 #include "linux_shutdown.h"
 #include "linux_log.h"
+#include "linux_mouse.h"
 #include "linux_resource.h"
 #include "linux_screen.h"
 #include "linux_spine.h"
@@ -119,6 +126,7 @@ void hle_user32_init(void) {
     s_cursor_count = 0;
     s_cursor = 0;
     s_clipped = 0;
+    lx_mouse_reset();
     s_buttons = 0;
     s_empty_peeks = 0;
     s_last_click_ms = 0;
@@ -242,6 +250,33 @@ static uint32_t key_state_flags(void) {
                       (s_buttons & 4 ? 0x10 : 0));
 }
 
+static void translate_event(const lx_event_t* ev);
+
+void lx_user32_inject_event(const lx_event_t* ev) { translate_event(ev); }
+
+int lx_user32_cursor_get(long* x, long* y) {
+    *x = s_cursor_x, *y = s_cursor_y;
+    return 1;
+}
+
+void lx_user32_cursor_set(int x, int y) {
+    s_cursor_x = x, s_cursor_y = y;
+}
+
+uint32_t lx_user32_capture(void) { return s_capture; }
+int lx_user32_clipped(void) { return s_clipped; }
+
+void lx_user32_cursor_nudge(int dx, int dy) {
+    int w = 0, h = 0;
+    lx_screen_window_client(&w, &h);
+    s_cursor_x += dx;
+    s_cursor_y += dy;
+    if (w > 0 && h > 0) {
+        s_cursor_x = s_cursor_x < 0 ? 0 : s_cursor_x >= w ? w - 1 : s_cursor_x;
+        s_cursor_y = s_cursor_y < 0 ? 0 : s_cursor_y >= h ? h - 1 : s_cursor_y;
+    }
+}
+
 static uint32_t mouse_lparam(int x, int y) { return ((uint32_t)(y & 0xFFFF) << 16) | (uint32_t)(x & 0xFFFF); }
 
 static void translate_event(const lx_event_t* ev) {
@@ -254,6 +289,9 @@ static void translate_event(const lx_event_t* ev) {
     case LX_EV_KEY: {
         int alt = (s_keys[0x12] & 0x80) != 0, was_down = (s_keys[ev->vk & 0xFF] & 0x80) != 0;
         uint32_t lp = 1u | ((ev->scancode & 0xFFu) << 16);
+        unsigned msg = ev->down ? (alt || ev->vk == 0x12 ? WM_SYSKEYDOWN : WM_KEYDOWN) : (alt || ev->vk == 0x12 ? WM_SYSKEYUP : WM_KEYUP);
+        if (ev->down && !ev->synthetic) lx_gamepad_note_keyboard();
+        if (lx_hostkeys_filter(msg, ev->vk, ev->repeat, (s_keys[0x10] & 0x80) != 0, (s_keys[0x11] & 0x80) != 0, alt)) break;
         s_keys[ev->vk & 0xFF] = ev->down ? 0x80 : 0;
         if (ev->down && was_down) lp |= 1u << 30;
         if (!ev->down) lp |= (1u << 30) | (1u << 31);
@@ -264,21 +302,36 @@ static void translate_event(const lx_event_t* ev) {
         break;
     }
     case LX_EV_CHAR:
+        if (lx_features_running() && ev->vk < 128u && debug_menu_char((char)ev->vk)) break;
         if (w) lx_user32_post(target, WM_CHAR, ev->vk, 1);
         break;
     case LX_EV_MOUSE_MOVE: {
         int gx = ev->x, gy = ev->y;
+        if (!ev->synthetic) lx_gamepad_note_mouse_motion(ev->relative ? (int)ev->dx : ev->x - s_cursor_x, ev->relative ? (int)ev->dy : ev->y - s_cursor_y);
+        lx_mouse_note(ev->relative ? LX_MN_RELATIVE_MOTION : LX_MN_ABSOLUTE_MOTION);
+        if (ev->relative) {
+            long x = s_cursor_x, y = s_cursor_y;
+            if (!lx_mouse_motion((long)ev->dx, (long)ev->dy, &x, &y)) break;
+            s_cursor_x = (int)x, s_cursor_y = (int)y;
+            if (w) lx_user32_post(target, WM_MOUSEMOVE, key_state_flags(), mouse_lparam(s_cursor_x, s_cursor_y));
+            break;
+        }
+        if (lx_mouse_cursor_virtual()) break;
         if (lx_screen_window_is_open() && !lx_screen_client_to_guest(ev->x, ev->y, &gx, &gy)) break;
         if (gx == s_cursor_x && gy == s_cursor_y) break;
         s_cursor_x = gx;
         s_cursor_y = gy;
+        if (lx_features_pointer_move(gx, gy)) break;
         if (w) lx_user32_post(target, WM_MOUSEMOVE, key_state_flags(), mouse_lparam(gx, gy));
         break;
     }
     case LX_EV_MOUSE_BUTTON: {
         uint32_t down_msg = ev->vk == 1 ? WM_LBUTTONDOWN : ev->vk == 2 ? WM_RBUTTONDOWN : WM_MBUTTONDOWN, msg = down_msg;
+        lx_mouse_note(LX_MN_BUTTON);
+        if (ev->down && !ev->synthetic) lx_gamepad_note_mouse_button();
         if (ev->down) s_buttons |= (int)ev->vk;
         else s_buttons &= ~(int)ev->vk, msg = down_msg + 1;
+        if (lx_features_pointer_button(ev->vk, ev->down, s_cursor_x, s_cursor_y)) break;
         if (ev->down && w && s_class[w->cls].style & CS_DBLCLKS) {
             uint64_t t = jpt_time_ms();
             if (s_last_click_message == down_msg && t - s_last_click_ms < 500 && s_last_click_x == s_cursor_x && s_last_click_y == s_cursor_y)
@@ -289,9 +342,11 @@ static void translate_event(const lx_event_t* ev) {
         break;
     }
     case LX_EV_MOUSE_WHEEL:
+        lx_mouse_note(LX_MN_WHEEL);
         if (w) lx_user32_post(target, WM_MOUSEWHEEL, ((uint32_t)(ev->y & 0xFFFF) << 16) | key_state_flags(), mouse_lparam(s_cursor_x, s_cursor_y));
         break;
     case LX_EV_FOCUS:
+        lx_mouse_set_focus(ev->down);
         if (w) {
             lx_user32_post(target, WM_ACTIVATEAPP, (uint32_t)ev->down, 0);
             lx_user32_post(target, WM_ACTIVATE, ev->down ? 1u : 0u, 0);
@@ -305,6 +360,7 @@ static void translate_event(const lx_event_t* ev) {
 static void pump_backend(void) {
     lx_event_t ev;
     if (!lx_screen_window_is_open()) return;
+    lx_mouse_update();
     while (lx_window_backend()->next_event(lx_window_backend(), 0, &ev) && ev.kind != LX_EV_NONE) translate_event(&ev);
 }
 
@@ -958,9 +1014,16 @@ static uint64_t u_KillTimer(const uint32_t* a, void* u) {
 
 /* ---- input state, cursor, metrics ---- */
 
+int lx_user32_key_held(unsigned vk) { return vk < 256 && (s_keys[vk] & 0x80) != 0; }
+
+static void (*s_ui_loop)(void);
+
+void lx_user32_set_ui_loop(void (*fn)(void)) { s_ui_loop = fn; }
+
 static uint64_t u_GetCursorPos(const uint32_t* a, void* u) {
     int32_t pt[2];
     (void)u;
+    if (s_ui_loop && lx_guest_eip() == jpt_gva_canonical[GVA_ID(0x00417840)]) s_ui_loop();
     pt[0] = s_cursor_x, pt[1] = s_cursor_y;
     return gp_copy_out(a[0], pt, sizeof pt);
 }
@@ -975,7 +1038,7 @@ static uint64_t u_SetCursorPos(const uint32_t* a, void* u) {
 static uint64_t u_ShowCursor(const uint32_t* a, void* u) {
     (void)u;
     s_cursor_count += a[0] ? 1 : -1;
-    if (lx_screen_window_is_open()) lx_window_backend()->set_cursor_visible(lx_window_backend(), s_cursor_count >= 0);
+    lx_mouse_set_cursor_count(s_cursor_count);
     return (uint64_t)(uint32_t)s_cursor_count;
 }
 
@@ -995,7 +1058,6 @@ static uint64_t u_InitCommonControls(const uint32_t* a, void* u) {
 static uint64_t u_ClipCursor(const uint32_t* a, void* u) {
     (void)u;
     s_clipped = a[0] != 0 && gp_copy_in(s_clip, a[0], sizeof s_clip);
-    if (lx_screen_window_is_open()) lx_window_backend()->set_mouse_grab(lx_window_backend(), s_clipped);
     return 1;
 }
 
@@ -1214,6 +1276,10 @@ static uint64_t u_LoadStringA(const uint32_t* a, void* u) {
     char* out;
     size_t n;
     (void)u;
+    if (a[3] && (out = (char*)gm_ptr_checked(a[2], a[3], 1)) != NULL) {
+        int translated = l10n_load_string(a[1], out, (int)a[3]);
+        if (translated >= 0) return (uint32_t)translated;
+    }
     if (!a[3] || !resource_string(a[0], a[1], text, sizeof text)) return 0;
     n = strlen(text);
     if (n >= a[3]) n = a[3] - 1;

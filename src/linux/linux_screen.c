@@ -3,9 +3,14 @@
 #include <string.h>
 
 #include "jpt_display.h"
+#include "jpt_sync.h"
 #include "linux_crash.h"
+#include "linux_frontend.h"
 #include "linux_log.h"
+#include "linux_overlay.h"
+#include "linux_quick.h"
 #include "linux_spine.h"
+#include "linux_video_subtitles.h"
 
 #define DEFAULT_W 640
 #define DEFAULT_H 480
@@ -94,15 +99,33 @@ void lx_screen_set_client_size(int w, int h) {
 }
 
 void lx_screen_present(const lx_frame_t* frame) {
-    lx_frame_t f = *frame;
+    lx_frame_t f = *frame, composed;
     if (!s_open) return;
     ensure_presentation();
+    if (lx_vsub_compose(&f, &composed)) f = composed;
+    {
+        int window_w = 0, window_h = 0;
+        lx_screen_window_client(&window_w, &window_h);
+        lx_view_t picture = { 0, 0, 0, 0 };
+        if (lx_frontend_frame(frame->width, frame->height, window_w, window_h) && lx_frontend_compose(&f, &composed, window_w, window_h, 0)) {
+            f = composed;
+            picture = lx_present_view(window_w, window_h, frame->width, frame->height, 0);
+        }
+        lx_overlay_set_picture(picture.x, picture.y, picture.w, picture.h);
+        lx_frontend_frame_done();
+    }
+    {
+        lx_frame_t overlaid;
+        lx_overlay_frame_presented(jpt_time_ms());
+        if (lx_overlay_compose(&f, &overlaid, jpt_time_ms())) f = overlaid;
+    }
     f.generation = s_generation;
-    if (f.width == s_mode.width && f.height == s_mode.height) jpt_presentation_commit(&s_pres, s_generation);
+    if (frame->width == s_mode.width && frame->height == s_mode.height) jpt_presentation_commit(&s_pres, s_generation);
     lx_crash_present_stage(LX_PRESENT_BEGIN);
     lx_window_backend()->present(lx_window_backend(), &f);
     if (++s_frames == 1)
         lx_log("Linux presentation", "first frame %dx%d %s presented", f.width, f.height, f.format == LX_PF_RGB565 ? "RGB565" : "XRGB8888");
+    if (lx_quick_pending()) lx_quick_pump(lx_quick_guest_ops());
     if (s_hook) {
         lx_crash_present_stage(LX_PRESENT_FRAME_HOOK);
         s_hook(s_frames, s_hook_user);

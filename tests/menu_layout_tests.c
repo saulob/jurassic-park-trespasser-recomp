@@ -660,7 +660,7 @@ static void test_no_echo(void) {
     }
     CHECK(menu && !strstr(menu, "Teleported to") && !strstr(menu, "F10 close") && !strstr(menu, "Free Camera ("),
           "no teleport echo, no key instructions, no Free Camera instructions in the menu");
-    CHECK(menu && strstr(menu, "if (D.state.menu == DM_MENU_OBJECTIVES) f.help"), "the key help is Objectives' alone");
+    CHECK(menu && strstr(menu, "if (D.state.menu == DM_MENU_OBJECTIVES) f->help"), "the key help is Objectives' alone");
     free(cheats);
     free(menu);
 }

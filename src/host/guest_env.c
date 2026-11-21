@@ -18,6 +18,18 @@ void guest_env_init(const char* game_dir, const char* guest_args) {
 
 const char* guest_env_exe_path(void) { return s_guest_exe; }
 
+#define GAME_INSTANCE GVA(0x0066E05C)
+
+int guest_load_string(unsigned id, char* out, int cap) {
+    return LoadStringA((HINSTANCE)(uintptr_t)MEM32(GAME_INSTANCE), id, out, cap) > 0;
+}
+
+int guest_data_dir(char* out, size_t cap) {
+    const char* slash = strrchr(s_guest_exe, '\\');
+    size_t dir = slash ? (size_t)(slash - s_guest_exe) : 0;
+    return snprintf(out, cap, "%.*s\\data", (int)dir, s_guest_exe) < (int)cap;
+}
+
 /* The guest CRT startup takes WinMain's command line from msvcrt's _acmdln, which holds the host's. */
 int guest_env_apply_command_line(void) {
     HMODULE crt = GetModuleHandleA("msvcrt.dll");

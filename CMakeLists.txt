@@ -84,10 +84,13 @@ set(HOST_SOURCES
   src/host/window_title.c
   src/host/text_layer.c
   src/host/gamepad.c
+  src/host/pad_sdl.c
   src/host/gamepad_menu.c
+  src/host/gamepad_ui.c
   src/host/gamepad_policy.c
   src/host/pad_glyphs.c
   src/host/guest_ui.c
+  src/host/guest_ui_model.c
   src/host/host_policy.c
   src/host/exit_policy.c
   src/host/milestones.c
@@ -106,7 +109,9 @@ set(HOST_SOURCES
   src/host/l10n_assets.cpp
   src/host/stream_pack.c
   src/host/stream_audio.c
+  src/host/stream_vfile.c
   src/host/tutorial_prompts.c
+  src/host/overlay_text.c
   src/host/ui_canvas.c
   src/host/frontend_hd.c
   src/host/frontend_layout.c
@@ -122,6 +127,11 @@ set(HOST_SOURCES
   src/host/video_test_state.c
   src/host/video_test_panel.cpp
   src/host/debug_menu.c
+  src/host/debug_menu_win.c
+  src/host/guest_ui_actions.c
+  src/host/guest_features.c
+  src/host/skip_intro.c
+  src/host/host_input.c
   src/host/debug_menu_policy.c
   src/host/debug_menu_layout.c
   src/host/debug_menu_panel.cpp
@@ -152,11 +162,13 @@ set(HOST_SOURCES
   src/host/physics_fixes.c
   src/host/ce_policy.c
   src/host/ce_gameplay.c
+  src/host/ce_quick.c
   src/host/active_ai_policy.c
   src/host/active_ai.c
   src/host/patch117_policy.c
   src/host/patch117_objects.c
   src/host/patch117.c
+  src/host/patch117_lz.c
   src/host/patch117_rules.c
   src/host/patch117_player.c
   src/host/patch117_physics.c
@@ -453,7 +465,7 @@ target_compile_definitions(l10n_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURC
 set_target_properties(l10n_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 # The restored audio and the corrected English captions: the embedded records, the virtual Stream.tpa, the captions' timings in
 # every language and the lint that keeps development paths out (headless): ninja -C <build dir> stream_tests && stream_tests.exe
-add_executable(stream_tests EXCLUDE_FROM_ALL tests/stream_tests.c src/host/stream_pack.c src/host/l10n_assets.cpp
+add_executable(stream_tests EXCLUDE_FROM_ALL tests/stream_tests.c src/host/stream_pack.c src/host/stream_vfile.c src/host/l10n_assets.cpp
   ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
 target_include_directories(stream_tests PRIVATE src/host launcher)
 target_link_libraries(stream_tests PRIVATE jpt_common)
@@ -554,7 +566,9 @@ target_compile_definitions(audio_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOUR
 # tests/linux_hle_tests.c, tests/linux_paths_tests.c, tests/linux_call_spine_tests.c (with tests/linux_fake_guest.c),
 # tests/linux_guest_ptr_tests.c, tests/linux_module_tests.c, tests/linux_boot_tests.c, tests/linux_user32_tests.c,
 # tests/linux_gdi_tests.c, tests/linux_ddraw_tests.c (these three with tests/linux_fake_guest.c and tests/linux_win32_harness.h) and
-# tests/linux_present_tests.c, tests/linux_crash_tests.c, tests/linux_audio_stress_tests.c and tests/linux_shutdown_tests.c are Linux-only: cmake/JptLinux.cmake builds them.
+# tests/linux_present_tests.c, tests/linux_crash_tests.c, tests/linux_audio_stress_tests.c, tests/linux_shutdown_tests.c,
+# tests/linux_stream_tests.c, tests/linux_save_files_tests.c, tests/linux_video_tests.c, tests/linux_session_tests.c,
+# tests/linux_mouse_tests.c, tests/linux_video_subtitle_tests.c, tests/linux_gamepad_tests.c, tests/linux_cs_tests.c and tests/linux_sdl_window_tests.c are Linux-only: cmake/JptLinux.cmake builds them.
 # Portable runtime pieces of the Linux host that also build here (headless): guest path resolution, the registry store,
 # and synchronisation over SDL3: ninja -C <build dir> vpath_tests sync_tests reg_store_tests
 add_executable(vpath_tests EXCLUDE_FROM_ALL tests/vpath_tests.c src/common/jpt_vpath.c src/common/jpt_fs_win.c)
@@ -568,6 +582,13 @@ foreach(portable_test vpath_tests reg_store_tests sync_tests)
   target_compile_options(${portable_test} PRIVATE /W3)
   target_compile_definitions(${portable_test} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endforeach()
+# The queue policy between the mixer and the device against a virtual device and clock (steady, bursts, jitter, drift, 100 ms
+# and 500 ms stalls, a late or early producer), and SDL's 22050 Hz conversion (headless): ninja -C <build dir> audio_pacer_tests
+add_executable(audio_pacer_tests EXCLUDE_FROM_ALL tests/audio_pacer_tests.c src/host/audio/audio_pacer.c)
+target_include_directories(audio_pacer_tests PRIVATE src/host/audio)
+target_link_libraries(audio_pacer_tests PRIVATE SDL3::SDL3-static)
+target_compile_options(audio_pacer_tests PRIVATE /W3)
+target_compile_definitions(audio_pacer_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The platform-independent audio decisions (SDL3 driver policy per platform, the start-up log line), PCM streams and voices
 # over caller-owned memory (headless, nothing is played): ninja -C <build dir> audio_portable_tests && audio_portable_tests.exe
 add_executable(audio_portable_tests EXCLUDE_FROM_ALL tests/audio_portable_tests.c src/host/audio/audio_policy.c src/host/audio/audio_mixer.c)
@@ -577,7 +598,7 @@ target_compile_definitions(audio_portable_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The real SDL3 backend on SDL's dummy driver: explicit and headless driver choice, the device thread pulling the mixer,
 # rate change, reopen, an unknown driver (headless, no device, no sound): ninja -C <build dir> audio_backend_tests
 add_executable(audio_backend_tests EXCLUDE_FROM_ALL tests/audio_backend_tests.c src/host/audio/sdl_audio.c src/host/audio/audio_mixer.c
-  src/host/audio/audio_policy.c)
+  src/host/audio/audio_policy.c src/host/audio/audio_pacer.c)
 target_include_directories(audio_backend_tests PRIVATE src/host/audio)
 target_link_libraries(audio_backend_tests PRIVATE SDL3::SDL3-static)
 target_compile_options(audio_backend_tests PRIVATE /W3)
@@ -652,6 +673,20 @@ target_include_directories(ce_tests PRIVATE src/host)
 target_link_libraries(ce_tests PRIVATE jpt_common)
 target_compile_options(ce_tests PRIVATE /W3)
 target_compile_definitions(ce_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+# The input context read from the game's window stack over a fake guest memory, and the input state, relative mouse mode and
+# pointer decisions that follow (headless, the same source runs on Linux): ninja -C <build dir> input_context_tests
+add_executable(input_context_tests EXCLUDE_FROM_ALL tests/input_context_tests.c src/host/guest_ui_model.c src/host/host_policy.c)
+target_include_directories(input_context_tests PRIVATE src/host)
+target_link_libraries(input_context_tests PRIVATE jpt_common jpt_profile)
+target_compile_options(input_context_tests PRIVATE /W3)
+target_compile_definitions(input_context_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The port's hotkey table (key_policy): which keys are the port's, repeats, modifiers and the Quick keys (headless, the same
+# source runs on Linux): ninja -C <build dir> hotkey_tests
+add_executable(hotkey_tests EXCLUDE_FROM_ALL tests/hotkey_tests.c src/host/host_policy.c)
+target_include_directories(hotkey_tests PRIVATE src/host)
+target_link_libraries(hotkey_tests PRIVATE jpt_common jpt_profile)
+target_compile_options(hotkey_tests PRIVATE /W3)
+target_compile_definitions(hotkey_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # Active AI: limits, loop orders, the physics box guard, the save block and the retail lint (headless):
 #   ninja -C <build dir> active_ai_tests && active_ai_tests.exe
 add_executable(active_ai_tests EXCLUDE_FROM_ALL tests/active_ai_tests.c src/host/active_ai_policy.c)

@@ -4,8 +4,9 @@ Status: **bring-up. The lifted guest runs on Linux x86_64, headless, through the
 the game's own loop: against a virtual window it draws the original main menu (measured: 4 161 distinct colours at frame 400 against 1
 at frame 5).** The SDL3 window backend (`--run`) opened the window and the main menu on WSLg/X11 in a first manual run; New Game then stopped at
 `DrawTextExA`. After the text, file, audio and `GetDC` work below, the headless scripted New Game (click NEW GAME, 700 frames) loads
-Beach and renders it, with the DirectSound layer on SDL's dummy driver; Smacker video is not decoded (no FFmpeg in the build here),
-so `NoVideo` is answered 1. Every statement below is something a headless command measured, or is marked as not done.
+Beach and renders it, with the DirectSound layer on SDL's dummy driver. With FFmpeg in the build the game's own Smacker videos play
+(headless: `newgame.smk` and the intro decoded and drawn by the guest); without it `NoVideo` is answered 1 and the game skips them.
+Every statement below is something a headless command measured, or is marked as not done.
 
 Target: a native ELF 64-bit x86-64 program (no Wine, Proton, Winelib, PE loader or 32-bit runtime) for a guest that
 stays a logical 32-bit Win32 program. Baseline: Ubuntu 20.04, glibc 2.31.
@@ -13,17 +14,75 @@ stays a logical 32-bit Win32 program. Baseline: Ubuntu 20.04, glibc 2.31.
 ## Build and test
 
 ```bash
-tools/build-linux.sh            # build/linux/bin/trespasser_recomp, the lifted guest, one log in build/logs
+tools/build-linux.sh            # build/linux-work/bin/trespasser_recomp (a work product), the lifted guest, one log in build/logs
 tools/build-linux.sh --tests    # also the headless suites
 tools/test-linux.sh             # build, run the suites, check the executable, list what no suite proves
 CC=gcc-13 tools/test-linux.sh --build-dir /tmp/jpt_build   # another compiler, another build folder
+tools/test-linux.sh --native-build --cc gcc-13             # ~/.cache/jpt-recomp/<system>-<compiler>: the Linux file system, much faster in WSL
+tools/test-linux.sh --sanitize --native-build              # the Linux-specific suites under ASan + UBSan (a separate tree)
 ```
 
+From Windows nothing of this is typed: `.\tools\test.ps1` finds the WSL distribution (MuaFocalBuild, Ubuntu 20.04 with glibc 2.31,
+is preferred; a newer one is used only for development and the glibc baseline is then reported as not proven), converts the
+repository path with `wslpath`, runs `tools/test-linux.sh --native-build --machine` and prints each row as it arrives, then compares
+the result with the Windows half feature by feature (`tests/feature_contract.json`).
+
 Needs cmake 3.20+, ninja or make, gcc or clang, python3 and `external/pcrecomp` (`tools/fetch_pcrecomp.py`). The scripts
-never start the program, a window, a sound device or the launcher; suites run with SDL's dummy drivers. The build tree is
-`build/linux` (ignored by git) unless `--build-dir` says otherwise; a Linux file system is much faster than `/mnt/c` in WSL.
+never start the game, a window, a sound device or the launcher (the binary itself only answers `--build-info` and `--self-check`, headless); suites run with SDL's dummy drivers. The build tree is
+`build/linux-work` (ignored by git) unless `--build-dir` says otherwise; a Linux file system is much faster than `/mnt/c` in WSL.
 `cmake/JptLinux.cmake` is included by the top-level `CMakeLists.txt` on Linux only. Debug info and `__FILE__` use
 `-ffile-prefix-map`, so no machine path is left in the binary.
+
+## The one Linux artifact (JPT-ART4N)
+
+There is one Linux binary to run, test by hand, package and ship: `build/linux/bin/trespasser_recomp`, with
+`trespasser_recomp.build.json` beside it. It is written only by `tools/test.ps1` (or `tools/test-linux.sh --stage`), and only after
+the Windows gate, the Linux build, every Linux suite, the feature parity and the binary's own checks passed. `tools/build-linux.sh`
+and `tools/test-linux.sh` build in `build/linux-work` (or the cache), so a binary you build by hand can no longer land on the
+artifact path and pass for the validated one. The cache under `~/.cache/jpt-recomp` keeps feeding objects, CMake, Ninja and the
+pinned FFmpeg; the gate copies the finished binary out of it.
+
+The first manual runs of the Linux port used a stale binary: `build/linux/bin/trespasser_recomp` was an older build (system GPL
+FFmpeg, no audio pacer, the old "overrides not installed" boot line) while the gate validated the one in the cache. Nothing tied the
+two together.
+
+* **Provenance.** `trespasser_recomp --build-info` prints (JSON, nothing else) the version, git commit and dirty flag, a source
+  fingerprint, the compiler, target, configuration, glibc baseline, FFmpeg libraries and licence, and the hash and schema of
+  `tests/feature_contract.json`. The fingerprint (`tools/source_fingerprint.py`) is the SHA-256 of a sorted manifest of file hashes
+  of `CMakeLists.txt`, `cmake`, `src`, `config`, `assets`, the pcrecomp runtime, imgui and the build scripts; text files are hashed
+  with line endings normalised, lifted code (`src/recomp/gen*`) by name and size (`tools/lifts.py` verifies its content), and
+  `build`, `user_data`, `logs`, `game`, `.git` never take part. `tools/gen_build_info.py` writes the header during the build and
+  rewrites it only when it changed. No clock goes into the binary.
+* **Self-check.** `trespasser_recomp --self-check` opens no window, no audio device, no log and writes no file; no guest code runs.
+  Each capability is a real call into its module: SelfMod entries, the override registry (70 listed, the number Linux can install, the
+  number installed with default settings), the 27 lift hooks, the host features, the audio pacer (policy version, queue target,
+  periods that follow the mixer rate) and SDL's audio stream, the input context (menus: free absolute pointer; gameplay: relative
+  motion), the gamepad layer and its menu step, the HD front end and loading screen, the controls card, Russian text, FFmpeg Smacker,
+  the virtual Stream.tpa, video subtitles and save pictures.
+* **Gate rows.** `elf self-check`, `elf build provenance` (the binary's fingerprint and contract hash against the tree, its override
+  and hook counts against `guest_override_list.h` and `lift_hook_list.h`) and `elf feature contract` (every Linux PASS feature that
+  lists `"runtime": [...]` capabilities in `tests/feature_contract.json` needs them in the binary). A passing suite with a binary
+  built from other sources, or without a feature, now fails.
+* **Staging.** `tools/linux_artifact.py stage` checks, copies to `trespasser_recomp.new` and renames; the manifest records the SHA-256,
+  fingerprint, contract hash, compiler, glibc maximum, FFmpeg mode, the gate's suite counts and its UTC time. A failing gate leaves
+  the last validated binary alone. `tools/package-linux.sh` verifies the artifact against its manifest and the current sources
+  (`linux_artifact.py verify`) and stages it; it never builds. A later AppImage step starts from that file.
+* **Boot log.** After the features are installed: `Linux features: 29/70 overrides installed (N required), 27/27 lift hooks active`
+  (with the host features off it says so). 29 is what Linux can install with every option on; the number installed follows the
+  settings (28 with the defaults).
+* **Audio log.** One line after the device opens (`SDL3 pacer active (policy 1): source 22050 Hz ..., device N Hz, ..., queue target N
+  periods`) and one at shutdown with the underruns, backlog drops, queue minimum and maximum and the longest wake-up gap; they
+  separate our bugs from device jitter. `JPT_AUDIO_STATS=1` still logs while running.
+* **Input log.** `JPT_INPUT_STATS=1` logs the mouse totals (SDL motions, absolute and relative motions that reached the guest,
+  buttons, wheel, context switches) at each change of input context and at shutdown, never per event. The pointer path is the
+  explicit input context of `host_policy.h`; `SetCursorPos` only stores the position (`tests/test_linux_artifact.py` reads it).
+
+### WSLg
+
+WSLg is a development and smoke environment. It is not the reference for audio latency or quality (PulseAudio through RDP), raw
+relative mouse motion, gamepad hardware, fullscreen behaviour or Gamescope, and a problem seen only there is not a failure of the port
+until it is reproduced on a native X11 or Wayland session. The code carries no WSL, `PULSE_SERVER` or X11 special case. The absolute
+pointer of the menus stays covered by headless suites with fake SDL events.
 
 ## Call spine (`src/linux/linux_spine.*`)
 
@@ -216,7 +275,7 @@ words on the stack that point into the executable's code. Stages are single atom
 * **Presenter** (`linux_screen.*`, `linux_window.*`): frames go to the backend unconverted (RGB565 stays RGB565; other formats become
   XRGB8888). `jpt_presentation` decides the view: letterboxed, a new guest screen size takes effect only with the first frame of that
   size (`tests/linux_present_tests.c`: 640x480, 800x600, 1280x720, 2560x1440), and the mouse maps back through the same view. Window
-  size policy (Auto, fixed, fullscreen) and the F3/F5/F6/F7/F8/F10 hotkeys of the Windows host are not ported; F11 is. ImGui is not
+  size policy (Auto, fixed, fullscreen) of the Windows host is not ported; F11 and the host hotkeys are (below). ImGui is not
   involved: nothing on Linux draws an overlay yet.
 * **Processor.dll** is answered in the host (`linux_processor.*`): the DLL's probe uses 16-bit EFLAGS code the lifter cannot take, and
   the game reads only three things of its 77-dword record (feature word with the Pentium Pro bit, MHz, the name), so `bGetProcessorInfo`
@@ -229,13 +288,170 @@ words on the stack that point into the executable's code. Stages are single atom
   SDL picks PipeWire, PulseAudio or ALSA (`SDL_AUDIODRIVER` overrides it). The headless bootstrap (virtual window) sets
   `SDL_AUDIODRIVER=dummy`, so no test plays a sound. `dsound_compat_install` after `dsound_compat_shutdown` starts a new session.
 * **Smacker** (`linux_smack.*`): the 14 `smackw32.dll` imports are bound to the portable HLE (`smacker_compat`), with file sources over
-  the game's virtual paths and over a guest file handle. The HLE needs a decoder: FFmpeg's (`libavformat`, `libavcodec`, `libavutil`)
-  when the build finds it. Without it nothing is installed and the registry answers `NoVideo = 1`, so the game skips its videos.
-  This machine's WSL has no FFmpeg development files (`libavformat-dev libavcodec-dev libavutil-dev` are the packages); no video was decoded.
+  the game's virtual paths and over a guest file handle. The HLE needs a decoder: FFmpeg's (`libavformat`, `libavcodec`, `libavutil`,
+  nothing else, no `ffmpeg` program, no `swscale`/`swresample`) when the build finds it (`JPT_HAS_FFMPEG=1` in the configure output,
+  `pkg-config` or `-DFFMPEG_ROOT=<prefix>`); without it nothing is installed and the registry answers `NoVideo = 1`. The log says which
+  case it is, with the library versions and licences, and warns when FFmpeg is not LGPL-only (`-DJPT_FFMPEG_REQUIRE_LGPL=ON` refuses such
+  a build at configure time). Packages: `sudo apt install libavformat-dev libavcodec-dev libavutil-dev`. The picture goes into the buffer
+  the game passed to `SmackToBuffer` (palette indexes or RGB555/565, changed 4x4 blocks only, rectangles, pitch, clipping), the sound
+  into the same SDL3 mixer as the game's audio (no second device), and `SmackWait` follows the audio's played position, the monotonic
+  clock when there is none. The Linux log has one line per open and close (`SmackOpen: 640x348, 1585 frames ...`).
 * **lz32** (`linux_lz32.*`): `LZOpenFileA`, `LZRead`, `LZSeek`, `LZClose` over a whole-file buffer; a file with the SZDD header is expanded
   when it is opened, any other is read as it is. The game reads its scenes and worlds this way.
 * **Guest threads and the machine lock**: the lock is not fair, so a guest thread that only polls would keep the others from ever
   running. The import path hands the machine over (100 us, every 64th import) while another guest thread waits for it.
+
+## Videos, Stream.tpa, saves, sessions and the gamepad (JPT-LNX13V)
+
+Measured headless (virtual window, SDL dummy audio and video drivers, nothing shown or played), with the installed game:
+
+* **Videos.** `linux_video_tests` plays the intro (`tpassintro.smk`, 640x348) and `newgame.smk` (640x344, Y-interlaced as in the
+  retail files) through the guest's own `CVideoWnd::Play`: 120 frames of each decoded by FFmpeg, 1.5 MB of PCM pushed to the mixer, an
+  Escape key-up skips each video, both are closed, and the game goes on to the menu and to Beach. `tests/smk_fixture.h` builds a
+  synthetic Smacker file (own bitstream, no game video in the repository) that `smacker_ffmpeg_tests` decodes frame by frame, palette
+  by palette, with two audio tracks, truncation and corruption sweeps and the HLE over the real backend. Not measured: the sound
+  itself (dummy device), A/V sync by ear. The picture of `newgame.smk` keeps the retail scan lines.
+* **Stream.tpa.** One virtual view per handle (`src/host/stream_vfile.*`, shared by the Windows host through `stream_audio.c`), over
+  `stream_pack.c`: the game's directory handle and its pool of read-write handles each get their own position and lifetime; every
+  one reads the corrected directory (4 restored records added, 1 replaced), the corrected captions and the restored records, also
+  beyond the physical end of the file. A view is opened read-only whatever access the game asks for; a `WriteFile` on it is refused,
+  so the retail file is never written (the Windows host passes such writes to the real file; the game was not seen to write).
+  `linux_stream_tests` (341 checks) covers a synthetic TPA and the retail file: Beach samples VH116, VH117, VH10 and VH16 through
+  16 handles (two packs of 8) byte-identical, the five restored records, 410 caption samples, the caption scan, the limit of 32 views
+  and 500 open/close cycles that leave nothing. The log line is `Stream.tpa: 405 captions corrected, 4 restored samples added,
+  1 replaced, 0 left as in the player's file` in the real game.
+* **Saves.** The game saves with msvcrt `_open`/`_write`/`_close` (and uses `remove`, `rename`, `_mkdir`), implemented over the
+  vpath. `linux_save_files_tests` covers create, overwrite, truncated files, names in any case, folders on the way, a read-only
+  folder. `linux_session_tests` drives the real game: New Game, pause menu, Save as `JPTSAVE1` (`SAVEGAME.000`, 335 KB), walk, Load
+  (a double click on the save: the OK button alone did nothing in the script), the view returns to the saved one; Quit to the main
+  menu, a second New Game in the same process, 7615 frames of walking, strafing and jumping (resident memory +3 MB), and the game's
+  own Quit to the desktop (`ExitProcess`, code 1). At that exit the game still holds its level swap file and its streaming thread,
+  which the host closes; no Stream.tpa view, DirectDraw surface, audio buffer, Smack object or find handle is left. The save format
+  is the game's own bytes; a Windows save was not loaded on Linux (no fixture: saves in `user_data` are personal).
+* **Video subtitles.** The Windows host draws them in its own presenters (`video_subtitles.c`: the frame of the Smacker player decides
+  the cue, GDI rasterises the text); the captions of `Stream.tpa` are the voice-over of the game and have nothing to do with them. On
+  Linux nothing called that code, so the videos played bare. Now the Smacker HLE tells the host when a video opens (its file name, from
+  the name or from the handle's `CreateFileA` name), which frame is on screen and where, and when it closes (`smk_host_t.video_*`);
+  `linux_video_subtitles.*` selects the timeline with the same fingerprint (size and first 64 KB) as Windows, takes the cue from that
+  frame, rasterises the text with `linux_text` (embedded Droid Sans, a Unicode entry added for UTF-8 text), wraps, places and outlines it
+  with the shared `jpt_video_subtitles` (`jvs_outline` moved there from the Windows host) and blends it, in the video's rectangle, into
+  a copy of the frame the presenter shows; the guest's surface and the video's pixels are not touched. A close, a skip or the HLE
+  shutting down clears the cue at once. The text is `jpt_tr` of the cue's key in the language of `trespasser.ini` (`language`, else the
+  release's own; the switch is `video_subtitles`, default On): all 7 languages translate all 128 cue texts of the 3 videos with dialogue
+  (`tpassintro.smk` 16 cues, `newgame.smk` 9, `win.smk` 7; `credits.smk` has none). `linux_video_subtitle_tests` covers the timelines,
+  languages, the overlay's pixels (place, centring, lines, clipping, other sizes), the retail files and the skip; `linux_video_tests`
+  plays both videos through the guest and checks the cues, the text in the presented frame, and no cue left after the skip.
+* **Mouse.** The Windows host never applies the game's `ClipCursor` or `SetCapture` (menus, dialogs and videos keep the pointer free) and
+  gives relative mouse mode only to gameplay, which the game announces by re-centring its cursor every frame (`SetCursorPos`; its
+  own `ClipCursor(NULL)` brackets the same time). Linux used to turn each `ClipCursor(rect)` into an SDL mouse grab, and the game
+  sets one before the intro (log 007: confined pointer in the intro and the main menu) and never took it back, with no relative
+  motion in the level. `linux_mouse.*` now reuses the Windows policy (`host_policy.c`: `input_state_from`, `input_hide_pointer`,
+  `pointer_add_relative`, `pointer_recapture`): clip and capture are logical state of user32; the pointer is hidden while the game's
+  `ShowCursor` counter is below zero and in gameplay; relative mode is on only while the game re-centres (three `SetCursorPos` calls
+  within 250 ms) and the window has focus; a lost focus releases it, a regained one takes it again; relative motion moves the
+  virtual cursor, absolute positions only move it outside gameplay. One log line per change (`Linux mouse: relative on, pointer
+  hidden (INPUT_GAMEPLAY_CAPTURED)`). `linux_mouse_tests` follows the game's own call sequence (start-up, video, menu, level, pause,
+  focus); `linux_video_tests` checks, against the real guest, that no grab or relative mode occurs during the videos, an Escape skip
+  and the menu (it failed before the change: 1005 frames grabbed, 305 of them in the menu), with a focus loss during the intro and
+  relative mode on in the level.
+* **Gamepad.** `linux_gamepad.*` is the Windows policy layer (`gamepad_policy`, `jpt_gamepad`, `pad_sdl`) behind an SDL3 device
+  backend: connection, hot-plug (a poll every 200 ms), the controller in use, the look as cursor motion, the actions' command bits
+  and Start as Escape, added to the game's own CInput read (`0x005F80B0`, through the shared override table: `lx_features_install_cinput`, which also empties the result while a host menu is open). `linux_gamepad_tests`
+  drives it with a fake backend (SDL's virtual joystick is not in this SDL build): all 15 buttons, both sticks and triggers, every
+  default action, connect, remove, reconnect, two controllers, no key from LB/RB/D-pad. The game imports only `joyGetPosEx`: it
+  has no force feedback, so nothing drives rumble; `lx_gamepad_rumble` exists and reaches the device. Menu navigation by pad, the
+  shortcuts and the glyphs are the shared ones (see JPT-PAR9F below).
+* **Host keys.** F11 (fullscreen) and Alt+F4 work in the SDL backend (`linux_sdl_window_tests`). F3 (Objectives), F4 (Show Objective), F5
+  (minimap), F6 (frame counter), F7/F8 (Quick Save/Load), F9 (physics snapshot) and F10 (Cheats) are the Windows host's, from the same table
+  (`key_policy`) and the same menu model; F2 opens the controls card (JPT-PAR9F).
+* **Sanitizers.** ASan and UBSan (`-DJPT_LINUX_SANITIZE=ON`, leak detection off) run clean on the stream, save, gamepad, SDL window,
+  HLE, Smacker (HLE and FFmpeg), video and session suites.
+
+## Host features over the lifted game (JPT-PAR8H)
+
+The Windows host's gameplay, physics, camera and menu features run on Linux from the same sources. `src/host/guest_abi.h` is the
+interface they are written against: the lifted runtime's registers and `ADDR()` guest memory, `host_log`, `guest_call`, the guest reads
+and writes (`guest_read32`, `guest_readable`, `guest_writable`, `guest_load_string`, `guest_scratch`), the stable-entry overrides
+(`guest_override_install`) and the game's window stack (`guest_ui_probe`). Windows implements it in the host (`host.h` includes it), Linux
+in `src/linux/linux_host.c`, `linux_overrides.c` and `linux_features.c`.
+
+- **One table.** `src/host/guest_override_list.h` (70 sites) and `src/host/lift_hook_list.h` (27 hooks) are read by both hosts.
+  `guest_override_lift.inc` gives each listed function its stable entry `lift116_sub_<va>` and its row in the registry
+  (`override_registry.c`); a replacement is installed through the entry, never into the ELF. The lifted code calls the entries, so an
+  override is reached by every direct call, alias entry and dispatch.
+- **Call forms.** An override is a `void (*)(void)` that reads the guest's registers and stack as the lifted body would: REPLACE (it
+  never calls the original), AROUND (it calls `*lifted` once, with its own changes before and after, as `stow`, `camera_set_properties`,
+  `CPartition::bAddChild`), and the lift hooks, which run in front of one instruction with the guest's registers and may change them.
+  `g_alias_entry` is checked by every override that must leave alias entries to the original.
+- **Fingerprints and failure.** The registry refuses an install before the executable is verified (`target_verified`; the boot has
+  compared the image with the build lift116 was generated from), an unlisted address, a second install, a missing replacement and the
+  lifted body as its own replacement; each refusal is recorded and a required one stops the run. A version whose lift is not the one
+  linked (es-117, ptbr-117 on Linux) installs nothing. `lx_overrides_reset` puts every entry back on its lifted body.
+- **Shared features.** Dual stow, Maximum object detail, the collision-sound re-arm, the 100 MB disk-space bypass and the Quick Save
+  list filter (`ce_gameplay.c`), Active AI (`active_ai.c`), the official Patch 1.1 (`patch117*.c`, its level files served fixed from the
+  LZ calls through `patch117_level_bytes`), the pelvis and water physics (`physics_fixes.c`), the terrain tolerances, the field of view
+  (`widescreen.c`, the part that does not need the display's mode table), Skip Intro (`skip_intro.c`, the game's own NoVideo branch), the
+  F3 and F10 menus (`debug_menu.c`, `overlay.c`, `objectives.c`, `cheats.c`), the minimap and the language (`l10n.c`: game text through LoadStringA, the voice captions, the level TEXT actions and the menu DDF files translated into the cache). Windows-only: the mode table and the
+  Direct3D engine limits, the GDI and Direct3D 11 painters (`debug_menu_win.c`, `ce_quick.c`).
+- **Menus.** `debug_menu_panel.cpp` is the Dear ImGui code both hosts draw the panels, the compass and the minimap with; Linux draws it
+  into a copy of the presented frame through the CPU backend `imgui_software.cpp` (`linux_panel.c`), at the guest's resolution. Keys,
+  characters, the pointer and the pad go through `lx_hostkeys_filter`, the user32 events and `lx_features_pointer_*`.
+- **Tests.** `linux_overrides_tests` (stub lifted bodies and fake guest memory: installs, refusals, rollback, the call forms, threads, the
+  behaviour of each shared feature through Linux guest pointers), `linux_features_tests` (the real lifted game plays New Game with the
+  features on and the test reads the guest's memory) and `linux_panel_tests` (pixels and hit table of the panels).
+- **FFmpeg.** When the machine has no `libavformat`/`libavcodec`/`libavutil`, `tools/test-linux.sh` runs `tools/ffmpeg-bootstrap.sh`: a
+  pinned FFmpeg n7.1.1 (commit verified), LGPL-only (no `--enable-gpl`, `--enable-nonfree` or `--enable-version3`), static, with only the
+  Smacker demuxer and its two decoders, built once into `~/.cache/jpt-recomp/ffmpeg`. No sudo, nothing installed on the system; offline it
+  says so and the video rows are BLOCKED.
+
+## HD front end, loading screen, controls card, pad menus and Russian (JPT-PAR9F)
+
+One implementation, two presenting sides. The Windows host's front end is a bridge that reads the game's window stack into a scene
+(`frontend_hd.c`, `frontend_layout.c`), a painter that draws it (`frontend_assets.c`, `frontend_art.c`, `frontend_plaque.c`) and a
+loading screen built the same way (`loading_hd.c`, `loading_layout.c`). Those files are compiled for Linux unchanged apart from what
+is below; nothing is copied.
+
+* **Backend seam.** `frontend_platform.h` is what the bridge and the loading screen ask of the host: where the finished layer goes,
+  the host pointer, the clock, files, the user folder. On Windows it is inline calls to the Direct3D 11 renderer (nothing changed:
+  `frontend_tests` 27 699 checks, `gamepad_tests`, `input_tests` pass as before). On Linux it is `src/linux/linux_frontend.c`.
+* **Painter.** Only text and threads were Windows: GDI measures and rasterises the glyphs and `CreateThread` runs the bands. On Linux
+  `frontend_text_stb.c` measures and rasterises the same roles with the embedded TrueType face (stb_truetype, the display code page
+  converted through `jpt_cp_to_utf8`, so Cyrillic comes out of the bytes the game stores) into the same 8-bit glyph cells, and the bands
+  run on pthreads. Layout, materials, art (the game's own bitmaps, Catmull-Rom scaled), alpha and colour-key rules are the shared code:
+  the Linux suite checks one thread against four and a dirty rectangle against a full repaint, byte for byte.
+* **Compositor** (`lx_frontend_compose`, called by `lx_screen_present` between the video subtitles and the host overlays). The frame
+  becomes the window's size: black bars, the guest picture scaled into the rectangle `lx_present_view` gives it (the same rectangle
+  the mouse mapping uses), the HD layer over it (copied 1:1 when it has the rectangle's size, bilinear otherwise), then the pointer.
+  The guest's framebuffer is never altered. The layer is painted at the rectangle's size within the existing 17 Mpixel budget, so a
+  window of any size, aspect or scale (100/150/225 % are 1920x1080, 2880x1620, 4320x2430 in the suite), a resize or fullscreen
+  changes only the rectangle. Text and menus are sharp at the window's resolution, not at 640x480.
+* **When it shows.** HD menus when the guest is at 640x480 and a window the front end knows is in front; anything else (another guest
+  mode, a window it cannot read, gameplay) is the game's own frame. The HD loading screen needs a rectangle larger than 640x480
+  and the loader window in front, and replaces the Windows guest-size layer with the rectangle's size, so a 640x480 guest gets a
+  window-resolution loading screen. The "Loading Level" plaque and the optional `assets/frontend/loading_hd/<slot>.png|jpg` art work
+  as on Windows (PNG and JPEG are decoded with the stb_image bundled in SDL's tree).
+* **Save pictures.** `<saves>\previews\<save>.png` instead of `.jpg` (SDL3's PNG writer and the stb decoder; Windows keeps WIC and
+  JPEG), written when the save is created and deleted with it (`lx_frontend_file_created/deleted` from the `_open` and `DeleteFileA`
+  HLE), from the game's frozen gameplay picture.
+* **Hit tests and hover.** The game still does them: the pad or the mouse moves the game's pointer, its controls draw their own hover
+  and pressed flags, and the layer shows what the game reports. The pointer sprite is hidden under pad focus.
+* **Controls card (F2, View).** `linux_card.c`: the card and the hint are the Windows model (`jpt_prompt_card`, `jpt_card_fit`, the
+  translations, the tokens of the keymap and bindings, `pad_glyph_coverage` for the glyphs) drawn by the host's overlay stage inside the
+  picture's rectangle. The Windows card is an entry of the game's text overlay; here the host draws it, so the same rows, columns and
+  glyphs appear, translated, and the game's own text is untouched. F2 reaches the shared overlay owner; the UI loop opens and closes it.
+* **Pad in the menus.** `gamepad_ui.c` is the Windows host's UI-loop step (shortcuts over gameplay, host menus, the game's menus through
+  `gamepad_menu.c`); Windows and Linux call it. D-pad and left stick move focus, A clicks, B and Start are Escape, View opens the card.
+  Keyboard and mouse input from the user switches the device back (host-made keys and clicks are marked and do not).
+* **Russian.** The display code page reaches the text rasteriser (`lx_text_set_codepage` follows the language), the painter and the
+  card. Proven by pixels: the same bytes draw different glyphs in 1251 and 1252, all 64 letters have glyphs, and the front end, the
+  loading screen, the card, the panels and the video subtitles draw Cyrillic.
+* **Not done.** The Windows widescreen modes (the mode table override) are not on Linux, so the guest stays at its own mode and
+  menus only take the HD path at 640x480; save pictures written by Windows (`.jpg`) are not read on Linux and the reverse; the
+  launcher is not ported.
+
+Suites: `linux_frontend_tests` (219 checks: scene reading, painter, text, compositor geometry, pointer, resize, session, performance,
+loading, card), `linux_gamepad_tests` (73: menu navigation, Start/View/B, device sharing), `linux_save_files_tests` (save pictures),
+`linux_overrides_tests` (F2 through the host key table, 29 overrides of 70 installed).
 
 ## Next blocker
 
@@ -245,10 +461,9 @@ flags `0x400` then `0x0`/`0x25`/the element's own, `SetBkMode(1)`, text and shad
 The older text below describes the state before those.
 
 
-The headless run does not stop on a missing import any more: it runs the game's loop. What the first manual `--run` will show cannot be
-known from here. Known gaps on the path to gameplay: Smacker (14 imports, the intro and the menu videos), the remaining msvcrt and
-kernel32 imports (`fopen`, `sscanf`, `printf`, `ctime`, `_findfirst`, `_except_handler3`, the file-time functions, `WinExec`), lz32 (4),
-winmm (`joyGetPosEx`), dialogs, the audio layer, and the hotkeys and window policy of the Windows host.
+The headless runs do not stop on a missing import any more: the whole session of the suite above (menu, videos, level, Save, Load, Quit,
+second game, Quit to the desktop) runs through the game's own code. What a real display, speaker and controller show cannot be known from
+here; the first manual `--run` of this round is the test of that.
 
 ## Pointer assumptions
 
@@ -266,7 +481,7 @@ shared.
 | Guest address space (4 GB window, commit/decommit/protect, guest heap, PE mapping, import binding) | `src/host64/` | tested on Linux and Windows x64 (`x64_tests`, 346 checks) |
 | Call spine, guest threads, recovery frames | `src/linux/linux_spine.*` | tested (`linux_call_spine_tests`, 22 checks) |
 | Guest DLL lift and loader (MSVCIRT) | `tools/lift_module.py`, `src/linux/linux_modules.*` | 578 functions lifted, tested (`linux_module_tests`, 42 checks) |
-| Lifted `lift116` with SelfMod, Linux bindings for the 70 stable entries and 27 hooks (originals run; the Patch 1.1 and Community Edition hooks are not installed) | `src/linux/linux_lift116.c` | links into the executable |
+| Lifted `lift116` with SelfMod, Linux bindings for the 70 stable entries and 27 hooks (the shared features install over them: see above) | `src/linux/linux_lift116.c` | links into the executable |
 | Guest path resolution, registry store, synchronisation, file interface | `src/common/jpt_vpath.*`, `jpt_reg_store.*`, `jpt_sync.*`, `jpt_fs*.c` | tested |
 | kernel32 HLE: 46 of 59 imports | `src/linux/linux_hle.c` | tested (`linux_hle_tests`) |
 | msvcrt HLE (start-up, `_EH_prolog`, exit, heap, x87 helpers, descriptors and `FILE`, `sprintf`, strings, numbers) and the data exports `_acmdln`, `_adjust_fdiv`, `_iob`, `__pioinfo`, `__badioinfo` | `src/linux/linux_msvcrt*.c` | reached by the bootstrap; no unit test of its own yet |
@@ -276,9 +491,8 @@ shared.
 | Processor.dll, dsound (no device), PE resources | `src/linux/linux_processor.*`, `linux_dsound.*`, `linux_resource.*` | exercised by `linux_boot_tests` |
 | Bootstrap | `src/linux/linux_boot.*` | runs the guest headless to its first frame, and to the main menu (`linux_boot_tests`, 14 checks) |
 
-Not done: Smacker decoding on this machine (the binding exists, FFmpeg is missing), winmm (1); user32 dialogs and menus,
-`WinExec`; msvcrt `fopen` and the rest of stdio for the executable, `sscanf`,
-`printf` and `fprintf`, `ctime`, `_findfirst`, SEH helpers; audio.
+Not done: winmm (`joyGetPosEx`, the old joystick), a real display, speaker and controller run (the headless measurements above are the
+evidence so far), the launcher.
 
 ## Measured facts
 

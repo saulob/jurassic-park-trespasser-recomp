@@ -238,6 +238,7 @@ static uint32_t backend_next_audio(smk_backend_t* b, uint32_t track, uint8_t* ou
         av_packet_unref(b->packet);
     }
     take = b->fifo_bytes[track] < capacity ? b->fifo_bytes[track] : capacity;
+    if (!take) return 0;
     memcpy(out, b->fifo[track], take);
     memmove(b->fifo[track], b->fifo[track] + take, b->fifo_bytes[track] - take);
     b->fifo_bytes[track] -= take;

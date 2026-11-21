@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-  The one validation command: builds the headless test programs incrementally and runs every suite of the project.
-  No game, launcher, window, controller, audio device or network is used.
+  The one validation command: builds the headless test programs incrementally and runs every suite of the project on
+  Windows, then the Linux gate in WSL, then compares the two feature by feature. No game, launcher, window, controller,
+  audio device or network is used.
 
 .DESCRIPTION
   Suites are grouped in sections and each prints PASS, FAIL, SKIPPED or NOT RUN; a failing suite shows its command,
@@ -34,6 +35,23 @@
 
 .PARAMETER BuildDir
   Another x86 build folder (default build\cmake\msvc-x86, configured by tools\build.ps1).
+
+.PARAMETER WindowsOnly
+  Runs only the Windows half. The feature parity is then not evaluated and the summary says so.
+
+.PARAMETER LinuxOnly
+  Runs only the Linux half (WSL). The feature parity is then not evaluated.
+
+.PARAMETER SkipLinux
+  The same as -WindowsOnly.
+
+.PARAMETER LinuxDistro
+  The WSL distribution to use. Without it MuaFocalBuild (Ubuntu 20.04, glibc 2.31) is preferred, then any other distribution
+  with glibc 2.31, then a newer one for development only; the summary names the one used and whether the baseline is proven.
+
+.PARAMETER Sanitize
+  Runs only the Linux-specific suites of an AddressSanitizer + UndefinedBehaviorSanitizer build (a separate tree, slower); a
+  partial run, never part of the default.
 #>
 [CmdletBinding()]
 param(
@@ -43,7 +61,12 @@ param(
     [switch]$Release,
     [switch]$Full,
     [switch]$NoBuild,
-    [string]$BuildDir = ''
+    [string]$BuildDir = '',
+    [switch]$WindowsOnly,
+    [switch]$LinuxOnly,
+    [switch]$SkipLinux,
+    [string]$LinuxDistro = '',
+    [switch]$Sanitize
 )
 
 . (Join-Path $PSScriptRoot '_common.ps1')
@@ -53,6 +76,11 @@ $buildDir = if (-not $BuildDir) { Join-Path $root 'build\cmake\msvc-x86' } elsei
 $buildDir = [IO.Path]::GetFullPath($buildDir)
 $buildDir64 = Join-Path $root 'build\cmake\msvc-x64'
 $hostShell = (Get-Process -Id $PID).Path
+if ($WindowsOnly -and $LinuxOnly) { Write-Host 'FAILED: -WindowsOnly and -LinuxOnly exclude each other.' -ForegroundColor Red; exit 1 }
+$runWindows = -not $LinuxOnly -and -not $Sanitize
+$runLinux = -not ($WindowsOnly -or $SkipLinux)
+$partial = [bool]$Filter -or [bool]$Sanitize
+. (Join-Path $PSScriptRoot '_gate_linux.ps1')
 
 $suites = New-Object System.Collections.Generic.List[object]
 $notRunSuites = New-Object System.Collections.Generic.List[object]
@@ -104,6 +132,7 @@ Add-Python $s @(
     , @('test_stable_entries.py', 'stable-entry renaming and check')
     , @('test_guest_module_lift.py', 'lifted guest DLL (MSVCIRT): config and manifest facts, sorted prefixed table, every jump target a lifted entry, no symbol collision, every code export and every code address held in its data lifted, no TLS, no forwarders')
     , @('test_selfmod_lift.py', 'lifted SelfMod: range, 46 entries equal to the executable, dispatch coverage of every lifted caller, cross-range calls, 44 patch sites as guest loads, nothing unlifted')
+    , @('test_linux_artifact.py', 'the Linux artifact: deterministic source fingerprint, self-check against sources and contract, atomic staging that keeps the last validated binary, one canonical path')
     , @('test_linux_native_rules.py', 'Linux host source rules: no native x86 execution or executable mapping, no guest address used as a host pointer')
     , @('test_override_installs.py', 'every literal override install is a listed stable entry')
     , @('test_single_host.py', 'one executable carries every lift')
@@ -116,6 +145,8 @@ $s = 'Platform'
 Add-Exes $s @(
     , @('presentation_tests', 'window presentation: pending screen committed with the first frame of its generation, Auto window follows the game shape only then, fixed size never, mouse mapping, DPI, degenerate sizes', 100)
     , @('platform_tests', 'SDL 3.4.20 contract, single init and quit, window adoption, relative mouse policy, focus, recapture, DirectSound and A3D policy', 500)
+    , @('hotkey_tests', 'the port hotkey table both hosts read: F2 to F11, Alt+F4, repeats, modifiers and the Quick keys winning over the table', 40)
+    , @('input_context_tests', 'the input context read from the game window stack (video, menu, loader, level, pause), input state, relative mouse and pointer decisions', 40)
     , @('host_tests', 'input and capture state machine, hotkeys, shutdown, Safe Mode, filesystem mapping, readbacks, D3D6 to D3D11 translation, shaders, hand and physics', 400000)
     , @('x87_tests', 'the patched runtime: x87 ring, inline rounding, per-site call cache', 50)
     , @('x64_tests', 'x64 groundwork: guest address space, pointer marshalling, leak detection, COM handles', 0, @{ Arch = 'x64' })
@@ -177,6 +208,7 @@ Add-Exes $s @(
     , @('video_subtitle_tests', 'video subtitle cues, timelines and retail fingerprints per language', 2000)
     , @('menu_audio_tests', 'menu click sound redirect')
     , @('audio_tests', 'SDL3 audio path without a device: DirectSound volume and frequency, menu click -6.02 dB, mixer, loops, 3D math, game PCM formats, no DirectSound or driver name in the backend', 200)
+    , @('audio_pacer_tests', 'the queue policy between the mixer and the device on a virtual device: steady, bursts, jitter, drift, stalls, late and early producer, no stale replay, bounded latency; SDL 22050 Hz conversion keeps pitch and length', 60)
     , @('audio_portable_tests', 'platform-independent audio: SDL3 driver policy per platform and SDL_AUDIODRIVER override, start-up log line, PCM streams, voices over guest memory', 60)
     , @('audio_backend_tests', 'the real SDL3 backend on the dummy driver: explicit and headless driver, device thread pulling the mixer, rate change, reopen, unknown driver', 14)
     , @('dsound_compat_tests', 'portable DirectSound over guest vtables in non-host memory: init, buffers, Lock wrap, 3D, object table (forged and stale), threads, shutdown, no leaks', 380)
@@ -226,10 +258,14 @@ $helperTestFiles = @{
     'tests\linux_fake_guest.h' = 'guest functions in the lifter style used by the Linux call spine tests'
     'tests\linux_win32_harness.h' = 'shared set-up of the Linux user32, gdi32 and ddraw suites'
     'tests\fault_guard.h' = 'shared helper of x64_tests: access-violation probes on Windows and POSIX'
-    'tests\linux_suites.json' = 'classification of the suites for tools/test-linux.sh'
+    'tests\linux_suites.json' = 'classification of the suites for the Linux gate (tools/linux_gate.py)'
+    'tests\smk_fixture.h' = 'shared generator of a synthetic Smacker file: smacker_ffmpeg_tests'
 }
 $toolRole = @{
     'tools\_common.ps1' = 'helper dot-sourced by the tool scripts'
+    'tools\_gate_linux.ps1' = 'the Linux half of this script: WSL discovery, the Linux gate run, progress and the feature parity; dot-sourced'
+    'tools\linux_gate.py' = 'the Linux gate runner: run in WSL by tools/test-linux.sh'
+    'tools\linux_probe.sh' = 'what a WSL distribution offers the Linux gate: run in WSL by this script'
     'tools\build.ps1' = 'builds the game: never run by the gate; checked statically by tests\build_script_tests.ps1'
     'tools\run.ps1' = 'starts the game: never run by the gate'
     'tools\generate-lift.ps1' = 'maintainer: regenerates a lift from an original executable'
@@ -263,7 +299,12 @@ $toolRole = @{
     'tools\extract_lifted.cmake' = 'build helper'
     'tools\linux_audio_probe.sh' = 'run in WSL by the linux audio probe check'
     'tools\build-linux.sh' = 'builds the Linux executable: Linux only, never run by this gate'
-    'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL or on Linux'
+    'tools\source_fingerprint.py' = 'the deterministic source fingerprint embedded in the Linux executable; run by the Linux gate, checked by tests\test_linux_artifact.py'
+    'tools\gen_build_info.py' = 'writes the Linux executable provenance header during its build; checked by tests\test_linux_artifact.py'
+    'tools\linux_artifact.py' = 'the Linux artifact: self-check against sources and contract, atomic staging; run by tools/linux_gate.py and this script, checked by tests\test_linux_artifact.py'
+    'tools\package-linux.sh' = 'packaging entry: verifies the validated Linux binary and stages it; never builds, never run by this gate'
+    'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL by this script or on Linux by hand'
+    'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
@@ -295,6 +336,7 @@ if ($List) {
     }
     if (-not $Filter) { foreach ($entry in $notRunSuites) { Write-Host ('  {0,-44} NOT RUN: {1}' -f $entry.Name, $entry.Summary) -ForegroundColor Yellow } }
     Write-Host ('{0} suites in {1} sections' -f $suites.Count, @(Group-InOrder $suites).Count)
+    foreach ($name in @(Get-LinuxSuiteNames | Where-Object { -not $Filter -or $_ -like "*$Filter*" })) { Write-Host ("    linux  {0}" -f $name) -ForegroundColor DarkGray }
     exit 0
 }
 
@@ -445,9 +487,9 @@ function Test-GitWhitespace {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return New-Result 1 @('git was not found: it is needed for git diff --check') }
     $lines = New-Object System.Collections.Generic.List[string]
     $code = 0
-    foreach ($arguments in @('diff', '--check'), @('diff', '--cached', '--check')) {
+    foreach ($arguments in @('-c', 'core.whitespace=cr-at-eol', 'diff', '--check'), @('-c', 'core.whitespace=cr-at-eol', 'diff', '--cached', '--check')) {
         $result = Get-GitLines $arguments
-        if ($result.Code -ne 0) { $code = 1; $lines.Add("git $($arguments -join ' ') reported problems:"); $result.Lines | ForEach-Object { $lines.Add($_) } }
+        if ($result.Code -ne 0) { $code = 1; $lines.Add("git $($arguments[2..($arguments.Count - 1)] -join ' ') reported problems:"); $result.Lines | ForEach-Object { $lines.Add($_) } }
     }
     $checked = 0
     foreach ($relative in @((Get-GitLines @('ls-files', '--others', '--exclude-standard')).Lines | Where-Object { $_ })) {
@@ -587,6 +629,7 @@ function Test-Coverage {
     }
     if ($ninjaListed) { foreach ($name in $runTargets) { if ($known -notcontains $name) { $problems.Add("suite $name names no CMake test target") } } }
     $cmake = [IO.File]::ReadAllText((Join-Path $root 'CMakeLists.txt'))
+    foreach ($module in @(Get-ChildItem -LiteralPath (Join-Path $root 'cmake') -Filter '*.cmake' -File -ErrorAction SilentlyContinue)) { $cmake += "`n" + [IO.File]::ReadAllText($module.FullName) }
     $listedNames = @($allSuites | ForEach-Object { $_.Name })
     $testsDir = Join-Path $root 'tests'
     foreach ($file in @(Get-ChildItem -LiteralPath $testsDir -File -ErrorAction SilentlyContinue)) {
@@ -618,6 +661,7 @@ function Test-Coverage {
 }
 
 function Test-LinuxAudioProbe {
+    if (-not $runLinux) { return New-Result 0 @('linux audio probe: skipped - DATA UNAVAILABLE (Linux validation was not requested)') }
     $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
     if (-not $wsl) { return New-Result 0 @('linux audio probe: skipped - DATA UNAVAILABLE (wsl.exe is not installed)') }
     $clean = { param($lines) @($lines | ForEach-Object { ($_ -replace "`0", '').TrimEnd() } | Where-Object { $_ -ne '' }) }
@@ -638,29 +682,59 @@ function Test-FeatureContract {
     if (-not (Test-Path -LiteralPath $path)) { return New-Result 1 @('tests\feature_contract.json is missing') }
     try { $contract = [IO.File]::ReadAllText($path) | ConvertFrom-Json } catch { return New-Result 1 @("tests\feature_contract.json is not valid JSON: $($_.Exception.Message)") }
     $problems = New-Object System.Collections.Generic.List[string]
-    $names = @($allSuites | ForEach-Object { $_.Name })
-    $owned = New-Object System.Collections.Generic.HashSet[string]
-    $count = 0
-    foreach ($feature in @($contract.features)) {
-        $count++
-        if (-not $feature.owners -or @($feature.owners).Count -eq 0) { $problems.Add("feature $($feature.id): no suite is responsible for it"); continue }
-        foreach ($owner in @($feature.owners)) {
-            if ($names -notcontains $owner.suite) { $problems.Add("feature $($feature.id): suite $($owner.suite) is not registered in tools\test.ps1"); continue }
-            [void]$owned.Add($owner.suite)
-            if ($owner.file) {
-                $file = Join-Path $root $owner.file
-                if (-not (Test-Path -LiteralPath $file)) { $problems.Add("feature $($feature.id): $($owner.file) does not exist"); continue }
-                if (-not [regex]::IsMatch([IO.File]::ReadAllText($file), $owner.pattern)) { $problems.Add("feature $($feature.id): $($owner.file) no longer contains /$($owner.pattern)/, so $($owner.suite) may no longer cover it") }
-            }
+    if ($contract.schema -ne 2) { return New-Result 1 @('tests\feature_contract.json: schema 2 is expected') }
+    $windowsNames = @($allSuites | ForEach-Object { $_.Name })
+    $linuxNames = @(Get-LinuxSuiteNames)
+    $ownedWindows = New-Object System.Collections.Generic.HashSet[string]
+    $ownedLinux = New-Object System.Collections.Generic.HashSet[string]
+    $ids = New-Object System.Collections.Generic.HashSet[string]
+    $count = 0; $global = 0; $platformOnly = 0
+    $checkEvidence = {
+        param($feature, $item, [string]$where, $names, $owned)
+        if ($names -notcontains $item.suite) { $problems.Add("feature $($feature.id): $where evidence $($item.suite) is not a registered suite"); return }
+        [void]$owned.Add($item.suite)
+        if ($item.file) {
+            $file = Join-Path $root $item.file
+            if (-not (Test-Path -LiteralPath $file)) { $problems.Add("feature $($feature.id): $($item.file) does not exist"); return }
+            if (-not [regex]::IsMatch([IO.File]::ReadAllText($file), $item.pattern)) { $problems.Add("feature $($feature.id): $($item.file) no longer contains /$($item.pattern)/, so $($item.suite) may no longer cover it") }
         }
     }
-    $infrastructure = @($contract.infrastructure | ForEach-Object { $_.suite })
-    foreach ($name in $names) {
-        if (-not $owned.Contains($name) -and $infrastructure -notcontains $name) { $problems.Add("suite $name owns no feature (add it to a feature of tests\feature_contract.json, or to infrastructure with a reason)") }
+    foreach ($feature in @($contract.features)) {
+        $count++
+        if (-not $ids.Add([string]$feature.id)) { $problems.Add("feature $($feature.id) appears twice"); continue }
+        if ($feature.scope -notin 'global', 'windows', 'linux', 'planned') { $problems.Add("feature $($feature.id): scope must be global, windows, linux or planned"); continue }
+        if ($feature.scope -eq 'planned') {
+            foreach ($platform in 'windows', 'linux') { if ($feature.$platform.status -ne 'BLOCKED' -or -not (Get-Prop $feature.$platform 'reason')) { $problems.Add("feature $($feature.id) is planned: $platform must be BLOCKED with a reason") } }
+            continue
+        }
+        if ($feature.scope -eq 'global') { $global++ } else { $platformOnly++ }
+        foreach ($platform in 'windows', 'linux') {
+            $section = $feature.$platform
+            if (-not $section -or $section.status -notin 'PASS', 'BLOCKED', 'PLATFORM_ONLY') { $problems.Add("feature $($feature.id): $platform status must be PASS, BLOCKED or PLATFORM_ONLY"); continue }
+            if ($section.status -eq 'PLATFORM_ONLY' -and $feature.scope -eq 'global') { $problems.Add("feature $($feature.id) is global: $platform cannot be PLATFORM_ONLY (it must be PASS or BLOCKED with a reason)") }
+            if ($section.status -eq 'PLATFORM_ONLY' -and $feature.scope -ne 'global' -and $feature.scope -eq $platform) { $problems.Add("feature $($feature.id) is $platform only: $platform cannot be PLATFORM_ONLY") }
+            if ($section.status -in 'PLATFORM_ONLY', 'BLOCKED' -and -not (Get-Prop $section 'reason')) { $problems.Add("feature $($feature.id): $platform $($section.status) needs a reason") }
+            if ($feature.scope -ne 'global' -and $feature.scope -ne $platform -and $section.status -ne 'PLATFORM_ONLY') { $problems.Add("feature $($feature.id) is $($feature.scope) only: $platform must be PLATFORM_ONLY") }
+            if ($feature.scope -eq $platform -and $section.status -eq 'BLOCKED' -and $feature.id -ne 'vulkan-renderer') { }
+            if ($section.status -eq 'PASS' -and @(Get-Prop $feature 'shared' @()).Count + @(Get-Prop $section 'evidence' @()).Count -eq 0) { $problems.Add("feature $($feature.id): $platform is PASS but the contract lists no evidence") }
+        }
+        foreach ($item in @(Get-Prop $feature 'shared' @())) {
+            & $checkEvidence $feature $item 'shared (windows)' $windowsNames $ownedWindows
+            & $checkEvidence $feature $item 'shared (linux)' $linuxNames $ownedLinux
+        }
+        foreach ($item in @(Get-Prop $feature.windows 'evidence' @())) { & $checkEvidence $feature $item 'windows' $windowsNames $ownedWindows }
+        foreach ($item in @(Get-Prop $feature.linux 'evidence' @())) { & $checkEvidence $feature $item 'linux' $linuxNames $ownedLinux }
     }
-    foreach ($entry in @($contract.infrastructure)) { if ($names -notcontains $entry.suite) { $problems.Add("infrastructure suite $($entry.suite) is not registered") } }
-    if ($problems.Count) { return New-Result 1 @($problems) }
-    return New-Result 0 @("$count features, $($owned.Count) suites own them, $(@($infrastructure).Count) infrastructure suites")
+    $infrastructure = @($contract.infrastructure | ForEach-Object { $_.suite })
+    foreach ($name in $windowsNames) {
+        if (-not $ownedWindows.Contains($name) -and $infrastructure -notcontains $name) { $problems.Add("Windows suite $name owns no feature (add it to a feature of tests\feature_contract.json, or to infrastructure with a reason)") }
+    }
+    foreach ($name in $linuxNames) {
+        if (-not $ownedLinux.Contains($name) -and $infrastructure -notcontains $name) { $problems.Add("Linux suite $name owns no feature (add it to a feature of tests\feature_contract.json)") }
+    }
+    foreach ($entry in @($contract.infrastructure)) { if ($windowsNames -notcontains $entry.suite -and $entry.suite -ne 'linux feature coverage') { $problems.Add("infrastructure suite $($entry.suite) is not registered") } }
+    if ($problems.Count) { return New-Result 1 @($problems | Select-Object -First 60) }
+    return New-Result 0 @("$count features ($global global, $platformOnly on one platform), $($ownedWindows.Count) Windows suites and $($ownedLinux.Count) Linux suites own them")
 }
 
 function Get-ProjectVersion {
@@ -868,6 +942,16 @@ $script:BuildProblems = @{}
 $script:Started = Get-Date
 $gateStopped = $false
 $clock = [System.Diagnostics.Stopwatch]::StartNew()
+if (-not $runWindows) { $suites = New-Object System.Collections.Generic.List[object] }
+$linuxPlanned = @(Get-LinuxSuiteNames | Where-Object { -not $Filter -or $_ -like "*$Filter*" })
+if ($runLinux -and -not $Filter -and -not $Sanitize) { $linuxPlanned = @('linux build') + @($linuxPlanned | Where-Object { $_ -ne 'linux build' }) }
+if ($Sanitize) { $linuxPlanned = @($linuxPlanned | Where-Object { $_ -match '^[a-z0-9_]+_tests$' }) }
+Import-TestHistory
+if ($runWindows) {
+    $script:ProgressPlan.Add('x86 test targets'); $script:ProgressPlan.Add('x64 test targets')
+    foreach ($suite in $suites) { $script:ProgressPlan.Add($suite.Name) }
+}
+if ($runLinux) { foreach ($name in $linuxPlanned) { $script:ProgressPlan.Add($name) } }
 
 try {
     Remove-DuplicatePathEntries
@@ -877,6 +961,7 @@ try {
 
     $x86Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -ne 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
     $x64Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -eq 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
+    if ($runWindows) { Write-Host '==> Windows focused gate' -ForegroundColor Cyan }
     if (-not $NoBuild -and ($x86Targets.Count + $x64Targets.Count)) {
         Write-Host '==> Build (test targets only, incremental)' -ForegroundColor Cyan
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -886,11 +971,13 @@ try {
             $outcome = Build-TestTargets $plan.Folder $archName $plan.Targets
             if ($outcome -is [string]) {
                 $script:BuildProblems[$plan.Arch] = $outcome.Split("`n")[0]
-                Write-Host ('  FAIL  {0,-46}' -f $plan.Label) -ForegroundColor Red
+                Step-Progress
+                Write-Host ('{0} FAIL  {1,-46}' -f (Get-ProgressPrefix), $plan.Label) -ForegroundColor Red
                 Write-Host "        $outcome" -ForegroundColor Red
                 $results.Add([pscustomobject]@{ Section = 'Build'; Name = $plan.Label; Status = 'FAIL'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = 'build failed'; Lines = @() })
             } else {
-                Write-Host ('  PASS  {0,-46} {1,6:N1} s  {2} targets, {3} compile or link step(s), no warnings' -f $plan.Label, $watch.Elapsed.TotalSeconds, $outcome.Targets, $outcome.Steps) -ForegroundColor Green
+                Step-Progress
+                Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3} targets, {4} compile or link step(s), no warnings' -f (Get-ProgressPrefix), $plan.Label, $watch.Elapsed.TotalSeconds, $outcome.Targets, $outcome.Steps) -ForegroundColor Green
                 $results.Add([pscustomobject]@{ Section = 'Build'; Name = $plan.Label; Status = 'PASS'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = "$($outcome.Steps) steps"; Lines = @() })
             }
             $watch.Restart()
@@ -952,13 +1039,16 @@ try {
         $skipNotes = @(Get-SkipNotes $label $lines)
         foreach ($note in $skipNotes) { $notes.Add($note) }
 
-        $results.Add([pscustomobject]@{ Section = $section; Name = $label; Status = $status; Seconds = $seconds; Checks = $checks; Summary = $summary; Lines = $lines; Skipped = $skipNotes.Count })
+        $unavailable = ($status -eq 'PASS' -and $checks -le 2 -and @($lines | Where-Object { $_ -match 'DATA UNAVAILABLE' }).Count -gt 0)
+        $results.Add([pscustomobject]@{ Section = $section; Platform = 'windows'; Name = $label; Status = $status; Seconds = $seconds; Checks = $checks; Summary = $summary; Lines = $lines; Skipped = $skipNotes.Count; Unavailable = $unavailable })
+        Step-Progress
         if ($status -eq 'PASS') {
             $tail = if ($skipNotes.Count) { "$summary  [$($skipNotes.Count) part(s) skipped]" } else { $summary }
-            Write-Host ('  PASS  {0,-46} {1,6:N1} s  {2}' -f $label, $seconds, $tail) -ForegroundColor Green
+            if ($unavailable) { $tail = "DATA UNAVAILABLE: $tail" }
+            Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3}' -f (Get-ProgressPrefix), $label, $seconds, $tail) -ForegroundColor $(if ($unavailable) { 'Yellow' } else { 'Green' })
             if ($Detail) { $lines | ForEach-Object { Write-Host "        $_" } }
         } else {
-            Write-Host ('  FAIL  {0,-46} {1,6:N1} s  exit code {2}' -f $label, $seconds, $run.Code) -ForegroundColor Red
+            Write-Host ('{0} FAIL  {1,-46} {2,6:N1} s  exit code {3}' -f (Get-ProgressPrefix), $label, $seconds, $run.Code) -ForegroundColor Red
             if ($problem) { Write-Host "        $problem" -ForegroundColor Red }
             if ($run.Command) { Write-Host "        command: $($run.Command)" -ForegroundColor Red }
             if ($run.PSObject.Properties['WorkDir'] -and $run.WorkDir) { Write-Host "        working directory: $($run.WorkDir)" -ForegroundColor Red }
@@ -984,10 +1074,62 @@ if ($gateStopped) {
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
+# The Linux half: PowerShell -> wsl.exe -> wslpath -> bash -> tools/test-linux.sh -> tools/linux_gate.py
+# ---------------------------------------------------------------------------------------------------------------------
+$linux = [ordered]@{ Requested = $runLinux -and ($linuxPlanned.Count -gt 0); Ran = $false; Environment = $null; Why = ''; Info = @{}; Seconds = 0.0 }
+if ($linux.Requested) {
+    Write-Host '==> Linux gate (WSL)' -ForegroundColor Cyan
+    $linux.Environment = Find-LinuxEnvironment $LinuxDistro
+    if (-not $linux.Environment.Found) {
+        $linux.Why = "BLOCKED: WSL unavailable ($($linux.Environment.Reason))"
+        Write-Host "  $($linux.Why)" -ForegroundColor Red
+        Write-Host '  Linux is NOT validated: no Linux row can pass and the feature parity reports it.' -ForegroundColor Red
+        $results.Add([pscustomobject]@{ Section = 'Linux (WSL)'; Platform = 'linux'; Name = 'wsl'; Status = 'FAIL'; Seconds = 0; Checks = 0; Summary = $linux.Why; Lines = @(); Skipped = 0; Unavailable = $false })
+    } else {
+        $linuxEnv = $linux.Environment
+        Write-Host ('  distribution : {0}  ({1}; glibc {2}; {3})' -f $linuxEnv.Name, $linuxEnv.Os, $linuxEnv.Glibc, $linuxEnv.Why)
+        Write-Host ('  repository   : {0}  (converted with wslpath)' -f $linuxEnv.Repo)
+        Write-Host ('  command      : wsl.exe -d {0} --exec bash {1}/tools/test-linux.sh --native-build --machine --cc {2}{3}' -f $linuxEnv.Name, $linuxEnv.Repo, $linuxEnv.Cc, $(if ($NoBuild) { ' --no-build' } else { '' }))
+        if (-not $linuxEnv.Baseline) { Write-Host '  NOTE: the glibc 2.31 baseline is not proven by this run (no Ubuntu 20.04 environment was usable).' -ForegroundColor Yellow }
+        if (-not $linuxEnv.Ffmpeg) { Write-Host "  NOTE: no FFmpeg development files in $($linuxEnv.Name): the Linux gate builds a pinned LGPL-only FFmpeg into ~/.cache/jpt-recomp/ffmpeg (tools/ffmpeg-bootstrap.sh; offline, the Smacker suites report DATA UNAVAILABLE)." -ForegroundColor Yellow }
+        $print = {
+            param($row)
+            Step-Progress
+            $blocked = $row.Status -eq 'PASS' -and $row.Unavailable
+            $tail = $row.Summary
+            if ($row.Notes.Count -and $row.Status -eq 'PASS') { $tail = "$tail  [$($row.Notes.Count) note(s)]" }
+            if ($row.Status -eq 'PASS') {
+                if ($blocked) { $tail = "DATA UNAVAILABLE: $tail" }
+                Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3}' -f (Get-ProgressPrefix), $row.Name, $row.Seconds, $tail) -ForegroundColor $(if ($blocked) { 'Yellow' } else { 'Green' })
+                if ($Detail) { $row.Lines | ForEach-Object { Write-Host "        $_" } }
+            } else {
+                Write-Host ('{0} FAIL  {1,-46} {2,6:N1} s  {3}' -f (Get-ProgressPrefix), $row.Name, $row.Seconds, $row.Summary) -ForegroundColor Red
+                Write-Host "  ----- output of $($row.Name) (Linux) -----" -ForegroundColor Red
+                $row.Lines | ForEach-Object { Write-Host "        $_" }
+                Write-Host '  ----- end of output -----' -ForegroundColor Red
+            }
+        }
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        $outcome = Invoke-LinuxGate $linuxEnv $Filter ([bool]$NoBuild) ([bool]$Sanitize) $print
+        $linux.Seconds = $watch.Elapsed.TotalSeconds
+        $linux.Info = $outcome.Info
+        $linux.Ran = $true
+        foreach ($row in $outcome.Rows) {
+            $skip = @($row.Notes)
+            foreach ($note in $skip) { $notes.Add("Linux $($row.Name): $note") }
+            $results.Add([pscustomobject]@{ Section = 'Linux (WSL)'; Platform = 'linux'; Name = $row.Name; Status = $row.Status; Seconds = $row.Seconds; Checks = $row.Checks; Summary = $row.Summary; Lines = $row.Lines; Skipped = 0; Unavailable = $row.Unavailable })
+        }
+        if ($outcome.Info.Count) { Write-Host ('  Linux gate: glibc {0} on this system, executable needs at most glibc {1}, compiler {2}' -f $outcome.Info['glibc'], $(if ($outcome.Info['glibc_max']) { $outcome.Info['glibc_max'] } else { 'unknown' }), $outcome.Info['compiler']) -ForegroundColor DarkGray }
+    }
+} elseif ($runLinux -and $Filter) {
+    $notes.Add("Linux: no row matches the filter '$Filter'; the Linux half did not run")
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------------------------------------------------
 $clock.Stop()
-if (-not $Filter) { foreach ($entry in $notRunSuites) { $results.Add($entry) } }
+if (-not $Filter -and $runWindows) { foreach ($entry in $notRunSuites) { $results.Add($entry) } }
 $failed = @($results | Where-Object { $_.Status -eq 'FAIL' })
 $passed = @($results | Where-Object { $_.Status -eq 'PASS' })
 $notRun = @($results | Where-Object { $_.Status -eq 'NOT RUN' })
@@ -1000,7 +1142,7 @@ function Read-Report([string]$Name) {
 }
 
 function Get-Status([string]$SuiteName) {
-    $match = @($results | Where-Object { $_.Name -eq $SuiteName })
+    $match = @($results | Where-Object { $_.Name -eq $SuiteName -and (Get-Prop $_ 'Platform') -ne 'linux' })
     if ($match.Count -eq 0) { return 'NOT RUN' }
     return $match[0].Status
 }
@@ -1026,7 +1168,7 @@ if ($parity) {
     }
 }
 
-$l10n = @($results | Where-Object { $_.Name -eq 'l10n_tests' })
+$l10n = @($results | Where-Object { $_.Name -eq 'l10n_tests' -and (Get-Prop $_ 'Platform') -ne 'linux' })
 $languageReport = Read-Report 'language_parity'
 if ($languageReport) {
     Write-Host '==> Languages' -ForegroundColor Cyan
@@ -1055,19 +1197,104 @@ if ($settingReport) {
     Write-Host ('==> Settings: {0} runtime settings, {1} launcher rows, {2} shown in the launcher: {3}' -f $settingReport.settings, $settingReport.launcher_rows, $settingReport.shown_in_launcher, (Get-Status 'tests\test_setting_parity.py')) -ForegroundColor Cyan
 }
 
+$parityFailed = $false
 $contractPath = Join-Path $root 'tests\feature_contract.json'
-if ((Test-Path -LiteralPath $contractPath) -and -not $Filter) {
+Write-Host '==> Windows/Linux feature parity' -ForegroundColor Cyan
+if ($partial -or -not $runWindows -or -not $runLinux) {
+    $reason = if ($partial) { 'a partial run' } elseif (-not $runWindows) { 'the Windows half was not run' } else { 'the Linux half was not requested (-WindowsOnly or -SkipLinux)' }
+    Write-Host "  NOT EVALUATED: $reason" -ForegroundColor Yellow
+} elseif (Test-Path -LiteralPath $contractPath) {
     try {
         $contract = [IO.File]::ReadAllText($contractPath) | ConvertFrom-Json
-        $featureStatus = Get-Status 'feature coverage'
-        $uncovered = @($contract.features | Where-Object { -not $_.owners -or @($_.owners).Count -eq 0 })
-        Write-Host ('==> Features: {0} in the contract, {1} without a responsible suite: {2}' -f @($contract.features).Count, $uncovered.Count, $featureStatus) -ForegroundColor Cyan
-    } catch { }
+        $windowsMap = @{}; $linuxMap = @{}
+        foreach ($result in $results) { if ((Get-Prop $result 'Platform') -eq 'linux') { $linuxMap[$result.Name] = $result } elseif ($result.Name) { $windowsMap[$result.Name] = $result } }
+        $linuxWhy = if ($linux.Why) { $linux.Why } else { 'the Linux gate did not run' }
+        $parityRows = @(Get-FeatureParity $contract $windowsMap $linuxMap $true ([bool]$linux.Ran) $linuxWhy)
+        foreach ($row in $parityRows) {
+            if ($Detail) {
+                Write-Host ('  FEATURE|{0}|windows|{1}' -f $row.Id, $row.Windows)
+                Write-Host ('  FEATURE|{0}|linux|{1}' -f $row.Id, $row.Linux)
+            }
+            if ($Detail -or $row.Parity -ne 'PASS') {
+                $color = switch ($row.Parity) { 'PASS' { 'Green' } 'BLOCKED' { 'Yellow' } default { 'Red' } }
+                Write-Host ('  FEATURE_PARITY|{0}|{1}{2}' -f $row.Id, $row.Parity, $(if ($row.Parity -ne 'PASS') { "|windows=$($row.Windows)|linux=$($row.Linux)|$($row.Reason)" } else { '' })) -ForegroundColor $color
+            }
+        }
+        $planned = @($parityRows | Where-Object { $_.Scope -eq 'planned' })
+        $global = @($parityRows | Where-Object { $_.Scope -eq 'global' })
+        $one = @($parityRows | Where-Object { $_.Scope -in 'windows', 'linux' })
+        $count = { param($rows, $key, $value) @($rows | Where-Object { $_.$key -eq $value }).Count }
+        Write-Host ''
+        Write-Host ('  features: {0} ({1} global, {2} on one platform with the other PLATFORM_ONLY, {3} planned and not counted: {4})' -f $parityRows.Count, $global.Count, $one.Count, $planned.Count, (($planned | ForEach-Object { $_.Id }) -join ', '))
+        Write-Host ('  Windows : PASS {0}  FAIL {1}  BLOCKED {2}  PLATFORM_ONLY {3}' -f (& $count $parityRows 'Windows' 'PASS'), (& $count $parityRows 'Windows' 'FAIL'), (& $count $parityRows 'Windows' 'BLOCKED'), (& $count $parityRows 'Windows' 'PLATFORM_ONLY'))
+        Write-Host ('  Linux   : PASS {0}  FAIL {1}  BLOCKED {2}  PLATFORM_ONLY {3}' -f (& $count $parityRows 'Linux' 'PASS'), (& $count $parityRows 'Linux' 'FAIL'), (& $count $parityRows 'Linux' 'BLOCKED'), (& $count $parityRows 'Linux' 'PLATFORM_ONLY'))
+        $gPass = & $count $global 'Parity' 'PASS'; $gFail = & $count $global 'Parity' 'FAIL'; $gBlocked = & $count $global 'Parity' 'BLOCKED'
+        Write-Host ('  PASS  {0}/{1} global features' -f $gPass, $global.Count) -ForegroundColor $(if ($gPass -eq $global.Count) { 'Green' } else { 'Gray' })
+        Write-Host ('  FAIL  {0}' -f $gFail) -ForegroundColor $(if ($gFail) { 'Red' } else { 'Gray' })
+        Write-Host ('  BLOCKED {0}' -f $gBlocked) -ForegroundColor $(if ($gBlocked) { 'Yellow' } else { 'Gray' })
+        $legit = @($one | Where-Object { $_.Parity -eq 'PASS' })
+        if ($legit.Count) { Write-Host ('  one-platform features, each justified in the contract: {0}' -f (($legit | ForEach-Object { $_.Id }) -join ', ')) -ForegroundColor DarkGray }
+        $onePlatformBad = @($one | Where-Object { $_.Parity -ne 'PASS' })
+        $parityFailed = ($gFail + $gBlocked + $onePlatformBad.Count) -gt 0
+        $parityVerdict = if ($parityFailed) { 'FAIL' } else { 'PASS' }
+        Write-Host ('  Windows/Linux feature parity: {0}' -f $parityVerdict) -ForegroundColor $(if ($parityFailed) { 'Red' } else { 'Green' })
+        $results.Add([pscustomobject]@{ Section = 'Feature parity'; Platform = 'parity'; Name = 'windows linux feature parity'; Status = $(if ($parityFailed) { 'FAIL' } else { 'PASS' }); Seconds = 0; Checks = $parityRows.Count; Summary = "$gPass/$($global.Count) global features"; Lines = @(); Skipped = 0; Unavailable = $false })
+        $failed = @($results | Where-Object { $_.Status -eq 'FAIL' })
+    } catch {
+        Write-Host "  the parity could not be computed: $($_.Exception.Message)" -ForegroundColor Red
+        $parityFailed = $true
+    }
+}
+
+if (-not (Test-Path variable:gPass)) { $gPass = 0; $global = @() }
+if (-not $partial -and $runWindows -and $linux.Ran -and -not $failed.Count -and -not $parityFailed -and $linux.Info['build_dir']) {
+    Write-Host '==> Linux runtime artifact' -ForegroundColor Cyan
+    $linuxRows = @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' })
+    $windowsRows = @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' })
+    $gateRecord = [ordered]@{
+        windows = [ordered]@{ suites = $windowsRows.Count; checks = [int](Measure-Sum $windowsRows 'Checks'); failed = @($windowsRows | Where-Object { $_.Status -eq 'FAIL' }).Count }
+        linux = [ordered]@{ suites = $linuxRows.Count; checks = [int](Measure-Sum $linuxRows 'Checks'); failed = @($linuxRows | Where-Object { $_.Status -eq 'FAIL' }).Count; distribution = $linuxEnv.Name; glibc_max = $linux.Info['glibc_max'] }
+        parity = [ordered]@{ global_features = "$gPass/$($global.Count)"; verdict = 'PASS' }
+    }
+    $recordPath = Join-Path $root 'build\logs\linux_artifact_gate.json'
+    New-Item -ItemType Directory -Force -Path (Split-Path $recordPath) | Out-Null
+    [IO.File]::WriteAllText($recordPath, ($gateRecord | ConvertTo-Json -Depth 5))
+    $repoLinux = $linuxEnv.Repo
+    $stageArguments = @('-d', $linuxEnv.Name, '--exec', 'python3', '-I', "$repoLinux/tools/linux_artifact.py", 'stage', '--elf', "$($linux.Info['build_dir'])/bin/trespasser_recomp", '--dest-dir', "$repoLinux/build/linux/bin", '--result-json', "$repoLinux/build/logs/linux_artifact_gate.json")
+    $stage = Invoke-Process 'wsl.exe' $stageArguments $root 900
+    $stageLines = @(ConvertFrom-WslText $stage.Lines)
+    $manifestPath = Join-Path $root 'build\linux\bin\trespasser_recomp.build.json'
+    if ($stage.Code -eq 0 -and (Test-Path -LiteralPath $manifestPath)) {
+        $manifest = [IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+        $registry = $manifest.self_check.registry
+        Write-Host '  PASS' -ForegroundColor Green
+        Write-Host ('  path               : {0}' -f (Join-Path $root 'build\linux\bin\trespasser_recomp'))
+        Write-Host ('  SHA-256            : {0}' -f $manifest.elf_sha256)
+        Write-Host ('  source fingerprint : {0}' -f $manifest.source_fingerprint)
+        Write-Host ('  self-check         : PASS, {0} capabilities, overrides {1} listed / {2} applicable on Linux / {3} with default settings, {4} lift hooks' -f $manifest.self_check.capabilities, $registry.override_registry, $registry.overrides_linux_applicable, $registry.overrides_installed_default_settings, $registry.lift_hooks)
+        Write-Host ('  feature contract   : PASS (sha {0})' -f $manifest.feature_contract_sha256.Substring(0, 16))
+        Write-Host ('  GLIBC max          : {0} (baseline {1})' -f $manifest.glibc_max, $manifest.build.glibc_baseline)
+        Write-Host ('  FFmpeg             : {0}' -f $(if ($manifest.ffmpeg.enabled) { $(if ($manifest.ffmpeg.lgpl_only) { 'enabled, LGPL-only' } else { 'enabled, NOT LGPL-only (development)' }) } else { 'not compiled in' }))
+        $results.Add([pscustomobject]@{ Section = 'Linux runtime artifact'; Platform = 'artifact'; Name = 'linux runtime artifact'; Status = 'PASS'; Seconds = 0; Checks = 1; Summary = $manifest.elf_sha256.Substring(0, 16); Lines = @(); Skipped = 0; Unavailable = $false })
+    } else {
+        Write-Host '  FAIL' -ForegroundColor Red
+        $stageLines | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        $results.Add([pscustomobject]@{ Section = 'Linux runtime artifact'; Platform = 'artifact'; Name = 'linux runtime artifact'; Status = 'FAIL'; Seconds = 0; Checks = 0; Summary = "staging exited with code $($stage.Code)"; Lines = $stageLines; Skipped = 0; Unavailable = $false })
+        $failed = @($results | Where-Object { $_.Status -eq 'FAIL' })
+    }
+} elseif (-not $partial -and $runWindows -and $linux.Ran) {
+    Write-Host '==> Linux runtime artifact: NOT STAGED (a row failed; build\linux\bin keeps the last validated binary)' -ForegroundColor Yellow
 }
 
 $slowest = @($results | Where-Object { $_.Status -in 'PASS', 'FAIL' -and $_.Seconds -gt 0 } | Sort-Object Seconds -Descending | Select-Object -First 5)
 $partlySkipped = @($results | Where-Object { $_.PSObject.Properties['Skipped'] -and $_.Skipped -gt 0 })
+$windowsSeconds = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }) 'Seconds'
+$linuxSeconds = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }) 'Seconds'
+$windowsChecks = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }) 'Checks'
+$linuxChecks = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }) 'Checks'
 Write-Host ('  PASS: {0}   FAIL: {1}   SKIPPED parts in {2} suites   NOT RUN: {3}   checks counted: {4:N0}   time: {5:N0} s' -f $passed.Count, $failed.Count, $partlySkipped.Count, $notRun.Count, $checkTotal, $clock.Elapsed.TotalSeconds)
+Write-Host ('  Test timing: Windows {0}  ({1} suites, {2:N0} checks)   Linux {3}  ({4} rows, {5:N0} checks)   total {6}' -f (Format-Clock $windowsSeconds), @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }).Count, $windowsChecks, (Format-Clock $linuxSeconds), @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }).Count, $linuxChecks, (Format-Clock $clock.Elapsed.TotalSeconds)) -ForegroundColor DarkGray
+Export-TestHistory @($results | Where-Object { (Get-Prop $_ 'Platform') -in 'windows', 'linux' })
 Write-Host ('  slowest: ' + (($slowest | ForEach-Object { '{0} {1:N1} s' -f $_.Name, $_.Seconds }) -join ', ')) -ForegroundColor DarkGray
 if ($notRun.Count) {
     Write-Host '  NOT RUN (not failures; each says why):' -ForegroundColor Yellow
@@ -1083,7 +1310,9 @@ if ($failed.Count) {
     Write-Host ('FAILED: {0}' -f (($failed | ForEach-Object { $_.Name }) -join ', ')) -ForegroundColor Red
     exit 1
 }
+if ($parityFailed) { Write-Host 'FAILED: the Windows/Linux feature parity (global features that differ or are BLOCKED are listed above).' -ForegroundColor Red; exit 1 }
+if ($linux.Requested -and -not $linux.Ran) { Write-Host 'FAILED: Linux was not validated.' -ForegroundColor Red; exit 1 }
 if ($passed.Count -eq 0) { Write-Host 'FAILED: no suite ran.' -ForegroundColor Red; exit 1 }
-if ($Filter) { Write-Host 'PASSED (partial run).' -ForegroundColor Green; exit 0 }
+if ($partial) { Write-Host 'PASSED (partial run).' -ForegroundColor Green; exit 0 }
 Write-Host 'ALL TESTS PASSED' -ForegroundColor Green
 exit 0

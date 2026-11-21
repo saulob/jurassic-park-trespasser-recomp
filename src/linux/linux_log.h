@@ -10,5 +10,7 @@ const char* lx_log_path(void);
 int lx_log_fd(void);
 void lx_log(const char* tag, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
 void lx_log_close(void);
+/* Drops the lines instead of printing them (the headless self-check keeps its output to the JSON). */
+void lx_log_quiet(int quiet);
 
 #endif

@@ -26,6 +26,7 @@
 #include "linux_shutdown.h"
 #include "linux_log.h"
 #include "linux_paths.h"
+#include "linux_selfcheck.h"
 
 #define EXIT_SETUP 1
 #define EXIT_UNIMPLEMENTED 3
@@ -51,6 +52,7 @@ typedef struct {
     const char* version;
     int dry_run;
     int bootstrap;
+    int build_info, self_check;
 } options_t;
 
 static void usage(void) {
@@ -65,6 +67,8 @@ static void usage(void) {
            "  --bootstrap-headless   run the lifted entry point with no window and no audio until the first import with no\n"
            "                         implementation, and report it\n"
            "  --run                  run the guest in an SDL3 window (needs the lifted guest and SDL3 video)\n"
+           "  --build-info           print what this binary was built from (JSON), nothing else\n"
+           "  --self-check           prove which features this binary holds (JSON); no window, no audio, no log, no guest code\n"
            "  --help\n");
 }
 
@@ -86,6 +90,8 @@ static int parse(int argc, char** argv, options_t* o, int* run) {
         if (!strcmp(argv[i], "--dry-run")) o->dry_run = 1;
         else if (!strcmp(argv[i], "--run")) *run = 1;
         else if (!strcmp(argv[i], "--bootstrap-headless")) o->bootstrap = 1;
+        else if (!strcmp(argv[i], "--build-info")) o->build_info = 1;
+        else if (!strcmp(argv[i], "--self-check")) o->self_check = 1;
         else if ((v = argument_of(&i, argc, argv, "--game")) != NULL) o->game = v;
         else if ((v = argument_of(&i, argc, argv, "--version")) != NULL) o->version = v;
         else if ((v = argument_of(&i, argc, argv, "--user_data_root")) != NULL) o->user_root = v;
@@ -159,10 +165,16 @@ static int boot_guest(const options_t* o, const lx_paths_t* paths, int window) {
     lx_boot_result_t r;
     lx_boot_status_t status;
     lx_window_backend_t* backend = NULL;
+    char settings_file[LX_PATH_MAX + 32];
 #ifdef JPT_LINUX_SDL_VIDEO
     if (window) backend = lx_sdl_backend();
 #endif
     lx_boot_options_init(&options, paths->game_dir, o->version, paths->user_root, paths->saves_dir, backend, window);
+    options.play_videos = 1;
+    options.use_gamepad = 1;
+    options.use_features = 1;
+    snprintf(settings_file, sizeof settings_file, "%s/trespasser.ini", paths->launcher_dir);
+    options.settings_file = settings_file;
     status = lx_boot_headless(&options, &r);
     if (window && options.backend) options.backend->destroy(options.backend);
     printf("%s\n", lx_boot_status_name(status));
@@ -198,6 +210,8 @@ int main(int argc, char** argv) {
 
     parsed = parse(argc, argv, &o, &run);
     if (parsed) return parsed == 2 ? 0 : parsed;
+    if (o.build_info) return lx_build_info_print();
+    if (o.self_check) return lx_selfcheck_run();
     n = readlink("/proc/self/exe", exe, sizeof exe - 1);
     exe[n > 0 ? n : 0] = 0;
     if (!lx_paths_resolve(&paths, exe, o.game, o.user_root, o.log_dir, err, sizeof err) || !lx_paths_prepare(&paths, err, sizeof err)) {

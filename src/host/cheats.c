@@ -6,17 +6,16 @@
  * CEntityAttached link. Host-side cheats leave the game whenever it is not in a running level (menus, saves, loads).
  * The launcher's saved values start each session; F10 only records what it changed over them (jpt_cheats.h).
  */
-#include "guest_va.h"
-#include "host.h"
+#include "guest_abi.h"
 
 #include <math.h>
 #include <string.h>
 
 #include "cheats.h"
-#include "gamepad.h"
+#include "host_input.h"
+#include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "physics_watch.h"
-#include "platform.h"
 
 #define WORLD GVA(0x0073F444)
 #define WORLD_CAMERA 0x14u
@@ -239,34 +238,32 @@ static void apply(const char* level, uint32_t scratch) {
     C.applied = 1;
 }
 
-static int held(int vk) { return platform_vk_held((unsigned)vk); }
+static int held(int vk) { return host_key_held((unsigned)vk); }
 
 /* The game's own keys make S walk forward; the free camera's WASD is literal, the stick comes through CInput. */
 static void free_camera_keys(ch_freecam_input_t* in) {
-    uint32_t pad = gamepad_buttons();
+    uint32_t pad = host_pad_buttons();
     int w = held('W'), a = held('A'), s = held('S'), d = held('D');
     if (w || a || s || d) {
         in->move[0] = (float)(d - a);
         in->move[1] = (float)(w - s);
     }
-    in->up = held(VK_SPACE) || (pad & JPT_PAD_BIT(JPT_PAD_SOUTH));
-    in->down = held(VK_CONTROL) || (pad & JPT_PAD_BIT(JPT_PAD_EAST));
-    in->fast = held(VK_SHIFT) || (pad & JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER));
+    in->up = held(HOST_VK_SPACE) || (pad & JPT_PAD_BIT(JPT_PAD_SOUTH));
+    in->down = held(HOST_VK_CONTROL) || (pad & JPT_PAD_BIT(JPT_PAD_EAST));
+    in->fast = held(HOST_VK_SHIFT) || (pad & JPT_PAD_BIT(JPT_PAD_LEFT_SHOULDER));
 }
 
 static void free_camera_step(uint32_t scratch) {
-    LARGE_INTEGER now, freq;
+    uint32_t now = jpt_time_ms();
     ch_freecam_input_t in = C.input;
     dm_placement_t at;
     float dt;
-    QueryPerformanceCounter(&now);
-    QueryPerformanceFrequency(&freq);
-    dt = C.last ? (float)(now.QuadPart - C.last) / (float)freq.QuadPart : 0.0f;
-    C.last = now.QuadPart;
+    dt = C.last ? (float)(now - C.last) / 1000.0f : 0.0f;
+    C.last = now;
     if (dt > FRAME_SECONDS_MAX) dt = FRAME_SECONDS_MAX;
     memset(&C.input, 0, sizeof C.input);
-    if (debug_menu_visible()) memset(&in, 0, sizeof in);
-    else if (window_host_input_focused()) free_camera_keys(&in);
+    if (host_panel_visible()) memset(&in, 0, sizeof in);
+    else if (host_input_focused()) free_camera_keys(&in);
     ch_freecam_step(&C.free, &in, dt);
     ch_freecam_placement(&C.free, &at);
     move_camera(C.camera, &at, scratch);

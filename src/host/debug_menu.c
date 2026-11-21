@@ -4,8 +4,9 @@
  * back Level Select. Retail compiled TELE out; Teleport is PlayerTeleportToNextLocation's body built from its own
  * calls. Everything runs in the game's modal UI loop, before it reads its cursor.
  */
-#include "guest_va.h"
-#include "host.h"
+#include "debug_menu.h"
+#include "guest_abi.h"
+#include "guest_features.h"
 #include "perf_sections.h"
 
 #include <math.h>
@@ -16,7 +17,9 @@
 #include "debug_menu_panel.h"
 #include "debug_menu_policy.h"
 #include "jpt_config.h"
+#include "jpt_fs.h"
 #include "jpt_gamepad.h"
+#include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "objectives.h"
 #include "tutorial_prompts.h"
@@ -41,6 +44,7 @@
 #define WORLD_DEFERRED_LOAD GVA(0x00607E90)
 #define MAIN_MENU_PLAY 2 /* the main menu's EndModal code after New Game and Direct Load */
 #define SCRATCH_BYTES 0x100u
+#define LEVEL_PATH_MAX 512
 
 static const char k_objectives_help[] = "Esc/B or F3 close";
 
@@ -54,7 +58,14 @@ static struct {
     cp_reminder_t reminder;
     int pointer;
     float pointer_x, pointer_y;
+    void (*changed)(void);
+    const dml_hits_t* (*hits)(void);
 } D = { .world = { .ai = -1 } };
+
+void debug_menu_set_hooks(void (*input_changed)(void), const dml_hits_t* (*hits)(void)) {
+    D.changed = input_changed;
+    D.hits = hits;
+}
 
 static uint32_t mover(void) {
     uint32_t world, camera, attached;
@@ -284,7 +295,7 @@ static void note_changes(void) {
         host_log("debug-menu", "%s %s", dm_menu_title(D.state.open ? D.state.menu : D.was_menu),
                  D.state.open ? "opened" : "closed");
     if (!D.state.open) D.pointer = 0;
-    if (D.state.open != D.was_open) window_host_input_changed();
+    if (D.state.open != D.was_open && D.changed) D.changed();
     D.was_menu = D.state.menu;
     D.was_open = D.state.open;
 }
@@ -305,7 +316,7 @@ int debug_menu_positions(float player[3], float camera[3]) {
 void debug_menu_ui_loop(void) {
     guest_ui_view_t v;
     dm_action_t action;
-    uint32_t esp = g_esp, scratch, now = GetTickCount();
+    uint32_t esp = g_esp, scratch, now = jpt_time_ms();
     guest_ui_probe(&v);
     g_esp -= SCRATCH_BYTES;
     scratch = g_esp;
@@ -322,26 +333,15 @@ void debug_menu_ui_loop(void) {
     note_changes();
 }
 
+static void add_level(const char* name, int is_dir, void* user) {
+    if (!is_dir && strlen(name) > 4 && !_stricmp(name + strlen(name) - 4, ".scn")) dm_levels_add((dm_levels_t*)user, name);
+}
+
 static void read_levels(void) {
-    char dir[MAX_PATH], pattern[MAX_PATH];
-    char* slash;
-    WIN32_FIND_DATAA found;
-    HANDLE h;
+    char dir[LEVEL_PATH_MAX];
     dm_levels_t levels;
     memset(&levels, 0, sizeof levels);
-    strncpy(dir, guest_env_exe_path(), sizeof dir - 1);
-    dir[sizeof dir - 1] = 0;
-    slash = strrchr(dir, '\\');
-    if (slash) *slash = 0;
-    _snprintf(pattern, sizeof pattern - 1, "%s\\data\\*.scn", dir);
-    pattern[sizeof pattern - 1] = 0;
-    h = FindFirstFileA(pattern, &found);
-    if (h != INVALID_HANDLE_VALUE) {
-        do {
-            if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) dm_levels_add(&levels, found.cFileName);
-        } while (FindNextFileA(h, &found));
-        FindClose(h);
-    }
+    if (guest_data_dir(dir, sizeof dir)) jpt_fs_list(dir, add_level, &levels);
     dm_set_levels(&D.state, &levels);
 }
 
@@ -361,7 +361,7 @@ void debug_menu_f10(void) { toggle(DM_MENU_CHEATS, "F10"); }
 void debug_menu_f3(void) { toggle(DM_MENU_OBJECTIVES, "F3"); }
 
 void debug_menu_show_objective(void) {
-    uint32_t now = GetTickCount();
+    uint32_t now = jpt_time_ms();
     if (cp_reminder_press(&D.reminder, now, objectives_goal())) {
         host_log("objectives", "Show Objective: %s", D.reminder.title);
         return;
@@ -369,7 +369,7 @@ void debug_menu_show_objective(void) {
     dm_notice_for(&D.state, jpt_tr("No objective"), now, CP_NO_OBJECTIVE_MS);
 }
 
-void debug_menu_notice(const char* text) { dm_notice(&D.state, text, GetTickCount()); }
+void debug_menu_notice(const char* text) { dm_notice(&D.state, text, jpt_time_ms()); }
 
 int debug_menu_open_menu(void) {
     if (!D.state.open) return 0;
@@ -401,30 +401,29 @@ static void note_closed_by(int was_open, dm_menu_t menu, const char* by) {
         host_log("overlay", "%s closed by %s, held back from the game until released", dm_menu_title(menu), by);
 }
 
-int debug_menu_key(UINT msg, WPARAM wparam, LPARAM lparam) {
-    int down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN, r, was_open = D.state.open;
+int debug_menu_key_event(unsigned vk, int down, int repeat, int shift, int control) {
+    int r, was_open = D.state.open;
     dm_menu_t menu = D.state.menu;
-    if (msg != WM_KEYDOWN && msg != WM_KEYUP && msg != WM_SYSKEYDOWN && msg != WM_SYSKEYUP) return 0;
-    r = dm_key(&D.state, &D.world, (unsigned)wparam, down, (lparam & 0x40000000) != 0, GetKeyState(VK_SHIFT) < 0,
-               GetKeyState(VK_CONTROL) < 0, GetTickCount());
-    note_closed_by(was_open, menu, wparam == VK_ESCAPE ? "Esc" : wparam == VK_RETURN ? "Enter" : "a key");
+    r = dm_key(&D.state, &D.world, vk, down, repeat, shift, control, jpt_time_ms());
+    note_closed_by(was_open, menu, vk == 0x1B ? "Esc" : vk == 0x0D ? "Enter" : "a key");
     note_changes();
     return r;
 }
 
-int debug_menu_char(WPARAM wparam) { return dm_char(&D.state, &D.world, (char)wparam); }
+int debug_menu_char(char c) { return dm_char(&D.state, &D.world, c); }
 
-int debug_menu_mouse(UINT msg, int x, int y) {
+int debug_menu_pointer(int click, int x, int y) {
     const int was_open = D.state.open;
     const dm_menu_t menu = D.state.menu;
+    const dml_hits_t* hits = D.hits ? D.hits() : NULL;
     if (!D.state.open) return 0;
     D.pointer = 1;
     D.pointer_x = (float)x;
     D.pointer_y = (float)y;
-    if (msg == WM_MOUSEMOVE) {
-        dm_mouse_move(&D.state, &D.world, dmp_hits(), D.pointer_x, D.pointer_y);
-    } else if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) {
-        dm_mouse_click(&D.state, &D.world, dmp_hits(), D.pointer_x, D.pointer_y, GetTickCount());
+    if (!click) {
+        dm_mouse_move(&D.state, &D.world, hits, D.pointer_x, D.pointer_y);
+    } else {
+        dm_mouse_click(&D.state, &D.world, hits, D.pointer_x, D.pointer_y, jpt_time_ms());
         note_closed_by(was_open, menu, "the mouse");
         note_changes();
     }
@@ -432,7 +431,7 @@ int debug_menu_mouse(UINT msg, int x, int y) {
 }
 
 void debug_menu_pad(uint32_t held, uint32_t pressed) {
-    uint32_t now = GetTickCount();
+    uint32_t now = jpt_time_ms();
     int was_open = D.state.open;
     dm_menu_t menu = D.state.menu;
     pressed |= dm_pad_repeat(&D.state.repeat, held, pressed, now);
@@ -445,73 +444,30 @@ static int hud_wanted(void) {
     return D.hud.compass || D.hud.marker || D.hud.objective[0] || D.hud.notice[0] || D.hud.minimap;
 }
 
-int debug_menu_overlay_wanted(void) {
-    return D.state.open || hud_wanted() || window_host_frame_counter_on();
-}
+int debug_menu_overlay_wanted(int frame_counter_on) { return D.state.open || hud_wanted() || frame_counter_on; }
 
 /* The UI loop that refreshes the HUD does not run under videos or loads: the picture is checked as it is shown. */
-static int hud_on_screen(void) {
+int debug_menu_hud_on_screen(void) {
     guest_ui_view_t v;
     return hud_wanted() && guest_ui_probe(&v) && place_of(&v) == DM_PLACE_LEVEL;
 }
 
-static float dpi_scale(void) {
-    static float scale;
-    if (!scale) {
-        HDC dc = GetDC(NULL);
-        scale = dc ? (float)GetDeviceCaps(dc, LOGPIXELSY) / 96.0f : 1.0f;
-        if (dc) ReleaseDC(NULL, dc);
-        if (scale < 1.0f) scale = 1.0f;
+void debug_menu_fill_frame(dmp_frame_t* f) {
+    f->menu = D.state.open;
+    f->objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
+    if (debug_menu_hud_on_screen()) f->hud = &D.hud;
+    if (f->menu) {
+        f->rows = D.rows;
+        f->row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);
+        f->feedback = dm_feedback_text(&D.state, jpt_time_ms());
+        f->menu_id = D.state.menu;
+        f->page = D.state.page;
+        f->pointer = D.pointer;
+        f->pointer_x = D.pointer_x;
+        f->pointer_y = D.pointer_y;
+        f->context_help = dm_help_text(&D.state, &D.world);
+        f->help_lines = DMP_HELP_LINES;
+        if (D.state.menu == DM_MENU_OBJECTIVES) f->help = jpt_tr(k_objectives_help);
+        f->title = dm_menu_title(D.state.menu);
     }
-    return scale;
 }
-
-/* The compass sits in the 3D picture the game draws, which its view-size setting can leave smaller than the surface. */
-static void scene_view(dmp_frame_t* f) {
-    float v[4];
-    if (!d3dr_scene_view(v) || v[0] < 0.0f || v[1] < 0.0f || v[0] + v[2] > 1.001f || v[1] + v[3] > 1.001f) return;
-    f->scene_x = v[0] * f->view_w;
-    f->scene_y = v[1] * f->view_h;
-    f->scene_w = v[2] * f->view_w;
-    f->scene_h = v[3] * f->view_h;
-}
-
-void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext* context,
-                        struct ID3D11RenderTargetView* target, int width, int height) {
-    dmp_frame_t f;
-    dmp_text_layer_t text;
-    char counter[32];
-    RECT view;
-    if (!debug_menu_overlay_wanted() || !window_host_view_rect(&view)) return;
-    memset(&f, 0, sizeof f);
-    f.view_w = (float)(view.right - view.left);
-    f.view_h = (float)(view.bottom - view.top);
-    f.dpi_scale = dpi_scale();
-    scene_view(&f);
-    f.menu = D.state.open;
-    f.objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
-    if (hud_on_screen()) {
-        f.hud = &D.hud;
-        if (present_take_text_layer(&text.texture, &text.legacy_w, &text.legacy_h, &text.left, &text.top, &text.right,
-                                 &text.bottom))
-            f.text_layer = &text;
-    }
-    if (window_host_frame_counter_text(counter, sizeof counter)) f.counter = counter;
-    if (f.menu) {
-        f.rows = D.rows;
-        f.row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);
-        f.feedback = dm_feedback_text(&D.state, GetTickCount());
-        f.menu_id = D.state.menu;
-        f.page = D.state.page;
-        f.pointer = D.pointer;
-        f.pointer_x = D.pointer_x;
-        f.pointer_y = D.pointer_y;
-        f.context_help = dm_help_text(&D.state, &D.world);
-        f.help_lines = DMP_HELP_LINES;
-        if (D.state.menu == DM_MENU_OBJECTIVES) f.help = jpt_tr(k_objectives_help);
-        f.title = dm_menu_title(D.state.menu);
-    }
-    dmp_draw(device, context, target, width, height, &f);
-}
-
-void debug_menu_release(void) { dmp_release(); }

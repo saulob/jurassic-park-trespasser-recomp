@@ -39,6 +39,10 @@ SAVED = [c for c in CHEATS if c["key"] and c["kind"] != "JPT_CHEAT_ACTION"]
 RESULT = {"cheats": []}
 
 
+def _strip_page(item):
+    return item[:-5] if item.endswith("_PAGE") else item
+
+
 def cheat_name(c):
     return c["id"].replace("JPT_CHEAT_", "")
 
@@ -85,12 +89,12 @@ class CheatParity(unittest.TestCase):
             with self.subTest(cheat=cheat_name(c)):
                 self.assertIn(c["id"], ITEM, "no row in F10's table")
                 item = ITEM[c["id"]]
-                self.assertIn(item.removesuffix("_PAGE"), ACTION_OF_ITEM, "its row has no action")
+                self.assertIn(_strip_page(item), ACTION_OF_ITEM, "its row has no action")
 
     def test_every_cheat_has_a_handler(self):
         for c in CHEATS:
             with self.subTest(cheat=cheat_name(c)):
-                item = ITEM.get(c["id"], "").removesuffix("_PAGE")
+                item = _strip_page(ITEM.get(c["id"], ""))
                 action = ACTION_OF_ITEM.get(item)
                 in_handlers = any(c["id"] in text for text in HANDLERS.values())
                 in_menu = action is not None and action in HANDLERS["debug_menu.c"]

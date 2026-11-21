@@ -1,5 +1,7 @@
 #include "smacker_compat.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,6 +45,8 @@ struct smk_object {
         int ended;
     } track[SMK_TRACKS];
 };
+
+static smk_stats_t s_stats;
 
 static struct {
     smk_host_t host;
@@ -95,6 +99,7 @@ static void audio_open(smk_object_t* o, uint32_t flags) {
         format.bits = o->header.track[t].bits;
         o->track[t].stream = audio_stream_open(o->mixer, &format, STREAM_CAPACITY_MS);
         if (!o->track[t].stream) continue;
+        s_stats.audio_streams++;
         o->track[t].pending = (uint8_t*)malloc(PENDING_BYTES);
         o->track[t].block = audio_format_block(&format);
         o->track[t].rate = format.rate;
@@ -134,6 +139,7 @@ static void audio_pump(smk_object_t* o) {
             taken = audio_stream_push(o->track[t].stream, o->track[t].pending + o->track[t].pending_offset,
                                       o->track[t].pending_bytes - o->track[t].pending_offset);
             o->track[t].pending_offset += taken;
+            s_stats.audio_bytes_pushed += taken;
             if (!taken) break;
         }
     }
@@ -184,8 +190,20 @@ static smk_object_t* find_object(uint32_t address) {
     return NULL;
 }
 
+static void say(const char* fmt, ...) {
+    char line[256];
+    va_list list;
+    if (!S.host.log) return;
+    va_start(list, fmt);
+    vsnprintf(line, sizeof line, fmt, list);
+    va_end(list);
+    S.host.log(S.host.context, line);
+}
+
 static void object_destroy(smk_object_t* o) {
     smk_object_t** at;
+    for (smk_object_t* it = S.objects; S.host.video_closed && it; it = it->next)
+        if (it == o) S.host.video_closed(S.host.context, o->address);
     audio_close(o);
     if (o->video) S.host.backend->close(o->video);
     if (S.host.close_source) S.host.close_source(S.host.context, &o->source);
@@ -217,18 +235,20 @@ static uint32_t smk_open(const uint32_t* a) {
     smk_header_t header;
     smk_object_t* o;
     uint32_t flags = a[1];
+    char name[PATH_CAPACITY] = "";
     int opened;
     if (!S.ready) return 0;
     if (flags & SMK_OPEN_FILEHANDLE) {
         opened = S.host.open_handle && S.host.open_handle(S.host.context, a[0], &source);
+        if (opened && S.host.handle_name && !S.host.handle_name(S.host.context, a[0], name, sizeof name)) name[0] = 0;
     } else {
-        char path[PATH_CAPACITY];
-        opened = S.host.open_path && jpt_guest_read_string(GUEST, a[0], path, sizeof path) &&
-                 S.host.open_path(S.host.context, path, &source);
+        opened = S.host.open_path && jpt_guest_read_string(GUEST, a[0], name, sizeof name) &&
+                 S.host.open_path(S.host.context, name, &source);
     }
-    if (!opened) return 0;
+    if (!opened) return s_stats.open_failed++, 0;
     if (source.read_at(source.context, 0, head, sizeof head) != sizeof head || !smk_header_parse(head, sizeof head, &header)) {
         if (S.host.close_source) S.host.close_source(S.host.context, &source);
+        s_stats.open_failed++;
         return 0;
     }
     o = (smk_object_t*)calloc(1, sizeof *o);
@@ -248,6 +268,7 @@ static uint32_t smk_open(const uint32_t* a) {
     o->address = o->video ? GUEST->alloc(GUEST->context, SMK_STRUCT_BYTES) : 0;
     if (!o->address) {
         object_destroy(o);
+        s_stats.open_failed++;
         return 0;
     }
     audio_open(o, flags);
@@ -255,12 +276,21 @@ static uint32_t smk_open(const uint32_t* a) {
     o->next = S.objects;
     S.objects = o;
     S.count++;
+    s_stats.opened++;
+    if (S.host.video_opened) S.host.video_opened(S.host.context, o->address, name, &o->source, header.frames);
+    say("SmackOpen: %ux%u, %u frames, %u ms per frame, %s, %s", header.width, o->shown_height, header.frames,
+        (unsigned)(smk_frame_duration_us(header.frame_rate) / 1000u), o->audio ? "audio into the mixer" : "no audio",
+        (flags & SMK_OPEN_FILEHANDLE) ? "from a handle" : "from a file name");
     return o->address;
 }
 
 static uint32_t smk_close(const uint32_t* a) {
     smk_object_t* o = find_object(a[0]);
-    if (o) object_destroy(o);
+    if (o) {
+        say("SmackClose: %u of %u frames decoded%s", o->decoded, o->header.frames, o->video_ended ? ", end of file reached" : "");
+        s_stats.closed++;
+        object_destroy(o);
+    }
     return 0;
 }
 
@@ -409,8 +439,10 @@ static uint32_t smk_do_frame(const uint32_t* a) {
         memcpy(o->previous, o->picture, (size_t)o->header.width * o->header.height);
         if (!S.host.backend->next_video(o->video, o->picture, palette)) {
             o->video_ended = 1;
+            s_stats.ended_by_eof++;
             break;
         }
+        s_stats.frames_decoded++;
         if (!o->have_picture || memcmp(palette, o->palette, sizeof palette)) {
             memcpy(o->palette, palette, sizeof palette);
             o->palette_changed = 1;
@@ -420,6 +452,8 @@ static uint32_t smk_do_frame(const uint32_t* a) {
         o->have_picture = 1;
     }
     if (!o->have_picture) return 0;
+    if (S.host.video_frame && o->destination_set)
+        S.host.video_frame(S.host.context, o->address, o->frame, o->left, o->top, (int32_t)o->header.width, (int32_t)o->shown_height);
     put32(o, SMK_OFF_NEW_PALETTE, o->palette_changed != 0);
     if (o->palette_changed) jpt_guest_write(GUEST, o->address + SMK_OFF_PALETTE, o->palette, sizeof o->palette);
     if (blit(o, whole, &x0, &y0, &x1, &y1)) set_rect(o, x0, y0, x1, y1);
@@ -442,6 +476,7 @@ static uint32_t smk_next_frame(const uint32_t* a) {
     smk_object_t* o = find_object(a[0]);
     if (!o) return 0;
     if (o->frame + 1 < o->header.frames) o->frame++;
+    s_stats.frames_advanced++;
     put32(o, SMK_OFF_FRAME_NUMBER, o->frame);
     return 0;
 }
@@ -521,6 +556,8 @@ uint32_t smacker_hle_call(smk_export_t export_id, const uint32_t* args) {
 const char* smacker_export_name(smk_export_t export_id) { return (unsigned)export_id < SMKX_COUNT ? k_exports[export_id].name : ""; }
 uint32_t smacker_export_words(smk_export_t export_id) { return (unsigned)export_id < SMKX_COUNT ? k_exports[export_id].words : 0; }
 unsigned smacker_open_count(void) { return S.count; }
+void smacker_hle_stats(smk_stats_t* out) { *out = s_stats; }
+void smacker_hle_stats_reset(void) { memset(&s_stats, 0, sizeof s_stats); }
 
 int smacker_find_export(const char* name, smk_export_t* out) {
     if (!name || !*name) return 0;

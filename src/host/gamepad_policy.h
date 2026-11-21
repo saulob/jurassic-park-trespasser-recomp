@@ -224,6 +224,10 @@ void pad_repeat_reset(pad_repeat_t* r);
 /* The direction to act on now, PAD_NAV_NONE when nothing fires. */
 pad_nav_dir_t pad_repeat_update(pad_repeat_t* r, pad_nav_dir_t held, uint32_t now_ms);
 
+/* The two motor strengths a host asks for (0..1, anything outside is clamped) as the 16-bit values SDL's rumble takes. The retail
+ * game never asks for rumble: this is the capability both hosts keep for the host's own use. */
+void pad_rumble_motors(float low, float high, uint16_t* motor_low, uint16_t* motor_high);
+
 #ifdef __cplusplus
 }
 #endif

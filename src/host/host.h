@@ -5,25 +5,19 @@
 #include <windows.h>
 #include <stdint.h>
 
-#include "native32.h"
-#include "host_policy.h"
-
+#include "ce_gameplay.h"
+#include "debug_menu.h"
+#include "engine_mode.h"
+#include "guest_abi.h"
+#include "guest_features.h"
+#include "host_input.h"
 #include "lift_registry.h"
-
-/* A shim is entered with g_esp at [return slot][arg0][arg1]... */
-#define GUEST_ARG(n) MEM32(g_esp + 4 + 4 * (n))
-#define GUEST_PTR(n) ((void*)(uintptr_t)GUEST_ARG(n))
-#define GUEST_RETURN_STDCALL(nargs) (g_esp += 4 + 4 * (nargs))
 
 int host_log_open(const char* dir, const char* file);
 const char* host_log_path(void);
-void host_log(const char* tag, const char* fmt, ...);
-/* Diagnostics and statistics: written only with --perf-log. */
-void host_log_perf(const char* tag, const char* fmt, ...);
 void host_log_raw(const char* text, unsigned len);
 /* --perf-log: the 5-second performance lines, periodic renderer summaries and the guest CPU profile. */
 void host_perf_logging_enable(void);
-int host_perf_logging(void);
 
 
 void guest_env_init(const char* game_dir, const char* guest_args);
@@ -166,29 +160,9 @@ void shim_PeekMessageA(void);
 void shim_IsIconic(void);
 void shim_GetForegroundWindow(void);
 
-/* guest_ui.c: the game's own window stack. */
-typedef struct {
-    guest_ui_t ui;
-    guest_wnd_t kind;
-    uint32_t top, top_vtable, manager;
-    int stopped;
-    unsigned depth;
-} guest_ui_view_t;
-
-int guest_ui_probe(guest_ui_view_t* out);
+/* guest_ui.c: the game's own window stack (guest_abi.h declares the probe). */
 guest_wnd_t guest_ui_window_kind(uint32_t window);
-const char* guest_ui_class_name(uint32_t vtable);
 int guest_display_built(void);
-int guest_read32(uint32_t va, uint32_t* out);
-int guest_readable(uint32_t va, uint32_t bytes);
-/* A NUL-terminated guest string, cut to cap - 1 bytes; 0 when unreadable. */
-int guest_read_string(uint32_t va, char* out, int cap);
-int guest_write32(uint32_t va, uint32_t value);
-/* The game's own "app active" flag: its message pump returns to its loops only while it is set. */
-int guest_ui_active(const guest_ui_view_t* v);
-/* The game's EndModal(code) on the window in front; quit_to_windows adds the flags its in-game Quit
- * sets. 1 done, -1 the window is already ending, 0 not possible. */
-int guest_ui_end_window(const guest_ui_view_t* v, int32_t code, int quit_to_windows);
 
 /* d3d11_renderer.c: --renderer, --render-resolution, --texture-filter, --msaa */
 /* box 0x0: the original compatibility size; otherwise each target is the largest of its surface's shape inside it. */
@@ -245,12 +219,6 @@ void cpu_polygons_install(void);
 void cpu_polygons_summary(void);
 /* Closes the frame's per-family counts; gameplay = a stable gameplay frame, slow = over 25 ms. */
 void cpu_polygons_frame_end(int gameplay, int slow);
-/* widescreen.c: screen pixels per metre at unit distance for the main camera's view; 0 when there is none. */
-float widescreen_pixels_per_metre(void);
-/* tan of half the main camera's vertical view, as the picture shows it; 0 when there is none. */
-float widescreen_tan_half_height(void);
-/* The same with the camera's zoom: the projection its Direct3D vertices were made with. */
-float widescreen_view_tan_half_height(void);
 /* Ambient occlusion (JPT_AO_*), from trespasser.ini before d3dr_startup. */
 void d3dr_configure_ambient_occlusion(int level);
 /* Water refraction and Enhanced sky, from trespasser.ini. */
@@ -261,25 +229,11 @@ void d3dr_sky_end(void);
 /* --debug-d3d-output texture|vertex-color|depth: what the pixel shader returns for every draw. */
 int d3dr_set_debug_output(const char* mode);
 void d3dr_summary(void);
-/* guest_overrides.c: the lifted functions of guest_override_list.h, replaceable through their stable entries.
- * Installs are refused until the target executable is verified; 0 when the list is not sorted and unique. */
-int guest_overrides_enable(void);
-/* Points va's stable entry at replacement; *lifted receives the lifted body. 0: va is not listed or already replaced. */
-int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t* lifted);
-/* The lifted body behind va's stable entry; NULL when va has none. */
-recomp_func_t guest_override_lifted(uint32_t va);
+/* guest_overrides.c: the lifted functions of guest_override_list.h (guest_abi.h declares the installs). */
 /* Host kernels byte-exact with the lifted functions they replace (tests/water_tests.c). */
 void guest_kernels_install(void);
-/* One line on what was installed; 0 when a required override is missing. */
-int guest_overrides_check(void);
 /* widescreen.c: lifts the mode table's width cap and makes the main camera Hor+; 0 when a site is missing. */
-int widescreen_install(int aspect);
-int widescreen_active(void);
-/* Field of view in degrees across the 4:3 view (JPT_FOV_*), set from the settings; the main camera takes a change at
- * widescreen_apply_fov, run from the game's UI loop. */
-void widescreen_set_fov(int degrees);
-int widescreen_fov(void);
-void widescreen_apply_fov(void);
+int widescreen_install_modes(void);
 /* game_text.c: the gameplay text overlay keeps its share of the screen height and is drawn aliased. */
 void game_text_install(void);
 int game_text_drawing(void);
@@ -300,10 +254,7 @@ int present_take_text_layer(void** texture, int* legacy_w, int* legacy_h, int* l
 void ui_canvas_install(void);
 void menu_audio_install(void);
 /* engine_limits.c */
-void engine_limits_keep_original(void);
-int engine_limits_original(void);
 void engine_limits_install(int hardware);
-int engine_limits_modern(void);
 void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsync);
 void engine_limits_summary(unsigned long long hardware_draw_calls);
 /* texture_streaming.c: the game's per-frame Direct3D texture upload window. */
@@ -313,15 +264,9 @@ void texture_streaming_summary(void);
 /* Image-cache decisions at exit (engine_limits.c). */
 void engine_limits_cache_summary(void);
 void shim_GetTickCount(void);
-/* terrain_quality.c: terrain texture distance and mesh tolerance with Direct3D 11. */
 /* engine_heaps.c: the engine's fixed heaps (scene polygons and vertices, terrain) and their commits. */
 void engine_heaps_install(void);
-int engine_heaps_enlarged(void);
 void engine_heaps_log(void);
-void terrain_quality_install(void);
-/* Mesh tolerances are in render pixels: they are compared at 480 lines. */
-void terrain_quality_set_render_height(int height);
-void terrain_quality_log(void);
 /* Inside a RasterBlt from another raster onto the game's screen. */
 int ui_screen_blt_writes_only(void);
 /* A present now would show a blank screen between two menu frames (ui_present_held): the last frame stays up. */
@@ -350,8 +295,6 @@ void video_hd_main_presented(void);
 void video_hd_release(void);
 /* The next Play only (vl_play_mode_t); it is AUTO again from the one after. */
 void video_hd_force(int mode);
-/* Skip Intro (key skip_intro): read at start-up, applied as each opening is about to play. */
-void video_hd_skip_intro(int enabled);
 /* Inside Play: the Smacker frame on screen and the picture's rectangle on the game's screen. */
 int video_hd_picture(int32_t* frame, int* x, int* y, int* w, int* h);
 /* video_subtitles.c: the dialogue of the retail videos drawn over the picture (key video_subtitles). */
@@ -385,20 +328,8 @@ int video_test_mouse(UINT msg, WPARAM wparam, LPARAM lparam);
 /* In the menu frame, before the game draws it: a requested playback runs here. */
 void video_test_ui_frame(void);
 void video_test_release(void);
-/* debug_menu.c: F10 Cheats in a level or with the main menu alone in front, and F3 Objectives in a level, one at a time. */
-void debug_menu_f10(void);
-void debug_menu_f3(void);
-void debug_menu_show_objective(void);
-/* A short line on the HUD under the compass, in a level. */
-void debug_menu_notice(const char* text);
-/* 0 closed, 1 Cheats, 2 Objectives. */
-int debug_menu_open_menu(void);
-void debug_menu_close(void);
+/* debug_menu.h: F10 Cheats in a level or with the main menu alone in front, and F3 Objectives in a level. */
 /* overlay.c: the one owner of the host's interfaces over gameplay (overlay_policy.h kinds). */
-void overlay_request(int kind, const char* source);
-void overlay_ui_loop(void);
-int debug_menu_positions(float player[3], float camera[3]);
-int overlay_blocks_gameplay(void);
 
 
 /* minimap.c: the minimap's world bounds and projection; key minimap (default on). */
@@ -413,81 +344,33 @@ int window_host_frame_counter_on(void);
 int window_host_frame_counter_text(char* out, size_t cap);
 
 /* ce_gameplay.c: Quick Save / Quick Load, Dual stow and Maximum object detail. Requests run in the game's UI loop. */
-void ce_gameplay_configure(int dual_stow, int max_object_detail);
-void ce_gameplay_install(void);
 void ce_gameplay_ui_loop(void);
 void quick_save_request(void);
 void quick_load_request(void);
-/* active_ai.c: Active AI (CE's MaxActiveAi), 6 animals active instead of 3; Original installs nothing. */
-void active_ai_configure(int enhanced);
-/* The living animals the game's AI holds, awake (engaged) or not, with their world position; read-only. */
-typedef struct {
-    float x, y;
-    float scale; /* the instance's scale: how big the animal is */
-    int engaged;
-} host_animal_t;
-int active_ai_animals(uint32_t scratch, host_animal_t* out, int max);
-
-/* patch117.c: the official v1.1 build 117 level fixes, applied to retail level scenes as the game reads them. */
-void patch117_configure(int on);
-void patch117_install(void);
-void patch117_lz_opened(const char* path, INT handle);
-/* patch117_player.c: the official v1.1 build 117 player fixes over the lifted 116 code. */
-void patch117_player_configure(int on);
-void patch117_player_install(void);
-/* patch117_physics.c: the official v1.1 build 117 box-box and broad-phase fixes over the lifted 116 code. */
-void patch117_physics_configure(int on);
-void patch117_physics_install(void);
-/* DEBUG_SAULO: what the rigid-box physics did since the last take, by box of the 50-box pool (its broad-phase pairs,
- * sub-box pairs it was tested in, velocity kills of its contacts) and the pool's state now. */
-#define PHYSICS_BOXES 50u
-typedef struct {
-    unsigned pairs, sub_pairs, corner_tests, kills, awake, active;
-    unsigned box_pairs[PHYSICS_BOXES], box_sub_pairs[PHYSICS_BOXES], box_kills[PHYSICS_BOXES];
-    unsigned box_sub_count[PHYSICS_BOXES];
-    unsigned char box_awake[PHYSICS_BOXES], box_movable[PHYSICS_BOXES];
-} physics_counts_t;
-void physics_counts_take(physics_counts_t* out);
 /* Frames the Direct3D 11 renderer presented with the hardware device. */
 unsigned long long renderer_hardware_frames(void);
-void active_ai_install(void);
-int active_ai_installed(void);
-/* Active animals per AI update, at exit. */
-void active_ai_summary(void);
-/* Hand escapes and recoveries at exit (physics_fixes.c). */
-void physics_fixes_summary(void);
 /* ce_graphics.c: the sky draw hook and the water rows' observer (Direct3D 11 only). */
 void ce_graphics_install(int hardware);
 /* Every key message first: 1 when the game must not see it. */
 int overlay_key(UINT msg, WPARAM wparam, LPARAM lparam);
 /* gamepad.c: an interface opened or closed: buttons held now wait for their release. */
 void gamepad_overlay_changed(void);
-int debug_menu_visible(void);
-/* While open in a level the game's CInput result is emptied: Anne does not move or look. */
-int debug_menu_blocks_gameplay(void);
-/* 1 when the game must not see this key message or character. */
+/* 1 when the game must not see this key message. */
 int debug_menu_key(UINT msg, WPARAM wparam, LPARAM lparam);
-int debug_menu_char(WPARAM wparam);
 /* A mouse message over the open menu, x and y in the presentation surface's pixels: 1 when the menu took it. */
 int debug_menu_mouse(UINT msg, int x, int y);
-/* Gamepad buttons (JPT_PAD_BIT) while the menu is open. */
-void debug_menu_pad(uint32_t held, uint32_t pressed);
-/* The game's modal UI loop, after gamepad_ui_loop: requested actions run here. */
-void debug_menu_ui_loop(void);
-int debug_menu_overlay_wanted(void);
+void debug_menu_windows_init(void);
+int debug_menu_overlay_is_wanted(void);
 void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext* context,
                         struct ID3D11RenderTargetView* target, int width, int height);
 void debug_menu_release(void);
-/* guest_call.c: a lifted function called from the host; 0 when it is missing or left the stack moved. */
-int guest_call(uint32_t va, uint32_t self, const uint32_t* args, int count, int caller_pops, uint32_t* result);
-int guest_call_virtual(uint32_t self, uint32_t slot, const uint32_t* args, int count, uint32_t* result);
 HWND window_host_game_window(void);
 /* window_host.c: the presentation surface inside the game window's client. */
 int window_host_view_rect(RECT* view);
 /* The real pointer in the game's screen pixels; 0 when it is outside the picture. */
 int window_host_pointer(int* x, int* y);
 /* Gamepad input reaches the game as its own key, character and mouse messages (gamepad.c, gamepad_menu.c). */
-enum { PAD_MOUSE_DOWN, PAD_MOUSE_UP, PAD_MOUSE_DOUBLE, PAD_MOUSE_MOVE };
+enum { PAD_MOUSE_DOWN = HOST_MOUSE_DOWN, PAD_MOUSE_UP = HOST_MOUSE_UP, PAD_MOUSE_DOUBLE = HOST_MOUSE_DOUBLE, PAD_MOUSE_MOVE = HOST_MOUSE_MOVE };
 int window_host_input_focused(void);
 void window_host_post_key(unsigned vk);
 void window_host_post_key_up(unsigned vk);
@@ -536,8 +419,6 @@ void guest_threads_log(const char* when);
 void registry_legacy_safemode_dialog(void);
 int registry_legacy_safemode_enabled(void);
 
-/* physics_fixes.c: the pelvis height clamps at the game's x87 precision, the wave model's step pacing. */
-void physics_fixes_install(void);
 
 enum {
     HOST_EXIT_SETUP = 1,

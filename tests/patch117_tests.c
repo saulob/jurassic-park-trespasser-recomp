@@ -737,12 +737,13 @@ static void test_wiring(void) {
     char* launcher = read_source("launcher/launcher.cpp");
     char* pt = read_source("launcher/localization/pt_br_ui_text.cpp");
     char* main_c = read_source("src/host/main.c");
+    char* features = read_source("src/host/guest_features.c");
     char* io = read_source("src/host/io_trace.c");
     char* glue = read_source("src/host/patch117.c");
     char* overrides = read_source("src/host/guest_override_list.h");
     const char *ce, *heading, *toggle;
-    CHECK(launcher && pt && main_c && io && glue, "sources readable");
-    if (!launcher || !pt || !main_c || !io || !glue) return;
+    CHECK(launcher && pt && main_c && features && io && glue, "sources readable");
+    if (!launcher || !pt || !main_c || !features || !io || !glue) return;
     ce = strstr(launcher, "ui.Heading(\"Trespasser CE\")");
     heading = strstr(launcher, "ui.Heading(\"Official Patch 1.1\")");
     toggle = strstr(launcher, "ui.Toggle(\"Patch 1.1 fixes\", kOfficialPatchHelp, JPT_KEY_OFFICIAL_PATCH_117, true, \"Off\", \"On\")");
@@ -754,7 +755,8 @@ static void test_wiring(void) {
           "Portuguese labels");
     CHECK(strstr(pt, "\"Aplica correções de jogabilidade e níveis do patch oficial Trespasser v1.1 build 117 da "
                      "DreamWorks Interactive\"") != NULL, "Portuguese help");
-    CHECK(strstr(main_c, "patch117_configure(cfg.official_patch_117);") && strstr(main_c, "{ \"LZRead\", shim_LZRead }") &&
+    CHECK(strstr(features, "patch117_configure(cfg->official_patch_117);") && strstr(main_c, "guest_features_configure(&cfg);") &&
+              strstr(main_c, "{ \"LZRead\", shim_LZRead }") &&
               strstr(main_c, "{ \"LZSeek\", shim_LZSeek }") && strstr(main_c, "{ \"LZClose\", shim_LZClose }"),
           "host: setting and the game's LZ reads");
     CHECK(strstr(io, "patch117_lz_opened(") != NULL, "every LZOpenFileA reaches the level check");
@@ -764,13 +766,15 @@ static void test_wiring(void) {
               strstr(overrides, "00472B60") < strstr(overrides, "00475F60") &&
               strstr(overrides, "00475F60") < strstr(overrides, "00477A40"),
           "bAddChild listed in address order");
-    CHECK(strstr(glue, "patch117_add_child_flag(s_on, s_add_child_depth > 0") && strstr(main_c, "patch117_install();"),
+    CHECK(strstr(glue, "patch117_add_child_flag(s_on, s_add_child_depth > 0") && strstr(features, "patch117_install();") &&
+              strstr(main_c, "guest_features_install();"),
           "bAddChild wrapper installed");
     CHECK(!strstr(glue, "Decomp_Downloads") && !strstr(glue, "Patch Dir") && !strstr(glue, "RegOpenKey"),
           "no dependency on the patch's files, folder or registry");
     free(launcher);
     free(pt);
     free(main_c);
+    free(features);
     free(io);
     free(glue);
     free(overrides);
@@ -781,7 +785,7 @@ static void test_hook_wiring(void) {
     char* list = read_source("src/host/lift_hook_list.h");
     char* player = read_source("src/host/patch117_player.c");
     char* physics = read_source("src/host/patch117_physics.c");
-    char* main_c = read_source("src/host/main.c");
+    char* main_c = read_source("src/host/guest_features.c");
     char* overrides = read_source("src/host/guest_override_list.h");
     int hooks = 0;
     CHECK(list && player && physics && main_c && overrides, "sources readable");
@@ -798,8 +802,8 @@ static void test_hook_wiring(void) {
     CHECK(hooks == 27, "27 lift hooks (%d)", hooks);
     CHECK(strstr(overrides, "GUEST_OVERRIDE(004EDFA0, REQUIRED)") && strstr(overrides, "GUEST_OVERRIDE(004F0960, REQUIRED)"),
           "box set-up and jump hand-off overrides listed");
-    CHECK(strstr(main_c, "patch117_player_configure(cfg.official_patch_117);") &&
-              strstr(main_c, "patch117_physics_configure(cfg.official_patch_117);") &&
+    CHECK(strstr(main_c, "patch117_player_configure(cfg->official_patch_117);") &&
+              strstr(main_c, "patch117_physics_configure(cfg->official_patch_117);") &&
               strstr(main_c, "patch117_player_install();") && strstr(main_c, "patch117_physics_install();"),
           "player and physics fixes follow the setting");
     CHECK(!strstr(player, "jpt_config") && !strstr(physics, "jpt_config") && !strstr(player, "mouse_sens") &&

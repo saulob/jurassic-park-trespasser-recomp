@@ -15,6 +15,6 @@ static override_entry_t OVERRIDE_JOIN(OVERRIDE_LIFT, entries)[] = {
 };
 
 static override_registry_t OVERRIDE_JOIN(OVERRIDE_LIFT, registry) = {
-    OVERRIDE_JOIN(OVERRIDE_LIFT, entries),
-    sizeof OVERRIDE_JOIN(OVERRIDE_LIFT, entries) / sizeof OVERRIDE_JOIN(OVERRIDE_LIFT, entries)[0]
+    .entries = OVERRIDE_JOIN(OVERRIDE_LIFT, entries),
+    .count = sizeof OVERRIDE_JOIN(OVERRIDE_LIFT, entries) / sizeof OVERRIDE_JOIN(OVERRIDE_LIFT, entries)[0]
 };

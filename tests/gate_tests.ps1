@@ -101,6 +101,41 @@ Write-Output "RESULT code=$code same=$($before -eq (Get-State)) passed=$($output
         }
     }
 
+    $linuxHelper = [IO.File]::ReadAllText((Join-Path $root 'tools\_gate_linux.ps1'))
+    $linuxErrors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseInput($linuxHelper, [ref]$tokens, [ref]$linuxErrors)
+    Check (@($linuxErrors).Count -eq 0) 'tools\_gate_linux.ps1 parses'
+    Check ($linuxHelper -match 'wsl\.exe' -and $linuxHelper -match "'wslpath'" -and $linuxHelper -match '--native-build' -and $linuxHelper -match 'test-linux\.sh') 'the Linux half goes PowerShell -> wsl.exe -> wslpath -> bash -> tools/test-linux.sh'
+    Check ($linuxHelper -match "MuaFocalBuild" -and $linuxHelper -match '2\.31') 'MuaFocalBuild and the glibc 2.31 baseline are what the distribution choice prefers'
+    Check ($linuxHelper -notmatch '(?i)/mnt/[a-z]/' -and $linuxHelper -notmatch '(?i)Start-Process|Invoke-WebRequest|wine|proton') 'no hard-coded /mnt path, no process shell-out and no Wine in the Linux half'
+    Check ($text -notmatch '(?i)trespasser_recomp(\.exe)?\s+--run|--run') 'the gate never runs the game'
+    Check ($text.Contains('[switch]$WindowsOnly') -and $text.Contains('[switch]$LinuxOnly') -and $text.Contains('[switch]$SkipLinux') -and $text.Contains('[string]$LinuxDistro') -and $text.Contains('[switch]$Sanitize')) 'the options of the two halves exist'
+
+    . (Join-Path $root 'tools\_gate_linux.ps1')
+    $passEvidence = @([pscustomobject]@{ suite = 'a' })
+    $parityContract = [pscustomobject]@{ features = @(
+        [pscustomobject]@{ id = 'both'; scope = 'global'; shared = $passEvidence; windows = [pscustomobject]@{ status = 'PASS'; evidence = @() }; linux = [pscustomobject]@{ status = 'PASS'; evidence = @() } },
+        [pscustomobject]@{ id = 'linux-gap'; scope = 'global'; shared = @(); windows = [pscustomobject]@{ status = 'PASS'; evidence = $passEvidence }; linux = [pscustomobject]@{ status = 'BLOCKED'; evidence = @(); reason = 'not ported' } },
+        [pscustomobject]@{ id = 'wrongly-platform-only'; scope = 'global'; shared = @(); windows = [pscustomobject]@{ status = 'PASS'; evidence = $passEvidence }; linux = [pscustomobject]@{ status = 'PLATFORM_ONLY'; evidence = @(); reason = 'x' } },
+        [pscustomobject]@{ id = 'd3d11'; scope = 'windows'; shared = @(); windows = [pscustomobject]@{ status = 'PASS'; evidence = $passEvidence }; linux = [pscustomobject]@{ status = 'PLATFORM_ONLY'; evidence = @(); reason = 'Windows only' } },
+        [pscustomobject]@{ id = 'failing'; scope = 'global'; shared = @(); windows = [pscustomobject]@{ status = 'PASS'; evidence = @([pscustomobject]@{ suite = 'bad' }) }; linux = [pscustomobject]@{ status = 'PASS'; evidence = $passEvidence } },
+        [pscustomobject]@{ id = 'no-data'; scope = 'global'; shared = @(); windows = [pscustomobject]@{ status = 'PASS'; evidence = $passEvidence }; linux = [pscustomobject]@{ status = 'PASS'; evidence = @([pscustomobject]@{ suite = 'unavailable' }) } },
+        [pscustomobject]@{ id = 'future'; scope = 'planned'; shared = @(); windows = [pscustomobject]@{ status = 'BLOCKED'; evidence = @(); reason = 'later' }; linux = [pscustomobject]@{ status = 'BLOCKED'; evidence = @(); reason = 'later' } }) }
+    $windowsMap = @{ a = [pscustomobject]@{ Status = 'PASS' }; bad = [pscustomobject]@{ Status = 'FAIL' } }
+    $linuxMap = @{ a = [pscustomobject]@{ Status = 'PASS' }; unavailable = [pscustomobject]@{ Status = 'PASS'; Unavailable = $true } }
+    $parity = @{}
+    foreach ($row in @(Get-FeatureParity $parityContract $windowsMap $linuxMap $true $true '')) { $parity[$row.Id] = $row }
+    Check ($parity['both'].Parity -eq 'PASS') 'parity: a shared suite that passed on both platforms is PASS'
+    Check ($parity['linux-gap'].Parity -eq 'BLOCKED' -and $parity['linux-gap'].Linux -eq 'BLOCKED') 'parity: a global feature Windows proves and Linux does not is BLOCKED, never hidden'
+    Check ($parity['wrongly-platform-only'].Parity -eq 'FAIL') 'parity: a global feature cannot hide behind PLATFORM_ONLY on Linux'
+    Check ($parity['d3d11'].Parity -eq 'PASS' -and $parity['d3d11'].Linux -eq 'PLATFORM_ONLY') 'parity: a Windows-only feature with Linux PLATFORM_ONLY is justified'
+    Check ($parity['failing'].Parity -eq 'FAIL' -and $parity['failing'].Windows -eq 'FAIL') 'parity: a failed evidence suite fails the feature'
+    Check ($parity['no-data'].Parity -eq 'BLOCKED' -and $parity['no-data'].Linux -eq 'BLOCKED') 'parity: DATA UNAVAILABLE is BLOCKED, not PASS'
+    Check ($parity['future'].Parity -eq 'PLANNED') 'parity: a planned feature is neither a pass nor a failure'
+    $linuxDown = @{}
+    foreach ($row in @(Get-FeatureParity $parityContract $windowsMap $linuxDown $true $false 'BLOCKED: WSL unavailable')) { $linuxDown[$row.Id] = $row }
+    Check ($linuxDown['both'].Linux -eq 'BLOCKED' -and $linuxDown['both'].Parity -eq 'BLOCKED' -and $linuxDown['both'].Reason -match 'WSL unavailable') 'parity: without WSL no Linux row is PASS and the reason is named'
+
     $other = Join-Path $work 'elsewhere'
     New-Item -ItemType Directory -Force -Path $other | Out-Null
     $fromRoot = Invoke-Gate $gate @('-List')
@@ -116,6 +151,11 @@ Write-Output "RESULT code=$code same=$($before -eq (Get-State)) passed=$($output
     $listedSuites = @($fromRoot.Text -split "\r?\n" | Where-Object { $_ -match '^  \S' })
     Check ($listedSuites[-1] -match '^  working tree unchanged\s' -or $listedSuites[-2] -match '^  working tree unchanged\s') 'working tree unchanged is the last suite the gate runs'
     Check ($fromRoot.Text -match 'release artifacts in dist\s+NOT RUN') 'release artifacts are NOT RUN without -Release'
+    Check ($fromRoot.Text -match '(?m)^    linux  linux_mouse_tests' -and $fromRoot.Text -match '(?m)^    linux  audio_pacer_tests' -and $fromRoot.Text -match '(?m)^    linux  elf glibc') '-List shows the Linux rows, indented below the Windows suites'
+    $windowsList = Invoke-Gate $gate @('-List', '-WindowsOnly')
+    Check ($windowsList.Code -eq 0) '-List with -WindowsOnly works without WSL'
+    $exclusive = Invoke-Gate $gate @('-WindowsOnly', '-LinuxOnly', '-NoBuild')
+    Check ($exclusive.Code -ne 0 -and $exclusive.Text -match 'exclude each other') '-WindowsOnly and -LinuxOnly exclude each other'
     $listed = Invoke-Gate $gate @('-List', '-Filter', 'platform_tests')
     Check ($listed.Code -eq 0 -and $listed.Text.Contains('platform_tests') -and -not $listed.Text.Contains('gamepad_tests')) '-Filter narrows -List to the matching suites'
     $none = Invoke-Gate $gate @('-Filter', 'no suite has this text 7f3a', '-NoBuild')
@@ -132,7 +172,7 @@ Write-Output "RESULT code=$code same=$($before -eq (Get-State)) passed=$($output
     if ($git) {
         $fixture = Join-Path $work 'fixture'
         New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'tools'), (Join-Path $fixture 'tests') | Out-Null
-        Copy-Item -LiteralPath $gate, (Join-Path $root 'tools\_common.ps1') -Destination (Join-Path $fixture 'tools')
+        Copy-Item -LiteralPath $gate, (Join-Path $root 'tools\_common.ps1'), (Join-Path $root 'tools\_gate_linux.ps1') -Destination (Join-Path $fixture 'tools')
         $fixtureGate = Join-Path $fixture 'tools\test.ps1'
         & git -C $fixture init --quiet 2>&1 | Out-Null
         $cmake = New-Object System.Collections.Generic.List[string]

@@ -202,8 +202,9 @@ static void test_cursor_and_clip(void) {
     uint32_t rect = g_scratch + 0xA00;
     uint32_t r[4] = { 0, 0, 640, 480 };
     gp_copy_out(rect, r, sizeof r);
-    CHECK(U32(ClipCursor, 1, rect) == 1 && lx_virtual_state()->grabbed == 1, "ClipCursor grabs the host pointer");
-    CHECK(U32(ClipCursor, 1, 0u) == 1 && lx_virtual_state()->grabbed == 0, "ClipCursor(NULL) releases it");
+    CHECK(U32(ClipCursor, 1, rect) == 1 && lx_user32_clipped() == 1 && lx_virtual_state()->grab_calls == 0,
+          "ClipCursor is logical: the host pointer is never grabbed");
+    CHECK(U32(ClipCursor, 1, 0u) == 1 && lx_user32_clipped() == 0 && lx_virtual_state()->grabbed == 0, "ClipCursor(NULL) clears it");
     CHECK(U32(ShowCursor, 1, 0u) == 0xFFFFFFFFu && lx_virtual_state()->cursor_visible == 0, "ShowCursor(FALSE) hides the host pointer");
     CHECK(U32(ShowCursor, 1, 1u) == 0 && lx_virtual_state()->cursor_visible == 1, "ShowCursor(TRUE) shows it");
     CHECK(U32(SetCapture, 1, lx_user32_main_window()) == 0 && U32(ReleaseCapture, 0) == 1, "SetCapture / ReleaseCapture");

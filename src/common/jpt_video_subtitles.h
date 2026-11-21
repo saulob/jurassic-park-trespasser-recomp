@@ -90,6 +90,11 @@ typedef int (*jvs_width_fn)(void* ctx, const char* utf8, int bytes);
 /* Lines of at most max_width: one when it fits, else two balanced lines, else as many as needed (JVS_MAX_LINES). */
 int jvs_wrap(const char* text, int max_width, jvs_width_fn width, void* ctx, jvs_line_t* lines);
 
+#define JVS_OUTLINE_OPACITY 235
+/* Glyph coverage (the low byte of each pixel of w x h) as white text in a dark outline of r pixels: premultiplied BGRA into
+ * out. scratch holds w * h distances. */
+void jvs_outline(const uint32_t* glyphs, int w, int h, int r, uint16_t* scratch, uint32_t* out);
+
 /* Premultiplied BGRA image over a BGRA target, clipped to it. */
 void jvs_blend(uint32_t* target, long target_pitch_pixels, int target_w, int target_h, const uint32_t* image, int image_w,
                int image_h, int x, int y);

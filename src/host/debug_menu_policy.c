@@ -257,6 +257,7 @@ static void toggle(dm_state_t* s, dm_action_kind_t kind, int on) {
 }
 
 static void activate(dm_state_t* s, const dm_world_t* w, uint32_t now_ms) {
+    (void)now_ms;
     if (s->page == DM_PAGE_LEVELS) {
         if (s->level_cursor == s->levels.count) {
             back(s);
@@ -637,7 +638,7 @@ void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* sce
     }
     hud->alpha = 1.0f;
     if (hud_ok && s->notice[0] && (int32_t)(s->notice_until - now_ms) > 0)
-        snprintf(hud->notice, sizeof hud->notice, "%s", s->notice);
+        snprintf(hud->notice, sizeof hud->notice, "%.*s", (int)sizeof hud->notice - 1, s->notice);
     if (!w->eye) return;
     heading = cp_heading(dm_yaw(w->eye_at.rot));
     hud->compass = hud_ok;

@@ -253,7 +253,7 @@ static void test_flip_stress(void) {
     for (int i = 0; i < ROUNDS; i++) {
         uint32_t bits, front_after;
         uint16_t value = (uint16_t)(i * 31 + 7);
-        lx_event_t ev = { LX_EV_RESIZE, 640 + (i & 3) * 16, 480 + (i & 1) * 8, 0, 0, 0, 0 };
+        lx_event_t ev = { LX_EV_RESIZE, 640 + (i & 3) * 16, 480 + (i & 1) * 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f };
         if (lock(s_back, locked) != 0) {
             bad_lock++;
             continue;

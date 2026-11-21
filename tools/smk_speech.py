@@ -26,9 +26,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
-from scipy.ndimage import percentile_filter
-from scipy.signal import butter, fftconvolve, sosfilt
+try:
+    import numpy as np
+    from scipy.ndimage import percentile_filter
+    from scipy.signal import butter, fftconvolve, sosfilt
+except ImportError:  # the cue tables are read without them; the audio analysis needs them
+    np = percentile_filter = butter = fftconvolve = sosfilt = None
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS_DIR = ROOT / "game" / "versions"

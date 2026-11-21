@@ -95,18 +95,31 @@ static void v_present(lx_window_backend_t* b, const lx_frame_t* f) {
 
 static void v_set_cursor_visible(lx_window_backend_t* b, int visible) {
     (void)b;
+    if (s_state.cursor_visible != visible) s_state.cursor_changes++;
     s_state.cursor_visible = visible;
 }
 
 static void v_set_mouse_grab(lx_window_backend_t* b, int grab) {
     (void)b;
     s_state.grabbed = grab;
+    s_state.grab_calls++;
+}
+
+static void v_set_relative_mouse(lx_window_backend_t* b, int on) {
+    (void)b;
+    if (s_state.relative != (on != 0)) s_state.relative_changes++;
+    s_state.relative = on != 0;
 }
 
 static void v_destroy(lx_window_backend_t* b) { (void)b; }
 
+static void v_toggle_fullscreen(lx_window_backend_t* b) {
+    (void)b;
+    s_state.fullscreen_toggles++;
+}
+
 static lx_window_backend_t s_virtual = { "virtual", v_open, v_close, v_set_title, v_set_client_size, v_client_size, v_set_visible,
-                                         v_next_event, v_present, v_set_cursor_visible, v_set_mouse_grab, v_destroy };
+                                         v_next_event, v_present, v_set_cursor_visible, v_set_mouse_grab, v_set_relative_mouse, v_destroy, v_toggle_fullscreen };
 
 lx_window_backend_t* lx_virtual_backend(void) { return &s_virtual; }
 const lx_virtual_state_t* lx_virtual_state(void) { return &s_state; }

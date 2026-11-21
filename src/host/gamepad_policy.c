@@ -421,3 +421,10 @@ pad_nav_dir_t pad_repeat_update(pad_repeat_t* r, pad_nav_dir_t held, uint32_t no
     }
     return PAD_NAV_NONE;
 }
+
+void pad_rumble_motors(float low, float high, uint16_t* motor_low, uint16_t* motor_high) {
+    low = low < 0 ? 0 : low > 1 ? 1 : low;
+    high = high < 0 ? 0 : high > 1 ? 1 : high;
+    *motor_low = (uint16_t)(low * 65535.0f);
+    *motor_high = (uint16_t)(high * 65535.0f);
+}

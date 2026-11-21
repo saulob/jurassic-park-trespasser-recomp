@@ -4,12 +4,13 @@
  * and route anchors are instances of the level found by name (u4Hash, CWorld::pinsFindInstance) and kept as positions
  * only, resolved again whenever the objective, the level or a load changes.
  */
-#include "guest_va.h"
-#include "host.h"
+
+#include "guest_abi.h"
 
 #include <stdio.h>
 #include <string.h>
 
+#include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "l10n.h"
 #include "objective_policy.h"
@@ -68,8 +69,8 @@ static void aim(const dm_world_t* w, uint32_t scratch) {
     float pos[OB_NAMES_MAX][3];
     int found[OB_NAMES_MAX] = { 0 }, best;
     for (int i = 0; i < OB_NAMES_MAX && o->target[i]; i++) found[i] = locate(o->target[i], scratch, pos[i]);
-    best = ob_nearest(pos, found, OB_NAMES_MAX, w->at.pos);
-    O.aimed = GetTickCount();
+    best = ob_nearest((const float(*)[3])pos, found, OB_NAMES_MAX, w->at.pos);
+    O.aimed = jpt_time_ms();
     O.goal.target = best >= 0;
     if (best < 0) {
         if (o->target[0]) note("%s: target not found, no marker", o->target[0], 0);
@@ -107,13 +108,12 @@ static void forget(void) {
 
 /* UTF-8 for the panel: the chosen language's string, else the game's English one. */
 static const char* hint_text(int hint) {
-    HINSTANCE game = (HINSTANCE)(uintptr_t)MEM32(GAME_INSTANCE);
     const char* translated = hint >= 0 ? l10n_text_utf8(OB_HINT_STRING_BASE + (unsigned)hint) : NULL;
     if (translated) return translated;
     if (hint != O.text_hint) {
         O.text_hint = hint;
         O.text[0] = 0;
-        if (hint < 0 || !LoadStringA(game, OB_HINT_STRING_BASE + (UINT)hint, O.text, sizeof O.text)) O.text[0] = 0;
+        if (hint < 0 || !guest_load_string(OB_HINT_STRING_BASE + (unsigned)hint, O.text, (int)sizeof O.text)) O.text[0] = 0;
     }
     return O.text;
 }
@@ -158,7 +158,7 @@ const char* objectives_frame(dm_world_t* w, int list, uint32_t scratch) {
     if (current != O.current || !O.goal.set) {
         O.current = current;
         resolve(w, scratch);
-    } else if (O.table->items[current].target[0] && GetTickCount() - O.aimed >= TARGET_REFRESH_MS)
+    } else if (O.table->items[current].target[0] && jpt_time_ms() - O.aimed >= TARGET_REFRESH_MS)
         aim(w, scratch);
     O.hint = (int)hint;
     O.quiet = 0;

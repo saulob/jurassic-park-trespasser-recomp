@@ -4,8 +4,21 @@
 #include "jpt_l10n.h"
 #include "pad_glyphs.h"
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <pthread.h>
+
+#include "frontend_text_stb.h"
+
+#define LF_FACESIZE 32
+#define FW_NORMAL 400
+#define FW_MEDIUM 500
+#define FW_SEMIBOLD 600
+#define FW_BOLD 700
+typedef int LONG;
+#endif
 
 #include <math.h>
 #include <stdio.h>
@@ -104,26 +117,30 @@ typedef struct {
 
 #define FACE_CHOICES 6
 
+#ifdef _WIN32
 typedef struct {
     int role, face, px, weight;
     HFONT font;
     unsigned stamp;
 } font_entry_t;
+#endif
 
 struct fe_painter {
     float noise[TILE * TILE];
-    HDC dc;
     char faces[FE_FONT_COUNT][FACE_CHOICES][LF_FACESIZE];
     int face_count[FE_FONT_COUNT];
     int boost[FE_FONT_COUNT][FACE_CHOICES];
+    glyphs_t glyphs[GLYPH_CACHE];
+    unsigned stamp;
+#ifdef _WIN32
+    HDC dc;
     uint32_t chosen_key[FE_FONT_COUNT];
     int chosen_face[FE_FONT_COUNT];
     font_entry_t fonts[FONT_CACHE];
-    glyphs_t glyphs[GLYPH_CACHE];
-    unsigned stamp;
     HBITMAP dib;
     uint32_t* dib_bits;
     int dib_w, dib_h;
+#endif
     const uint16_t* backdrop_src;
     uint32_t backdrop_hash;
     uint32_t* up;
@@ -158,7 +175,6 @@ static const rgb_t k_black = { 0, 0, 0 };
 static const rgb_t k_bone = { 0.93f, 0.90f, 0.83f };
 static const rgb_t k_amber = { 1.0f, 0.64f, 0.20f };
 static const rgb_t k_ink = { 0.12f, 0.10f, 0.08f };
-static const rgb_t k_red = { 0.84f, 0.17f, 0.07f };
 
 static rgb_t rgb(float r, float g, float b) {
     rgb_t c;
@@ -217,7 +233,7 @@ static void make_noise(float* out) {
                 fx = fx * fx * (3 - 2 * fx);
                 for (int k = 0; k < 4; k++) {
                     int lx = (cx + (k & 1)) % n, ly = (cy + (k >> 1)) % n;
-                    v[k] = (float)(hash32((uint32_t)(lx * 73856093) ^ (uint32_t)(ly * 19349663) ^ (uint32_t)(o * 83492791)) &
+                    v[k] = (float)(hash32((uint32_t)lx * 73856093u ^ (uint32_t)ly * 19349663u ^ (uint32_t)o * 83492791u) &
                                    0xFFFF) / 65535.0f;
                 }
                 out[y * TILE + x] += amp * ((v[0] + (v[1] - v[0]) * fx) * (1 - fy) + (v[2] + (v[3] - v[2]) * fx) * fy);
@@ -622,6 +638,7 @@ static void run_op(const band_t* b, const op_t* o) {
     }
 }
 
+#ifdef _WIN32
 /* After the faces of the look come faces with Cyrillic (Impact, Courier New, Georgia, Arial) for the Russian text. */
 static const char* const k_faces[FE_FONT_COUNT][FACE_CHOICES] = {
     { "Stencil", "Rockwell Extra Bold", "Impact", "Georgia", "Times New Roman", "Arial" },
@@ -816,8 +833,85 @@ static const glyphs_t* glyphs(fe_painter_t* p, int role, int px, int weight, int
     return slot;
 }
 
+#else
+
+/* The embedded face stands in for every role: its metrics, the display code page's text. */
+static const char k_linux_face[] = "DroidSans";
+
+const char* fe_painter_face_for(fe_painter_t* p, int role, const char* text) {
+    (void)p, (void)text;
+    return role < 0 || role >= FE_FONT_COUNT ? "" : k_linux_face;
+}
+
+static const glyphs_t* glyphs(fe_painter_t* p, int role, int px, int weight, int spacing, const char* text, int len) {
+    uint32_t key = fe_hash(0, text, (size_t)len);
+    int params[5], w, h, pad, advance, line_h;
+    glyphs_t* slot = NULL;
+    uint8_t* cell;
+    params[0] = role;
+    params[1] = px;
+    params[2] = weight;
+    params[3] = spacing;
+    params[4] = jpt_l10n_display_codepage();
+    key = fe_hash(key, params, sizeof params);
+    for (int i = 0; i < GLYPH_CACHE; i++) {
+        glyphs_t* g = &p->glyphs[i];
+        if (g->a && g->key == key) {
+            g->stamp = ++p->stamp;
+            return g;
+        }
+        if (!slot || !g->a || (slot->a && g->stamp < slot->stamp)) slot = g;
+    }
+    if (px < 4 || len <= 0) return NULL;
+    pad = px / 4 + 2;
+    if (!fe_stb_measure(px, weight, spacing, text, len, &advance, &line_h)) return NULL;
+    cell = fe_stb_render(px, weight, spacing, text, len, pad, &w, &h);
+    if (!cell) return NULL;
+    free(slot->a);
+    slot->a = cell;
+    slot->key = key;
+    slot->stamp = ++p->stamp;
+    slot->w = w;
+    slot->h = h;
+    slot->pad = pad;
+    slot->advance = advance;
+    slot->line_h = line_h;
+    return slot;
+}
+#endif
+
 const char* fe_painter_face(const fe_painter_t* p, int role) { return role >= 0 && role < FE_FONT_COUNT ? p->faces[role][0] : ""; }
 
+#ifndef _WIN32
+fe_painter_t* fe_painter_create(void) {
+    fe_painter_t* p = (fe_painter_t*)calloc(1, sizeof *p);
+    if (!p) return NULL;
+    for (int role = 0; role < FE_FONT_COUNT; role++) {
+        strncpy(p->faces[role][0], k_linux_face, LF_FACESIZE - 1);
+        p->face_count[role] = 1;
+    }
+    make_noise(p->noise);
+    p->art = fa_cache_create(ART_BUDGET);
+    if (!p->art) {
+        fe_painter_destroy(p);
+        return NULL;
+    }
+    return p;
+}
+
+void fe_painter_destroy(fe_painter_t* p) {
+    if (!p) return;
+    for (int i = 0; i < GLYPH_CACHE; i++) free(p->glyphs[i].a);
+    free(p->up);
+    free(p->blur);
+    free(p->base);
+    free(p->photo);
+    free(p->photo_blur);
+    free(p->photo_field);
+    fa_cache_destroy(p->art);
+    free(p);
+}
+#else
 fe_painter_t* fe_painter_create(void) {
     fe_painter_t* p = (fe_painter_t*)calloc(1, sizeof *p);
     if (!p) return NULL;
@@ -865,6 +959,7 @@ void fe_painter_destroy(fe_painter_t* p) {
     fa_cache_destroy(p->art);
     free(p);
 }
+#endif
 
 /* Catmull-Rom up-sampling by UP of w x h RGB texels (0..1) into BGRA rows of w * UP pixels. */
 static void up_rgb(const float* rgb, int w, int h, uint32_t* out) {
@@ -1098,6 +1193,7 @@ typedef struct {
     rgb_t shadow_color;
 } text_style_t;
 
+#ifdef _WIN32
 static int measure(fe_painter_t* p, const text_style_t* st, const char* text, int len) {
     int px = (int)floor(st->px + 0.5);
     SIZE size;
@@ -1114,6 +1210,21 @@ static int line_height(fe_painter_t* p, const text_style_t* st) {
     SelectObject(p->dc, old);
     return h;
 }
+#else
+static int measure(fe_painter_t* p, const text_style_t* st, const char* text, int len) {
+    int px = (int)floor(st->px + 0.5), advance, line_h;
+    (void)p;
+    if (len <= 0 || !fe_stb_measure(px, st->weight, (int)floor(st->spacing * px + 0.5), text, len, &advance, &line_h)) return 0;
+    return advance;
+}
+
+static int line_height(fe_painter_t* p, const text_style_t* st) {
+    const char probe[] = "Hg";
+    int px = (int)floor(st->px + 0.5), advance, line_h;
+    (void)p;
+    return fe_stb_measure(px, st->weight, 0, probe, 2, &advance, &line_h) ? line_h : px;
+}
+#endif
 
 static void emit_line(fe_painter_t* p, const text_style_t* st, const char* text, int len, double x, double y) {
     if (st->exact) {
@@ -1877,7 +1988,12 @@ typedef struct {
     long pitch;
     fe_rect_t clip;
     int mode;
+#ifdef _WIN32
     volatile LONG* next_row;
+#else
+    int* next_row;
+    pthread_mutex_t* lock;
+#endif
 } job_t;
 
 enum { RUN_ALL, RUN_BASE, RUN_OVER_BASE };
@@ -1902,6 +2018,7 @@ static void run_band(const fe_painter_t* p, uint32_t* px, long pitch, fe_rect_t 
     }
 }
 
+#ifdef _WIN32
 static DWORD WINAPI worker(LPVOID arg) {
     job_t* j = (job_t*)arg;
     for (;;) {
@@ -1913,7 +2030,45 @@ static DWORD WINAPI worker(LPVOID arg) {
     }
     return 0;
 }
+#else
+static void* worker(void* arg) {
+    job_t* j = (job_t*)arg;
+    for (;;) {
+        int top;
+        fe_rect_t band;
+        pthread_mutex_lock(j->lock);
+        top = *j->next_row;
+        *j->next_row += BAND;
+        pthread_mutex_unlock(j->lock);
+        if (top >= j->clip.bottom) break;
+        band = fe_rect(j->clip.left, top, j->clip.right, top + BAND < j->clip.bottom ? top + BAND : j->clip.bottom);
+        run_band(j->p, j->px, j->pitch, band, j->mode);
+    }
+    return NULL;
+}
+#endif
 
+#ifndef _WIN32
+static void execute(const fe_painter_t* p, uint32_t* px, long pitch, fe_rect_t clip, int mode, int threads) {
+    pthread_t handles[MAX_THREADS];
+    pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    int next = clip.top, started = 0;
+    job_t job;
+    job.p = p;
+    job.px = px;
+    job.pitch = pitch;
+    job.clip = clip;
+    job.mode = mode;
+    job.next_row = &next;
+    job.lock = &lock;
+    if (threads > MAX_THREADS) threads = MAX_THREADS;
+    for (int i = 1; i < threads; i++)
+        if (pthread_create(&handles[started], NULL, worker, &job) == 0) started++;
+    worker(&job);
+    for (int i = 0; i < started; i++) pthread_join(handles[i], NULL);
+    pthread_mutex_destroy(&lock);
+}
+#else
 static void execute(const fe_painter_t* p, uint32_t* px, long pitch, fe_rect_t clip, int mode, int threads) {
     HANDLE handles[MAX_THREADS];
     volatile LONG next = clip.top;
@@ -1934,6 +2089,7 @@ static void execute(const fe_painter_t* p, uint32_t* px, long pitch, fe_rect_t c
     if (started) WaitForMultipleObjects((DWORD)started, handles, TRUE, INFINITE);
     for (int i = 0; i < started; i++) CloseHandle(handles[i]);
 }
+#endif
 
 static int has_base_ops(const fe_painter_t* p) {
     for (int i = 0; i < p->op_count; i++)

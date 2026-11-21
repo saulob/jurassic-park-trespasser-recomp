@@ -300,11 +300,17 @@ translations of the same captions where they exist, and the rest was translated 
 
 ## Testing
 
-`.\tools\test.ps1` is the one command that validates the whole project. It builds only the test programs
-(incrementally), runs every suite and ends with `ALL TESTS PASSED` or a list of what failed (exit code 1):
+`.\tools\test.ps1` is the one command that validates the whole project on both platforms. It builds only the test
+programs (incrementally), runs every Windows suite, then the Linux gate inside WSL (it finds the distribution, converts the
+repository path with `wslpath` and runs `tools/test-linux.sh` itself: no WSL terminal, no `.sh` by hand), then compares the two
+feature by feature against `tests\feature_contract.json`. It ends with `ALL TESTS PASSED` or a list of what failed (exit code 1):
 
 ```powershell
-.\tools\test.ps1                    # everything
+.\tools\test.ps1                    # Windows gate, Linux gate in WSL, Windows/Linux feature parity
+.\tools\test.ps1 -WindowsOnly       # the Windows half only (-SkipLinux is the same); parity is then not evaluated
+.\tools\test.ps1 -LinuxOnly         # the Linux half only
+.\tools\test.ps1 -LinuxDistro MuaFocalBuild   # the WSL distribution (MuaFocalBuild, Ubuntu 20.04, is preferred by default)
+.\tools\test.ps1 -Sanitize          # Linux-specific suites under AddressSanitizer + UndefinedBehaviorSanitizer (separate, slower)
 .\tools\test.ps1 -List              # the sections and suites, nothing is built or run
 .\tools\test.ps1 -Filter cheats     # only suites whose section, name or description contains the text
 .\tools\test.ps1 -Detail            # also show the output of passing suites
@@ -313,7 +319,10 @@ translations of the same captions where they exist, and the rest was translated 
 ```
 
 It is headless: it never starts the game or the launcher, opens a window, reads a controller, plays audio or uses the
-network, and it works from any folder. It checks that every test target, script and tool is wired in, that every
+network (the Linux half runs on SDL's dummy drivers), and it works from any folder. Without WSL the Linux rows are BLOCKED, never
+PASS, and the run fails. The feature parity lists every feature as global (the same on both platforms), Windows-only or
+Linux-only, with a status per platform (PASS, FAIL, BLOCKED with the reason, PLATFORM_ONLY with the reason); a global feature that
+differs fails the run. It checks that every test target, script and tool is wired in, that every
 supported build, language, cheat and setting has its row, and that no suite changed the working tree. A suite that
 needs game data that is not installed says so (`DATA UNAVAILABLE`, or a skipped part in the summary); it is never
 reported as a pass. [Building](docs/BUILD.md#headless-tests) lists what each suite covers.

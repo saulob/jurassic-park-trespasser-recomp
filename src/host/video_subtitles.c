@@ -16,7 +16,6 @@
 
 /* The face CreateFontA receives in the gameplay text font's constructor (0x0050E750). */
 #define GAME_TEXT_FACE_VA GVA(0x0065F888)
-#define OUTLINE_OPACITY 235
 
 static struct {
     int enabled;
@@ -143,41 +142,6 @@ static void* grow(void* p, size_t* cap, size_t need) {
     return q;
 }
 
-/* Chamfer distance (3-4) from the glyphs' cores: the outline is a ring of r pixels with a soft edge. */
-static void outline(const uint32_t* glyphs, int w, int h, int r, uint32_t* out) {
-    uint16_t* d = S.distance;
-    const uint16_t unreached = 0x7FFF;
-    for (int i = 0; i < w * h; i++) d[i] = (glyphs[i] & 0xFF) >= 128 ? 0 : unreached;
-    for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++) {
-            uint16_t* p = d + y * w + x;
-            if (x > 0 && p[-1] + 3 < *p) *p = (uint16_t)(p[-1] + 3);
-            if (y > 0) {
-                if (p[-w] + 3 < *p) *p = (uint16_t)(p[-w] + 3);
-                if (x > 0 && p[-w - 1] + 4 < *p) *p = (uint16_t)(p[-w - 1] + 4);
-                if (x + 1 < w && p[-w + 1] + 4 < *p) *p = (uint16_t)(p[-w + 1] + 4);
-            }
-        }
-    for (int y = h - 1; y >= 0; y--)
-        for (int x = w - 1; x >= 0; x--) {
-            uint16_t* p = d + y * w + x;
-            if (x + 1 < w && p[1] + 3 < *p) *p = (uint16_t)(p[1] + 3);
-            if (y + 1 < h) {
-                if (p[w] + 3 < *p) *p = (uint16_t)(p[w] + 3);
-                if (x + 1 < w && p[w + 1] + 4 < *p) *p = (uint16_t)(p[w + 1] + 4);
-                if (x > 0 && p[w - 1] + 4 < *p) *p = (uint16_t)(p[w - 1] + 4);
-            }
-        }
-    for (int i = 0; i < w * h; i++) {
-        int fill = (int)(glyphs[i] & 0xFF), ring = (r * 3 + 3 - d[i]) * 255 / 3, alpha, col;
-        ring = ring < 0 ? 0 : ring > 255 ? 255 : ring;
-        ring = ring * OUTLINE_OPACITY / 255;
-        alpha = fill + ring * (255 - fill) / 255;
-        col = fill;
-        out[i] = (uint32_t)alpha << 24 | (uint32_t)col << 16 | (uint32_t)col << 8 | (uint32_t)col;
-    }
-}
-
 static int render(const char* text, int target_w, int target_h, const jvs_rect_t* picture) {
     jvs_line_t lines[JVS_MAX_LINES];
     TEXTMETRICW tm;
@@ -227,7 +191,7 @@ static int render(const char* text, int target_w, int target_h, const jvs_rect_t
         TextOutW(S.dc, (block_w - lines[i].width) / 2, pad + i * line_h, w, n);
     }
     GdiFlush();
-    outline(glyphs, block_w, block_h, r, S.pixels);
+    jvs_outline(glyphs, block_w, block_h, r, S.distance, S.pixels);
     SelectObject(S.dc, old_bitmap);
     SelectObject(S.dc, old_font);
     DeleteObject(bitmap);

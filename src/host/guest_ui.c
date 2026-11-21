@@ -9,62 +9,12 @@
 
 #include <string.h>
 
-#define MAIN_WINDOW_OBJECT GVA(0x0066E010)
-#define MANAGER_OFFSET 0x08u
-#define MANAGER_ACTIVE_OFFSET 0x04u
-#define MANAGER_MENU_FLAG_OFFSET 0x20u
-#define STACK_BEGIN_OFFSET 0x38u
-#define STACK_END_OFFSET 0x3Cu
-#define GAME_WND_VTABLE GVA(0x00645C3C)
-#define GAME_WND_STOPPED_OFFSET 0x30u
-#define MAX_STACK 32u
 #define DISPLAY_OBJECT GVA(0x0073DC40)
 #define DISPLAY_RELEASED GVA(0x00669B90)
-/* CUIWnd::EndModal(code) sets the done byte at +8 and the result at +0xC; every window class uses it. */
-#define END_MODAL_SLOT 0x4Cu
-#define END_MODAL_FN GVA(0x004176F0)
-#define WND_DONE_OFFSET 0x08u
-#define WND_RESULT_OFFSET 0x0Cu
-/* Set by the in-game Quit's "to Windows" answer: CGameWnd's close then skips the menu's display mode. */
-#define QUITTING_TO_WINDOWS GVA(0x0066DE4C)
 
-static const struct {
-    unsigned vtable_id;
-    const char* name;
-    guest_wnd_t kind;
-} k_classes[] = {
-    { GVA_ID(0x00645C3C), "CGameWnd", GUEST_WND_GAME },
-    { GVA_ID(0x00646B40), "CInGameOptionsWnd", GUEST_WND_INGAME_OPTIONS },
-    { GVA_ID(0x00646D10), "CHintWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x00645F38), "CControlsWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x00646970), "CQuitWnd", GUEST_WND_QUIT },
-    { GVA_ID(0x00645E24), "CYesNoMsgDlg", GUEST_WND_OTHER },
-    { GVA_ID(0x00645D34), "CYesNo", GUEST_WND_OTHER },
-    { GVA_ID(0x006461B8), "CYesNoTextDlg", GUEST_WND_OTHER },
-    { GVA_ID(0x00646390), "COKDlg", GUEST_WND_OTHER },
-    { GVA_ID(0x00646480), "CMsgOkDlg", GUEST_WND_OTHER },
-    { GVA_ID(0x006466B8), "CMainScreenWnd", GUEST_WND_MAIN_MENU },
-    { GVA_ID(0x006467A0), "CLoaderWnd", GUEST_WND_LOADER },
-    { GVA_ID(0x00646FC8), "CVideoWnd", GUEST_WND_VIDEO },
-    { GVA_ID(0x00646A58), "COptionsWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x006462A8), "CSaveGameWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x006460D0), "CLoadGameWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x00646C28), "CAudioWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x00645B4C), "CRenderWnd", GUEST_WND_OTHER },
-    { GVA_ID(0x00646888), "CDirectLoadWnd", GUEST_WND_OTHER },
-};
+const char* guest_ui_class_name(uint32_t vtable) { return guest_ui_model_class_name(jpt_gva, vtable); }
 
-const char* guest_ui_class_name(uint32_t vtable) {
-    for (size_t i = 0; i < sizeof k_classes / sizeof k_classes[0]; i++)
-        if (jpt_gva[k_classes[i].vtable_id] == vtable) return k_classes[i].name;
-    return "a window of the game";
-}
-
-static guest_wnd_t class_kind(uint32_t vtable) {
-    for (size_t i = 0; i < sizeof k_classes / sizeof k_classes[0]; i++)
-        if (jpt_gva[k_classes[i].vtable_id] == vtable) return k_classes[i].kind;
-    return GUEST_WND_OTHER;
-}
+static guest_wnd_t class_kind(uint32_t vtable) { return guest_ui_model_kind(jpt_gva, vtable); }
 
 static int committed(uint32_t va, uint32_t bytes, DWORD wanted) {
     MEMORY_BASIC_INFORMATION mi;
@@ -172,52 +122,11 @@ int guest_display_built(void) {
     return read32(DISPLAY_OBJECT, &display) && display && display != DISPLAY_RELEASED;
 }
 
-int guest_ui_probe(guest_ui_view_t* out) {
-    uint32_t main_wnd, manager, begin, end, top, stopped;
-    memset(out, 0, sizeof *out);
-    out->ui = GUEST_UI_NONE;
-    out->kind = GUEST_WND_NONE;
-    if (!read32(MAIN_WINDOW_OBJECT, &main_wnd) || !main_wnd || !read32(main_wnd + MANAGER_OFFSET, &manager) || !manager)
-        return 0;
-    out->manager = manager;
-    if (!read32(manager + STACK_BEGIN_OFFSET, &begin) || !read32(manager + STACK_END_OFFSET, &end) || end <= begin ||
-        (end - begin) % 4 || (end - begin) / 4 > MAX_STACK)
-        return 0;
-    out->depth = (end - begin) / 4;
-    if (!read32(end - 4, &top) || !top || !read32(top, &out->top_vtable)) return 0;
-    out->top = top;
-    out->kind = class_kind(out->top_vtable);
-    if (out->top_vtable == GAME_WND_VTABLE) {
-        if (!read32(top + GAME_WND_STOPPED_OFFSET, &stopped)) return 0;
-        out->stopped = stopped != 0;
-        out->ui = out->stopped ? GUEST_UI_DIALOG : GUEST_UI_GAMEPLAY;
-        return 1;
-    }
-    out->ui = GUEST_UI_MENU;
-    for (uint32_t i = 0; i + 1 < out->depth; i++) {
-        uint32_t w, v;
-        if (read32(begin + 4 * i, &w) && w && read32(w, &v) && v == GAME_WND_VTABLE) out->ui = GUEST_UI_DIALOG;
-    }
-    return 1;
+static int model_read(void* context, uint32_t va, uint32_t* out) {
+    (void)context;
+    return read32(va, out);
 }
 
-int guest_ui_active(const guest_ui_view_t* v) {
-    if (!v->manager || !readable(v->manager + MANAGER_ACTIVE_OFFSET, 1)) return 0;
-    return *(const volatile uint8_t*)(uintptr_t)(v->manager + MANAGER_ACTIVE_OFFSET) != 0;
-}
+int guest_ui_probe(guest_ui_view_t* out) { return guest_ui_model_probe(jpt_gva, model_read, NULL, out); }
 
-int guest_ui_end_window(const guest_ui_view_t* v, int32_t code, int quit_to_windows) {
-    uint32_t end_modal;
-    if (!v->top || !read32(v->top_vtable + END_MODAL_SLOT, &end_modal) || end_modal != END_MODAL_FN ||
-        !writable(v->top + WND_DONE_OFFSET, 8))
-        return 0;
-    if (*(const volatile uint8_t*)(uintptr_t)(v->top + WND_DONE_OFFSET)) return -1;
-    if (quit_to_windows) {
-        if (!writable(v->manager + MANAGER_MENU_FLAG_OFFSET, 4) || !writable(QUITTING_TO_WINDOWS, 4)) return 0;
-        *(volatile uint32_t*)(uintptr_t)(v->manager + MANAGER_MENU_FLAG_OFFSET) = 1;
-        *(volatile uint32_t*)(uintptr_t)QUITTING_TO_WINDOWS = 1;
-    }
-    *(volatile int32_t*)(uintptr_t)(v->top + WND_RESULT_OFFSET) = code;
-    *(volatile uint8_t*)(uintptr_t)(v->top + WND_DONE_OFFSET) = 1;
-    return 1;
-}
+int guest_writable(uint32_t va, uint32_t bytes) { return bytes == 0 || writable(va, bytes); }

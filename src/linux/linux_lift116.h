@@ -8,9 +8,6 @@
 lx_table_t lx_lift116_main_table(void);
 lx_table_t lx_lift116_selfmod_table(void);
 const jpt_lift_meta_t* lx_lift116_meta(void);
-/* The Patch 1.1 and Community Edition hooks the Windows host installs inside lifted functions are not installed on Linux. */
-unsigned lx_lift116_hook_count(void);
-unsigned lx_lift116_override_count(void);
 /* The guest DLLs lift116 carries. */
 const lx_module_def_t* lx_lift116_modules(size_t* count);
 

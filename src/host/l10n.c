@@ -19,7 +19,23 @@
 #include "jpt_tr.h"
 #include "jpt_user_data.h"
 #include "l10n_assets.h"
+#ifdef _WIN32
 #include "stream_audio.h"
+#else
+#include "stream_vfile.h"
+#endif
+
+#ifdef _WIN32
+#define SEP "\\"
+#define ATOMIC_SET(p, v) InterlockedExchange((volatile LONG*)(p), (v))
+#define ATOMIC_GET(p) InterlockedCompareExchange((volatile LONG*)(p), 0, 0)
+#else
+#define MAX_PATH 512
+#define LF_FACESIZE 32
+#define SEP "/"
+#define ATOMIC_SET(p, v) __atomic_store_n((p), (v), __ATOMIC_SEQ_CST)
+#define ATOMIC_GET(p) __atomic_load_n((p), __ATOMIC_SEQ_CST)
+#endif
 
 #define CAPTIONS_VA GVA(0x004395A0)
 #define TEXT_ACTION_VA GVA(0x00472B60)
@@ -56,14 +72,14 @@ static struct {
     char text_code[JPT_L10N_CODE_MAX], subtitle_code[JPT_L10N_CODE_MAX];
     int release_language;
     int release_strings, port_strings, release_samples, port_samples, interface_count;
-    char cache_dir[MAX_PATH], game_dir[MAX_PATH];
+    char cache_dir[MAX_PATH], game_dir[MAX_PATH], game_host[MAX_PATH], user_dir[MAX_PATH];
     entry_t* strings;
     int string_count, string_cap;
     caption_t* captions;
     int caption_count, caption_cap;
     uint64_t fp_key[FP_SLOTS];
     int fp_value[FP_SLOTS];
-    volatile LONG captions_ready;
+    volatile int captions_ready;
     int hits_logged, misses_logged, truncations_logged, text_hits_logged, text_misses_logged, unreadable_logged;
     menu_file_t menus[MENU_FILES];
     int menu_count;
@@ -147,7 +163,7 @@ static int find_caption(const char* pack, uint32_t sample);
  * carry the corrected timing. */
 static void add_caption(void* ctx, const char* pack, uint32_t sample, int count, const uint32_t* units,
                         const char* const* lines) {
-    char* converted[JPT_CAPTION_MAX_LINES];
+    char* converted[JPT_CAPTION_MAX_LINES] = { NULL };
     uint8_t block[0x2000];
     size_t size;
     int ok = 1, existing = ctx ? find_caption(pack, sample) : -1;
@@ -211,6 +227,7 @@ static void on_english_caption(void* ctx, uint32_t sample, const uint8_t* block,
     s->matched++;
 }
 
+#ifdef _WIN32
 static int read_handle(void* ctx, uint64_t offset, void* buf, size_t n) {
     LARGE_INTEGER at;
     DWORD got = 0;
@@ -219,10 +236,13 @@ static int read_handle(void* ctx, uint64_t offset, void* buf, size_t n) {
            got == n;
 }
 
+#endif
+
 static int read_pack(void* ctx, uint64_t offset, void* buf, size_t n) {
     return stream_pack_read((const stream_pack_t*)ctx, offset, buf, n) == (long)n;
 }
 
+#ifdef _WIN32
 /* The game looks for <game>\X before <game>\data\X. */
 static HANDLE open_game_file(const char* name, char* path, size_t cap) {
     static const char* const dirs[] = { "", "data\\" };
@@ -263,9 +283,61 @@ static DWORD WINAPI scan_english_captions(LPVOID unused) {
     }
     host_log("l10n", "subtitles: %d English caption blocks translated, %d without a translation (English kept)",
              s.matched, s.english_only);
-    InterlockedExchange(&L.captions_ready, 1);
+    ATOMIC_SET(&L.captions_ready, 1);
     return 0;
 }
+#else
+static int read_stdio(void* ctx, uint64_t offset, void* buf, size_t n) {
+    FILE* f = (FILE*)ctx;
+    return fseek(f, (long)offset, SEEK_SET) == 0 && fread(buf, 1, n, f) == n;
+}
+
+/* The game looks for <game>/X before <game>/data/X. */
+static FILE* open_game_file(const char* name, char* path, size_t cap) {
+    static const char* const dirs[] = { "", "data/" };
+    for (int i = 0; i < 2; i++) {
+        FILE* f;
+        snprintf(path, cap, "%s/%s%s", L.game_host, dirs[i], name);
+        f = fopen(path, "rb");
+        if (f) return f;
+    }
+    return NULL;
+}
+
+/* Windows scans on a thread so the start-up is not held; here the scan is the start-up's own (a few reads of each TPA's directory). */
+static void scan_english_captions(void) {
+    static const char* const files[][2] = {
+        { "Stream.tpa", "stream" }, { "Effects.tpa", "effects" }, { "Ambient.tpa", "ambient" }, { "Menu.tpa", "menu" },
+    };
+    scan_t s;
+    memset(&s, 0, sizeof s);
+    stream_catalog_init(NULL);
+    for (int i = 0; i < 4; i++) {
+        char path[2 * MAX_PATH];
+        jpt_tpa_stats_t st;
+        long size;
+        stream_pack_t* view;
+        FILE* f = open_game_file(files[i][0], path, sizeof path);
+        if (!f) continue;
+        s.pack = files[i][1];
+        fseek(f, 0, SEEK_END);
+        size = ftell(f);
+        view = i == 0 && size > 0 ? stream_catalog_open_pack(read_stdio, f, (uint64_t)size) : NULL;
+        if (size <= 0 ||
+            !(view ? jpt_tpa_captions(read_pack, view, stream_pack_size(view), on_english_caption, &s, &st)
+                   : jpt_tpa_captions(read_stdio, f, (uint64_t)size, on_english_caption, &s, &st)))
+            host_log("l10n", "%s is not a readable TPA: its captions stay English", path);
+        else if (st.captioned)
+            host_log("l10n", "%s: %d captioned samples of %d%s", path, st.captioned, st.samples,
+                     st.malformed ? " (some malformed)" : "");
+        stream_pack_close(view);
+        fclose(f);
+    }
+    host_log("l10n", "subtitles: %d English caption blocks translated, %d without a translation (English kept)",
+             s.matched, s.english_only);
+    ATOMIC_SET(&L.captions_ready, 1);
+}
+#endif
 
 static void load_strings(int release_text_loaded) {
     static int port = 1;
@@ -320,7 +392,7 @@ static int load_release_strings(const char* game_dir, const char* relative, int 
     uint8_t* data;
     long size;
     FILE* f;
-    if (snprintf(path, sizeof path, "%s\\%s", game_dir, relative) >= (int)sizeof path) return 0;
+    if (snprintf(path, sizeof path, "%s" SEP "%s", game_dir, relative) >= (int)sizeof path) return 0;
     f = fopen(path, "rb");
     if (!f) return 0;
     fseek(f, 0, SEEK_END);
@@ -335,6 +407,7 @@ static int load_release_strings(const char* game_dir, const char* relative, int 
     return load.count;
 }
 
+#ifdef _WIN32
 static void use_unicode_fallback_font(void) {
     char font[MAX_PATH];
     UINT n = GetWindowsDirectoryA(font, MAX_PATH);
@@ -351,30 +424,36 @@ static void use_release_font(const char* game_dir, const jpt_game_version_t* ver
     host_log("l10n", "the release's font %s %s", version->font_face,
              L.release_face[0] ? "replaces the game's Arial" : "could not be loaded: Arial is kept");
 }
+#endif
 
 /* The text a release shipped is the game's own in its language: only what it lacks comes from the port. A release whose
  * strings the guest already holds (Spanish, Brazilian) needs no game text from the port at all. */
-void l10n_init(const char* cache_dir, const char* game_dir, const char* language, const jpt_game_version_t* version) {
+void l10n_init(const char* cache_dir, const char* game_dir, const char* game_host_dir, const char* language, const jpt_game_version_t* version) {
     const jpt_l10n_language_t* chosen = jpt_l10n_language(language);
     int own_language, release_text = 0;
     memset(&L, 0, sizeof L);
     for (uint32_t i = 0; i < FP_SLOTS; i++) L.fp_value[i] = -1;
     snprintf(L.cache_dir, sizeof L.cache_dir, "%s", cache_dir);
     snprintf(L.game_dir, sizeof L.game_dir, "%s", game_dir);
+    snprintf(L.game_host, sizeof L.game_host, "%s", game_host_dir ? game_host_dir : game_dir);
     snprintf(L.text_code, sizeof L.text_code, "%s", chosen ? chosen->code : JPT_L10N_ENGLISH);
     snprintf(L.subtitle_code, sizeof L.subtitle_code, "%s", L.text_code);
     L.codepage = chosen ? chosen->codepage : 1252;
     own_language = version && !strcmp(L.text_code, version->language_code);
     L.release_language = own_language;
+#ifdef _WIN32
     use_unicode_fallback_font();
+#endif
     jpt_tr_reset();
     if (strcmp(L.text_code, JPT_L10N_ENGLISH)) {
         if (own_language && version->text_strings) {
-            L.release_strings = load_release_strings(game_dir, version->text_strings, version->text_codepage);
+            L.release_strings = load_release_strings(L.game_host, version->text_strings, version->text_codepage);
             release_text = L.release_strings > 0;
             host_log("l10n", "game text from the %s release's %s: %d strings in code page %d", version->language,
                      version->text_strings, L.release_strings, version->text_codepage);
+#ifdef _WIN32
             use_release_font(game_dir, version);
+#endif
         }
         if (!own_language || version->text_strings) load_strings(release_text);
         load_subtitles();
@@ -392,9 +471,13 @@ void l10n_init(const char* cache_dir, const char* game_dir, const char* language
              L.string_count - L.port_strings, L.port_strings, L.caption_count, L.release_samples, L.port_samples,
              L.interface_count, L.codepage);
     if (L.caption_count) {
+#ifdef _WIN32
         HANDLE thread = CreateThread(NULL, 0, scan_english_captions, NULL, 0, NULL);
         if (thread) CloseHandle(thread);
         else host_log("l10n", "cannot read the English captions: subtitles stay English");
+#else
+        scan_english_captions();
+#endif
     }
 }
 
@@ -415,6 +498,7 @@ const char* l10n_text_utf8(unsigned id) {
 }
 
 /* A translation is used only when its printf conversions match the English string's. */
+#ifdef _WIN32
 static const char* checked_text(HINSTANCE instance, unsigned id) {
     entry_t* e = find_entry(id);
     if (!e || !l10n_text(id)) return NULL;
@@ -426,7 +510,36 @@ static const char* checked_text(HINSTANCE instance, unsigned id) {
     }
     return e->checked > 0 ? e->display : NULL;
 }
+#else
+static const char* checked_text(unsigned id) {
+    entry_t* e = find_entry(id);
+    if (!e || !l10n_text(id)) return NULL;
+    if (!e->checked) {
+        char english[STRING_PROBE];
+        if (!guest_load_string(id, english, sizeof english)) english[0] = 0;
+        e->checked = jpt_format_compatible(english, e->display) ? 1 : -1;
+        if (e->checked < 0) host_log("l10n", "string %u: its format conversions differ from English: English kept", id);
+    }
+    return e->checked > 0 ? e->display : NULL;
+}
 
+/* LoadStringA's answer when the language has the string: its length, or -1 to leave the game's own. */
+int l10n_load_string(unsigned id, char* buffer, int cap) {
+    const char* text = buffer && cap > 0 ? checked_text(id) : NULL;
+    size_t n;
+    if (!text) return -1;
+    n = strlen(text);
+    if (n >= (size_t)cap) {
+        if (L.truncations_logged++ < LOG_LIMIT) host_log("l10n", "string %u is %u bytes, the game's buffer %d: cut", id, (unsigned)n, cap);
+        n = (size_t)cap - 1;
+    }
+    memcpy(buffer, text, n);
+    buffer[n] = 0;
+    return (int)n;
+}
+#endif
+
+#ifdef _WIN32
 void shim_LoadStringA(void) {
     HINSTANCE instance = (HINSTANCE)GUEST_PTR(0);
     UINT id = GUEST_ARG(1);
@@ -482,6 +595,8 @@ void shim_CreateFontIndirectA(void) {
     GUEST_RETURN_STDCALL(1);
 }
 
+#endif
+
 /* The block's length as 0x004395A0 walks it (count at +4, then time and text per caption); 0 when implausible. */
 static uint32_t block_extent(uint32_t block) {
     uint32_t count = MEM32(block + 4), at = 8;
@@ -494,10 +609,10 @@ static uint32_t block_extent(uint32_t block) {
     return at;
 }
 
-static const uint8_t* translated_block(uint32_t block) {
+static const caption_t* translated_block(uint32_t block) {
     uint32_t n;
     int slot;
-    if (!InterlockedCompareExchange(&L.captions_ready, 0, 0)) return NULL;
+    if (!ATOMIC_GET(&L.captions_ready)) return NULL;
     if (!(n = block_extent(block))) {
         if (L.unreadable_logged++ < LOG_LIMIT) host_log("l10n", "a sample's caption block is not readable: its captions are not shown");
         return NULL;
@@ -505,7 +620,7 @@ static const uint8_t* translated_block(uint32_t block) {
     slot = fp_slot(jpt_caption_fingerprint((const uint8_t*)ADDR(block), n));
     if (slot >= 0 && L.fp_value[slot] >= 0) {
         if (L.hits_logged++ < LOG_LIMIT) host_log("l10n", "subtitle shown translated (%s)", L.subtitle_code);
-        return L.captions[L.fp_value[slot]].block;
+        return &L.captions[L.fp_value[slot]];
     }
     if (L.misses_logged++ < LOG_LIMIT) host_log("l10n", "subtitle without a translation: English shown");
     return NULL;
@@ -515,12 +630,12 @@ static const uint8_t* translated_block(uint32_t block) {
 static void captions(void) {
     uint32_t sample = MEM32(g_esp + 4), state = sample ? MEM32(sample + CAPTION_STATE) : 0;
     uint32_t block = state ? MEM32(state + 4) : 0;
-    const uint8_t* translated = !g_alias_entry && block && !MEM8(state) ? translated_block(block) : NULL;
+    const caption_t* translated = !g_alias_entry && block && !MEM8(state) ? translated_block(block) : NULL;
     if (!translated) {
         s_captions_lifted();
         return;
     }
-    MEM32(state + 4) = (uint32_t)(uintptr_t)translated;
+    MEM32(state + 4) = guest_keep(translated->block, (uint32_t)translated->size);
     s_captions_lifted();
     MEM32(state + 4) = block;
 }
@@ -546,7 +661,7 @@ static void text_action(void) {
         s_text_action_lifted();
         return;
     }
-    MEM32(self + TEXT_ACTION_TEXT) = (uint32_t)(uintptr_t)translated;
+    MEM32(self + TEXT_ACTION_TEXT) = guest_keep(translated, (uint32_t)strlen(translated) + 1u);
     s_text_action_lifted();
     MEM32(self + TEXT_ACTION_TEXT) = inline_text;
 }
@@ -569,12 +684,12 @@ const char* l10n_label(const char* english) {
 }
 
 static int translate_menu_file(const char* source, const char* name, char* out, size_t cap) {
-    char dir[MAX_PATH], *data, *translated = NULL;
+    char dir[2 * MAX_PATH], *data, *translated = NULL;
     size_t n = 0, translated_n = 0;
     int replaced;
     FILE* f;
-    snprintf(dir, sizeof dir, "%s\\" MENU_CACHE "\\%s", L.cache_dir, L.text_code);
-    if (snprintf(out, cap, "%s\\%s", dir, name) >= (int)cap) return 0;
+    snprintf(dir, sizeof dir, "%s" SEP MENU_CACHE SEP "%s", L.cache_dir, L.text_code);
+    if (snprintf(out, cap, "%s" SEP "%s", dir, name) >= (int)cap) return 0;
     if (!(data = read_all(source, &n))) {
         host_log("l10n", "menu\\%s: cannot read %s", name, source);
         return 0;
@@ -596,11 +711,14 @@ static int translate_menu_file(const char* source, const char* name, char* out, 
     return replaced > 0;
 }
 
+void l10n_set_user_folder(const char* folder) { snprintf(L.user_dir, sizeof L.user_dir, "%s", folder ? folder : ""); }
+
 int l10n_menu_file(const char* path, char* out, size_t cap) {
     char source[MAX_PATH], name[64];
     menu_file_t* m = NULL;
-    if (!L.string_count || !jpt_menu_ddf_source(L.game_dir, io_trace_user_folder(), path, source, sizeof source, name,
-                                                sizeof name))
+    char host_source[MAX_PATH];
+    if (!L.string_count || !jpt_menu_ddf_source(L.game_dir, L.user_dir, path, source, sizeof source, name, sizeof name) ||
+        !guest_host_path(source, host_source, sizeof host_source))
         return 0;
     for (int i = 0; i < L.menu_count; i++)
         if (!_stricmp(L.menus[i].name, name)) m = &L.menus[i];
@@ -608,13 +726,14 @@ int l10n_menu_file(const char* path, char* out, size_t cap) {
         if (L.menu_count == MENU_FILES) return 0;
         m = &L.menus[L.menu_count++];
         snprintf(m->name, sizeof m->name, "%s", name);
-        m->translated = translate_menu_file(source, name, out, cap);
+        m->translated = translate_menu_file(host_source, name, out, cap);
         return m->translated;
     }
-    return m->translated && snprintf(out, cap, "%s\\" MENU_CACHE "\\%s\\%s", L.cache_dir, L.text_code, name) <
+    return m->translated && snprintf(out, cap, "%s" SEP MENU_CACHE SEP "%s" SEP "%s", L.cache_dir, L.text_code, name) <
                                 (int)cap;
 }
 
+#ifdef _WIN32
 int l10n_message_box(HWND owner, const char* text, const char* caption, UINT type) {
     WCHAR wide_text[4096], wide_caption[512];
     UINT cp = (UINT)L.codepage;
@@ -622,3 +741,4 @@ int l10n_message_box(HWND owner, const char* text, const char* caption, UINT typ
     if (!MultiByteToWideChar(cp, 0, caption ? caption : "", -1, wide_caption, 512)) wide_caption[0] = 0;
     return MessageBoxW(owner, wide_text, caption ? wide_caption : NULL, type);
 }
+#endif
