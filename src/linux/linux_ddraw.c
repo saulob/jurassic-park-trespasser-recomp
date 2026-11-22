@@ -11,6 +11,7 @@
 #include "linux_screen.h"
 #include "linux_spine.h"
 #include "linux_user32.h"
+#include "linux_vulkan.h"
 #include "linux_window.h"
 
 #define MAX_OBJECTS 256
@@ -243,6 +244,7 @@ static void format_rgb565(uint32_t pf[8]) {
 static int format_bytes(const uint32_t pf[8]) { return (int)((pf[3] + 7) / 8); }
 
 static int format_supported(const uint32_t pf[8]) {
+    if ((pf[1] & DDPF_ZBUFFER) && lx_vk_active()) return pf[3] == 16 || pf[3] == 24 || pf[3] == 32;
     if (!(pf[1] & DDPF_RGB)) return (pf[1] & DDPF_PALETTEINDEXED8) != 0;
     return pf[3] == 16 || pf[3] == 24 || pf[3] == 32;
 }
@@ -304,6 +306,7 @@ static int new_surface(int device, uint32_t w, uint32_t h, const uint32_t pf[8],
 
 static void free_surface(int slot) {
     surface_t* s = surf(slot);
+    lx_vk_surface_notify_destroy((uint32_t)slot);
     if (s->bits) gm_heap_free(s->bits);
     if (dev(s->device)->surfaces > 0) dev(s->device)->surfaces--;
     gm_heap_free(s_obj[slot].faces);
@@ -491,6 +494,8 @@ static int guid_is(uint32_t va, uint32_t d1, uint16_t d2, uint16_t d3, uint8_t b
 #define IID_DD(v) guid_is(v, 0x6C14DB80, 0xA733, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60)
 #define IID_DD2(v) guid_is(v, 0xB3A6F3E0, 0x2B43, 0x11CF, 0xA2, 0xDE, 0x00, 0xAA, 0x00, 0xB9, 0x33, 0x56)
 #define IID_DD4(v) guid_is(v, 0x9C59509A, 0x39BD, 0x11D1, 0x8C, 0x4A, 0x00, 0xC0, 0x4F, 0xD9, 0x30, 0xC5)
+#define IID_D3D3(v) guid_is(v, 0xBB223240, 0xE72B, 0x11D0, 0xA9, 0xB4, 0x00, 0xAA, 0x00, 0xC0, 0x99, 0x3E)
+#define IID_TEX2(v) guid_is(v, 0x93281502, 0x8CF8, 0x11D0, 0x89, 0xAB, 0x00, 0xA0, 0xC9, 0x05, 0x41, 0x29)
 #define IID_SURF1(v) guid_is(v, 0x6C14DB81, 0xA733, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60)
 #define IID_SURF2(v) guid_is(v, 0x57805885, 0x6EEC, 0x11CF, 0x94, 0x41, 0xA8, 0x23, 0x03, 0xC1, 0x0E, 0x27)
 #define IID_SURF3(v) guid_is(v, 0xDA044E00, 0x69B2, 0x11D0, 0xA1, 0xD5, 0x00, 0xAA, 0x00, 0xB8, 0xDF, 0xBB)
@@ -532,6 +537,13 @@ static uint64_t dd_QueryInterface(const uint32_t* a, void* u) {
     if (IID_UNKNOWN(a[1]) || IID_DD(a[1])) face = 0;
     else if (IID_DD2(a[1])) face = 1;
     else if (IID_DD4(a[1])) face = 2;
+    else if (IID_D3D3(a[1]) && lx_vk_active()) {
+        uint32_t d3d = lx_vk_query_direct3d3();
+        if (d3d) {
+            gp_write_u32(a[2], d3d);
+            return DD_OK;
+        }
+    }
     if (face < 0) {
         lx_log("Linux DDRAW", "QueryInterface on the DirectDraw object: interface not provided (Direct3D is not part of the software renderer)");
         return E_NOINTERFACE_;
@@ -630,7 +642,7 @@ static uint64_t create_surface(const uint32_t* a, int version) {
     if (!gp_copy_in(desc, a[1], desc_size(version) < sizeof desc ? desc_size(version) : sizeof desc) || desc[0] != desc_size(version)) return E_INVALIDARG_;
     gp_write_u32(a[2], 0);
     caps = (desc[1] & DDSD_CAPS) ? desc[26] : DDSCAPS_OFFSCREENPLAIN;
-    if (caps & (DDSCAPS_OVERLAY | DDSCAPS_MODEX | DDSCAPS_ZBUFFER)) {
+    if ((caps & (DDSCAPS_OVERLAY | DDSCAPS_MODEX)) || ((caps & DDSCAPS_ZBUFFER) && !lx_vk_active())) {
         lx_log("Linux DDRAW", "CreateSurface caps 0x%08X: overlays, Mode X and z-buffers are not provided", caps);
         return DDERR_INVALIDCAPS_;
     }
@@ -912,6 +924,15 @@ static uint64_t s_QueryInterface(const uint32_t* a, void* u) {
     else if (IID_SURF2(a[1])) face = 1;
     else if (IID_SURF3(a[1])) face = 2;
     else if (IID_SURF4(a[1])) face = 3;
+    else if (IID_TEX2(a[1]) && lx_vk_active()) {
+        surface_t* sf = surf(slot);
+        uint32_t tex = lx_vk_surface_query_texture2((uint32_t)slot, sf->width, sf->height, (uint32_t)sf->pitch,
+                                                    sf->bits, sf->pf, sf->has_src_key, sf->src_key[0], sf->src_key[1]);
+        if (tex) {
+            gp_write_u32(a[2], tex);
+            return DD_OK;
+        }
+    }
     if (face < 0) {
         lx_log("Linux DDRAW", "surface QueryInterface: interface not provided");
         return E_NOINTERFACE_;
@@ -972,8 +993,12 @@ static uint64_t s_BltFast(const uint32_t* a, void* u) {
 }
 
 static uint64_t s_AddAttachedSurface(const uint32_t* a, void* u) {
-    (void)a;
     (void)u;
+    if (lx_vk_active()) {
+        int dst = surface_of(a[0], NULL);
+        int z = surface_of(a[1], NULL);
+        if (dst >= 0 && z >= 0 && (surf(z)->caps & DDSCAPS_ZBUFFER)) return DD_OK;
+    }
     lx_log("Linux DDRAW", "AddAttachedSurface: only z-buffers attach, and the software renderer has none");
     return DDERR_CANNOTATTACHSURFACE_;
 }

@@ -37,6 +37,7 @@ void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source
     (void)generation;
 }
 int d3dr_hardware(void) { return 1; }
+const char* d3dr_name(void) { return "D3D11"; }
 HRESULT d3dr_attach(d3d_device_t* dev) {
     s_attached++;
     dev->backend = NULL;

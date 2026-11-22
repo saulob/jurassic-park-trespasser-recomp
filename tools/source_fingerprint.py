@@ -18,11 +18,13 @@ ROOTS = (
     "CMakeLists.txt",
     "cmake",
     "src",
+    "third_party/vulkan",
     "config",
     "assets",
     "external/pcrecomp/runtime",
     "external/imgui",
     "tools/build-linux.sh",
+    "tools/compile_vk_shaders.py",
     "tools/ffmpeg-bootstrap.sh",
     "tools/gen_build_info.py",
     "tools/source_fingerprint.py",
@@ -32,6 +34,7 @@ EXCLUDED_FILES = {"config/local.json"}
 SIZE_ONLY_PREFIXES = ("src/recomp/gen",)
 TEXT_SUFFIXES = {
     ".c", ".h", ".cpp", ".hpp", ".cc", ".inc", ".cmake", ".txt", ".json", ".py", ".sh", ".md", ".in", ".ddf", ".ini",
+    ".vert", ".frag", ".comp", ".glsl",
 }
 
 

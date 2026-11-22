@@ -9,12 +9,14 @@
 #include "linux_mouse.h"
 #include "linux_crash.h"
 #include "host_policy.h"
+#include "linux_vulkan.h"
 #include "linux_window.h"
 
 typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Texture* texture;
+    int using_vulkan;
     int tex_w, tex_h;
     lx_pixel_format_t tex_format;
     int fullscreen, out_w, out_h, guest_w, guest_h;
@@ -74,11 +76,16 @@ static uint32_t vk_of(SDL_Scancode sc) {
 }
 
 static void refresh_output(void) {
+    if (s.using_vulkan && s.window) {
+        if (!SDL_GetWindowSizeInPixels(s.window, &s.out_w, &s.out_h)) s.out_w = s.out_h = 0;
+        return;
+    }
     if (s.renderer && !SDL_GetCurrentRenderOutputSize(s.renderer, &s.out_w, &s.out_h)) s.out_w = s.out_h = 0;
 }
 
 static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    int want_vk = lx_vk_active();
     (void)b;
     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) s.video_up = 1;
     else {
@@ -87,29 +94,51 @@ static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     }
     if (d->resizable) flags |= SDL_WINDOW_RESIZABLE;
     if (d->fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
+    if (want_vk) flags |= SDL_WINDOW_VULKAN;
     s.window = SDL_CreateWindow(d->title, d->client_w, d->client_h, flags);
+    if (!s.window && want_vk) {
+        lx_log("Linux presentation", "SDL3 Vulkan window failed (%s); retrying Software window", SDL_GetError());
+        want_vk = 0;
+        flags &= ~SDL_WINDOW_VULKAN;
+        s.window = SDL_CreateWindow(d->title, d->client_w, d->client_h, flags);
+    }
     if (!s.window) {
         lx_log("Linux presentation", "SDL3 window: %s", SDL_GetError());
         return 0;
     }
-    s.renderer = SDL_CreateRenderer(s.window, NULL);
-    if (!s.renderer) {
-        lx_log("Linux presentation", "SDL3 renderer: %s", SDL_GetError());
-        SDL_DestroyWindow(s.window);
-        s.window = NULL;
-        return 0;
+    s.using_vulkan = 0;
+    if (want_vk) {
+        int pw = d->client_w, ph = d->client_h;
+        SDL_GetWindowSizeInPixels(s.window, &pw, &ph);
+        if (pw <= 0 || ph <= 0) pw = d->client_w, ph = d->client_h;
+        if (lx_vk_attach_window(s.window, (uint32_t)pw, (uint32_t)ph, d->fullscreen)) {
+            s.using_vulkan = 1;
+        }
     }
-    SDL_SetRenderVSync(s.renderer, 1);
+    if (!s.using_vulkan) {
+        s.renderer = SDL_CreateRenderer(s.window, NULL);
+        if (!s.renderer) {
+            lx_log("Linux presentation", "SDL3 renderer: %s", SDL_GetError());
+            SDL_DestroyWindow(s.window);
+            s.window = NULL;
+            return 0;
+        }
+        SDL_SetRenderVSync(s.renderer, 1);
+    }
     SDL_StartTextInput(s.window);
     s.fullscreen = d->fullscreen;
     refresh_output();
-    lx_log("Linux presentation", "SDL3 window %dx%d, renderer %s, video driver %s", d->client_w, d->client_h, SDL_GetRendererName(s.renderer),
-           SDL_GetCurrentVideoDriver());
+    lx_log("Linux presentation", "SDL3 window %dx%d, renderer %s, video driver %s", d->client_w, d->client_h,
+           s.using_vulkan ? "Vulkan" : SDL_GetRendererName(s.renderer), SDL_GetCurrentVideoDriver());
     return 1;
 }
 
 static void sdl_close(lx_window_backend_t* b) {
     (void)b;
+    if (s.using_vulkan) {
+        lx_vk_shutdown();
+        s.using_vulkan = 0;
+    }
     if (s.texture) SDL_DestroyTexture(s.texture);
     if (s.renderer) SDL_DestroyRenderer(s.renderer);
     if (s.window) SDL_DestroyWindow(s.window);
@@ -158,6 +187,7 @@ static void sdl_toggle_fullscreen(lx_window_backend_t* b) {
     if (!s.window) return;
     s.fullscreen = !s.fullscreen;
     SDL_SetWindowFullscreen(s.window, s.fullscreen != 0);
+    if (s.using_vulkan) lx_vk_set_fullscreen(s.fullscreen);
 }
 
 static int sdl_next_event(lx_window_backend_t* b, int timeout_ms, lx_event_t* ev) {
@@ -220,9 +250,13 @@ static int sdl_next_event(lx_window_backend_t* b, int timeout_ms, lx_event_t* ev
         case SDL_EVENT_WINDOW_FOCUS_LOST:
             ev->kind = LX_EV_FOCUS, ev->down = e.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
             return 1;
+        case SDL_EVENT_WINDOW_MINIMIZED:
+            if (s.using_vulkan) lx_vk_on_resize(0, 0);
+            break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             ev->kind = LX_EV_RESIZE, ev->x = e.window.data1, ev->y = e.window.data2;
             refresh_output();
+            if (s.using_vulkan) lx_vk_on_resize((uint32_t)(s.out_w > 0 ? s.out_w : 0), (uint32_t)(s.out_h > 0 ? s.out_h : 0));
             return 1;
         default: break;
         }
@@ -247,6 +281,11 @@ static void sdl_present(lx_window_backend_t* b, const lx_frame_t* f) {
     lx_view_t v;
     SDL_FRect dst;
     (void)b;
+    if (s.using_vulkan) {
+        lx_crash_present_stage(LX_PRESENT_RENDER_PRESENT);
+        lx_vk_present_frame(f);
+        return;
+    }
     if (!s.renderer) return;
     lx_crash_present_stage(LX_PRESENT_TEXTURE_LOCK);
     if (!ensure_texture(f)) return;

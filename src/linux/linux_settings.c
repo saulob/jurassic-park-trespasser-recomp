@@ -5,6 +5,7 @@
 #include "linux_mouse.h"
 #include "linux_overlay.h"
 #include "linux_quick.h"
+#include "linux_vulkan.h"
 
 void lx_settings_load(const char* settings_file, jpt_config_t* out) {
     int read = 0;
@@ -16,6 +17,7 @@ void lx_settings_load(const char* settings_file, jpt_config_t* out) {
     lx_overlay_configure(out->show_frame_counter);
     lx_hostkeys_set_quick_keys(out->hotkey_vk[JPT_HOTKEY_QUICK_SAVE], out->hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
     lx_mouse_set_sensitivity(out->mouse_sensitivity);
-    lx_log("Linux settings", "%s: frame counter %s, mouse sensitivity %.2f, Quick Save key 0x%02X, Quick Load key 0x%02X", read ? "read" : "defaults",
-           out->show_frame_counter ? "on" : "off", (double)out->mouse_sensitivity, out->hotkey_vk[JPT_HOTKEY_QUICK_SAVE], out->hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
+    lx_vk_configure(out, NULL);
+    lx_log("Linux settings", "%s: renderer %s, frame counter %s, mouse sensitivity %.2f, Quick Save key 0x%02X, Quick Load key 0x%02X", read ? "read" : "defaults",
+           jpt_renderer_key(lx_vk_decision()->chosen), out->show_frame_counter ? "on" : "off", (double)out->mouse_sensitivity, out->hotkey_vk[JPT_HOTKEY_QUICK_SAVE], out->hotkey_vk[JPT_HOTKEY_QUICK_LOAD]);
 }

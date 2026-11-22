@@ -2,6 +2,7 @@
 // before its Present. Input never reaches ImGui: the menu's state is debug_menu_policy.c's.
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#include <vector>
 #include <windows.h>
 
 #include <d3d11.h>
@@ -15,9 +16,8 @@
 
 #ifdef _WIN32
 #include "backends/imgui_impl_dx11.h"
-#else
-#include "imgui_software.h"
 #endif
+#include "imgui_software.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -70,7 +70,7 @@ bool current() {
 void shut_down() {
     if (!current()) return;
 #ifdef _WIN32
-    ImGui_ImplDX11_Shutdown();
+    if (g_panel.device) ImGui_ImplDX11_Shutdown();
 #endif
     ImGui::DestroyContext(g_panel.context);
     g_panel = Panel();
@@ -100,15 +100,17 @@ bool start(ID3D11Device* device, ID3D11DeviceContext* context) {
     g_panel.last = std::chrono::steady_clock::now();
     return true;
 }
-#else
+#endif
+
 bool start_software() {
-    if (g_panel.context) return current();
+    if (g_panel.context && g_panel.device == nullptr) return current();
+    shut_down();
     create_context();
     imgui_software_init(ImGui::GetIO());
+    g_panel.device = nullptr;
     g_panel.last = std::chrono::steady_clock::now();
     return true;
 }
-#endif
 
 void apply_scale(float scale) {
     if (scale == g_panel.scale) return;
@@ -403,11 +405,26 @@ void frame_counter(ImDrawList* dl, const dmp_frame_t* f) {
                 ImGui::ColorConvertFloat4ToU32(kWhite), f->counter);
 }
 
+ImTextureData g_sw_text_tex;
+
 // The game's own text, redrawn over the HUD.
 void text_layer(ImDrawList* dl, const dmp_frame_t* f) {
     const dmp_text_layer_t* t = f->text_layer;
     if (!t || !t->texture || t->legacy_w <= 0 || t->legacy_h <= 0 || t->right <= t->left || t->bottom <= t->top) return;
     const float sx = f->view_w / (float)t->legacy_w, sy = f->view_h / (float)t->legacy_h;
+    if (t->software_rgba) {
+        g_sw_text_tex = ImTextureData();
+        g_sw_text_tex.Status = ImTextureStatus_OK;
+        g_sw_text_tex.Format = ImTextureFormat_RGBA32;
+        g_sw_text_tex.Width = t->right - t->left;
+        g_sw_text_tex.Height = t->bottom - t->top;
+        g_sw_text_tex.BytesPerPixel = 4;
+        g_sw_text_tex.Pixels = static_cast<unsigned char*>(t->texture);
+        g_sw_text_tex.TexID = (ImTextureID)(uintptr_t)&g_sw_text_tex;
+        dl->AddImage(ImTextureRef(g_sw_text_tex.TexID), ImVec2((float)t->left * sx, (float)t->top * sy),
+                     ImVec2((float)t->right * sx, (float)t->bottom * sy), ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+        return;
+    }
     dl->AddImage(ImTextureRef((ImTextureID)(uintptr_t)t->texture), ImVec2((float)t->left * sx, (float)t->top * sy),
                  ImVec2((float)t->right * sx, (float)t->bottom * sy),
                  ImVec2((float)t->left / (float)t->legacy_w, (float)t->top / (float)t->legacy_h),
@@ -854,7 +871,8 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     if (previous) previous->Release();
     if (previous_depth) previous_depth->Release();
 }
-#else
+#endif
+
 extern "C" void dmp_draw_software(uint32_t* pixels, int width, int height, int pitch_pixels, const dmp_frame_t* f) {
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
@@ -872,7 +890,148 @@ extern "C" void dmp_draw_software(uint32_t* pixels, int width, int height, int p
     ImGui::Render();
     imgui_software_render(ImGui::GetDrawData(), pixels, width, height, pitch_pixels);
 }
-#endif
+
+namespace {
+
+struct GpuTextureSlot {
+    const ImTextureData* tex;
+    uint32_t revision;
+};
+
+GpuTextureSlot g_gpu_slots[8];
+std::vector<ImDrawVert> g_gpu_vertices;
+std::vector<ImDrawIdx> g_gpu_indices;
+std::vector<dmp_gpu_cmd_t> g_gpu_cmds;
+dmp_gpu_texture_t g_gpu_textures[9];
+const uint8_t g_white_texel[4] = { 255, 255, 255, 255 };
+static_assert(sizeof(ImDrawIdx) == 2, "the GPU overlay draws 16-bit indices");
+static_assert(sizeof(ImDrawVert) == 20, "the GPU overlay reads ImDrawVert as 20 bytes");
+
+uint32_t gpu_slot_of(const ImTextureData* tex) {
+    for (uint32_t i = 0; i < 8; i++)
+        if (g_gpu_slots[i].tex == tex) return i;
+    for (uint32_t i = 0; i < 8; i++)
+        if (!g_gpu_slots[i].tex) {
+            g_gpu_slots[i].tex = tex;
+            g_gpu_slots[i].revision = 1;
+            return i;
+        }
+    return 8;
+}
+
+}  // namespace
+
+extern "C" int dmp_build_gpu(dmp_gpu_draw_t* out, int width, int height, const dmp_frame_t* f) {
+    g_hits.valid = 0;
+    if (!f->menu || f->objectives) g_stable.open = false;
+    if (!out || width <= 0 || height <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return 0;
+    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return 0;
+    if (!start_software()) return 0;
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(f->view_w, f->view_h);
+    io.DisplayFramebufferScale = ImVec2((float)width / f->view_w, (float)height / f->view_h);
+    io.DeltaTime = frame_seconds();
+    apply_scale(f->dpi_scale > 0.0f ? f->dpi_scale : 1.0f);
+    fonts();
+    ImGui::NewFrame();
+    draw_ui(f);
+    ImGui::Render();
+    ImDrawData* data = ImGui::GetDrawData();
+    if (!data || data->CmdListsCount == 0) return 0;
+    if (data->Textures)
+        for (ImTextureData* t : *data->Textures)
+            if (t->Status == ImTextureStatus_WantCreate || t->Status == ImTextureStatus_WantUpdates) {
+                const uint32_t slot = gpu_slot_of(t);
+                if (slot < 8) g_gpu_slots[slot].revision++;
+            }
+    imgui_software_update_textures(data);
+    g_gpu_vertices.clear();
+    g_gpu_indices.clear();
+    g_gpu_cmds.clear();
+    uint32_t texture_count = 0;
+    uint32_t cmd_texture_of[9];
+    for (uint32_t i = 0; i < 9; i++) cmd_texture_of[i] = 0xFFFFFFFFu;
+    const ImVec2 origin = data->DisplayPos, scale = data->FramebufferScale;
+    for (int n = 0; n < data->CmdListsCount; n++) {
+        const ImDrawList* list = data->CmdLists[n];
+        const uint32_t base_vertex = (uint32_t)g_gpu_vertices.size(), base_index = (uint32_t)g_gpu_indices.size();
+        g_gpu_vertices.insert(g_gpu_vertices.end(), list->VtxBuffer.Data, list->VtxBuffer.Data + list->VtxBuffer.Size);
+        g_gpu_indices.insert(g_gpu_indices.end(), list->IdxBuffer.Data, list->IdxBuffer.Data + list->IdxBuffer.Size);
+        for (int c = 0; c < list->CmdBuffer.Size; c++) {
+            const ImDrawCmd* cmd = &list->CmdBuffer[c];
+            if (cmd->UserCallback || cmd->ElemCount == 0) continue;
+            const ImTextureData* tex = (const ImTextureData*)(uintptr_t)cmd->GetTexID();
+            uint32_t slot = 8;
+            if (tex && tex->Pixels) slot = gpu_slot_of(tex);
+            if (slot > 8) slot = 8;
+            if (cmd_texture_of[slot] == 0xFFFFFFFFu) {
+                dmp_gpu_texture_t& t = g_gpu_textures[texture_count];
+                if (slot == 8) {
+                    t.id = 100;
+                    t.width = t.height = 1;
+                    t.bytes_per_pixel = 4;
+                    t.pixels = g_white_texel;
+                    t.revision = 1;
+                } else {
+                    t.id = slot + 1;
+                    t.width = (uint32_t)tex->Width;
+                    t.height = (uint32_t)tex->Height;
+                    t.bytes_per_pixel = (uint32_t)tex->BytesPerPixel;
+                    t.pixels = tex->Pixels;
+                    t.revision = tex == &g_sw_text_tex ? ++g_gpu_slots[slot].revision : g_gpu_slots[slot].revision;
+                }
+                cmd_texture_of[slot] = texture_count++;
+            }
+            dmp_gpu_cmd_t g;
+            g.clip[0] = (cmd->ClipRect.x - origin.x) * scale.x;
+            g.clip[1] = (cmd->ClipRect.y - origin.y) * scale.y;
+            g.clip[2] = (cmd->ClipRect.z - origin.x) * scale.x;
+            g.clip[3] = (cmd->ClipRect.w - origin.y) * scale.y;
+            if (g.clip[2] <= g.clip[0] || g.clip[3] <= g.clip[1]) continue;
+            g.idx_offset = base_index + cmd->IdxOffset;
+            g.idx_count = cmd->ElemCount;
+            g.vtx_offset = (int32_t)(base_vertex + cmd->VtxOffset);
+            g.texture = cmd_texture_of[slot];
+            g_gpu_cmds.push_back(g);
+        }
+    }
+    if (g_gpu_cmds.empty() || g_gpu_vertices.empty() || g_gpu_indices.empty() || texture_count == 0) return 0;
+    out->display_pos[0] = data->DisplayPos.x;
+    out->display_pos[1] = data->DisplayPos.y;
+    out->display_size[0] = data->DisplaySize.x;
+    out->display_size[1] = data->DisplaySize.y;
+    out->target_w = (uint32_t)width;
+    out->target_h = (uint32_t)height;
+    out->vertices = g_gpu_vertices.data();
+    out->vertex_count = (uint32_t)g_gpu_vertices.size();
+    out->indices = g_gpu_indices.data();
+    out->index_count = (uint32_t)g_gpu_indices.size();
+    out->cmds = g_gpu_cmds.data();
+    out->cmd_count = (uint32_t)g_gpu_cmds.size();
+    out->textures = g_gpu_textures;
+    out->texture_count = texture_count;
+    return 1;
+}
+
+extern "C" int dmp_draw_rgba(uint8_t* rgba, int width, int height, const dmp_frame_t* f, uint8_t* tiles, int tiles_w, int tiles_h) {
+    g_hits.valid = 0;
+    if (!f->menu || f->objectives) g_stable.open = false;
+    if (!rgba || width <= 0 || height <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return 0;
+    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return 0;
+    if (!start_software()) return 0;
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(f->view_w, f->view_h);
+    io.DisplayFramebufferScale = ImVec2((float)width / f->view_w, (float)height / f->view_h);
+    io.DeltaTime = frame_seconds();
+    apply_scale(f->dpi_scale > 0.0f ? f->dpi_scale : 1.0f);
+    fonts();
+    ImGui::NewFrame();
+    draw_ui(f);
+    ImGui::Render();
+    imgui_software_render_rgba(ImGui::GetDrawData(), rgba, width, height, tiles, tiles_w, tiles_h);
+    g_sw_text_tex.Pixels = nullptr;
+    return 1;
+}
 
 extern "C" void dmp_release(void) {
     g_hits.valid = 0;

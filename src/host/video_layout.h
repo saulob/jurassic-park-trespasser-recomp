@@ -69,6 +69,11 @@ typedef struct {
 /* 1 when the palette differs from the one the map was built for (and the map now follows it). */
 int vl_palette_map_update(vl_palette_map_t* m, const uint8_t* palette);
 
+/* One row of decoder pixels as RGBA bytes. A code the palette map does not hold (the palette changed since the block
+ * was drawn) is the code's own colour, never black. gamma is the three 256-entry 16-bit ramps, or NULL. */
+void vl_convert_row_rgba(const uint16_t* row, int count, int rgb565, const vl_palette_map_t* map, const uint16_t* gamma,
+                         uint8_t* out);
+
 /* AUTO is the game's own choice; the Video Test forces one playback either way. */
 typedef enum { VL_PLAY_AUTO, VL_PLAY_ORIGINAL, VL_PLAY_HD } vl_play_mode_t;
 
@@ -104,6 +109,19 @@ int vl_session_main_presented(vl_session_t* s);
 /* Pixels of a decoded picture's last row (RGB565 or XRGB1555 codes) that are lit while the three rows above them, the
  * rest of their 4x4 codec block, are black. */
 int vl_lone_bottom_pixels(const uint8_t* rows, long stride, int width, int height);
+
+/* A progressive frame (rows of decoder codes, stride in bytes) as RGBA bytes, on the CPU. stray_bottom_line applies the
+ * rule the GPU converter has (stray_row): in the last row a lit code whose three codes above are all black takes the
+ * code above. */
+void vl_convert_frame_rgba(const uint8_t* rows, long stride, int width, int height, int rgb565, const vl_palette_map_t* map,
+                           const uint16_t* gamma, int stray_bottom_line, uint8_t* out);
+/* Which passes a frame goes through, from its row policy, its layout and what the session has learned: the one policy
+ * both backends' video pipelines read. */
+typedef struct {
+    int smooth, deblock, glow, stray;
+} vl_stages_t;
+vl_stages_t vl_video_stages(const vl_policy_t* policy, const vl_layout_t* layout, int stray_latched);
+
 /* credits.smk's stray line shows 359-365 lone pixels at full brightness; the other videos never more than 35. */
 #define VL_STRAY_LINE_MIN 128
 /* One frame's lone pixels: 1 when they mark the last row as a stray line for the rest of the playback (once). */

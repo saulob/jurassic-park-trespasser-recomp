@@ -73,13 +73,13 @@ static void test_producers(void) {
     char* limits = read_source("src/host/engine_limits.c");
     CHECK(renderer && watch && limits);
     if (renderer) {
-        const char* summary = strstr(renderer, "void d3dr_summary(void)");
+        const char* summary = strstr(renderer, "void d3d11_be_summary(void)");
         CHECK(summary && strstr(summary, "host_perf_logging()") &&
               strstr(summary, "host_perf_logging()") < strstr(summary, "log_metric_lines(\"summary at exit:\")"));
         CHECK(line_uses(renderer, "\"water refraction: %llu water batches", "host_log_perf(") &&
               line_uses(renderer, "\"water refraction: largest wave difference", "host_log_perf(") &&
               line_uses(renderer, "\"CPU pixels composited over the GPU target", "host_log_perf("));
-        CHECK(strstr(summary, "failed_d3d_calls %lu") != NULL);
+        CHECK(summary && strstr(summary, "failed_d3d_calls %lu") != NULL);
     }
     if (limits)
         CHECK(line_uses(limits, "\"guest hardware renderer accepted %u times, never rejected", "host_log_perf(") &&

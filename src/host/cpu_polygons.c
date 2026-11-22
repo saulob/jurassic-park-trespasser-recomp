@@ -176,7 +176,7 @@ static void gpu_summary(const char* name, const tgpu_session_t* s) {
             n += _snprintf(reasons + n, sizeof reasons - 1 - (size_t)n, "%s%s %llu", n ? ", " : "", tgpu_reason_name(i),
                            s->reason[i]);
     reasons[sizeof reasons - 1] = 0;
-    host_log("perf-detail", "%s: GPU %llu, CPU fallback %llu, dropped %llu%s; fallback reasons: %s", name, s->gpu, s->cpu,
+    host_log("renderer", "%s: GPU %llu, CPU fallback %llu, dropped %llu%s; fallback reasons: %s", name, s->gpu, s->cpu,
              s->dropped, s->disabled_after_failure ? " (GPU path disabled after unsafe state)"
                                                    : s->enabled ? "" : " (GPU path off)", reasons[0] ? reasons : "none");
 }

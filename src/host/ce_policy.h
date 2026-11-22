@@ -12,6 +12,17 @@ extern "C" {
 #define QS_FILE_NAME "SAVEGAME.QCK"
 #define QS_NAME_MAX 20 /* the game's save name field holds 20 characters and its terminator */
 
+/* Retail CSaveGameWnd / SaveHeader entry layout shared by Windows and Linux hosts. */
+#define SAVE_ENTRY_BYTES 0x54u
+#define SAVE_ENTRY_FILE 0x28u
+#define SAVE_ENTRY_SCENE 0x37u
+
+#if defined(__cplusplus)
+static_assert(SAVE_ENTRY_FILE < SAVE_ENTRY_SCENE && SAVE_ENTRY_SCENE < SAVE_ENTRY_BYTES, "SaveHeader layout");
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(SAVE_ENTRY_FILE < SAVE_ENTRY_SCENE && SAVE_ENTRY_SCENE < SAVE_ENTRY_BYTES, "SaveHeader layout");
+#endif
+
 typedef enum { QS_PLACE_NONE, QS_PLACE_LEVEL, QS_PLACE_MAIN_MENU } qs_place_t;
 
 typedef struct {

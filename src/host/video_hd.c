@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "ddraw/d3d_legacy.h"
+#include "ddraw/renderer_backend.h"
 #include "ddraw/video_gpu.h"
 #include "video_layout.h"
 
@@ -266,13 +267,17 @@ static void log_start(const player_t* p, const vl_policy_t* policy, const vl_lay
              policy->rows == VL_ROWS_PROGRESSIVE ? "adaptive 4x4" : "off");
 }
 
-static void check_stray_line(const video_gpu_frame_t* f, const player_t* p) {
+static void check_stray_rows(const uint8_t* rows, long stride, int width, const vl_policy_t* policy, const player_t* p) {
     int lone;
-    if (f->policy.rows != VL_ROWS_PROGRESSIVE || V.session.stray_line) return;
-    lone = vl_lone_bottom_pixels(f->rows, f->stride, f->width, f->policy.shown_rows);
+    if (policy->rows != VL_ROWS_PROGRESSIVE || V.session.stray_line) return;
+    lone = vl_lone_bottom_pixels(rows, stride, width, policy->shown_rows);
     if (vl_session_stray_line(&V.session, lone))
         host_log("video", "%s: frame %u: the last row is a stray line over black (%d pixels); its lone pixels take the "
                  "row above for the rest of the video", V.name, p->frame, lone);
+}
+
+static void check_stray_line(const video_gpu_frame_t* f, const player_t* p) {
+    check_stray_rows(f->rows, f->stride, f->width, &f->policy, p);
 }
 
 static void log_finish(void) {
@@ -340,6 +345,157 @@ static int show_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
     return 1;
 }
 
+static int vulkan_target_client(HWND window, RECT* rc) {
+    HWND surface = window_host_surface(window);
+    return GetClientRect(surface ? surface : window, rc) && rc->right > 0 && rc->bottom > 0;
+}
+
+static int show_frame_vulkan_cpu(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565,
+                                 const uint16_t* gamma, const player_t* p, int black, const char** why) {
+    RECT rc;
+    int cw, ch;
+    vl_policy_t policy = vl_policy_for(p->flags, p->shown);
+    vl_layout_t layout;
+    const video_subtitle_image_t* subtitle = NULL;
+    float norm_rect[4];
+    int vw = (int)p->width, vh = (int)p->shown;
+    static uint8_t* s_rgba;
+    static size_t s_rgba_cap;
+
+    if (!vulkan_target_client(window, &rc)) {
+        *why = "the game window has no client area";
+        return 0;
+    }
+    cw = rc.right;
+    ch = rc.bottom;
+    layout = vl_layout(cw, ch, vw > 0 ? vw : 640, vh > 0 ? vh : 480);
+
+    if (black || vw <= 0 || vh <= 0) {
+        static const uint8_t k_black[16] = { 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255 };
+        float full[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+        if (!present_video_hd_rgba(window, k_black, 2, 2, full, NULL)) {
+            *why = "Vulkan video presentation failed";
+            return 0;
+        }
+        return 1;
+    }
+
+    int screen_w = source->right - source->left, screen_h = source->bottom - source->top;
+    if (p->left < 0 || p->top < 0 || p->left + vw > screen_w || p->top + vh > screen_h) {
+        *why = "the video does not fit the game's screen";
+        return 0;
+    }
+
+    size_t need = (size_t)vw * (size_t)vh * 4u;
+    if (need > s_rgba_cap) {
+        uint8_t* grown = (uint8_t*)realloc(s_rgba, need);
+        if (!grown) {
+            *why = "out of memory for Vulkan video frame";
+            return 0;
+        }
+        s_rgba = grown;
+        s_rgba_cap = need;
+    }
+
+    if (rgb565) vl_palette_map_update(&s_palette, (const uint8_t*)ADDR(p->smack + SMACK_PALETTE));
+    check_stray_rows(bits + (size_t)(source->top + p->top) * (size_t)pitch + (size_t)(source->left + p->left) * 2, pitch,
+                     vw, &policy, p);
+
+    if (policy.rows == VL_ROWS_PROGRESSIVE) {
+        vl_convert_frame_rgba(bits + (size_t)(source->top + p->top) * (size_t)pitch +
+                                  (size_t)(source->left + p->left) * 2,
+                              pitch, vw, vh, rgb565, s_palette.valid ? &s_palette : NULL, gamma, V.session.stray_line,
+                              s_rgba);
+    } else {
+        for (int y = 0; y < vh; y++) {
+            int src_y = source->top + p->top + (policy.rows == VL_ROWS_REBUILD ? ((y & ~1) + policy.parity) : y);
+            if (src_y >= source->bottom) src_y = source->bottom - 1;
+            const uint16_t* row = (const uint16_t*)(bits + (size_t)src_y * (size_t)pitch) + source->left + p->left;
+            vl_convert_row_rgba(row, vw, rgb565, s_palette.valid ? &s_palette : NULL, gamma,
+                                s_rgba + (size_t)y * (size_t)vw * 4u);
+        }
+    }
+
+    norm_rect[0] = (float)layout.video.x / (float)cw;
+    norm_rect[1] = (float)layout.video.y / (float)ch;
+    norm_rect[2] = (float)(layout.video.x + layout.video.w) / (float)cw;
+    norm_rect[3] = (float)(layout.video.y + layout.video.h) / (float)ch;
+    subtitle = video_subtitles_image(cw, ch, layout.video.x, layout.video.y, layout.video.w, layout.video.h);
+    if (!present_video_hd_rgba(window, s_rgba, vw, vh, norm_rect, subtitle)) {
+        *why = "Vulkan video presentation failed";
+        return 0;
+    }
+    V.chain_w = cw;
+    V.chain_h = ch;
+    log_start(p, &policy, &layout);
+    return 1;
+}
+
+static int show_frame_vulkan_gpu(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565,
+                                 const uint16_t* gamma, const player_t* p) {
+    RECT rc;
+    vl_policy_t policy = vl_policy_for(p->flags, p->shown);
+    vl_layout_t layout;
+    vl_stages_t stages;
+    jpt_vk_video_frame_t f;
+    const video_subtitle_image_t* subtitle;
+    int screen_w = source->right - source->left, screen_h = source->bottom - source->top, first_row;
+    if (!p->width || !p->shown || p->left < 0 || p->top < 0 || p->left + (int32_t)p->width > screen_w ||
+        p->top + (int32_t)p->shown > screen_h || !vulkan_target_client(window, &rc))
+        return 0;
+    layout = vl_layout(rc.right, rc.bottom, (int)p->width, (int)p->shown);
+    stages = vl_video_stages(&policy, &layout, V.session.stray_line);
+    first_row = source->top + p->top + (policy.rows == VL_ROWS_REBUILD ? policy.parity : 0);
+    memset(&f, 0, sizeof f);
+    f.rows = bits + (size_t)first_row * (size_t)pitch + (size_t)(source->left + p->left) * 2;
+    f.stride = policy.rows == VL_ROWS_REBUILD ? pitch * 2 : pitch;
+    if (rgb565) {
+        f.palette_changed = vl_palette_map_update(&s_palette, (const uint8_t*)ADDR(p->smack + SMACK_PALETTE));
+        f.palette_map = s_palette.map;
+    }
+    f.gamma = gamma;
+    f.smooth = stages.smooth;
+    f.deblock = stages.deblock;
+    f.params.width = (int)p->width;
+    f.params.stored_rows = policy.stored_rows;
+    f.params.shown_rows = policy.shown_rows;
+    f.params.rebuild = policy.rows == VL_ROWS_REBUILD;
+    f.params.parity = policy.parity;
+    f.params.has_palette_map = f.palette_map != NULL;
+    f.params.rgb565 = rgb565 != 0;
+    f.params.video_x = layout.video.x;
+    f.params.video_y = layout.video.y;
+    f.params.video_w = layout.video.w;
+    f.params.video_h = layout.video.h;
+    f.params.out_w = rc.right;
+    f.params.out_h = rc.bottom;
+    f.params.side = layout.side;
+    f.params.glow = stages.glow;
+    f.params.progressive = policy.rows == VL_ROWS_PROGRESSIVE;
+    f.params.stray_line = stages.stray;
+    subtitle = video_subtitles_image(rc.right, rc.bottom, layout.video.x, layout.video.y, layout.video.w, layout.video.h);
+    if (!present_video_frame_gpu(window, &f, subtitle)) return 0;
+    V.chain_w = rc.right;
+    V.chain_h = rc.bottom;
+    log_start(p, &policy, &layout);
+    return 1;
+}
+
+static int show_frame_vulkan(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565,
+                             const uint16_t* gamma, const player_t* p, int black, const char** why) {
+    if (!black && p->width && p->shown) {
+        video_gpu_frame_t probe;
+        memset(&probe, 0, sizeof probe);
+        probe.rows = bits + (size_t)(source->top + p->top) * (size_t)pitch + (size_t)(source->left + p->left) * 2;
+        probe.stride = pitch;
+        probe.width = (int)p->width;
+        probe.policy = vl_policy_for(p->flags, p->shown);
+        check_stray_line(&probe, p);
+        if (show_frame_vulkan_gpu(window, bits, pitch, source, rgb565, gamma, p)) return 1;
+    }
+    return show_frame_vulkan_cpu(window, bits, pitch, source, rgb565, gamma, p, black, why);
+}
+
 int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565, const uint16_t* gamma) {
     uint32_t raster = 0;
     player_t p;
@@ -354,8 +510,12 @@ int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* sour
     if (show == VL_SHOW_CLASSIC || !window_host_frames_allowed()) return 0;
     if (!read_player(&p)) return 0;
     start = now_ms();
-    done = show == VL_SHOW_BLACK ? show_black(window, &why)
-                                 : show_frame(window, bits, pitch, source, rgb565, gamma, &p, &why);
+    if (renderer_backend_active() == JPT_RENDERER_VULKAN) {
+        done = show_frame_vulkan(window, bits, pitch, source, rgb565, gamma, &p, show == VL_SHOW_BLACK, &why);
+    } else {
+        done = show == VL_SHOW_BLACK ? show_black(window, &why)
+                                     : show_frame(window, bits, pitch, source, rgb565, gamma, &p, &why);
+    }
     if (!done) {
         warn_once(why);
         vl_session_failed(&V.session);
@@ -438,5 +598,7 @@ static void play(void) {
 }
 
 void video_hd_install(void) {
-    if (guest_override_install(VIDEO_PLAY_VA, play, &V.play_lifted) && d3dr_hardware()) video_gpu_prepare();
+    if (guest_override_install(VIDEO_PLAY_VA, play, &V.play_lifted) &&
+        renderer_backend_active() == JPT_RENDERER_D3D11)
+        video_gpu_prepare();
 }

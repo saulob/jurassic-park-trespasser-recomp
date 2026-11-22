@@ -276,29 +276,29 @@ static int policy_value(const char* name, int stored, policy_t* p) {
     }
     if (!_stricmp(name, "Use D3D")) {
         policy_dword(p, d3dr_hardware() ? 1 : 0,
-                     d3dr_hardware() ? "host policy: 1 (--renderer d3d11)" : "host policy: 0 (--renderer software)");
+                     d3dr_hardware() ? "host policy: 1 (hardware renderer)" : "host policy: 0 (--renderer software)");
         return 1;
     }
     if (!_stricmp(name, "D3D GUID") && d3dr_hardware()) {
         p->type = REG_BINARY;
         p->size = sizeof k_hal_guid;
         memcpy(p->data, k_hal_guid, sizeof k_hal_guid);
-        p->text = "host policy: IID_IDirect3DHALDevice (--renderer d3d11)";
+        p->text = "host policy: IID_IDirect3DHALDevice (hardware renderer)";
         return 1;
     }
     if (!_stricmp(name, "Max Recommended Tex Dim") && engine_texture_dim_policy(engine_limits_modern())) {
         policy_dword(p, engine_texture_dim_policy(1),
-                     "host policy: 256 with d3d11 (textures and impostors at their full size; the 1998 setup offered "
+                     "host policy: 256 with hardware renderer (textures and impostors at their full size; the 1998 setup offered "
                      "32 to 128; --original-engine-limits keeps the stored value)");
         return 1;
     }
     if (!_stricmp(name, "RenderQuality") && engine_render_quality_policy(d3dr_hardware(), stored)) {
         policy_dword(p, engine_render_quality_policy(1, 0),
-                     "host policy: 4, the top render quality, with d3d11 until the game's options store a choice");
+                     "host policy: 4, the top render quality, with hardware renderer until the game's options store a choice");
         return 1;
     }
     if (!_stricmp(name, "Hardware Water") && hardware_water_policy(d3dr_hardware(), stored, s_software_water) == 1) {
-        policy_dword(p, 1, "host policy: 1 (--renderer d3d11, as the game's video setup sets it for alpha-capable "
+        policy_dword(p, 1, "host policy: 1 (hardware renderer, as the game's video setup sets it for alpha-capable "
                            "devices; --software-water or a stored value keeps the software water)");
         return 1;
     }

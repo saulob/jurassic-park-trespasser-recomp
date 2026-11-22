@@ -18,10 +18,12 @@
 #include "host.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
+#include "jpt_present_policy.h"
 #include "loading_hd.h"
 #include "page_arena.h"
 #include "page_guard.h"
 #include "perf_sections.h"
+#include "renderer_backend.h"
 #include <stdarg.h>
 #include "perf_stat.h"
 #include "target_sync.h"
@@ -444,7 +446,7 @@ static void perf_add(int category, int64_t start) {
 
 /* ---- configuration and start-up ---- */
 
-void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, unsigned anisotropy, unsigned msaa) {
+static void d3d11_be_configure_raw(int hardware, unsigned box_w, unsigned box_h, int filter, unsigned anisotropy, unsigned msaa) {
     R.requested = hardware;
     R.fixed_w = box_w;
     R.fixed_h = box_h;
@@ -453,13 +455,13 @@ void d3dr_configure(int hardware, unsigned box_w, unsigned box_h, int filter, un
     R.msaa_request = msaa;
 }
 
-int d3dr_hardware(void) { return R.hardware; }
+static int d3d11_be_hardware(void) { return R.hardware; }
 
-unsigned long long renderer_hardware_frames(void) { return R.frames_hw; }
+static unsigned long long d3d11_be_hardware_frames(void) { return R.frames_hw; }
 
 static float s_scene_view[4], s_scene_frame[4];
 
-int d3dr_scene_view(float out[4]) {
+static int d3d11_be_scene_view(float out[4]) {
     if (s_scene_frame[2] > 0.0f) {
         memcpy(s_scene_view, s_scene_frame, sizeof s_scene_view);
         memset(s_scene_frame, 0, sizeof s_scene_frame);
@@ -468,7 +470,7 @@ int d3dr_scene_view(float out[4]) {
     return s_scene_view[2] > 0.0f && s_scene_view[3] > 0.0f;
 }
 
-int d3dr_set_debug_output(const char* mode) {
+static int d3d11_be_set_debug_output(const char* mode) {
     static const char* const modes[] = { "texture", "vertex-color", "depth" };
     for (int i = 0; i < 3; i++)
         if (!strcmp(mode, modes[i])) {
@@ -478,7 +480,7 @@ int d3dr_set_debug_output(const char* mode) {
     return 0;
 }
 
-const char* d3dr_name(void) { return R.hardware ? "D3D11" : "Software"; }
+static const char* d3d11_be_name(void) { return R.hardware ? "D3D11" : "Software"; }
 
 /* ---- ambient occlusion (Intel ASSAO, assao_host.cpp) ---- */
 
@@ -508,13 +510,13 @@ static int ao_start(void) {
     return 0;
 }
 
-void d3dr_configure_ambient_occlusion(int level) {
+static void d3d11_be_configure_ao(int level) {
     R.ao.level = level > JPT_AO_OFF && level < JPT_AO_COUNT ? level : JPT_AO_OFF;
     assao_set_quality(R.ao.level);
 }
 
-void d3dr_configure_effects(int water_refraction, int enhanced_sky) {
-    const char* scope = R.hardware ? "" : " (Direct3D 11 only: the Software renderer draws water and sky as the original)";
+static void d3d11_be_configure_effects(int water_refraction, int enhanced_sky) {
+    const char* scope = R.requested ? "" : " (hardware renderer only: the Software renderer draws water and sky as the original)";
     fx_switch_start(&R.fx.water, water_refraction);
     fx_switch_start(&R.fx.sky, enhanced_sky);
     host_log("video", "water refraction: %s%s", R.fx.water.setting ? "on" : "off", scope);
@@ -522,7 +524,7 @@ void d3dr_configure_effects(int water_refraction, int enhanced_sky) {
 }
 
 /* CSkyRender::DrawD3D's draws, between these two: the sky's own batch. */
-void d3dr_sky_begin(const float sky[5]) {
+static void d3d11_be_sky_begin(const float sky[5]) {
     if (!R.hardware) return;
     if (R.nindices) flush_for(FLUSH_SKY);
     memcpy(R.fx.sky_constants, sky, sizeof R.fx.sky_constants);
@@ -530,7 +532,7 @@ void d3dr_sky_begin(const float sky[5]) {
     R.fx.sky_drawing = 1;
 }
 
-void d3dr_sky_end(void) {
+static void d3d11_be_sky_end(void) {
     if (!R.hardware) return;
     if (R.nindices) flush_for(FLUSH_SKY);
     R.fx.sky_drawing = 0;
@@ -833,7 +835,8 @@ static void log_renderer_line(void) {
                  "filter %s%s, MSAA requested %ux", k_filter_names[R.filter], anisotropy_text(), R.msaa_request);
 }
 
-int d3dr_startup(void) {
+static int d3d11_be_startup(void) {
+    if (R.requested && !renderer_backend_guard_d3d11("d3d11_renderer::startup")) return 0;
     R.batch_serial = 1;
     R.selfmod_mark = selfmod_entries();
     R.last_summary = R.perf_start = now_seconds();
@@ -1235,27 +1238,19 @@ static UINT supported_samples(void) {
 
 static void choose_size(UINT legacy_w, UINT legacy_h, UINT* w, UINT* h) {
     int view_w = 0, view_h = 0;
-    if (R.fixed_w) {
-        jpt_size_t box = { (int)R.fixed_w, (int)R.fixed_h };
-        jpt_size_t size = jpt_render_target(box, (int)legacy_w, (int)legacy_h);
-        *w = (UINT)size.width;
-        *h = (UINT)size.height;
-        return;
-    }
-    window_host_view_size(&view_w, &view_h);
-    if (view_w <= 0 || view_h <= 0) {
-        view_w = (int)legacy_w;
-        view_h = (int)legacy_h;
-    }
-    d3dt_auto_resolution((unsigned)view_w, (unsigned)view_h, legacy_w, legacy_h, w, h);
+    unsigned rw = 0, rh = 0;
+    if (!R.fixed_w) window_host_view_size(&view_w, &view_h);
+    jpt_choose_render_size(R.fixed_w, R.fixed_h, view_w, view_h, legacy_w, legacy_h, &rw, &rh);
+    *w = rw;
+    *h = rh;
 }
 
-void d3dr_render_box(unsigned* w, unsigned* h) {
+static void d3d11_be_render_box(unsigned* w, unsigned* h) {
     *w = R.fixed_w;
     *h = R.fixed_h;
 }
 
-int d3dr_frame_size(int guest_w, int guest_h, int* w, int* h) {
+static int d3d11_be_frame_size(int guest_w, int guest_h, int* w, int* h) {
     UINT out_w, out_h;
     if (!R.hardware || guest_w <= 0 || guest_h <= 0) return 0;
     choose_size((UINT)guest_w, (UINT)guest_h, &out_w, &out_h);
@@ -1379,7 +1374,7 @@ static int target_ready(d3dr_target_t* t) {
     return create_target_resources(t);
 }
 
-HRESULT d3dr_attach(d3d_device_t* dev) {
+static HRESULT d3d11_be_attach(d3d_device_t* dev) {
     dd_surface_t* s = dev->target;
     d3dr_target_t* t;
     if (!R.hardware || !ensure_device()) return DDERR_GENERIC;
@@ -1418,7 +1413,7 @@ HRESULT d3dr_attach(d3d_device_t* dev) {
 }
 
 /* The surface keeps the last picture when its device goes, as DirectDraw memory would. */
-void d3dr_detach(d3d_device_t* dev) {
+static void d3d11_be_detach(d3d_device_t* dev) {
     d3dr_target_t* t = dev->backend;
     settle_deferred();
     if (R.batch_dev == dev) flush_for(FLUSH_SURFACE);
@@ -1438,7 +1433,7 @@ void d3dr_detach(d3d_device_t* dev) {
     dev->backend = NULL;
 }
 
-void d3dr_surface_freed(dd_surface_t* s) {
+static void d3d11_be_surface_freed(dd_surface_t* s) {
     if (R.batch_water == s) flush_for(FLUSH_SURFACE);
     fx_water_surface_freed(s, (uintptr_t)s->bits, s->bits ? (uintptr_t)s->bits + (uintptr_t)s->pitch * s->height : 0);
     for (int i = 0; i < FX_WAVE_TEXTURES; i++)
@@ -1451,7 +1446,7 @@ void d3dr_surface_freed(dd_surface_t* s) {
     }
 }
 
-void d3dr_device_lost(void) {
+static void d3d11_be_device_lost(void) {
     R.nverts = R.nindices = 0;
     R.batch_arrays = 0;
     R.bound.valid = 0;
@@ -1948,7 +1943,7 @@ static int pixelformat_texture_format(const DDPIXELFORMAT* pf) {
                                         pf->dwRGBAlphaBitMask);
 }
 
-int d3dr_texture_format_known(const DDPIXELFORMAT* pf) { return pixelformat_texture_format(pf) != D3DT_FMT_UNKNOWN; }
+static int d3d11_be_texture_format_known(const DDPIXELFORMAT* pf) { return pixelformat_texture_format(pf) != D3DT_FMT_UNKNOWN; }
 
 /* Once per distinct layout: what the game asked for, so the format can be added. */
 static void log_unknown_format(const dd_surface_t* s) {
@@ -2487,7 +2482,7 @@ static int draw_effect(const d3d_device_t* dev) {
     return fx_water_link(dev->texture) ? EFFECT_WATER : EFFECT_NONE;
 }
 
-void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
+static void d3d11_be_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
     int water;
     if (!R.hardware) return;
     water = fx_water_loaded(dst, src, (uintptr_t)src->bits, src->pitch, (int)src->width, (int)src->height,
@@ -2809,7 +2804,7 @@ static void flush_for(int cause) {
     flush();
 }
 
-void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD value) {
+static void d3d11_be_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD value) {
     if (change >= 0 && change < D3DR_CHANGES) R.detail.state_changes[change]++;
     if (R.batch_dev != dev || !R.nindices) return;
     count_flush(change);
@@ -2820,7 +2815,7 @@ void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD va
     flush();
 }
 
-void d3dr_state_kept_batch(d3d_device_t* dev) {
+static void d3d11_be_state_kept_batch(d3d_device_t* dev) {
     R.detail.state_changes[D3DR_CHANGE_RENDER]++;
     if (R.batch_dev == dev && R.nindices) R.detail.batches_kept++;
 }
@@ -2947,7 +2942,7 @@ static HRESULT draw_translate(d3d_device_t* dev, int type, DWORD fvf, const void
 
 /* One call in TRANSLATE_SAMPLE is timed for all of them. The translation row excludes the uploads and the flushes
  * inside it, which have their own rows. */
-HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
+static HRESULT d3d11_be_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count) {
     int64_t start, end;
     double total, up, fl, other;
@@ -3001,7 +2996,7 @@ static int covers_surface(const d3dr_target_t* t, long x, long y, long w, long h
     return x <= 0 && y <= 0 && x + w >= (long)t->legacy_w && y + h >= (long)t->legacy_h;
 }
 
-HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD flags, D3DCOLOR color, float z) {
+static HRESULT d3d11_be_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD flags, D3DCOLOR color, float z) {
     d3dr_target_t* t = dev->backend;
     settle_deferred();
     if (!t || !target_ready(t)) return DDERR_GENERIC;
@@ -3025,7 +3020,7 @@ HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD f
 }
 
 /* A colour fill of the device's target is a GPU clear; the colour is in the surface's RGB565. */
-int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) {
+static int d3d11_be_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) {
     d3dr_target_t* t = s->target;
     D3DRECT rect;
     uint32_t bgra;
@@ -3040,7 +3035,7 @@ int d3dr_surface_fill(dd_surface_t* s, const RECT* r, DWORD color) {
 
 /* ---- scenes, coherence hooks and presentation ---- */
 
-void d3dr_begin_scene(d3d_device_t* dev) {
+static void d3d11_be_begin_scene(d3d_device_t* dev) {
     d3dr_target_t* t = dev->backend;
     UINT w, h;
     settle_deferred();
@@ -3061,7 +3056,7 @@ void d3dr_begin_scene(d3d_device_t* dev) {
     target_ready(t);
 }
 
-void d3dr_end_scene(d3d_device_t* dev) {
+static void d3d11_be_end_scene(d3d_device_t* dev) {
     if (R.batch_dev != dev) return;
     flush_for(FLUSH_SCENE_END);
 }
@@ -3155,7 +3150,7 @@ static int defer_lock(d3dr_target_t* t, tsync_access_t kind, const d3dt_rect_t* 
 }
 
 /* 1 when the Lock ended with its pixels untouched: nothing was read or written. */
-int d3dr_surface_unlocked(dd_surface_t* s) {
+static int d3d11_be_surface_unlocked(dd_surface_t* s) {
     d3dr_target_t* t = s->target;
     if (t && t->inert_lock) {
         t->inert_lock = 0;
@@ -3343,7 +3338,7 @@ static unsigned flush_polygon_run(d3dr_target_t* t) {
     return polygons.n;
 }
 
-void d3dr_cpu_polygon(void* surface_iface, const long raster_box[4], uint32_t origin_bytes, int reads) {
+static void d3d11_be_cpu_polygon(void* surface_iface, const long raster_box[4], uint32_t origin_bytes, int reads) {
     dd_surface_t* s = R.hardware && surface_iface ? dd_surface_from(surface_iface) : NULL;
     long at[4] = { raster_box[0], raster_box[1], raster_box[2], raster_box[3] };
     d3dt_rect_t box;
@@ -3386,7 +3381,7 @@ void d3dr_cpu_polygon(void* surface_iface, const long raster_box[4], uint32_t or
     }
 }
 
-void d3dr_cpu_polygon_done(void) { s_polys.pending = 0; }
+static void d3d11_be_cpu_polygon_done(void) { s_polys.pending = 0; }
 
 /* Perspective-textured software polygons drawn by the GPU (cpu_polygons.c): the guest's 8-bit texels and 256-entry
  * CLUTs live in two buffers. */
@@ -3442,7 +3437,7 @@ static void release_poly_resources(void) {
     reset_poly_caches();
 }
 
-void d3dr_texture_polygon_reset(void) { reset_poly_caches(); }
+static void d3d11_be_texture_polygon_reset(void) { reset_poly_caches(); }
 
 
 static ID3D11Buffer* make_typed_buffer(UINT bytes, DXGI_FORMAT format, UINT elements, ID3D11ShaderResourceView** srv) {
@@ -3506,7 +3501,7 @@ static int poly_bump_resources_ready(void) {
 }
 
 /* The GPU polygon buffers exist on the level's final device before the first polygon needs them. */
-void d3dr_texture_polygon_warm(void) {
+static void d3d11_be_texture_polygon_warm(void) {
     if (R.hardware && R.dev && poly_resources_ready()) poly_bump_resources_ready();
 }
 
@@ -3550,7 +3545,7 @@ static int dirty_overlaps(const d3dt_dirty_t* d, const d3dt_rect_t* box) {
 /* Everything that can fail before the polygon's spans run: the target, the resources, the texture and CLUT uploads and
  * the order against the CPU polygons already written (a surface the game holds locked keeps its run, split where the
  * polygon overlaps it so the pixels written earlier reach the target first). */
-gpu_polygon_status_t d3dr_texture_polygon_prepare(void* surface_iface, const gpu_texture_polygon_t* p) {
+static gpu_polygon_status_t d3d11_be_texture_polygon_prepare(void* surface_iface, const gpu_texture_polygon_t* p) {
     dd_surface_t* s;
     d3dr_target_t* t = poly_target(surface_iface, &s);
     d3dt_rect_t box;
@@ -3604,7 +3599,7 @@ gpu_polygon_status_t d3dr_texture_polygon_prepare(void* surface_iface, const gpu
 }
 
 /* Draws a polygon the preparation accepted. */
-int d3dr_texture_polygon(void* surface_iface, const gpu_texture_polygon_t* p) {
+static int d3d11_be_texture_polygon(void* surface_iface, const gpu_texture_polygon_t* p) {
     dd_surface_t* s;
     d3dr_target_t* t = poly_target(surface_iface, &s);
     poly_constants_t c;
@@ -3685,7 +3680,7 @@ int d3dr_texture_polygon(void* surface_iface, const gpu_texture_polygon_t* p) {
 }
 
 
-uint32_t d3dr_lock_caller(void) { return readback_caller(); }
+static uint32_t d3d11_be_lock_caller(void) { return readback_caller(); }
 
 
 static void end_polygon_run(const d3dr_target_t* t) {
@@ -3725,7 +3720,7 @@ typedef char text_layer_marker_is_the_capture_marker[TL_MARKER == TSYNC_UNWRITTE
 
 const uint32_t* d3dr_rgb565_table(void) { return R.rgb565_table; }
 
-void d3dr_text_box(HDC dc, const RECT* box) {
+static void d3d11_be_text_box(HDC dc, const RECT* box) {
     d3dr_target_t* t = R.text_target;
     d3dt_rect_t r;
     if (!R.hardware) {
@@ -3788,7 +3783,7 @@ static void target_cpu_access(d3dr_target_t* t, int will_write, cpu_access_t acc
     R.perf.target_accesses++;
 }
 
-void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t access) {
+static void d3d11_be_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t access) {
     if (!R.hardware) return;
     if (s->target && s->target->device) target_cpu_access(s->target, will_write, access);
     if (s->front_from_gpu) {
@@ -3805,7 +3800,7 @@ static void front_written(dd_surface_t* s) {
         if (m->target) tsync_front_changed(&m->target->sync);
 }
 
-void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
+static void d3d11_be_surface_cpu_written(dd_surface_t* s, const RECT* r) {
     s->cpu_writes++;
     if (!R.hardware) {
         tl_settle(s->bits);
@@ -3894,7 +3889,7 @@ static int upload_still(const uint16_t* bits, long pitch, int w, int h) {
 
 /* The game's frozen gameplay picture behind its pause menus, drawn on the GPU target instead of being copied into the
  * screen's CPU copy every frame: no Lock, no full-screen compare and no full-screen upload while a menu is open. */
-int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h) {
+static int d3d11_be_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int w, int h) {
     dd_surface_t* s = dd_surface_from(surface);
     d3dr_target_t* t = s ? s->target : NULL;
     d3dt_rect_t all;
@@ -3917,7 +3912,7 @@ int d3dr_draw_still_picture(void* surface, const uint16_t* bits, long pitch, int
     return 1;
 }
 
-void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h) {
+static void d3d11_be_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h) {
     R.ui.bits = bits;
     R.ui.pitch = pitch;
     R.ui.guest_w = guest_w;
@@ -3951,7 +3946,7 @@ static void draw_ui_layer(UINT width, UINT height) {
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], R.ui_srv, R.linear_clamp, R.blend_premultiplied, NULL, width, height, NULL);
 }
 
-void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty) {
+static void d3d11_be_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty) {
     R.fe.pixels = pixels;
     if (!pixels) return;
     R.fe.w = w;
@@ -3962,7 +3957,7 @@ void d3dr_set_frontend(const uint32_t* pixels, int w, int h, const RECT* dirty) 
     R.fe.pending = 1;
 }
 
-void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y) {
+static void d3d11_be_set_frontend_pointer(const uint32_t* sprite, int size, unsigned generation, int x, int y) {
     R.fe.pointer = sprite;
     R.fe.pointer_size = size;
     R.fe.pointer_generation = generation;
@@ -3970,9 +3965,9 @@ void d3dr_set_frontend_pointer(const uint32_t* sprite, int size, unsigned genera
     R.fe.pointer_y = y;
 }
 
-int d3dr_frontend_failed(void) { return R.fe.failed; }
+static int d3d11_be_frontend_failed(void) { return R.fe.failed; }
 
-void d3dr_frontend_release(void) {
+static void d3d11_be_frontend_release(void) {
     SAFE_RELEASE(R.fe.srv);
     SAFE_RELEASE(R.fe.tex);
     SAFE_RELEASE(R.fe.pointer_srv);
@@ -4196,14 +4191,29 @@ static int ao_frame_for(d3dr_target_t* t) {
 static int present_view_frame(HWND window, ID3D11ShaderResourceView* srv, UINT width, UINT height,
                               ID3D11SamplerState* sampler, const DDGAMMARAMP* gamma, int vsync, unsigned generation) {
     static int s_held_logged;
+    jpt_present_input_t pin;
+    jpt_present_plan_t plan;
     ID3D11RenderTargetView* rtv;
-    if (!window_host_frames_allowed()) return 1;
-    if (ui_canvas_present_held()) {
-        if (!s_held_logged++)
-            host_log("ui", "a blank present between two menu frames was held: the last menu frame stays on screen");
-        return 1;
-    }
-    if (loading_hd_present_held()) return 1;
+    int allowed = window_host_frames_allowed();
+    int ui_held = allowed ? ui_canvas_present_held() : 0;
+    if (ui_held && !s_held_logged++)
+        host_log("ui", "a blank present between two menu frames was held: the last menu frame stays on screen");
+    memset(&pin, 0, sizeof pin);
+    pin.frames_allowed = allowed;
+    pin.ui_canvas_held = ui_held;
+    pin.loading_hd_held = (allowed && !ui_held) ? loading_hd_present_held() : 0;
+    pin.base_is_3d = R.ao.frame != NULL;
+    pin.ao_wanted = R.ao.frame != NULL;
+    pin.has_frontend_hd = R.fe.pixels && R.fe.w > 0 && R.fe.h > 0 && !R.fe.failed;
+    pin.fe_w = R.fe.w;
+    pin.fe_h = R.fe.h;
+    pin.has_pointer = R.fe.pointer != NULL && R.fe.pointer_size > 0;
+    pin.has_ui_layer = R.ui.bits != NULL && R.ui.guest_w > 0 && R.ui.guest_h > 0;
+    pin.has_subtitle = R.subtitle.pending != NULL;
+    pin.out_w = (int)width;
+    pin.out_h = (int)height;
+    jpt_present_plan_build(&pin, &plan);
+    if (plan.held) return 1;
     rtv = present_target(window, width, height);
     if (!rtv) return 0;
     update_gamma(gamma);
@@ -4212,8 +4222,12 @@ static int present_view_frame(HWND window, ID3D11ShaderResourceView* srv, UINT w
     set_pass(k_full_rect, k_full_uv, NULL, 0.0f);
     draw_pass(R.ps[D3D11_SHADER_PS_PRESENT], srv, sampler, R.blend_none, NULL, width, height, NULL);
     if (R.ao.frame) apply_ambient_occlusion(R.ao.frame, rtv);
-    if (!draw_frontend(width, height)) draw_ui_layer(width, height);
-    draw_subtitle(width, height, R.subtitle.pending);
+    if (plan.draw_frontend_hd) {
+        if (!draw_frontend(width, height) && pin.has_ui_layer) draw_ui_layer(width, height);
+    } else if (plan.draw_ui_layer) {
+        draw_ui_layer(width, height);
+    }
+    if (plan.draw_subtitle) draw_subtitle(width, height, R.subtitle.pending);
     unbind_views();
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 0, NULL, NULL);
     R.bound.valid = 0;
@@ -4720,7 +4734,7 @@ static void note_frame_time(double ms) {
 }
 
 /* Called for every presented frame, whichever renderer drew it. */
-void d3dr_frame_presented(double present_ms) {
+static void d3d11_be_frame_presented(double present_ms) {
     double now = now_seconds();
     R.perf.frames++;
     R.perf.ms[PERF_PRESENT] += present_ms;
@@ -4813,7 +4827,7 @@ static void log_detail(void) {
              p->cpu_polygons);
 }
 
-void d3dr_summary(void) {
+static void d3d11_be_summary(void) {
     unsigned long refused_render = 0, refused_stage = 0, failed = 0;
     d3d_objects_counts(&refused_render, &refused_stage, &failed);
     accumulate(&R.total, &R.perf);
@@ -4853,7 +4867,7 @@ void d3dr_summary(void) {
     host_log("d3d", "failed_d3d_calls %lu", failed);
 }
 
-int d3dr_flip(dd_surface_t* front, int vsync) {
+static int d3d11_be_flip(dd_surface_t* front, int vsync) {
     d3dr_target_t* t = NULL;
     dd_device_t* d = front->device;
     unsigned long selfmod_now;
@@ -4945,3 +4959,140 @@ void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* sou
     if (present_view(window, R.screen_srv, out_w, out_h, R.linear_clamp, gamma, vsync, generation)) R.frames_dib++;
     R.subtitle.pending = NULL;
 }
+
+static void d3d11_be_configure_hw(const jpt_win_renderer_cfg_t* cfg) {
+    if (!cfg) return;
+    d3d11_be_configure_raw(1, cfg->box_w, cfg->box_h, cfg->filter, cfg->anisotropy, cfg->msaa);
+}
+
+static void d3d11_be_configure_sw(const jpt_win_renderer_cfg_t* cfg) {
+    if (!cfg) return;
+    d3d11_be_configure_raw(0, cfg->box_w, cfg->box_h, cfg->filter, cfg->anisotropy, cfg->msaa);
+}
+
+static int d3d11_be_startup_hw(void) {
+    R.requested = 1;
+    if (!d3d11_be_startup()) return 0;
+    return R.hardware ? 1 : 0;
+}
+
+static int d3d11_be_startup_sw(void) {
+    R.requested = 0;
+    return d3d11_be_startup();
+}
+
+const jpt_win_backend_ops_t jpt_d3d11_backend_ops = {
+    .id = JPT_RENDERER_D3D11,
+    .key = "d3d11",
+    .short_name = "D3D11",
+    .hal_description = "Direct3D 11 hardware (Trespasser compatibility layer)",
+    .configure = d3d11_be_configure_hw,
+    .startup = d3d11_be_startup_hw,
+    .hardware = d3d11_be_hardware,
+    .hardware_frames = d3d11_be_hardware_frames,
+    .name = d3d11_be_name,
+    .scene_view = d3d11_be_scene_view,
+    .render_box = d3d11_be_render_box,
+    .frame_size = d3d11_be_frame_size,
+    .set_debug_output = d3d11_be_set_debug_output,
+    .configure_ao = d3d11_be_configure_ao,
+    .configure_effects = d3d11_be_configure_effects,
+    .sky_begin = d3d11_be_sky_begin,
+    .sky_end = d3d11_be_sky_end,
+    .summary = d3d11_be_summary,
+    .device_lost = d3d11_be_device_lost,
+    .attach = d3d11_be_attach,
+    .detach = d3d11_be_detach,
+    .begin_scene = d3d11_be_begin_scene,
+    .end_scene = d3d11_be_end_scene,
+    .state_will_change = d3d11_be_state_will_change,
+    .state_kept_batch = d3d11_be_state_kept_batch,
+    .draw = d3d11_be_draw,
+    .clear = d3d11_be_clear,
+    .texture_format_known = d3d11_be_texture_format_known,
+    .surface_cpu_access = d3d11_be_surface_cpu_access,
+    .surface_cpu_written = d3d11_be_surface_cpu_written,
+    .surface_unlocked = d3d11_be_surface_unlocked,
+    .surface_fill = d3d11_be_surface_fill,
+    .flip = d3d11_be_flip,
+    .frame_presented = d3d11_be_frame_presented,
+    .surface_freed = d3d11_be_surface_freed,
+    .texture_loaded = d3d11_be_texture_loaded,
+    .set_ui_layer = d3d11_be_set_ui_layer,
+    .set_frontend = d3d11_be_set_frontend,
+    .set_frontend_pointer = d3d11_be_set_frontend_pointer,
+    .frontend_failed = d3d11_be_frontend_failed,
+    .frontend_release = d3d11_be_frontend_release,
+    .draw_still_picture = d3d11_be_draw_still_picture,
+    .text_box = d3d11_be_text_box,
+    .cpu_polygon = d3d11_be_cpu_polygon,
+    .cpu_polygon_done = d3d11_be_cpu_polygon_done,
+    .texture_polygon_prepare = d3d11_be_texture_polygon_prepare,
+    .texture_polygon = d3d11_be_texture_polygon,
+    .texture_polygon_reset = d3d11_be_texture_polygon_reset,
+    .texture_polygon_warm = d3d11_be_texture_polygon_warm,
+    .lock_caller = d3d11_be_lock_caller,
+    .present_adapter = d3d11_present_adapter,
+    .present_frame = d3d11_present_frame,
+    .present_release = d3d11_present_release,
+    .present_set_vsync = d3d11_present_set_vsync,
+    .present_set_graphics_card = d3d11_present_set_graphics_card,
+};
+
+const jpt_win_backend_ops_t jpt_software_backend_ops = {
+    .id = JPT_RENDERER_SOFTWARE,
+    .key = "software",
+    .short_name = "Software",
+    .hal_description = "Software renderer",
+    .configure = d3d11_be_configure_sw,
+    .startup = d3d11_be_startup_sw,
+    .hardware = d3d11_be_hardware,
+    .hardware_frames = d3d11_be_hardware_frames,
+    .name = d3d11_be_name,
+    .scene_view = d3d11_be_scene_view,
+    .render_box = d3d11_be_render_box,
+    .frame_size = d3d11_be_frame_size,
+    .set_debug_output = d3d11_be_set_debug_output,
+    .configure_ao = d3d11_be_configure_ao,
+    .configure_effects = d3d11_be_configure_effects,
+    .sky_begin = d3d11_be_sky_begin,
+    .sky_end = d3d11_be_sky_end,
+    .summary = d3d11_be_summary,
+    .device_lost = d3d11_be_device_lost,
+    .attach = d3d11_be_attach,
+    .detach = d3d11_be_detach,
+    .begin_scene = d3d11_be_begin_scene,
+    .end_scene = d3d11_be_end_scene,
+    .state_will_change = d3d11_be_state_will_change,
+    .state_kept_batch = d3d11_be_state_kept_batch,
+    .draw = d3d11_be_draw,
+    .clear = d3d11_be_clear,
+    .texture_format_known = d3d11_be_texture_format_known,
+    .surface_cpu_access = d3d11_be_surface_cpu_access,
+    .surface_cpu_written = d3d11_be_surface_cpu_written,
+    .surface_unlocked = d3d11_be_surface_unlocked,
+    .surface_fill = d3d11_be_surface_fill,
+    .flip = d3d11_be_flip,
+    .frame_presented = d3d11_be_frame_presented,
+    .surface_freed = d3d11_be_surface_freed,
+    .texture_loaded = d3d11_be_texture_loaded,
+    .set_ui_layer = d3d11_be_set_ui_layer,
+    .set_frontend = d3d11_be_set_frontend,
+    .set_frontend_pointer = d3d11_be_set_frontend_pointer,
+    .frontend_failed = d3d11_be_frontend_failed,
+    .frontend_release = d3d11_be_frontend_release,
+    .draw_still_picture = d3d11_be_draw_still_picture,
+    .text_box = d3d11_be_text_box,
+    .cpu_polygon = d3d11_be_cpu_polygon,
+    .cpu_polygon_done = d3d11_be_cpu_polygon_done,
+    .texture_polygon_prepare = d3d11_be_texture_polygon_prepare,
+    .texture_polygon = d3d11_be_texture_polygon,
+    .texture_polygon_reset = d3d11_be_texture_polygon_reset,
+    .texture_polygon_warm = d3d11_be_texture_polygon_warm,
+    .lock_caller = d3d11_be_lock_caller,
+    .present_adapter = d3d11_present_adapter,
+    .present_frame = d3d11_present_frame,
+    .present_release = d3d11_present_release,
+    .present_set_vsync = d3d11_present_set_vsync,
+    .present_set_graphics_card = d3d11_present_set_graphics_card,
+};

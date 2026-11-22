@@ -15,6 +15,7 @@
 #include "ddraw/video_gpu.h"
 #include "guest_va.h"
 #include "video_layout.h"
+#include "video_fixtures.h"
 #include "video_test_panel.h"
 #include "video_test_state.h"
 
@@ -251,6 +252,31 @@ static void test_palette_map(void) {
     CHECK(g_map.map[vl_rgb565(0, 255, 0)] == 0xFF01FE07u, "a code entry 0 left maps to the entry still sharing it");
     CHECK(g_map.map[vl_rgb565(0, 0, 255)] == 0, "a code no entry has maps to nothing");
     CHECK(g_map.map[vl_rgb565(200, 255, 0)] == 0xFFC8FF00u, "the new colour maps");
+}
+
+static void test_convert_row_stale_palette(void) {
+    uint8_t pal[768] = { 0 }, rgba[16];
+    uint16_t row[4];
+    uint16_t stale = vl_rgb565(10, 200, 30);
+    pal[0] = 255;
+    pal[1] = 0;
+    pal[2] = 0;
+    memset(&g_map, 0, sizeof g_map);
+    vl_palette_map_update(&g_map, pal);
+    row[0] = vl_rgb565(255, 0, 0);
+    row[1] = stale;
+    row[2] = 0;
+    row[3] = vl_rgb565(0, 0, 0);
+    vl_convert_row_rgba(row, 4, 1, &g_map, NULL, rgba);
+    CHECK(rgba[0] == 255 && rgba[1] == 0 && rgba[2] == 0 && rgba[3] == 255, "a mapped code is the palette colour");
+    CHECK(rgba[5] > 150 && rgba[4] < 40 && rgba[7] == 255,
+          "a code the palette no longer holds keeps its own colour, not black (%u,%u,%u)", rgba[4], rgba[5], rgba[6]);
+    CHECK(rgba[8] == 0 && rgba[9] == 0 && rgba[10] == 0 && rgba[11] == 255, "code 0 is black and opaque");
+    vl_convert_row_rgba(row, 4, 1, NULL, NULL, rgba);
+    CHECK(rgba[5] > 150, "no palette map: the plain RGB565 expansion");
+    row[0] = (uint16_t)(0x1F << 10);
+    vl_convert_row_rgba(row, 1, 0, &g_map, NULL, rgba);
+    CHECK(rgba[0] == 255 && rgba[1] == 0 && rgba[2] == 0, "RGB555 expands without the palette map");
 }
 
 static void test_session(void) {
@@ -809,8 +835,99 @@ static void test_gpu_stray_line(video_gpu_t* g) {
     CHECK(line_gone, "with it, the line's pixels take the row above (black)");
     CHECK(content_kept, "a picture reaching the bottom edge keeps its last row");
     CHECK(rest_same, "every other row is untouched");
+    {
+        static uint8_t cpu[TH * TW * 4];
+        int same = 1;
+        vl_convert_frame_rgba((const uint8_t*)&pic[0][0], TW * 2, TW, TH, 1, NULL, NULL, 1, cpu);
+        for (int i = 0; i < TW * TH; i++) {
+            uint32_t c = 0xFF000000u | (uint32_t)cpu[i * 4] << 16 | (uint32_t)cpu[i * 4 + 1] << 8 | cpu[i * 4 + 2];
+            if (!rgb_close(c, on[i], 1)) same = 0;
+        }
+        CHECK(same, "the CPU converter of the Vulkan path gives the GPU converter's picture, stray line rule included");
+    }
     free(off);
     free(on);
+}
+
+
+/* The reference outputs of the Vulkan video passes: the same synthetic frames through the Direct3D 11 passes, written as
+ * RGBA for video_vulkan_tests to compare with. */
+static void test_video_reference(video_gpu_t* g) {
+    static uint16_t codes[256 * 64];
+    static vl_palette_map_t map;
+    char dir[512], path[600];
+    uint8_t pal[768];
+    snprintf(dir, sizeof dir, "%s/build/video_ref", JPT_SOURCE_DIR);
+    CreateDirectoryA(JPT_SOURCE_DIR "/build", NULL);
+    CreateDirectoryA(dir, NULL);
+    vf_palette(pal);
+    memset(&map, 0, sizeof map);
+    vl_palette_map_update(&map, pal);
+    for (int i = 0; i < VF_COUNT; i++) {
+        const vf_fixture_t* fx = &k_vf_fixtures[i];
+        vl_policy_t policy = vl_policy_for(fx->rebuild ? VL_SMK_Y_DOUBLED : 0, (uint32_t)fx->shown_rows);
+        video_gpu_frame_t f;
+        uint32_t* out;
+        FILE* file;
+        vf_codes(fx, codes);
+        f = frame_of(codes, fx->width, fx->width, policy);
+        f.palette_map = fx->palette ? map.map : NULL;
+        f.palette_changed = 1;
+        f.smooth = fx->smooth;
+        f.deblock = fx->deblock;
+        f.stray_bottom_line = fx->stray;
+        out = draw(g, &f, fx->out_w, fx->out_h, fx->width, fx->shown_rows);
+        CHECK(out != NULL, "reference %s drawn by Direct3D 11", fx->name);
+        if (!out) continue;
+        snprintf(path, sizeof path, "%s/%s.rgba", dir, fx->name);
+        file = fopen(path, "wb");
+        CHECK(file != NULL, "reference %s written", fx->name);
+        if (file) {
+            for (int k = 0; k < fx->out_w * fx->out_h; k++) {
+                uint8_t px[4] = { (uint8_t)(out[k] >> 16), (uint8_t)(out[k] >> 8), (uint8_t)out[k], 255 };
+                fwrite(px, 1, 4, file);
+            }
+            fclose(file);
+        }
+        free(out);
+    }
+}
+
+/* The credits video's stray line on the CPU path (Vulkan): the line is present as decoded without the rule, gone with
+ * it, picture content reaching the bottom edge is untouched, and the rule is only taken for a line. */
+static void test_cpu_stray_line(void) {
+    enum { CW = 200, CH = 24 };
+    static uint16_t pic[CH][CW];
+    static uint8_t plain[CH * CW * 4], fixed[CH * CW * 4];
+    vl_session_t session;
+    int lone, line_gone = 1, content_kept = 1, rest_same = 1;
+    memset(pic, 0, sizeof pic);
+    for (int x = 20; x < CW; x++) pic[CH - 1][x] = vl_rgb565(32, 32, 32);
+    for (int y = CH - 6; y < CH; y++)
+        for (int x = 4; x < 9; x++) pic[y][x] = vl_rgb565(180, 120, 60);
+    lone = vl_lone_bottom_pixels((const uint8_t*)&pic[0][0], CW * 2, CW, CH);
+    memset(&session, 0, sizeof session);
+    CHECK(vl_session_stray_line(&session, lone) && session.stray_line,
+          "the credits' card: its last row is taken for a stray line (%d lone pixels)", lone);
+    vl_convert_frame_rgba((const uint8_t*)&pic[0][0], CW * 2, CW, CH, 1, NULL, NULL, 0, plain);
+    vl_convert_frame_rgba((const uint8_t*)&pic[0][0], CW * 2, CW, CH, 1, NULL, NULL, session.stray_line, fixed);
+    CHECK(plain[((CH - 1) * CW + 100) * 4] != 0, "without the rule the line is converted as decoded (the Vulkan path before)");
+    for (int x = 20; x < CW; x++)
+        if (fixed[((CH - 1) * CW + x) * 4] || fixed[((CH - 1) * CW + x) * 4 + 1] || fixed[((CH - 1) * CW + x) * 4 + 2])
+            line_gone = 0;
+    for (int x = 4; x < 9; x++)
+        if (memcmp(&plain[((CH - 1) * CW + x) * 4], &fixed[((CH - 1) * CW + x) * 4], 4)) content_kept = 0;
+    if (memcmp(plain, fixed, (size_t)(CH - 1) * CW * 4)) rest_same = 0;
+    CHECK(line_gone, "with it the line's pixels take the row above (black)");
+    CHECK(content_kept, "a picture reaching the bottom edge keeps its last row");
+    CHECK(rest_same, "every other row is untouched");
+
+    memset(pic, 0, sizeof pic);
+    for (int y = CH - 6; y < CH; y++)
+        for (int x = 4; x < 60; x++) pic[y][x] = vl_rgb565(200, 200, 40);
+    lone = vl_lone_bottom_pixels((const uint8_t*)&pic[0][0], CW * 2, CW, CH);
+    memset(&session, 0, sizeof session);
+    CHECK(!vl_session_stray_line(&session, lone), "bright content on the bottom edge is not a stray line (%d lone pixels)", lone);
 }
 
 static void test_gpu_identity(video_gpu_t* g) {
@@ -1395,6 +1512,24 @@ static void test_credits_line(video_gpu_t* g) {
             CHECK(off_lit >= 300, "credits %u: without the rule it is drawn (%d)", r->frame, off_lit);
             CHECK(on_lit == 0 && above_lit == 0, "credits %u: with it, no line (%d lit pixels)", r->frame, on_lit);
             CHECK(hd_lit == 0, "credits %u: nothing below the text in HD (%d lit pixels)", r->frame, hd_lit);
+            {
+                static uint8_t cpu_off[SCREEN_W * 480 * 4], cpu_on[SCREEN_W * 480 * 4];
+                int cpu_off_lit = 0, cpu_on_lit = 0, cpu_above = 0;
+                const uint8_t* rows = (const uint8_t*)&r->screen[top][0];
+                vl_convert_frame_rgba(rows, SCREEN_W * 2, SCREEN_W, h, 1, &g_map, NULL, 0, cpu_off);
+                vl_convert_frame_rgba(rows, SCREEN_W * 2, SCREEN_W, h, 1, &g_map, NULL, 1, cpu_on);
+                for (int x = 0; x < SCREEN_W; x++) {
+                    const uint8_t* a = &cpu_off[((size_t)(h - 1) * SCREEN_W + x) * 4];
+                    const uint8_t* b = &cpu_on[((size_t)(h - 1) * SCREEN_W + x) * 4];
+                    const uint8_t* c = &cpu_on[((size_t)(h - 2) * SCREEN_W + x) * 4];
+                    cpu_off_lit += a[0] + a[1] + a[2] > 3;
+                    cpu_on_lit += b[0] + b[1] + b[2] > 3;
+                    cpu_above += c[0] + c[1] + c[2] > 3;
+                }
+                CHECK(cpu_off_lit >= 300, "credits %u: the Vulkan path without the rule draws the line (%d)", r->frame, cpu_off_lit);
+                CHECK(cpu_on_lit == 0 && cpu_above == 0, "credits %u: the Vulkan path with it draws no line (%d lit pixels)",
+                      r->frame, cpu_on_lit);
+            }
         }
         free(off);
         free(on);
@@ -1509,6 +1644,7 @@ static void test_gpu(void) {
         test_gpu_deblock_ramp(g);
         test_gpu_deblock_keeps(g);
         test_gpu_stray_line(g);
+        test_video_reference(g);
         test_real_frames(g);
         test_credits_line(g);
         time_passes(g);
@@ -1543,8 +1679,10 @@ int main(int argc, char** argv) {
     test_output_size();
     test_names();
     test_palette_map();
+    test_convert_row_stale_palette();
     test_session();
     test_lone_pixels();
+    test_cpu_stray_line();
     test_video_test_state();
     printf("retail videos:\n");
     test_inventory(root);

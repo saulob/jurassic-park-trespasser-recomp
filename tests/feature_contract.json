@@ -1793,20 +1793,647 @@
   },
   {
    "id": "vulkan-renderer",
-   "name": "Vulkan renderer (placeholder)",
+   "name": "Native Vulkan 1.2 renderer backend (Windows and Linux)",
    "owner": "render",
-   "scope": "planned",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
-    "status": "BLOCKED",
-    "evidence": [],
-    "reason": "future work: neither platform has it, and this release does not claim it"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_renderer_policy"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_offscreen_parity_fixtures"
+     },
+     {
+      "suite": "tests\\test_vulkan_shaders.py",
+      "file": "tests/test_vulkan_shaders.py",
+      "pattern": "test_embedded_spirv_bundle_is_valid_and_complete"
+     },
+     {
+      "suite": "vulkan_dispatch_tests",
+      "file": "tests/vulkan_dispatch_tests.c",
+      "pattern": "test_vulkan_real_dispatch"
+     }
+    ]
    },
    "linux": {
-    "status": "BLOCKED",
-    "evidence": [],
-    "reason": "future work: neither platform has it, and this release does not claim it"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_renderer_policy"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_offscreen_parity_fixtures"
+     },
+     {
+      "suite": "tests\\test_vulkan_shaders.py",
+      "file": "tests/test_vulkan_shaders.py",
+      "pattern": "test_embedded_spirv_bundle_is_valid_and_complete"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "windows-runtime-vulkan-dispatch",
+   "name": "Windows runtime renderer factory dispatches renderer=vulkan to native Vulkan backend without D3D11 init",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_dispatch_tests",
+      "file": "tests/vulkan_dispatch_tests.c",
+      "pattern": "test_explicit_vulkan_no_silent_fallback"
+     },
+     {
+      "suite": "vulkan_dispatch_tests",
+      "file": "tests/vulkan_dispatch_tests.c",
+      "pattern": "test_vulkan_real_dispatch"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "Linux has no D3D11 host backend; its native SDL3/Vulkan dispatch is covered by vulkan-renderer and linux_sdl_window_tests"
+   }
+  },
+  {
+   "id": "vulkan-instance",
+   "name": "Vulkan instance, dynamic SDL3 loader and validation setup",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_shaders_and_misc"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_shaders_and_misc"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-device",
+   "name": "Vulkan logical device, queue selection and capability fallbacks",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_device_capabilities"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_device_capabilities"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-swapchain",
+   "name": "Vulkan swapchain state machine, resize, minimize, SUBOPTIMAL and DEVICE_LOST",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_present_mode_and_swapchain_stress"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_present_mode_and_swapchain_stress"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-presentation",
+   "name": "Vulkan presentation, VSync present modes, aspect ratio and gamma LUT",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_choose_present_mode"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_choose_present_mode"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-textures",
+   "name": "Vulkan Texture2DArray pools, format conversion and staging ring uploads",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "jpt_vk_renderer_create_texture"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_basic_textures"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_dirty_tracking"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_runtime_path_fixtures"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "jpt_vk_renderer_create_texture"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_runtime_path_fixtures"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-fixed-function",
+   "name": "Vulkan D3D6 fixed-function SPIR-V shaders, pipeline key and alpha test/fog/lighting",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_vulkan_shaders.py",
+      "file": "tests/test_vulkan_shaders.py",
+      "pattern": "test_embedded_spirv_bundle_is_valid_and_complete"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_blend_modes_match_reference"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_counter_gate"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_vulkan_shaders.py",
+      "file": "tests/test_vulkan_shaders.py",
+      "pattern": "test_embedded_spirv_bundle_is_valid_and_complete"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-depth",
+   "name": "Vulkan portable depth/stencil probing and 1/z GREATEREQUAL depth overlap",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "alpha blend \\+ Z overlap"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "alpha blend \\+ Z overlap"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-blending",
+   "name": "Vulkan D3D6 blend factor mapping and alpha blending parity",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "blend_quad"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "blend_quad"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-filtering",
+   "name": "Vulkan texture filtering (point/bilinear/anisotropic clamped) and wrap/clamp samplers",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_clamp_anisotropy"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_clamp_anisotropy"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-aa",
+   "name": "Vulkan MSAA capability clamping and resolve before post-processing/present",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_clamp_msaa"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_clamp_msaa"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-ao",
+   "name": "Vulkan screen-space ambient occlusion pass over ao_policy presets and linear depth",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "stats\\.ao_passes >= 1"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "stats\\.ao_passes >= 1"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-water-refraction",
+   "name": "Vulkan Water Refraction pass with scene_behind capture and wave displacement",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "stats\\.water_draws >= 1"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "stats\\.water_draws >= 1"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-enhanced-sky",
+   "name": "Vulkan Enhanced Sky view-angle horizon fog shader pass",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "stats\\.sky_draws >= 1"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "stats\\.sky_draws >= 1"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-overlays",
+   "name": "Vulkan host overlay composition order (F2/F3/F5/F6/F10 and subtitles)",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "jpt_vk_renderer_end_and_present"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "jpt_vk_renderer_draw_overlay"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "jpt_vk_renderer_end_and_present"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-frontend-hd",
+   "name": "Vulkan native-resolution Frontend HD layer presentation without double scaling",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_compute_geometry"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_compute_geometry"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-loading-hd",
+   "name": "Vulkan native-resolution Loading HD layer presentation",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_compute_geometry"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_compute_geometry"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
+   }
+  },
+  {
+   "id": "vulkan-gpu-selection",
+   "name": "Vulkan physical device enumeration, Auto scoring, env overrides and stable GPU IDs",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_gpu_selection"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_gpu_selection"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
@@ -3900,6 +4527,656 @@
       "pattern": "plays_through_the_device"
      }
     ]
+   }
+  },
+  {
+   "id": "vulkan-real-draw-path",
+   "name": "Windows Vulkan backend turns the game's Direct3D 6 draws into textures, pipelines and Vulkan draw calls (counters prove the work, not the selection)",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_counter_gate"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_batching"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_viewport_clips_without_scaling"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Direct3D 6 translation layer of the Windows backend; Linux reaches Vulkan through its own DirectDraw layer and vulkan_render_tests"
+   }
+  },
+  {
+   "id": "vulkan-software-polygons",
+   "name": "Windows Vulkan backend composites the polygons and text the game rasterises into its own copy of the render target",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_software_polygons"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the hybrid CPU/GPU target of the Windows Direct3D layer"
+   }
+  },
+  {
+   "id": "vulkan-video-upload",
+   "name": "Vulkan video frames: stale palette codes keep their colour, layer uploads are exact at every picture height",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "test_convert_row_stale_palette"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "video layer 64x"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the HD video path of the Windows host"
+   }
+  },
+  {
+   "id": "frontend-parity",
+   "name": "D3D11/Vulkan frontend HD parity: mutual exclusion with 640x480 UI canvas, premultiplied gamma presentation, dirty-rect updates",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "test_present_policy_parity"
+    },
+    {
+     "suite": "vulkan_render_tests",
+     "file": "tests/vulkan_render_tests.c",
+     "pattern": "test_frontend_colour_gamma_premul_parity"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_frontend_hd_vs_ui_layer_mutual_exclusion"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "loading-parity",
+   "name": "D3D11/Vulkan loading screen and blank-transition held-present policy parity",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "Loading HD held cleanly"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "controls-card-parity",
+   "name": "D3D11/Vulkan shared F2 Controls card layout, sizing and non-overlap policy parity",
+   "owner": "ui",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "test_controls_card_and_prompts_policy"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_f2_text_layer_zero_stale_pixels"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "prompts-parity",
+   "name": "D3D11/Vulkan shared View Controls hint and prompts panel policy parity",
+   "owner": "ui",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "View Controls hint is title-only panel"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "overlay-lifetime-parity",
+   "name": "D3D11/Vulkan overlay lifecycle: zero stale pixels after F2/F3/F5/F10 close and readback free of host overlays",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_render_tests",
+     "file": "tests/vulkan_render_tests.c",
+     "pattern": "test_overlay_lifetime_zero_stale_pixels"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_f2_text_layer_zero_stale_pixels"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "colour-policy-parity",
+   "name": "D3D11/Vulkan colour, gamma LUT, OP_DIM premultiplied darkening scrim and menu red hover parity",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "test_colour_gamma_policy_parity"
+    },
+    {
+     "suite": "vulkan_render_tests",
+     "file": "tests/vulkan_render_tests.c",
+     "pattern": "test_frontend_colour_gamma_premul_parity"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "texture-coverage-parity",
+   "name": "Vulkan unlimited texture dimension coverage: 32+ distinct sizes with 0 NO_POOL failures, 0 skipped draws and per-batch view flushing",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "vulkan_render_tests",
+     "file": "tests/vulkan_render_tests.c",
+     "pattern": "test_texture_coverage_unlimited"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_bridge_texture_coverage_24_sizes"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "pause-background-parity",
+   "name": "Windows Vulkan backend keeps the pause menu's background the frozen gameplay frame the Direct3D 11 backend keeps: the last presented scene stays on the GPU, the front buffer is read back from it on demand, the frozen picture is drawn once and the chroma key never reaches the picture",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_pause_snapshot"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_last_frame_and_timing_fixtures"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the DirectDraw front buffer and the game's pause capture of the Windows layer; Linux draws its pause background in linux_ddraw"
+   }
+  },
+  {
+   "id": "credits-video-fix-parity",
+   "name": "Windows Vulkan video presentation applies the credits video's stray bottom-line rule the Direct3D 11 converter applies, on the CPU, from the same session policy",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "test_cpu_stray_line"
+     },
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "test_credits_line"
+     },
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "test_gpu_stray_line"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows HD video presenters (video_hd.c); Linux presents videos through its own layer"
+   }
+  },
+  {
+   "id": "vulkan-gpu-polygons",
+   "name": "Windows Vulkan backend draws the perspective-textured and bump-mapped polygons the guest would rasterise itself on the GPU, pixel for pixel the CLUT colour of the span walk, with the Direct3D 11 caches and run policy",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_gpu_texture_polygons"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the hybrid CPU/GPU target of the Windows Direct3D layer"
+   }
+  },
+  {
+   "id": "vulkan-cpu-accounting",
+   "name": "Windows Vulkan backend accounts for the guest thread's time per frame (backend scopes, guest residual, CPU against blocked time, timed waits, unaccounted) and reports GPU time for frames that submitted early",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_cpu_accounting_model"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_cpu_accounting_bridge"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_backend_overhead"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_last_frame_and_timing_fixtures"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Direct3D 6 translation layer of the Windows backend"
+   }
+  },
+  {
+   "id": "vulkan-mipmaps",
+   "name": "Windows Vulkan backend generates the Direct3D 11 mipmap chains for the 3D world's textures (d3dt_build_mips, bilinear and better filters, dynamic textures keep level 0), uploaded whole and reused until the texture changes",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_mipmaps"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the chain is built by the Windows Direct3D translation bridge; Linux's own DirectDraw layer uploads level 0"
+   }
+  },
+  {
+   "id": "vulkan-regional-target-sync",
+   "name": "Windows Vulkan keeps the CPU copy of a render target valid per 32 px tile: a Lock reads back only the tiles the GPU drew in since they were last read, repeated or unrelated Locks and write-only accesses read nothing, and all tiles of one Lock are read in one submit",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_regional_readbacks"
+     },
+     {
+      "suite": "tests\\test_run_freshness.py",
+      "file": "tests/test_run_freshness.py",
+      "pattern": "provenance"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the target synchronisation of the Windows Direct3D translation bridge; Linux's own DirectDraw layer keeps its picture on the CPU"
+   }
+  },
+  {
+   "id": "vulkan-host-overlay-gpu",
+   "name": "Windows Vulkan draws the host overlays (HUD, compass, FPS, F-key panels) from Dear ImGui's draw lists in the frame's command buffer instead of rasterising them on the CPU; JPT_VULKAN_CPU_OVERLAY=1 keeps the CPU path",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_ui_overlay_fixture"
+     },
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "test_ui_math"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows host overlay panel feeds it; Linux draws its overlays through its own layer"
+   }
+  },
+  {
+   "id": "video-deblock-parity",
+   "name": "Windows Vulkan video deblock (separable X then Y, step and flat thresholds, tpassintro block edges) matches the Direct3D 11 deblock within two levels on a blocked fixture and fails without the stage",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"deblock\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_vulkan_tests.c",
+      "pattern": "without its stage the picture differs"
+     },
+     {
+      "suite": "video_tests",
+      "file": "tests/video_tests.c",
+      "pattern": "test_video_reference"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows Vulkan video passes compared with the Direct3D 11 passes (video_tests); Linux's Vulkan video presentation has its own layer"
+   }
+  },
+  {
+   "id": "video-reconstruction-parity",
+   "name": "Windows Vulkan video newgame line reconstruction (Y-doubled interlaced rows rebuilt from the stored field, parity) and the credits stray row rule match Direct3D 11 and fail without them",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"newgame_rebuild\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"stray\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_vulkan_tests.c",
+      "pattern": "stage-less pass drew"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows Vulkan video passes compared with the Direct3D 11 passes (video_tests); Linux's Vulkan video presentation has its own layer"
+   }
+  },
+  {
+   "id": "video-glow-parity",
+   "name": "Windows Vulkan video side glow (96-row glow target, near/far falloff, Bayer dither) for wide windows matches the Direct3D 11 glow and fails without it",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"glow\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_vulkan_tests.c",
+      "pattern": "off.glow = 0"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows Vulkan video passes compared with the Direct3D 11 passes (video_tests); Linux's Vulkan video presentation has its own layer"
+   }
+  },
+  {
+   "id": "video-final-filter-parity",
+   "name": "Windows Vulkan video final Catmull-Rom filter with min/max clamp, glow compose and the gamma ramp, at 4:3 and wide outputs and with every stage on, matches Direct3D 11",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"catmull_4x3\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"catmull_wide\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_fixtures.h",
+      "pattern": "\"all_stages\""
+     },
+     {
+      "suite": "video_vulkan_tests",
+      "file": "tests/video_vulkan_tests.c",
+      "pattern": "Vulkan matches Direct3D 11"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows Vulkan video passes compared with the Direct3D 11 passes (video_tests); Linux's Vulkan video presentation has its own layer"
+   }
+  },
+  {
+   "id": "renderer-backend-benchmark",
+   "name": "Direct3D 11 and Vulkan run one synthetic Direct3D 6 command stream offscreen in two executables with warm-up and 240 sampled frames; median, p95 and p99 per category and in total, the same stream hash, and a bounded Vulkan overhead",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "renderer_benchmark_vulkan_tests",
+      "file": "tests/renderer_benchmark.c",
+      "pattern": "percentile"
+     },
+     {
+      "suite": "renderer_benchmark_d3d11_tests",
+      "file": "tests/renderer_benchmark.c",
+      "pattern": "stream_hash"
+     },
+     {
+      "suite": "tests\\test_renderer_benchmark.py",
+      "file": "tests/test_renderer_benchmark.py",
+      "pattern": "vulkan_overhead_against_direct3d11"
+     },
+     {
+      "suite": "tests\\test_renderer_benchmark.py",
+      "file": "tests/test_renderer_benchmark.py",
+      "pattern": "a_different_stream_is_noticed"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the Windows Vulkan video passes compared with the Direct3D 11 passes (video_tests); Linux's Vulkan video presentation has its own layer"
+   }
+  },
+  {
+   "id": "vulkan-ao-cpu-mask",
+   "name": "Windows Vulkan ambient occlusion leaves the pixels the CPU wrote untouched (stencil zero for depth-writing draws, increment for CPU pixels, fills and GPU polygons; the AO apply reads the stencil), as the Direct3D 11 backend does",
+   "owner": "render",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_render_tests",
+      "file": "tests/vulkan_render_tests.c",
+      "pattern": "run_ao_cpu_mask_fixture"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "reason": "the hybrid CPU/GPU target of the Windows Direct3D layer"
    }
   }
  ],

@@ -18,7 +18,9 @@
     "active_ai_tests",
     "profile_dispatch_tests",
     "input_context_tests",
-    "hotkey_tests"
+    "hotkey_tests",
+    "vulkan_policy_tests",
+    "vulkan_render_tests"
   ],
   "linux_specific": [
     "linux_paths_tests",
@@ -74,7 +76,8 @@
     "test_video_timelines.py",
     "test_caption_counts.py",
     "test_audio_portability.py",
-    "test_setting_parity.py"
+    "test_setting_parity.py",
+    "test_vulkan_shaders.py"
   ],
   "tools": [
     "tools/check_profiles.py",
@@ -112,6 +115,8 @@
     "video_focus_tests": "includes windows.h",
     "video_subtitle_tests": "includes windows.h",
     "video_tests": "includes windows.h and D3D11",
+    "vulkan_dispatch_tests": "includes windows.h and the Windows Vulkan backend (vk_win_renderer.c)",
+    "vulkan_runtime_tests": "includes windows.h and the Windows Vulkan backend (vk_win_renderer.c)",
     "water_tests": "includes windows.h and the lifted water code",
     "x87_tests": "built against pcrecomp's flat-memory 32-bit model"
   },

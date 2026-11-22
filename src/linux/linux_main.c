@@ -27,6 +27,7 @@
 #include "linux_log.h"
 #include "linux_paths.h"
 #include "linux_selfcheck.h"
+#include "linux_vulkan.h"
 
 #define EXIT_SETUP 1
 #define EXIT_UNIMPLEMENTED 3
@@ -50,6 +51,8 @@ typedef struct {
     const char* log_dir;
     const char* log_file;
     const char* version;
+    const char* renderer;
+    const char* graphics_card;
     int dry_run;
     int bootstrap;
     int build_info, self_check;
@@ -67,6 +70,8 @@ static void usage(void) {
            "  --bootstrap-headless   run the lifted entry point with no window and no audio until the first import with no\n"
            "                         implementation, and report it\n"
            "  --run                  run the guest in an SDL3 window (needs the lifted guest and SDL3 video)\n"
+           "  --renderer NAME        select renderer: auto, vulkan, software (default: auto)\n"
+           "  --graphics-card ID     select Vulkan GPU by label, stable vendor:device:uuid ID, or auto\n"
            "  --build-info           print what this binary was built from (JSON), nothing else\n"
            "  --self-check           prove which features this binary holds (JSON); no window, no audio, no log, no guest code\n"
            "  --help\n");
@@ -97,6 +102,8 @@ static int parse(int argc, char** argv, options_t* o, int* run) {
         else if ((v = argument_of(&i, argc, argv, "--user_data_root")) != NULL) o->user_root = v;
         else if ((v = argument_of(&i, argc, argv, "--log-dir")) != NULL) o->log_dir = v;
         else if ((v = argument_of(&i, argc, argv, "--log-file")) != NULL) o->log_file = v;
+        else if ((v = argument_of(&i, argc, argv, "--renderer")) != NULL) o->renderer = v;
+        else if ((v = argument_of(&i, argc, argv, "--graphics-card")) != NULL) o->graphics_card = v;
         else {
             fprintf(stderr, "trespasser_recomp: unknown option %s\n", argv[i]);
             return usage(), EXIT_SETUP;
@@ -173,6 +180,7 @@ static int boot_guest(const options_t* o, const lx_paths_t* paths, int window) {
     options.play_videos = 1;
     options.use_gamepad = 1;
     options.use_features = 1;
+    lx_vk_set_cli_overrides(o->renderer, o->graphics_card);
     snprintf(settings_file, sizeof settings_file, "%s/trespasser.ini", paths->launcher_dir);
     options.settings_file = settings_file;
     status = lx_boot_headless(&options, &r);

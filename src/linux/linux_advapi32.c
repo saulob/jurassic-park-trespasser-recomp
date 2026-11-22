@@ -11,6 +11,7 @@
 #include "linux_advapi32.h"
 #include "linux_log.h"
 #include "linux_smack.h"
+#include "linux_vulkan.h"
 
 #define HKLM 0x80000002u
 #define GAME_KEY_TOKEN 0x00000A04u
@@ -51,7 +52,8 @@ void guest_skip_video(int on) { s_skip_video = on; }
 static int dword_policy(const char* name, int stored, policy_t* p) {
     uint32_t value;
     if (!strcasecmp(name, "Safemode") && safemode_value_virtual(0)) value = 0;
-    else if (!strcasecmp(name, "AudioEnable3D") || !strcasecmp(name, "Use D3D")) value = 0;
+    else if (!strcasecmp(name, "AudioEnable3D")) value = 0;
+    else if (!strcasecmp(name, "Use D3D")) value = lx_vk_active() ? 1u : 0u;
     else if (!strcasecmp(name, "DDrawCertIgnore") && !stored) value = 1;
     else if (!strcasecmp(name, "UseSubTitles") && !stored) value = 1;
     else if (!strcasecmp(name, "NoVideo") && (s_skip_video || !lx_smack_videos_enabled())) value = 1;

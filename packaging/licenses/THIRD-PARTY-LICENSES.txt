@@ -11,6 +11,7 @@ Dear ImGui 1.92.9b          MIT. Copyright (c) 2014-2025 Omar Cornut.   https://
 SDL 3.4.20                  zlib. Copyright (C) 1997-2026 Sam Lantinga. https://github.com/libsdl-org/SDL
 nanosvg                     zlib. Copyright (c) 2013-14 Mikko Mononen.  launcher/third_party/nanosvg/LICENSE.txt
 Intel ASSAO                 MIT. Copyright (c) 2016 Intel.              third_party/assao/LICENSE
+Khronos Vulkan-Headers      Apache-2.0. The Khronos Group Inc.          third_party/vulkan/LICENSE.txt
 
 Intel ASSAO (https://github.com/GameTechDev/ASSAO, c21d57a95b43c700ee01a2eb18f5589d7becefb2)
   MIT License. Copyright (c) 2016 Intel. Ambient occlusion of the D3D11 renderer.

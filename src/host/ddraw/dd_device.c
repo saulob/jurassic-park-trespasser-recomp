@@ -589,8 +589,8 @@ HRESULT WINAPI compat_DirectDrawCreate(GUID* guid, LPDIRECTDRAW* out, IUnknown* 
         d->gamma.red[i] = d->gamma.green[i] = d->gamma.blue[i] = (WORD)(i * 0x101);
     *out = (LPDIRECTDRAW)&d->dd1;
     describe_device_guid(guid, device, sizeof device);
-    dd_log("DirectDrawCreate(%s) -> compatibility object 0x%08X: virtual 16 bpp display presented with D3D11",
-           device, (uint32_t)(uintptr_t)d);
+    dd_log("DirectDrawCreate(%s) -> compatibility object 0x%08X: virtual 16 bpp display presented with %s",
+           device, (uint32_t)(uintptr_t)d, d3dr_name());
     DD_RETURN(DD_OK);
 }
 

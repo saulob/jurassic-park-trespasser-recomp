@@ -229,6 +229,20 @@ $s = 'Launcher'
 Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
 Add-Python $s @(, @('test_setting_parity.py', 'launcher rows and runtime settings agree: parsers, defaults, ranges, lists, readers'))
 
+$s = 'Vulkan renderer'
+Add-Exes $s @(
+    , @('vulkan_policy_tests', 'Vulkan 1.2 policy: renderer/auto backend, GPU selection & stable IDs, capability fallbacks, present mode, swapchain stress, pipeline key canonicalization, barriers, geometry, SPIR-V bundle', 40)
+    , @('vulkan_render_tests', 'Vulkan 1.2 headless offscreen parity fixtures: textures, alpha test, alpha blend, fog, Z-overlap, water refraction, enhanced sky, AO, readback, the last presented frame kept for the pause, GPU time of frames that submitted early, 0-leak resource lifetime', 20)
+    , @('vulkan_dispatch_tests', 'Windows runtime Vulkan backend factory dispatch: requested/chosen/active semantics, explicit Vulkan no-silent-fallback, D3D11 guard, Vulkan/D3D11/Software/Auto vtable wiring', 10)
+    , @('vulkan_runtime_tests', 'Windows Vulkan backend driven with the game''s Direct3D 6 sequence into an offscreen target: textures, texture-blend parity with the Direct3D reference, viewport, cull, depth, fog, dirty tracking, software polygons composited and read back, the pause background kept from the last presented frame, GPU perspective and bump polygons pixel for pixel, generated mipmap chains, the CPU time accounting and the backend overhead per draw; draws without textures, pipelines or draw calls fail', 40)
+    , @('video_vulkan_tests', 'Vulkan video passes against the Direct3D 11 passes on shared synthetic frames (the images video_tests wrote): conversion and palette, smoothing, deblocking, newgame line reconstruction, stray row, side glow and the final Catmull-Rom filter, each within two levels and each failing without its stage; no validation errors', 40)
+    , @('renderer_benchmark_d3d11_tests', 'Direct3D 11 backend on the shared synthetic Direct3D 6 command stream, offscreen: warm-up then 240 sampled frames', 200)
+    , @('renderer_benchmark_vulkan_tests', 'Vulkan backend on the same stream, offscreen: warm-up then 240 sampled frames, submit and flip timed apart', 200)
+)
+Add-Python $s @(, @('test_vulkan_shaders.py', 'Vulkan 1.2 GLSL 450 shader sources, SPIR-V header/entry-point validation, bundle SHA-256 and glslangValidator/spirv-val parity'))
+Add-Python $s @(, @('test_renderer_benchmark.py', 'Direct3D 11 against Vulkan on one command stream: same stream hash, median/p95/p99 per frame, ratios, bounded Vulkan overhead, a changed stream noticed'))
+Add-Python $s @(, @('test_run_freshness.py', 'run.ps1 refuses an executable older than the sources; the Vulkan bridge logs its build provenance and the regional target sync'))
+
 $s = 'Release contract'
 Add-Suite $s 'check' 'release contract' 'version, licenses, README, forbidden files in the release checker, assets, no developer paths compiled into the program' @{ Run = 'Test-ReleaseContract' }
 Add-Suite $s 'script' 'tools\test-release-check.ps1' 'verify-release.ps1 on synthetic folders and ZIPs: refuses user data, saves, logs, cache, game data, PDBs, temporary files, DEBUG_SAULO and developer paths' @{}
@@ -248,7 +262,9 @@ Add-Suite $s 'check' 'working tree unchanged' 'no tracked, staged or untracked f
 
 $excludedTargets = @{}
 $helperTestFiles = @{
-    'tests\test_profile.h' = 'shared header: activates en-116 for the host-code tests'
+    'tests\renderer_workload.h' = 'command stream shared by renderer_benchmark_d3d11_tests and renderer_benchmark_vulkan_tests'
+    'tests\video_fixtures.h' = 'synthetic video frames shared by video_tests and video_vulkan_tests'
+    'tests\test_profile.h' ='shared header: activates en-116 for the host-code tests'
     'tests\override_fixture.c' = 'fixture linked into both override_tests targets'
     'tests\override_fixture_list.h' = 'fixture list included by override_fixture.c'
     'tests\lift_resolution_check.cmake' = 'CMake script run by the build to check lift resolution'
@@ -275,6 +291,7 @@ $toolRole = @{
     'tools\analyze.py' = 'maintainer: regenerates analysis\ from the original executable'
     'tools\class_layout.py' = 'maintainer: needs the original executables'
     'tools\common.py' = 'helper module of the python tools'
+    'tools\compile_vk_shaders.py' = 'compiles src/vulkan/shaders/*.{vert,frag} to Vulkan 1.2 SPIR-V and validates with spirv-val; checked by tests\test_vulkan_shaders.py'
     'tools\gate_support.py' = 'helper module of the contract suites'
     'tools\extract_game.py' = 'maintainer: extracts a disc into game\'
     'tools\fetch_pcrecomp.py' = 'maintainer and build: fetches pcrecomp (network)'
@@ -948,6 +965,7 @@ if ($runLinux -and -not $Filter -and -not $Sanitize) { $linuxPlanned = @('linux 
 if ($Sanitize) { $linuxPlanned = @($linuxPlanned | Where-Object { $_ -match '^[a-z0-9_]+_tests$' }) }
 Import-TestHistory
 if ($runWindows) {
+    if (-not $Filter -and -not $NoBuild) { $script:ProgressPlan.Add('windows runtime (trespasser_recomp)') }
     $script:ProgressPlan.Add('x86 test targets'); $script:ProgressPlan.Add('x64 test targets')
     foreach ($suite in $suites) { $script:ProgressPlan.Add($suite.Name) }
 }
@@ -961,24 +979,47 @@ try {
 
     $x86Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -ne 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
     $x64Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -eq 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
+    $winRuntimeArtifact = $null
     if ($runWindows) { Write-Host '==> Windows focused gate' -ForegroundColor Cyan }
     if (-not $NoBuild -and ($x86Targets.Count + $x64Targets.Count)) {
-        Write-Host '==> Build (test targets only, incremental)' -ForegroundColor Cyan
+        Write-Host '==> Build (runtime + test targets, incremental)' -ForegroundColor Cyan
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
-        foreach ($plan in @(@{ Arch = ''; Folder = $buildDir; Targets = $x86Targets; Label = 'x86 test targets' }, @{ Arch = 'x64'; Folder = $buildDir64; Targets = $x64Targets; Label = 'x64 test targets' })) {
+        $buildPlans = New-Object System.Collections.Generic.List[object]
+        if (-not $Filter) {
+            $buildPlans.Add(@{ Arch = ''; Folder = $buildDir; Targets = @('trespasser_recomp'); Label = 'windows runtime (trespasser_recomp)'; IsRuntime = $true })
+        }
+        $buildPlans.Add(@{ Arch = ''; Folder = $buildDir; Targets = $x86Targets; Label = 'x86 test targets'; IsRuntime = $false })
+        $buildPlans.Add(@{ Arch = 'x64'; Folder = $buildDir64; Targets = $x64Targets; Label = 'x64 test targets'; IsRuntime = $false })
+        foreach ($plan in $buildPlans) {
             if (-not $plan.Targets.Count) { continue }
             $archName = if ($plan.Arch) { $plan.Arch } else { 'x86' }
             $outcome = Build-TestTargets $plan.Folder $archName $plan.Targets
             if ($outcome -is [string]) {
-                $script:BuildProblems[$plan.Arch] = $outcome.Split("`n")[0]
+                if (-not $plan.IsRuntime) { $script:BuildProblems[$plan.Arch] = $outcome.Split("`n")[0] }
                 Step-Progress
                 Write-Host ('{0} FAIL  {1,-46}' -f (Get-ProgressPrefix), $plan.Label) -ForegroundColor Red
                 Write-Host "        $outcome" -ForegroundColor Red
-                $results.Add([pscustomobject]@{ Section = 'Build'; Name = $plan.Label; Status = 'FAIL'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = 'build failed'; Lines = @() })
+                $results.Add([pscustomobject]@{ Section = 'Build'; Platform = 'windows'; Name = $plan.Label; Status = 'FAIL'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = 'build failed'; Lines = @() })
             } else {
                 Step-Progress
                 Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3} targets, {4} compile or link step(s), no warnings' -f (Get-ProgressPrefix), $plan.Label, $watch.Elapsed.TotalSeconds, $outcome.Targets, $outcome.Steps) -ForegroundColor Green
-                $results.Add([pscustomobject]@{ Section = 'Build'; Name = $plan.Label; Status = 'PASS'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = "$($outcome.Steps) steps"; Lines = @() })
+                $results.Add([pscustomobject]@{ Section = 'Build'; Platform = 'windows'; Name = $plan.Label; Status = 'PASS'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = "$($outcome.Steps) steps"; Lines = @() })
+                if ($plan.IsRuntime) {
+                    $exePath = Join-Path $plan.Folder 'trespasser_recomp.exe'
+                    if (Test-Path -LiteralPath $exePath -PathType Leaf) {
+                        $clCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+                        $winRuntimeArtifact = [pscustomobject]@{
+                            Path = $exePath
+                            Size = (Get-Item -LiteralPath $exePath).Length
+                            Config = 'RelWithDebInfo (x86)'
+                            Compiler = if ($clCmd) { $clCmd.Source } else { 'MSVC cl.exe' }
+                        }
+                    } else {
+                        Write-Host ('        expected runtime executable missing: {0}' -f $exePath) -ForegroundColor Red
+                        $results[$results.Count - 1].Status = 'FAIL'
+                        $results[$results.Count - 1].Summary = 'trespasser_recomp.exe missing after build'
+                    }
+                }
             }
             $watch.Restart()
         }
@@ -1247,6 +1288,18 @@ if ($partial -or -not $runWindows -or -not $runLinux) {
 }
 
 if (-not (Test-Path variable:gPass)) { $gPass = 0; $global = @() }
+if (-not $partial -and $runWindows -and -not $NoBuild) {
+    Write-Host '==> Windows runtime artifact' -ForegroundColor Cyan
+    if ($winRuntimeArtifact) {
+        Write-Host '  PASS' -ForegroundColor Green
+        Write-Host ('  path     : {0}' -f $winRuntimeArtifact.Path)
+        Write-Host ('  size     : {0:N0} bytes ({1:N1} MB)' -f $winRuntimeArtifact.Size, ($winRuntimeArtifact.Size / 1MB))
+        Write-Host ('  config   : {0}' -f $winRuntimeArtifact.Config)
+        Write-Host ('  compiler : {0}' -f $winRuntimeArtifact.Compiler)
+    } else {
+        Write-Host '  FAIL (trespasser_recomp.exe did not build)' -ForegroundColor Red
+    }
+}
 if (-not $partial -and $runWindows -and $linux.Ran -and -not $failed.Count -and -not $parityFailed -and $linux.Info['build_dir']) {
     Write-Host '==> Linux runtime artifact' -ForegroundColor Cyan
     $linuxRows = @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' })

@@ -217,3 +217,15 @@ FFmpeg (`libavformat`, `libavcodec`, `libavutil`) is optional: with it the game'
 game skips them. Install `libavformat-dev libavcodec-dev libavutil-dev` (Ubuntu/Debian), or point the configure step at a prefix with
 `JPT_CMAKE_ARGS=-DFFMPEG_ROOT=<prefix> tools/build-linux.sh`. A release must use an LGPL-only FFmpeg (`-DJPT_FFMPEG_REQUIRE_LGPL=ON`
 checks it).
+
+## Vulkan renderer
+
+The native Vulkan 1.2 backend (`src/vulkan/`) builds on both Windows and Linux without requiring a local Vulkan SDK:
+
+- **Pinned headers**: Khronos Vulkan-Headers `1.3.275` (Apache-2.0) are vendored in `third_party/vulkan/`.
+- **Dynamic loader**: Loaded at runtime through SDL3 (`SDL_Vulkan_LoadLibrary` / `SDL_Vulkan_GetVkGetInstanceProcAddr`) with an `SDL_LoadObject` headless fallback; neither Windows nor Linux links directly against `vulkan-1.lib` or `libvulkan.so.1`.
+- **Precompiled shaders**: GLSL 450 sources under `src/vulkan/shaders/` are precompiled to Vulkan 1.2 SPIR-V in `src/vulkan/vk_shader_spv.inc` via `tools/compile_vk_shaders.py` (`glslangValidator` + `spirv-val`), so runtime builds need no shader compiler.
+- **Backend selection (`renderer`)**: `auto` (default), `d3d11`, `vulkan`, `software`. On Windows, `auto` selects Direct3D 11 to preserve existing behaviour while Vulkan is also selectable via `renderer = vulkan` or `--renderer vulkan`. On Linux, `auto` selects Vulkan when a compatible device is present and falls back to Software with a logged reason when Vulkan is unavailable (`d3d11` is reported unavailable on Linux).
+- **GPU selection (`graphics_card` / `--graphics-card`)**: `auto` prefers a usable discrete GPU over integrated/virtual/CPU devices (respecting `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD` when set). Explicit selection matches disambiguated adapter labels, `vendor:device`, stable `vendor:device:uuid8` IDs, or full 32-hex device UUIDs.
+- **Pipeline cache**: Stored under `<user_data>/cache/vulkan_pipeline.cache` (never inside a read-only install/AppImage directory) and discarded cleanly if vendor/device/UUID validation fails.
+- **Known limitations**: The Linux launcher UI and AppImage packaging are out of scope for this branch; HDR is not added; D3D11 remains the primary Windows backend until Vulkan proves full manual runtime parity.

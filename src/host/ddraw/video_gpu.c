@@ -6,23 +6,17 @@
 #define COBJMACROS
 #include "video_gpu.h"
 
+#include "jpt_video_pass.h"
+
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define GLOW_STEPS 32
-#define GLOW_ROWS 96
-#define MAX_SIDE 4096
-#define SMOOTH_FULL (16.0f / 255.0f)
-#define SMOOTH_NONE (28.0f / 255.0f)
-#define DEBLOCK_STEP_FULL (12.0f / 255.0f)
-#define DEBLOCK_STEP_NONE (32.0f / 255.0f)
-#define DEBLOCK_FLAT_FULL (4.0f / 255.0f)
-#define DEBLOCK_FLAT_NONE (10.0f / 255.0f)
-#define GLOW_NEAR 0.5f
-#define GLOW_FAR 0.12f
+#define GLOW_STEPS JPT_VIDEO_GLOW_STEPS
+#define GLOW_ROWS JPT_VIDEO_GLOW_ROWS
+#define MAX_SIDE JPT_VIDEO_MAX_SIDE
 
 typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT,
                                     UINT, ID3DBlob**, ID3DBlob**);
@@ -220,11 +214,7 @@ static const char k_source[] =
     "  return float4(ramp(saturate(c)), 1.0);\n"
     "}\n";
 
-typedef struct {
-    int32_t src[4], opt[4];
-    float video[4], outp[4], tune[4], deblock[4];
-    int32_t stray[4];
-} constants_t;
+typedef jpt_video_constants_t constants_t;
 
 typedef struct {
     ID3D11Texture2D* tex;
@@ -500,31 +490,13 @@ static int set_constants(video_gpu_t* g, const video_gpu_frame_t* f, const vl_la
     HRESULT hr = ID3D11DeviceContext_Map(g->ctx, (ID3D11Resource*)g->cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m);
     if (FAILED(hr)) return fail("video constants", hr);
     memset(&c, 0, sizeof c);
-    c.src[0] = f->width;
-    c.src[1] = f->policy.stored_rows;
-    c.src[2] = f->policy.shown_rows;
-    c.src[3] = f->policy.rows == VL_ROWS_REBUILD;
-    c.opt[0] = f->policy.parity;
-    c.opt[1] = f->palette_map != NULL;
-    c.opt[2] = f->rgb565 != 0;
-    c.opt[3] = g->gamma_on;
-    c.video[0] = (float)l->video.x;
-    c.video[1] = (float)l->video.y;
-    c.video[2] = (float)l->video.w;
-    c.video[3] = (float)l->video.h;
-    c.outp[0] = (float)out_w;
-    c.outp[1] = (float)out_h;
-    c.outp[2] = (float)l->side;
-    c.outp[3] = glow ? 1.0f : 0.0f;
-    c.tune[0] = SMOOTH_FULL;
-    c.tune[1] = GLOW_NEAR;
-    c.tune[2] = GLOW_FAR;
-    c.tune[3] = SMOOTH_NONE;
-    c.deblock[0] = DEBLOCK_STEP_FULL;
-    c.deblock[1] = DEBLOCK_STEP_NONE;
-    c.deblock[2] = DEBLOCK_FLAT_FULL;
-    c.deblock[3] = DEBLOCK_FLAT_NONE;
-    c.stray[0] = progressive && f->stray_bottom_line;
+    {
+        jpt_video_params_t p = { f->width, f->policy.stored_rows, f->policy.shown_rows, f->policy.rows == VL_ROWS_REBUILD,
+                                 f->policy.parity, f->palette_map != NULL, f->rgb565 != 0, g->gamma_on, l->video.x,
+                                 l->video.y, l->video.w, l->video.h, out_w, out_h, l->side, glow, progressive,
+                                 f->stray_bottom_line };
+        jpt_video_constants(&p, &c);
+    }
     memcpy(m.pData, &c, sizeof c);
     ID3D11DeviceContext_Unmap(g->ctx, (ID3D11Resource*)g->cb, 0);
     return 1;

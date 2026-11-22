@@ -13,6 +13,7 @@
 #include "jpt_gpu.h"
 #include "jpt_video_subtitles.h"
 #include "perf_sections.h"
+#include "renderer_backend.h"
 #include "text_layer.h"
 
 #include <d3d11.h>
@@ -51,9 +52,9 @@ static char s_graphics_card[JPT_GPU_LABEL_MAX];
 static dd_adapter_t s_adapter;
 static int s_adapter_state;
 
-void present_set_vsync(int on) { s_vsync = on; }
+void d3d11_present_set_vsync(int on) { s_vsync = on; }
 
-void present_set_graphics_card(const char* name) { snprintf(s_graphics_card, sizeof s_graphics_card, "%s", name ? name : ""); }
+void d3d11_present_set_graphics_card(const char* name) { snprintf(s_graphics_card, sizeof s_graphics_card, "%s", name ? name : ""); }
 
 static void log_hr(const char* what, HRESULT hr) { host_log("d3d11", "%s failed, HRESULT 0x%08lX", what, (unsigned long)hr); }
 
@@ -100,8 +101,9 @@ static int describe_adapter(IDXGIAdapter* adapter) {
 }
 
 /* The device's adapter once it exists; before that, the one it will be created on. */
-int present_adapter(dd_adapter_t* out) {
+int d3d11_present_adapter(dd_adapter_t* out) {
     memset(out, 0, sizeof *out);
+    if (!renderer_backend_guard_d3d11("d3d11_present_adapter")) return 0;
     if (!s_adapter_state) {
         IDXGIAdapter* adapter = open_adapter(chosen_adapter_index());
         if (!adapter) adapter = open_adapter(0);
@@ -144,7 +146,7 @@ static void release_text_layer(void) {
     s_p.text_w = s_p.text_h = 0;
 }
 
-void present_release(void) {
+void d3d11_present_release(void) {
     release_text_layer();
     video_hd_release();
     video_test_release();
@@ -168,6 +170,7 @@ static HRESULT create_on(IDXGIAdapter* adapter, D3D_DRIVER_TYPE type, D3D_FEATUR
 }
 
 static int create_device(void) {
+    if (!renderer_backend_guard_d3d11("d3d11_present::create_device")) return 0;
     D3D_FEATURE_LEVEL level;
     IDXGIAdapter* chosen = open_adapter(chosen_adapter_index());
     const char* kind = "hardware";
@@ -198,6 +201,7 @@ static int create_device(void) {
 }
 
 int present_device(ID3D11Device** device, ID3D11DeviceContext** context) {
+    if (!renderer_backend_guard_d3d11("d3d11_present::present_device")) return 0;
     if (!s_p.device && !create_device()) return 0;
     *device = s_p.device;
     *context = s_p.context;
@@ -314,7 +318,7 @@ static int ensure_resources(HWND window, UINT width, UINT height) {
         hr = IDXGISwapChain_ResizeBuffers(s_p.swapchain, 0, width, height, DXGI_FORMAT_UNKNOWN, 0);
         if (FAILED(hr)) {
             log_hr("ResizeBuffers", hr);
-            present_release();
+            d3d11_present_release();
         } else {
             s_p.width = width;
             s_p.height = height;
@@ -329,7 +333,7 @@ static int ensure_resources(HWND window, UINT width, UINT height) {
         s_p.swapchain = NULL;
     }
     if ((!s_p.device && !create_device()) || !create_swapchain(window, width, height)) {
-        present_release();
+        d3d11_present_release();
         s_p.failed_window = window;
         host_log("d3d11", "presentation is off for window 0x%08X: the game keeps running, but nothing reaches the screen",
                  (uint32_t)(uintptr_t)window);
@@ -370,7 +374,7 @@ static void handle_present_result(HRESULT hr) {
         HRESULT reason = s_p.device ? ID3D11Device_GetDeviceRemovedReason(s_p.device) : hr;
         host_log("d3d11", "device lost (0x%08lX, reason 0x%08lX): recreating on the next frame", (unsigned long)hr,
                  (unsigned long)reason);
-        present_release();
+        d3d11_present_release();
     } else if (FAILED(hr)) {
         log_hr("Present", hr);
     }
@@ -436,8 +440,8 @@ int present_take_text_layer(void** texture, int* legacy_w, int* legacy_h, int* l
     return 1;
 }
 
-void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
-                   const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation) {
+void d3d11_present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
+                         const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation) {
     UINT width = (UINT)(source->right - source->left), height = (UINT)(source->bottom - source->top);
     HWND target = window_host_surface(window);
     ID3D11Texture2D* staging;

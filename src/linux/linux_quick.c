@@ -32,8 +32,6 @@
 #define WORLD_LOAD_PENDING 0x38u
 #define PLAYER_DEAD_SLOT 0x1FCu
 #define SAVE_DIR_SAVES 1u
-#define SAVE_ENTRY_BYTES 0x54u
-#define SAVE_ENTRY_SCENE 0x37u
 #define MAX_PATH_BYTES 260u
 
 typedef enum { REQUEST_NONE, REQUEST_SAVE, REQUEST_LOAD } request_t;

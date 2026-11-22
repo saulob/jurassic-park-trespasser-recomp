@@ -6,6 +6,7 @@
 #include <windows.h>
 #include "test_profile.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -598,6 +599,49 @@ static void test_layout(void) {
     }
 }
 
+static int proportional_width(void* ctx, const char* utf8, int bytes) {
+    (void)utf8;
+    return bytes * *(int*)ctx * 11 / 20;
+}
+
+static void test_target_spaces(void) {
+    static const target_t targets[] = {
+        { "960x720 windowed", 960, 720 }, { "1920x1080 fullscreen", 1920, 1080 }, { "2560x1440 fullscreen", 2560, 1440 },
+        { "1440x1080 letterboxed surface", 1440, 1080 }, { "3440x1440 ultrawide", 3440, 1440 },
+    };
+    const char* cue = "My name is John Parker Hammond. I was born on March 14, 1928.";
+    int first_lines = 0;
+    double first_scale = 0.0, first_margin = 0.0;
+    for (size_t i = 0; i < sizeof targets / sizeof targets[0]; i++) {
+        const target_t* t = &targets[i];
+        vl_layout_t l = vl_layout(t->w, t->h, 640, 348);
+        jvs_rect_t picture = { l.video.x, l.video.y, l.video.w, l.video.h }, at;
+        jvs_line_t lines[JVS_MAX_LINES];
+        int px = jvs_font_px(&picture), r = jvs_outline_px(px), count, block_w = 0, block_h, mx = t->w * 4 / 100;
+        count = jvs_wrap(cue, jvs_max_line_width(&picture, t->w) - 2 * r, proportional_width, &px, lines);
+        for (int k = 0; k < count; k++)
+            if (lines[k].width > block_w) block_w = lines[k].width;
+        block_w += 2 * (r + 2);
+        block_h = count * px + 2 * (r + 2);
+        at = jvs_place(t->w, t->h, &picture, block_w, block_h);
+        CHECK(at.x >= mx && at.x + at.w <= t->w - mx && at.y >= 0 && at.y + at.h <= t->h,
+              "%s: the cue lies inside its own target (%d..%d of %d)", t->name, at.x, at.x + at.w, t->w);
+        CHECK(at.x >= picture.x && at.x + at.w <= picture.x + picture.w && at.y + at.h <= picture.y + picture.h,
+              "%s: the cue lies inside the picture", t->name);
+        {
+            double scale = (double)px / picture.h, margin = (double)(picture.y + picture.h - at.y - at.h) / picture.h;
+            if (!i) {
+                first_lines = count;
+                first_scale = scale;
+                first_margin = margin;
+            }
+            CHECK(count == first_lines, "%s: %d lines like the windowed layout (%d)", t->name, count, first_lines);
+            CHECK(fabs(scale - first_scale) < 0.004, "%s: the font keeps its share of the picture height", t->name);
+            CHECK(fabs(margin - first_margin) < 0.02, "%s: the cue keeps its distance from the picture's bottom", t->name);
+        }
+    }
+}
+
 static void test_blend(void) {
     uint32_t target[4] = { 0xFF000000u, 0xFF808080u, 0xFF0000FFu, 0xFFFFFFFFu };
     const uint32_t image[2] = { 0xFFFFFFFFu, 0x80000000u };
@@ -703,6 +747,9 @@ static void test_wiring(void) {
     CHECK(before("src/host/ddraw/d3d11_present.c", "video_subtitles_for_screen((int)width, (int)height",
                  "ID3D11DeviceContext_Unmap(s_p.context, (ID3D11Resource*)staging, 0);"),
           "Software: blended into the presented picture");
+    CHECK(contains(video, "|| !vulkan_target_client(window, &rc))") && contains(video, "if (!vulkan_target_client(window, &rc)) {")
+              && contains(video, "window_host_surface(window);"),
+          "Vulkan: the picture and the subtitle are laid out in the surface the swapchain presents, not the game window");
     CHECK(contains("src/host/main.c", "video_subtitles_configure(cfg.video_subtitles, game_dir);"), "the setting");
     CHECK(contains("launcher/launcher.cpp",
                    "ui.Toggle(\"Video subtitles\", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, \"Off\", \"On\")"),
@@ -728,6 +775,7 @@ int main(void) {
     test_setting();
     test_wrap();
     test_layout();
+    test_target_spaces();
     test_blend();
     test_outline();
     test_no_reference_material();

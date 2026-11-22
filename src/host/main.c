@@ -15,9 +15,12 @@
 #include "audio/sdl_audio.h"
 #include "cheats.h"
 #include "ddraw/d3d_legacy.h"
+#include "ddraw/renderer_backend.h"
 #include "gamepad.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
+#include "vk_context.h"
+#include "vk_shaders.h"
 #include "jpt_launcher.h"
 #include "jpt_user_data.h"
 #include "l10n.h"
@@ -48,10 +51,12 @@ typedef struct {
     char guest_args[MAX_PATH];
     unsigned watchdog_seconds;
     int dry_run;
+    int self_check;
     int force_launcher, skip_launcher;
     int system_ddraw;
     int dev_filter;
     int lifted_water;
+    const char* debug_d3d_output;
     override_t overrides[MAX_OVERRIDES];
     int override_count;
 } options_t;
@@ -214,6 +219,10 @@ static int parse_options(int argc, char** argv, options_t* o) {
     if (!o->game_dir) o->game_dir = default_game_dir();
     o->log_dir = default_log_dir();
     o->dev_filter = -1;
+    {
+        const char* env_r = getenv("TRESPASSER_RENDERER");
+        if (env_r && env_r[0]) add_override(o, JPT_KEY_RENDERER, env_r);
+    }
     for (int i = 1; i < argc; i++) {
         int taken = recomp_trace_arg(argc, argv, i), matched = 0;
         if (taken) {
@@ -230,6 +239,8 @@ static int parse_options(int argc, char** argv, options_t* o) {
             continue;
         } else if (!strcmp(argv[i], "--dry-run")) {
             o->dry_run = 1;
+        } else if (!strcmp(argv[i], "--self-check")) {
+            o->self_check = 1;
         } else if (!strcmp(argv[i], "--launcher")) {
             o->force_launcher = 1;
         } else if (!strcmp(argv[i], "--skip-launcher")) {
@@ -262,7 +273,7 @@ static int parse_options(int argc, char** argv, options_t* o) {
         } else if (!strcmp(argv[i], "--original-engine-limits")) {
             engine_limits_keep_original();
         } else if (!strcmp(argv[i], "--debug-d3d-output") && i + 1 < argc) {
-            if (!d3dr_set_debug_output(argv[++i])) return 0;
+            o->debug_d3d_output = argv[++i];
         } else if (!strcmp(argv[i], "--lifted-water")) {
             o->lifted_water = 1;
         } else if (!strcmp(argv[i], "--perf-log")) {
@@ -368,8 +379,8 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
     const char* preset = c->render_preset >= 0 ? jpt_render_presets[c->render_preset].label : "custom";
     char save[16], load[16];
     host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s, Ambient Occlusion %s",
-             c->hardware ? "d3d11" : "software", jpt_filter_keys[c->texture_filter], c->msaa, c->vsync ? "on" : "off",
-             jpt_ao_names[c->ambient_occlusion]);
+             jpt_renderer_key((jpt_renderer_t)c->renderer), jpt_filter_keys[c->texture_filter], c->msaa,
+             c->vsync ? "on" : "off", jpt_ao_names[c->ambient_occlusion]);
     if (box.width > 0) {
         host_log("settings", "render resolution %s, aspect ratio %s: gameplay resolution %dx%d (the game's own screen "
                  "with D3D11, %.0f MB of host buffers), 3D render target %dx%d", preset, jpt_aspects[c->aspect].key,
@@ -430,6 +441,34 @@ int main(int argc, char** argv) {
     if (!parse_options(argc, argv, &opt)) {
         usage();
         return HOST_EXIT_SETUP;
+    }
+    if (opt.self_check) {
+        const jpt_win_backend_ops_t* vk_ops = renderer_backend_resolve_ops(JPT_RENDERER_VULKAN);
+        const jpt_win_backend_ops_t* d3d_ops = renderer_backend_resolve_ops(JPT_RENDERER_D3D11);
+        const jpt_win_backend_ops_t* sw_ops = renderer_backend_resolve_ops(JPT_RENDERER_SOFTWARE);
+        int vk_dispatch = (vk_ops == &jpt_vulkan_backend_ops && vk_ops != d3d_ops && vk_ops->id == JPT_RENDERER_VULKAN);
+        int ok = vk_dispatch && d3d_ops == &jpt_d3d11_backend_ops && sw_ops == &jpt_software_backend_ops &&
+                 jpt_vk_shader_count() == JPT_VK_SH_COUNT;
+        printf("{\n"
+               "  \"platform\": \"windows\",\n"
+               "  \"self_check\": %s,\n"
+               "  \"vulkan\": {\n"
+               "    \"compiled\": true,\n"
+               "    \"selectable\": %s,\n"
+               "    \"runtime_dispatch_wired\": %s,\n"
+               "    \"spirv_shaders\": %d\n"
+               "  },\n"
+               "  \"backends\": {\n"
+               "    \"d3d11\": %s,\n"
+               "    \"vulkan\": %s,\n"
+               "    \"software\": %s\n"
+               "  }\n"
+               "}\n",
+               ok ? "true" : "false", jpt_renderer_available_on_platform(JPT_RENDERER_VULKAN, 1) ? "true" : "false",
+               vk_dispatch ? "true" : "false", jpt_vk_shader_count(),
+               d3d_ops == &jpt_d3d11_backend_ops ? "true" : "false", vk_dispatch ? "true" : "false",
+               sw_ops == &jpt_software_backend_ops ? "true" : "false");
+        return ok ? 0 : 1;
     }
     if (!GetFullPathNameA(opt.game_dir, MAX_PATH, game_root, NULL) ||
         !GetFullPathNameA(opt.log_dir, MAX_PATH, log_dir, NULL) ||
@@ -582,13 +621,33 @@ int main(int argc, char** argv) {
     ddraw_trace_init();
     if (!ddraw_compat_init(!opt.system_ddraw)) return HOST_EXIT_SETUP;
     renderer_filter(&cfg, opt.dev_filter, &filter, &anisotropy);
-    d3dr_configure(cfg.hardware && !opt.system_ddraw, (unsigned)box.width, (unsigned)box.height, filter, anisotropy,
-                   cfg.msaa);
-    d3dr_configure_ambient_occlusion(cfg.ambient_occlusion);
-    d3dr_configure_effects(cfg.water_refraction, cfg.enhanced_sky);
+    {
+        jpt_win_renderer_cfg_t rcfg;
+        char vk_cache[MAX_PATH];
+        memset(&rcfg, 0, sizeof rcfg);
+        _snprintf(vk_cache, sizeof vk_cache - 1, "%s\\cache\\vulkan_pipeline.cache", user.root);
+        vk_cache[sizeof vk_cache - 1] = 0;
+        rcfg.requested = (jpt_renderer_t)cfg.renderer;
+        rcfg.system_ddraw = opt.system_ddraw;
+        rcfg.gpu_request = cfg.graphics_card;
+        rcfg.cache_path = vk_cache;
+        rcfg.box_w = (unsigned)box.width;
+        rcfg.box_h = (unsigned)box.height;
+        rcfg.filter = filter;
+        rcfg.anisotropy = anisotropy;
+        rcfg.msaa = cfg.msaa;
+        rcfg.vsync = cfg.vsync;
+        rcfg.stretch = cfg.stretch;
+        rcfg.aspect = cfg.aspect;
+        rcfg.ao_level = cfg.ambient_occlusion;
+        rcfg.water_refraction = cfg.water_refraction;
+        rcfg.enhanced_sky = cfg.enhanced_sky;
+        renderer_backend_configure(&rcfg);
+    }
+    if (opt.debug_d3d_output && !d3dr_set_debug_output(opt.debug_d3d_output)) return HOST_EXIT_SETUP;
     window_host_set_mouse_sensitivity(cfg.mouse_sensitivity);
     host_log("input", "mouse sensitivity %.2f (both axes)", cfg.mouse_sensitivity);
-    if (!d3dr_startup()) return HOST_EXIT_SETUP;
+    if (!renderer_backend_startup()) return HOST_EXIT_SETUP;
 
     if (opt.dry_run) {
         host_log("host", "dry run complete: nothing was executed; without --dry-run the game enters 0x%08X",

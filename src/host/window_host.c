@@ -18,6 +18,7 @@
  */
 #include "guest_va.h"
 #include "host.h"
+#include "ddraw/renderer_backend.h"
 #include "perf_sections.h"
 #include "gamepad.h"
 #include "host_policy.h"
@@ -694,6 +695,7 @@ static void toggle_fullscreen(void) {
     if (s.fullscreen) leave_fullscreen();
     else enter_fullscreen();
     layout_surface();
+    present_set_fullscreen(s.fullscreen);
     s.transition = 0;
     update_input("F11 done");
     save_display_mode();
@@ -1158,6 +1160,11 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         return TRUE;
     case WM_SIZE:
         layout_surface();
+        if (s.surface) {
+            RECT r;
+            if (GetClientRect(s.surface, &r) && r.right > 0 && r.bottom > 0)
+                present_on_resize((uint32_t)r.right, (uint32_t)r.bottom);
+        }
         if (!s.size_move) log_presentation();
         update_input("resize");
         break;

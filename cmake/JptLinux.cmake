@@ -77,10 +77,20 @@ add_library(jpt_common_linux STATIC
   src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c
   src/common/jpt_gamepad.c src/common/jpt_prompt_text.c src/common/jpt_l10n.c src/common/jpt_tr.c
   src/common/jpt_video_subtitles.c src/common/jpt_user_data.c src/common/jpt_fs_posix.c src/common/jpt_vpath.c
-  src/common/jpt_reg_store.c src/common/jpt_sync.c)
+  src/common/jpt_reg_store.c src/common/jpt_sync.c src/common/jpt_renderer.c src/common/jpt_present_policy.c)
 target_include_directories(jpt_common_linux PUBLIC src/common)
 target_compile_options(jpt_common_linux PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
 target_link_libraries(jpt_common_linux PUBLIC SDL3::SDL3-static m)
+
+add_library(jpt_vulkan_linux STATIC
+  src/vulkan/vk_policy.c src/vulkan/vk_loader.c src/vulkan/vk_alloc.c
+  src/vulkan/vk_context.c src/vulkan/vk_swapchain.c src/vulkan/vk_shaders.c
+  src/vulkan/vk_renderer.c src/host/ao_policy.c)
+target_include_directories(jpt_vulkan_linux PUBLIC src/vulkan)
+target_include_directories(jpt_vulkan_linux SYSTEM PUBLIC third_party/vulkan)
+target_include_directories(jpt_vulkan_linux PRIVATE src/host)
+target_compile_options(jpt_vulkan_linux PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
+target_link_libraries(jpt_vulkan_linux PUBLIC jpt_common_linux SDL3::SDL3-static m)
 
 set(JPT_RECOMP_DEFINES RECOMP_LOCAL_REGS RECOMP_X87_RING RECOMP_X87_RING_DEPTH RECOMP_ICALL_SITE_RANGE)
 set(AUDIO_DIR ${CMAKE_SOURCE_DIR}/src/host/audio)
@@ -143,7 +153,7 @@ set_target_properties(jpt_panel_linux PROPERTIES CXX_STANDARD 17 CXX_STANDARD_RE
 target_compile_options(jpt_panel_linux PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti -include ${CMAKE_SOURCE_DIR}/src/common/jpt_compat.h)
 target_link_libraries(jpt_panel_linux PUBLIC jpt_imgui_linux jpt_panel_model_linux)
 
-add_library(jpt_linux_core STATIC ${JPT_STREAM_SOURCES} src/linux/linux_hle.c src/linux/linux_paths.c src/linux/linux_log.c src/linux/linux_crash.c src/linux/linux_shutdown.c src/linux/linux_guest_quit.c src/linux/linux_spine.c src/linux/linux_msvcrt.c src/linux/linux_modules.c src/linux/linux_msvcrt_io.c src/linux/linux_user32.c src/linux/linux_advapi32.c src/linux/linux_signatures.c src/linux/linux_processor.c src/linux/linux_window.c src/linux/linux_screen.c src/linux/linux_gdi32.c src/linux/linux_text.c src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} src/linux/linux_dsound.c src/linux/linux_smack.c src/linux/linux_video_subtitles.c src/linux/linux_mouse.c src/linux/linux_guest_ui.c src/linux/linux_overlay.c src/linux/linux_quick.c src/linux/linux_hostkeys.c src/linux/linux_settings.c src/host/guest_ui_model.c src/host/host_policy.c src/host/ce_policy.c src/host/window_title.c ${JPT_GUEST_FEATURE_SOURCES} ${JPT_AUDIO_CORE} ${AUDIO_DIR}/sdl_audio.c ${JPT_SMACKER_PORTABLE_SOURCES} src/linux/linux_ddraw.c src/linux/linux_lz32.c src/linux/linux_resource.c)
+add_library(jpt_linux_core STATIC ${JPT_STREAM_SOURCES} src/linux/linux_hle.c src/linux/linux_paths.c src/linux/linux_log.c src/linux/linux_crash.c src/linux/linux_shutdown.c src/linux/linux_guest_quit.c src/linux/linux_spine.c src/linux/linux_msvcrt.c src/linux/linux_modules.c src/linux/linux_msvcrt_io.c src/linux/linux_user32.c src/linux/linux_advapi32.c src/linux/linux_signatures.c src/linux/linux_processor.c src/linux/linux_window.c src/linux/linux_screen.c src/linux/linux_gdi32.c src/linux/linux_text.c src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} src/linux/linux_dsound.c src/linux/linux_smack.c src/linux/linux_video_subtitles.c src/linux/linux_mouse.c src/linux/linux_guest_ui.c src/linux/linux_overlay.c src/linux/linux_quick.c src/linux/linux_hostkeys.c src/linux/linux_settings.c src/host/guest_ui_model.c src/host/host_policy.c src/host/ce_policy.c src/host/window_title.c ${JPT_GUEST_FEATURE_SOURCES} ${JPT_AUDIO_CORE} ${AUDIO_DIR}/sdl_audio.c ${JPT_SMACKER_PORTABLE_SOURCES} src/linux/linux_ddraw.c src/linux/linux_vulkan.c src/linux/linux_lz32.c src/linux/linux_resource.c)
 if(JPT_LINUX_SDL_VIDEO)
   target_sources(jpt_linux_core PRIVATE src/linux/linux_sdl_window.c src/linux/linux_gamepad.c src/host/pad_sdl.c src/host/gamepad_policy.c src/host/gamepad_ui.c src/host/gamepad_menu.c src/host/frontend_layout.c src/host/frontend_assets.c src/host/frontend_art.c src/host/frontend_plaque.c src/host/frontend_text_stb.c src/host/loading_layout.c src/host/pad_glyphs.c src/host/save_preview.c src/host/frontend_hd.c src/host/loading_hd.c src/linux/linux_frontend.c src/linux/linux_card.c)
   target_compile_definitions(jpt_linux_core PUBLIC JPT_LINUX_SDL_VIDEO=1)
@@ -158,7 +168,7 @@ set_source_files_properties(src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} $
 target_include_directories(jpt_linux_core SYSTEM PUBLIC ${PCRECOMP}/runtime/recomp32)
 target_compile_definitions(jpt_linux_core PUBLIC ${JPT_RECOMP_DEFINES})
 target_compile_options(jpt_linux_core PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
-target_link_libraries(jpt_linux_core PUBLIC jpt_panel_linux jpt_host64 jpt_common_linux jpt_profile_linux)
+target_link_libraries(jpt_linux_core PUBLIC jpt_panel_linux jpt_vulkan_linux jpt_host64 jpt_common_linux jpt_profile_linux)
 target_link_options(jpt_linux_core PUBLIC -static-libstdc++ -static-libgcc)
 
 add_library(jpt_profile_linux STATIC src/host/active_profile.c src/host/profiles/guest_profile_data.c)
@@ -188,6 +198,8 @@ jpt_linux_test(x64_tests SOURCES tests/x64_tests.c LIBS jpt_host64 INCLUDES test
 jpt_linux_test(vpath_tests SOURCES tests/vpath_tests.c LIBS jpt_common_linux)
 jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)
 jpt_linux_test(reg_store_tests SOURCES tests/reg_store_tests.c LIBS jpt_common_linux)
+jpt_linux_test(vulkan_policy_tests SOURCES tests/vulkan_policy_tests.c LIBS jpt_vulkan_linux)
+jpt_linux_test(vulkan_render_tests SOURCES tests/vulkan_render_tests.c LIBS jpt_vulkan_linux)
 jpt_linux_test(audio_portable_tests SOURCES tests/audio_portable_tests.c ${AUDIO_DIR}/audio_policy.c ${AUDIO_DIR}/audio_mixer.c
   LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})
 jpt_linux_test(audio_pacer_tests SOURCES tests/audio_pacer_tests.c ${AUDIO_DIR}/audio_pacer.c LIBS SDL3::SDL3-static INCLUDES ${AUDIO_DIR})

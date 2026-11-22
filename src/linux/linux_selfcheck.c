@@ -5,7 +5,10 @@
 #include <string.h>
 
 #include "jpt_build_info.h"
+#include "jpt_renderer.h"
 #include "linux_log.h"
+#include "vk_policy.h"
+#include "vk_shaders.h"
 
 #ifdef JPT_LINUX_GUEST
 #include <SDL3/SDL_audio.h>
@@ -71,6 +74,9 @@ static void print_build(void) {
 #else
     printf("    \"sdl_video\": false,\n");
 #endif
+    printf("    \"vulkan\": {\"compiled\": %s, \"api_baseline\": \"1.2\", \"headers_version\": \"%s\", \"loader\": \"%s\", \"shader_count\": %d, \"shader_bundle_sha256\": \"%s\"},\n",
+           JPT_BUILD_VULKAN_COMPILED ? "true" : "false", JPT_BUILD_VULKAN_HEADERS, JPT_BUILD_VULKAN_LOADER,
+           jpt_vk_shader_count(), JPT_BUILD_VULKAN_SHADER_SHA256);
 #if defined(JPT_LINUX_GUEST) && defined(JPT_SMACKER_FFMPEG)
     {
         char libraries[256];
@@ -242,6 +248,30 @@ static void probe_media(void) {
     cap("save_pictures", picture.width == 640 && picture.height == 480, "previews/<save>.png written and read by the host");
 }
 
+static void probe_vulkan(void) {
+    jpt_renderer_decision_t dec;
+    jpt_vk_pipeline_key_t k1, k2;
+    jpt_render_state_t st;
+    VkPresentModeKHR modes[2] = { VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_MAILBOX_KHR };
+    int shaders_ok = jpt_vk_shader_count() == JPT_VK_SH_COUNT && strlen(jpt_vk_shader_bundle_sha256()) == 64;
+
+    memset(&st, 0, sizeof st);
+    st.z_enable = 1;
+    st.z_write = 1;
+    st.z_func = 7;
+    jpt_vk_pipeline_key_from_state(&st, JPT_PRIM_TRIANGLEFAN, 4, JPT_VK_RP_SCENE_MSAA, 1, &k1);
+    jpt_vk_pipeline_key_from_state(&st, JPT_PRIM_TRIANGLELIST, 4, JPT_VK_RP_SCENE_MSAA, 1, &k2);
+    jpt_renderer_resolve_policy(JPT_RENDERER_AUTO, 0, 0, 1, NULL, &dec);
+
+    cap("vulkan_backend",
+        JPT_BUILD_VULKAN_COMPILED && shaders_ok && dec.chosen == JPT_RENDERER_VULKAN &&
+            jpt_vk_pipeline_key_equal(&k1, &k2) &&
+            jpt_vk_choose_present_mode(1, modes, 2) == VK_PRESENT_MODE_FIFO_KHR &&
+            jpt_vk_choose_present_mode(0, modes, 2) == VK_PRESENT_MODE_MAILBOX_KHR,
+        "Vulkan 1.2 backend (compiled=yes, selectable=yes, runtime_dispatch=wired, headers %s, %s loader, %d SPIR-V shaders, GPU not opened by self-check)",
+        JPT_BUILD_VULKAN_HEADERS, JPT_BUILD_VULKAN_LOADER, jpt_vk_shader_count());
+}
+
 int lx_selfcheck_run(void) {
     registry_t registry;
     int failed = 0, passed = 0;
@@ -252,6 +282,7 @@ int lx_selfcheck_run(void) {
     probe_frontend();
     probe_card_and_text();
     probe_media();
+    probe_vulkan();
     for (int i = 0; i < s_cap_count; i++) {
         if (s_caps[i].ok) passed++;
         else failed++;

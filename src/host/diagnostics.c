@@ -1,4 +1,6 @@
 /* Fault, dead-end and watchdog reports. The fault report follows sp00nznet/themovies host.c (MIT). */
+#include "guest_abi.h"
+#include "guest_va.h"
 #include "host.h"
 
 #include <stdarg.h>
@@ -36,6 +38,14 @@ static void report_machine_state(void) {
                g_eax, g_ecx, g_edx, g_ebx, g_esp, g_ebp, g_esi, g_edi);
     report_add("  x87 depth %d, control word %04X; SelfMod entries %lu; indirect calls %u\n",
                g_fp_top, g_fpu_cw, selfmod_entries(), g_icall_count);
+    {
+        uint32_t display = 0, vtable = 0, released_vtable = 0;
+        int have = guest_read32(GVA(0x0073DC40), &display);
+        if (have && display) guest_read32(display, &vtable);
+        guest_read32(GVA(0x00669B90), &released_vtable);
+        report_add("  DEBUG_SAULO display object [0x73DC40]=%08X (readable %d), its first dword %08X, released object %08X first dword %08X\n",
+                   display, have, vtable, (unsigned)GVA(0x00669B90), released_vtable);
+    }
     report_add("  last indirect calls (newest first):\n");
     for (int i = 1; i <= 12 && i <= (int)g_icall_trace_idx; i++) {
         uint32_t k = (g_icall_trace_idx - i) & (ICALL_TRACE_SIZE - 1);

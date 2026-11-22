@@ -363,6 +363,16 @@ void debug_menu_windows_init(void);
 int debug_menu_overlay_is_wanted(void);
 void debug_menu_overlay(struct ID3D11Device* device, struct ID3D11DeviceContext* context,
                         struct ID3D11RenderTargetView* target, int width, int height);
+#ifndef OVERLAY_TILE_SHIFT
+#define OVERLAY_TILE_SHIFT 5
+#endif
+typedef struct {
+    uint8_t* mask;
+    int tiles_w, tiles_h;
+} overlay_tiles_t;
+int debug_menu_overlay_rgba(uint8_t* rgba, int width, int height, overlay_tiles_t* tiles);
+struct dmp_gpu_draw_s;
+int debug_menu_overlay_gpu(struct dmp_gpu_draw_s* out, int width, int height);
 void debug_menu_release(void);
 HWND window_host_game_window(void);
 /* window_host.c: the presentation surface inside the game window's client. */

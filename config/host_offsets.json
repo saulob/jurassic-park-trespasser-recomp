@@ -589,48 +589,6 @@
   },
   {
    "file": "src/host/ce_gameplay.c",
-   "name": "SAVE_ENTRY_BYTES",
-   "value": "0x54",
-   "struct": "CSaveGameWnd",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; constant0x54 used by 2 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; constant0x54 used by 2 identical functions"
-   }
-  },
-  {
-   "file": "src/host/ce_gameplay.c",
-   "name": "SAVE_ENTRY_FILE",
-   "value": "0x28",
-   "struct": "CSaveGameWnd",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; +0x28 used by 5 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; +0x28 used by 5 identical functions"
-   }
-  },
-  {
-   "file": "src/host/ce_gameplay.c",
-   "name": "SAVE_ENTRY_SCENE",
-   "value": "0x37",
-   "struct": "SaveHeader",
-   "es-117": {
-    "status": "unmoved",
-    "evidence": "SaveHeader: 1 functions, 0 without a counterpart; +0x37 used by 1 identical functions"
-   },
-   "ptbr-117": {
-    "status": "unmoved",
-    "evidence": "SaveHeader: 1 functions, 0 without a counterpart; +0x37 used by 1 identical functions"
-   }
-  },
-  {
-   "file": "src/host/ce_gameplay.c",
    "name": "MSG_HELD",
    "value": "0x24",
    "struct": "CMessageControl",
@@ -921,6 +879,48 @@
    "ptbr-117": {
     "status": "unmoved",
     "evidence": "CSky: 5 functions, 0 without a counterpart; +0x4c used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/ce_policy.h",
+   "name": "SAVE_ENTRY_BYTES",
+   "value": "0x54",
+   "struct": "CSaveGameWnd",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; constant0x54 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; constant0x54 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/ce_policy.h",
+   "name": "SAVE_ENTRY_FILE",
+   "value": "0x28",
+   "struct": "CSaveGameWnd",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; +0x28 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSaveGameWnd+CUIDlg+CUIWnd: 155 functions, 0 without a counterpart; +0x28 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/ce_policy.h",
+   "name": "SAVE_ENTRY_SCENE",
+   "value": "0x37",
+   "struct": "SaveHeader",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SaveHeader: 1 functions, 0 without a counterpart; +0x37 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SaveHeader: 1 functions, 0 without a counterpart; +0x37 used by 1 identical functions"
    }
   },
   {
@@ -5964,9 +5964,9 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    96,
-    131,
-    136
+    93,
+    128,
+    133
    ],
    "es-117": {
     "status": "unmoved",

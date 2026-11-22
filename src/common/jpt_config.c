@@ -42,7 +42,7 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_MONITOR, "1" },
     { JPT_KEY_WINDOW_SIZE, "auto" },
     { JPT_KEY_PRESENTATION, "letterbox" },
-    { JPT_KEY_RENDERER, "d3d11" },
+    { JPT_KEY_RENDERER, "auto" },
     { JPT_KEY_GRAPHICS_CARD, "" },
     { JPT_KEY_RENDER_RESOLUTION, "native" },
     { JPT_KEY_ASPECT_RATIO, "16:9" },
@@ -142,7 +142,7 @@ static int parse_choice(const char* text, const char* const* names, int count) {
 static int apply(jpt_config_t* c, const char* key, const char* value) {
     static const char* const modes[] = { "windowed", "borderless" };
     static const char* const presentations[] = { "letterbox", "stretch" };
-    static const char* const renderers[] = { "software", "d3d11" };
+    static const char* const renderers[] = { "auto", "d3d11", "vulkan", "software" };
     int n, w, h;
     char* end;
     if (jpt_gamepad_is_key(key)) return jpt_gamepad_apply(&c->gamepad, key, value);
@@ -174,7 +174,10 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_DISPLAY_MODE)) return (n = parse_choice(value, modes, 2)) >= 0 ? (c->borderless = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_PRESENTATION))
         return (n = parse_choice(value, presentations, 2)) >= 0 ? (c->stretch = n, 1) : 0;
-    if (!strcmp(key, JPT_KEY_RENDERER)) return (n = parse_choice(value, renderers, 2)) >= 0 ? (c->hardware = n, 1) : 0;
+    if (!strcmp(key, JPT_KEY_RENDERER))
+        return (n = parse_choice(value, renderers, 4)) >= 0
+                   ? (c->renderer = n, c->hardware = (n != JPT_RENDERER_SOFTWARE), 1)
+                   : 0;
     if (!strcmp(key, JPT_KEY_TEXTURE_FILTER))
         return (n = parse_choice(value, jpt_filter_keys, JPT_FILTER_COUNT)) >= 0 ? (c->texture_filter = n, 1) : 0;
     if (!strcmp(key, JPT_KEY_AMBIENT_OCCLUSION))

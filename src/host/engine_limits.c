@@ -505,7 +505,7 @@ void engine_limits_log(int hardware, const char* filter, unsigned msaa, int vsyn
                  vsync ? "on" : "off");
         return;
     }
-    host_log("graphics", "Graphics improvements (D3D11):");
+    host_log("graphics", "Graphics improvements (%s):", d3dr_name());
     if (s_modern) {
         unsigned mb = s_fixed_split ? ENGINE_TEXTURE_MB_MODERN : ENGINE_TEXTURE_MB_SAFE;
         engine_texture_layout_t layout = engine_texture_layout(mb, 0xFFFFFFFFu, s_fixed_split);

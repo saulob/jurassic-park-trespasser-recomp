@@ -182,7 +182,12 @@ static HRESULT STDMETHODCALLTYPE d3_EnumDevices(IDirect3D3* This, LPD3DENUMDEVIC
     d3d_fill_device_desc(&hal);
     memset(&hel, 0, sizeof hel);
     hel.dwSize = sizeof hel;
-    callback(&guid, "Direct3D 11 hardware (Trespasser compatibility layer)", "Direct3D HAL", &hal, &hel, context);
+    {
+        char desc_name[96];
+        _snprintf(desc_name, sizeof desc_name - 1, "%s hardware (Trespasser compatibility layer)", d3dr_name());
+        desc_name[sizeof desc_name - 1] = 0;
+        callback(&guid, desc_name, "Direct3D HAL", &hal, &hel, context);
+    }
     D3D_RETURN(DD_OK);
 }
 
@@ -230,7 +235,8 @@ static HRESULT STDMETHODCALLTYPE d3_CreateDevice(IDirect3D3* This, REFCLSID guid
     if (outer) D3D_RETURN(CLASS_E_NOAGGREGATION);
     if (!target) D3D_RETURN(DDERR_INVALIDPARAMS);
     if (!IsEqualGUID(guid, &IID_IDirect3DHALDevice))
-        d3d_log("CreateDevice for {%08lX-%04X-...}: answered with the D3D11 hardware device", guid->Data1, guid->Data2);
+        d3d_log("CreateDevice for {%08lX-%04X-...}: answered with the %s hardware device", guid->Data1, guid->Data2,
+                d3dr_name());
     dev = (d3d_device_t*)calloc(1, sizeof *dev);
     if (!dev) D3D_RETURN(DDERR_OUTOFMEMORY);
     dev->face.vtbl = &s_device3_vtbl;

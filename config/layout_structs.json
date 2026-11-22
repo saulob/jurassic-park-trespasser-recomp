@@ -191,6 +191,7 @@
     "SAVE_ENTRY_SCENE"
    ],
    "files": [
+    "ce_policy.h",
     "ce_gameplay.c"
    ],
    "set": "SaveHeader"
@@ -941,6 +942,7 @@
     "SAVE_ENTRY_FILE"
    ],
    "files": [
+    "ce_policy.h",
     "ce_gameplay.c",
     "frontend_hd.c"
    ],
@@ -952,6 +954,7 @@
     "SAVE_ENTRY_SIZE"
    ],
    "files": [
+    "ce_policy.h",
     "ce_gameplay.c",
     "frontend_hd.c"
    ],

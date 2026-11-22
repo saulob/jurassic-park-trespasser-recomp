@@ -10,6 +10,7 @@
 #include "jpt_gamepad.h"
 #include "jpt_gpu.h"
 #include "jpt_l10n.h"
+#include "jpt_renderer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -117,6 +118,7 @@ typedef struct {
     int monitor;              /* 1-based, primary first */
     int window_w, window_h;   /* 0 x 0: auto */
     int stretch;
+    int renderer;             /* jpt_renderer_t */
     int hardware;
     char graphics_card[JPT_GPU_LABEL_MAX];
     int render_preset;        /* jpt_render_presets index, -1 with render_w x render_h */

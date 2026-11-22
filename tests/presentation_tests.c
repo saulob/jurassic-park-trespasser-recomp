@@ -362,7 +362,7 @@ static void test_presenters_commit_before_present(void) {
             char* swap = strstr(body, "IDXGISwapChain_Present");
             CHECK(commit && swap && commit < swap);
         }
-        body = function_body(present, "void present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,");
+        body = function_body(present, "void d3d11_present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,");
         CHECK(body != NULL);
         if (body) {
             char* commit = strstr(body, "window_host_frame_commit(generation)");

@@ -540,3 +540,11 @@ trespasser_recomp [--game DIR] [--version ID] [--user_data_root DIR] [--log-dir 
 
 Defaults: `game/`, `user_data/` and `logs/` next to the program (`TRESPASSER_GAME_DIR`, `TRESPASSER_USER_DATA_ROOT`,
 `TRESPASSER_LOG_DIR` override them, arguments override those). The guest image is `<game>/versions/<id>/guest.img`.
+
+## Vulkan renderer (`src/vulkan/`, `src/linux/linux_vulkan.*`)
+
+* **Requirements.** A system Vulkan loader (`libvulkan.so.1`, loaded dynamically at run time — never linked as `DT_NEEDED` and never bundled in a future AppImage) and a Vulkan 1.1/1.2+ ICD (AMD RADV, Intel ANV, NVIDIA, or Mesa `llvmpipe` for headless testing).
+* **Backend selection.** `trespasser.ini` (`renderer = auto | vulkan | software`) or `--renderer <name>` on the CLI. `auto` selects Vulkan when available and falls back cleanly to Software with a logged reason if no loader/ICD/compatible GPU exists. `d3d11` is unavailable on Linux and falls back cleanly without crashing.
+* **GPU selection.** `graphics_card` or `--graphics-card <auto | label | vendor:device | vendor:device:uuid8>`. `auto` checks minimum requirements first (graphics + present queues, `VK_KHR_swapchain`, depth attachment format), prefers usable discrete GPUs over integrated/virtual/CPU devices, and respects `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD`.
+* **Fallback and recovery.** Missing loader/GPU falls back to Software with a readable message. Swapchain `OUT_OF_DATE`, `SURFACE_LOST`, resize, minimize (`0x0` wait), and persistent `SUBOPTIMAL` (capped to avoid Gamescope/Wayland loops) are handled cleanly; `VK_ERROR_DEVICE_LOST` latches cleanly without infinite recovery loops.
+* **Known limitations.** Full Linux launcher UI, AppImage packaging, and manual Steam Deck verification belong to subsequent branches; no RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).

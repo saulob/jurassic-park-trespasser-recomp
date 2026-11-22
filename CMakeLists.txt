@@ -135,6 +135,7 @@ set(HOST_SOURCES
   src/host/debug_menu_policy.c
   src/host/debug_menu_layout.c
   src/host/debug_menu_panel.cpp
+  src/host/imgui_software.cpp
   src/host/compass_policy.c
   src/host/minimap.c
   src/host/objective_policy.c
@@ -180,6 +181,10 @@ set(HOST_SOURCES
   src/host/ddraw/dd_surface.c
   src/host/ddraw/dd_objects.c
   src/host/ddraw/dd_dispatch.c
+  src/host/ddraw/renderer_backend.c
+  src/host/ddraw/vk_win_renderer.c
+  src/host/ddraw/vk_win_account.c
+  src/host/ddraw/vk_win_policy.c
   src/host/ddraw/d3d11_present.c
   src/host/ddraw/d3d11_renderer.c
   src/host/ddraw/d3d11_shaders.c
@@ -192,6 +197,7 @@ set(HOST_SOURCES
   src/host/ddraw/page_guard.c
   src/host/ddraw/page_arena.c
   src/host/ddraw/video_gpu.c
+  src/common/jpt_sync.c
 )
 set(PCRECOMP_SOURCES
   ${PCRECOMP}/runtime/native32/native32.c
@@ -200,7 +206,7 @@ set(PCRECOMP_SOURCES
 )
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
-add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c
+add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c src/common/jpt_renderer.c src/common/jpt_present_policy.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
   src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
@@ -222,6 +228,19 @@ set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 add_subdirectory(${SDL_DIR} ${CMAKE_BINARY_DIR}/SDL EXCLUDE_FROM_ALL)
+
+# Native Vulkan 1.2 backend (shared with Linux; dynamic loader via SDL3, pinned Khronos headers).
+set(JPT_VULKAN_SOURCES
+  src/vulkan/vk_policy.c src/vulkan/vk_loader.c src/vulkan/vk_alloc.c
+  src/vulkan/vk_context.c src/vulkan/vk_swapchain.c src/vulkan/vk_shaders.c
+  src/vulkan/vk_renderer.c)
+add_library(jpt_vulkan STATIC ${JPT_VULKAN_SOURCES} src/host/ao_policy.c)
+target_include_directories(jpt_vulkan PUBLIC src/vulkan)
+target_include_directories(jpt_vulkan SYSTEM PUBLIC third_party/vulkan)
+target_include_directories(jpt_vulkan PRIVATE src/host)
+target_link_libraries(jpt_vulkan PUBLIC jpt_common SDL3::SDL3-static)
+set_source_files_properties(${JPT_VULKAN_SOURCES} PROPERTIES COMPILE_OPTIONS "/W4")
+target_compile_definitions(jpt_vulkan PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 # TRG Launcher (C++17: in C++20 u8string() is another type) and Dear ImGui with its SDL3 backends.
 add_library(trg_core STATIC ${TRG_DIR}/src/settings.cpp ${TRG_DIR}/src/platform.cpp)
@@ -383,7 +402,7 @@ target_link_options(trespasser_recomp PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser_recomp PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser_recomp PRIVATE assao jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
+target_link_libraries(trespasser_recomp PRIVATE assao jpt_vulkan jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
   dxgi dxguid ole32 uuid windowscodecs delayimp)
 # ImGui's D3D11 renderer imports D3DCompile; the renderer loads d3dcompiler_47.dll itself, so start-up does not need it.
 target_link_options(trespasser_recomp PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
@@ -715,7 +734,8 @@ add_executable(debug_menu_tests EXCLUDE_FROM_ALL tests/debug_menu_tests.c tests/
   tests/minimap_tests.c tests/objective_tests.c tests/overlay_tests.c tests/menu_l10n_tests.c tests/menu_layout_tests.c src/host/debug_menu_policy.c
   src/host/debug_menu_layout.c src/host/cheats_policy.c src/host/text_layer.c tests/text_layer_tests.c
   src/host/compass_policy.c src/host/objective_policy.c src/host/overlay_policy.c src/host/physics_watch_policy.c
-  src/host/minimap.c src/host/host_policy.c tests/physics_watch_tests.c src/host/debug_menu_panel.cpp)
+  src/host/minimap.c src/host/host_policy.c tests/physics_watch_tests.c src/host/debug_menu_panel.cpp
+  src/host/imgui_software.cpp)
 target_include_directories(debug_menu_tests PRIVATE src/host src/common)
 target_compile_options(debug_menu_tests PRIVATE /W3)
 target_compile_definitions(debug_menu_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
@@ -835,3 +855,75 @@ foreach(host_test host_tests platform_tests ce_tests fov_mouse_tests input_tests
   target_link_libraries(${host_test} PRIVATE jpt_profile)
   target_include_directories(${host_test} PRIVATE tests)
 endforeach()
+
+add_executable(vulkan_policy_tests EXCLUDE_FROM_ALL tests/vulkan_policy_tests.c)
+target_link_libraries(vulkan_policy_tests PRIVATE jpt_vulkan)
+target_compile_options(vulkan_policy_tests PRIVATE /W4)
+target_compile_definitions(vulkan_policy_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+add_executable(vulkan_render_tests EXCLUDE_FROM_ALL tests/vulkan_render_tests.c)
+target_link_libraries(vulkan_render_tests PRIVATE jpt_vulkan)
+target_compile_options(vulkan_render_tests PRIVATE /W4)
+target_compile_definitions(vulkan_render_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+add_executable(video_vulkan_tests EXCLUDE_FROM_ALL tests/video_vulkan_tests.c src/host/video_layout.c)
+target_include_directories(video_vulkan_tests PRIVATE src/host src/common tests)
+target_link_libraries(video_vulkan_tests PRIVATE jpt_vulkan)
+target_compile_options(video_vulkan_tests PRIVATE /W3)
+target_compile_definitions(video_vulkan_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+
+add_executable(renderer_benchmark_vulkan_tests EXCLUDE_FROM_ALL tests/renderer_benchmark.c tests/renderer_benchmark_vk_stubs.c
+  src/host/ddraw/page_guard.c
+  src/host/ddraw/vk_win_renderer.c src/host/ddraw/vk_win_account.c src/host/texture_gpu_policy.c
+  src/host/ddraw/d3d_translate.c src/host/ddraw/target_sync.c src/host/ce_effects.c src/host/ao_policy.c src/host/text_layer.c)
+target_include_directories(renderer_benchmark_vulkan_tests PRIVATE src/host src/host/ddraw src/common src/vulkan tests
+  ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(renderer_benchmark_vulkan_tests PRIVATE jpt_vulkan jpt_common user32 gdi32)
+target_compile_options(renderer_benchmark_vulkan_tests PRIVATE /W3)
+target_compile_definitions(renderer_benchmark_vulkan_tests PRIVATE _CRT_SECURE_NO_WARNINGS BENCH_VULKAN)
+
+add_executable(renderer_benchmark_d3d11_tests EXCLUDE_FROM_ALL tests/renderer_benchmark.c tests/renderer_benchmark_d3d11_stubs.c
+  src/host/ddraw/d3d11_present.c src/host/ddraw/d3d11_renderer.c src/host/ddraw/d3d11_shaders.c
+  src/host/ddraw/assao_host.cpp src/host/ddraw/assao_shader.cpp ${JPT_ASSAO_SHADER_SOURCE} src/host/ao_policy.c src/host/ce_effects.c
+  src/host/texture_gpu_policy.c src/host/ddraw/d3d_translate.c src/host/ddraw/target_sync.c
+  src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c src/host/text_layer.c src/host/host_policy.c src/host/ddraw/dd_common.c)
+target_include_directories(renderer_benchmark_d3d11_tests PRIVATE src/host src/host/ddraw src/common src/vulkan third_party/vulkan launcher tests
+  ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(renderer_benchmark_d3d11_tests PRIVATE assao jpt_common user32 gdi32 d3d11 dxgi d3dcompiler dxguid)
+target_compile_options(renderer_benchmark_d3d11_tests PRIVATE /W3)
+target_compile_definitions(renderer_benchmark_d3d11_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+add_executable(vulkan_dispatch_tests EXCLUDE_FROM_ALL
+  tests/vulkan_dispatch_tests.c
+  src/host/ddraw/page_guard.c
+  src/host/ddraw/renderer_backend.c
+  src/host/ddraw/vk_win_renderer.c
+  src/host/ddraw/vk_win_account.c
+  src/host/texture_gpu_policy.c
+  src/host/ddraw/d3d_translate.c
+  src/host/ddraw/target_sync.c
+  src/host/ce_effects.c
+  src/host/ao_policy.c
+  src/host/text_layer.c)
+target_include_directories(vulkan_dispatch_tests PRIVATE src/host src/host/ddraw src/common src/vulkan
+  ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(vulkan_dispatch_tests PRIVATE jpt_vulkan jpt_common user32 gdi32)
+target_compile_options(vulkan_dispatch_tests PRIVATE /W3)
+target_compile_definitions(vulkan_dispatch_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+add_executable(vulkan_runtime_tests EXCLUDE_FROM_ALL
+  tests/vulkan_runtime_tests.c
+  src/host/ddraw/page_guard.c
+  src/host/ddraw/vk_win_renderer.c
+  src/host/ddraw/vk_win_account.c
+  src/host/texture_gpu_policy.c
+  src/host/ddraw/d3d_translate.c
+  src/host/ddraw/target_sync.c
+  src/host/ce_effects.c
+  src/host/ao_policy.c
+  src/host/text_layer.c)
+target_include_directories(vulkan_runtime_tests PRIVATE src/host src/host/ddraw src/common src/vulkan
+  ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(vulkan_runtime_tests PRIVATE jpt_vulkan jpt_common user32 gdi32)
+target_compile_options(vulkan_runtime_tests PRIVATE /W3)
+target_compile_definitions(vulkan_runtime_tests PRIVATE _CRT_SECURE_NO_WARNINGS)

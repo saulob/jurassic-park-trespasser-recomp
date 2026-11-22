@@ -124,6 +124,39 @@ int vl_palette_map_update(vl_palette_map_t* m, const uint8_t* palette) {
     return 1;
 }
 
+void vl_convert_row_rgba(const uint16_t* row, int count, int rgb565, const vl_palette_map_t* map, const uint16_t* gamma,
+                         uint8_t* out) {
+    for (int x = 0; x < count; x++) {
+        uint16_t px = row[x];
+        uint32_t mapped = (rgb565 && map && map->valid) ? map->map[px] : 0u;
+        uint8_t r, g, b;
+        if (mapped >> 24) {
+            r = (uint8_t)(mapped >> 16);
+            g = (uint8_t)(mapped >> 8);
+            b = (uint8_t)mapped;
+        } else if (rgb565) {
+            uint32_t r5 = (px >> 11) & 31u, g6 = (px >> 5) & 63u, b5 = px & 31u;
+            r = (uint8_t)((r5 << 3) | (r5 >> 2));
+            g = (uint8_t)((g6 << 2) | (g6 >> 4));
+            b = (uint8_t)((b5 << 3) | (b5 >> 2));
+        } else {
+            uint32_t r5 = (px >> 10) & 31u, g5 = (px >> 5) & 31u, b5 = px & 31u;
+            r = (uint8_t)((r5 << 3) | (r5 >> 2));
+            g = (uint8_t)((g5 << 3) | (g5 >> 2));
+            b = (uint8_t)((b5 << 3) | (b5 >> 2));
+        }
+        if (gamma) {
+            r = (uint8_t)(gamma[r] >> 8);
+            g = (uint8_t)(gamma[256 + g] >> 8);
+            b = (uint8_t)(gamma[512 + b] >> 8);
+        }
+        out[x * 4 + 0] = r;
+        out[x * 4 + 1] = g;
+        out[x * 4 + 2] = b;
+        out[x * 4 + 3] = 255;
+    }
+}
+
 const char* vl_play_mode_name(vl_play_mode_t mode) {
     return mode == VL_PLAY_ORIGINAL ? "ORIGINAL" : mode == VL_PLAY_HD ? "HD" : "AUTO";
 }
@@ -178,6 +211,32 @@ int vl_lone_bottom_pixels(const uint8_t* rows, long stride, int width, int heigh
     for (int k = 0; k < 3; k++) above[k] = (const uint16_t*)(rows + (size_t)(height - 2 - k) * stride);
     for (int x = 0; x < width; x++) lone += last[x] && !above[0][x] && !above[1][x] && !above[2][x];
     return lone;
+}
+
+void vl_convert_frame_rgba(const uint8_t* rows, long stride, int width, int height, int rgb565, const vl_palette_map_t* map,
+                           const uint16_t* gamma, int stray_bottom_line, uint8_t* out) {
+    for (int y = 0; y < height; y++) {
+        const uint16_t* row = (const uint16_t*)(rows + (size_t)y * (size_t)stride);
+        uint8_t* dst = out + (size_t)y * (size_t)width * 4u;
+        vl_convert_row_rgba(row, width, rgb565, map, gamma, dst);
+        if (!stray_bottom_line || y != height - 1 || y < 3) continue;
+        for (int x = 0; x < width; x++) {
+            const uint16_t* up = (const uint16_t*)(rows + (size_t)(y - 1) * (size_t)stride);
+            const uint16_t* up2 = (const uint16_t*)(rows + (size_t)(y - 2) * (size_t)stride);
+            const uint16_t* up3 = (const uint16_t*)(rows + (size_t)(y - 3) * (size_t)stride);
+            if (row[x] && !(up[x] | up2[x] | up3[x])) vl_convert_row_rgba(up + x, 1, rgb565, map, gamma, dst + (size_t)x * 4u);
+        }
+    }
+}
+
+vl_stages_t vl_video_stages(const vl_policy_t* policy, const vl_layout_t* layout, int stray_latched) {
+    vl_stages_t s;
+    int progressive = policy->rows == VL_ROWS_PROGRESSIVE;
+    s.smooth = 1;
+    s.deblock = progressive;
+    s.glow = layout->side >= 2;
+    s.stray = progressive && stray_latched;
+    return s;
 }
 
 int vl_session_stray_line(vl_session_t* s, int lone_pixels) {

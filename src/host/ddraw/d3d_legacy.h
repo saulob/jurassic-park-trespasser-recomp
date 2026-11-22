@@ -104,4 +104,12 @@ unsigned present_device_generation(void);
 struct ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height);
 int present_submit(int vsync, unsigned generation);
 
+/* Direct D3D11 presenter entry points wired into jpt_d3d11_backend_ops / jpt_software_backend_ops. */
+void d3d11_present_set_vsync(int on);
+void d3d11_present_set_graphics_card(const char* name);
+int d3d11_present_adapter(dd_adapter_t* out);
+void d3d11_present_frame(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,
+                         const DDGAMMARAMP* gamma, int gamma_changed, int vsync, unsigned generation);
+void d3d11_present_release(void);
+
 #endif

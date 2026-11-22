@@ -15,9 +15,10 @@ struct ID3D11RenderTargetView;
 
 /* The game's own text of this frame (subtitles, hints), kept apart from the picture so the HUD can sit under it. */
 typedef struct {
-    void* texture; /* an ID3D11ShaderResourceView of legacy_w x legacy_h, straight alpha, on the panel's device */
+    void* texture; /* D3D11 SRV (legacy_w x legacy_h), or RGBA8 dirty-rect pixels when software_rgba is set */
     int legacy_w, legacy_h;
     int left, top, right, bottom; /* the part of it that holds text, in texture pixels */
+    int software_rgba;
 } dmp_text_layer_t;
 
 typedef struct {
@@ -41,6 +42,32 @@ typedef struct {
     const char* counter;                /* the frame counter's text; NULL for none */
 } dmp_frame_t;
 
+typedef struct {
+    float clip[4];
+    uint32_t idx_offset, idx_count;
+    int32_t vtx_offset;
+    uint32_t texture;
+} dmp_gpu_cmd_t;
+
+typedef struct {
+    uint32_t id, width, height, bytes_per_pixel;
+    const uint8_t* pixels;
+    uint32_t revision;
+} dmp_gpu_texture_t;
+
+typedef struct dmp_gpu_draw_s {
+    float display_pos[2], display_size[2];
+    uint32_t target_w, target_h;
+    const void* vertices;
+    uint32_t vertex_count;
+    const uint16_t* indices;
+    uint32_t index_count;
+    const dmp_gpu_cmd_t* cmds;
+    uint32_t cmd_count;
+    const dmp_gpu_texture_t* textures;
+    uint32_t texture_count;
+} dmp_gpu_draw_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,6 +77,10 @@ void dmp_draw(struct ID3D11Device* device, struct ID3D11DeviceContext* context, 
 void dmp_release(void);
 /* The same frame drawn by the CPU into 32-bit XRGB pixels (width x height, pitch in pixels): the host without a GPU device. */
 void dmp_draw_software(uint32_t* pixels, int width, int height, int pitch_pixels, const dmp_frame_t* frame);
+/* The same frame drawn into straight-alpha RGBA8 pixels (width x height x 4): composited by Vulkan as an overlay layer. */
+int dmp_draw_rgba(uint8_t* rgba, int width, int height, const dmp_frame_t* frame, uint8_t* tiles, int tiles_w, int tiles_h);
+/* The same frame as Dear ImGui's draw lists flattened for a GPU: 1 drawn, 0 nothing to show. Valid until the next call. */
+int dmp_build_gpu(dmp_gpu_draw_t* out, int width, int height, const dmp_frame_t* frame);
 /* The same, from the bytes of a TrueType face. */
 void dmp_set_fallback_font_memory(const void* ttf, size_t size);
 /* Where the last drawn menu can be clicked; not valid when no menu was drawn. */

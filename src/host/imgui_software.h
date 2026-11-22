@@ -14,5 +14,12 @@
 void imgui_software_init(ImGuiIO& io);
 /* Draws data into pixels (width x height, pitch_pixels between rows). */
 void imgui_software_render(ImDrawData* data, uint32_t* pixels, int width, int height, int pitch_pixels);
+/* Draws data into straight-alpha RGBA8 pixels (width x height x 4 bytes, tightly packed). */
+#ifndef OVERLAY_TILE_SHIFT
+#define OVERLAY_TILE_SHIFT 5
+#endif
+void imgui_software_update_textures(ImDrawData* data);
+void imgui_software_render_rgba(ImDrawData* data, uint8_t* rgba, int width, int height, uint8_t* tiles, int tiles_w,
+                                int tiles_h);
 
 #endif

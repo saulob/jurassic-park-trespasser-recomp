@@ -27,7 +27,7 @@ class RendererFixed(unittest.TestCase):
     def test_renderer_set_once_at_start_up(self):
         text = (HOST / "ddraw" / "d3d11_renderer.c").read_text(encoding="utf-8")
         writes = [m.start() for m in HARDWARE_WRITE.finditer(text)]
-        start = text.index("int d3dr_startup(void) {")
+        start = text.index("static int d3d11_be_startup(void) {")
         self.assertEqual(len(writes), 1)
         self.assertTrue(start < writes[0] < text.index("\n}\n", start))
         for path, other in host_sources():

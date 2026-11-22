@@ -847,8 +847,8 @@ private:
     }
 
     void PageGraphics(trg::Ui& ui) {
-        ui.Combo("Renderer", kRendererHelp, JPT_KEY_RENDERER, "d3d11",
-                 {{"d3d11", "Direct3D 11"}, {"software", "Software"}});
+        ui.Combo("Renderer", kRendererHelp, JPT_KEY_RENDERER, "auto",
+                 {{"auto", "Auto"}, {"d3d11", "Direct3D 11"}, {"vulkan", "Vulkan"}, {"software", "Software"}});
         ui.Row("Graphics card", kGraphicsCardHelp);
         GraphicsCardCombo();
         const int aspect = jpt_aspect_index(settings_.Get(JPT_KEY_ASPECT_RATIO).c_str());
@@ -1261,7 +1261,11 @@ private:
         if (ui.ButtonRow("Logs folder", "Open the folder containing session logs", "Open logs folder")) {
             OpenLogsFolder();
         }
-        const std::string renderer = settings_.Get(JPT_KEY_RENDERER) == "software" ? "Software" : "Direct3D 11";
+        const std::string rval = settings_.Get(JPT_KEY_RENDERER);
+        const std::string renderer = rval == "software" ? "Software"
+                                   : rval == "vulkan"   ? "Vulkan"
+                                   : rval == "auto"     ? "Auto"
+                                                        : "Direct3D 11";
         ui.InfoGrid({{"Port version", JPT_PORT_VERSION},
                      {"Game", Selected() && Selected()->profile ? Tr(Selected()->profile->label())
                                                                 : Tr(GameStateTitle(check_.state))},
