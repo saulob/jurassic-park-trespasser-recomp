@@ -2,3 +2,5 @@ patches/**/*.patch -text
 assets/translations/*.subtitles*.txt whitespace=-trailing-space
 tools/*.sh text eol=lf
 tests/linux/CMakeLists.txt text eol=lf
+packaging/linux/AppRun text eol=lf
+packaging/linux/*.desktop text eol=lf

@@ -43,6 +43,7 @@ typedef struct {
     const char* title;
     int client_w, client_h;
     int resizable, fullscreen;
+    int monitor; /* 1-based, primary first (the Monitor setting); 0: where the window system puts it */
 } lx_window_desc_t;
 
 typedef struct lx_window_backend lx_window_backend_t;

@@ -168,10 +168,12 @@ Add-Exes $s @(
 Add-Python $s @(, @('test_renderer_fixed.py', 'the renderer chosen at start stays until exit'))
 
 $s = 'Memory, filesystem and saves'
+Add-Python $s @(, @('test_linux_parity.py', 'application ID, portable folders, AppImage contract, launcher on Linux, setting options, written inventory'))
 Add-Exes $s @(, @('user_data_tests', 'portable user_data root, --user_data_root, an unwritable root is an error, migration of the old folder', 150))
 Add-Exes $s @(
     , @('vpath_tests', 'guest paths over a case-sensitive host: case-insensitive match, separators, containment, create mode, directory cache', 40)
     , @('reg_store_tests', 'registry value store: round trip, Windows-written file, fixed-width format', 25)
+    , @('port_tests', 'port folder, AppImage folder, log folder and its fallback, restart command, application ID', 20)
     , @('sync_tests', 'events, semaphores, mutexes, waits, threads, critical sections, monotonic clock and timers over SDL3', 45)
 )
 
@@ -321,6 +323,10 @@ $toolRole = @{
     'tools\linux_artifact.py' = 'the Linux artifact: self-check against sources and contract, atomic staging; run by tools/linux_gate.py and this script, checked by tests\test_linux_artifact.py'
     'tools\package-linux.sh' = 'packaging entry: verifies the validated Linux binary and stages it; never builds, never run by this gate'
     'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL by this script or on Linux by hand'
+    'tools\test-linux-parity.sh' = 'the Linux parity gate: the static contracts of tests\test_linux_parity.py, then tools/test-linux.sh; Linux only, run in WSL or by hand'
+    'tools\linux_parity_report.py' = 'writes and checks docs\LINUX_PARITY.md from the feature contract; checked by tests\test_linux_parity.py'
+    'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui and TRG Launcher at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
+    'tools\make-app-icon.py' = 'maintainer: regenerates the application icon from the launcher header art'
     'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'

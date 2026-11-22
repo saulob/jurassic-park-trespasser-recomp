@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_sync.h"
 #include "linux_crash.h"
@@ -9,6 +10,7 @@
 #include "linux_log.h"
 #include "linux_overlay.h"
 #include "linux_quick.h"
+#include "linux_settings.h"
 #include "linux_spine.h"
 #include "linux_video_subtitles.h"
 
@@ -60,6 +62,13 @@ int lx_screen_window_open(const char* title, int client_w, int client_h) {
     d.client_h = client_h;
     d.resizable = 1;
     d.fullscreen = 0;
+    d.monitor = 0;
+    if (lx_window_backend()->name && !strcmp(lx_window_backend()->name, "SDL3")) {
+        const jpt_config_t* settings = lx_settings_current();
+        if (settings->window_w > 0 && settings->window_h > 0) d.client_w = client_w = settings->window_w, d.client_h = client_h = settings->window_h;
+        d.fullscreen = settings->borderless;
+        d.monitor = settings->monitor;
+    }
     if (!lx_window_backend()->open(lx_window_backend(), &d)) return 0;
     ensure_presentation();
     jpt_presentation_set_host(&s_pres, client_w, client_h);
@@ -91,8 +100,14 @@ void lx_screen_window_client(int* w, int* h) {
     else *w = s_mode.width, *h = s_mode.height;
 }
 
+/* A Window size the player chose is a size the guest's own resizing never changes (Window size Auto follows the guest). */
+static int fixed_window_size(void) {
+    const jpt_config_t* settings = lx_settings_current();
+    return lx_window_backend()->name && !strcmp(lx_window_backend()->name, "SDL3") && settings->window_w > 0 && settings->window_h > 0;
+}
+
 void lx_screen_set_client_size(int w, int h) {
-    if (!s_open || w <= 0 || h <= 0) return;
+    if (!s_open || w <= 0 || h <= 0 || fixed_window_size()) return;
     lx_window_backend()->set_client_size(lx_window_backend(), w, h);
     ensure_presentation();
     jpt_presentation_set_host(&s_pres, w, h);

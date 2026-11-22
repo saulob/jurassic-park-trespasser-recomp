@@ -1,10 +1,13 @@
 /* The SDL3 window backend: one window, one renderer, one streaming texture. The guest's RGB565 frame is uploaded unchanged and
  * the renderer places it where jpt_presentation says (letterboxed); SDL chooses the window system (X11 or Wayland). Only the
  * executable installs this backend; the headless suites never open it. */
+#include <stdio.h>
 #include <string.h>
 
 #include <SDL3/SDL.h>
 
+#include "jpt_app_identity.h"
+#include "jpt_monitors.h"
 #include "linux_log.h"
 #include "linux_mouse.h"
 #include "linux_crash.h"
@@ -83,10 +86,47 @@ static void refresh_output(void) {
     if (s.renderer && !SDL_GetCurrentRenderOutputSize(s.renderer, &s.out_w, &s.out_h)) s.out_w = s.out_h = 0;
 }
 
+/* The player is told on screen, in SDL's own message box (no external tool), and on stderr; the log has the details. */
+static void show_graphics_notice(void) {
+    const char* notice = lx_vk_graphics_notice();
+    const char* driver = SDL_GetCurrentVideoDriver();
+    char text[640];
+    if (!notice[0]) return;
+    snprintf(text, sizeof text, "%s\n\nYour renderer setting was not changed. Details: %s", notice, lx_log_path());
+    fprintf(stderr, "trespasser_recomp: %s\n", text);
+    if (driver && strcmp(driver, "dummy") && strcmp(driver, "offscreen"))
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Graphics", text, NULL);
+}
+
+/* The display the Monitor setting names (primary first, as in the launcher), 0 for the window system's choice. */
+static SDL_DisplayID display_of(int monitor) {
+    jpt_monitor_t m;
+    if (monitor < 1 || !jpt_find_monitor(monitor, &m)) return 0;
+    return (SDL_DisplayID)(size_t)m.handle;
+}
+
+static SDL_Window* create_window(const lx_window_desc_t* d, SDL_WindowFlags flags, SDL_DisplayID display) {
+    SDL_PropertiesID props;
+    SDL_Window* window;
+    if (!display) return SDL_CreateWindow(d->title, d->client_w, d->client_h, flags);
+    props = SDL_CreateProperties();
+    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, d->title);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, d->client_w);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, d->client_h);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, SDL_WINDOWPOS_CENTERED_DISPLAY(display));
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, SDL_WINDOWPOS_CENTERED_DISPLAY(display));
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, (Sint64)flags);
+    window = SDL_CreateWindowWithProperties(props);
+    SDL_DestroyProperties(props);
+    return window;
+}
+
 static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     int want_vk = lx_vk_active();
+    SDL_DisplayID display;
     (void)b;
+    jpt_app_identity_apply(NULL);
     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) s.video_up = 1;
     else {
         lx_log("Linux presentation", "SDL3 video: %s", SDL_GetError());
@@ -95,12 +135,14 @@ static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     if (d->resizable) flags |= SDL_WINDOW_RESIZABLE;
     if (d->fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
     if (want_vk) flags |= SDL_WINDOW_VULKAN;
-    s.window = SDL_CreateWindow(d->title, d->client_w, d->client_h, flags);
+    display = display_of(d->monitor);
+    if (d->monitor > 0) lx_log("Linux presentation", "Monitor %d: %s", d->monitor, display ? "found" : "not found, the window system chooses");
+    s.window = create_window(d, flags, display);
     if (!s.window && want_vk) {
         lx_log("Linux presentation", "SDL3 Vulkan window failed (%s); retrying Software window", SDL_GetError());
         want_vk = 0;
         flags &= ~SDL_WINDOW_VULKAN;
-        s.window = SDL_CreateWindow(d->title, d->client_w, d->client_h, flags);
+        s.window = create_window(d, flags, display);
     }
     if (!s.window) {
         lx_log("Linux presentation", "SDL3 window: %s", SDL_GetError());
@@ -125,6 +167,8 @@ static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
         }
         SDL_SetRenderVSync(s.renderer, 1);
     }
+    jpt_app_icon_apply(s.window);
+    show_graphics_notice();
     SDL_StartTextInput(s.window);
     s.fullscreen = d->fullscreen;
     refresh_output();

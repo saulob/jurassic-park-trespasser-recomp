@@ -32,7 +32,9 @@
 #include "options.h"
 #include "page_icons.h"
 #include "placement.h"
+#include "file_picker.h"
 #include "play_gate.h"
+#include "portable.h"
 #include "settings.h"
 #include "system_info.h"
 #include "user_data.h"
@@ -54,8 +56,13 @@ const ImVec4 kActionLink = ImVec4(0xC8 / 255.0f, 0xE6 / 255.0f, 0x9C / 255.0f, 1
 const std::string kPortUrl = std::string("https://") + kPortRepository;
 constexpr double kPlayFeedbackSeconds = 0.4;
 
+#ifdef _WIN32
 constexpr char kShowLauncherHelp[] =
     "Off starts the game directly. Hold Shift while starting, or start the program with --launcher, to bring it back.";
+#else
+constexpr char kShowLauncherHelp[] =
+    "Off starts the game directly. Start the program with --launcher to bring it back.";
+#endif
 constexpr char kWindowSizeHelp[] =
     "The game window's size in pixels in Windowed mode. Auto shows the picture at the monitor's scale. The picture "
     "keeps its shape: other window shapes get black bars.";
@@ -66,9 +73,15 @@ constexpr char kAspectRatioHelp[] =
 constexpr char kPresentationHelp[] =
     "Controls how the rendered image fits a window or display with a different aspect ratio. This is not widescreen: "
     "see Aspect ratio.";
+#ifdef _WIN32
 constexpr char kRendererHelp[] =
     "Direct3D 11 draws the game's 3D on the graphics card at the render resolution. Software is the game's own "
     "rasteriser at its original size.";
+#else
+constexpr char kRendererHelp[] =
+    "Vulkan draws the game's 3D on the graphics card at the render resolution. Software is the game's own "
+    "rasteriser at its original size.";
+#endif
 constexpr char kGraphicsCardHelp[] =
     "Selects which graphics card renders the game. If the selected card is no longer available, the first available "
     "card is used.";
@@ -84,9 +97,15 @@ constexpr char kAntiAliasingHelp[] =
 constexpr char kTextureFilteringHelp[] =
     "Sharper, steadier textures at a distance and on the ground seen at an angle, with mipmaps generated for the 3D "
     "world. Original uses the game's own filtering without them; Bilinear smooths every texture.";
+#ifdef _WIN32
 constexpr char kAmbientOcclusionHelp[] =
     "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
     "Higher levels look smoother and cost more. Direct3D 11 only.";
+#else
+constexpr char kAmbientOcclusionHelp[] =
+    "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
+    "Higher levels look smoother and cost more. Vulkan only.";
+#endif
 constexpr char kVSyncHelp[] = "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.";
 constexpr char kShowFpsTitleHelp[] = "Shows the frame rate in the window title.";
 constexpr char kShowFrameCounterHelp[] =
@@ -247,13 +266,15 @@ constexpr char kRemoveVersionHelp[] =
     "Deletes this version's copied game files. Your disc image, your saves and the other versions are not touched.";
 
 bool Playable(const InstalledVersion* v) {
-    return v && v->profile && v->check.state == GameState::kReady && jpt_game_version_playable(v->profile->version);
+    return v && v->profile && v->check.state == GameState::kReady && jpt_game_version_playable(v->profile->version) &&
+           !jpt_game_version_unavailable_here(v->profile->version);
 }
 
 std::string VersionName(const InstalledVersion& v) {
     std::string name = Tr(v.profile->label());
     if (v.check.state != GameState::kReady) name += std::string(" (") + Tr(GameStateTitle(v.check.state)) + ")";
-    else if (!jpt_game_version_playable(v.profile->version)) name += Tr(" (not playable yet)");
+    else if (!jpt_game_version_playable(v.profile->version) || jpt_game_version_unavailable_here(v.profile->version))
+        name += Tr(" (not playable yet)");
     return name;
 }
 
@@ -261,6 +282,7 @@ std::string StatusDetail(const InstalledVersion* v, const GameCheck& check) {
     if (v && v->profile && check.state == GameState::kReady) {
         const jpt_game_version_t& g = *v->profile->version;
         if (!jpt_game_version_playable(&g)) return TrMessage(g.unplayable);
+        if (const char* here = jpt_game_version_unavailable_here(&g)) return TrMessage(here);
         return TrFormat("Game language: %s", Tr(g.language)) + "  \xC2\xB7  " + TrMessage(g.release);
     }
     if (check.state == GameState::kMissing) return Tr("Import the game from your Trespasser disc image.");
@@ -654,6 +676,11 @@ private:
         if (install_.running()) {
             return;
         }
+        if (!FilePickerAvailable()) {
+            Log("no file picker: neither zenity nor kdialog is on the PATH");
+            launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the disc image."), 10.0);
+            return;
+        }
         StartInstall(trg::BrowseForFile(Tr("Select your Trespasser disc image"), {{Tr("Disc images (*.iso)"), "*.iso"}}),
                      replace);
     }
@@ -848,7 +875,11 @@ private:
 
     void PageGraphics(trg::Ui& ui) {
         ui.Combo("Renderer", kRendererHelp, JPT_KEY_RENDERER, "auto",
+#ifdef _WIN32
                  {{"auto", "Auto"}, {"d3d11", "Direct3D 11"}, {"vulkan", "Vulkan"}, {"software", "Software"}});
+#else
+                 {{"auto", "Auto"}, {"vulkan", "Vulkan"}, {"software", "Software"}});
+#endif
         ui.Row("Graphics card", kGraphicsCardHelp);
         GraphicsCardCombo();
         const int aspect = jpt_aspect_index(settings_.Get(JPT_KEY_ASPECT_RATIO).c_str());
@@ -1222,10 +1253,17 @@ private:
             "This open source PC port is maintained and developed in my free time. If you enjoy the project and would "
             "like to support its continued development, you can sponsor my work on GitHub.",
             "Support is completely optional and helps support ongoing improvements and future projects.");
+#ifdef _WIN32
         ui.Paragraph("Jurassic Park: Trespasser Recompiled. PC port powered by static recompilation: the 1998 game "
                      "runs as native code on modern Windows, with a Direct3D 11 renderer. No game files are included; "
                      "the game runs from the player's own disc. Port by saulob, recompiled with pcrecomp by sp00nz. "
                      "Original game by DreamWorks Interactive.");
+#else
+        ui.Paragraph("Jurassic Park: Trespasser Recompiled. PC port powered by static recompilation: the 1998 game "
+                     "runs as native code on modern Linux, with a Vulkan renderer. No game files are included; "
+                     "the game runs from the player's own disc. Port by saulob, recompiled with pcrecomp by sp00nz. "
+                     "Original game by DreamWorks Interactive.");
+#endif
         ui.Spacer(4);
         std::error_code ec;
         if (const InstalledVersion* selected = Selected(); selected && std::filesystem::is_directory(selected->dir, ec)) {
@@ -1265,12 +1303,20 @@ private:
         const std::string renderer = rval == "software" ? "Software"
                                    : rval == "vulkan"   ? "Vulkan"
                                    : rval == "auto"     ? "Auto"
+#ifdef _WIN32
                                                         : "Direct3D 11";
+#else
+                                                        : "Vulkan";
+#endif
         ui.InfoGrid({{"Port version", JPT_PORT_VERSION},
                      {"Game", Selected() && Selected()->profile ? Tr(Selected()->profile->label())
                                                                 : Tr(GameStateTitle(check_.state))},
                      {"Renderer", renderer},
+#ifdef _WIN32
                      {"Platform", "Windows x86"}});
+#else
+                     {"Platform", "Linux x86_64"}});
+#endif
         char libraries[96];
         std::snprintf(libraries, sizeof(libraries), "SDL %d.%d.%d  \xC2\xB7  Dear ImGui %s  \xC2\xB7  TRG Launcher %s",
                       SDL_VERSIONNUM_MAJOR(SDL_GetVersion()), SDL_VERSIONNUM_MINOR(SDL_GetVersion()),

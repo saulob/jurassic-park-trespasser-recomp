@@ -36,9 +36,12 @@ had that option) loads normally: the line is ignored and never written again.
 | System | `user_data` is in |
 | --- | --- |
 | Windows | next to the executable: the folder that holds `trespasser_recomp.exe` |
-| Linux AppImage (future; not built yet) | next to the original AppImage file, never inside its read-only mount |
+| Linux | next to the executable: the folder that holds `trespasser_recomp` |
+| Linux AppImage (future; not built yet) | next to the original AppImage file (the `APPIMAGE` variable), never inside its read-only mount |
 
-This is `PortFolder()` in `launcher/user_data.cpp`. No other location is ever chosen automatically: not
+This is `PortFolder()` in `launcher/user_data.cpp`, which calls `jpt_port_folder()` (`src/common/jpt_port.c`), the same function the Linux
+runtime uses (`src/linux/linux_paths.c`). On Linux `game\`, `logs\` and `user_data\` follow it; the only fallback is the log folder of an
+AppImage, which moves to `user_data/logs` when the one beside the AppImage file cannot be written. No other location is ever chosen automatically: not
 `%LOCALAPPDATA%`, `%APPDATA%`, Documents, `%TEMP%` or any other system folder. `--user_data_root <folder>` (or
 `--user_data_root=<folder>`, or the environment variable `TRESPASSER_USER_DATA_ROOT`, the command line winning) is the
 alternative when the program folder cannot be written: that folder is used and `<port folder>\user_data` is not

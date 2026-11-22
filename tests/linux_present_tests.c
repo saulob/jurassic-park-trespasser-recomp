@@ -40,6 +40,20 @@ static void test_views(void) {
     CHECK(v.w >= 0 && v.h >= 0, "an empty window gives an empty view");
 }
 
+/* The 16:10 handheld screen (1280x800): a 4:3 picture is centred with bars at the sides, a 16:10 picture fills it. */
+static void test_handheld_1280x800(void) {
+    lx_view_t v = lx_present_view(1280, 800, 640, 480, 0);
+    int gx = -1, gy = -1;
+    CHECK(v.h == 800 && v.w >= 1066 && v.w <= 1067 && v.y == 0, "640x480 in 1280x800 is 1067x800 (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+    CHECK(v.x >= 0 && v.x + v.w <= 1280 && v.x == (1280 - v.w) / 2, "centred with equal bars (x=%d)", v.x);
+    v = lx_present_view(1280, 800, 1280, 800, 0);
+    CHECK(view_is(v, 0, 0, 1280, 800), "a 16:10 screen fills it (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+    v = lx_present_view(1280, 800, 1280, 720, 0);
+    CHECK(v.w == 1280 && v.h == 720 && v.y == 40, "a 16:9 screen has thin bars above and below (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+    CHECK(lx_present_to_guest(1280, 800, 640, 480, 0, 640, 400, &gx, &gy) && gx == 320 && gy == 240,
+          "the centre of the window is the centre of the screen (%d,%d)", gx, gy);
+}
+
 static void test_mapping(void) {
     int gx = -1, gy = -1;
     CHECK(lx_present_to_guest(1280, 720, 640, 480, 0, 640, 360, &gx, &gy) && gx == 320 && gy == 240, "the centre of the window is the centre of the screen (%d,%d)", gx, gy);
@@ -81,6 +95,7 @@ static void test_transition(void) {
 
 int main(void) {
     test_views();
+    test_handheld_1280x800();
     test_mapping();
     test_transition();
     printf("linux_present_tests: %d checks, %d failures\n", g_checks, g_failures);

@@ -62,6 +62,11 @@ log=$(printf '%s/build/logs/linux_build_%03d.log' "$repo" "$n")
   echo "config $config, lifted $lifted, build dir $build_dir"
 } | tee "$log"
 
+python3 -I "$repo/tools/fetch_launcher_deps.py" >>"$log" 2>&1 || {
+  echo "build-linux: the launcher and SDL sources (config/launcher_deps.txt) are missing and could not be fetched: run python3 tools/fetch_launcher_deps.py" >&2
+  tail -5 "$log" >&2
+  exit 2
+}
 [ "$clean" = 1 ] && rm -rf "$build_dir"
 export CC=$cc
 case "$cc" in

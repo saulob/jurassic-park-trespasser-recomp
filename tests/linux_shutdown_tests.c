@@ -145,7 +145,7 @@ static int poll_event(lx_window_backend_t* b, lx_event_t* ev) {
 
 static void test_sdl_routes(void) {
     lx_window_backend_t* b = lx_sdl_backend();
-    lx_window_desc_t d = { "shutdown", 320, 240, 0, 0 };
+    lx_window_desc_t d = { "shutdown", 320, 240, 0, 0, 0 };
     lx_event_t ev;
     SDL_Event e;
     if (!b->open(b, &d)) {

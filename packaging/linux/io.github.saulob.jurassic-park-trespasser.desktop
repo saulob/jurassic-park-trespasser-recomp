@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Jurassic Park: Trespasser
+Comment=Jurassic Park: Trespasser, native PC port
+Exec=trespasser_recomp
+Icon=trespasser_recomp
+Categories=Game;
+Terminal=false
+StartupWMClass=io.github.saulob.jurassic-park-trespasser

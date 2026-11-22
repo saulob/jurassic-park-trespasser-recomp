@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "os_file.h"
+
 namespace jpt {
 
 struct IsoFile {
@@ -45,7 +47,7 @@ private:
     bool Read(uint64_t offset, void* out, size_t size);
     bool Walk(uint32_t extent, uint32_t size, const std::string& parent, int depth, std::string& error);
 
-    void* handle_ = nullptr;
+    FileReader file_;
     uint64_t image_size_ = 0;
     std::string volume_id_;
     bool joliet_ = false;

@@ -1,7 +1,4 @@
-#define WIN32_LEAN_AND_MEAN
 #include "iso9660.h"
-
-#include <windows.h>
 
 #include <algorithm>
 #include <cctype>
@@ -25,12 +22,33 @@ std::string Trim(std::string s) {
 }
 
 std::string Utf16BeToUtf8(const unsigned char* p, size_t bytes) {
-    std::wstring wide;
-    for (size_t i = 0; i + 1 < bytes; i += 2) wide.push_back(static_cast<wchar_t>((p[i] << 8) | p[i + 1]));
-    if (wide.empty()) return {};
-    const int n = WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
-    std::string out(static_cast<size_t>(n), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), out.data(), n, nullptr, nullptr);
+    std::string out;
+    for (size_t i = 0; i + 1 < bytes; i += 2) {
+        uint32_t unit = static_cast<uint32_t>((p[i] << 8) | p[i + 1]);
+        if (unit >= 0xD800 && unit < 0xDC00 && i + 3 < bytes) {
+            const uint32_t low = static_cast<uint32_t>((p[i + 2] << 8) | p[i + 3]);
+            if (low >= 0xDC00 && low < 0xE000) {
+                unit = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+                i += 2;
+            }
+        }
+        if (unit >= 0xD800 && unit < 0xE000) unit = 0xFFFD;
+        if (unit < 0x80) {
+            out.push_back(static_cast<char>(unit));
+        } else if (unit < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (unit >> 6)));
+            out.push_back(static_cast<char>(0x80 | (unit & 0x3F)));
+        } else if (unit < 0x10000) {
+            out.push_back(static_cast<char>(0xE0 | (unit >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((unit >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (unit & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (unit >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((unit >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((unit >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (unit & 0x3F)));
+        }
+    }
     return out;
 }
 
@@ -47,33 +65,22 @@ bool SamePath(const std::string& a, const std::string& b) {
 
 }  // namespace
 
-IsoImage::~IsoImage() {
-    if (handle_) CloseHandle(handle_);
-}
+IsoImage::~IsoImage() = default;
 
 bool IsoImage::Read(uint64_t offset, void* out, size_t size) {
     if (offset > image_size_ || size > image_size_ - offset) return false;
-    LARGE_INTEGER at;
-    at.QuadPart = static_cast<LONGLONG>(offset);
-    DWORD got = 0;
-    return SetFilePointerEx(handle_, at, nullptr, FILE_BEGIN) &&
-           ReadFile(handle_, out, static_cast<DWORD>(size), &got, nullptr) && got == size;
+    return file_.ReadAt(offset, out, size);
 }
 
 bool IsoImage::Open(const std::filesystem::path& image, std::string& error) {
-    handle_ = CreateFileW(image.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
-                          nullptr);
-    if (handle_ == INVALID_HANDLE_VALUE) {
-        handle_ = nullptr;
+    if (!file_.Open(image)) {
         error = "the file cannot be opened";
         return false;
     }
-    LARGE_INTEGER size;
-    if (!GetFileSizeEx(handle_, &size)) {
+    if (!file_.Size(image_size_)) {
         error = "the file size cannot be read";
         return false;
     }
-    image_size_ = static_cast<uint64_t>(size.QuadPart);
     unsigned char vd[kSector];
     unsigned char primary_root[34] = {}, joliet_root[34] = {};
     bool primary = false;
@@ -178,10 +185,8 @@ bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, con
         error = file.path + " lies outside the image (truncated file?)";
         return false;
     }
-    std::filesystem::path part = to;
-    part += L".part";
-    HANDLE out = CreateFileW(part.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (out == INVALID_HANDLE_VALUE) {
+    PartFileWriter out;
+    if (!out.Open(to)) {
         error = "cannot create " + file.path + " in the installation folder";
         return false;
     }
@@ -192,11 +197,10 @@ bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, con
     jpt_sha256_init(&digest);
     while (ok && done < file.size) {
         const size_t n = static_cast<size_t>(std::min<uint64_t>(buffer.size(), file.size - done));
-        DWORD written = 0;
         if (!Read(start + done, buffer.data(), n)) {
             error = "cannot read " + file.path + " from the image";
             ok = false;
-        } else if (!WriteFile(out, buffer.data(), static_cast<DWORD>(n), &written, nullptr) || written != n) {
+        } else if (!out.Write(buffer.data(), n)) {
             error = "cannot write " + file.path + " (disk full?)";
             ok = false;
         } else {
@@ -208,12 +212,11 @@ bool IsoImage::Extract(const IsoFile& file, const std::filesystem::path& to, con
             }
         }
     }
-    CloseHandle(out);
-    if (ok && !MoveFileExW(part.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+    if (ok && !out.Commit()) {
         error = "cannot finish " + file.path;
         ok = false;
     }
-    if (!ok) DeleteFileW(part.c_str());
+    if (!ok) out.Abort();
     if (ok && sha256) {
         char hex[65];
         jpt_sha256_hex(&digest, hex);

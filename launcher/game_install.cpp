@@ -1,7 +1,9 @@
-#define WIN32_LEAN_AND_MEAN
 #include "game_install.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -11,6 +13,9 @@
 #include "jpt_hash.h"
 #include "jpt_l10n.h"
 #include "jpt_string_table.h"
+#include "os_file.h"
+#include "pe_resources.h"
+#include "portable.h"
 #include "utf8.h"
 
 namespace fs = std::filesystem;
@@ -19,11 +24,11 @@ namespace jpt {
 namespace {
 
 constexpr uint64_t kSpaceMargin = 64ull << 20;
-const LPCWSTR kStringResource = MAKEINTRESOURCEW(6);  // RT_STRING, wide whatever the project's character set
+constexpr uint32_t kStringResourceType = 6;  // RT_STRING
 // Data files whose presence marks a Trespasser disc, for the fingerprints of one no profile knows.
 constexpr const char* kTrespasserMarkers[] = {"data/be.scn", "data/menu/loader.ddf", "tresp.ttf"};
 
-fs::path Sibling(const fs::path& dir, const wchar_t* suffix) {
+fs::path Sibling(const fs::path& dir, const char* suffix) {
     fs::path clean = dir;
     if (!clean.has_filename()) clean = clean.parent_path();
     fs::path out = clean;
@@ -34,9 +39,14 @@ fs::path Sibling(const fs::path& dir, const wchar_t* suffix) {
 bool Inside(const fs::path& child, const fs::path& parent) {
     std::error_code ec;
     const fs::path c = fs::weakly_canonical(child, ec), p = fs::weakly_canonical(parent, ec);
+#ifdef _WIN32
     const std::wstring cs = c.wstring(), ps = p.wstring();
     return cs.size() > ps.size() && _wcsnicmp(cs.c_str(), ps.c_str(), ps.size()) == 0 &&
            (cs[ps.size()] == L'\\' || cs[ps.size()] == L'/');
+#else
+    const std::string cs = c.string(), ps = p.string();
+    return cs.size() > ps.size() && cs.compare(0, ps.size(), ps) == 0 && cs[ps.size()] == '/';
+#endif
 }
 
 void Remove(const fs::path& dir) {
@@ -62,20 +72,12 @@ std::string Digest(const std::vector<uint8_t>& bytes) {
 }
 
 bool WriteBytes(const fs::path& to, const std::vector<uint8_t>& bytes, std::string& error) {
-    fs::path part = to;
-    part += L".part";
-    HANDLE out = CreateFileW(part.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (out == INVALID_HANDLE_VALUE) {
+    PartFileWriter out;
+    if (!out.Open(to)) {
         error = "cannot create " + Utf8(to);
         return false;
     }
-    DWORD written = 0;
-    const bool ok = bytes.empty() ||
-                    (WriteFile(out, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
-                     written == bytes.size());
-    CloseHandle(out);
-    if (!ok || !MoveFileExW(part.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        DeleteFileW(part.c_str());
+    if (!out.Write(bytes.data(), bytes.size()) || !out.Commit()) {
         error = "cannot write " + Utf8(to) + " (disk full?)";
         return false;
     }
@@ -124,11 +126,33 @@ std::vector<uint8_t> BuildStringTable(const std::vector<ReleaseString>& strings)
     return table;
 }
 
+// One block of 16 length-prefixed UTF-16 strings of the string table, as the unit below 0x100 or '?'.
+void AppendStringBlock(uint32_t block, const uint8_t* bytes, size_t size, std::vector<ReleaseString>& strings) {
+    const size_t words = size / 2;
+    size_t at = 0;
+    auto word = [&](size_t index) { return static_cast<uint32_t>(bytes[index * 2] | (bytes[index * 2 + 1] << 8)); };
+    for (uint32_t i = 0; i < 16 && at < words; ++i) {
+        const size_t units = word(at++);
+        if (units > words - at) break;
+        if (units) {
+            ReleaseString s{(block - 1) * 16 + i, {}};
+            for (size_t u = 0; u < units; ++u) {
+                const uint32_t unit = word(at + u);
+                s.bytes.push_back(unit < 0x100 ? static_cast<char>(unit) : '?');
+            }
+            strings.push_back(std::move(s));
+        }
+        at += units;
+    }
+}
+
 bool DeriveStringTable(const std::vector<uint8_t>& executable, const fs::path& scratch_dir, std::vector<uint8_t>& table,
                        std::string& error) {
+    std::vector<ReleaseString> strings;
+#ifdef _WIN32
     std::error_code ec;
     fs::create_directories(scratch_dir, ec);
-    const fs::path file = fs::absolute(scratch_dir, ec) / L"resources.tmp";
+    const fs::path file = fs::absolute(scratch_dir, ec) / "resources.tmp";
     if (!WriteBytes(file, executable, error)) return false;
     // Resources only: the file is mapped as data and never run.
     HMODULE module = LoadLibraryExW(file.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
@@ -137,26 +161,26 @@ bool DeriveStringTable(const std::vector<uint8_t>& executable, const fs::path& s
         error = "the file has no readable resources";
         return false;
     }
-    std::vector<ReleaseString> strings;
     for (uint32_t block = 1; block <= JPT_L10N_ID_LIMIT / 16; ++block) {
-        HRSRC found = FindResourceW(module, MAKEINTRESOURCEW(block), kStringResource);
+        HRSRC found = FindResourceW(module, MAKEINTRESOURCEW(block), MAKEINTRESOURCEW(kStringResourceType));
         HGLOBAL loaded = found ? LoadResource(module, found) : nullptr;
-        const WORD* at = loaded ? static_cast<const WORD*>(LockResource(loaded)) : nullptr;
-        if (!at) continue;
-        const WORD* end = at + SizeofResource(module, found) / sizeof(WORD);
-        for (uint32_t i = 0; i < 16 && at < end; ++i) {
-            const size_t units = *at++;
-            if (units > static_cast<size_t>(end - at)) break;
-            if (units) {
-                ReleaseString s{(block - 1) * 16 + i, {}};
-                for (size_t u = 0; u < units; ++u) s.bytes.push_back(at[u] < 0x100 ? static_cast<char>(at[u]) : '?');
-                strings.push_back(std::move(s));
-            }
-            at += units;
-        }
+        const uint8_t* at = loaded ? static_cast<const uint8_t*>(LockResource(loaded)) : nullptr;
+        if (at) AppendStringBlock(block, at, SizeofResource(module, found), strings);
     }
     FreeLibrary(module);
     DeleteFileW(file.c_str());
+#else
+    (void)scratch_dir;
+    for (uint32_t block = 1; block <= JPT_L10N_ID_LIMIT / 16; ++block) {
+        const uint8_t* at = nullptr;
+        size_t size = 0;
+        if (FindPeResource(executable, kStringResourceType, block, at, size)) AppendStringBlock(block, at, size, strings);
+    }
+    if (strings.empty() && !(executable.size() > 1 && executable[0] == 'M' && executable[1] == 'Z')) {
+        error = "the file has no readable resources";
+        return false;
+    }
+#endif
     if (strings.empty()) {
         error = "the executable has no string resources";
         return false;
@@ -168,8 +192,8 @@ bool DeriveStringTable(const std::vector<uint8_t>& executable, const fs::path& s
 fs::path VersionFolder(const fs::path& game_root, const GameProfile& profile) {
     return game_root / JPT_VERSIONS_DIR / PathFromUtf8(profile.id());
 }
-fs::path StagingFolder(const fs::path& dir) { return Sibling(dir, L".install-temp"); }
-fs::path BackupFolder(const fs::path& dir) { return Sibling(dir, L".install-backup"); }
+fs::path StagingFolder(const fs::path& dir) { return Sibling(dir, ".install-temp"); }
+fs::path BackupFolder(const fs::path& dir) { return Sibling(dir, ".install-backup"); }
 
 bool OpenCabinet(IsoImage& image, const GameProfile& profile, Cabinet& cabinet, std::string& why) {
     if (!profile.cabinet) return true;
@@ -335,12 +359,11 @@ InstallResult InstallFromIso(const fs::path& iso, const fs::path& game_root, con
     Remove(staging);
     fs::create_directories(staging, ec);
     if (ec) return Fail(InstallStatus::kExtractFailed, "cannot create " + Utf8(staging));
-    ULARGE_INTEGER free_bytes;
-    if (GetDiskFreeSpaceExW(staging.c_str(), &free_bytes, nullptr, nullptr) &&
-        free_bytes.QuadPart < total + kSpaceMargin) {
+    const fs::space_info space = fs::space(staging, ec);
+    if (!ec && space.available < total + kSpaceMargin) {
         Remove(staging);
         return Fail(InstallStatus::kNoSpace, std::to_string((total + kSpaceMargin) >> 20) + " MB needed, " +
-                                                 std::to_string(free_bytes.QuadPart >> 20) + " MB free");
+                                                 std::to_string(space.available >> 20) + " MB free");
     }
 
     if (hooks.phase) hooks.phase("Copying the game files...");

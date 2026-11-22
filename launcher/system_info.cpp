@@ -1,24 +1,22 @@
 #include "system_info.h"
 
+#ifdef _WIN32
 #include <d3d11.h>
 #include <dxgi.h>
+#else
+#include <cstdio>
+
+#include "vk_context.h"
+#endif
 
 namespace jpt {
+
+#ifdef _WIN32
 
 std::vector<jpt_gpu_t> ListGpus() {
     std::vector<jpt_gpu_t> gpus(JPT_GPU_MAX);
     gpus.resize(static_cast<size_t>(jpt_gpu_list(gpus.data(), JPT_GPU_MAX)));
     return gpus;
-}
-
-std::vector<std::string> GpuChoices(const std::vector<jpt_gpu_t>& gpus) {
-    std::vector<std::string> choices;
-    for (const jpt_gpu_t& gpu : gpus) {
-        if (gpu.label[0]) {
-            choices.emplace_back(gpu.label);
-        }
-    }
-    return choices;
 }
 
 unsigned GpuMsaaMask(int index) {
@@ -42,6 +40,61 @@ unsigned GpuMsaaMask(int index) {
     }
     factory->Release();
     return mask;
+}
+
+#else
+
+namespace {
+
+// One headless Vulkan probe serves the card list and the sample counts. The game enumerates the devices the same way.
+const jpt_vk_probe_result_t& Probe() {
+    static jpt_vk_probe_result_t probe;
+    static bool done = false;
+    if (!done) {
+        jpt_vk_probe_headless("", &probe);
+        done = true;
+    }
+    return probe;
+}
+
+}  // namespace
+
+std::vector<jpt_gpu_t> ListGpus() {
+    const jpt_vk_probe_result_t& probe = Probe();
+    std::vector<jpt_gpu_t> gpus;
+    for (int i = 0; i < probe.gpu_count && i < JPT_GPU_MAX; ++i) {
+        const jpt_vk_gpu_info_t& info = probe.gpus[i];
+        jpt_gpu_t gpu = {};
+        if (info.usable) {
+            std::snprintf(gpu.name, sizeof gpu.name, "%s", info.name);
+            std::snprintf(gpu.label, sizeof gpu.label, "%s", info.label);
+        }
+        gpus.push_back(gpu);
+    }
+    return gpus;
+}
+
+unsigned GpuMsaaMask(int index) {
+    const jpt_vk_probe_result_t& probe = Probe();
+    if (index < 0 || index >= probe.gpu_count) return 0;
+    const jpt_vk_gpu_info_t& info = probe.gpus[index];
+    const unsigned both = info.msaa_color_counts & info.msaa_depth_counts;
+    unsigned mask = 0;
+    for (unsigned n = 2; n <= 8; n *= 2)
+        if (both & n) mask |= 1u << n;
+    return mask;
+}
+
+#endif
+
+std::vector<std::string> GpuChoices(const std::vector<jpt_gpu_t>& gpus) {
+    std::vector<std::string> choices;
+    for (const jpt_gpu_t& gpu : gpus) {
+        if (gpu.label[0]) {
+            choices.emplace_back(gpu.label);
+        }
+    }
+    return choices;
 }
 
 std::vector<jpt_monitor_t> ListMonitors() {

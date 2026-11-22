@@ -1,5 +1,8 @@
 # Linux x86_64 native host
 
+Linux feature parity with the Windows build (launcher, portable folders, application identity, AppImage contract, settings) is the chapter
+"Linux feature parity (JPT-LNX4K)" below and the inventory [LINUX_PARITY.md](LINUX_PARITY.md); the rest of this file is the bring-up record.
+
 Status: **bring-up. The lifted guest runs on Linux x86_64, headless, through the CRT and C++ start-up, the window, DirectDraw and into
 the game's own loop: against a virtual window it draws the original main menu (measured: 4 161 distinct colours at frame 400 against 1
 at frame 5).** The SDL3 window backend (`--run`) opened the window and the main menu on WSLg/X11 in a first manual run; New Game then stopped at
@@ -32,6 +35,112 @@ never start the game, a window, a sound device or the launcher (the binary itsel
 `build/linux-work` (ignored by git) unless `--build-dir` says otherwise; a Linux file system is much faster than `/mnt/c` in WSL.
 `cmake/JptLinux.cmake` is included by the top-level `CMakeLists.txt` on Linux only. Debug info and `__FILE__` use
 `-ffile-prefix-map`, so no machine path is left in the binary.
+
+## Linux feature parity (JPT-LNX4K)
+
+The Linux build is a native x86_64 program: **not Wine, not Proton**, no Winelib, no PE loader and no 32-bit runtime. It runs the
+same lifted game, the same launcher sources and the same settings file as the Windows build. Steam Deck is a target of this same
+Linux build; it has **not been validated** on hardware (that, and the AppImage, are the next branches). The Windows / Linux
+inventory of every feature, with its status, evidence and justification, is [LINUX_PARITY.md](LINUX_PARITY.md), written from
+`tests/feature_contract.json` by `tools/linux_parity_report.py`.
+
+### Requirements
+
+* 64-bit x86 Linux with glibc 2.31 or newer (the release baseline is Ubuntu 20.04; `ldd --version` shows it).
+* An X11 or Wayland desktop. SDL3 picks the window system; `SDL_VIDEODRIVER` overrides it.
+* For the Vulkan renderer, a Vulkan 1.1+ driver (Mesa RADV or ANV, NVIDIA). The Software renderer is the functional fallback and needs none.
+* `zenity` or `kdialog` for the launcher's disc image picker, and `xdg-open` for its folder buttons. The launcher opens without them;
+  without a picker, **Install Game** says that none was found instead of doing nothing.
+* Your own Trespasser disc image; no game file is part of the program.
+
+### The launcher
+
+`trespasser_recomp` with no mode option opens the launcher (TRG Launcher over SDL3 and Dear ImGui, the sources `launcher/` of the
+Windows build), then starts the game when **Play** is pressed. Every page and setting is the Windows one and is saved to
+`user_data/launcher/trespasser.ini`; the runtime reads the same file (`config-settings`, `tests/test_setting_parity.py`).
+
+| Option | Effect |
+| --- | --- |
+| `--launcher` | show the launcher even when it is turned off (Shift at start is not available on Linux) |
+| `--skip-launcher` | skip it once, unless the game files are not ready |
+| `--run` | start the game at once, without the launcher |
+| `--dry-run`, `--bootstrap-headless` | the headless modes of the earlier bring-up |
+| `--renderer`, `--graphics-card` | override the renderer and the Vulkan card for this run |
+| `--aspect-ratio`, `--msaa`, `--vsync`, `--display-mode`, `--monitor`, `--window-size`, `--presentation`, `--show-fps`, `--skip-intro`, `--video-subtitles`, `--ambient-occlusion` | override that setting for this run (the same spellings as on Windows) |
+
+The launcher is usable with mouse, touch, trackpad and keyboard, and with a gamepad (SDL3 navigation: D-pad and left stick move, A
+presses, B goes back). Its **Graphics card** list is the Vulkan device list the game uses (`jpt_vk_probe_headless`), with the sample
+counts of each card. The Windows-only **Direct3D 11** renderer is not offered. A release that needs a lifted build the Linux
+executable does not carry (Spanish and Brazilian Portuguese: `lift_es117`, `lift_ptbr117`) is listed as *not playable yet*; the
+English and Russian 1.0.116 releases run. **Install Game** copies the game files from the disc image into `game/` with the same
+reader, checks and SHA-256 manifest as Windows (`tests/linux_launcher_tests.cpp`: PE string resources, Joliet UTF-16 names, part
+files, checksums).
+
+### Where things are
+
+| What | Where |
+| --- | --- |
+| Game files | `game/` next to the program (`--game DIR`, `TRESPASSER_GAME_DIR`) |
+| Logs | `logs/` next to the program (`--log-dir DIR`, `TRESPASSER_LOG_DIR`); `user_data/logs` when the one beside an AppImage cannot be written |
+| Settings, saves, caches, pipeline cache | `user_data/` next to the program (`--user_data_root DIR`, `TRESPASSER_USER_DATA_ROOT`) |
+
+"Next to the program" is the folder of the executable, or, when the `APPIMAGE` variable names a file, the folder of **that AppImage
+file**, never its read-only mount. Nothing is ever written to `~/.config`, `~/.local/share`, the home folder or the source tree, and
+nothing is chosen for the player when a folder cannot be written: the program says which one and stops. One implementation serves the
+launcher, the runtime, Windows and Linux (`src/common/jpt_port.c`, `tests/port_tests.c`, `tests/linux_paths_tests.c`). The crash
+report is in the log, which the launcher's **Logs folder** button opens.
+
+### Graphics
+
+* **Vulkan** is the GPU backend; **Software** is the functional fallback (menus, gameplay, video, subtitles, pause, hotkeys). VSync
+  maps to the present mode: Off allows immediate presentation (tearing), On uses mailbox or FIFO. The 1280x800 (16:10) display of a
+  handheld is a tested layout (`linux_present_tests`: the picture is centred with bars, a 16:10 picture fills it).
+* **GPU choice.** The launcher's **Graphics card** (or `--graphics-card`) names a Vulkan device; until one is chosen the runtime
+  prefers the dedicated GPU, and the usual selection variables `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT` and
+  `__NV_PRIME_RENDER_OFFLOAD` take precedence when set. The D3D-specific adapter option is Windows only.
+* **When Vulkan cannot start** the program does not stop silently: the renderer policy falls back to Software for this run, an SDL
+  message box (no external tool) and stderr say why, name the log, and state that the saved renderer setting was not changed. The
+  launcher still opens and shows the Vulkan device list (empty when there is none).
+* **Window.** `Monitor`, `Display mode` (borderless starts fullscreen on that monitor) and `Window size` reach the SDL window; F11
+  switches fullscreen. The SDL window carries the port icon and the application ID below.
+
+### Application identity
+
+The Wayland `app_id`, the X11 window class (`WM_CLASS`) and the `.desktop` file are one name, **`io.github.saulob.jurassic-park-trespasser`**
+(`JPT_APPLICATION_ID`, `src/common/jpt_port.h`). SDL receives it as its application identifier before any window exists
+(`jpt_app_identity_apply`), and the icon is embedded in the executable (`assets/app/trespasser-icon.png`), so neither depends on the
+AppImage's desktop integration. `packaging/linux/` holds the `AppRun` and the `.desktop` file for the AppImage step.
+
+### The AppImage contract (prepared, not built here)
+
+The AppImage is built by the next branch with the project's pinned pattern: x86_64, Ubuntu 20.04 and glibc 2.31, the upstream AppImage
+Type 2 runtime pinned by commit and SHA-256, extract-and-run when FUSE fails (`APPIMAGE_EXTRACT_AND_RUN`), the same arguments and exit
+status, signals forwarded, the temporary extraction removed. This branch prepares what that needs: the port folder follows `APPIMAGE`,
+the restart command starts the **original AppImage file** with the same arguments (`jpt_port_relaunch`, `lx_relaunch`) and never
+`/proc/self/exe` of a mount or an extracted copy, and `game`, `logs` and `user_data` resolve outside the mount
+(`linux_paths_tests: test_appimage`, `test_appimage_logs`). Nothing is written into the AppImage.
+
+### Steam Deck
+
+Steam Deck runs the same Linux build; no special case exists for it. What is prepared: a 1280x800 window, gamepad-only navigation in
+the launcher and the game, Wayland, Vulkan on RADV and a portable `user_data`. What is not done: any run on the device; its status is
+**not validated**.
+
+### Tests and commands
+
+```bash
+tools/test-linux-parity.sh                 # the parity checks of this chapter, headless, no build needed beyond the suites
+tools/test-linux.sh                        # the whole headless Linux gate
+python3 -I tools/linux_parity_report.py --write   # rewrite docs/LINUX_PARITY.md after editing tests/feature_contract.json
+python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui and TRG Launcher at their pinned commits (build-linux.sh runs it)
+```
+
+### Known limits
+
+* No run on real hardware yet: the launcher window, controller feel, Wayland, audio devices and Steam Deck are unconfirmed.
+* Shift at start does not bring the launcher back; use `--launcher`.
+* Spanish and Brazilian Portuguese releases import but do not run on Linux until their lifted builds are added.
+* The launcher's picker needs `zenity` or `kdialog`; the folder buttons need `xdg-open`.
 
 ## The one Linux artifact (JPT-ART4N)
 
@@ -446,8 +555,7 @@ is below; nothing is copied.
   card. Proven by pixels: the same bytes draw different glyphs in 1251 and 1252, all 64 letters have glyphs, and the front end, the
   loading screen, the card, the panels and the video subtitles draw Cyrillic.
 * **Not done.** The Windows widescreen modes (the mode table override) are not on Linux, so the guest stays at its own mode and
-  menus only take the HD path at 640x480; save pictures written by Windows (`.jpg`) are not read on Linux and the reverse; the
-  launcher is not ported.
+  menus only take the HD path at 640x480; save pictures written by Windows (`.jpg`) are not read on Linux and the reverse.
 
 Suites: `linux_frontend_tests` (219 checks: scene reading, painter, text, compositor geometry, pointer, resize, session, performance,
 loading, card), `linux_gamepad_tests` (73: menu navigation, Start/View/B, device sharing), `linux_save_files_tests` (save pictures),
@@ -492,7 +600,7 @@ shared.
 | Bootstrap | `src/linux/linux_boot.*` | runs the guest headless to its first frame, and to the main menu (`linux_boot_tests`, 14 checks) |
 
 Not done: winmm (`joyGetPosEx`, the old joystick), a real display, speaker and controller run (the headless measurements above are the
-evidence so far), the launcher.
+evidence so far).
 
 ## Measured facts
 
@@ -528,14 +636,15 @@ granularity VirtualAlloc promises did not hold; `host_os_posix.c` now aligns it.
 
 ## Running
 
-`trespasser_recomp --bootstrap-headless` runs the headless bootstrap against the virtual window and prints one of the `BOOTSTRAP_*`
-results; `--dry-run` maps the image and reports the HLE coverage; `--run` runs the guest in an SDL3 window until the guest exits (SDL
-picks X11 or Wayland; `SDL_VIDEODRIVER` overrides it). `--run` is built and has not been started: it is the first thing to try by hand,
-and its log (`Linux presentation: SDL3 window ...`) says what the window system did.
+`trespasser_recomp` with no mode option opens the launcher and then runs the guest in an SDL3 window until the guest exits (SDL picks
+X11 or Wayland; `SDL_VIDEODRIVER` overrides it); `--run` skips the launcher. `--bootstrap-headless` runs the headless bootstrap against
+the virtual window and prints one of the `BOOTSTRAP_*` results; `--dry-run` maps the image and reports the HLE coverage. The window and
+the launcher are the first things to try by hand; the log (`Linux presentation: SDL3 window ...`) says what the window system did.
 
 ```
 trespasser_recomp [--game DIR] [--version ID] [--user_data_root DIR] [--log-dir DIR] [--log-file FILE]
-                  [--dry-run | --bootstrap-headless | --run]
+                  [--launcher | --skip-launcher | --run | --dry-run | --bootstrap-headless]
+                  [--renderer NAME] [--graphics-card ID] [--<setting> VALUE ...]
 ```
 
 Defaults: `game/`, `user_data/` and `logs/` next to the program (`TRESPASSER_GAME_DIR`, `TRESPASSER_USER_DATA_ROOT`,
@@ -547,4 +656,4 @@ Defaults: `game/`, `user_data/` and `logs/` next to the program (`TRESPASSER_GAM
 * **Backend selection.** `trespasser.ini` (`renderer = auto | vulkan | software`) or `--renderer <name>` on the CLI. `auto` selects Vulkan when available and falls back cleanly to Software with a logged reason if no loader/ICD/compatible GPU exists. `d3d11` is unavailable on Linux and falls back cleanly without crashing.
 * **GPU selection.** `graphics_card` or `--graphics-card <auto | label | vendor:device | vendor:device:uuid8>`. `auto` checks minimum requirements first (graphics + present queues, `VK_KHR_swapchain`, depth attachment format), prefers usable discrete GPUs over integrated/virtual/CPU devices, and respects `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD`.
 * **Fallback and recovery.** Missing loader/GPU falls back to Software with a readable message. Swapchain `OUT_OF_DATE`, `SURFACE_LOST`, resize, minimize (`0x0` wait), and persistent `SUBOPTIMAL` (capped to avoid Gamescope/Wayland loops) are handled cleanly; `VK_ERROR_DEVICE_LOST` latches cleanly without infinite recovery loops.
-* **Known limitations.** Full Linux launcher UI, AppImage packaging, and manual Steam Deck verification belong to subsequent branches; no RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).
+* **Known limitations.** AppImage packaging and manual Steam Deck verification belong to subsequent branches; no RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).

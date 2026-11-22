@@ -207,7 +207,7 @@ set(PCRECOMP_SOURCES
 
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c src/common/jpt_renderer.c src/common/jpt_present_policy.c
-  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
+  src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
   src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
@@ -273,7 +273,7 @@ add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
 # The port's launcher. The core (game files, disc image reader, installer, settings, page model, icons) needs no window;
 # the tests link only it.
 add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp launcher/game_install.cpp
-  launcher/settings.cpp launcher/system_info.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
+  launcher/settings.cpp launcher/system_info.cpp launcher/file_picker.cpp launcher/os_file.cpp launcher/pe_resources.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
   launcher/launcher_log.cpp launcher/user_data.cpp launcher/localization/ui_text.cpp
   launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
 target_include_directories(jpt_launcher_core PUBLIC launcher)
@@ -594,10 +594,12 @@ add_executable(vpath_tests EXCLUDE_FROM_ALL tests/vpath_tests.c src/common/jpt_v
 target_include_directories(vpath_tests PRIVATE src/common)
 add_executable(reg_store_tests EXCLUDE_FROM_ALL tests/reg_store_tests.c src/common/jpt_reg_store.c src/common/jpt_fs_win.c)
 target_include_directories(reg_store_tests PRIVATE src/common)
+add_executable(port_tests EXCLUDE_FROM_ALL tests/port_tests.c src/common/jpt_port.c src/common/jpt_user_data.c src/common/jpt_fs_win.c)
+target_include_directories(port_tests PRIVATE src/common)
 add_executable(sync_tests EXCLUDE_FROM_ALL tests/sync_tests.c src/common/jpt_sync.c)
 target_include_directories(sync_tests PRIVATE src/common)
 target_link_libraries(sync_tests PRIVATE SDL3::SDL3-static)
-foreach(portable_test vpath_tests reg_store_tests sync_tests)
+foreach(portable_test vpath_tests reg_store_tests sync_tests port_tests)
   target_compile_options(${portable_test} PRIVATE /W3)
   target_compile_definitions(${portable_test} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endforeach()

@@ -1,11 +1,18 @@
-#define WIN32_LEAN_AND_MEAN
 #include "game_files.h"
+#include "portable.h"
 #include "utf8.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <bcrypt.h>
+#endif
 
 #include <cstdio>
+#include <fstream>
+#include <vector>
+
+#include "jpt_hash.h"
 #include <system_error>
 
 namespace jpt {
@@ -62,6 +69,21 @@ const GameProfile* ProfileById(std::span<const GameProfile> profiles, const std:
     return nullptr;
 }
 
+#ifndef _WIN32
+std::string Sha256File(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return {};
+    jpt_sha256_t digest;
+    jpt_sha256_init(&digest);
+    std::vector<char> block(1 << 20);
+    while (in.read(block.data(), static_cast<std::streamsize>(block.size())) || in.gcount() > 0)
+        jpt_sha256_update(&digest, block.data(), static_cast<size_t>(in.gcount()));
+    if (in.bad()) return {};
+    char hex[65];
+    jpt_sha256_hex(&digest, hex);
+    return hex;
+}
+#else
 std::string Sha256File(const fs::path& file) {
     HANDLE h = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
@@ -88,6 +110,7 @@ std::string Sha256File(const fs::path& file) {
     }
     return hex;
 }
+#endif
 
 GameCheck CheckGameFolder(const fs::path& dir, const GameProfile& expected) {
     GameCheck check;
@@ -142,7 +165,7 @@ bool RemoveVersion(const InstalledVersion& version, std::string& error) {
         return false;
     }
     fs::path removing = version.dir;
-    removing += L".removing";
+    removing += ".removing";
     fs::remove_all(removing, ec);
     fs::rename(version.dir, removing, ec);
     if (ec) {

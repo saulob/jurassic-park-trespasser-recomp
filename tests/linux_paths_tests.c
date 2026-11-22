@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "jpt_fs.h"
+#include "jpt_port.h"
 #include "linux_paths.h"
 
 static int g_checks, g_failures;
@@ -27,6 +28,7 @@ static void clear_environment(void) {
     unsetenv("TRESPASSER_GAME_DIR");
     unsetenv("TRESPASSER_USER_DATA_ROOT");
     unsetenv("TRESPASSER_LOG_DIR");
+    unsetenv("APPIMAGE");
 }
 
 static void test_choice(void) {
@@ -124,9 +126,108 @@ static void test_prepare(void) {
     jpt_fs_remove_dir(root);
 }
 
+static int inside(const char* path, const char* folder) {
+    size_t n = strlen(folder);
+    return !strncmp(path, folder, n) && (path[n] == 0 || path[n] == '/');
+}
+
+static void test_appimage(void) {
+    const char* mount = "/tmp/.mount_TrespAbCdEf";
+    const char* exe = "/tmp/.mount_TrespAbCdEf/usr/bin/trespasser_recomp";
+    const char* image = "/home/player/Games/Trespasser/JurassicParkTrespasser-x86_64.AppImage";
+    lx_paths_t p;
+    char err[200];
+    clear_environment();
+    CHECK(lx_paths_resolve_for(&p, exe, image, NULL, NULL, NULL, err, sizeof err), "AppImage paths");
+    CHECK(!strcmp(p.port_dir, "/home/player/Games/Trespasser"), "the program folder is the AppImage file's folder (%s)", p.port_dir);
+    CHECK(!strcmp(p.game_dir, "/home/player/Games/Trespasser/game") && !strcmp(p.user_root, "/home/player/Games/Trespasser/user_data") &&
+              !strcmp(p.logs_dir, "/home/player/Games/Trespasser/logs"),
+          "game, user_data and logs sit beside the AppImage file");
+    CHECK(!inside(p.game_dir, mount) && !inside(p.user_root, mount) && !inside(p.logs_dir, mount) && !inside(p.saves_dir, mount) &&
+              !inside(p.launcher_dir, mount) && !inside(p.cache_dir, mount),
+          "nothing resolves inside the read-only mount");
+    CHECK(!strcmp(p.appimage, image), "the AppImage file is kept for the restart");
+
+    setenv("APPIMAGE", image, 1);
+    CHECK(lx_paths_resolve(&p, exe, NULL, NULL, NULL, err, sizeof err) && !strcmp(p.port_dir, "/home/player/Games/Trespasser"),
+          "APPIMAGE in the environment decides the same");
+    clear_environment();
+
+    CHECK(lx_paths_resolve_for(&p, exe, image, "/data/game", "/data/user", "/data/logs", err, sizeof err) &&
+              !strcmp(p.game_dir, "/data/game") && !strcmp(p.user_root, "/data/user") && !strcmp(p.logs_dir, "/data/logs") && p.logs_explicit,
+          "the folder arguments still win inside an AppImage");
+    CHECK(lx_paths_resolve_for(&p, "/opt/jpt/trespasser_recomp", "", NULL, NULL, NULL, err, sizeof err) &&
+              !strcmp(p.port_dir, "/opt/jpt") && !p.appimage[0],
+          "an empty APPIMAGE is not an AppImage");
+}
+
+static void test_appimage_logs(void) {
+    char root[256], err[200], exe[400], image[500], beside[400];
+    lx_paths_t p;
+    const char* tmp = getenv("TMPDIR");
+    clear_environment();
+    snprintf(root, sizeof root, "%s/jpt_appimage_paths_%d", tmp && *tmp ? tmp : "/tmp", (int)getpid());
+    snprintf(beside, sizeof beside, "%s/beside", root);
+    snprintf(image, sizeof image, "%s/Trespasser.AppImage", beside);
+    snprintf(exe, sizeof exe, "%s/mount/usr/bin/trespasser_recomp", root);
+    jpt_fs_mkdir(root);
+    jpt_fs_mkdir(beside);
+    {
+        char logs_blocker[420];
+        FILE* f;
+        snprintf(logs_blocker, sizeof logs_blocker, "%s/logs", beside);
+        f = fopen(logs_blocker, "wb");
+        if (f) fclose(f);
+        CHECK(lx_paths_resolve_for(&p, exe, image, NULL, NULL, NULL, err, sizeof err), "AppImage beside a logs file");
+        CHECK(lx_paths_prepare(&p, err, sizeof err), "a log folder that cannot be created falls back (%s)", err);
+        {
+            char expected[420];
+            snprintf(expected, sizeof expected, "%s/user_data/logs", beside);
+            CHECK(!strcmp(p.logs_dir, expected) && jpt_fs_is_dir(p.logs_dir), "to user_data/logs beside the AppImage (%s)", p.logs_dir);
+        }
+        {
+            char plain[420];
+            snprintf(plain, sizeof plain, "%s/trespasser_recomp", beside);
+            CHECK(lx_paths_resolve_for(&p, plain, NULL, NULL, NULL, NULL, err, sizeof err) && !lx_paths_prepare(&p, err, sizeof err),
+                  "outside an AppImage the same trouble is an error, not a fallback");
+        }
+        {
+            char named[420];
+            snprintf(named, sizeof named, "%s/logs", beside);
+            CHECK(lx_paths_resolve_for(&p, exe, image, NULL, NULL, named, err, sizeof err) && !lx_paths_prepare(&p, err, sizeof err),
+                  "a log folder named by the player is never replaced");
+        }
+        jpt_fs_remove(logs_blocker);
+    }
+    {
+        const char* leaves[] = { "beside/user_data/launcher", "beside/user_data/saves", "beside/user_data/cache",
+                                 "beside/user_data/logs", "beside/user_data", "beside/logs", "beside", "mount/usr/bin", "mount/usr", "mount" };
+        for (size_t i = 0; i < sizeof leaves / sizeof leaves[0]; i++) {
+            char path[500];
+            snprintf(path, sizeof path, "%s/%s", root, leaves[i]);
+            jpt_fs_remove_dir(path);
+        }
+    }
+    jpt_fs_remove_dir(root);
+}
+
+static void test_relaunch(void) {
+    const char* argv[] = { "/tmp/.mount_x/usr/bin/trespasser_recomp", "--game", "/data", NULL };
+    const char* out[8];
+    int n;
+    n = jpt_port_relaunch("/home/p/JPT.AppImage", argv[0], 3, argv, "--launcher", out, 8);
+    CHECK(n == 4 && !strcmp(out[0], "/home/p/JPT.AppImage") && !strcmp(out[1], "--game") && !strcmp(out[3], "--launcher") && !out[4],
+          "inside an AppImage the AppImage file starts again with the same arguments");
+    n = jpt_port_relaunch(NULL, "/opt/jpt/trespasser_recomp", 3, argv, NULL, out, 8);
+    CHECK(n == 3 && !strcmp(out[0], "/opt/jpt/trespasser_recomp") && !out[3], "outside one the executable starts again");
+}
+
 int main(void) {
     test_choice();
     test_prepare();
+    test_appimage();
+    test_appimage_logs();
+    test_relaunch();
     printf("linux_paths_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

@@ -7,10 +7,39 @@
 #include "linux_quick.h"
 #include "linux_vulkan.h"
 
+#define MAX_SETTING_OVERRIDES 32
+
+static const char* s_override_key[MAX_SETTING_OVERRIDES];
+static const char* s_override_value[MAX_SETTING_OVERRIDES];
+static int s_override_count;
+static jpt_config_t s_current;
+static int s_current_set;
+
+void lx_settings_set_overrides(const char* const* keys, const char* const* values, int count) {
+    s_override_count = 0;
+    for (int i = 0; i < count && i < MAX_SETTING_OVERRIDES; i++) {
+        s_override_key[s_override_count] = keys[i];
+        s_override_value[s_override_count++] = values[i];
+    }
+}
+
+const jpt_config_t* lx_settings_current(void) {
+    if (!s_current_set) jpt_config_defaults(&s_current), s_current_set = 1;
+    return &s_current;
+}
+
 void lx_settings_load(const char* settings_file, jpt_config_t* out) {
     int read = 0;
     jpt_config_defaults(out);
     if (settings_file) read = jpt_config_load(settings_file, out);
+    for (int i = 0; i < s_override_count; i++) {
+        if (jpt_config_apply(out, s_override_key[i], s_override_value[i]))
+            lx_log("Linux settings", "%s = %s (command line)", s_override_key[i], s_override_value[i]);
+        else
+            lx_log("Linux settings", "%s = %s (command line) is not a valid value and is ignored", s_override_key[i], s_override_value[i]);
+    }
+    s_current = *out;
+    s_current_set = 1;
     lx_overlay_reset();
     lx_quick_reset();
     lx_hostkeys_reset();

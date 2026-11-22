@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "jpt_config.h"
+#include "portable.h"
 #include "jpt_user_data.h"
 
 namespace jpt {
@@ -141,7 +142,7 @@ bool GameRegistry::SetDword(const std::string& name, unsigned long value) {
         }
     if (!replaced) lines.push_back(text);
     std::filesystem::path tmp = file_;
-    tmp += L".tmp";
+    tmp += ".tmp";
     {
         std::ofstream out(tmp, std::ios::trunc);
         for (const std::string& line : lines) out << line << '\n';

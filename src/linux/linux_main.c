@@ -15,8 +15,16 @@
 #include "guest_memory.h"
 #include "guest_ptr.h"
 #include "guest_thunks.h"
+#include "jpt_app_identity.h"
+#include "jpt_build_info.h"
+#include "jpt_config.h"
 #include "jpt_fs.h"
+#include "jpt_game_version.h"
+#include "jpt_user_data.h"
 #include "jpt_vpath.h"
+#ifdef JPT_LINUX_LAUNCHER
+#include "jpt_launcher.h"
+#endif
 #include "linux_abi.h"
 #ifdef JPT_LINUX_GUEST
 #include "linux_boot.h"
@@ -27,12 +35,17 @@
 #include "linux_log.h"
 #include "linux_paths.h"
 #include "linux_selfcheck.h"
+#include "linux_settings.h"
 #include "linux_vulkan.h"
 
 #define EXIT_SETUP 1
 #define EXIT_UNIMPLEMENTED 3
 #define EXIT_NO_RUN 4
 #define MAX_DLLS 32
+#define MAX_OVERRIDES 32
+/* jpt::UserDataOutcome, which the launcher reports on its About page. */
+#define USER_DATA_PORTABLE 0
+#define USER_DATA_EXPLICIT 6
 
 typedef struct {
     char name[64];
@@ -56,22 +69,44 @@ typedef struct {
     int dry_run;
     int bootstrap;
     int build_info, self_check;
+    int dry_run_asked, run_direct, force_launcher, skip_launcher, version_given;
+    const char* override_key[MAX_OVERRIDES];
+    const char* override_value[MAX_OVERRIDES];
+    int override_count;
 } options_t;
+
+/* The command-line spellings of the settings the launcher saves; each one overrides the settings file for this run. */
+static const struct {
+    const char* option;
+    const char* key;
+} k_setting_options[] = {
+    { "--aspect-ratio", JPT_KEY_ASPECT_RATIO },       { "--msaa", JPT_KEY_MSAA },
+    { "--vsync", JPT_KEY_VSYNC },                     { "--display-mode", JPT_KEY_DISPLAY_MODE },
+    { "--monitor", JPT_KEY_MONITOR },                 { "--window-size", JPT_KEY_WINDOW_SIZE },
+    { "--presentation", JPT_KEY_PRESENTATION },       { "--show-fps", JPT_KEY_SHOW_FPS },
+    { "--skip-intro", JPT_KEY_SKIP_INTRO },           { "--video-subtitles", JPT_KEY_VIDEO_SUBTITLES },
+    { "--ambient-occlusion", JPT_KEY_AMBIENT_OCCLUSION },
+};
 
 static void usage(void) {
     printf("usage: trespasser_recomp [options]\n"
+           "  With no mode option the launcher opens, then the game starts in an SDL3 window.\n"
            "  --game DIR             the installed game (default: game/ next to the program, or TRESPASSER_GAME_DIR)\n"
-           "  --version ID           the game version folder under DIR/versions (default en-116)\n"
+           "  --version ID           the game version folder under DIR/versions (default: the launcher's choice)\n"
            "  --user_data_root DIR   saves, settings and caches (default: user_data/ next to the program,\n"
            "                         or TRESPASSER_USER_DATA_ROOT)\n"
            "  --log-dir DIR          the log folder (default: logs/ next to the program, or TRESPASSER_LOG_DIR)\n"
            "  --log-file FILE        append to FILE instead of the next numbered log\n"
-           "  --dry-run              lay out the guest, bind the imports, report, stop (the default)\n"
+           "  --launcher             show the launcher even when it is turned off\n"
+           "  --skip-launcher        skip the launcher once (unless the game files are not ready)\n"
+           "  --dry-run              lay out the guest, bind the imports, report, stop\n"
            "  --bootstrap-headless   run the lifted entry point with no window and no audio until the first import with no\n"
            "                         implementation, and report it\n"
-           "  --run                  run the guest in an SDL3 window (needs the lifted guest and SDL3 video)\n"
+           "  --run                  start the game at once, without the launcher\n"
            "  --renderer NAME        select renderer: auto, vulkan, software (default: auto)\n"
            "  --graphics-card ID     select Vulkan GPU by label, stable vendor:device:uuid ID, or auto\n"
+           "  --aspect-ratio, --msaa, --vsync, --display-mode, --monitor, --window-size, --presentation, --show-fps,\n"
+           "  --skip-intro, --video-subtitles, --ambient-occlusion VALUE   override that setting for this run\n"
            "  --build-info           print what this binary was built from (JSON), nothing else\n"
            "  --self-check           prove which features this binary holds (JSON); no window, no audio, no log, no guest code\n"
            "  --help\n");
@@ -84,6 +119,13 @@ static const char* argument_of(int* i, int argc, char** argv, const char* name) 
     return NULL;
 }
 
+static int add_override(options_t* o, const char* key, const char* value) {
+    if (o->override_count == MAX_OVERRIDES) return 0;
+    o->override_key[o->override_count] = key;
+    o->override_value[o->override_count++] = value;
+    return 1;
+}
+
 static int parse(int argc, char** argv, options_t* o, int* run) {
     memset(o, 0, sizeof *o);
     o->version = "en-116";
@@ -91,14 +133,23 @@ static int parse(int argc, char** argv, options_t* o, int* run) {
     *run = 0;
     for (int i = 1; i < argc; i++) {
         const char* v;
+        size_t k;
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return usage(), 2;
-        if (!strcmp(argv[i], "--dry-run")) o->dry_run = 1;
-        else if (!strcmp(argv[i], "--run")) *run = 1;
+        for (k = 0; k < sizeof k_setting_options / sizeof k_setting_options[0]; k++)
+            if ((v = argument_of(&i, argc, argv, k_setting_options[k].option)) != NULL) break;
+        if (k < sizeof k_setting_options / sizeof k_setting_options[0]) {
+            if (!add_override(o, k_setting_options[k].key, v)) return fprintf(stderr, "trespasser_recomp: too many setting options\n"), EXIT_SETUP;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dry-run")) o->dry_run = o->dry_run_asked = 1;
+        else if (!strcmp(argv[i], "--run")) *run = o->run_direct = 1;
+        else if (!strcmp(argv[i], "--launcher")) o->force_launcher = 1;
+        else if (!strcmp(argv[i], "--skip-launcher")) o->skip_launcher = 1;
         else if (!strcmp(argv[i], "--bootstrap-headless")) o->bootstrap = 1;
         else if (!strcmp(argv[i], "--build-info")) o->build_info = 1;
         else if (!strcmp(argv[i], "--self-check")) o->self_check = 1;
         else if ((v = argument_of(&i, argc, argv, "--game")) != NULL) o->game = v;
-        else if ((v = argument_of(&i, argc, argv, "--version")) != NULL) o->version = v;
+        else if ((v = argument_of(&i, argc, argv, "--version")) != NULL) o->version = v, o->version_given = 1;
         else if ((v = argument_of(&i, argc, argv, "--user_data_root")) != NULL) o->user_root = v;
         else if ((v = argument_of(&i, argc, argv, "--log-dir")) != NULL) o->log_dir = v;
         else if ((v = argument_of(&i, argc, argv, "--log-file")) != NULL) o->log_file = v;
@@ -205,6 +256,72 @@ static int boot_guest(const options_t* o, const lx_paths_t* paths, int window) {
 }
 #endif
 
+#if defined(JPT_LINUX_GUEST) && defined(JPT_LINUX_SDL_VIDEO)
+#ifdef JPT_LINUX_LAUNCHER
+static void launcher_log(const char* line) { lx_log("launcher", "%s", line); }
+
+/* 1 when the player pressed Play (or the launcher was not wanted), 0 when it was closed. */
+static int run_launcher(const options_t* o, const lx_paths_t* paths, const char* settings_file) {
+    jpt_launcher_config_t config;
+    memset(&config, 0, sizeof config);
+    config.game_dir = paths->game_dir;
+    config.user_dir = paths->user_root;
+    config.saves_dir = paths->saves_dir;
+    config.logs_dir = paths->logs_dir;
+    config.settings_file = settings_file;
+    config.user_data_outcome = o->user_root || getenv("TRESPASSER_USER_DATA_ROOT") ? USER_DATA_EXPLICIT : USER_DATA_PORTABLE;
+    config.force_show = o->force_launcher && !o->skip_launcher;
+    config.skip_once = o->skip_launcher;
+    config.log = launcher_log;
+    return jpt_launcher_run(&config) == JPT_LAUNCHER_PLAY;
+}
+#endif
+
+/* The version to run: --version, else the launcher's choice, among those this executable carries a lift for. With no
+ * installed version at all the development layout (a guest image directly in the game folder) stays usable. */
+static void choose_version(options_t* o, lx_paths_t* paths, const char* settings_file) {
+    jpt_config_t config;
+    char dir[JPT_PATH_MAX], saves[LX_PATH_MAX];
+    const jpt_game_version_t* version = NULL;
+    const char* wanted;
+    jpt_config_defaults(&config);
+    jpt_config_load(settings_file, &config);
+    wanted = o->version_given ? o->version : config.game_version;
+    if (!jpt_game_version_resolve(paths->game_dir, wanted, 1, dir, sizeof dir, &version)) {
+        lx_log("game-version", "no installed version this build can run in %s: using %s as a development layout", paths->game_dir,
+               o->version);
+        return;
+    }
+    if (wanted[0] && strcasecmp(wanted, version->id))
+        lx_log("game-version", "the selected version %s is not installed or this build cannot run it: %s is used", wanted, version->id);
+    o->version = version->id;
+    if (jpt_game_version_saves_dir(paths->user_root, paths->saves_dir, version, saves, sizeof saves) &&
+        strcmp(saves, paths->saves_dir) && jpt_make_dirs(saves))
+        strcpy(paths->saves_dir, saves);
+    lx_log("game-version", "%s, build %d, %s, from %s; saves in %s", version->label, version->build, version->language, dir,
+           paths->saves_dir);
+}
+
+static int play(options_t* o, lx_paths_t* paths) {
+    char settings_file[LX_PATH_MAX + 32];
+    snprintf(settings_file, sizeof settings_file, "%s/trespasser.ini", paths->launcher_dir);
+    if (jpt_config_migrate(settings_file)) lx_log("Linux settings", "%s: the earlier launcher's defaults were reset once", settings_file);
+    if (jpt_config_migrate_language(settings_file))
+        lx_log("Linux settings", "%s: the earlier game text and subtitle language settings became language", settings_file);
+#ifdef JPT_LINUX_LAUNCHER
+    if (!o->run_direct && !run_launcher(o, paths, settings_file)) {
+        lx_log("boot", "the launcher was closed without starting the game");
+        lx_log_close();
+        return 0;
+    }
+#endif
+    choose_version(o, paths, settings_file);
+    if (!o->renderer && getenv("TRESPASSER_RENDERER") && *getenv("TRESPASSER_RENDERER")) o->renderer = getenv("TRESPASSER_RENDERER");
+    lx_settings_set_overrides(o->override_key, o->override_value, o->override_count);
+    return boot_guest(o, paths, 1);
+}
+#endif
+
 int main(int argc, char** argv) {
     options_t o;
     lx_paths_t paths;
@@ -220,6 +337,7 @@ int main(int argc, char** argv) {
     if (parsed) return parsed == 2 ? 0 : parsed;
     if (o.build_info) return lx_build_info_print();
     if (o.self_check) return lx_selfcheck_run();
+    jpt_app_identity_apply(JPT_BUILD_VERSION);
     n = readlink("/proc/self/exe", exe, sizeof exe - 1);
     exe[n > 0 ? n : 0] = 0;
     if (!lx_paths_resolve(&paths, exe, o.game, o.user_root, o.log_dir, err, sizeof err) || !lx_paths_prepare(&paths, err, sizeof err)) {
@@ -239,7 +357,7 @@ int main(int argc, char** argv) {
 #ifdef JPT_LINUX_GUEST
     if (o.bootstrap) return boot_guest(&o, &paths, 0);
 #ifdef JPT_LINUX_SDL_VIDEO
-    if (run) return boot_guest(&o, &paths, 1);
+    if (!o.dry_run_asked) return play(&o, &paths);
 #endif
 #else
     if (o.bootstrap) {

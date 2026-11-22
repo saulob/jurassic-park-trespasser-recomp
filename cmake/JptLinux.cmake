@@ -18,6 +18,7 @@ endif()
 option(JPT_LINUX_LIFTED "compile and link the lifted guest (about a minute at -O0, several at -O2)" ON)
 option(JPT_LINUX_SANITIZE "build the host and the suites with AddressSanitizer and UndefinedBehaviorSanitizer (the lifted guest stays plain)" OFF)
 option(JPT_LINUX_SDL_VIDEO "build SDL3 with its video and joystick subsystems (the window and the gamepad)" ON)
+option(JPT_LINUX_LAUNCHER "build the launcher (TRG Launcher over SDL3 and Dear ImGui) into the executable; needs JPT_LINUX_SDL_VIDEO" ON)
 set(JPT_LINUX_GEN_OPT "-O1" CACHE STRING "optimisation of the lifted C")
 set(PCRECOMP "${CMAKE_SOURCE_DIR}/external/pcrecomp" CACHE PATH "pcrecomp checkout (tools/fetch_pcrecomp.py)")
 
@@ -72,11 +73,20 @@ target_include_directories(jpt_host64 PUBLIC src/host64 ${PCRECOMP}/runtime/win3
 target_compile_options(jpt_host64 PRIVATE ${JPT_LINUX_WARNINGS})
 target_link_libraries(jpt_host64 PUBLIC pthread)
 
+# The window icon, embedded so the executable needs no icon theme or AppImage integration (assets/app/trespasser-icon.png).
+set(JPT_APP_ICON_C ${CMAKE_BINARY_DIR}/generated/jpt_app_icon.c)
+add_custom_command(OUTPUT ${JPT_APP_ICON_C}
+  COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_SOURCE_DIR}/assets/app/trespasser-icon.png -DOUTPUT=${JPT_APP_ICON_C}
+          -DSYMBOL=jpt_app_icon_png -P ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake
+  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake ${CMAKE_SOURCE_DIR}/assets/app/trespasser-icon.png
+  COMMENT "embedding the window icon")
+set_source_files_properties(${JPT_APP_ICON_C} PROPERTIES COMPILE_OPTIONS "-w")
+
 add_library(jpt_common_linux STATIC
   src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c
   src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c
   src/common/jpt_gamepad.c src/common/jpt_prompt_text.c src/common/jpt_l10n.c src/common/jpt_tr.c
-  src/common/jpt_video_subtitles.c src/common/jpt_user_data.c src/common/jpt_fs_posix.c src/common/jpt_vpath.c
+  src/common/jpt_video_subtitles.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_gpu.c src/common/jpt_monitors_sdl.c src/common/jpt_app_identity.c ${JPT_APP_ICON_C} src/common/jpt_fs_posix.c src/common/jpt_vpath.c
   src/common/jpt_reg_store.c src/common/jpt_sync.c src/common/jpt_renderer.c src/common/jpt_present_policy.c)
 target_include_directories(jpt_common_linux PUBLIC src/common)
 target_compile_options(jpt_common_linux PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
@@ -197,6 +207,8 @@ endfunction()
 jpt_linux_test(x64_tests SOURCES tests/x64_tests.c LIBS jpt_host64 INCLUDES tests)
 jpt_linux_test(vpath_tests SOURCES tests/vpath_tests.c LIBS jpt_common_linux)
 jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)
+jpt_linux_test(port_tests SOURCES tests/port_tests.c LIBS jpt_common_linux)
+jpt_linux_test(app_identity_tests SOURCES tests/app_identity_tests.c LIBS jpt_common_linux)
 jpt_linux_test(reg_store_tests SOURCES tests/reg_store_tests.c LIBS jpt_common_linux)
 jpt_linux_test(vulkan_policy_tests SOURCES tests/vulkan_policy_tests.c LIBS jpt_vulkan_linux)
 jpt_linux_test(vulkan_render_tests SOURCES tests/vulkan_render_tests.c LIBS jpt_vulkan_linux)
@@ -277,6 +289,72 @@ if(JPT_LINUX_LIFTED)
   jpt_linux_test(linux_video_tests SOURCES tests/linux_video_tests.c LIBS jpt_linux_guest INCLUDES src/host/video src/host/audio)
 endif()
 
+# ---- the launcher ---------------------------------------------------------------------------------------------------
+# The same sources as the Windows build (launcher/, config/launcher_deps.txt): TRG Launcher in an SDL3 window with an SDL
+# renderer and Dear ImGui. Its file picker is zenity or kdialog and its folder buttons xdg-open (external/trg-launcher).
+if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
+  set(JPT_TRG_DIR "${CMAKE_SOURCE_DIR}/external/trg-launcher")
+  if(NOT EXISTS "${JPT_TRG_DIR}/include/trg/launcher.h" OR NOT EXISTS "${JPT_IMGUI_DIR}/imgui.h")
+    message(FATAL_ERROR "launcher sources missing: run tools/build.ps1 once on Windows (config/launcher_deps.txt) or configure with -DJPT_LINUX_LAUNCHER=OFF")
+  endif()
+  add_library(trg_core_linux STATIC ${JPT_TRG_DIR}/src/settings.cpp ${JPT_TRG_DIR}/src/platform.cpp)
+  target_include_directories(trg_core_linux PUBLIC ${JPT_TRG_DIR}/include)
+  add_library(imgui_sdl_linux STATIC ${JPT_IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${JPT_IMGUI_DIR}/backends/imgui_impl_sdlrenderer3.cpp)
+  target_link_libraries(imgui_sdl_linux PUBLIC jpt_imgui_linux SDL3::SDL3-static)
+  add_library(trg_ui_linux STATIC ${JPT_TRG_DIR}/src/launcher.cpp ${JPT_TRG_DIR}/src/headers.cpp)
+  target_link_libraries(trg_ui_linux PUBLIC trg_core_linux imgui_sdl_linux)
+  set_target_properties(trg_core_linux imgui_sdl_linux trg_ui_linux PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+  target_compile_options(trg_core_linux PRIVATE -w)
+  target_compile_options(imgui_sdl_linux PRIVATE -w -fno-exceptions -fno-rtti)
+  target_compile_options(trg_ui_linux PRIVATE -w)
+
+  file(GLOB JPT_PAGE_ICONS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/launcher/icons/*.svg)
+  list(SORT JPT_PAGE_ICONS)
+  set(JPT_PAGE_ICON_LIST ${CMAKE_BINARY_DIR}/generated/page_icons.txt)
+  file(CONFIGURE OUTPUT ${JPT_PAGE_ICON_LIST} CONTENT "${JPT_PAGE_ICONS}")
+  set(JPT_PAGE_ICON_SOURCE ${CMAKE_BINARY_DIR}/generated/page_icon_data.cpp)
+  add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
+    COMMAND ${CMAKE_COMMAND} -DINPUT_LIST=${JPT_PAGE_ICON_LIST} -DOUTPUT=${JPT_PAGE_ICON_SOURCE} -DSYMBOL=kPageIconFiles
+            -P ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+    DEPENDS ${JPT_PAGE_ICON_LIST} ${JPT_PAGE_ICONS} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
+    COMMENT "embedding the page icons")
+
+  add_library(jpt_launcher_core_linux STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp
+    launcher/game_install.cpp launcher/settings.cpp launcher/system_info.cpp launcher/file_picker.cpp launcher/options.cpp launcher/header_art.cpp
+    launcher/page_icons.cpp launcher/launcher_log.cpp launcher/user_data.cpp launcher/os_file.cpp launcher/pe_resources.cpp
+    launcher/localization/ui_text.cpp launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
+  target_include_directories(jpt_launcher_core_linux PUBLIC launcher)
+  target_link_libraries(jpt_launcher_core_linux PUBLIC jpt_common_linux jpt_vulkan_linux trg_core_linux)
+  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/host.cpp)
+  target_link_libraries(jpt_launcher_linux PUBLIC jpt_launcher_core_linux trg_ui_linux)
+  target_compile_definitions(jpt_launcher_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
+  set_target_properties(jpt_launcher_core_linux jpt_launcher_linux PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+  foreach(lib jpt_launcher_core_linux jpt_launcher_linux)
+    target_compile_options(${lib} PRIVATE -Wall -Wextra)
+    target_compile_options(${lib} PRIVATE -ffile-prefix-map=${CMAKE_SOURCE_DIR}=.)
+  endforeach()
+  set_source_files_properties(launcher/page_icons.cpp ${JPT_PAGE_ICON_SOURCE} PROPERTIES COMPILE_OPTIONS "-w")
+  target_link_options(jpt_launcher_linux PUBLIC -static-libstdc++ -static-libgcc)
+
+  jpt_linux_test(linux_launcher_tests SOURCES tests/linux_launcher_tests.cpp LIBS jpt_launcher_core_linux INCLUDES launcher)
+  set_target_properties(linux_launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+  # The images the launcher reads next to the executable (launcher/launcher.cpp: assets/launcher).
+  set(JPT_LAUNCHER_ASSET_COPIES)
+  foreach(asset header-art.png sponsor-heart.png)
+    set(asset_source "${CMAKE_SOURCE_DIR}/assets/launcher/${asset}")
+    set(asset_stamp "${CMAKE_BINARY_DIR}/launcher-assets/${asset}.stamp")
+    add_custom_command(OUTPUT "${asset_stamp}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin/assets/launcher"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${asset_source}" "${CMAKE_BINARY_DIR}/bin/assets/launcher/${asset}"
+      COMMAND ${CMAKE_COMMAND} -E touch "${asset_stamp}"
+      DEPENDS "${asset_source}"
+      VERBATIM)
+    list(APPEND JPT_LAUNCHER_ASSET_COPIES "${asset_stamp}")
+  endforeach()
+  add_custom_target(jpt_launcher_assets DEPENDS ${JPT_LAUNCHER_ASSET_COPIES})
+endif()
+
 # ---- the executable ----------------------------------------------------------------------------------------------
 find_program(JPT_PYTHON NAMES python3 python REQUIRED)
 set(JPT_BUILD_INFO_DIR ${CMAKE_BINARY_DIR}/buildinfo)
@@ -296,6 +374,11 @@ if(JPT_LINUX_LIFTED)
   target_link_libraries(trespasser_recomp PRIVATE jpt_linux_guest)
 else()
   target_link_libraries(trespasser_recomp PRIVATE jpt_linux_core)
+endif()
+if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
+  target_compile_definitions(trespasser_recomp PRIVATE JPT_LINUX_LAUNCHER=1)
+  target_link_libraries(trespasser_recomp PRIVATE jpt_launcher_linux)
+  add_dependencies(trespasser_recomp jpt_launcher_assets)
 endif()
 set_target_properties(trespasser_recomp PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
                       BUILD_RPATH "" INSTALL_RPATH "" SKIP_BUILD_RPATH ON)

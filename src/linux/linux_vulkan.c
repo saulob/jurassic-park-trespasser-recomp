@@ -39,6 +39,7 @@ typedef struct {
     char cli_gpu[JPT_GPU_LABEL_MAX];
     char cache_path[512];
     jpt_renderer_decision_t decision;
+    char notice[320];
     int active;
 
     jpt_vk_renderer_t* renderer;
@@ -105,7 +106,13 @@ void lx_vk_configure(const jpt_config_t* cfg, const char* cache_dir) {
 
     lx_log("renderer", "requested=%s chosen=%s%s (%s)", jpt_renderer_key(g_vk.decision.requested),
            jpt_renderer_key(g_vk.decision.chosen), g_vk.decision.fallback ? " [fallback]" : "", g_vk.decision.reason);
+    g_vk.notice[0] = 0;
+    if (req != JPT_RENDERER_SOFTWARE && g_vk.decision.chosen == JPT_RENDERER_SOFTWARE)
+        snprintf(g_vk.notice, sizeof g_vk.notice, "Vulkan could not start: %s. The game runs with the Software renderer.",
+                 probe.summary[0] ? probe.summary : g_vk.decision.reason);
 }
+
+const char* lx_vk_graphics_notice(void) { return g_vk.notice; }
 
 int lx_vk_active(void) { return g_vk.active; }
 
@@ -153,6 +160,7 @@ int lx_vk_attach_window(struct SDL_Window* window, uint32_t width, uint32_t heig
         g_vk.decision.chosen = JPT_RENDERER_SOFTWARE;
         g_vk.decision.fallback = 1;
         snprintf(g_vk.decision.reason, sizeof g_vk.decision.reason, "Vulkan window init failed: %s", err);
+        snprintf(g_vk.notice, sizeof g_vk.notice, "Vulkan could not start: %s. The game runs with the Software renderer.", err);
         return 0;
     }
 

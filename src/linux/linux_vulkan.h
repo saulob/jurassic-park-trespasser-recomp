@@ -17,6 +17,9 @@ void lx_vk_configure(const jpt_config_t* cfg, const char* cache_dir);
 void lx_vk_set_cli_overrides(const char* renderer_opt, const char* gpu_opt);
 int lx_vk_active(void);
 const jpt_renderer_decision_t* lx_vk_decision(void);
+/* Why the game runs with the Software renderer although the settings asked for another (or auto found no usable GPU): one
+ * line for the player, "" when nothing fell back. The saved setting is never changed. */
+const char* lx_vk_graphics_notice(void);
 
 int lx_vk_attach_window(struct SDL_Window* window, uint32_t width, uint32_t height, int fullscreen);
 void lx_vk_on_resize(uint32_t width, uint32_t height);

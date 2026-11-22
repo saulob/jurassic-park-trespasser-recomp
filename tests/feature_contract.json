@@ -4118,9 +4118,9 @@
   },
   {
    "id": "launcher",
-   "name": "Launcher pages, settings, installer, play gate",
+   "name": "Launcher pages, settings, installer, play gate (one implementation: Windows and Linux compile the same sources)",
    "owner": "launcher",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -4140,13 +4140,43 @@
       "suite": "launcher_tests",
       "file": "tests/launcher_tests.cpp",
       "pattern": "jpt_gpu_resolve"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_launcher_sources_are_the_windows_ones"
      }
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "the Linux launcher is the next branch (feature/linux-feature-parity); the runtime reads the same trespasser.ini settings"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestPeResources"
+     },
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestIso"
+     },
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestPartFile"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_executable_carries_and_calls_the_launcher"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_launcher_sources_are_the_windows_ones"
+     }
+    ]
    }
   },
   {
@@ -5177,6 +5207,501 @@
    "linux": {
     "status": "PLATFORM_ONLY",
     "reason": "the hybrid CPU/GPU target of the Windows Direct3D layer"
+   }
+  },
+  {
+   "id": "port-folder",
+   "name": "The port folder (game, logs, user_data sit beside the program; inside an AppImage beside the AppImage file) is one shared implementation",
+   "owner": "config",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "port_tests",
+     "file": "tests/port_tests.c",
+     "pattern": "test_port_folder"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "test_port_folder"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "test_port_folder"
+     },
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_choice"
+     }
+    ]
+   }
+  },
+  {
+   "id": "appimage-paths",
+   "name": "Inside an AppImage game, logs and user_data resolve beside the AppImage file, never into its read-only mount; the log folder falls back to user_data/logs",
+   "owner": "config",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "AppImage is a Linux package format"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_appimage_logs"
+     },
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_appimage"
+     },
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "test_logs"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_logs_fall_back_only_inside_an_appimage"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_no_system_folder_is_chosen"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_executable_folder_is_only_read"
+     }
+    ]
+   }
+  },
+  {
+   "id": "appimage-packaging-files",
+   "name": "AppRun and the .desktop file of the future AppImage: AppRun starts the executable and writes nothing; the .desktop file is named and classed after the application ID",
+   "owner": "packaging",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "AppImage is a Linux package format"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_apprun_starts_the_executable_and_writes_nothing"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_application_id_is_one_name"
+     }
+    ]
+   }
+  },
+  {
+   "id": "application-id",
+   "name": "One application ID (io.github.saulob.jurassic-park-trespasser) is the Wayland app_id, the X11 window class and the .desktop name",
+   "owner": "window",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the desktop identity of a Linux window; a Windows window is identified by its executable"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "app_identity_tests",
+      "file": "tests/app_identity_tests.c",
+      "pattern": "test_identifier"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_application_id_is_one_name"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_identity_and_icon_reach_both_windows"
+     }
+    ]
+   }
+  },
+  {
+   "id": "window-icon",
+   "name": "The game and launcher windows carry the port icon, embedded in the executable (no icon theme or AppImage integration needed)",
+   "owner": "window",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Windows windows use the executable's icon; Linux windows have none unless the program sets it"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "app_identity_tests",
+      "file": "tests/app_identity_tests.c",
+      "pattern": "test_icon"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_identity_and_icon_reach_both_windows"
+     }
+    ]
+   }
+  },
+  {
+   "id": "relaunch",
+   "name": "The command that starts the port again: the AppImage file inside an AppImage, never the mounted or unpacked copy, with the same arguments",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "port_tests",
+     "file": "tests/port_tests.c",
+     "pattern": "test_relaunch"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "test_relaunch"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "test_relaunch"
+     },
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_relaunch"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_restart_never_targets_the_mount"
+     }
+    ]
+   }
+  },
+  {
+   "id": "graphics-failure-notice",
+   "name": "When Vulkan cannot start the player is told on screen (no external tool), the log is named, the saved renderer setting is not changed",
+   "owner": "render",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the Windows host has its own graphics start-up path (Direct3D 11 or its Vulkan window); this notice is the Linux SDL window's"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_graphics_notice_is_shown_without_an_external_tool"
+     }
+    ]
+   }
+  },
+  {
+   "id": "monitor-mode-size",
+   "name": "The Monitor, Display mode and Window size settings reach the game window",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_linux_parity.py",
+     "file": "tests/test_linux_parity.py",
+     "pattern": "test_monitor_mode_and_size_are_applied_to_the_window"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "presentation_tests",
+      "file": "tests/presentation_tests.c",
+      "pattern": "jpt_auto_client"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "test_monitor_and_size"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_monitor_mode_and_size_are_applied_to_the_window"
+     }
+    ]
+   }
+  },
+  {
+   "id": "cli-setting-options",
+   "name": "The command-line spellings of the launcher settings (--vsync, --aspect-ratio, ...) are the same on both hosts",
+   "owner": "config",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_linux_parity.py",
+     "file": "tests/test_linux_parity.py",
+     "pattern": "test_every_setting_option_of_the_windows_host_is_accepted"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_every_setting_option_of_the_windows_host_is_accepted"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_every_setting_option_of_the_windows_host_is_accepted"
+     }
+    ]
+   }
+  },
+  {
+   "id": "game-version-selection",
+   "name": "The version Play starts is the launcher's choice among the installed ones the executable can run; each version keeps its saves",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "jpt_game_version_resolve"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestVersions"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_an_unavailable_version_is_named_not_started"
+     }
+    ]
+   }
+  },
+  {
+   "id": "handheld-1280x800",
+   "name": "A 1280x800 (16:10) display: the picture is centred with bars, 16:10 fills the window, the pointer maps back",
+   "owner": "window",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the 1280x800 handheld target is the Steam Deck, which runs the Linux build"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_handheld_1280x800"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "1280, 800"
+     }
+    ]
+   }
+  },
+  {
+   "id": "launcher-file-picker",
+   "name": "The launcher's disc image picker is zenity or kdialog; without one it says so instead of doing nothing",
+   "owner": "launcher",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Windows uses its own common dialog"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestFilePicker"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_file_picker_is_checked_before_it_is_started"
+     }
+    ]
+   }
+  },
+  {
+   "id": "launcher-open-folder",
+   "name": "The launcher's folder buttons start xdg-open with a quoted path (no shell injection, spaces work)",
+   "owner": "launcher",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Windows opens Explorer"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_folders_and_pickers_are_started_without_a_shell_injection"
+     }
+    ]
+   }
+  },
+  {
+   "id": "launcher-gamepad",
+   "name": "The launcher is usable with a gamepad (SDL3 gamepad navigation) as well as mouse, touch and keyboard",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "tests\\test_linux_parity.py",
+     "file": "tests/test_linux_parity.py",
+     "pattern": "test_the_launcher_is_usable_with_a_gamepad"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_launcher_is_usable_with_a_gamepad"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_launcher_is_usable_with_a_gamepad"
+     }
+    ]
+   }
+  },
+  {
+   "id": "vulkan-gpu-list",
+   "name": "The launcher lists the Vulkan devices the game will use, by the label the runtime matches, with their sample counts",
+   "owner": "render",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Windows lists DXGI adapters (gpu-selection)"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_gpu_selection"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_the_vulkan_cards_come_from_the_runtime_enumeration"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_gpu_environment_variables_reach_device_selection"
+     }
+    ]
    }
   }
  ],

@@ -7,11 +7,16 @@
 #include <fstream>
 #include <map>
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "jpt_config.h"
 #include "jpt_launcher.h"
+#include "jpt_port.h"
 
 namespace fs = std::filesystem;
 
@@ -299,12 +304,16 @@ const char* UserDataFolderHelp(UserDataOutcome outcome) {
 }
 
 fs::path PortFolder() {
-#if !defined(_WIN32)
+#ifndef _WIN32
     // An AppImage runs from a read-only mount that is gone once it exits: its user_data goes beside the AppImage file.
-    if (const char* appimage = std::getenv("APPIMAGE"); appimage && *appimage) {
-        return fs::path(appimage).parent_path();
+    char self[JPT_PORT_PATH_MAX] = {};
+    char folder[JPT_PORT_PATH_MAX];
+    const ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    if (jpt_port_folder(length > 0 ? self : "", std::getenv("APPIMAGE"), folder, sizeof folder)) {
+        return fs::path(folder);
     }
-#endif
+    return fs::current_path();
+#else
     std::wstring buffer(MAX_PATH, L'\0');
     for (;;) {
         const DWORD n = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
@@ -317,6 +326,7 @@ fs::path PortFolder() {
         }
         buffer.resize(buffer.size() * 2);
     }
+#endif
 }
 
 UserDataPaths UserDataLayout(const fs::path& root, bool flat) {

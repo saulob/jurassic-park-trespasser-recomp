@@ -20,6 +20,13 @@ that window uses (primary first, then the system's order); images are decoded wi
 libpng; the launcher's `[launcher]` lines go to the host log; there is no update check, no separate game process and no
 online page.
 
+On Linux the same sources are built into `trespasser_recomp` (`cmake/JptLinux.cmake`, [LINUX.md](LINUX.md)). The platform seams are
+small: `launcher/os_file.cpp` (random reads and part-file writes), `launcher/pe_resources.cpp` (the Russian release's string table
+without Win32's resource functions), `launcher/system_info.cpp` (the Vulkan device list instead of DXGI), `src/common/jpt_monitors_sdl.c`
+(SDL displays for the Monitor list), `launcher/file_picker.cpp` (zenity or kdialog present on the PATH) and `jpt_port_folder` for
+the folder the program lives in. The Direct3D 11 renderer is not offered there, and a release whose lifted build the executable does
+not carry is listed as not playable yet.
+
 | Path | Purpose |
 |---|---|
 | `launcher/launcher.cpp` | pages, Play flow, start-up decision, `jpt_launcher_run` (C entry, `jpt_launcher.h`) |

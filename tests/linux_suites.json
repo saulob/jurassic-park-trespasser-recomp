@@ -4,6 +4,7 @@
     "x64_tests",
     "vpath_tests",
     "sync_tests",
+    "port_tests",
     "reg_store_tests",
     "audio_portable_tests",
     "audio_pacer_tests",
@@ -24,6 +25,8 @@
   ],
   "linux_specific": [
     "linux_paths_tests",
+    "linux_launcher_tests",
+    "app_identity_tests",
     "linux_hle_tests",
     "linux_cs_tests",
     "linux_mouse_tests",
@@ -77,6 +80,7 @@
     "test_caption_counts.py",
     "test_audio_portability.py",
     "test_setting_parity.py",
+    "test_linux_parity.py",
     "test_vulkan_shaders.py"
   ],
   "tools": [

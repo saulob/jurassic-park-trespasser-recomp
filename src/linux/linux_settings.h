@@ -6,8 +6,14 @@
 
 #include "jpt_config.h"
 
-/* Defaults, then the valid lines of the file (a missing file means the defaults); resets and configures the host features that
- * use them. `out` keeps the values for the rest of the boot. */
+/* Settings given on the command line: each overrides the file for this run. The strings must outlive the boot. */
+void lx_settings_set_overrides(const char* const* keys, const char* const* values, int count);
+
+/* Defaults, then the valid lines of the file (a missing file means the defaults), then the command-line overrides; resets and
+ * configures the host features that use them. `out` keeps the values for the rest of the boot. */
 void lx_settings_load(const char* settings_file, jpt_config_t* out);
+
+/* The settings of the last load (the defaults before any). */
+const jpt_config_t* lx_settings_current(void);
 
 #endif

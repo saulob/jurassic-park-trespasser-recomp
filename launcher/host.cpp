@@ -10,6 +10,10 @@
 #include "displays.h"
 #include "launcher_log.h"
 
+#ifndef _WIN32
+#include "jpt_app_identity.h"
+#endif
+
 namespace jpt {
 namespace {
 
@@ -34,6 +38,9 @@ SDL_Renderer* CreateLauncherRenderer(SDL_Window* window) {
 } // namespace
 
 bool LauncherHost::Open(const HostOptions& options) {
+#ifndef _WIN32
+    jpt_app_identity_apply(nullptr);
+#endif
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         Log("SDL video failed: %s", SDL_GetError());
         return false;
@@ -96,6 +103,9 @@ bool LauncherHost::Open(const HostOptions& options) {
     SDL_SetWindowMinimumSize(window_, std::min(static_cast<int>(options.min_width * target->scale), width),
                              std::min(static_cast<int>(options.min_height * target->scale), height));
 
+#ifndef _WIN32
+    jpt_app_icon_apply(window_);
+#endif
     renderer_ = CreateLauncherRenderer(window_);
     if (!renderer_) {
         Log("cannot create a renderer: %s", SDL_GetError());

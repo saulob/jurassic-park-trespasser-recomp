@@ -1,14 +1,20 @@
+#ifdef _WIN32
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include "jpt_gpu.h"
 
+#ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 4201) /* the SDK headers' nameless unions, under /W4 C */
 #include <d3d11.h>
 #pragma warning(pop)
 #include <dxgi.h>
+#endif
 #include <stdio.h>
 #include <string.h>
+
+#ifdef _WIN32
 
 const int jpt_gpu_feature_levels[JPT_GPU_FEATURE_LEVEL_COUNT] = {
     D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_9_3, D3D_FEATURE_LEVEL_9_1,
@@ -41,6 +47,8 @@ int jpt_gpu_list(jpt_gpu_t* out, int cap) {
     jpt_gpu_assign_labels(out, count);
     return count;
 }
+
+#endif
 
 void jpt_gpu_assign_labels(jpt_gpu_t* gpus, int count) {
     for (int i = 0; i < count; i++) {

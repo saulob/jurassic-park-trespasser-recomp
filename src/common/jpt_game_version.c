@@ -29,6 +29,25 @@ const jpt_game_version_t* jpt_game_version_by_id(const char* id) {
 
 int jpt_game_version_playable(const jpt_game_version_t* v) { return v && !v->unplayable; }
 
+const char* jpt_game_version_unavailable_here(const jpt_game_version_t* v) {
+#ifdef _WIN32
+    (void)v;
+    return NULL;
+#else
+    if (v && v->lift && strcmp(v->lift, "lift116") != 0)
+        return "The Linux build carries the lifted game 1.0.116 (English and Russian) only; this release needs its own lifted build";
+    return NULL;
+#endif
+}
+
+static int runs_here(const jpt_game_version_t* v) { return jpt_game_version_playable(v) && !jpt_game_version_unavailable_here(v); }
+
+#ifdef _WIN32
+#define JPT_SEP "\\"
+#else
+#define JPT_SEP "/"
+#endif
+
 int jpt_file_sha256(const char* path, char out[65]) {
     unsigned char block[1 << 16];
     size_t n;
@@ -47,13 +66,13 @@ int jpt_file_sha256(const char* path, char out[65]) {
 static int fits(int written, size_t cap) { return written > 0 && (size_t)written < cap; }
 
 int jpt_game_version_folder(const char* game_root, const jpt_game_version_t* v, char* out, size_t cap) {
-    return v && fits(snprintf(out, cap, "%s\\" JPT_VERSIONS_DIR "\\%s", game_root, v->id), cap);
+    return v && fits(snprintf(out, cap, "%s" JPT_SEP JPT_VERSIONS_DIR JPT_SEP "%s", game_root, v->id), cap);
 }
 
 static int has_guest_image(const char* dir) {
     char path[520];
     FILE* f;
-    if (!fits(snprintf(path, sizeof path, "%s\\" JPT_GUEST_IMAGE, dir), sizeof path) || !(f = fopen(path, "rb"))) return 0;
+    if (!fits(snprintf(path, sizeof path, "%s" JPT_SEP JPT_GUEST_IMAGE, dir), sizeof path) || !(f = fopen(path, "rb"))) return 0;
     fclose(f);
     return 1;
 }
@@ -65,14 +84,14 @@ int jpt_game_version_installed(const char* game_root, const jpt_game_version_t* 
 int jpt_game_version_resolve(const char* game_root, const char* wanted, int playable_only, char* dir, size_t cap,
                              const jpt_game_version_t** out) {
     const jpt_game_version_t* first = jpt_game_version_by_id(wanted);
-    if (first && (!playable_only || jpt_game_version_playable(first)) &&
+    if (first && (!playable_only || runs_here(first)) &&
         jpt_game_version_installed(game_root, first, dir, cap)) {
         if (out) *out = first;
         return 1;
     }
     for (int i = 0; i < JPT_GAME_VERSION_COUNT; i++) {
         const jpt_game_version_t* v = &jpt_game_versions[i];
-        if (v == first || (playable_only && !jpt_game_version_playable(v))) continue;
+        if (v == first || (playable_only && !runs_here(v))) continue;
         if (jpt_game_version_installed(game_root, v, dir, cap)) {
             if (out) *out = v;
             return 1;
@@ -84,5 +103,10 @@ int jpt_game_version_resolve(const char* game_root, const char* wanted, int play
 int jpt_game_version_saves_dir(const char* user_root, const char* default_saves, const jpt_game_version_t* v,
                                char* out, size_t cap) {
     if (!v || !v->saves) return fits(snprintf(out, cap, "%s", default_saves), cap);
-    return fits(snprintf(out, cap, "%s\\%s", user_root, v->saves), cap);
+    if (!fits(snprintf(out, cap, "%s" JPT_SEP "%s", user_root, v->saves), cap)) return 0;
+#ifndef _WIN32
+    for (char* c = out; *c; c++)
+        if (*c == '\\') *c = '/';
+#endif
+    return 1;
 }
