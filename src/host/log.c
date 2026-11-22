@@ -25,19 +25,31 @@ static HANDLE open_append(const char* path, DWORD disposition) {
                        FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
+static unsigned session_file_number(const char* filename, const char* prefix) {
+    size_t plen = strlen(prefix);
+    unsigned number = 0, attempt = 0;
+    int used = 0, tail = 0;
+    if (strncmp(filename, prefix, plen) != 0 || filename[plen] != '_') return 0;
+    const char* rest = filename + plen + 1;
+    if (sscanf(rest, "%u%n", &number, &used) != 1 || used <= 0) return 0;
+    rest += used;
+    if (!strcmp(rest, ".log") || !strcmp(rest, ".dmp")) return number;
+    if (sscanf(rest, "_%u.dmp%n", &attempt, &tail) == 1 && tail > 0 && !rest[tail]) return number;
+    return 0;
+}
+
 static unsigned highest_numbered(const char* dir, const char* name) {
     WIN32_FIND_DATAA found;
-    char pattern[MAX_PATH], format[64];
-    unsigned highest = 0, n;
+    char pattern[MAX_PATH];
+    unsigned highest = 0;
     HANDLE search;
-    _snprintf(pattern, sizeof pattern - 1, "%s\\%s_*.log", dir, name);
+    _snprintf(pattern, sizeof pattern - 1, "%s\\%s_*", dir, name);
     pattern[sizeof pattern - 1] = 0;
-    _snprintf(format, sizeof format - 1, "%s_%%u.log", name);
-    format[sizeof format - 1] = 0;
     search = FindFirstFileA(pattern, &found);
     if (search != INVALID_HANDLE_VALUE) {
         do {
-            if (sscanf(found.cFileName, format, &n) == 1 && n > highest) highest = n;
+            unsigned n = session_file_number(found.cFileName, name);
+            if (n > highest) highest = n;
         } while (FindNextFileA(search, &found));
         FindClose(search);
     }

@@ -251,8 +251,25 @@ static void test_russian_panel(void) {
     }
 }
 
+/* Level Select numbers the retail levels from the one table, in the game's order, on this host as on Windows. */
+static void test_level_select_numbers(void) {
+    static const struct { const char* scene; const char* row; int number; } k[] = {
+        { "be.scn", "1 - Beach", 1 }, { "jr.scn", "2 - Jungle Road", 2 }, { "ij.scn", "3 - Industrial Jungle", 3 },
+        { "it.scn", "4 - InGen Town", 4 }, { "lab.scn", "5 - InGen Lab", 5 }, { "as.scn", "6 - Ascent, Part 1", 6 },
+        { "as2.scn", "7 - Ascent, Part 2", 7 }, { "sum.scn", "8 - Summit", 8 },
+        { "TestScene.scn", "Test Scene", 0 }, { "TestScnNght.scn", "Test Scene Night", 0 },
+    };
+    char row[DM_TEXT_MAX];
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        CHECK(dm_level_row_text(k[i].scene, row, sizeof row) && !strcmp(row, k[i].row) && dm_level_number(k[i].scene) == k[i].number,
+              "Level Select formats %s as \"%s\" (got \"%s\")", k[i].scene, k[i].row, row);
+    CHECK(dm_level_number("custom.scn") == 0 && dm_level_row_text("custom.scn", row, sizeof row) && !strcmp(row, "CUSTOM"),
+          "a scene the game did not ship carries no number");
+}
+
 int main(void) {
     setvbuf(stdout, NULL, _IOLBF, 0);
+    test_level_select_numbers();
     test_minimap();
     test_compass();
     test_cheats_panel();

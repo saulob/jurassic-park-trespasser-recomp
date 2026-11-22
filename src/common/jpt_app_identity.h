@@ -1,5 +1,5 @@
 /* What the desktop knows the application by: SDL turns the identifier into the Wayland app_id and the X11 window class, and the
- * icon is the one embedded in the executable (assets/app/trespasser-icon.png), so nothing depends on the AppImage's desktop
+ * icon is the one embedded in the executable (packaging/icons/app-icon-256.png), so nothing depends on the AppImage's desktop
  * integration. Needs SDL3; used by the Linux executable and the launcher. */
 #ifndef JPT_APP_IDENTITY_H
 #define JPT_APP_IDENTITY_H

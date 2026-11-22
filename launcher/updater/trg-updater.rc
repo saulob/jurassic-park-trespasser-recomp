@@ -1,0 +1,32 @@
+#include <winuser.h>
+#include <winver.h>
+#include "jpt_version.h"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION JPT_VERSION_NUMBERS
+PRODUCTVERSION JPT_VERSION_NUMBERS
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "saulob"
+            VALUE "FileDescription", "Jurassic Park: Trespasser Recompiled Updater"
+            VALUE "FileVersion", JPT_FILE_VERSION_STRING
+            VALUE "InternalName", "trg-updater"
+            VALUE "OriginalFilename", "trg-updater.exe"
+            VALUE "ProductName", "Jurassic Park: Trespasser Recompiled"
+            VALUE "ProductVersion", JPT_VERSION_STRING
+            VALUE "Comments", "https://github.com/saulob/jurassic-park-trespasser-recomp"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -1,6 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 project(trespasser_recomp VERSION 0.1.0 LANGUAGES C CXX)
 
+# The version of the executable's resources (src/trespasser_recomp.rc).
+if(NOT PROJECT_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+  message(FATAL_ERROR "project VERSION must start with MAJOR.MINOR.PATCH")
+endif()
+file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/generated/jpt_version.h CONTENT "#define JPT_VERSION_NUMBERS ${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0
+#define JPT_FILE_VERSION_STRING \"${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}.0\"
+#define JPT_VERSION_STRING \"${PROJECT_VERSION}\"
+")
+
+# The release names the updater, the packaging script and the release checker agree on: config/release.json only.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/config/release.json)
+file(READ ${CMAKE_SOURCE_DIR}/config/release.json JPT_RELEASE_JSON)
+set(JPT_RELEASE_DEFINES "")
+foreach(pair repository:REPOSITORY asset_prefix:ASSET_PREFIX windows_suffix:WINDOWS_SUFFIX linux_suffix:LINUX_SUFFIX program:PROGRAM updater:UPDATER)
+  string(REPLACE ":" ";" pair ${pair})
+  list(GET pair 0 json_key)
+  list(GET pair 1 define)
+  string(JSON value GET "${JPT_RELEASE_JSON}" ${json_key})
+  string(APPEND JPT_RELEASE_DEFINES "#define JPT_RELEASE_${define} \"${value}\"
+")
+endforeach()
+file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/generated/jpt_release.h CONTENT "${JPT_RELEASE_DEFINES}" @ONLY)
+
 if(UNIX AND NOT APPLE)
   include(cmake/JptLinux.cmake)
   return()
@@ -160,6 +183,7 @@ set(HOST_SOURCES
   src/host/cpu_polygons.c
   src/host/texture_gpu_policy.c
   src/host/diagnostics.c
+  src/host/crash_dump.c
   src/host/physics_fixes.c
   src/host/ce_policy.c
   src/host/ce_gameplay.c
@@ -243,9 +267,10 @@ set_source_files_properties(${JPT_VULKAN_SOURCES} PROPERTIES COMPILE_OPTIONS "/W
 target_compile_definitions(jpt_vulkan PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 # TRG Launcher (C++17: in C++20 u8string() is another type) and Dear ImGui with its SDL3 backends.
-add_library(trg_core STATIC ${TRG_DIR}/src/settings.cpp ${TRG_DIR}/src/platform.cpp)
+add_library(trg_core STATIC ${TRG_DIR}/src/settings.cpp ${TRG_DIR}/src/platform.cpp ${TRG_DIR}/src/download.cpp)
 target_include_directories(trg_core PUBLIC ${TRG_DIR}/include)
-target_link_libraries(trg_core PUBLIC shell32 ole32 comdlg32)
+target_compile_definitions(trg_core PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_link_libraries(trg_core PUBLIC shell32 ole32 comdlg32 winhttp)
 add_library(imgui_sdl STATIC ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp
   ${IMGUI_DIR}/imgui_widgets.cpp ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer3.cpp)
 target_include_directories(imgui_sdl PUBLIC ${IMGUI_DIR})
@@ -275,12 +300,21 @@ add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
 add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp launcher/game_install.cpp
   launcher/settings.cpp launcher/system_info.cpp launcher/file_picker.cpp launcher/os_file.cpp launcher/pe_resources.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
   launcher/launcher_log.cpp launcher/user_data.cpp launcher/localization/ui_text.cpp
+  launcher/http_post.cpp launcher/incident_client.cpp launcher/incident_report.cpp launcher/json_lite.cpp launcher/log_scrubber.cpp
+  launcher/report_history.cpp launcher/process_probe.cpp
   launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
 target_include_directories(jpt_launcher_core PUBLIC launcher)
 target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 dxgi)
-add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/host.cpp)
+add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+  launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
+  launcher/updater/third_party/miniz/miniz.c launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
+  launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
+  launcher/updater/update_zip.cpp launcher/updater/version.cpp)
+set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "/w")
 target_link_libraries(jpt_launcher PUBLIC jpt_launcher_core trg_ui)
 target_compile_definitions(jpt_launcher PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(jpt_launcher_core PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
+target_include_directories(jpt_launcher PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
 foreach(lib trg_core imgui_sdl trg_ui jpt_launcher_core jpt_launcher)
   target_compile_definitions(${lib} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
   target_compile_options(${lib} PRIVATE /utf-8)
@@ -335,8 +369,14 @@ add_custom_command(OUTPUT ${JPT_RESTORED_AUDIO_SOURCE}
   DEPENDS ${JPT_RESTORED_AUDIO_LIST} ${JPT_RESTORED_AUDIO} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
   COMMENT "Embedding the restored audio")
 
-add_executable(trespasser_recomp ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
+# The application icon, the version and the Windows resources of the executable.
+enable_language(RC)
+set_source_files_properties(src/trespasser_recomp.rc PROPERTIES OBJECT_DEPENDS
+  "${CMAKE_SOURCE_DIR}/packaging/icons/app-icon.ico;${CMAKE_BINARY_DIR}/generated/jpt_version.h")
+set(JPT_RESOURCE_SOURCES src/trespasser_recomp.rc)
+add_executable(trespasser_recomp ${JPT_RESOURCE_SOURCES} ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
 target_include_directories(trespasser_recomp PRIVATE
+  ${CMAKE_BINARY_DIR}/generated
   src/host
   ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32
@@ -357,6 +397,54 @@ target_compile_definitions(trespasser_recomp PRIVATE
 if(TRESPASSER_TRACE)
   target_compile_definitions(trespasser_recomp PRIVATE RECOMP_TRACE=1)
 endif()
+
+# The update helper replaces the port's files after the launcher exits (launcher/updater, tests/update_*.cpp). It ships
+# next to trespasser_recomp.exe and is built with it, as in Dragon's Crown Pro PC and 13 Sentinels.
+set_source_files_properties(launcher/updater/trg-updater.rc PROPERTIES OBJECT_DEPENDS
+  "${CMAKE_BINARY_DIR}/generated/jpt_version.h")
+add_executable(trg-updater WIN32 launcher/updater/helper_main.cpp launcher/updater/install_transaction.cpp launcher/updater/sha256.cpp
+  launcher/updater/update_job.cpp launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp
+  launcher/updater/trg-updater.rc launcher/updater/trg-updater.manifest)
+target_include_directories(trg-updater PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
+target_link_libraries(trg-updater PRIVATE shell32)
+set_target_properties(trg-updater PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+  MSVC_RUNTIME_LIBRARY "MultiThreaded")
+target_compile_options(trg-updater PRIVATE /W4 /utf-8)
+target_compile_definitions(trg-updater PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+add_dependencies(trespasser_recomp trg-updater)
+
+# Updater tests (headless, no network except a scripted loopback server): versions, release JSON, SHA-256, ZIP safety,
+# staging, jobs, rollback, the helper process, failures over HTTP and the release asset contract.
+set(JPT_UPDATER_CORE launcher/updater/github_release.cpp launcher/updater/install_transaction.cpp launcher/updater/json.cpp
+  launcher/updater/sha256.cpp launcher/updater/update_job.cpp launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp
+  launcher/updater/update_zip.cpp launcher/updater/version.cpp launcher/updater/third_party/miniz/miniz.c)
+add_executable(update_restart_marker EXCLUDE_FROM_ALL WIN32 tests/update_restart_marker.cpp)
+target_link_libraries(update_restart_marker PRIVATE shell32)
+add_executable(update_helper_tests EXCLUDE_FROM_ALL tests/update_helper_tests.cpp)
+target_compile_definitions(update_helper_tests PRIVATE JPT_UPDATER_EXE="$<TARGET_FILE:trg-updater>"
+  JPT_MARKER_EXE="$<TARGET_FILE:update_restart_marker>")
+add_dependencies(update_helper_tests trg-updater update_restart_marker)
+add_executable(update_tests EXCLUDE_FROM_ALL tests/update_tests.cpp launcher/update_config.cpp ${JPT_UPDATER_CORE})
+add_executable(update_network_tests EXCLUDE_FROM_ALL tests/update_network_tests.cpp launcher/updater/update_controller.cpp
+  ${JPT_UPDATER_CORE})
+target_link_libraries(update_network_tests PRIVATE trg_core ws2_32 shell32)
+target_link_libraries(update_tests PRIVATE trg_core shell32)
+add_executable(bug_report_tests EXCLUDE_FROM_ALL tests/bug_report_tests.cpp)
+target_link_libraries(bug_report_tests PRIVATE jpt_launcher_core)
+add_executable(crash_dump_tests EXCLUDE_FROM_ALL tests/crash_dump_tests.c src/host/crash_dump.c src/host/log.c)
+target_include_directories(crash_dump_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(crash_dump_tests PRIVATE jpt_common)
+target_compile_options(crash_dump_tests PRIVATE /W3)
+target_compile_definitions(crash_dump_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+foreach(t update_restart_marker update_helper_tests update_tests update_network_tests bug_report_tests)
+  target_include_directories(${t} PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
+  target_compile_options(${t} PRIVATE /W4 /utf-8)
+  target_link_options(${t} PRIVATE "/MANIFESTUAC:level='asInvoker' uiAccess='false'")
+  target_compile_definitions(${t} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    JPT_UPDATER_SRC_DIR="${CMAKE_SOURCE_DIR}/launcher" JPT_PORT_VERSION="${PROJECT_VERSION}")
+  set_target_properties(${t} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+endforeach()
+set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "/w")
 
 # The launcher reads its images next to the executable; each copy depends on its source file, so an image-only change syncs.
 set(JPT_LAUNCHER_ASSET_DIR "$<TARGET_FILE_DIR:trespasser_recomp>/assets/launcher")

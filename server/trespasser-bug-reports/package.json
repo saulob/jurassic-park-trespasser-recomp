@@ -1,0 +1,15 @@
+{
+  "name": "trespasser-bug-reports",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Jurassic Park: Trespasser Recompiled: bug report service (reports and a private admin dashboard; no telemetry)",
+  "license": "GPL-2.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "deploy": "wrangler deploy"
+  }
+}

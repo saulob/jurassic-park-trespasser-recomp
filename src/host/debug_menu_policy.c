@@ -463,17 +463,18 @@ int dm_level_id(const char* scene, char* out, size_t cap) {
 static const struct {
     const char* id;
     const char* name;
+    int campaign;
 } k_retail_levels[] = {
-    { "BE", "Beach" },
-    { "JR", "Jungle Road" },
-    { "IJ", "Industrial Jungle" },
-    { "IT", "InGen Town" },
-    { "LAB", "InGen Lab" },
-    { "AS", "Ascent, Part 1" },
-    { "AS2", "Ascent, Part 2" },
-    { "SUM", "Summit" },
-    { "TESTSCENE", "Test Scene" },
-    { "TESTSCNNGHT", "Test Scene Night" },
+    { "BE", "Beach", 1 },
+    { "JR", "Jungle Road", 1 },
+    { "IJ", "Industrial Jungle", 1 },
+    { "IT", "InGen Town", 1 },
+    { "LAB", "InGen Lab", 1 },
+    { "AS", "Ascent, Part 1", 1 },
+    { "AS2", "Ascent, Part 2", 1 },
+    { "SUM", "Summit", 1 },
+    { "TESTSCENE", "Test Scene", 0 },
+    { "TESTSCNNGHT", "Test Scene Night", 0 },
 };
 
 static int retail_rank(const char* scene) {
@@ -487,6 +488,20 @@ static int retail_rank(const char* scene) {
 const char* dm_level_name(const char* scene) {
     int rank = retail_rank(scene);
     return rank < COUNT(k_retail_levels) ? jpt_tr(k_retail_levels[rank].name) : NULL;
+}
+
+int dm_level_number(const char* scene) {
+    int rank = retail_rank(scene);
+    return rank < COUNT(k_retail_levels) && k_retail_levels[rank].campaign ? rank + 1 : 0;
+}
+
+int dm_level_row_text(const char* scene, char* out, size_t cap) {
+    char id[DM_LEVEL_ID_MAX];
+    const char* name = dm_level_name(scene);
+    int number = dm_level_number(scene), n;
+    if (!name) name = dm_level_id(scene, id, sizeof id) ? id : scene;
+    n = number ? snprintf(out, cap, "%d - %s", number, name) : snprintf(out, cap, "%s", name);
+    return n > 0 && (size_t)n < cap;
 }
 
 int dm_level_title(const char* scene, char* out, size_t cap) {
@@ -719,10 +734,9 @@ int dm_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows, int max) {
         if (!s->levels.count)
             add_row(rows, max, &n, DM_ROW_INFO, -1, 0, 0, jpt_tr("No scene files in the data folder"), NULL);
         for (int i = 0; i < s->levels.count; i++) {
-            char id[DM_LEVEL_ID_MAX];
-            const char* name = dm_level_name(s->levels.scene[i]);
-            if (!name) name = dm_level_id(s->levels.scene[i], id, sizeof id) ? id : s->levels.scene[i];
-            add_row(rows, max, &n, DM_ROW_ITEM, i, w->place != DM_PLACE_NONE, s->level_cursor == i, name, NULL);
+            char text[DM_TEXT_MAX];
+            if (!dm_level_row_text(s->levels.scene[i], text, sizeof text)) snprintf(text, sizeof text, "%s", s->levels.scene[i]);
+            add_row(rows, max, &n, DM_ROW_ITEM, i, w->place != DM_PLACE_NONE, s->level_cursor == i, text, NULL);
         }
         add_row(rows, max, &n, DM_ROW_ITEM, s->levels.count, 1, s->level_cursor == s->levels.count,
                 dm_item_label(s->menu, DM_BACK), NULL);

@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-168 features. 120 PASS / PASS; 32 PASS / WINDOWS ONLY (justified); 16 LINUX ONLY (justified) / PASS.
+172 features. 124 PASS / PASS; 33 PASS / WINDOWS ONLY (justified); 15 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -170,7 +170,7 @@ feature may have one.
 | `appimage-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_parity.py` | AppImage is a Linux package format |
 | `appimage-packaging-files` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | AppImage is a Linux package format |
 | `application-id` | linux | LINUX ONLY (justified) | PASS | - | `app_identity_tests`, `test_linux_parity.py` | the desktop identity of a Linux window; a Windows window is identified by its executable |
-| `window-icon` | linux | LINUX ONLY (justified) | PASS | - | `app_identity_tests`, `test_linux_parity.py` | Windows windows use the executable's icon; Linux windows have none unless the program sets it |
+| `window-icon` | global | PASS | PASS | `test_player_polish.py` | `app_identity_tests`, `test_linux_parity.py`, `test_player_polish.py` | - |
 | `relaunch` | global | PASS | PASS | `port_tests` | `port_tests`, `linux_paths_tests`, `test_linux_parity.py` | - |
 | `graphics-failure-notice` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | the Windows host has its own graphics start-up path (Direct3D 11 or its Vulkan window); this notice is the Linux SDL window's |
 | `monitor-mode-size` | global | PASS | PASS | `test_linux_parity.py`, `presentation_tests` | `test_linux_parity.py`, `linux_sdl_window_tests` | - |
@@ -181,3 +181,7 @@ feature may have one.
 | `launcher-open-folder` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | Windows opens Explorer |
 | `launcher-gamepad` | global | PASS | PASS | `test_linux_parity.py` | `test_linux_parity.py` | - |
 | `vulkan-gpu-list` | linux | LINUX ONLY (justified) | PASS | - | `vulkan_policy_tests`, `test_linux_parity.py` | Windows lists DXGI adapters (gpu-selection) |
+| `level-select-numbers` | global | PASS | PASS | `debug_menu_tests` | `linux_panel_tests` | - |
+| `bug-report` | global | PASS | PASS | `bug_report_tests`, `test_player_polish.py`, `worker_script_tests.ps1`, `bug report worker` | `bug_report_tests`, `test_player_polish.py` | - |
+| `auto-update` | global | PASS | PASS | `update_tests`, `update_network_tests`, `update_helper_tests`, `test_player_polish.py` | `update_tests`, `update_network_tests`, `test_player_polish.py` | - |
+| `windows-release-package` | windows | PASS | WINDOWS ONLY (justified) | `tools/test-release-check.ps1`, `test_player_polish.py`, `update_tests` | - | the Linux release is the AppImage, packaged by its own branch |

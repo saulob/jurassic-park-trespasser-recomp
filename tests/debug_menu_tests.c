@@ -238,6 +238,20 @@ static void test_level_names(void) {
               "%s is shown as \"%s\" (got \"%s\")", retail[i].file, retail[i].title, title);
     CHECK(!strcmp(dm_level_name("be.scn"), "Beach") && !dm_level_name("custom.scn") && !dm_level_name("be.txt"),
           "a name for retail levels only");
+    {
+        static const char* const rows[] = { "1 - Beach", "2 - Jungle Road", "3 - Industrial Jungle", "4 - InGen Town",
+                                            "5 - InGen Lab", "6 - Ascent, Part 1", "7 - Ascent, Part 2", "8 - Summit",
+                                            "Test Scene", "Test Scene Night" };
+        for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+            int want_num = i < 8 ? (int)i + 1 : 0;
+            CHECK(dm_level_number(retail[i].file) == want_num, "%s has level number %d", retail[i].file, want_num);
+            CHECK(dm_level_row_text(retail[i].file, title, sizeof title) && !strcmp(title, rows[i]),
+                  "%s reads \"%s\" (got \"%s\")", retail[i].file, rows[i], title);
+        }
+        CHECK(dm_level_number("custom.scn") == 0 && dm_level_number("be.txt") == 0, "no number for other scenes");
+        CHECK(dm_level_row_text("custom.scn", title, sizeof title) && !strcmp(title, "CUSTOM"), "an unknown scene keeps its id");
+        CHECK(!dm_level_row_text("be.scn", title, 6), "a row that does not fit is refused");
+    }
     CHECK(dm_level_title("MyLevel.scn", title, sizeof title) && !strcmp(title, "MYLEVEL"),
           "an unknown scene keeps its id");
     CHECK(!dm_level_title("menu.tpa", title, sizeof title), "no title for a file that is no scene");
@@ -259,10 +273,12 @@ static void test_level_names(void) {
     n = dm_rows(&s, &w, rows, DM_ROWS_MAX);
     for (int i = 0; i < n; i++) {
         if (rows[i].kind != DM_ROW_ITEM || rows[i].item == l.count) continue;
-        CHECK(rows[i].item == rows_seen && !strcmp(rows[i].text, rows_seen < 10 ? strstr(retail[rows_seen].title, " - ") + 3
-                                                                                : rows_seen == 10 ? "ALPHA"
-                                                                                                  : "ZZ_CUSTOM"),
-              "row %d: \"%s\"", rows_seen, rows[i].text);
+        char want[DM_TEXT_MAX];
+        if (rows_seen < 8) snprintf(want, sizeof want, "%d - %s", rows_seen + 1, strstr(retail[rows_seen].title, " - ") + 3);
+        else if (rows_seen < 10) snprintf(want, sizeof want, "%s", strstr(retail[rows_seen].title, " - ") + 3);
+        else snprintf(want, sizeof want, "%s", rows_seen == 10 ? "ALPHA" : "ZZ_CUSTOM");
+        CHECK(rows[i].item == rows_seen && !strcmp(rows[i].text, want), "row %d: \"%s\" (want \"%s\")", rows_seen,
+              rows[i].text, want);
         CHECK(!rows[i].value[0], "row %d has no second column: \"%s\"", rows_seen, rows[i].value);
         rows_seen++;
     }
@@ -271,12 +287,26 @@ static void test_level_names(void) {
     press(&s, &w, VK_RETURN);
     CHECK(dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "lab.scn"),
           "choosing \"LAB - InGen Lab\" sends lab.scn, the file name the backend loads");
+    dm_toggle(&s, &w, DM_MENU_CHEATS);
+    go_to(&s, &w, DM_LEVEL_SELECT);
+    press(&s, &w, VK_RETURN);
+    s.level_cursor = 8;
+    press(&s, &w, VK_RETURN);
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "TestScene.scn"),
+          "choosing unnumbered Test Scene sends TestScene.scn by index");
+    dm_toggle(&s, &w, DM_MENU_CHEATS);
+    go_to(&s, &w, DM_LEVEL_SELECT);
+    press(&s, &w, VK_RETURN);
+    s.level_cursor = 9;
+    press(&s, &w, VK_RETURN);
+    CHECK(dm_take(&s, &a) && a.kind == DM_ACT_LOAD_LEVEL && !strcmp(a.scene, "TestScnNght.scn"),
+          "choosing unnumbered Test Scene Night sends TestScnNght.scn by index");
     dm_toggle(&s, &menu, DM_MENU_CHEATS);
     press(&s, &menu, VK_RETURN);
     n = dm_rows(&s, &menu, rows, DM_ROWS_MAX);
     for (int i = 0; i < n; i++)
         if (rows[i].kind == DM_ROW_ITEM && rows[i].item == 0)
-            CHECK(!strcmp(rows[i].text, "Beach") && !rows[i].value[0], "from the main menu the list reads the same");
+            CHECK(!strcmp(rows[i].text, "1 - Beach") && !rows[i].value[0], "from the main menu the list reads the same");
     press(&s, &menu, VK_DOWN);
     press(&s, &menu, VK_DOWN);
     press(&s, &menu, VK_RETURN);

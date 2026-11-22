@@ -1,7 +1,7 @@
 # Launcher, display and graphics
 
 `trespasser_recomp.exe` opens the launcher before the game, in the same process, and runs the lifted build of the version you play. Pages: Play, Display, Graphics, Gameplay,
-Controls, Cheats, Bug Report (coming later) and About. There is no online or multiplayer page.
+Controls, Cheats, Bug Report and About. There is no online or multiplayer page.
 
 ## Architecture
 
@@ -11,13 +11,13 @@ The launcher is the one of Dragon's Crown Pro PC and 13 Sentinels: Aegis Rim PC.
 Dear ImGui's SDL3 backends. The host, placement, header art, page icons, Play gate and page layout are their files
 with this port's names. SDL 3.4.20, Dear ImGui and TRG are fetched by `tools\build.ps1` at the commits
 in `config/launcher_deps.txt` into `external\` (not committed); SDL is built as a static library, since MSVC x86 has
-no SDL package. TRG's downloader is not built: the launcher makes no network request. Only one SDL window and one ImGui
+no SDL package. TRG's downloader is built for the update check and the update download; the launcher makes no other request unless you press Send report or Refresh on the Bug Report page ([Updates](#updates), [BUG_REPORTS](BUG_REPORTS.md)). Only one SDL window and one ImGui
 context exist at a time, and all of SDL is shut down (`SDL_Quit`) before the game's window and Direct3D 11 device
 exist; the game starts SDL again on its own thread (docs/ARCHITECTURE.md, Platform).
 
 What differs, because the game differs: the game window is the host's Win32 window, so the Monitor list is the one
 that window uses (primary first, then the system's order); images are decoded with SDL's own `SDL_LoadPNG` instead of
-libpng; the launcher's `[launcher]` lines go to the host log; there is no update check, no separate game process and no
+libpng; the launcher's `[launcher]` lines go to the host log; the update check is TRG's, as in the other ports, there is no separate game process and no
 online page.
 
 On Linux the same sources are built into `trespasser_recomp` (`cmake/JptLinux.cmake`, [LINUX.md](LINUX.md)). The platform seams are
@@ -89,8 +89,24 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats | Movement Speed, Jump Height, Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health: what every session starts with ([Cheats](#cheats)) |
-| Bug Report | listed, "Coming later"; nothing active, nothing sent |
+| Bug Report | description, one scrubbed game log, Open preview, Send report with a confirmation, My Reports ([BUG_REPORTS](BUG_REPORTS.md)) |
 | About | Sponsor card, description and credits, Translation credits, folders, settings file, Reset settings, logs folder, port version, game, renderer, platform, libraries, repository link |
+
+## Updates
+
+The launcher checks GitHub Releases for a newer port when it opens (`https://api.github.com/repos/saulob/jurassic-park-trespasser-recomp/releases/latest`) and
+shows a banner above the page with **Download**, **Retry** and **Restart to update**. The pattern is the one of Dragon's Crown Pro PC and 13 Sentinels: Aegis Rim PC
+(`launcher/update_config.cpp`, `launcher/updater/`):
+
+* the release must hold the ZIP and its `.sha256` that `tools\package-release.ps1` writes (Linux: the AppImage and its `.sha256`). Their names come from `config/release.json` and the project VERSION only: the launcher, the packaging script and `tools\verify-release.ps1` all read that file; only github.com release hosts over https are followed, with size, time and redirect limits;
+* the download is checked against the `.sha256`, unpacked into a staging folder and validated: no unsafe or protected path (`user_data`, `saves`, `game`, `versions`, `logs`, `cache`, `trespasser.ini`, `recomp-registry.txt`, disc images, ...), and every file the installed updater requires (`trespasser_recomp.exe`, `trg-updater.exe`);
+* **Restart to update** saves the launcher settings, closes the launcher and starts `trg-updater.exe` (built next to the program), which waits for the program to exit, replaces the files with a rollback journal and starts the new `trespasser_recomp.exe --launcher`. A running game blocks the install (the launcher says so);
+* the player's game files, saves, settings, logs and caches are never in a package and never touched. On Linux the AppImage file (`$APPIMAGE`) itself is replaced and restarted; outside an AppImage automatic installation is unavailable and the banner says so.
+
+**Releasing (Windows).** `.\tools\package-release.ps1` (or `.\tools\package.ps1`) builds Release, stages `trespasser_recomp.exe`, `trg-updater.exe`, the Visual C++ runtime DLLs, `assets\`, `README.txt` and `licenses\`, verifies the folder, writes `dist\<asset>-v<version>-windows-x86.zip` (one root folder of that name) and its `.sha256`, and verifies the ZIP itself (name, structure, version of the program, no player or game files, no stray DLLs or programs, checksum). Upload both files to the GitHub release `v<version>`; nothing is published by the script. `.\tools\verify-release.ps1 -Path dist\<asset>.zip` repeats the check.
+
+Test overrides (never set by the game): `JPT_UPDATE_TEST=1` with `JPT_UPDATE_TEST_CURRENT_VERSION`, `JPT_UPDATE_TEST_RELEASE_JSON` and `JPT_UPDATE_TEST_ASSET_SHA256`.
+Tests: `update_tests`, `update_network_tests` (scripted loopback server), `update_helper_tests` (the real helper process).
 
 ## Play
 

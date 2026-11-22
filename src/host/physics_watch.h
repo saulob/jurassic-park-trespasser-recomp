@@ -1,4 +1,4 @@
-/* DEBUG_SAULO: physics_watch.c, the temporary player/hand telemetry (physics_watch_policy.h). */
+/* physics_watch.c, the temporary player/hand telemetry (physics_watch_policy.h). */
 #ifndef PHYSICS_WATCH_H
 #define PHYSICS_WATCH_H
 

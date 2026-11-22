@@ -12,6 +12,9 @@ namespace jpt {
 
 inline constexpr char kGameTitle[] = "Jurassic Park: Trespasser Recompiled";
 inline constexpr char kPortRepository[] = "github.com/saulob/jurassic-park-trespasser-recomp";
+// The bug report service (server/trespasser-bug-reports), https only. JPT_BUG_REPORT_URL overrides it for one run.
+inline constexpr char kBugReportServiceUrl[] = "https://trespasser-bug-reports.saulobenigno.workers.dev";
+inline constexpr char kIssuesUrl[] = "https://github.com/saulob/jurassic-park-trespasser-recomp/issues";
 inline constexpr char kAuthorUrl[] = "https://github.com/saulob";
 inline constexpr char kSponsorUrl[] = "https://github.com/sponsors/saulob";
 
@@ -21,8 +24,36 @@ inline constexpr PageId kPageOrder[] = {PageId::kPlay,     PageId::kDisplay, Pag
                                         PageId::kControls, PageId::kCheats,  PageId::kBugReport, PageId::kAbout};
 
 const char* PageName(PageId page);
-// Pages that are listed but have nothing to set yet.
-bool PageComingLater(PageId page);
+
+enum class GameplayItem {
+    kLanguage,
+    kMinimap,
+    kVideoSubtitles,
+    kSkipIntro,
+    kTrespasserCeHeading,
+    kDualStow,
+    kActiveAi,
+    kOfficialPatchHeading,
+    kOfficialPatchFixes,
+    kFrameRateInTitle,
+    kFrameCounter,
+    kRenderResolutionInTitle,
+};
+
+inline constexpr GameplayItem kGameplayOrder[] = {
+    GameplayItem::kLanguage,
+    GameplayItem::kMinimap,
+    GameplayItem::kVideoSubtitles,
+    GameplayItem::kSkipIntro,
+    GameplayItem::kTrespasserCeHeading,
+    GameplayItem::kDualStow,
+    GameplayItem::kActiveAi,
+    GameplayItem::kOfficialPatchHeading,
+    GameplayItem::kOfficialPatchFixes,
+    GameplayItem::kFrameRateInTitle,
+    GameplayItem::kFrameCounter,
+    GameplayItem::kRenderResolutionInTitle,
+};
 
 inline constexpr char kCheatsPageSubtitle[] = "Optional gameplay modifiers";
 inline constexpr char kCheatsHelp[] =

@@ -1,6 +1,7 @@
 /* Fault, dead-end and watchdog reports. The fault report follows sp00nznet/themovies host.c (MIT). */
 #include "guest_abi.h"
 #include "guest_va.h"
+#include "crash_dump.h"
 #include "host.h"
 
 #include <stdarg.h>
@@ -38,14 +39,6 @@ static void report_machine_state(void) {
                g_eax, g_ecx, g_edx, g_ebx, g_esp, g_ebp, g_esi, g_edi);
     report_add("  x87 depth %d, control word %04X; SelfMod entries %lu; indirect calls %u\n",
                g_fp_top, g_fpu_cw, selfmod_entries(), g_icall_count);
-    {
-        uint32_t display = 0, vtable = 0, released_vtable = 0;
-        int have = guest_read32(GVA(0x0073DC40), &display);
-        if (have && display) guest_read32(display, &vtable);
-        guest_read32(GVA(0x00669B90), &released_vtable);
-        report_add("  DEBUG_SAULO display object [0x73DC40]=%08X (readable %d), its first dword %08X, released object %08X first dword %08X\n",
-                   display, have, vtable, (unsigned)GVA(0x00669B90), released_vtable);
-    }
     report_add("  last indirect calls (newest first):\n");
     for (int i = 1; i <= 12 && i <= (int)g_icall_trace_idx; i++) {
         uint32_t k = (g_icall_trace_idx - i) & (ICALL_TRACE_SIZE - 1);
@@ -242,6 +235,7 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS* ep) {
     }
     report_machine_state();
     report_emit();
+    jpt_crash_dump_write(ep, GetCurrentThreadId());
     stop(HOST_EXIT_FAULT);
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -253,6 +247,7 @@ static LONG WINAPI on_unhandled(EXCEPTION_POINTERS* ep) {
                r->ExceptionAddress, GetCurrentThreadId());
     report_machine_state();
     report_emit();
+    jpt_crash_dump_write(ep, GetCurrentThreadId());
     stop(HOST_EXIT_FAULT);
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -286,6 +281,7 @@ void diagnostics_install(unsigned watchdog_seconds) {
     s_host_hi = s_host_lo + nt->OptionalHeader.SizeOfImage;
     s_guest_lo = JPT_GUEST_IMAGE_BASE;
     s_guest_hi = lift_selfmod_end;
+    jpt_crash_dump_install();
     AddVectoredExceptionHandler(0, on_exception);
     SetUnhandledExceptionFilter(on_unhandled);
     s_watchdog_seconds = watchdog_seconds;

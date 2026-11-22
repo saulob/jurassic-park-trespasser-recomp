@@ -26,7 +26,6 @@ const char* PageName(PageId page) {
     return "";
 }
 
-bool PageComingLater(PageId page) { return page == PageId::kBugReport; }
 
 std::vector<const jpt_cheat_info_t*> LauncherCheats() {
     std::vector<const jpt_cheat_info_t*> cheats;

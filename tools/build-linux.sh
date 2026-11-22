@@ -50,6 +50,19 @@ if [ ! -f "$repo/external/pcrecomp/runtime/recomp32/recomp_types.h" ] && [ "$lif
   exit 2
 fi
 
+if [ "$config" = Release ]; then
+  have_ssl=0
+  if [ -f /usr/include/openssl/ssl.h ] || pkg-config --exists openssl 2>/dev/null; then
+    for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /usr/local/lib; do
+      [ -f "$dir/libssl.a" ] && [ -f "$dir/libcrypto.a" ] && have_ssl=1
+    done
+  fi
+  if [ "$have_ssl" != 1 ] && ! printf '%s' "${JPT_CMAKE_ARGS:-}" | grep -q 'OPENSSL_ROOT_DIR'; then
+    echo "build-linux: a Release build needs OpenSSL with its static libraries for the Bug Report (libssl-dev), or -DOPENSSL_ROOT_DIR=<prefix> in JPT_CMAKE_ARGS" >&2
+    exit 2
+  fi
+fi
+
 mkdir -p "$repo/build/logs"
 n=1
 while [ -e "$(printf '%s/build/logs/linux_build_%03d.log' "$repo" "$n")" ]; do n=$((n + 1)); done

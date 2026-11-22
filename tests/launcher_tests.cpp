@@ -457,7 +457,6 @@ static void TestPages() {
         const std::string name = PageName(kPageOrder[i]);
         CHECK(name == expected[i]);
         CHECK(name.find("Online") == std::string::npos && name.find("Multiplayer") == std::string::npos);
-        CHECK(PageComingLater(kPageOrder[i]) == (name == "Bug Report"));
         CHECK(FindPageIcon(kPageOrder[i]) != nullptr);
         const std::vector<uint8_t> icon = RenderPageIcon(kPageOrder[i], 24);
         CHECK(icon.size() == 24 * 24 * 4);
@@ -1634,7 +1633,8 @@ static void TestUiCoverage() {
     // the literals of the pages: whatever reads as text must have a row
     const std::regex group(R"re("(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)re");
     const std::regex piece(R"re("((?:[^"\\]|\\.)*)")re");
-    for (const char* file : {"launcher/launcher.cpp", "launcher/options.cpp"}) {
+    for (const char* file : {"launcher/launcher.cpp", "launcher/options.cpp", "launcher/incident_page.cpp", "launcher/my_reports_page.cpp",
+                              "launcher/incident_client.cpp", "launcher/updater/update_ui.cpp"}) {
         std::string source = ReadSource(file);
         const size_t stop = source.find("extern \"C\" jpt_launcher_result_t jpt_launcher_run");
         if (stop != std::string::npos) source.resize(stop);
@@ -1649,7 +1649,7 @@ static void TestUiCoverage() {
             const bool prose = !single_word && wording(text.c_str());
             const bool title = single_word && text.size() > 3 && text[0] >= 'A' && text[0] <= 'Z' && !camel &&
                                std::regex_match(text, std::regex("[A-Za-z]+"));
-            if (line.find("Log(") != std::string::npos || line.find("#include") != std::string::npos ||
+            if (line.find("Log(") != std::string::npos || line.find("log(") != std::string::npos || line.find("Say(") != std::string::npos || line.find("#include") != std::string::npos ||
                 text.find('\\') != std::string::npos || text.find('/') != std::string::npos ||
                 text.find("##") != std::string::npos || text.rfind("--", 0) == 0 || text.find(".png") != std::string::npos ||
                 text == "JURASSIC PARK: TRESPASSER" || !(prose || title))
@@ -1737,6 +1737,53 @@ static void TestGoreAndTitleOptions() {
     for (int i = 0; i < JPT_SETTING_COUNT; ++i) CHECK(std::string(jpt_settings[i].key).find("gore") == std::string::npos);
     CHECK(std::string(jpt_default_value(JPT_KEY_SHOW_FPS)) == "1" && std::string(jpt_default_value(JPT_KEY_SHOW_RESOLUTION_TITLE)) == "0" &&
           std::string(jpt_default_value(JPT_KEY_SHOW_FRAME_COUNTER)) == "0");
+}
+
+static void TestGameplayOrder() {
+    constexpr GameplayItem kExpected[] = {
+        GameplayItem::kLanguage,
+        GameplayItem::kMinimap,
+        GameplayItem::kVideoSubtitles,
+        GameplayItem::kSkipIntro,
+        GameplayItem::kTrespasserCeHeading,
+        GameplayItem::kDualStow,
+        GameplayItem::kActiveAi,
+        GameplayItem::kOfficialPatchHeading,
+        GameplayItem::kOfficialPatchFixes,
+        GameplayItem::kFrameRateInTitle,
+        GameplayItem::kFrameCounter,
+        GameplayItem::kRenderResolutionInTitle,
+    };
+    CHECK(std::size(kGameplayOrder) == std::size(kExpected));
+    for (size_t i = 0; i < std::size(kExpected) && i < std::size(kGameplayOrder); ++i) {
+        CHECK(kGameplayOrder[i] == kExpected[i]);
+    }
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t gameplay = launcher.find("void PageGameplay(");
+    const size_t controls = launcher.find("// ---- Controls");
+    CHECK(gameplay != std::string::npos && controls != std::string::npos && gameplay < controls);
+    const std::string body = launcher.substr(gameplay, controls - gameplay);
+    CHECK(body.find("for (const GameplayItem item : kGameplayOrder)") != std::string::npos);
+    const char* const markers[] = {
+        "case GameplayItem::kLanguage:",
+        "case GameplayItem::kMinimap:",
+        "case GameplayItem::kVideoSubtitles:",
+        "case GameplayItem::kSkipIntro:",
+        "case GameplayItem::kTrespasserCeHeading:",
+        "case GameplayItem::kDualStow:",
+        "case GameplayItem::kActiveAi:",
+        "case GameplayItem::kOfficialPatchHeading:",
+        "case GameplayItem::kOfficialPatchFixes:",
+        "case GameplayItem::kFrameRateInTitle:",
+        "case GameplayItem::kFrameCounter:",
+        "case GameplayItem::kRenderResolutionInTitle:",
+    };
+    size_t prev = 0;
+    for (const char* marker : markers) {
+        const size_t at = body.find(marker);
+        CHECK(at != std::string::npos && at > prev);
+        prev = at;
+    }
 }
 
 static void TestNoLanguagePage() {
@@ -2043,9 +2090,8 @@ static std::vector<int> CheatValues(const fs::path& ini) {
 
 static void TestCheats(const fs::path& dir) {
     // the placeholder is gone
-    CHECK(!PageComingLater(PageId::kCheats) && PageComingLater(PageId::kBugReport));
     const std::string launcher = ReadSource("launcher/launcher.cpp");
-    CHECK(launcher.find("PageComingLater(ui, \"Cheats\")") == std::string::npos &&
+    CHECK(launcher.find("PageComingLater") == std::string::npos &&
           launcher.find("PageCheats(ui)") != std::string::npos);
     CHECK(std::string(kCheatsHelp).find("F10") != std::string::npos &&
           std::string(kCheatsHelp).find("only to the current session") != std::string::npos);
@@ -2223,6 +2269,7 @@ int main() {
     TestDirect3DEffectsPolicy();
     TestLanguageNames();
     TestGoreAndTitleOptions();
+    TestGameplayOrder();
     TestGraphicsCard(dir);
     TestInvertMouseInControls();
     TestFovAndMouseSensitivity(dir);

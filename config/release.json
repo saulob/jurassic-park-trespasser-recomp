@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "repository": "saulob/jurassic-park-trespasser-recomp",
+  "asset_prefix": "JurassicParkTrespasserRecompiled",
+  "windows_suffix": "windows-x86",
+  "linux_suffix": "x86_64",
+  "program": "trespasser_recomp.exe",
+  "updater": "trg-updater.exe"
+}

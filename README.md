@@ -57,6 +57,10 @@ and View shows every control in a level ([CONTROLS](docs/CONTROLS.md) explains t
 The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
 field of view, anti-aliasing, texture filtering, VSync and renderer, mouse sensitivity, and the gamepad's layout and
 feel ([LAUNCHER](docs/LAUNCHER.md)).
+The launcher also checks for a newer release and updates the port in place ([Updates](docs/LAUNCHER.md#updates)), and its
+**Bug Report** page sends a description with one privacy-filtered game log to a small service of its own
+([BUG_REPORTS](docs/BUG_REPORTS.md)); nothing is sent unless you press the button. Level Select (F10 Cheats) numbers the
+levels in the game's order: `1 - Beach`, `2 - Jungle Road`, `3 - Industrial Jungle`, ...
 It is portable: saves and settings stay in `user_data` next to the program ([user data](docs/user-data.md)).
 
 **Languages** are built into the port: Gameplay > Language in the launcher picks one of English, Brazilian Portuguese,

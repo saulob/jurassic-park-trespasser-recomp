@@ -21,6 +21,7 @@
 #include "game_install.h"
 #include "header_art.h"
 #include "host.h"
+#include "incident_page.h"
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_gamepad.h"
@@ -32,11 +33,14 @@
 #include "options.h"
 #include "page_icons.h"
 #include "placement.h"
+#include "process_probe.h"
 #include "file_picker.h"
 #include "play_gate.h"
 #include "portable.h"
 #include "settings.h"
 #include "system_info.h"
+#include "update_config.h"
+#include "updater/update_ui.h"
 #include "user_data.h"
 #include "utf8.h"
 
@@ -325,7 +329,11 @@ public:
         }
         sponsor_icon_ = LoadSponsorIcon(host_);
         trg::SetTranslator(&TranslateLauncherText);
+        incident_page_ = std::make_unique<IncidentPage>(IncidentPlaces());
+        incident_page_->CheckReports();
         launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+        updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(InstallDir()));
+        updater_->StartCheck();
 
         outcome = Outcome::kRunning;
         host_.BeginFrame();
@@ -350,7 +358,16 @@ public:
             install_.Cancel();
             install_.Finish();
         }
-        SavePlacement(placement_.Flush());
+        if (!skip_finish_save_) {
+            SavePlacement(placement_.Flush());
+        }
+        if (updater_) {
+            updater_->Cancel();
+            if (updater_->Busy()) {
+                // Do not join a network call on the UI thread when the launcher leaves.
+                updater_.release();
+            }
+        }
         launcher_.reset();
         host_.Close();
         Log(outcome == Outcome::kPlay ? "closed, starting the game" : "closed");
@@ -396,6 +413,7 @@ private:
         NormalizeCheats();
         TrackPlacement();
         PollInstall();
+        PollUpdate();
         if (play_.starting() && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds) {
             return Outcome::kPlay;
         }
@@ -407,6 +425,10 @@ private:
         ImGui::BeginDisabled(play_.starting());
         const trg::Result result = launcher_->Frame();
         ImGui::EndDisabled();
+        if (result == trg::Result::kNone && !play_.starting() &&
+            HandleUpdateAction(trg::update::DrawUpdateBanner(updater_->snapshot(), launcher_->config().theme, fonts_))) {
+            return Outcome::kQuit;
+        }
         if (play_.starting()) {
             DrawStartingMessage();
         }
@@ -590,8 +612,8 @@ private:
         case PageId::kCheats:
             return {name, kCheatsPageSubtitle, [this](trg::Ui& ui) { PageCheats(ui); }, nullptr, nullptr};
         case PageId::kBugReport:
-            return {name, "Coming later.", [this](trg::Ui& ui) { PageComingLater(ui, "Bug reports"); }, nullptr,
-                    nullptr};
+            return {name, "Describe a problem and send a report with one game log.",
+                    [this](trg::Ui& ui) { PageBugReport(ui); }, nullptr, nullptr};
         case PageId::kAbout:
             return {name, "This port, and where your files and settings live.", [this](trg::Ui& ui) { PageAbout(ui); },
                     nullptr, nullptr};
@@ -976,22 +998,52 @@ private:
             const jpt_l10n_language_t* language = jpt_l10n_language_listed(i);
             languages.push_back({language->code, language->name});
         }
-        ui.Combo("Language", kLanguageHelp, LanguageKey().c_str(), EffectiveLanguage().c_str(), languages);
-        ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
-        ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
-        ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
-        ui.Toggle("Frame counter", kShowFrameCounterHelp, JPT_KEY_SHOW_FRAME_COUNTER, false, "Off", "On");
-        ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
-        ui.Toggle("Enable Minimap", kMinimapHelp, JPT_KEY_MINIMAP, true, "Off", "On");
-        ui.EndRows();
-        ui.Heading("Trespasser CE");
-        ui.Help(kTrespasserCeHelp);
-        ui.Toggle("Dual stow", kDualStowHelp, JPT_KEY_DUAL_STOW, true, "Off", "On");
-        ui.Combo("Active AI", kActiveAiHelp, JPT_KEY_ACTIVE_AI, "enhanced", {{"original", "Original"}, {"enhanced", "Enhanced"}});
-        ui.EndRows();
-        ui.Heading("Official Patch 1.1");
-        ui.Toggle("Patch 1.1 fixes", kOfficialPatchHelp, JPT_KEY_OFFICIAL_PATCH_117, true, "Off", "On");
-        ui.EndRows();
+        for (const GameplayItem item : kGameplayOrder) {
+            switch (item) {
+            case GameplayItem::kLanguage:
+                ui.Combo("Language", kLanguageHelp, LanguageKey().c_str(), EffectiveLanguage().c_str(), languages);
+                break;
+            case GameplayItem::kMinimap:
+                ui.Toggle("Enable Minimap", kMinimapHelp, JPT_KEY_MINIMAP, true, "Off", "On");
+                break;
+            case GameplayItem::kVideoSubtitles:
+                ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");
+                break;
+            case GameplayItem::kSkipIntro:
+                ui.Toggle("Skip Intro", kSkipIntroHelp, JPT_KEY_SKIP_INTRO, false, "Off", "On");
+                ui.EndRows();
+                break;
+            case GameplayItem::kTrespasserCeHeading:
+                ui.Heading("Trespasser CE");
+                ui.Help(kTrespasserCeHelp);
+                break;
+            case GameplayItem::kDualStow:
+                ui.Toggle("Dual stow", kDualStowHelp, JPT_KEY_DUAL_STOW, true, "Off", "On");
+                break;
+            case GameplayItem::kActiveAi:
+                ui.Combo("Active AI", kActiveAiHelp, JPT_KEY_ACTIVE_AI, "enhanced", {{"original", "Original"}, {"enhanced", "Enhanced"}});
+                ui.EndRows();
+                break;
+            case GameplayItem::kOfficialPatchHeading:
+                ui.Heading("Official Patch 1.1");
+                break;
+            case GameplayItem::kOfficialPatchFixes:
+                ui.Toggle("Patch 1.1 fixes", kOfficialPatchHelp, JPT_KEY_OFFICIAL_PATCH_117, true, "Off", "On");
+                ui.EndRows();
+                ui.Spacer(12);
+                break;
+            case GameplayItem::kFrameRateInTitle:
+                ui.Toggle("Frame rate in title", kShowFpsTitleHelp, JPT_KEY_SHOW_FPS, true, "Off", "On");
+                break;
+            case GameplayItem::kFrameCounter:
+                ui.Toggle("Frame counter", kShowFrameCounterHelp, JPT_KEY_SHOW_FRAME_COUNTER, false, "Off", "On");
+                break;
+            case GameplayItem::kRenderResolutionInTitle:
+                ui.Toggle("Render resolution in title", kShowResolutionTitleHelp, JPT_KEY_SHOW_RESOLUTION_TITLE, false, "Off", "On");
+                ui.EndRows();
+                break;
+            }
+        }
     }
 
     // ---- Controls
@@ -1241,9 +1293,80 @@ private:
         }
     }
 
-    void PageComingLater(trg::Ui& ui, const char* what) {
-        ui.Paragraph((std::string(Tr(what)) + Tr(" are coming later. Nothing on this page is active, and nothing is sent "
-                                                "anywhere.")).c_str());
+    // ---- Bug Report
+
+    IncidentPage::Places IncidentPlaces() const {
+        const std::filesystem::path logs = PathFromUtf8(config_.logs_dir ? config_.logs_dir : "logs");
+        const std::filesystem::path running = config_.log_file ? PathFromUtf8(config_.log_file) : std::filesystem::path();
+        return {logs, running, user_dir_, {InstallDir(), game_root_, user_dir_},
+                [](const std::string& line) { Log("%s", line.c_str()); }};
+    }
+
+    ReportFacts CurrentReportFacts() {
+        static const std::string operating_system = OperatingSystemText();
+        const InstalledVersion* v = Selected();
+        const bool known = v && v->profile && Ready();
+        return {JPT_PORT_VERSION,
+                known ? std::string(v->profile->label()) : std::string("Not installed"),
+                known ? std::to_string(v->profile->version->build) : std::string(),
+                operating_system};
+    }
+
+    void PageBugReport(trg::Ui& ui) { incident_page_->Draw(ui, CurrentReportFacts()); }
+
+    // ---- Updates
+
+    std::filesystem::path InstallDir() const {
+        const std::filesystem::path executable = CurrentExecutablePath();
+        return executable.has_parent_path() ? executable.parent_path() : std::filesystem::current_path();
+    }
+
+    void PollUpdate() {
+        if (updater_) updater_->Poll();
+    }
+
+    // The helper replaces this installation's programs once this process exits; a running game still holds them.
+    bool InstallBlocked() {
+        if (install_.running()) {
+            launcher_->SetStatus("Wait for the current install to finish.", 5.0);
+            return true;
+        }
+        if (OtherProcessRunning(CurrentExecutablePath())) {
+            launcher_->SetStatus("Close the game before installing the update.", 6.0);
+            return true;
+        }
+        return false;
+    }
+
+    bool HandleUpdateAction(trg::update::UpdateUiAction action) {
+        switch (action) {
+        case trg::update::UpdateUiAction::kDownload:
+            updater_->StartDownload();
+            break;
+        case trg::update::UpdateUiAction::kRetry:
+            if (updater_->RetryNeedsInstall()) {
+                if (InstallBlocked() || !launcher_->Save()) break;
+                SavePlacement(placement_.Flush());
+                if (updater_->Retry()) {
+                    skip_finish_save_ = true;
+                    return true;
+                }
+            } else {
+                updater_->Retry();
+            }
+            break;
+        case trg::update::UpdateUiAction::kRestart:
+            if (InstallBlocked() || !launcher_->Save()) break;
+            SavePlacement(placement_.Flush());
+            if (updater_->BeginInstall()) {
+                skip_finish_save_ = true;
+                return true;
+            }
+            break;
+        case trg::update::UpdateUiAction::kNone:
+            break;
+        }
+        return false;
     }
 
     // ---- About
@@ -1353,6 +1476,9 @@ private:
     ImTextureID sponsor_icon_{};
     std::map<std::pair<PageId, int>, ImTextureID> page_icons_;
     std::unique_ptr<trg::Launcher> launcher_;
+    std::unique_ptr<trg::update::UpdateController> updater_;
+    std::unique_ptr<IncidentPage> incident_page_;
+    bool skip_finish_save_ = false;
     trg::Fonts fonts_;
     PlacementTracker placement_;
     trg::Task install_;

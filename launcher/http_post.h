@@ -1,0 +1,55 @@
+// One short outgoing HTTPS request with a JSON body, for the Bug Report page. It opens a connection when called and closes
+// it before it returns: the launcher never listens on a port and keeps no connection open. Blocking; call it off the UI
+// thread.
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace jpt {
+
+enum class HttpFailure { kNone, kInvalidAddress, kUnreachable, kTimedOut, kCertificate };
+
+struct HttpReply {
+    HttpFailure failure = HttpFailure::kNone;
+    int status = 0;
+    std::string body;
+};
+
+struct HttpLimits {
+    int connect_ms = 8000;
+    int send_ms = 15000;
+    int receive_ms = 20000;
+    int total_ms = 30000;
+    size_t most_reply_bytes = 256 * 1024;
+};
+
+struct ServiceAddress {
+    std::string host;
+    int port = 443;
+    std::string path = "/";
+};
+
+// `https://host[:port]` followed by an absolute path. No other scheme, user name, query or fragment is accepted.
+bool ParseServiceAddress(std::string_view url, ServiceAddress& address);
+
+// A raw HTTP/1.x response: its status and body (Content-Length, chunked, or everything after the headers). `framed`
+// tells whether the headers give the body's end, so a complete reply needs no closed connection.
+bool ParseHttpResponse(const std::string& raw, HttpReply& reply, bool* framed = nullptr);
+
+using HttpHeader = std::pair<std::string, std::string>;
+using PostJson = std::function<HttpReply(const std::string& url, const std::string& body, const HttpLimits& limits)>;
+using PostBinary = std::function<HttpReply(const std::string& url, const uint8_t* data, size_t size,
+                                           const std::vector<HttpHeader>& headers, const HttpLimits& limits)>;
+
+// WinHTTP on Windows, sockets and OpenSSL elsewhere. Certificates and the host name are validated against the system's
+// certificate store; redirects are not followed.
+HttpReply PostJsonOverHttps(const std::string& url, const std::string& body, const HttpLimits& limits);
+HttpReply PostBinaryOverHttps(const std::string& url, const uint8_t* data, size_t size,
+                              const std::vector<HttpHeader>& headers, const HttpLimits& limits);
+
+} // namespace jpt

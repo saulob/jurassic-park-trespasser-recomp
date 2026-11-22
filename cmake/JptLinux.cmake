@@ -73,12 +73,12 @@ target_include_directories(jpt_host64 PUBLIC src/host64 ${PCRECOMP}/runtime/win3
 target_compile_options(jpt_host64 PRIVATE ${JPT_LINUX_WARNINGS})
 target_link_libraries(jpt_host64 PUBLIC pthread)
 
-# The window icon, embedded so the executable needs no icon theme or AppImage integration (assets/app/trespasser-icon.png).
+# The window icon, embedded so the executable needs no icon theme or AppImage integration (packaging/icons/app-icon-256.png).
 set(JPT_APP_ICON_C ${CMAKE_BINARY_DIR}/generated/jpt_app_icon.c)
 add_custom_command(OUTPUT ${JPT_APP_ICON_C}
-  COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_SOURCE_DIR}/assets/app/trespasser-icon.png -DOUTPUT=${JPT_APP_ICON_C}
+  COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_SOURCE_DIR}/packaging/icons/app-icon-256.png -DOUTPUT=${JPT_APP_ICON_C}
           -DSYMBOL=jpt_app_icon_png -P ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake
-  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake ${CMAKE_SOURCE_DIR}/assets/app/trespasser-icon.png
+  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake ${CMAKE_SOURCE_DIR}/packaging/icons/app-icon-256.png
   COMMENT "embedding the window icon")
 set_source_files_properties(${JPT_APP_ICON_C} PROPERTIES COMPILE_OPTIONS "-w")
 
@@ -297,7 +297,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   if(NOT EXISTS "${JPT_TRG_DIR}/include/trg/launcher.h" OR NOT EXISTS "${JPT_IMGUI_DIR}/imgui.h")
     message(FATAL_ERROR "launcher sources missing: run tools/build.ps1 once on Windows (config/launcher_deps.txt) or configure with -DJPT_LINUX_LAUNCHER=OFF")
   endif()
-  add_library(trg_core_linux STATIC ${JPT_TRG_DIR}/src/settings.cpp ${JPT_TRG_DIR}/src/platform.cpp)
+  add_library(trg_core_linux STATIC ${JPT_TRG_DIR}/src/settings.cpp ${JPT_TRG_DIR}/src/platform.cpp ${JPT_TRG_DIR}/src/download.cpp)
   target_include_directories(trg_core_linux PUBLIC ${JPT_TRG_DIR}/include)
   add_library(imgui_sdl_linux STATIC ${JPT_IMGUI_DIR}/backends/imgui_impl_sdl3.cpp ${JPT_IMGUI_DIR}/backends/imgui_impl_sdlrenderer3.cpp)
   target_link_libraries(imgui_sdl_linux PUBLIC jpt_imgui_linux SDL3::SDL3-static)
@@ -322,10 +322,37 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   add_library(jpt_launcher_core_linux STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp
     launcher/game_install.cpp launcher/settings.cpp launcher/system_info.cpp launcher/file_picker.cpp launcher/options.cpp launcher/header_art.cpp
     launcher/page_icons.cpp launcher/launcher_log.cpp launcher/user_data.cpp launcher/os_file.cpp launcher/pe_resources.cpp
-    launcher/localization/ui_text.cpp launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
+    launcher/localization/ui_text.cpp launcher/http_post.cpp launcher/incident_client.cpp launcher/incident_report.cpp
+    launcher/json_lite.cpp launcher/log_scrubber.cpp launcher/report_history.cpp launcher/process_probe.cpp
+    launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
   target_include_directories(jpt_launcher_core_linux PUBLIC launcher)
   target_link_libraries(jpt_launcher_core_linux PUBLIC jpt_common_linux jpt_vulkan_linux trg_core_linux)
-  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/host.cpp)
+  # The Bug Report's HTTPS: OpenSSL linked statically (WinHTTP on Windows), so the executable stays self-contained. Without
+  # its development files (libssl-dev) a development build still compiles and the page reports the service as unreachable;
+  # the executable then declares transport "none", the capability bug_report_https fails and the Linux gate refuses the
+  # artifact. A Release build, or JPT_LINUX_REQUIRE_BUG_REPORT=ON, refuses to configure without it.
+  option(JPT_LINUX_REQUIRE_BUG_REPORT "fail the configure when OpenSSL is missing (always for Release)" OFF)
+  set(OPENSSL_USE_STATIC_LIBS ON)
+  find_package(OpenSSL COMPONENTS SSL Crypto)
+  if(OpenSSL_FOUND)
+    set(JPT_BUG_REPORT_TRANSPORT openssl)
+    target_compile_definitions(jpt_launcher_core_linux PRIVATE JPT_HAVE_OPENSSL=1)
+    target_link_libraries(jpt_launcher_core_linux PUBLIC OpenSSL::SSL OpenSSL::Crypto ${CMAKE_DL_LIBS} pthread)
+  else()
+    set(JPT_BUG_REPORT_TRANSPORT none)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR JPT_LINUX_REQUIRE_BUG_REPORT)
+      message(FATAL_ERROR "the Bug Report needs OpenSSL (install libssl-dev, which ships the static libraries): a Release build never ships without it")
+    endif()
+    message(WARNING "OpenSSL was not found: the Bug Report cannot send in this build (development only; the Linux gate refuses it)")
+  endif()
+  target_compile_definitions(jpt_launcher_core_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
+  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+    launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
+    launcher/updater/third_party/miniz/miniz.c launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
+    launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
+    launcher/updater/update_zip.cpp launcher/updater/version.cpp)
+  set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
+  target_include_directories(jpt_launcher_linux PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
   target_link_libraries(jpt_launcher_linux PUBLIC jpt_launcher_core_linux trg_ui_linux)
   target_compile_definitions(jpt_launcher_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
   set_target_properties(jpt_launcher_core_linux jpt_launcher_linux PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
@@ -338,6 +365,25 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
 
   jpt_linux_test(linux_launcher_tests SOURCES tests/linux_launcher_tests.cpp LIBS jpt_launcher_core_linux INCLUDES launcher)
   set_target_properties(linux_launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+  # The Bug Report page and the auto update: the same sources and the same tests as Windows (tests/bug_report_tests.cpp,
+  # tests/update_tests.cpp, tests/update_network_tests.cpp); the update helper process is Windows only.
+  add_library(jpt_updater_core_linux STATIC launcher/update_config.cpp launcher/updater/github_release.cpp
+    launcher/updater/install_transaction.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp launcher/updater/update_controller.cpp
+    launcher/updater/update_job.cpp launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_zip.cpp
+    launcher/updater/version.cpp launcher/updater/third_party/miniz/miniz.c)
+  target_include_directories(jpt_updater_core_linux PUBLIC launcher ${CMAKE_BINARY_DIR}/generated)
+  target_compile_definitions(jpt_updater_core_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
+  target_link_libraries(jpt_updater_core_linux PUBLIC trg_core_linux Threads::Threads)
+  target_compile_options(jpt_updater_core_linux PRIVATE -Wall -Wextra)
+  set_target_properties(jpt_updater_core_linux PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+  set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
+  jpt_linux_test(bug_report_tests SOURCES tests/bug_report_tests.cpp LIBS jpt_launcher_core_linux INCLUDES launcher
+                 DEFINES JPT_PORT_VERSION="${PROJECT_VERSION}")
+  jpt_linux_test(update_tests SOURCES tests/update_tests.cpp LIBS jpt_updater_core_linux INCLUDES launcher
+                 DEFINES JPT_UPDATER_SRC_DIR="${CMAKE_SOURCE_DIR}/launcher" JPT_PORT_VERSION="${PROJECT_VERSION}")
+  jpt_linux_test(update_network_tests SOURCES tests/update_network_tests.cpp LIBS jpt_updater_core_linux INCLUDES launcher)
+  set_target_properties(bug_report_tests update_tests update_network_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
   # The images the launcher reads next to the executable (launcher/launcher.cpp: assets/launcher).
   set(JPT_LAUNCHER_ASSET_COPIES)
@@ -362,6 +408,7 @@ add_custom_target(jpt_build_info
   COMMAND ${JPT_PYTHON} -I ${CMAKE_SOURCE_DIR}/tools/gen_build_info.py --out ${JPT_BUILD_INFO_DIR}/jpt_build_info.h
           --version ${PROJECT_VERSION} --compiler "${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}"
           --target "linux-${CMAKE_SYSTEM_PROCESSOR}" --config "${CMAKE_BUILD_TYPE}"
+          --bug-report-transport "${JPT_BUG_REPORT_TRANSPORT}"
   BYPRODUCTS ${JPT_BUILD_INFO_DIR}/jpt_build_info.h
   VERBATIM)
 add_executable(trespasser_recomp src/linux/linux_main.c src/linux/linux_selfcheck.c)

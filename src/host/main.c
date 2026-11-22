@@ -532,6 +532,7 @@ int main(int argc, char** argv) {
         launcher.saves_dir = user.saves_dir;
         launcher.user_data_outcome = user.outcome;
         launcher.logs_dir = log_dir;
+        launcher.log_file = host_log_path();
         launcher.settings_file = settings_file;
         launcher.force_show = opt.force_launcher && !opt.skip_launcher;
         launcher.skip_once = opt.skip_launcher;

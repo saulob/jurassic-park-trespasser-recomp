@@ -51,6 +51,12 @@ inventory of every feature, with its status, evidence and justification, is [LIN
 * For the Vulkan renderer, a Vulkan 1.1+ driver (Mesa RADV or ANV, NVIDIA). The Software renderer is the functional fallback and needs none.
 * `zenity` or `kdialog` for the launcher's disc image picker, and `xdg-open` for its folder buttons. The launcher opens without them;
   without a picker, **Install Game** says that none was found instead of doing nothing.
+* To build: `libssl-dev` (OpenSSL with its static libraries). The Bug Report sends through OpenSSL linked statically into the executable, so
+  the program stays self-contained; the update download uses `curl` at run time (as TRG Launcher does). A **Release** build refuses to configure
+  without OpenSSL (`tools/build-linux.sh --config Release` checks first and says so), and `-DJPT_LINUX_REQUIRE_BUG_REPORT=ON` asks the same of any
+  build. A development build without it still compiles, the page then reports the service as unreachable, the executable declares the transport
+  `none`, its self-check capability `bug_report_https` fails and the Linux gate refuses to stage it: it never counts as the shipped feature.
+  The update installs only inside an AppImage, replacing the AppImage file itself ([Updates](LAUNCHER.md#updates)).
 * Your own Trespasser disc image; no game file is part of the program.
 
 ### The launcher
@@ -108,7 +114,7 @@ report is in the log, which the launcher's **Logs folder** button opens.
 
 The Wayland `app_id`, the X11 window class (`WM_CLASS`) and the `.desktop` file are one name, **`io.github.saulob.jurassic-park-trespasser`**
 (`JPT_APPLICATION_ID`, `src/common/jpt_port.h`). SDL receives it as its application identifier before any window exists
-(`jpt_app_identity_apply`), and the icon is embedded in the executable (`assets/app/trespasser-icon.png`), so neither depends on the
+(`jpt_app_identity_apply`), and the icon is embedded in the executable (`packaging/icons/app-icon-256.png`), so neither depends on the
 AppImage's desktop integration. `packaging/linux/` holds the `AppRun` and the `.desktop` file for the AppImage step.
 
 ### The AppImage contract (prepared, not built here)

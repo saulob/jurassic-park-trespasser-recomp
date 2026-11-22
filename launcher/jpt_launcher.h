@@ -37,6 +37,7 @@ typedef struct {
     const char* user_dir;      /* the user data root */
     const char* saves_dir;     /* the English 1.0.116 saves and registry store; other versions keep theirs apart */
     const char* logs_dir;
+    const char* log_file;      /* this run's log, or NULL */
     const char* settings_file; /* <user_dir>\launcher\trespasser.ini */
     int user_data_outcome;
     int force_show;            /* --launcher */

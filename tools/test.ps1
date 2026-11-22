@@ -230,6 +230,15 @@ Add-Suite $s 'check' 'linux audio probe' 'the portable audio and Smacker layers 
 $s = 'Launcher'
 Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
 Add-Python $s @(, @('test_setting_parity.py', 'launcher rows and runtime settings agree: parsers, defaults, ranges, lists, readers'))
+Add-Python $s @(, @('test_player_polish.py', 'gamepad icon in the executable and both windows, numbered Level Select, Bug Report page and Worker, auto update wiring and release contract, Windows and Linux'))
+Add-Exes $s @(
+    , @('bug_report_tests', 'Bug Report page without a window or network: JSON, service address, log choice, privacy filter, report and preview, client against a stand-in transport, My Reports, nothing sent on its own', 500)
+    , @('update_tests', 'auto update: versions, release JSON, SHA-256, ZIP safety and staging, jobs, install and rollback, address policy, protected paths and the release asset contract', 250)
+    , @('update_network_tests', 'auto update failures against a scripted loopback HTTP server: 504, dropped connections, stalls, redirects, retries', 20)
+    , @('update_helper_tests', 'the update helper as a real process: waits for its parent, replaces files, rolls back, restarts the program', 10)
+)
+Add-Suite $s 'script' 'tests\worker_script_tests.ps1' 'tools\worker.ps1 against a stand-in npx: arguments, dry run, missing folder, missing Wrangler configuration; nothing is deployed' @{}
+Add-Suite $s 'check' 'bug report worker' 'server\trespasser-bug-reports: its own node test suite (API, limits, reports, admin, dashboard); DATA UNAVAILABLE without Node.js' @{ Run = 'Test-BugReportWorker' }
 
 $s = 'Vulkan renderer'
 Add-Exes $s @(
@@ -326,7 +335,10 @@ $toolRole = @{
     'tools\test-linux-parity.sh' = 'the Linux parity gate: the static contracts of tests\test_linux_parity.py, then tools/test-linux.sh; Linux only, run in WSL or by hand'
     'tools\linux_parity_report.py' = 'writes and checks docs\LINUX_PARITY.md from the feature contract; checked by tests\test_linux_parity.py'
     'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui and TRG Launcher at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
-    'tools\make-app-icon.py' = 'maintainer: regenerates the application icon from the launcher header art'
+    'tools\make-app-icon.py' = 'maintainer: renders packaging\icons\app-icon.svg into the PNGs and the ICO (--check verifies them); checked by tests\test_app_icon.py'
+    'tools\package.ps1' = 'maintainer: builds Release and stages the Windows release ZIP: never run by the gate; checked statically by tests\test_player_polish.py and through tools\verify-release.ps1'
+    'tools\package-release.ps1' = 'maintainer: package.ps1 plus the final gates on the ZIP: never run by the gate; checked by tests\test_player_polish.py'
+    'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a stand-in npx'
     'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
@@ -460,7 +472,7 @@ $testExtensions = '.c', '.h', '.cpp', '.inc', '.py', '.ps1', '.cmake', '.md', '.
 $sourceExtensions = '.c', '.h', '.cpp', '.inc'
 $hygieneNamedBy = 'tools/test.ps1', 'tests/gate_tests.ps1', 'tools/verify-release.ps1', 'tools/test-release-check.ps1', 'docs/user-data.md',
     'tests/feature_contract.json', 'tests/build_script_tests.ps1', 'tests/stream_tests.c', 'tests/test_no_original_executable.py',
-    'tests/launcher_tests.cpp', 'tests/patch117_tests.c', 'tests/video_subtitle_tests.c'
+    'tests/launcher_tests.cpp', 'tests/patch117_tests.c', 'tests/video_subtitle_tests.c', 'tests/bug_report_tests.cpp'
 
 function Test-Hygiene {
     $problems = New-Object System.Collections.Generic.List[string]
@@ -681,6 +693,15 @@ function Test-Coverage {
     $excluded = @($known | Where-Object { $excludedTargets.ContainsKey($_) })
     $summary = "$($known.Count - $excluded.Count) test targets, $(@($allSuites | Where-Object { $_.Kind -in 'python', 'script' -and $_.Name -like 'tests\*' }).Count) test scripts and every tool classified; all run"
     return New-Result 0 (@($summary) + $notes + ($excluded | ForEach-Object { "excluded $_ : $($excludedTargets[$_])" }))
+}
+
+function Test-BugReportWorker {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    $dir = Join-Path $root 'server\trespasser-bug-reports'
+    if (-not $node) { return New-Result 0 @('bug report worker: skipped - DATA UNAVAILABLE (Node.js is not installed)') }
+    $run = Invoke-Process 'node' @('--test', 'test/*.test.js') $dir 300
+    if ($run.Code -ne 0) { return New-Result 1 @($run.Lines) }
+    return New-Result 0 @($run.Lines | Select-Object -Last 8)
 }
 
 function Test-LinuxAudioProbe {

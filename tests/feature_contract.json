@@ -3582,7 +3582,7 @@
   },
   {
    "id": "physics-telemetry",
-   "name": "Temporary player telemetry (DEBUG_SAULO)",
+   "name": "Player telemetry (F9 snapshot)",
    "owner": "overlay",
    "scope": "windows",
    "requirement": "none",
@@ -3593,7 +3593,7 @@
      {
       "suite": "debug_menu_tests",
       "file": "tests/physics_watch_tests.c",
-      "pattern": "DEBUG_SAULO"
+      "pattern": "telemetry"
      }
     ]
    },
@@ -5359,15 +5359,25 @@
   },
   {
    "id": "window-icon",
-   "name": "The game and launcher windows carry the port icon, embedded in the executable (no icon theme or AppImage integration needed)",
+   "name": "The game and launcher windows and the executable carry the gamepad icon in the launcher's accent (resource 1 and WM_SETICON on Windows, the embedded PNG on Linux)",
    "owner": "window",
-   "scope": "linux",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "Windows windows use the executable's icon; Linux windows have none unless the program sets it"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_windows_executable_carries_the_icon_and_the_version"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_game_window_gets_the_icon"
+     }
+    ]
    },
    "linux": {
     "status": "PASS",
@@ -5381,6 +5391,11 @@
       "suite": "tests\\test_linux_parity.py",
       "file": "tests/test_linux_parity.py",
       "pattern": "test_identity_and_icon_reach_both_windows"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_icon_is_the_gamepad_in_the_launcher_accent"
      }
     ]
    }
@@ -5702,6 +5717,173 @@
       "pattern": "test_gpu_environment_variables_reach_device_selection"
      }
     ]
+   }
+  },
+  {
+   "id": "level-select-numbers",
+   "name": "Level Select lists the retail levels as \"1 - Beach\", \"2 - Jungle Road\", ... from the one level table; a row selects by its scene, never by its text",
+   "owner": "overlay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "Level Select numbers"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "Level Select numbers"
+     }
+    ]
+   }
+  },
+  {
+   "id": "bug-report",
+   "name": "Launcher Bug Report page: description, one scrubbed game log, preview, send, My Reports, and the Worker with its admin dashboard; nothing is sent without a button press",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "bug_report_tests",
+     "file": "tests/bug_report_tests.cpp",
+     "pattern": "TestNothingHappensByItself"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "bug_report_tests",
+      "file": "tests/bug_report_tests.cpp",
+      "pattern": "TestPrivacyFilter"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_page_is_active_not_a_placeholder"
+     },
+     {
+      "suite": "tests\\worker_script_tests.ps1",
+      "file": "tests/worker_script_tests.ps1",
+      "pattern": "(?i)dry"
+     },
+     {
+      "suite": "bug report worker",
+      "file": "server/trespasser-bug-reports/test/api.test.js",
+      "pattern": "(?i)limit"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "bug_report_tests",
+      "file": "tests/bug_report_tests.cpp",
+      "pattern": "TestPrivacyFilter"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_both_platforms_compile_the_page"
+     }
+    ],
+    "runtime": [
+     "bug_report_https"
+    ]
+   }
+  },
+  {
+   "id": "auto-update",
+   "name": "Launcher auto update: release check, download, SHA-256 and ZIP checks, the helper that replaces the files and restarts (Windows), the AppImage replacement (Linux)",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "update_tests",
+     "file": "tests/update_tests.cpp",
+     "pattern": "TestPortContract"
+    },
+    {
+     "suite": "update_network_tests",
+     "file": "tests/update_network_tests.cpp",
+     "pattern": "(?i)retry"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "update_helper_tests",
+      "file": "tests/update_helper_tests.cpp",
+      "pattern": "(?i)restart"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_release_contract"
+     },
+     {
+      "suite": "update_tests",
+      "file": "tests/update_tests.cpp",
+      "pattern": "TestRollback"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_both_platforms_compile_the_updater"
+     }
+    ]
+   }
+  },
+  {
+   "id": "windows-release-package",
+   "name": "The Windows release: tools\\package.ps1 builds Release and stages the program, the update helper, the runtime, assets and licences; the ZIP and .sha256 carry the names of config/release.json and are verified as the asset the updater downloads",
+   "owner": "launcher",
+   "scope": "windows",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tools\\test-release-check.ps1",
+      "file": "tools/test-release-check.ps1",
+      "pattern": "Expect-Zip"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_windows_package_is_built_from_release_and_verified_as_the_asset"
+     },
+     {
+      "suite": "update_tests",
+      "file": "tests/update_tests.cpp",
+      "pattern": "TestPackagingNames"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "the Linux release is the AppImage, packaged by its own branch"
    }
   }
  ],

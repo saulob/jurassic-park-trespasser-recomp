@@ -202,6 +202,10 @@ int dm_level_id(const char* scene, char* out, size_t cap);
 int dm_scene_valid(const char* scene);
 /* The retail name of a scene's level ("be.scn" -> "Beach"); NULL for a scene the game did not ship. */
 const char* dm_level_name(const char* scene);
+/* Campaign level number from 1 ("be.scn" -> 1, "sum.scn" -> 8); 0 for test and custom scenes. */
+int dm_level_number(const char* scene);
+/* Level Select row text: "1 - Beach" for campaign levels, name or id without a number for test/custom scenes. */
+int dm_level_row_text(const char* scene, char* out, size_t cap);
 /* "BE - Beach", or the level id alone for an unknown scene. */
 int dm_level_title(const char* scene, char* out, size_t cap);
 /* A scene file of the data folder, once per name: the campaign in play order, the test scenes, then any other scene by

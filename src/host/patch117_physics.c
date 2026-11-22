@@ -47,7 +47,7 @@
 
 static int s_on;
 static float s_min_half[BOX_COUNT];
-static physics_counts_t s_counts; /* DEBUG_SAULO */
+static physics_counts_t s_counts;
 static int s_box_init_hooked;
 static recomp_func_t s_box_init_lifted;
 
@@ -66,7 +66,6 @@ static int box_index(uint32_t box) {
     return off < BOX_COUNT * BOX_STRIDE && !(off % BOX_STRIDE) ? (int)(off / BOX_STRIDE) : -1;
 }
 
-/* DEBUG_SAULO */
 static void count_box(unsigned* per_box, uint32_t box) {
     int i = box_index(box);
     if (i >= 0) per_box[i]++;

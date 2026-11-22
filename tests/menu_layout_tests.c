@@ -364,12 +364,19 @@ static void test_level_select_page(void) {
         int listed = 0;
         for (int i = 0; i < n; i++) {
             if (rows[i].kind != DM_ROW_ITEM || rows[i].item == l.count) continue;
-            CHECK(listed < 10 && !strcmp(rows[i].text, names[listed]), "level %d reads %s: %s", listed,
-                  listed < 10 ? names[listed] : "-", rows[i].text);
+            char want[64];
+            if (listed < 8) snprintf(want, sizeof want, "%d - %s", listed + 1, names[listed]);
+            else snprintf(want, sizeof want, "%s", listed < 10 ? names[listed] : "-");
+            CHECK(listed < 10 && !strcmp(rows[i].text, want), "level %d reads %s: %s", listed, want, rows[i].text);
             CHECK(!rows[i].value[0], "level %d has no second column: %s", listed, rows[i].value);
-            CHECK(!strstr(rows[i].text, ".scn") && !strstr(rows[i].text, " - "), "no file or code: %s", rows[i].text);
+            if (listed < 8)
+                CHECK(!strstr(rows[i].text, ".scn") && strstr(rows[i].text, " - ") == strchr(rows[i].text, ' '),
+                      "a number and the name, no file: %s", rows[i].text);
+            else
+                CHECK(!strstr(rows[i].text, ".scn") && !strstr(rows[i].text, " - "),
+                      "test scene has no number and no file: %s", rows[i].text);
             for (int c = 0; c < 10; c++)
-                CHECK(strncmp(rows[i].text, codes[c], strlen(codes[c])) || !strcmp(rows[i].text, names[listed]) ||
+                CHECK(strncmp(rows[i].text, codes[c], strlen(codes[c])) || !strcmp(rows[i].text, want) ||
                           rows[i].text[strlen(codes[c])] != ' ',
                       "no code before the name: %s", rows[i].text);
             CHECK(strcmp(rows[i].value, "current"), "no current marker");

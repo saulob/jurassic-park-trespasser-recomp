@@ -21,7 +21,10 @@
     "input_context_tests",
     "hotkey_tests",
     "vulkan_policy_tests",
-    "vulkan_render_tests"
+    "vulkan_render_tests",
+    "bug_report_tests",
+    "update_tests",
+    "update_network_tests"
   ],
   "linux_specific": [
     "linux_paths_tests",
@@ -81,7 +84,8 @@
     "test_audio_portability.py",
     "test_setting_parity.py",
     "test_linux_parity.py",
-    "test_vulkan_shaders.py"
+    "test_vulkan_shaders.py",
+    "test_player_polish.py"
   ],
   "tools": [
     "tools/check_profiles.py",
@@ -122,7 +126,8 @@
     "vulkan_dispatch_tests": "includes windows.h and the Windows Vulkan backend (vk_win_renderer.c)",
     "vulkan_runtime_tests": "includes windows.h and the Windows Vulkan backend (vk_win_renderer.c)",
     "water_tests": "includes windows.h and the lifted water code",
-    "x87_tests": "built against pcrecomp's flat-memory 32-bit model"
+    "x87_tests": "built against pcrecomp's flat-memory 32-bit model",
+    "update_helper_tests": "the Windows update helper process (trg-updater.exe): Linux replaces the AppImage file itself"
   },
   "runtime_only": [
     "SDL3 window, fullscreen and presentation on a real display",

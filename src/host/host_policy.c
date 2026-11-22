@@ -137,7 +137,7 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
         return msg == MSG_KEYDOWN && !repeat ? KEY_HOST_SHOW_OBJECTIVE : KEY_DROP;
     case VK_F2_: return down && !repeat ? KEY_HOST_CONTROLS : KEY_DROP;
     case VK_F3_: return down && !repeat ? KEY_HOST_OBJECTIVES : KEY_DROP;
-    case VK_F9_: return down && !repeat ? KEY_HOST_SNAPSHOT : KEY_DROP; /* DEBUG_SAULO: physics snapshot */
+    case VK_F9_: return down && !repeat ? KEY_HOST_SNAPSHOT : KEY_DROP; /* physics snapshot */
     case VK_F12_: return KEY_DROP;
     case VK_ESC:
     case VK_F1_:

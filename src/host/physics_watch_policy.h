@@ -1,4 +1,4 @@
-/* DEBUG_SAULO: temporary investigation of the player's state (Anne stuck, the hand broken) without the guest: the
+/* temporary investigation of the player's state (Anne stuck, the hand broken) without the guest: the
  * stuck detector, sanity checks and the snapshot's lines. */
 #ifndef PHYSICS_WATCH_POLICY_H
 #define PHYSICS_WATCH_POLICY_H

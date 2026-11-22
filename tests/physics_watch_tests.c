@@ -1,4 +1,4 @@
-/* DEBUG_SAULO: the temporary player telemetry, headless: the stuck detector, sanity checks, snapshot lines, the cheat
+/* The player telemetry, headless: the stuck detector, sanity checks, snapshot lines, the cheat
  * log lines and the speed/jump combinations it reports. */
 #include <math.h>
 #include <stdio.h>

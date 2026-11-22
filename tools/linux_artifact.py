@@ -116,6 +116,8 @@ def check_elf(elf, root=ROOT):
         problems.append("the binary lists %s overrides, guest_override_list.h %d" % (reg.get("override_registry"), listed))
     if hooks and reg.get("lift_hooks") != hooks:
         problems.append("the binary has %s lift hooks, lift_hook_list.h %d" % (reg.get("lift_hooks"), hooks))
+    if build.get("config") == "Release" and build.get("bug_report_transport") != "openssl":
+        problems.append("a Release build without the Bug Report HTTPS transport (OpenSSL): the Bug Report page could not send")
     max_glibc = glibc_max(elf)
     results.append(Result("elf build provenance", not problems, "fingerprint %s, %s, glibc %s, FFmpeg %s" % (
         build.get("source_fingerprint", "?")[:12], build.get("compiler"), max_glibc, "LGPL" if build.get("ffmpeg", {}).get("lgpl_only") else "not LGPL-only"), problems))

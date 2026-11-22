@@ -41,3 +41,7 @@ user_data/
 user_data.migrating/
 game.install-temp/
 game.install-backup/
+
+# Bug report Worker (server/trespasser-bug-reports)
+server/*/node_modules/
+server/*/.wrangler/

@@ -28,6 +28,8 @@ const char* Tr(const char* english);
 std::string Tr(const std::string& english);
 // A message with known phrases inside it, each replaced on its own.
 std::string TrMessage(const std::string& english);
+// A message that may hold known phrases (an updater error): each phrase is translated, anything else stays as it is.
+inline std::string TrValue(const std::string& english) { return TrMessage(english); }
 
 // The translated format filled in; the arguments keep the English order.
 template <typename... Args>

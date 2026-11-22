@@ -1332,8 +1332,22 @@ static void detach_platform(HWND window) {
 
 void window_host_detach_platform(void) { detach_platform(s.game); }
 
+/* The application icon (resource 1 of the executable: src/trespasser_recomp.rc) on the game window, its title bar and taskbar button. */
+static void set_window_icon(HWND window) {
+    HINSTANCE instance = GetModuleHandleA(NULL);
+    const struct { WPARAM kind; int cx; int cy; } sizes[] = {
+        { ICON_BIG, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON) },
+        { ICON_SMALL, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON) },
+    };
+    for (int i = 0; i < 2; i++) {
+        HANDLE icon = LoadImageA(instance, MAKEINTRESOURCEA(1), IMAGE_ICON, sizes[i].cx, sizes[i].cy, LR_DEFAULTCOLOR);
+        if (icon) SendMessageA(window, WM_SETICON, sizes[i].kind, (LPARAM)icon);
+    }
+}
+
 static void attach(HWND window) {
     s.game = window;
+    set_window_icon(window);
     activation_defer_init(&s.activation);
     s.active = 1;
     s.game_proc = (WNDPROC)GetWindowLongPtrA(window, GWLP_WNDPROC);

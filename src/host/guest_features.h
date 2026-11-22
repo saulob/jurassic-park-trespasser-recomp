@@ -55,7 +55,7 @@ void physics_fixes_install(void);
 /* Hand escapes and recoveries at exit. */
 void physics_fixes_summary(void);
 
-/* DEBUG_SAULO: what the rigid-box physics did since the last take, by box of the 50-box pool (its broad-phase pairs,
+/* what the rigid-box physics did since the last take, by box of the 50-box pool (its broad-phase pairs,
  * sub-box pairs it was tested in, velocity kills of its contacts) and the pool's state now. */
 #define PHYSICS_BOXES 50u
 typedef struct {

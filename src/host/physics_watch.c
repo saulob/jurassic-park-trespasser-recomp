@@ -1,5 +1,5 @@
 /*
- * DEBUG_SAULO: temporary telemetry of Anne's body and hand, read from memory only. The pelvis state is
+ * temporary telemetry of Anne's body and hand, read from memory only. The pelvis state is
  * Pel[pelvis][dof][value, velocity, acceleration] (OT pelvis_def.h: BODY 0, BODY_EULER 3, MOUTH 21, RIGHT_HAND 25).
  */
 #include "guest_abi.h"

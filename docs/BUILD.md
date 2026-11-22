@@ -165,6 +165,17 @@ py -3 -m unittest discover -s tests -p "test_stable_entries.py"  # the lift's st
 py -3 -m unittest discover -s tests -p "test_lift_hooks.py"     # lift hooks: the list, their place in front of an instruction, the check
 py -3 -m unittest discover -s tests -p "test_lift_staging.py"    # staging, publishing changed files only, cleanup retries when a scanner holds a file (TRESPASSER_TEST_LIFT=1 also lifts a small closure twice)
 py -3 -m unittest discover -s tests -p "test_renderer_fixed.py"  # no runtime renderer switch: the renderer is set once at start, F5 is only the minimap toggle
+ninja -C build\cmake\msvc-x86 bug_report_tests update_tests update_network_tests update_helper_tests
+.\build\cmake\msvc-x86\bug_report_tests.exe   # Bug Report page: JSON, privacy filter, report and preview, client on a stand-in transport, nothing sent by itself; writes bug-report-request.json
+.\build\cmake\msvc-x86\update_tests.exe        # auto update: versions, release JSON, SHA-256, ZIP safety, staging, install and rollback, protected paths, release asset names
+.\build\cmake\msvc-x86\update_network_tests.exe # update failures against a scripted loopback HTTP server
+.\build\cmake\msvc-x86\update_helper_tests.exe  # the real trg-updater.exe: waits, replaces, rolls back, restarts
+$env:JPT_CPP_REQUEST = "$PWD\bug-report-request.json"; (cd server\trespasser-bug-reports; npm test)  # the Worker accepts the request the launcher builds (docs/BUG_REPORTS.md)
+.\tools\worker.ps1 -DryRun   # bundles the Worker with Wrangler, uploads nothing; without -DryRun it deploys (docs/BUG_REPORTS.md)
+.\tools\worker.ps1 -Test     # the Worker's node tests through the script, nothing remote
+.\tools\package-release.ps1   # Release build, the ZIP the updater downloads and its .sha256, verified as the asset (local only)
+.\tools\verify-release.ps1 -Path dist\<asset>.zip   # the same check on an existing ZIP
+py -3 -m unittest discover -s tests -p "test_player_polish.py"  # gamepad icon, numbered Level Select, Bug Report and update wiring
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
 $env:TRESPASSER_TEST_ISO = 'D:\images\trespasser.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
 .\build\cmake\msvc-x86\host_tests.exe   # FPS counter, input/capture state machine, hotkeys, shutdown phases and quit steps, Safe Mode decisions, readback classes, render-target locations (GPU/CPU picture, captures, composites, the hybrid frame), call detection, texture formats, D3D6 -> D3D11 translation, shader compilation

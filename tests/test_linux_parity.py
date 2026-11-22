@@ -67,8 +67,8 @@ class ApplicationIdentity(unittest.TestCase):
         self.assertIn("jpt_app_identity_apply", text("src/linux/linux_main.c"))
         self.assertIn("jpt_app_icon_apply", launcher_host, "the launcher window needs the icon too")
         self.assertIn("jpt_app_identity_apply", launcher_host)
-        self.assertTrue((ROOT / "assets" / "app" / "trespasser-icon.png").is_file())
-        self.assertIn("trespasser-icon.png", raw("cmake/JptLinux.cmake"), "the icon is embedded, not looked up beside an AppImage")
+        self.assertTrue((ROOT / "packaging" / "icons" / "app-icon-256.png").is_file())
+        self.assertIn("app-icon-256.png", raw("cmake/JptLinux.cmake"), "the icon is embedded, not looked up beside an AppImage")
 
     def test_apprun_starts_the_executable_and_writes_nothing(self):
         apprun = (ROOT / "packaging" / "linux" / "AppRun").read_bytes()
@@ -117,7 +117,7 @@ class PortableFolders(unittest.TestCase):
 
     def test_the_executable_folder_is_only_read(self):
         for path in sources("launcher", "src/linux"):
-            rel = str(path.relative_to(ROOT))
+            rel = path.relative_to(ROOT).as_posix()
             body = text(rel)
             for match in re.finditer(r"SDL_GetBasePath\s*\(\s*\)", body):
                 self.assertEqual(rel, "launcher/launcher.cpp", f"{rel} uses the program folder, which is read only inside an AppImage")
