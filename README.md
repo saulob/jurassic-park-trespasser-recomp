@@ -1,15 +1,24 @@
-# Jurassic Park: Trespasser Recompiled
+<div align="center">
 
-A static recompilation of *Jurassic Park: Trespasser* (1998) for modern Windows. The retail
-executable's machine code is translated to C once, ahead of time, and compiled into a native
-host. No CPU emulator, and no launcher around the original program.
+# Jurassic Park: Trespasser - PC Port
 
-You need your own English disc. Nothing from the game is in this repository.
+### Native recompilation of the original 1998 PC game, with modern Windows support, experimental native Linux and Steam Deck support, modern graphics and display options, a minimap, compass and waypoints, gameplay improvements and the TRG launcher
+
+[![Latest release](https://img.shields.io/github/v/release/saulob/jurassic-park-trespasser-recomp?style=for-the-badge&label=release&color=d89a2b&labelColor=0b1a12&include_prereleases&cacheSeconds=300)](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/saulob/jurassic-park-trespasser-recomp/total?style=for-the-badge&color=d89a2b&labelColor=0b1a12&cacheSeconds=300)](https://github.com/saulob/jurassic-park-trespasser-recomp/releases)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20experimental%20%7C%20Steam%20Deck%20experimental-2f7a46?style=for-the-badge&labelColor=0b1a12)
+
+<sub>The game's machine code is translated to C once, ahead of time, and compiled into a native program. <b>It is not an emulator</b>, and on Linux it uses <b>no Wine and no Proton</b>. <b>No commercial game files are included</b>: bring your own legally obtained Trespasser disc image.</sub>
+
+</div>
+
+<img src="assets/launcher/header-art.png" alt="Jurassic Park: Trespasser Recompiled launcher header art">
+
+*Jurassic Park: Trespasser* was released for Windows by DreamWorks Interactive in 1998. This project is a static recompilation of that retail game: its levels, physics, dinosaurs, weapons, audio and videos run as native code on a modern host, with a modern renderer, display modes, navigation aids, controls and a launcher around it. The game is playable and still in testing, not a final remaster.
 
 ## Status
 
-**Playable, in testing.** The game installs from your disc, starts, and runs its menus and levels with the Direct3D 11
-renderer or its own software renderer.
+**v0.1.0 is the first public release.** Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
 
 | Milestone | State |
 |---|---|
@@ -19,59 +28,109 @@ renderer or its own software renderer.
 | Host, launcher and installer build and run | done |
 | Menus, video and audio | working |
 | Levels and gameplay | playable, in testing |
+| Linux and Steam Deck | experimental, not validated on a Steam Deck |
 
-## What the port adds
+## Screenshots
 
-Jurassic Park: Trespasser Recompiled is a PC port powered by static recompilation, with a modern host around the
-original game. These are part of the normal Direct3D 11 renderer; there is nothing to turn on:
+No gameplay screenshots are published yet. Captures of the launcher, 4K gameplay, True Ultrawide, the minimap, the compass and waypoints, and the Cheats panel will be added here.
 
-- **Direct3D 11 renderer**: the game's Direct3D 6 drawing on the graphics card, with the software renderer kept as a
-  compatibility fallback (chosen in the launcher; it stays until the game closes).
-- **Native high resolutions**: the 3D world is drawn at the monitor's resolution (or 720p to 4K), not upscaled.
-- **True widescreen**: 16:9 to 32:9 show more of the world to the sides (Hor+), with no stretching and no holes.
-- **Field of view**: 60-110 degrees across the 4:3 view (75, the original, by default), as Trespasser CE's `FOV`;
-  wider screens add to the sides.
-- **Scaled UI**: menus and dialogs keep their original 4:3 layout, scaled to the screen.
-- **Modern texture filtering**: anisotropic filtering up to 16x, and MSAA up to 8x where the card supports it.
-- **Generated mipmaps**: the 3D world's textures get full mip chains made from the originals at load time (the files
-  are never changed), so distant ground and foliage stay steady and alpha-tested plants keep their density.
-- **Improved draw distance**: every object stays drawn 1.2 times as far, and stays a 3D model out to 25-150 m (by
-  size) before the game may swap it for a flat impostor (15 m in 1998), and does not flicker between the two.
-- **Textured distant terrain**: the ground keeps its own detailed textures out to the far clip, at most 750 m, instead
-  of a blurry map beyond 345 m, with more room for terrain textures and safer terrain memory.
-- **Improved LOD behaviour**: models keep their detail measured at the real render size, and textures, terrain and
-  impostors use their full 256-pixel resolution instead of the 1998 limit of 128.
-- **Modern texture cache**: the game's texture memory grows from 24 MB to 96 MB, with the engine's 32-bit budget
-  arithmetic corrected, and textures survive Alt+Tab and menu changes without being rebuilt.
-- **Steady texture streaming**: the game's per-frame texture upload window is timed precisely, so newly visible
-  scenery gets its textures sooner instead of showing flat colours.
-- **Performance**: menus over a paused game and the start-up checks no longer copy the full picture back from
-  the graphics card.
+## Features
 
-**Gamepads** work out of the box: Xbox, PlayStation, Switch Pro, Steam Deck and other SDL3 controllers, at the same time
-as the keyboard and mouse, with analog movement, a layout built around Anne's arm, menu, Save and Load navigation,
-hotplug, and prompts that follow the device used last in Xbox, PlayStation, Steam Deck or generic glyphs. The beach
-tutorial's instructions show the bound keycaps or controller buttons as glyphs and switch the moment you change device,
-and View shows every control in a level ([CONTROLS](docs/CONTROLS.md) explains the hand, crouching and each button).
+- **Native static recompilation**: the retail executable's code runs as C on the host CPU. No CPU emulator, no Wine, no Proton
+- **Modern graphics**: Direct3D 11 on Windows, a Vulkan 1.2 renderer on Windows and Linux, and the original software renderer as a fallback, with render resolutions up to 4K on Windows
+- **True Ultrawide on Windows**: 21:9 and 32:9 show more of the world at the sides instead of stretching the picture
+- **Minimap, compass and waypoints**: a circular minimap, a compass strip, creature and vehicle markers, 3D objective markers and a distance readout, none of which existed in 1998
+- **Gameplay improvements**: Quick Save and Quick Load, Dual Stow, Active AI, physics and collision fixes, and a reimplemented subset of the official 1.1 patch
+- **Cheats panel** (F10) with movement speed, jump height, invulnerability, infinite ammo, frozen dinosaurs, health, noclip, stealth, teleport, Level Select and a free camera
+- **Modern controls**: keyboard, mouse and SDL3 gamepads (Xbox, PlayStation, Switch, Steam Deck) with hotplug, glyphs and rebindable buttons
+- **TRG launcher** that imports your disc image, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
+- **Seven languages**, video subtitles, restored English dialogue and corrected caption timings
+- **Portable**: saves, settings and logs stay next to the program
+- **Experimental native Linux and Steam Deck** AppImage
 
-The launcher installs the game from your disc image and keeps only the useful choices: resolution, aspect ratio,
-field of view, anti-aliasing, texture filtering, VSync and renderer, mouse sensitivity, and the gamepad's layout and
-feel ([LAUNCHER](docs/LAUNCHER.md)).
-The launcher also checks for a newer release and updates the port in place ([Updates](docs/LAUNCHER.md#updates)), and its
-**Bug Report** page sends a description with one privacy-filtered game log to a small service of its own
-([BUG_REPORTS](docs/BUG_REPORTS.md)); nothing is sent unless you press the button. Level Select (F10 Cheats) numbers the
-levels in the game's order: `1 - Beach`, `2 - Jungle Road`, `3 - Industrial Jungle`, ...
-It is portable: saves and settings stay in `user_data` next to the program ([user data](docs/user-data.md)).
+## Graphics
 
-**Languages** are built into the port: Gameplay > Language in the launcher picks one of English, Brazilian Portuguese,
-French, German, Spanish, Russian or Italian. Every language has the whole text of the game: game text, the words on the
-menu pictures, subtitles, the tutorial and the port's own panels; the voices, effects, music and videos stay the English
-originals. Brazilian Portuguese also translates the launcher, at once; the other languages keep it in English
-([Languages](#languages)).
+- **Renderers**: Direct3D 11 is the Windows default; Vulkan 1.2 is a native backend on Windows and Linux (the Linux default); Software is the game's own renderer and the fallback. The renderer is chosen at start and stays for the run. On Windows, D3D11 is the recommended path.
+- **Native resolution** (Windows): 720p, 1080p, 1440p, 4K, Native and custom sizes; the 3D world, text and viewport use the render size, which does not depend on the window size. Menus and videos keep their 4:3 canvas, centred and scaled.
+- **Field of view**: 60 to 110 degrees across the 4:3 view (75, the original, by default).
+- **Texture filtering and anti-aliasing**: anisotropic filtering up to 16x, MSAA up to 8x where the card supports it, and generated mipmaps (the game's files are never changed).
+- **Draw distance, LOD and terrain**: objects stay drawn 1.2 times as far and stay 3D models out to 25-150 m before becoming flat impostors (15 m in 1998); the terrain keeps its textures out to 750 m; textures and impostors use 256 pixels instead of the 1998 limit of 128; optional Maximum object detail.
+- **Ambient occlusion** (Off to Ultra), **water refraction** and **enhanced sky**, as Direct3D 11 and Vulkan passes.
+- **Texture cache and streaming**: texture memory grows from 24 MB to 96 MB, and uploads are timed precisely so new scenery gets its textures sooner.
+- **HD front end, loading screens and videos** (video on Windows): rebuilt at the screen's resolution from the game's own art. **No HD texture pack is included**; the 3D world uses the original textures.
+- **Window and presentation**: Windowed and Borderless Fullscreen (F11), monitor selection, Letterbox or Stretch, VSync on or off, FPS in the title and a frame counter (F6).
 
-Not yet: uncapped frame rate, vibration, mods, x64.
+The Linux Vulkan build has its own filtering, MSAA, ambient occlusion, water, sky and HD front end, but not the Windows native-resolution and widescreen path. See [Linux and Steam Deck](#linux-and-steam-deck-experimental).
 
-## Trespasser CE-inspired improvements
+## Ultrawide
+
+- **Widescreen (Hor+)**: 16:9, 16:10, 21:9 and 32:9 keep the vertical view of the original 4:3 camera and add world to the left and right, with no stretching and no holes at the edges.
+- **True Ultrawide** is this Hor+ rendering at 21:9 and 32:9: a 21:9 screen shows more than 16:9, and 32:9 more than 21:9. It is supported on **Windows**.
+- **Stretch is not ultrawide.** The launcher's Presentation setting has Letterbox (keeps the picture's shape, with bars) and Stretch (fills the window by stretching the finished picture). Stretch does not add any world to the sides; use Letterbox for correct geometry.
+- Menus and dialogs stay 4:3 and are pillarboxed. There is no dedicated ultrawide HUD layout.
+- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.0.
+
+## Navigation
+
+The minimap, compass, objective markers and waypoint were added by this port; the 1998 interface had none of them.
+
+- **Minimap**: circular, bottom-left, player-up, fixed 2x zoom. Press **F5** (keyboard) or **L3 + R3** (gamepad) to toggle it. It can start on or off from the launcher's Gameplay page.
+- **Creature markers**: red when the animal's brain is awake and engaged, green otherwise; the dot grows in four steps with the animal's size.
+- **Vehicle markers**: ground vehicles such as jeeps, trucks and the Unimog appear as small orange rectangles.
+- **Compass**: a strip at the top of the picture. The objective is a diamond with Anne's distance in metres, and an arrow when it is beyond the ends of the strip.
+- **Waypoints and 3D markers**: the waypoint is **the current objective**, not a point you place. A diamond marks it in the 3D picture and becomes an edge arrow when it is off-screen. Where a level has stepping stones on the route, chevrons mark the next ones.
+- **Objectives**: **F3** (or D-pad Right) lists them; **F4** (or D-pad Down) shows the current title under its distance for 4 seconds. Objectives follow the game's own hints in the eight campaign levels.
+- Everything hides in menus, dialogs, videos and loading screens.
+
+## Gameplay
+
+- **Quick Save and Quick Load**: **F7** saves the level in progress to its own slot (a normal retail save, listed as "Quick Save"); **F8** loads it. Both keys are rebindable.
+- **Level Select** (F10 Cheats), numbered in the game's order.
+- **Dual Stow**, **Active AI** (6 creatures active instead of 3), **water refraction**, **enhanced sky**, **maximum object detail**, mouse sensitivity and restored footstep and collision sounds, from [Trespasser CE-inspired improvements](#trespasser-ce-inspired-improvements).
+- **Physics, collision and stability fixes**: a subset of the official v1.1 build 117 patch, widescreen culling, clean shutdown and window presentation fixes ([Official Trespasser v1.1 build 117 fixes](#official-trespasser-v11-build-117-fixes)).
+- **Gameplay options** in the launcher: Skip Intro, Video subtitles, Minimap, Dual stow, Active AI, Official Patch 1.1. Every option has an Original or Off choice that keeps the retail behaviour.
+
+## Cheats
+
+Press **F10** in a level or from the main menu.
+
+| Cheat | Scope |
+|---|---|
+| Movement Speed (0.5x to 10x), Jump Height (0.5x to 5x), Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health | Saved in the launcher's Cheats page as the starting value; F10 changes them for the running session only |
+| Health (fill), Noclip, Stealth, Teleport, Level Select, Free Camera | Session only (F10), start Off in every run |
+
+Free Camera and Noclip return to normal in another level or the main menu, and a save never keeps a cheat. The game's own console (Ctrl+F11) still works.
+
+## Controls
+
+- **Keyboard and mouse**: the game's own bindings are the defaults and are remapped in the game's Options > Controls screen. Mouse sensitivity (0.25 to 4.00) and the port's hotkeys are in the launcher.
+- **Gamepads** (SDL3): Xbox, PlayStation, Switch and Steam Deck controllers, together with the keyboard and mouse, with hotplug.
+- **Analog movement**, a layout built around Anne's arm, menu navigation, rebindable buttons, stick and trigger deadzones, look sensitivity and Y inversion.
+- **Button glyphs** follow the device used last (Xbox, PlayStation, Steam Deck, Nintendo or generic); the tutorial prompts show the bound key or button.
+- **F2** (or View) shows a controls card in a level. Rumble is not driven by any game event, so there is no vibration.
+
+Details: [CONTROLS](docs/CONTROLS.md).
+
+## Launcher
+
+The TRG launcher opens before the game and keeps its settings in `user_data/launcher/trespasser.ini`.
+
+| Page | What it does |
+|---|---|
+| Play | Game status, version selection, Import and Reinstall, Remove version |
+| Display | Display mode, window size, monitor, aspect ratio, presentation |
+| Graphics | Renderer, graphics card, render resolution, field of view, anti-aliasing, ambient occlusion, water, sky, texture filtering, VSync |
+| Gameplay | Language, Minimap, Video subtitles, Skip Intro, Dual stow, Active AI, Official Patch 1.1 |
+| Controls | Gamepad bindings and feel, mouse, hotkeys |
+| Cheats | Starting values of the persistent cheats |
+| Bug Report | A description and one privacy-filtered log, with a preview |
+| About | Credits, folders, settings file, reset, versions |
+
+It also imports a disc image (ISO), checks for updates ([Updates](docs/LAUNCHER.md#updates)), and keeps `game`, `user_data` and `logs` next to the program. See [LAUNCHER](docs/LAUNCHER.md) and [user data](docs/user-data.md).
+
+## Gameplay details
+
+### Trespasser CE-inspired improvements
 
 Selected improvements were reimplemented natively in this port after studying Trespasser CE. The port does not include
 Trespasser CE, does not need it, and does not read its executable, DLLs or `tp_mod.ini`: everything below is the port's
@@ -99,7 +158,7 @@ Credits: [Trespasser CE](https://www.trescomforum.org/viewtopic.php?t=10674) by 
 TresCom; [Trespasser Mod Manager](https://github.com/miketheraptor/Trespasser-Mod-Manager) by MikeTheRaptor, used as a
 reference for CE's configuration options.
 
-## Official Trespasser v1.1 build 117 fixes
+### Official Trespasser v1.1 build 117 fixes
 
 DreamWorks Interactive released an official v1.1 (build 117) patch in November 1998. The port runs the retail 1.0
 build 116 and reimplements selected fixes from that patch natively, studied by comparing the two builds and their
@@ -127,56 +186,15 @@ Each fix follows the same setting; Off runs the retail code and data. What was l
 `docs/LAUNCHER.md`. Credits:
 [Trespasser v1.1 (117) Full Patch](https://www.trescom.org/download/trespasser-patch-v1-1-117-full/) by DreamWorks
 Interactive, hosted by TresCom.
+## Localization
 
-## How it works
+**Languages** are built into the port: Gameplay > Language in the launcher picks one of English, Brazilian Portuguese,
+French, German, Spanish, Russian or Italian. Every language has the whole text of the game: game text, the words on the
+menu pictures, subtitles, the tutorial and the port's own panels; the voices, effects, music and videos stay the English
+originals. Brazilian Portuguese also translates the launcher, at once; the other languages keep it in English
+([Languages](#languages)).
 
-- The lifts were made from the retail builds (1.0.116 Pentium Pro, and the Spanish and Brazilian 117 builds) with
-  [pcrecomp](https://github.com/sp00nznet/pcrecomp), which recovers the functions in `.text` and lifts them to C. They
-  are project artifacts (`lifts\`); the original executables are development inputs only and are not required to
-  install, build or play the recomp.
-- The host is one 32-bit program, `trespasser_recomp.exe`, that carries every lift, maps the guest image the launcher
-  installed from your disc at `0x00400000`, forwards its imports to the real Windows DLLs, and runs the lifted C of the
-  selected game version in place of `.text`.
-- `SelfMod`, the self-patching rasteriser section, runs as the original machine code.
-
-[ARCHITECTURE](docs/ARCHITECTURE.md) lists exactly which parts are recompiled, which are
-original code, and which are Windows.
-
-## Quick start
-
-```powershell
-.\tools\build.ps1 -Run     # builds what is out of date, then opens the launcher and the game
-.\tools\build.ps1          # builds only
-```
-
-Nothing that is already current is redone, so the same command is the normal way to build and to play.
-`.\tools\run.ps1` is an optional shortcut that starts the existing build without checking for changes.
-
-The build needs no game files. To play, import your own disc image from the launcher's Play page. Details, options and
-what to do when a run stops: [BUILD](docs/BUILD.md).
-
-## Layout
-
-```
-config/        profiles, guest maps, decoder fixups, extra entry points (lift development)
-lifts/         the lifted builds (tar.xz) and their manifest
-tools/         lift generation (maintainers), checks and build scripts
-src/host/      the runtime host (hand-written)
-src/recomp/gen* lifted C unpacked from lifts/ by CMake (ignored by Git)
-launcher/      the launcher: pages, disc image reader, installer (C++)
-assets/        launcher header art, sponsor heart, page icons and the translated text (assets/translations)
-packaging/     third-party licence notices
-src/common/    settings file and display arithmetic shared by host, launcher and tests
-docs/          ANALYSIS, ARCHITECTURE, BUILD, CONTROLS, LAUNCHER, LEGAL, REFERENCES, user-data
-external/      pcrecomp checkout (fetched, ignored by Git)
-game/          your installed game files (ignored by Git)
-user_data/     next to the program: settings and saves (never in a release;
-               build\user_data for tools\build.ps1 -Run)
-analysis/      regenerated analysis output (ignored by Git)
-logs/          one log per run (ignored by Git)
-```
-
-## Languages
+### Languages
 
 Languages are built into the PC port: nothing is downloaded or installed. The translated text is part of the executable,
 and the launcher's Gameplay page has one Language setting.
@@ -203,7 +221,7 @@ colours, hover and pressed states included; no picture of the game is shipped. T
 controls by the button or key of the device in use in every language. The game's own Show Subtitles option still turns
 subtitles on and off.
 
-### Translation credits
+#### Translation credits
 
 | Language | Content | Source | Translation | GameStrings conversion |
 |---|---|---|---|---|
@@ -232,7 +250,7 @@ packages is used: no audio, menu picture, video or program. The About page lists
 Fargus and Lost Jungle Russian translations and the Italian cutscene packages are not included. The licence of these
 downloads is not stated ([LEGAL](docs/LEGAL.md)).
 
-## Subtitle timing and restored dialogue
+### Subtitle timing and restored dialogue
 
 The data in this section comes from the *English Stream TPA Fix (Subtitle Timing Fix)* by KeyofBlueS, preserved and hosted
 by [TresCom](https://www.trescom.org/download/10423/) (March 14, 2026). Its author's description: a `Stream.tpa` with
@@ -269,7 +287,7 @@ the executable (about 3.5 MB more in a release archive).
 The developer tool `tools/stream_fix_pack.cpp` made `assets/restored_audio` and `assets/translations/en.subtitles.txt`
 from the fix and the retail file; it is not part of the build, and a clean clone builds without the fix.
 
-## Video subtitles
+### Video subtitles
 
 Gameplay > **Video subtitles** (key `video_subtitles`, **On** by default) shows the spoken lines of the videos in the
 language chosen in Gameplay > Language: English, Brazilian Portuguese, French, German, Italian, Russian or Spanish.
@@ -302,7 +320,128 @@ and the English Stream TPA Fix's; Jill's lines follow the *Trespasser Voiceover 
 retail audio. The Italian lines are those of the Italian reference; the other languages reuse the port's existing
 translations of the same captions where they exist, and the rest was translated for the port.
 
-## Testing
+## Supported game versions
+
+| Release | Version | Windows | Linux |
+|---|---|---|---|
+| English retail (UK `Trespass_UK_116`, US `Trespasser_116d`) | 1.0.116 | Yes | Yes |
+| Russian Fargus (`TRESPASSER_116D`) | 1.0.116 | Yes | Yes |
+| Spanish (`TRESPASSER_S`) | 1.1.117 | Yes | Import only |
+| Brazilian Portuguese | 1.1.117 | Yes | Import only |
+
+The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo, mod or fan-made conversion is supported. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
+
+## Windows installation
+
+Windows 10 or 11, 64-bit. The Windows program is a 32-bit (x86) host that runs on 64-bit Windows.
+
+1. Download **JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
+2. Run **trespasser_recomp.exe**, keeping `trg-updater.exe` beside it.
+3. On the **Play** page choose **Import game...** and select your own Trespasser `.iso` disc image. It is only read.
+4. When Play says the game is ready, press **PLAY**.
+
+The Windows executable is not code-signed, so SmartScreen may warn on the first start; choose **More info**, then **Run anyway** if you downloaded it from this repository's releases.
+
+## Linux and Steam Deck (Experimental)
+
+*Jurassic Park: Trespasser* was released for Windows in 1998. This recompilation also offers a native **x86_64 Linux executable**, distributed as an **AppImage**. It uses **no Wine and no Proton**.
+
+- **Vulkan** is the Linux GPU renderer; Software is the fallback. If Vulkan cannot start, the run falls back to Software and says why.
+- **AppImage**: make it executable and run it. Without FUSE it extracts itself and runs automatically (`APPIMAGE_EXTRACT_AND_RUN=1` forces that).
+- **Import** your disc image from the launcher's Play page, as on Windows.
+- **`game`, `user_data` and `logs`** live next to the AppImage file, never inside it.
+- **Controllers** work through SDL3, including Steam Deck glyphs; the launcher is usable with a gamepad and has a built-in file browser when `zenity` or `kdialog` is missing.
+- **Updates** replace the AppImage itself after checking its SHA-256, and restart it.
+- **Requirements**: 64-bit x86 Linux with glibc 2.31 or newer, an X11 or Wayland desktop, and a Vulkan 1.1+ driver for the Vulkan renderer.
+
+**Steam Deck** support is experimental and uses the same AppImage: add it with **Games > Add a Non-Steam Game to My Library**. It has **not been validated on Steam Deck hardware**, and it is not Steam Deck Verified. See [docs/LINUX.md](docs/LINUX.md) and [docs/LINUX_PARITY.md](docs/LINUX_PARITY.md).
+
+Verified limits on Linux in v0.1.0:
+
+- The guest keeps its 4:3 presentation, scaled to the window.
+- True Ultrawide and HD video are Windows-only; Linux plays the original videos with subtitles.
+- All four versions import, but only English and Russian (1.0.116) run; Spanish and Brazilian Portuguese are not playable yet.
+- The Steam Deck, real desktops, GPUs and audio devices are not validated; the Linux tests run headless.
+
+## Known limitations
+
+- **No validated high frame rate.** VSync Off removes the present wait, but there is no uncapped-frame-rate mode and no 120 FPS guarantee.
+- **"HD" means the front end, loading screens and videos**, not a texture pack; the 3D world uses the original textures.
+- No dedicated ultrawide HUD, no HDR, no vibration, no mods, no custom waypoints.
+- Windows Vulkan is selectable but D3D11 is recommended; the playable host is 32-bit (the 64-bit host is groundwork only).
+- The Windows executable and updater are unsigned.
+
+The complete list is in the [release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations).
+
+## Bug reports
+
+Use the launcher's **Bug Report** page: describe the problem, choose a log and press **Send report**; **Open preview** shows exactly what goes out, and nothing is sent until you confirm ([BUG_REPORTS](docs/BUG_REPORTS.md)). You can also open an [issue](https://github.com/saulob/jurassic-park-trespasser-recomp/issues) with the newest log from `logs`. For Linux problems add your distribution, GPU and driver, and on a Steam Deck whether you used Desktop or Gaming Mode.
+
+## Downloads
+
+Get the files from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest). The Windows port is x86; the Linux build is x86_64.
+
+| Platform | File | Checksum |
+|---|---|---|
+| Windows 10 / 11 | [JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip) | [.sha256](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip.sha256) |
+| Linux x86_64 / Steam Deck (experimental) | [JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage) | [.sha256](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage.sha256) |
+
+No game files are in the downloads.
+
+## Security
+
+The four v0.1.0 files (the Windows ZIP, `trespasser_recomp.exe`, `trg-updater.exe` and the Linux AppImage) were scanned on VirusTotal with no detections: [ZIP](https://www.virustotal.com/gui/file/4b677fb36519f63221ff25dffd5b5a50a250672db56658b07865810649bc1a36), [EXE](https://www.virustotal.com/gui/file/52b4dc10c9da024b1c10ef152615f1235d21301f9bcacf0d1d6f742f91c0d7fd), [updater](https://www.virustotal.com/gui/file/ba019e55a195d234c8f6b02e6f2bc2dc04aeb0df27ac3aa3570c29cb514c4be6), [AppImage](https://www.virustotal.com/gui/file/eb4e8d6308fa41407b503668e59536c387da654baf0ffa87bc88b2e4447856d9). A clean scan is an additional signal, not a guarantee of safety: verify the SHA-256 and download only from this repository. The full table is in the [release notes](docs/RELEASE_NOTES_v0.1.0.md#security-and-virustotal); see also [RELEASE_SECURITY](docs/RELEASE_SECURITY.md).
+
+## How it works and building
+
+### How it works
+
+- The lifts were made from the retail builds (1.0.116 Pentium Pro, and the Spanish and Brazilian 117 builds) with
+  [pcrecomp](https://github.com/sp00nznet/pcrecomp), which recovers the functions in `.text` and lifts them to C. They
+  are project artifacts (`lifts\`); the original executables are development inputs only and are not required to
+  install, build or play the recomp.
+- The host is one 32-bit program, `trespasser_recomp.exe`, that carries every lift, maps the guest image the launcher
+  installed from your disc at `0x00400000`, forwards its imports to the real Windows DLLs, and runs the lifted C of the
+  selected game version in place of `.text`.
+- `SelfMod`, the self-patching rasteriser section, runs as the original machine code.
+
+[ARCHITECTURE](docs/ARCHITECTURE.md) lists exactly which parts are recompiled, which are
+original code, and which are Windows.
+
+### Quick start
+
+```powershell
+.\tools\build.ps1 -Run     # builds what is out of date, then opens the launcher and the game
+.\tools\build.ps1          # builds only
+```
+
+Nothing that is already current is redone, so the same command is the normal way to build and to play.
+`.\tools\run.ps1` is an optional shortcut that starts the existing build without checking for changes.
+
+The build needs no game files. To play, import your own disc image from the launcher's Play page. Details, options and
+what to do when a run stops: [BUILD](docs/BUILD.md).
+
+### Layout
+
+```
+config/        profiles, guest maps, decoder fixups, extra entry points (lift development)
+lifts/         the lifted builds (tar.xz) and their manifest
+tools/         lift generation (maintainers), checks and build scripts
+src/host/      the runtime host (hand-written)
+src/recomp/gen* lifted C unpacked from lifts/ by CMake (ignored by Git)
+launcher/      the launcher: pages, disc image reader, installer (C++)
+assets/        launcher header art, sponsor heart, page icons and the translated text (assets/translations)
+packaging/     third-party licence notices
+src/common/    settings file and display arithmetic shared by host, launcher and tests
+docs/          ANALYSIS, ARCHITECTURE, BUILD, CONTROLS, LAUNCHER, LEGAL, REFERENCES, user-data
+external/      pcrecomp checkout (fetched, ignored by Git)
+game/          your installed game files (ignored by Git)
+user_data/     next to the program: settings and saves (never in a release;
+               build\user_data for tools\build.ps1 -Run)
+analysis/      regenerated analysis output (ignored by Git)
+logs/          one log per run (ignored by Git)
+```
+### Testing
 
 `.\tools\test.ps1` is the one command that validates the whole project on both platforms. It builds only the test
 programs (incrementally), runs every Windows suite, then the Linux gate inside WSL (it finds the distribution, converts the
@@ -331,8 +470,23 @@ supported build, language, cheat and setting has its row, and that no suite chan
 needs game data that is not installed says so (`DATA UNAVAILABLE`, or a skipped part in the summary); it is never
 reported as a pass. [Building](docs/BUILD.md#headless-tests) lists what each suite covers.
 
+## Sponsoring
+
+Jurassic Park: Trespasser PC is maintained and developed in my free time. If you enjoy the project or find it useful, consider supporting its continued development.
+
+<p align="center">
+<a href="https://github.com/sponsors/saulob" target="_blank"><img src="https://img.shields.io/badge/GitHub%20Sponsors-Sponsor-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors"></a>
+</p>
+
 ## Credits
 
-Built on [sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp), following the
-reconnaissance of [sp00nznet/trespasser](https://github.com/sp00nznet/trespasser).
-See [LEGAL](docs/LEGAL.md) and [REFERENCES](docs/REFERENCES.md).
+- *Jurassic Park: Trespasser* by DreamWorks Interactive (1998). This is an unofficial fan project, not affiliated with or endorsed by DreamWorks, Universal or EA, and it contains no game files.
+- Built on [sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp), following the reconnaissance of [sp00nznet/trespasser](https://github.com/sp00nznet/trespasser).
+- Trespasser CE, CE Patcher Large Version, Trespasser Mod Manager and the official v1.1 patch: see the credits in [Trespasser CE-inspired improvements](#trespasser-ce-inspired-improvements) and [Official Trespasser v1.1 build 117 fixes](#official-trespasser-v11-build-117-fixes).
+- Translations, subtitles and the restored dialogue: see [Translation credits](#translation-credits) and the [TresCom](https://www.trescom.org/) community.
+- [TRG Launcher](https://github.com/TekRantGaming/trg-launcher), SDL3, Dear ImGui, Intel ASSAO, FFmpeg, OpenSSL and the other libraries listed in [docs/LEGAL.md](docs/LEGAL.md) and [docs/REFERENCES.md](docs/REFERENCES.md); their licences are in the `licenses` folder of the Windows ZIP.
+- Everyone who tested the port and sent logs.
+
+## License
+
+See [docs/LEGAL.md](docs/LEGAL.md) for the legal notes, the third-party components and their licences ([THIRD-PARTY-LICENSES.txt](packaging/licenses/THIRD-PARTY-LICENSES.txt)). The game, its assets and the third-party translation packages are not covered by this project and are not included.
