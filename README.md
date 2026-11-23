@@ -12,7 +12,7 @@
 
 </div>
 
-<img src="assets/launcher/header-art.png" alt="Jurassic Park: Trespasser Recompiled launcher header art">
+<img width="958" height="762" alt="2026-11-23_16-05" src="https://github.com/user-attachments/assets/67eab2b7-17bc-4d5b-928f-694cabb9e9eb" />
 
 *Jurassic Park: Trespasser* was released for Windows by DreamWorks Interactive in 1998. This project is a static recompilation of that retail game: its levels, physics, dinosaurs, weapons, audio and videos run as native code on a modern host, with a modern renderer, display modes, navigation aids, controls and a launcher around it. The game is playable and still in testing, not a final remaster.
 
@@ -32,7 +32,12 @@
 
 ## Screenshots
 
-No gameplay screenshots are published yet. Captures of the launcher, 4K gameplay, True Ultrawide, the minimap, the compass and waypoints, and the Cheats panel will be added here.
+<img width="1114" height="669" alt="2026-11-23_16-07" src="https://github.com/user-attachments/assets/fbb86b76-9199-4124-be0a-75f059b63d92" />
+
+<img width="1114" height="672" alt="2026-11-23_16-09" src="https://github.com/user-attachments/assets/9d23f6db-d4e1-4a53-9641-09db13c4502f" />
+
+<img width="1113" height="669" alt="2026-11-23_16-11" src="https://github.com/user-attachments/assets/a52d7816-c718-4d99-94b3-d93469b8575b" />
+
 
 ## Features
 
