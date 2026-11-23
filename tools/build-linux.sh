@@ -50,17 +50,31 @@ if [ ! -f "$repo/external/pcrecomp/runtime/recomp32/recomp_types.h" ] && [ "$lif
   exit 2
 fi
 
-if [ "$config" = Release ]; then
-  have_ssl=0
-  if [ -f /usr/include/openssl/ssl.h ] || pkg-config --exists openssl 2>/dev/null; then
-    for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /usr/local/lib; do
-      [ -f "$dir/libssl.a" ] && [ -f "$dir/libcrypto.a" ] && have_ssl=1
-    done
+openssl_static_libs() {
+  [ -f /usr/include/openssl/ssl.h ] || pkg-config --exists openssl 2>/dev/null || return 1
+  for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /usr/local/lib; do
+    [ -f "$dir/libssl.a" ] && [ -f "$dir/libcrypto.a" ] && return 0
+  done
+  return 1
+}
+
+# The Bug Report's HTTPS needs OpenSSL with its static libraries. When the machine has none, a pinned static build is made once
+# into the cache (tools/openssl-bootstrap.sh: no sudo, nothing installed, the tarball is verified); without it the page cannot send.
+if [ -z "${OPENSSL_ROOT_DIR:-}" ] && [ "${JPT_OPENSSL_BOOTSTRAP:-1}" = 1 ] && ! openssl_static_libs; then
+  if openssl_prefix=$(bash "$repo/tools/openssl-bootstrap.sh" --cc "$cc" --jobs "$jobs" 2>/tmp/jpt-openssl-bootstrap.$$); then
+    export OPENSSL_ROOT_DIR=$openssl_prefix
+    echo "build-linux: OpenSSL from $openssl_prefix (tools/openssl-bootstrap.sh)"
+  else
+    code=$?
+    echo "build-linux: the OpenSSL bootstrap did not complete (exit $code): $(tail -1 /tmp/jpt-openssl-bootstrap.$$ | cut -c1-200)"
   fi
-  if [ "$have_ssl" != 1 ] && ! printf '%s' "${JPT_CMAKE_ARGS:-}" | grep -q 'OPENSSL_ROOT_DIR'; then
-    echo "build-linux: a Release build needs OpenSSL with its static libraries for the Bug Report (libssl-dev), or -DOPENSSL_ROOT_DIR=<prefix> in JPT_CMAKE_ARGS" >&2
-    exit 2
-  fi
+  rm -f /tmp/jpt-openssl-bootstrap.$$
+fi
+
+if [ "$config" = Release ] && ! openssl_static_libs && [ -z "${OPENSSL_ROOT_DIR:-}" ] &&
+   ! printf '%s' "${JPT_CMAKE_ARGS:-}" | grep -q 'OPENSSL_ROOT_DIR'; then
+  echo "build-linux: a Release build needs OpenSSL with its static libraries for the Bug Report (libssl-dev), or -DOPENSSL_ROOT_DIR=<prefix> in JPT_CMAKE_ARGS" >&2
+  exit 2
 fi
 
 mkdir -p "$repo/build/logs"

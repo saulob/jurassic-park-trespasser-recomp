@@ -11,15 +11,20 @@
 #include <string>
 #include <vector>
 
+#include "displays.h"
+#include "file_browser.h"
 #include "file_picker.h"
 #include "game_files.h"
 #include "game_install.h"
+#include "incident_report.h"
 #include "iso9660.h"
 #include "jpt_game_version.h"
 #include "jpt_port.h"
 #include "jpt_string_table.h"
+#include "options.h"
 #include "os_file.h"
 #include "pe_resources.h"
+#include "trg/layout.h"
 #include "user_data.h"
 
 namespace fs = std::filesystem;
@@ -379,6 +384,66 @@ static void TestFilePicker() {
     fs::remove_all(dir, ec);
 }
 
+static void TestFileBrowser() {
+    const fs::path dir = Scratch("browser");
+    std::error_code ec;
+    fs::create_directories(dir / "BetaDir", ec);
+    fs::create_directories(dir / "alphaDir", ec);
+    fs::create_directories(dir / ".hiddenDir", ec);
+    Touch(dir / "trespasser.ISO");
+    Touch(dir / "notes.txt");
+    Touch(dir / ".secret.iso");
+
+    const FolderListing iso_only = ListFolder(dir, ".iso", false);
+    CHECK(iso_only.readable && iso_only.entries.size() == 3);
+    if (iso_only.entries.size() == 3) {
+        CHECK(iso_only.entries[0].directory && iso_only.entries[0].name == "alphaDir");
+        CHECK(iso_only.entries[1].directory && iso_only.entries[1].name == "BetaDir");
+        CHECK(!iso_only.entries[2].directory && iso_only.entries[2].name == "trespasser.ISO");
+    }
+    const FolderListing all_visible = ListFolder(dir, "", false);
+    CHECK(all_visible.readable && all_visible.entries.size() == 4);
+    const FolderListing with_hidden = ListFolder(dir, ".iso", true);
+    CHECK(with_hidden.readable && with_hidden.entries.size() == 5);
+    CHECK(StartingFolder({{"Empty", dir / "alphaDir"}, {"Discs", dir}}, ".iso") == dir);
+    CHECK(FormatSize(512) == "1 KB" && FormatSize(2ull << 20) == "2.0 MB" && FormatSize(2ull << 30) == "2.0 GB");
+
+    CHECK(!UseBuiltInFileChooser(true, false, true, ""));
+    CHECK(!UseBuiltInFileChooser(false, false, true, ""));
+    CHECK(UseBuiltInFileChooser(false, false, false, ""));
+    CHECK(UseBuiltInFileChooser(false, true, true, ""));
+    CHECK(UseBuiltInFileChooser(false, false, true, "builtin"));
+    CHECK(!UseBuiltInFileChooser(false, true, false, "native"));
+    fs::remove_all(dir, ec);
+}
+
+static void TestSteamDeck1280x800() {
+    const int scales[] = {100, 150, 225};
+    for (int pct : scales) {
+        const float scale = float(pct) / 100.0f;
+        Display deck;
+        deck.bounds = {0, 0, int(1280 * scale), int(800 * scale)};
+        deck.usable = {0, 0, int(1280 * scale), int(760 * scale)};
+        deck.scale = scale;
+        int w = int(1280 * scale), h = int(720 * scale);
+        FitWindowSize(w, h, deck);
+        CHECK(w > 0 && w <= deck.usable.w && h > 0 && h <= deck.usable.h);
+    }
+    const float header = trg::layout::HeaderHeight(800.0f, 1.0f);
+    const float body = 800.0f - header - trg::layout::kBodyGap - trg::layout::kFooterHeight - trg::layout::kMargin;
+    const int page_count = static_cast<int>(std::size(kPageOrder));
+    CHECK(trg::layout::SidebarHeight(page_count) <= body);
+    CHECK(trg::layout::SidebarWidth(1280.0f, 1.0f) + 600.0f <= 1280.0f);
+    jpt_monitor_t m{};
+    m.bounds = {0, 0, 1280, 800};
+    m.work = {0, 0, 1280, 800};
+    CHECK(WindowSizeFits(jpt_window_sizes[0], m) && WindowSizeFits(jpt_window_sizes[1], m));
+    CHECK(!WindowSizeFits(jpt_window_sizes[3], m));
+    CHECK(FormatLinuxOperatingSystem("SteamOS", "Valve", "Jupiter") == "Steam Deck: SteamOS");
+    CHECK(FormatLinuxOperatingSystem("SteamOS", "Valve", "Galileo") == "Steam Deck: SteamOS");
+    CHECK(FormatLinuxOperatingSystem("Ubuntu 24.04", "LENOVO", "ThinkPad") == "Linux: Ubuntu 24.04");
+}
+
 int main() {
     TestPeResources();
     TestPartFile();
@@ -387,6 +452,8 @@ int main() {
     TestPortFolder();
     TestVersions();
     TestFilePicker();
+    TestFileBrowser();
+    TestSteamDeck1280x800();
     std::printf("linux_launcher_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

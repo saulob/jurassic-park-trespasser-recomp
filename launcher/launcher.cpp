@@ -17,6 +17,9 @@
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "disc_browser.h"
+#include "file_browser.h"
+#include "file_picker.h"
 #include "game_files.h"
 #include "game_install.h"
 #include "header_art.h"
@@ -26,6 +29,7 @@
 #include "jpt_display.h"
 #include "jpt_gamepad.h"
 #include "jpt_l10n.h"
+#include "jpt_port.h"
 #include "jpt_prompt_text.h"
 #include "launcher_log.h"
 #include "launcher_quit.h"
@@ -34,7 +38,6 @@
 #include "page_icons.h"
 #include "placement.h"
 #include "process_probe.h"
-#include "file_picker.h"
 #include "play_gate.h"
 #include "portable.h"
 #include "settings.h"
@@ -425,6 +428,12 @@ private:
         ImGui::BeginDisabled(play_.starting());
         const trg::Result result = launcher_->Frame();
         ImGui::EndDisabled();
+        if (disc_browser_.active()) {
+            if (const std::optional<std::filesystem::path> picked =
+                    disc_browser_.Draw(fonts_.regular, fonts_.size, launcher_->config().theme)) {
+                StartInstall(Utf8(*picked), browse_replace_);
+            }
+        }
         if (result == trg::Result::kNone && !play_.starting() &&
             HandleUpdateAction(trg::update::DrawUpdateBanner(updater_->snapshot(), launcher_->config().theme, fonts_))) {
             return Outcome::kQuit;
@@ -437,7 +446,8 @@ private:
             RequestPlay();
             break;
         case trg::Result::kQuit:
-            if (!play_.starting() && LauncherQuitAllowed(ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+            if (!play_.starting() && !disc_browser_.active() &&
+                LauncherQuitAllowed(ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
                 return Outcome::kQuit;
             }
             break;
@@ -695,10 +705,21 @@ private:
     }
 
     void BrowseAndInstall(bool replace) {
-        if (install_.running()) {
+        if (install_.running() || disc_browser_.active()) {
             return;
         }
-        if (!FilePickerAvailable()) {
+        const bool native_available = FilePickerAvailable();
+#ifdef _WIN32
+        constexpr bool is_windows = true;
+#else
+        constexpr bool is_windows = false;
+#endif
+        if (UseBuiltInFileChooser(is_windows, jpt_port_in_gamescope() != 0, native_available, FileChooserPreference())) {
+            browse_replace_ = replace;
+            disc_browser_.Open(PortFolder());
+            return;
+        }
+        if (!native_available) {
             Log("no file picker: neither zenity nor kdialog is on the PATH");
             launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the disc image."), 10.0);
             return;
@@ -1317,8 +1338,7 @@ private:
     // ---- Updates
 
     std::filesystem::path InstallDir() const {
-        const std::filesystem::path executable = CurrentExecutablePath();
-        return executable.has_parent_path() ? executable.parent_path() : std::filesystem::current_path();
+        return PortFolder();
     }
 
     void PollUpdate() {
@@ -1482,6 +1502,8 @@ private:
     trg::Fonts fonts_;
     PlacementTracker placement_;
     trg::Task install_;
+    DiscBrowser disc_browser_;
+    bool browse_replace_ = false;
     std::shared_ptr<InstallResult> outcome_;
     std::string install_failure_, install_failure_text_;
     std::vector<jpt_monitor_t> monitors_;

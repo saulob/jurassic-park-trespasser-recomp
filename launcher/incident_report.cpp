@@ -308,12 +308,31 @@ DraftProblem CheckDraft(std::string_view description, bool has_log) {
     return has_log ? DraftProblem::kNone : DraftProblem::kNoLog;
 }
 
+#ifndef _WIN32
+std::string ReadDmiLine(const char* path) {
+    std::ifstream in(path);
+    std::string line;
+    std::getline(in, line);
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' ')) {
+        line.pop_back();
+    }
+    return line;
+}
+#endif
+
+std::string FormatLinuxOperatingSystem(std::string_view distribution, std::string_view dmi_vendor,
+                                       std::string_view dmi_product) {
+    const bool steam_deck = dmi_vendor == "Valve" && (dmi_product == "Jupiter" || dmi_product == "Galileo");
+    const std::string prefix = steam_deck ? "Steam Deck" : "Linux";
+    return distribution.empty() ? prefix : prefix + ": " + std::string(distribution);
+}
+
 std::string OperatingSystemText() {
 #ifdef _WIN32
     return WindowsVersionText();
 #else
-    const std::string distribution = LinuxDistributionText();
-    return distribution.empty() ? "Linux" : "Linux: " + distribution;
+    return FormatLinuxOperatingSystem(LinuxDistributionText(), ReadDmiLine("/sys/class/dmi/id/sys_vendor"),
+                                      ReadDmiLine("/sys/class/dmi/id/product_name"));
 #endif
 }
 

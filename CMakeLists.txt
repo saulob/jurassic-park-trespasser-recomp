@@ -298,20 +298,23 @@ add_custom_command(OUTPUT ${JPT_PAGE_ICON_SOURCE}
 # The port's launcher. The core (game files, disc image reader, installer, settings, page model, icons) needs no window;
 # the tests link only it.
 add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp launcher/game_install.cpp
-  launcher/settings.cpp launcher/system_info.cpp launcher/file_picker.cpp launcher/os_file.cpp launcher/pe_resources.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
+  launcher/settings.cpp launcher/system_info.cpp launcher/file_browser.cpp launcher/file_picker.cpp launcher/os_file.cpp launcher/pe_resources.cpp launcher/options.cpp launcher/header_art.cpp launcher/page_icons.cpp
   launcher/launcher_log.cpp launcher/user_data.cpp launcher/localization/ui_text.cpp
   launcher/http_post.cpp launcher/incident_client.cpp launcher/incident_report.cpp launcher/json_lite.cpp launcher/log_scrubber.cpp
   launcher/report_history.cpp launcher/process_probe.cpp
   launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
 target_include_directories(jpt_launcher_core PUBLIC launcher)
 target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 dxgi)
-add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+# Vendored third-party code is a target of its own, so the application's /W4 is never combined with a source-level override.
+add_library(jpt_miniz STATIC launcher/updater/third_party/miniz/miniz.c)
+target_include_directories(jpt_miniz PUBLIC launcher)
+target_compile_options(jpt_miniz PRIVATE /W3)
+add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
   launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
-  launcher/updater/third_party/miniz/miniz.c launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
+  launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
   launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
   launcher/updater/update_zip.cpp launcher/updater/version.cpp)
-set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "/w")
-target_link_libraries(jpt_launcher PUBLIC jpt_launcher_core trg_ui)
+target_link_libraries(jpt_launcher PUBLIC jpt_launcher_core trg_ui jpt_miniz)
 target_compile_definitions(jpt_launcher PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(jpt_launcher_core PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
 target_include_directories(jpt_launcher PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
@@ -417,7 +420,7 @@ add_dependencies(trespasser_recomp trg-updater)
 # staging, jobs, rollback, the helper process, failures over HTTP and the release asset contract.
 set(JPT_UPDATER_CORE launcher/updater/github_release.cpp launcher/updater/install_transaction.cpp launcher/updater/json.cpp
   launcher/updater/sha256.cpp launcher/updater/update_job.cpp launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp
-  launcher/updater/update_zip.cpp launcher/updater/version.cpp launcher/updater/third_party/miniz/miniz.c)
+  launcher/updater/update_zip.cpp launcher/updater/version.cpp)
 add_executable(update_restart_marker EXCLUDE_FROM_ALL WIN32 tests/update_restart_marker.cpp)
 target_link_libraries(update_restart_marker PRIVATE shell32)
 add_executable(update_helper_tests EXCLUDE_FROM_ALL tests/update_helper_tests.cpp)
@@ -427,8 +430,8 @@ add_dependencies(update_helper_tests trg-updater update_restart_marker)
 add_executable(update_tests EXCLUDE_FROM_ALL tests/update_tests.cpp launcher/update_config.cpp ${JPT_UPDATER_CORE})
 add_executable(update_network_tests EXCLUDE_FROM_ALL tests/update_network_tests.cpp launcher/updater/update_controller.cpp
   ${JPT_UPDATER_CORE})
-target_link_libraries(update_network_tests PRIVATE trg_core ws2_32 shell32)
-target_link_libraries(update_tests PRIVATE trg_core shell32)
+target_link_libraries(update_network_tests PRIVATE trg_core jpt_miniz ws2_32 shell32)
+target_link_libraries(update_tests PRIVATE trg_core jpt_miniz shell32)
 add_executable(bug_report_tests EXCLUDE_FROM_ALL tests/bug_report_tests.cpp)
 target_link_libraries(bug_report_tests PRIVATE jpt_launcher_core)
 add_executable(crash_dump_tests EXCLUDE_FROM_ALL tests/crash_dump_tests.c src/host/crash_dump.c src/host/log.c)
@@ -444,7 +447,6 @@ foreach(t update_restart_marker update_helper_tests update_tests update_network_
     JPT_UPDATER_SRC_DIR="${CMAKE_SOURCE_DIR}/launcher" JPT_PORT_VERSION="${PROJECT_VERSION}")
   set_target_properties(${t} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endforeach()
-set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "/w")
 
 # The launcher reads its images next to the executable; each copy depends on its source file, so an image-only change syncs.
 set(JPT_LAUNCHER_ASSET_DIR "$<TARGET_FILE_DIR:trespasser_recomp>/assets/launcher")
@@ -684,6 +686,17 @@ add_executable(reg_store_tests EXCLUDE_FROM_ALL tests/reg_store_tests.c src/comm
 target_include_directories(reg_store_tests PRIVATE src/common)
 add_executable(port_tests EXCLUDE_FROM_ALL tests/port_tests.c src/common/jpt_port.c src/common/jpt_user_data.c src/common/jpt_fs_win.c)
 target_include_directories(port_tests PRIVATE src/common)
+set(JPT_APP_ICON_C ${CMAKE_BINARY_DIR}/generated/jpt_app_icon.c)
+add_custom_command(OUTPUT ${JPT_APP_ICON_C}
+  COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_SOURCE_DIR}/packaging/icons/app-icon-256.png -DOUTPUT=${JPT_APP_ICON_C}
+          -DSYMBOL=jpt_app_icon_png -P ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake
+  DEPENDS ${CMAKE_SOURCE_DIR}/packaging/icons/app-icon-256.png ${CMAKE_SOURCE_DIR}/cmake/embed_binary.cmake
+  COMMENT "Embedding the application icon for SDL")
+add_executable(app_identity_tests EXCLUDE_FROM_ALL tests/app_identity_tests.c src/common/jpt_app_identity.c ${JPT_APP_ICON_C})
+target_include_directories(app_identity_tests PRIVATE src/common)
+target_link_libraries(app_identity_tests PRIVATE jpt_common SDL3::SDL3-static)
+target_compile_options(app_identity_tests PRIVATE /W3)
+target_compile_definitions(app_identity_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_executable(sync_tests EXCLUDE_FROM_ALL tests/sync_tests.c src/common/jpt_sync.c)
 target_include_directories(sync_tests PRIVATE src/common)
 target_link_libraries(sync_tests PRIVATE SDL3::SDL3-static)

@@ -268,6 +268,7 @@ static int run_launcher(const options_t* o, const lx_paths_t* paths, const char*
     config.user_dir = paths->user_root;
     config.saves_dir = paths->saves_dir;
     config.logs_dir = paths->logs_dir;
+    config.log_file = lx_log_path();
     config.settings_file = settings_file;
     config.user_data_outcome = o->user_root || getenv("TRESPASSER_USER_DATA_ROOT") ? USER_DATA_EXPLICIT : USER_DATA_PORTABLE;
     config.force_show = o->force_launcher && !o->skip_launcher;

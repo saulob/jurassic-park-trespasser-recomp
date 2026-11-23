@@ -8,6 +8,7 @@
 
 #include "jpt_app_identity.h"
 #include "jpt_monitors.h"
+#include "jpt_port.h"
 #include "linux_log.h"
 #include "linux_mouse.h"
 #include "linux_crash.h"
@@ -172,8 +173,9 @@ static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     SDL_StartTextInput(s.window);
     s.fullscreen = d->fullscreen;
     refresh_output();
-    lx_log("Linux presentation", "SDL3 window %dx%d, renderer %s, video driver %s", d->client_w, d->client_h,
-           s.using_vulkan ? "Vulkan" : SDL_GetRendererName(s.renderer), SDL_GetCurrentVideoDriver());
+    lx_log("Linux presentation", "SDL3 window %dx%d, renderer %s, video driver %s, gamescope %s", d->client_w, d->client_h,
+           s.using_vulkan ? "Vulkan" : SDL_GetRendererName(s.renderer), SDL_GetCurrentVideoDriver(),
+           jpt_port_in_gamescope() ? "yes" : "no");
     return 1;
 }
 
@@ -295,11 +297,18 @@ static int sdl_next_event(lx_window_backend_t* b, int timeout_ms, lx_event_t* ev
             ev->kind = LX_EV_FOCUS, ev->down = e.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
             return 1;
         case SDL_EVENT_WINDOW_MINIMIZED:
+        case SDL_EVENT_WINDOW_HIDDEN:
             if (s.using_vulkan) lx_vk_on_resize(0, 0);
             break;
-        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-            ev->kind = LX_EV_RESIZE, ev->x = e.window.data1, ev->y = e.window.data2;
+        case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_SHOWN:
             refresh_output();
+            if (s.using_vulkan && s.out_w > 0 && s.out_h > 0) lx_vk_on_resize((uint32_t)s.out_w, (uint32_t)s.out_h);
+            break;
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            refresh_output();
+            ev->kind = LX_EV_RESIZE, ev->x = s.out_w > 0 ? s.out_w : e.window.data1, ev->y = s.out_h > 0 ? s.out_h : e.window.data2;
             if (s.using_vulkan) lx_vk_on_resize((uint32_t)(s.out_w > 0 ? s.out_w : 0), (uint32_t)(s.out_h > 0 ? s.out_h : 0));
             return 1;
         default: break;

@@ -26,9 +26,10 @@ FAMILIES = {
     "runtime library": re.compile(r"^[/-](MD|MT|MDd|MTd)$"),
 }
 SUPPRESSION = re.compile(r"^[/-](w|wd\d+|W0)$")
+OVERRIDE = re.compile(r"^[/-]w$")
 GENERATED = re.compile(r"(water_lifted|water_lifted_alt|water_callees|input_lifted)\.c$", re.I)
 JUSTIFIED = {("launcher/page_icons.cpp", "/wd4702"): "vendored nanosvg: C4702 is reported at code generation, past its include's warning pragma"}
-OUTSIDE = ("src/recomp/", "external/", "third_party/", "launcher/third_party/")
+OUTSIDE = ("src/recomp/", "external/", "third_party/", "launcher/third_party/", "launcher/updater/third_party/")
 
 
 def tokens(command):
@@ -63,6 +64,9 @@ def analyze(lines):
             values = sorted({t.lower() if family == "warning level" else t[1:] for t in parts[1:] if pattern.match(t)})
             if len(values) > 1:
                 problems.append(f"{name}: {family} flags contradict each other: {', '.join('/' + v for v in values)}")
+        levels = [t for t in parts[1:] if FAMILIES["warning level"].match(t)]
+        if levels and any(OVERRIDE.match(t) for t in parts[1:]) and not GENERATED.search(name):
+            problems.append(f"{name}: /w overrides {' '.join(levels)} (cl D9025)")
         outside = name.startswith(OUTSIDE) or "/external/" in name or bool(GENERATED.search(name))
         if outside:
             continue
@@ -113,6 +117,9 @@ class CompileCommands(unittest.TestCase):
         lifted = r"C:\vs\cl.exe /w /O2 /c " + str(ROOT / "build" / "water_lifted.c")
         self.assertFalse(analyze([lifted])[0])
         self.assertFalse(analyze([r"C:\vs\cl.exe /W1 /wd4731 /c " + str(ROOT / "external" / "pcrecomp" / "runtime" / "native32" / "native32.c")])[0])
+        self.assertFalse(analyze([r"C:\vs\cl.exe /w /c " + str(ROOT / "launcher" / "updater" / "third_party" / "miniz" / "miniz.c")])[0])
+        self.assertTrue(analyze([r"C:\vs\cl.exe /W4 /w /c " + str(ROOT / "launcher" / "updater" / "third_party" / "miniz" / "miniz.c")])[0])
+        self.assertTrue(analyze([r"C:\vs\cl.exe /W4 /w /c " + str(ROOT / "launcher" / "updater" / "update_job.cpp")])[0])
 
     def test_no_test_target_has_contradicting_or_muted_flags(self):
         problems, project, total = analyze(load_lines())

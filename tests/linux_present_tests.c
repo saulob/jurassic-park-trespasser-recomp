@@ -1,11 +1,16 @@
 /* The Linux presentation policy: where the guest's frame lands in the host window (jpt_presentation, letterboxed) for the sizes the
  * game and its users meet, how a host pixel maps back to a guest pixel, and the stable transition rule (a new guest screen size
  * only takes effect with the first frame of that size). Pure: the virtual backend shows nothing. */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "debug_menu_layout.h"
+#include "jpt_display.h"
+#include "jpt_video_subtitles.h"
 #include "linux_screen.h"
 #include "linux_window.h"
+#include "minimap.h"
 
 static int g_checks, g_failures;
 
@@ -40,18 +45,56 @@ static void test_views(void) {
     CHECK(v.w >= 0 && v.h >= 0, "an empty window gives an empty view");
 }
 
-/* The 16:10 handheld screen (1280x800): a 4:3 picture is centred with bars at the sides, a 16:10 picture fills it. */
+/* The 16:10 handheld screen (1280x800): 4:3 is centred with equal pillarbox bars, 16:10 fills it, and pointer/HUD/overlays fit. */
 static void test_handheld_1280x800(void) {
     lx_view_t v = lx_present_view(1280, 800, 640, 480, 0);
     int gx = -1, gy = -1;
     CHECK(v.h == 800 && v.w >= 1066 && v.w <= 1067 && v.y == 0, "640x480 in 1280x800 is 1067x800 (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
     CHECK(v.x >= 0 && v.x + v.w <= 1280 && v.x == (1280 - v.w) / 2, "centred with equal bars (x=%d)", v.x);
-    v = lx_present_view(1280, 800, 1280, 800, 0);
-    CHECK(view_is(v, 0, 0, 1280, 800), "a 16:10 screen fills it (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
-    v = lx_present_view(1280, 800, 1280, 720, 0);
-    CHECK(v.w == 1280 && v.h == 720 && v.y == 40, "a 16:9 screen has thin bars above and below (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+    CHECK(!lx_present_to_guest(1280, 800, 640, 480, 0, 50, 400, &gx, &gy), "left pillarbox bar is outside guest");
+    CHECK(!lx_present_to_guest(1280, 800, 640, 480, 0, 1220, 400, &gx, &gy), "right pillarbox bar is outside guest");
+    CHECK(lx_present_to_guest(1280, 800, 640, 480, 0, v.x, 0, &gx, &gy) && gx == 0 && gy == 0,
+          "4:3 top-left maps to guest (0,0) (%d,%d)", gx, gy);
+    CHECK(lx_present_to_guest(1280, 800, 640, 480, 0, v.x + v.w - 1, 799, &gx, &gy) && gx == 639 && gy == 479,
+          "4:3 bottom-right maps to guest (639,479) (%d,%d)", gx, gy);
     CHECK(lx_present_to_guest(1280, 800, 640, 480, 0, 640, 400, &gx, &gy) && gx == 320 && gy == 240,
           "the centre of the window is the centre of the screen (%d,%d)", gx, gy);
+
+    v = lx_present_view(1280, 800, 1280, 800, 0);
+    CHECK(view_is(v, 0, 0, 1280, 800), "a 16:10 screen fills it (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+    v = lx_present_view(1280, 800, 960, 600, 0);
+    CHECK(view_is(v, 0, 0, 1280, 800), "16:10 compat 960x600 fills 1280x800 (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+    v = lx_present_view(1280, 800, 1280, 720, 0);
+    CHECK(v.w == 1280 && v.h == 720 && v.y == 40, "a 16:9 screen has thin bars above and below (%d,%d %dx%d)", v.x, v.y, v.w, v.h);
+
+    {
+        const jpt_size_t native_16_10 = jpt_render_box(JPT_RENDER_NATIVE, jpt_aspect_index("16:10"), 1280, 800);
+        const jpt_ui_canvas_t canvas = jpt_ui_canvas(1280, 800);
+        const minimap_rect_t pic = { 0.0f, 0.0f, 1280.0f, 800.0f };
+        minimap_frame_t mm;
+        const dml_rect_t screen = { 0.0f, 0.0f, 1280.0f, 800.0f };
+        dml_params_t dp;
+        dml_layout_t dl;
+        const jvs_rect_t vpic = { 106, 0, 1067, 800 };
+        const jvs_rect_t sub = jvs_place(1280, 800, &vpic, 480, 48);
+
+        CHECK(native_16_10.width == 1280 && native_16_10.height == 800, "Native 16:10 on 1280x800 is 1280x800");
+        CHECK(fabs(jpt_hor_plus_scale(1280, 800) - 1.2) < 1e-6, "16:10 Hor+ scale is 1.2");
+        CHECK(canvas.rect.left >= 106 && canvas.rect.right <= 1174 && canvas.rect.top == 0 && canvas.rect.bottom == 800,
+              "UI canvas centred inside 1280x800 (%d..%d, %d..%d)", canvas.rect.left, canvas.rect.right, canvas.rect.top,
+              canvas.rect.bottom);
+        CHECK(minimap_place(&pic, 0.0f, 0.0f, 1.0f, &mm) && mm.cx - mm.radius >= 0.0f && mm.cy + mm.radius <= 800.0f,
+              "minimap fits inside 1280x800");
+        memset(&dp, 0, sizeof dp);
+        dp.view_w = 1280.0f, dp.view_h = 800.0f, dp.em = 16.0f, dp.pad = 12.0f;
+        dp.panel_w = dml_panel_width(1280.0f, 800.0f, 16.0f, 12.0f, 360.0f, 440.0f, 240.0f);
+        dp.body_h = 620.0f, dp.footer_h = 36.0f;
+        dml_layout(&dp, &dl);
+        CHECK(dml_inside(&dl.panel, &screen) && dml_inside(&dl.close, &dl.panel) && dml_inside(&dl.footer, &dl.panel),
+              "F10 panel stays inside 1280x800");
+        CHECK(sub.x >= 0 && sub.y >= 0 && sub.x + sub.w <= 1280 && sub.y + sub.h <= 800,
+              "video subtitles stay inside 1280x800 (%d,%d %dx%d)", sub.x, sub.y, sub.w, sub.h);
+    }
 }
 
 static void test_mapping(void) {

@@ -98,6 +98,7 @@ request its client builds, and the Worker test checks that the service accepts i
 ## Linux transport
 
 Windows sends through WinHTTP. Linux sends through OpenSSL linked statically (the pattern of the other ports, which bundle it), so the executable stays
-self-contained. A Release build refuses to configure without it; a development build without `libssl-dev` still compiles, but its executable declares the
+self-contained. `tools/build-linux.sh` builds the pinned static OpenSSL once into `~/.cache/jpt-recomp/openssl` when the machine has no
+`libssl-dev` (`tools/openssl-bootstrap.sh`). A Release build refuses to configure without it; a development build without it still compiles, but its executable declares the
 transport `none`, the self-check capability `bug_report_https` fails, and the Linux gate (`feature_contract.json`: `bug-report`, `linux.runtime`) refuses to
 stage it. The feature is therefore PASS on Linux only for a binary that can really send.

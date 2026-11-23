@@ -1,6 +1,7 @@
 #include "jpt_port.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "jpt_fs.h"
@@ -9,6 +10,18 @@
 static int is_sep(char c) { return c == '/' || c == '\\'; }
 
 int jpt_port_in_appimage(const char* appimage) { return appimage && *appimage; }
+
+int jpt_port_is_gamescope(const char* gamescope_wayland_display, int is_windows) {
+    return !is_windows && gamescope_wayland_display && *gamescope_wayland_display;
+}
+
+int jpt_port_in_gamescope(void) {
+#ifdef _WIN32
+    return jpt_port_is_gamescope(NULL, 1);
+#else
+    return jpt_port_is_gamescope(getenv("GAMESCOPE_WAYLAND_DISPLAY"), 0);
+#endif
+}
 
 static int parent_of(const char* path, char* out, size_t cap) {
     size_t n = strlen(path), cut = n;

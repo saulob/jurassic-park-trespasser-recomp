@@ -125,6 +125,8 @@ static void frame(void) {
     lx_gamepad_read_around(s_cinput, original_read);
 }
 
+static double seconds_now(void) { return (double)jpt_counter() / (double)jpt_counter_frequency(); }
+
 static uint32_t commands(void) { return read_u(s_cinput + SINPUT + 0x14); }
 
 static int cursor_x(void) {
@@ -144,27 +146,35 @@ static int cursor_y(void) {
 /* The game's own Invert Mouse option (a byte of its state) turns the vertical of the stick-as-mouse round, as it does the mouse's. */
 static void test_invert_mouse(fake_pad_t* joystick) {
     int up_off, up_on;
+    double off_from, on_from, off_seconds, on_seconds, inverted;
     if (!gm_ptr_checked(INVERT_MOUSE_VA, 1, 1)) gm_alloc_pages(INVERT_MOUSE_VA & ~0xFFFFu, 0x10000u, "game state");
     release_everything(joystick);
     frame();
+    off_from = seconds_now();
     lx_user32_cursor_set(200, 200);
     *(uint8_t*)gm_ptr(INVERT_MOUSE_VA, 1) = 0;
     axis(joystick, STICK_RY, 1.0f);
     for (int i = 0; i < 6; i++) frame();
+    off_seconds = seconds_now() - off_from;
     up_off = cursor_y() - 200;
     axis(joystick, STICK_RY, 0.0f);
     frame();
     frame();
+    on_from = seconds_now();
     lx_user32_cursor_set(200, 200);
     *(uint8_t*)gm_ptr(INVERT_MOUSE_VA, 1) = 1;
     axis(joystick, STICK_RY, 1.0f);
     for (int i = 0; i < 6; i++) frame();
+    on_seconds = seconds_now() - on_from;
     up_on = cursor_y() - 200;
     axis(joystick, STICK_RY, 0.0f);
     frame();
     frame();
     *(uint8_t*)gm_ptr(INVERT_MOUSE_VA, 1) = 0;
-    CHECK(up_off != 0 && up_on == -up_off, "Invert Mouse read from the game's own state flips the stick's vertical look (%d without, %d with)", up_off, up_on);
+    /* The two batches do not span the same wall time: compare the rates, not the raw counts. */
+    inverted = (double)up_on * off_seconds / on_seconds;
+    CHECK(up_off != 0 && inverted < 0.0 && inverted + up_off <= 2.0 && inverted + up_off >= -2.0,
+          "Invert Mouse read from the game's own state flips the stick's vertical look (%d without, %d with)", up_off, up_on);
 }
 
 static void test_connection_and_mapping(fake_pad_t* joystick) {

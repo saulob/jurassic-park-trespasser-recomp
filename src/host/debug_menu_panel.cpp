@@ -2,7 +2,6 @@
 // before its Present. Input never reaches ImGui: the menu's state is debug_menu_policy.c's.
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
-#include <vector>
 #include <windows.h>
 
 #include <d3d11.h>
@@ -13,6 +12,7 @@
 #include <string.h>
 
 #include <chrono>
+#include <vector>
 
 #ifdef _WIN32
 #include "backends/imgui_impl_dx11.h"

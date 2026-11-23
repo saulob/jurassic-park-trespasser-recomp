@@ -101,6 +101,25 @@ static void test_monitor_and_size(void) {
     b->destroy(b);
 }
 
+static void test_window_lifecycle_1280x800(void) {
+    lx_window_backend_t* b = lx_sdl_backend();
+    lx_window_desc_t d;
+    lx_event_t ev;
+    int w = 0, h = 0;
+    memset(&d, 0, sizeof d);
+    d.title = "deck", d.client_w = 1280, d.client_h = 800, d.resizable = 1;
+    CHECK(b->open(b, &d), "a 1280x800 window opens (%s)", SDL_GetError());
+    push_window_event(SDL_EVENT_WINDOW_HIDDEN);
+    push_window_event(SDL_EVENT_WINDOW_MINIMIZED);
+    push_window_event(SDL_EVENT_WINDOW_RESTORED);
+    push_window_event(SDL_EVENT_WINDOW_SHOWN);
+    ev = next(b);
+    CHECK(ev.kind == LX_EV_NONE, "hidden/minimized/restored/shown cycle does not fail or emit spurious input");
+    b->client_size(b, &w, &h);
+    CHECK(w == 1280 && h == 800, "client size remains 1280x800 after lifecycle events (%dx%d)", w, h);
+    b->destroy(b);
+}
+
 int main(void) {
     lx_window_backend_t* b;
     lx_event_t ev;
@@ -181,6 +200,7 @@ int main(void) {
         b->destroy(b);
     }
     test_monitor_and_size();
+    test_window_lifecycle_1280x800();
     CHECK(!relative_motion_accepted(1, 5, 10) && relative_motion_accepted(1, 10, 10) && !relative_motion_accepted(0, 99, 1),
           "motion stamped before relative mode began is not accepted (SDL stamps pushed events itself: the shared rule is checked directly)");
     printf("linux_sdl_window_tests: %d checks, %d failures\n", g_checks, g_failures);

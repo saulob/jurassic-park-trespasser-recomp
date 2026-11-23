@@ -73,6 +73,8 @@ struct ReportFacts {
     std::string operating_system;
 };
 
+std::string FormatLinuxOperatingSystem(std::string_view distribution, std::string_view dmi_vendor,
+                                       std::string_view dmi_product);
 std::string OperatingSystemText();
 
 struct IncidentField {

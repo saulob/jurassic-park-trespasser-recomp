@@ -155,6 +155,7 @@ VkPolygonMode jpt_vk_resolve_fill_mode(uint32_t d3d_fill_mode, int supports_non_
 
 VkPresentModeKHR jpt_vk_choose_present_mode(int vsync, const VkPresentModeKHR* modes, uint32_t count);
 uint32_t jpt_vk_choose_image_count(uint32_t min_images, uint32_t max_images, VkPresentModeKHR mode);
+uint32_t jpt_vk_choose_image_count_for(uint32_t min_images, uint32_t max_images, VkPresentModeKHR mode, int gamescope);
 VkSurfaceFormatKHR jpt_vk_choose_surface_format(const VkSurfaceFormatKHR* formats, uint32_t count);
 
 void jpt_vk_sc_init(jpt_vk_swapchain_health_t* h, uint32_t w, uint32_t h_px, int vsync, int fullscreen);

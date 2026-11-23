@@ -49,7 +49,23 @@ static void test_port_folder(void) {
     CHECK(jpt_port_folder("/tmp/.mount_JptAbc/usr/bin/trespasser_recomp", "/home/p/Games/JPT.AppImage", out, sizeof out) &&
               !strcmp(out, "/home/p/Games"),
           "inside an AppImage: the folder of the AppImage file, not the mount (%s)", out);
+    CHECK(jpt_port_folder("/tmp/.mount_jpt123/usr/bin/trespasser_recomp",
+                          "/home/deck/Games/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage", out, sizeof out) &&
+              !strcmp(out, "/home/deck/Games"),
+          "Steam Deck AppImage resolves port root to /home/deck/Games (%s)", out);
+    CHECK(jpt_port_folder("/tmp/.mount_jpt123/usr/bin/trespasser_recomp",
+                          "/run/media/mmcblk0p1/Games/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage", out,
+                          sizeof out) &&
+              !strcmp(out, "/run/media/mmcblk0p1/Games"),
+          "SD card AppImage resolves port root to SD card folder (%s)", out);
     CHECK(jpt_port_folder("/opt/jpt/trespasser_recomp", NULL, out, 5) == 0, "a folder that does not fit is refused");
+}
+
+static void test_gamescope(void) {
+    CHECK(jpt_port_is_gamescope("gamescope-0", 0) == 1, "Linux with GAMESCOPE_WAYLAND_DISPLAY is Gamescope");
+    CHECK(jpt_port_is_gamescope("", 0) == 0, "empty GAMESCOPE_WAYLAND_DISPLAY is not Gamescope");
+    CHECK(jpt_port_is_gamescope(NULL, 0) == 0, "unset GAMESCOPE_WAYLAND_DISPLAY is not Gamescope");
+    CHECK(jpt_port_is_gamescope("gamescope-0", 1) == 0, "Windows is never Gamescope");
 }
 
 static void test_inside(void) {
@@ -112,6 +128,7 @@ static void test_relaunch(void) {
 int main(void) {
     test_application_id();
     test_port_folder();
+    test_gamescope();
     test_inside();
     test_logs();
     test_relaunch();

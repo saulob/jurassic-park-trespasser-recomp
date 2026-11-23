@@ -248,7 +248,10 @@ class UpdaterTests(unittest.TestCase):
         for value in (release["asset_prefix"], release["windows_suffix"], release["repository"]):
             for path in ("launcher/update_config.cpp", "tools/package.ps1", "tools/package-release.ps1", "tools/verify-release.ps1"):
                 self.assertNotIn(value, text(path), f"{path} spells {value} itself: config/release.json is the one source")
-        self.assertIn("add_executable(" + release["updater"].removesuffix(".exe") + " WIN32", text("CMakeLists.txt"))
+        updater = release["updater"]
+        if updater.endswith(".exe"):
+            updater = updater[:-4]
+        self.assertIn("add_executable(" + updater + " WIN32", text("CMakeLists.txt"))
         self.assertEqual(release["program"], "trespasser_recomp.exe")
         self.assertIn(release["updater"], text("tools/test-release-check.ps1"))
 

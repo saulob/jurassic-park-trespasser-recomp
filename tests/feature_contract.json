@@ -4007,6 +4007,11 @@
       "suite": "log_tests",
       "file": "tests/log_tests.c",
       "pattern": "failed_d3d_calls"
+     },
+     {
+      "suite": "crash_dump_tests",
+      "file": "tests/crash_dump_tests.c",
+      "pattern": "starts_with_mdmp"
      }
     ]
    },
@@ -5376,6 +5381,11 @@
       "suite": "tests\\test_player_polish.py",
       "file": "tests/test_player_polish.py",
       "pattern": "test_the_game_window_gets_the_icon"
+     },
+     {
+      "suite": "app_identity_tests",
+      "file": "tests/app_identity_tests.c",
+      "pattern": "test_icon"
      }
     ]
    },
@@ -5732,7 +5742,7 @@
      {
       "suite": "debug_menu_tests",
       "file": "tests/debug_menu_tests.c",
-      "pattern": "Level Select numbers"
+      "pattern": "(?s)1 - Beach.*8 - Summit.*Test Scene Night"
      }
     ]
    },
@@ -5757,7 +5767,7 @@
     {
      "suite": "bug_report_tests",
      "file": "tests/bug_report_tests.cpp",
-     "pattern": "TestNothingHappensByItself"
+     "pattern": "TestNothingSentOnItsOwn"
     }
    ],
    "windows": {
@@ -5766,7 +5776,7 @@
      {
       "suite": "bug_report_tests",
       "file": "tests/bug_report_tests.cpp",
-      "pattern": "TestPrivacyFilter"
+      "pattern": "TestPrivacyScrubber"
      },
      {
       "suite": "tests\\test_player_polish.py",
@@ -5780,8 +5790,8 @@
      },
      {
       "suite": "bug report worker",
-      "file": "server/trespasser-bug-reports/test/api.test.js",
-      "pattern": "(?i)limit"
+      "file": "server/trespasser-bug-reports/test/incidents.test.js",
+      "pattern": "rate limits enforce hourly and daily per-account quotas"
      }
     ]
    },
@@ -5791,7 +5801,7 @@
      {
       "suite": "bug_report_tests",
       "file": "tests/bug_report_tests.cpp",
-      "pattern": "TestPrivacyFilter"
+      "pattern": "TestPrivacyScrubber"
      },
      {
       "suite": "tests\\test_player_polish.py",
@@ -5884,6 +5894,194 @@
     "status": "PLATFORM_ONLY",
     "evidence": [],
     "reason": "the Linux release is the AppImage, packaged by its own branch"
+   }
+  },
+  {
+   "id": "steam-deck-appimage",
+   "name": "Steam Deck preparation (not hardware validated): uses the single native Linux x86_64 AppImage with no separate Steam Deck build, Wine or Proton, and no FUSE requirement in port code",
+   "owner": "packaging",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Steam Deck runs the native Linux x86_64 AppImage build"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_single_linux_build_for_steam_deck"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_apprun_starts_the_executable_and_writes_nothing"
+     }
+    ]
+   }
+  },
+  {
+   "id": "steam-deck-controller",
+   "name": "Steam Deck preparation (not hardware validated): SDL3 gamepad navigation in the launcher and game, plus the built-in controller-friendly disc image browser when zenity/kdialog is absent or under Gamescope",
+   "owner": "input",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Steam Deck gamepad-only launcher flow targets the Linux build; Windows keeps its native file dialog"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestFileBrowser"
+     },
+     {
+      "suite": "linux_gamepad_tests",
+      "file": "tests/linux_gamepad_tests.c",
+      "pattern": "lx_gamepad"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_launcher_gamepad_and_builtin_browser"
+     }
+    ]
+   }
+  },
+  {
+   "id": "steam-deck-1280x800",
+   "name": "Steam Deck preparation (not hardware validated): 1280x800 (16:10) launcher and game layout, 4:3 pillarbox centring, pointer mapping, minimap, F10 panel and subtitles",
+   "owner": "window",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Steam Deck 1280x800 target runs the Linux build"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_present_tests",
+      "file": "tests/linux_present_tests.c",
+      "pattern": "test_handheld_1280x800"
+     },
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestSteamDeck1280x800"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "Steam Deck RADV APU"
+     }
+    ]
+   }
+  },
+  {
+   "id": "steam-deck-gamescope",
+   "name": "Steam Deck preparation (not hardware validated): Gamescope detection via GAMESCOPE_WAYLAND_DISPLAY (no Steam SDK), swapchain image count pacing and hidden/restored window lifecycle",
+   "owner": "window",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "Gamescope is a Linux Wayland microcompositor"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "test_gamescope"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "jpt_vk_choose_image_count_for"
+     },
+     {
+      "suite": "linux_sdl_window_tests",
+      "file": "tests/linux_sdl_window_tests.c",
+      "pattern": "test_window_lifecycle_1280x800"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_gamescope_detection_and_lifecycle"
+     }
+    ]
+   }
+  },
+  {
+   "id": "steam-deck-paths",
+   "name": "Steam Deck preparation (not hardware validated): portable paths beside the original AppImage (including SD card paths), never inside /tmp/.mount_* and never hardcoded to /home/deck",
+   "owner": "config",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "AppImage and SteamOS SD card paths are Linux-specific"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_paths_tests",
+      "file": "tests/linux_paths_tests.c",
+      "pattern": "test_steam_deck_appimage_and_sd_card"
+     },
+     {
+      "suite": "port_tests",
+      "file": "tests/port_tests.c",
+      "pattern": "Steam Deck AppImage"
+     }
+    ]
+   }
+  },
+  {
+   "id": "steam-deck-updater",
+   "name": "Steam Deck preparation (not hardware validated): Linux AppImage updater validates SHA-256, replaces the original $APPIMAGE with rollback and relaunches the AppImage (never /tmp/.mount_*)",
+   "owner": "launcher",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "evidence": [],
+    "reason": "AppImage self-update applies to Linux; Windows uses trg-updater.exe"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "update_tests",
+      "file": "tests/update_tests.cpp",
+      "pattern": "TestAppImageUpdate"
+     },
+     {
+      "suite": "tests\\test_linux_parity.py",
+      "file": "tests/test_linux_parity.py",
+      "pattern": "test_updater_targets_original_appimage"
+     }
+    ]
    }
   }
  ],

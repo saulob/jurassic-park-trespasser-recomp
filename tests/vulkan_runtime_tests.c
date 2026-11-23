@@ -664,7 +664,7 @@ static void test_regional_readbacks(rig_t* g) {
     g->dev.texture = NULL;
 
     begin_frame(g, 0xFF000000u);
-    draw_quad(g, 2, 2, 30, 30, 0.5f, 0xFF00FF00u, 0xFF000000u);
+    draw_quad(g, 4, 4, 28, 28, 0.5f, 0xFF00FF00u, 0xFF000000u);
     vk_win_test_bridge_stats(&a);
     vk_win_test_stats(&sa);
     lock_read(g, 0, 0, 16, 16);
@@ -697,8 +697,8 @@ static void test_regional_readbacks(rig_t* g) {
     CHECK(end_frame(g), "regional readback frame");
 
     begin_frame(g, 0xFF000000u);
-    draw_quad(g, 2, 2, 30, 30, 0.5f, 0xFF00FF00u, 0xFF000000u);
-    draw_quad(g, 34, 34, 62, 62, 0.5f, 0xFF0000FFu, 0xFF000000u);
+    draw_quad(g, 4, 4, 28, 28, 0.5f, 0xFF00FF00u, 0xFF000000u);
+    draw_quad(g, 36, 36, 60, 60, 0.5f, 0xFF0000FFu, 0xFF000000u);
     vk_win_test_bridge_stats(&a);
     lock_read(g, 0, 0, W, H);
     vk_win_test_bridge_stats(&b);

@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-172 features. 124 PASS / PASS; 33 PASS / WINDOWS ONLY (justified); 15 LINUX ONLY (justified) / PASS.
+178 features. 124 PASS / PASS; 33 PASS / WINDOWS ONLY (justified); 21 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -125,7 +125,7 @@ feature may have one.
 | `safe-mode` | global | PASS | PASS | `host_tests`, `fov_mouse_tests` | `linux_overrides_tests` | - |
 | `disk-space-bypass` | global | PASS | PASS | `ce_tests` | `ce_tests`, `linux_overrides_tests`, `linux_features_tests` | - |
 | `shutdown` | global | PASS | PASS | `host_tests` | `linux_shutdown_tests` | - |
-| `crash-diagnostics` | global | PASS | PASS | `log_tests` | `linux_crash_tests` | - |
+| `crash-diagnostics` | global | PASS | PASS | `log_tests`, `crash_dump_tests` | `linux_crash_tests` | - |
 | `level-loading` | global | PASS | PASS | `frontend_tests` | `linux_session_tests` | - |
 | `session` | global | PASS | PASS | `host_tests` | `linux_session_tests` | - |
 | `resource-cleanup` | global | PASS | PASS | `dsound_compat_tests`, `x64_tests` | `dsound_compat_tests`, `linux_audio_stress_tests` | - |
@@ -170,7 +170,7 @@ feature may have one.
 | `appimage-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_parity.py` | AppImage is a Linux package format |
 | `appimage-packaging-files` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | AppImage is a Linux package format |
 | `application-id` | linux | LINUX ONLY (justified) | PASS | - | `app_identity_tests`, `test_linux_parity.py` | the desktop identity of a Linux window; a Windows window is identified by its executable |
-| `window-icon` | global | PASS | PASS | `test_player_polish.py` | `app_identity_tests`, `test_linux_parity.py`, `test_player_polish.py` | - |
+| `window-icon` | global | PASS | PASS | `test_player_polish.py`, `app_identity_tests` | `app_identity_tests`, `test_linux_parity.py`, `test_player_polish.py` | - |
 | `relaunch` | global | PASS | PASS | `port_tests` | `port_tests`, `linux_paths_tests`, `test_linux_parity.py` | - |
 | `graphics-failure-notice` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | the Windows host has its own graphics start-up path (Direct3D 11 or its Vulkan window); this notice is the Linux SDL window's |
 | `monitor-mode-size` | global | PASS | PASS | `test_linux_parity.py`, `presentation_tests` | `test_linux_parity.py`, `linux_sdl_window_tests` | - |
@@ -185,3 +185,9 @@ feature may have one.
 | `bug-report` | global | PASS | PASS | `bug_report_tests`, `test_player_polish.py`, `worker_script_tests.ps1`, `bug report worker` | `bug_report_tests`, `test_player_polish.py` | - |
 | `auto-update` | global | PASS | PASS | `update_tests`, `update_network_tests`, `update_helper_tests`, `test_player_polish.py` | `update_tests`, `update_network_tests`, `test_player_polish.py` | - |
 | `windows-release-package` | windows | PASS | WINDOWS ONLY (justified) | `tools/test-release-check.ps1`, `test_player_polish.py`, `update_tests` | - | the Linux release is the AppImage, packaged by its own branch |
+| `steam-deck-appimage` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | Steam Deck runs the native Linux x86_64 AppImage build |
+| `steam-deck-controller` | linux | LINUX ONLY (justified) | PASS | - | `linux_launcher_tests`, `linux_gamepad_tests`, `test_linux_parity.py` | Steam Deck gamepad-only launcher flow targets the Linux build; Windows keeps its native file dialog |
+| `steam-deck-1280x800` | linux | LINUX ONLY (justified) | PASS | - | `linux_present_tests`, `linux_launcher_tests`, `vulkan_policy_tests` | Steam Deck 1280x800 target runs the Linux build |
+| `steam-deck-gamescope` | linux | LINUX ONLY (justified) | PASS | - | `port_tests`, `vulkan_policy_tests`, `linux_sdl_window_tests`, `test_linux_parity.py` | Gamescope is a Linux Wayland microcompositor |
+| `steam-deck-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests` | AppImage and SteamOS SD card paths are Linux-specific |
+| `steam-deck-updater` | linux | LINUX ONLY (justified) | PASS | - | `update_tests`, `test_linux_parity.py` | AppImage self-update applies to Linux; Windows uses trg-updater.exe |

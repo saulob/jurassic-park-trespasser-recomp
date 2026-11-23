@@ -32,8 +32,13 @@ def sources():
 class SingleHost(unittest.TestCase):
     def test_the_only_default_host_executable_is_trespasser_recomp(self):
         x86 = CMAKE[:CMAKE.index("if(CMAKE_SIZEOF_VOID_P EQUAL 8)")] + CMAKE[CMAKE.index("  return()\nendif()"):]
-        defaults = [m.group(1) for m in re.finditer(r"^add_executable\((\w+)\b(?![^)]*EXCLUDE_FROM_ALL)", x86, re.M)]
-        self.assertEqual(defaults, ["trespasser_recomp"])
+        defaults = [m.group(1) for m in re.finditer(r"^add_executable\(([A-Za-z0-9_-]+)\b(?![^)]*EXCLUDE_FROM_ALL)", x86, re.M)]
+        self.assertEqual(defaults, ["trespasser_recomp", "trg-updater"])
+        self.assertIn("add_dependencies(trespasser_recomp trg-updater)", x86)
+        updater_block = re.search(r"^add_executable\(trg-updater\b([^)]*)\)", x86, re.M)
+        self.assertIsNotNone(updater_block)
+        for token in ("HOST_SOURCES", "PCRECOMP_SOURCES", "GEN_SOURCES"):
+            self.assertNotIn(token, updater_block.group(1), token)
 
     def test_no_other_host_target_exists(self):
         for name in OLD_NAMES:
@@ -44,7 +49,10 @@ class SingleHost(unittest.TestCase):
     def test_every_lift_is_linked_into_it(self):
         self.assertIn("jpt_unpack_lifts(", CMAKE)
         self.assertEqual(sorted(lifts.read_manifest()["lifts"]), ["lift116", "lift_es117", "lift_ptbr117"])
-        self.assertIn("add_executable(trespasser_recomp ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES}", CMAKE)
+        host_block = re.search(r"^add_executable\(trespasser_recomp\b([^)]*)\)", CMAKE, re.M)
+        self.assertIsNotNone(host_block)
+        for token in ("${HOST_SOURCES}", "${PCRECOMP_SOURCES}", "${GEN_SOURCES}"):
+            self.assertIn(token, host_block.group(1), token)
 
     def test_the_build_script_builds_and_runs_only_it(self):
         for name in OLD_NAMES:

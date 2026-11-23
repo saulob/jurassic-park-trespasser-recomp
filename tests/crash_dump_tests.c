@@ -5,9 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int checks = 0;
 static int failures = 0;
 
 static void check(int ok, const char *what) {
+    ++checks;
     if (!ok) {
         fprintf(stderr, "FAIL: %s\n", what);
         ++failures;
@@ -73,9 +75,9 @@ int main(void) {
     test_dump_paths();
     test_write_minidump();
     if (failures) {
-        fprintf(stderr, "%d failure(s)\n", failures);
+        fprintf(stderr, "crash_dump_tests: %d checks, %d failure(s)\n", checks, failures);
         return 1;
     }
-    printf("crash_dump_tests: all passed\n");
+    printf("crash_dump_tests: %d checks, 0 failures\n", checks);
     return 0;
 }

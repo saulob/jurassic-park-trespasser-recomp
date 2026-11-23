@@ -39,7 +39,7 @@ typedef struct {
     char cli_gpu[JPT_GPU_LABEL_MAX];
     char cache_path[512];
     jpt_renderer_decision_t decision;
-    char notice[320];
+    char notice[512];
     int active;
 
     jpt_vk_renderer_t* renderer;

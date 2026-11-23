@@ -185,12 +185,22 @@ function Restore-ProcessEnvironment($Saved) {
     foreach ($name in $Saved.Keys) { [Environment]::SetEnvironmentVariable($name, $Saved[$name]) }
 }
 
+# VS ships the CMake and Ninja that match its MSVC. A CMake from MSYS2 earlier on PATH writes RC rules that run a bare
+# RC (cmcldeps.exe is missing), which fails with RC1107, so these must come first even when the developer environment is already active.
+function Use-VsCmake {
+    $cmakeDir = Join-Path $env:VSINSTALLDIR 'Common7\IDE\CommonExtensions\Microsoft\CMake'
+    $env:PATH = "$cmakeDir\CMake\bin;$cmakeDir\Ninja;$env:PATH"
+    foreach ($tool in 'cmake.exe', 'ninja.exe') {
+        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Stop-Tool "$tool not found on PATH or in Visual Studio." }
+    }
+}
+
 # Switches this session to the x64-hosted x86 MSVC toolchain. The 32-bit-hosted compiler runs out of memory on the lifted C.
 # x86 uses the x64-hosted cross tools (amd64_x86), x64 the native ones (amd64).
 function Enter-Msvc([ValidateSet('x86', 'x64')][string]$Arch = 'x86') {
     $vcvarsArch = if ($Arch -eq 'x64') { 'amd64' } else { 'amd64_x86' }
     $existing = Get-Command cl.exe -ErrorAction SilentlyContinue
-    if ($existing -and $env:VSCMD_ARG_TGT_ARCH -eq $Arch) { return $existing.Source }
+    if ($existing -and $env:VSCMD_ARG_TGT_ARCH -eq $Arch -and $env:VSINSTALLDIR) { Use-VsCmake; return $existing.Source }
 
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path -LiteralPath $vswhere)) { Stop-Tool 'vswhere.exe not found: install Visual Studio with "Desktop development with C++".' }
@@ -216,12 +226,7 @@ function Enter-Msvc([ValidateSet('x86', 'x64')][string]$Arch = 'x86') {
     $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
     if (-not $cl -or $env:VSCMD_ARG_TGT_ARCH -ne $Arch) { Stop-Tool "vcvarsall.bat $vcvarsArch did not provide an $Arch cl.exe." }
 
-    # VS ships CMake and Ninja; they win over any copy from MSYS2 earlier on PATH.
-    $cmakeDir = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake'
-    $env:PATH = "$cmakeDir\CMake\bin;$cmakeDir\Ninja;$env:PATH"
-    foreach ($tool in 'cmake.exe', 'ninja.exe') {
-        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Stop-Tool "$tool not found on PATH or in Visual Studio." }
-    }
+    Use-VsCmake
     return $cl.Source
 }
 

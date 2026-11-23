@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "jpt_port.h"
+
 static void destroy_swapchain_images(jpt_vk_swapchain_t* sc) {
     jpt_vk_context_t* ctx = sc->ctx;
     const jpt_vk_loader_t* vk = &ctx->vk;
@@ -209,7 +211,7 @@ static int build_window_swapchain(jpt_vk_swapchain_t* sc, uint32_t width, uint32
     memset(&sci, 0, sizeof sci);
     sci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     sci.surface = ctx->surface;
-    sci.minImageCount = jpt_vk_choose_image_count(caps.minImageCount, caps.maxImageCount, chosen_mode);
+    sci.minImageCount = jpt_vk_choose_image_count_for(caps.minImageCount, caps.maxImageCount, chosen_mode, jpt_port_in_gamescope());
     sci.imageFormat = chosen_fmt.format;
     sci.imageColorSpace = chosen_fmt.colorSpace;
     sci.imageExtent = extent;

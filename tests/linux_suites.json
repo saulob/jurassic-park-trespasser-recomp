@@ -135,7 +135,8 @@
     "audio through PipeWire, PulseAudio or ALSA",
     "intro and Smacker video playback",
     "New Game, Beach, gameplay, minimap, subtitles",
-    "Save and Load, level transition, shutdown"
+    "Save and Load, level transition, shutdown",
+    "Steam Deck real hardware (Desktop Mode, Gaming Mode/Gamescope, suspend/resume, SD card)"
   ],
   "static": [
     "elf architecture",

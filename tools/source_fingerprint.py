@@ -26,6 +26,7 @@ ROOTS = (
     "tools/build-linux.sh",
     "tools/compile_vk_shaders.py",
     "tools/ffmpeg-bootstrap.sh",
+    "tools/openssl-bootstrap.sh",
     "tools/gen_build_info.py",
     "tools/source_fingerprint.py",
 )

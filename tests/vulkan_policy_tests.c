@@ -137,6 +137,19 @@ static void test_gpu_selection(void) {
     idx = jpt_vk_gpu_select(gpus, 4, "", 0, reason, sizeof reason);
     CHECK(idx == 0, "Integrated beats CPU when no discrete available (got %d)", idx);
 
+    /* Steam Deck AMD RADV Van Gogh APU (integrated, D32S8) beats llvmpipe */
+    jpt_vk_gpu_info_t deck[2];
+    deck[0] = make_fake_gpu("llvmpipe", 0x10005u, 0x0000u, VK_PHYSICAL_DEVICE_TYPE_CPU, 4ULL << 30, 1,
+                            JPT_VK_DEPTH_BIT_D24S8, 0x50);
+    deck[1] = make_fake_gpu("AMD Custom GPU 0405 (RADV VANGOGH)", 0x1002u, 0x163Fu,
+                            VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, 4ULL << 30, 1,
+                            JPT_VK_DEPTH_BIT_D32S8 | JPT_VK_DEPTH_BIT_D32, 0x60);
+    jpt_vk_gpu_assign_labels(deck, 2);
+    CHECK(deck[1].usable && deck[1].preferred_depth_format == VK_FORMAT_D32_SFLOAT_S8_UINT,
+          "Steam Deck RADV APU meets all Vulkan requirements");
+    idx = jpt_vk_gpu_select(deck, 2, "", 0, reason, sizeof reason);
+    CHECK(idx == 1, "Steam Deck RADV APU auto-selected over CPU (got %d: %s)", idx, reason);
+
     /* Duplicate names get disambiguated labels */
     jpt_vk_gpu_info_t dup[2] = { gpus[0], gpus[0] };
     jpt_vk_gpu_assign_labels(dup, 2);
@@ -192,7 +205,11 @@ static void test_present_mode_and_swapchain_stress(void) {
     CHECK(jpt_vk_choose_present_mode(0, fifo_only, 1) == VK_PRESENT_MODE_FIFO_KHR, "VSync Off falls back to FIFO");
 
     CHECK(jpt_vk_choose_image_count(2, 0, VK_PRESENT_MODE_MAILBOX_KHR) == 3, "MAILBOX triple buffering");
-    CHECK(jpt_vk_choose_image_count(3, 8, VK_PRESENT_MODE_FIFO_KHR) == 4, "Gamescope min=3 -> 4");
+    CHECK(jpt_vk_choose_image_count(3, 8, VK_PRESENT_MODE_FIFO_KHR) == 4, "Desktop min=3 -> 4");
+    CHECK(jpt_vk_choose_image_count_for(3, 8, VK_PRESENT_MODE_FIFO_KHR, 1) == 3,
+          "Gamescope keeps surface minimum 3 to avoid extra frame latency");
+    CHECK(jpt_vk_choose_image_count_for(3, 8, VK_PRESENT_MODE_MAILBOX_KHR, 1) == 3, "Gamescope MAILBOX min=3 -> 3");
+    CHECK(jpt_vk_choose_image_count_for(1, 0, VK_PRESENT_MODE_FIFO_KHR, 1) == 2, "Gamescope never uses a single image");
     CHECK(jpt_vk_choose_image_count(2, 2, VK_PRESENT_MODE_MAILBOX_KHR) == 2, "Clamped to maxImageCount=2");
 
     /* Swapchain state machine stress */
@@ -297,6 +314,16 @@ static void test_pipeline_key_and_barriers(void) {
     jpt_vk_compute_geometry(640, 480, 1920, 1080, 1280, 800, 1, &g);
     CHECK(g.present_rect.x == 0 && g.present_rect.y == 0 && g.present_rect.w == 1280 && g.present_rect.h == 800,
           "stretch fills window");
+    /* 4:3 internal inside 1280x800 Steam Deck -> centred pillarbox, not stretched */
+    jpt_vk_compute_geometry(640, 480, 1066, 800, 1280, 800, 0, &g);
+    CHECK(g.present_rect.x == 107 && g.present_rect.y == 0 && g.present_rect.w == 1066 && g.present_rect.h == 800,
+          "4:3 in 1280x800 pillarboxed (%d,%d %ux%u)", g.present_rect.x, g.present_rect.y, g.present_rect.w,
+          g.present_rect.h);
+    /* 16:10 internal inside 1280x800 Steam Deck -> exact full-screen fill */
+    jpt_vk_compute_geometry(960, 600, 1280, 800, 1280, 800, 0, &g);
+    CHECK(g.present_rect.x == 0 && g.present_rect.y == 0 && g.present_rect.w == 1280 && g.present_rect.h == 800,
+          "16:10 in 1280x800 fills screen (%d,%d %ux%u)", g.present_rect.x, g.present_rect.y, g.present_rect.w,
+          g.present_rect.h);
 }
 
 static void test_shaders_and_misc(void) {

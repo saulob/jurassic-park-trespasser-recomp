@@ -222,12 +222,42 @@ static void test_relaunch(void) {
     CHECK(n == 3 && !strcmp(out[0], "/opt/jpt/trespasser_recomp") && !out[3], "outside one the executable starts again");
 }
 
+static void test_steam_deck_appimage_and_sd_card(void) {
+    const char* mount = "/tmp/.mount_jpt123";
+    const char* exe = "/tmp/.mount_jpt123/usr/bin/trespasser_recomp";
+    const char* deck_img = "/home/deck/Games/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage";
+    const char* sd_img = "/run/media/mmcblk0p1/Games/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage";
+    lx_paths_t p;
+    char err[200];
+    clear_environment();
+
+    setenv("APPIMAGE", deck_img, 1);
+    CHECK(lx_paths_resolve(&p, exe, NULL, NULL, NULL, err, sizeof err), "Steam Deck simulated APPIMAGE resolves");
+    CHECK(!strcmp(p.port_dir, "/home/deck/Games") && !strcmp(p.user_root, "/home/deck/Games/user_data") &&
+              !strcmp(p.logs_dir, "/home/deck/Games/logs") && !strcmp(p.game_dir, "/home/deck/Games/game"),
+          "Steam Deck paths sit beside the AppImage (%s)", p.port_dir);
+    CHECK(!inside(p.port_dir, mount) && !inside(p.user_root, mount) && !inside(p.logs_dir, mount) && !inside(p.game_dir, mount),
+          "Steam Deck paths never point inside /tmp/.mount_*");
+
+    setenv("APPIMAGE", sd_img, 1);
+    CHECK(lx_paths_resolve(&p, exe, NULL, NULL, NULL, err, sizeof err), "SD card simulated APPIMAGE resolves");
+    CHECK(!strcmp(p.port_dir, "/run/media/mmcblk0p1/Games") &&
+              !strcmp(p.user_root, "/run/media/mmcblk0p1/Games/user_data") &&
+              !strcmp(p.logs_dir, "/run/media/mmcblk0p1/Games/logs") &&
+              !strcmp(p.game_dir, "/run/media/mmcblk0p1/Games/game"),
+          "SD card paths work with no /home/deck assumption (%s)", p.port_dir);
+    CHECK(!inside(p.port_dir, mount) && !inside(p.user_root, mount) && !inside(p.logs_dir, mount) && !inside(p.game_dir, mount),
+          "SD card paths never point inside /tmp/.mount_*");
+    clear_environment();
+}
+
 int main(void) {
     test_choice();
     test_prepare();
     test_appimage();
     test_appimage_logs();
     test_relaunch();
+    test_steam_deck_appimage_and_sd_card();
     printf("linux_paths_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

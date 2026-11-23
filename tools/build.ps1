@@ -182,6 +182,7 @@ function Get-CmakeProblem([string]$GenOptWanted, [string]$TraceWanted) {
     if ((Get-CmakeCacheValue $cache 'CMAKE_BUILD_TYPE') -ne $Config) { return 'another configuration' }
     if ((Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT') -ne $GenOptWanted) { return 'another -GenOpt' }
     if ((Get-CmakeCacheValue $cache 'TRESPASSER_TRACE') -ne $TraceWanted) { return 'another -Trace' }
+    if ("$(Get-CmakeCacheValue $cache 'CMAKE_COMMAND')".Replace('/', '\') -ne (Get-Command cmake.exe).Source) { return 'configured by another CMake' }
     return $null
 }
 

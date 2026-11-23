@@ -238,6 +238,8 @@ class Inventory(unittest.TestCase):
         required = {"launcher", "launcher-file-picker", "launcher-open-folder", "launcher-gamepad", "port-folder", "appimage-paths",
                     "application-id", "window-icon", "relaunch", "graphics-failure-notice", "monitor-mode-size", "cli-setting-options",
                     "game-version-selection", "handheld-1280x800", "appimage-packaging-files", "vulkan-gpu-list",
+                    "steam-deck-appimage", "steam-deck-controller", "steam-deck-1280x800", "steam-deck-gamescope",
+                    "steam-deck-paths", "steam-deck-updater",
                     "user-data", "logs", "save-load", "quick-save-load", "vulkan-renderer", "software-renderer", "fullscreen", "gamepad",
                     "keyboard", "mouse", "sdl3-audio", "video-subtitles", "russian-text", "patch-1.1", "ce-features", "minimap", "objectives",
                     "cheats", "frame-counter", "hotkey-table", "crash-diagnostics", "loading-screens", "frontend-hd"}
@@ -250,11 +252,57 @@ class Inventory(unittest.TestCase):
     def test_docs_state_what_they_must(self):
         docs = raw("docs/LINUX.md")
         for needle in ("native x86_64", "Wine", "Proton", "Vulkan", "Software renderer", "glibc 2.31", "X11", "Wayland", "zenity", "kdialog",
-                       "xdg-open", "user_data", "logs", "AppImage", "Steam Deck", "1280x800", "DRI_PRIME", "MESA_VK_DEVICE_SELECT",
-                       "VK_LOADER_DEVICE_SELECT", "__NV_PRIME_RENDER_OFFLOAD", "APPIMAGE", "tools/test-linux-parity.sh", "--launcher",
-                       "VSync", "controller", "Known limits", "docs/LINUX_PARITY.md", application_id()):
+                       "xdg-open", "user_data", "logs", "AppImage", "Steam Deck", "Gamescope", "Gaming Mode", "1280x800", "DRI_PRIME",
+                       "MESA_VK_DEVICE_SELECT", "VK_LOADER_DEVICE_SELECT", "__NV_PRIME_RENDER_OFFLOAD", "APPIMAGE",
+                       "tools/test-linux-parity.sh", "--launcher", "VSync", "controller", "Known limits", "docs/LINUX_PARITY.md", application_id()):
             self.assertIn(needle, docs, f"docs/LINUX.md does not mention {needle}")
         self.assertRegex(docs, r"(?i)not (yet )?validated|has not been validated|unvalidated", "Steam Deck must not be claimed as validated")
+
+
+class SteamDeckPreparation(unittest.TestCase):
+    def test_single_linux_build_for_steam_deck(self):
+        cmake = raw("cmake/JptLinux.cmake")
+        self.assertNotRegex(cmake, r"(?i)steamdeck|steam_deck|steamworks|libsteam_api")
+        self.assertIn("add_executable(trespasser_recomp", cmake)
+        for path in sources("src", "launcher"):
+            body = text(str(path.relative_to(ROOT)))
+            self.assertNotRegex(body, r"steam_api\.h|SteamAPI_Init|SteamInput", f"{path.name} must not depend on Steamworks")
+
+    def test_gamescope_detection_and_lifecycle(self):
+        port = text("src/common/jpt_port.c")
+        self.assertIn("GAMESCOPE_WAYLAND_DISPLAY", port)
+        self.assertIn("jpt_port_is_gamescope", port)
+        swap = text("src/vulkan/vk_swapchain.c")
+        self.assertIn("jpt_vk_choose_image_count_for", swap)
+        self.assertIn("jpt_port_in_gamescope()", swap)
+        window = text("src/linux/linux_sdl_window.c")
+        for event in ("SDL_EVENT_WINDOW_MINIMIZED", "SDL_EVENT_WINDOW_HIDDEN", "SDL_EVENT_WINDOW_RESTORED", "SDL_EVENT_WINDOW_SHOWN"):
+            self.assertIn(event, window)
+
+    def test_launcher_gamepad_and_builtin_browser(self):
+        launcher = text("launcher/launcher.cpp")
+        self.assertIn("UseBuiltInFileChooser", launcher)
+        self.assertIn("disc_browser_.Open(PortFolder())", launcher)
+        self.assertIn("disc_browser_.Draw(", launcher)
+        self.assertIn("PortFolder()", launcher)
+        browser = text("launcher/file_browser.cpp")
+        self.assertIn("/run/media", browser)
+        self.assertIn("JPT_FILE_CHOOSER", browser)
+        self.assertIn("launcher/file_browser.cpp", raw("CMakeLists.txt"))
+        self.assertIn("launcher/file_browser.cpp", raw("cmake/JptLinux.cmake"))
+        self.assertIn("launcher/disc_browser.cpp", raw("CMakeLists.txt"))
+        self.assertIn("launcher/disc_browser.cpp", raw("cmake/JptLinux.cmake"))
+
+    def test_updater_targets_original_appimage(self):
+        updater = text("launcher/updater/update_platform.cpp")
+        self.assertIn('std::getenv("APPIMAGE")', updater)
+        self.assertIn("HasOriginalAppImage", updater)
+        self.assertIn("ApplyAppImageUpdate", updater)
+        self.assertIn("IsTypeTwoAppImage", updater)
+        self.assertIn("PathIsWithin(candidate, mount)", updater)
+        cfg = text("launcher/update_config.cpp")
+        self.assertIn("HasOriginalAppImage", cfg)
+        self.assertIn('"--launcher"', cfg)
 
 
 if __name__ == "__main__":

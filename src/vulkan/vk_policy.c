@@ -259,13 +259,18 @@ VkPresentModeKHR jpt_vk_choose_present_mode(int vsync, const VkPresentModeKHR* m
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-uint32_t jpt_vk_choose_image_count(uint32_t min_images, uint32_t max_images, VkPresentModeKHR mode) {
-    uint32_t want = min_images + 1u;
-    if (mode == VK_PRESENT_MODE_MAILBOX_KHR && want < 3u) want = 3u;
+uint32_t jpt_vk_choose_image_count_for(uint32_t min_images, uint32_t max_images, VkPresentModeKHR mode, int gamescope) {
+    /* Gamescope already queues frames in its compositor and reports minImageCount >= 3; adding one only adds latency. */
+    uint32_t want = gamescope ? (min_images > 2u ? min_images : 2u) : (min_images + 1u);
+    if (!gamescope && mode == VK_PRESENT_MODE_MAILBOX_KHR && want < 3u) want = 3u;
     if (want < 2u) want = 2u;
     if (max_images > 0u && want > max_images) want = max_images;
     if (want < min_images) want = min_images;
     return want;
+}
+
+uint32_t jpt_vk_choose_image_count(uint32_t min_images, uint32_t max_images, VkPresentModeKHR mode) {
+    return jpt_vk_choose_image_count_for(min_images, max_images, mode, 0);
 }
 
 VkSurfaceFormatKHR jpt_vk_choose_surface_format(const VkSurfaceFormatKHR* formats, uint32_t count) {

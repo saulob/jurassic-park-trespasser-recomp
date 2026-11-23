@@ -145,6 +145,7 @@ $s = 'Platform'
 Add-Exes $s @(
     , @('presentation_tests', 'window presentation: pending screen committed with the first frame of its generation, Auto window follows the game shape only then, fixed size never, mouse mapping, DPI, degenerate sizes', 100)
     , @('platform_tests', 'SDL 3.4.20 contract, single init and quit, window adoption, relative mouse policy, focus, recapture, DirectSound and A3D policy', 500)
+    , @('app_identity_tests', 'SDL application metadata identifier and embedded 256x256 window icon on SDL dummy video driver', 10)
     , @('hotkey_tests', 'the port hotkey table both hosts read: F2 to F11, Alt+F4, repeats, modifiers and the Quick keys winning over the table', 40)
     , @('input_context_tests', 'the input context read from the game window stack (video, menu, loader, level, pause), input state, relative mouse and pointer decisions', 40)
     , @('host_tests', 'input and capture state machine, hotkeys, shutdown, Safe Mode, filesystem mapping, readbacks, D3D6 to D3D11 translation, shaders, hand and physics', 400000)
@@ -233,6 +234,7 @@ Add-Python $s @(, @('test_setting_parity.py', 'launcher rows and runtime setting
 Add-Python $s @(, @('test_player_polish.py', 'gamepad icon in the executable and both windows, numbered Level Select, Bug Report page and Worker, auto update wiring and release contract, Windows and Linux'))
 Add-Exes $s @(
     , @('bug_report_tests', 'Bug Report page without a window or network: JSON, service address, log choice, privacy filter, report and preview, client against a stand-in transport, My Reports, nothing sent on its own', 500)
+    , @('crash_dump_tests', 'Windows crash minidump naming, non-overwrite numbering and MDMP signature write', 15)
     , @('update_tests', 'auto update: versions, release JSON, SHA-256, ZIP safety and staging, jobs, install and rollback, address policy, protected paths and the release asset contract', 250)
     , @('update_network_tests', 'auto update failures against a scripted loopback HTTP server: 504, dropped connections, stalls, redirects, retries', 20)
     , @('update_helper_tests', 'the update helper as a real process: waits for its parent, replaces files, rolls back, restarts the program', 10)
@@ -340,6 +342,7 @@ $toolRole = @{
     'tools\package-release.ps1' = 'maintainer: package.ps1 plus the final gates on the ZIP: never run by the gate; checked by tests\test_player_polish.py'
     'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a stand-in npx'
     'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
+    'tools\openssl-bootstrap.sh' = 'a pinned static OpenSSL for the Bug Report HTTPS, built once into the cache: run by tools/build-linux.sh when the machine has no development files'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
@@ -401,6 +404,8 @@ function Start-Proc([string]$File, [string[]]$Arguments = @(), [string]$WorkDir 
     $info.WorkingDirectory = $WorkDir
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
+    # cmd.exe truncates a PATH over 8191 characters and then cannot find wsl.exe: child processes get it de-duplicated.
+    $info.EnvironmentVariables['PATH'] = Get-CleanPathValue $env:PATH
     $process = [System.Diagnostics.Process]::Start($info)
     return [pscustomobject]@{ Process = $process; Out = $out; Command = $command; WorkDir = $WorkDir; Timeout = $TimeoutSec; Clock = [System.Diagnostics.Stopwatch]::StartNew() }
 }

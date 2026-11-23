@@ -488,10 +488,7 @@ const UiTextRow kPtBrUiText[] = {
     {"There is no game log to send.", "Não há log do jogo para enviar."},
     {"The newest logs of the game, most recent first. Only the one you choose is sent.", "Os logs mais recentes do jogo, do mais novo ao mais antigo. Apenas o que você escolher será enviado."},
     {"Send this log", "Enviar este log"},
-    {"Selected log", "Log selecionado"},
-    {"Last written", "Última gravação"},
     {"Size", "Tamanho"},
-    {"View selected log", "Abrir log selecionado"},
     {"Crash detected", "Travamento detectado"},
     {"Attach crash report", "Anexar relatório de travamento"},
     {"Crash report", "Relatório de travamento"},
@@ -525,8 +522,7 @@ const UiTextRow kPtBrUiText[] = {
     {"No, still happening", "Não, ainda acontece"},
     {"Could not reach the online service. Your answer was not sent.", "Não foi possível alcançar o serviço online. Sua resposta não foi enviada."},
     {"Your answer could not be sent. Try again later.", "Não foi possível enviar sua resposta. Tente novamente mais tarde."},
-    {"Game version", "Versão do jogo"},
-    {"Remove", "Remover"},
+    {"The bug report service is not configured.", "O serviço de relato de problemas não está configurado."},
     {"Checking for updates", "Verificando atualizações"},
     {"Update available", "Atualização disponível"},
     {"Downloading update", "Baixando atualização"},
@@ -552,7 +548,6 @@ const UiTextRow kPtBrUiText[] = {
     {"Wait for the current install to finish.", "Espere a instalação atual terminar."},
     {"Close the game before installing the update.", "Feche o jogo antes de instalar a atualização."},
     {"Linux x86_64", "Linux x86_64"},
-    {"Size", "Tamanho"},
 };
 const size_t kPtBrUiTextCount = sizeof(kPtBrUiText) / sizeof(kPtBrUiText[0]);
 
@@ -646,6 +641,19 @@ const UiTextRow kPtBrPhrases[] = {
     {"The update workspace cannot be inside the installation.", "A área de trabalho da atualização não pode ficar dentro da instalação."},
     {"Cannot create the update workspace.", "Não foi possível criar a área de trabalho da atualização."},
     {"Automatic installation is available in the AppImage build.", "A instalação automática está disponível na versão AppImage."},
+    {"Select your Trespasser disc image (.iso)", "Selecione sua imagem de disco do Trespasser (.iso)"},
+    {"Up", "Acima"},
+    {"Show all files", "Mostrar todos os arquivos"},
+    {"Program folder", "Pasta do programa"},
+    {"Downloads", "Downloads"},
+    {"Desktop", "Área de trabalho"},
+    {"Documents", "Documentos"},
+    {"Computer", "Computador"},
+    {"This folder cannot be read.", "Esta pasta não pode ser lida."},
+    {"This folder is empty.", "Esta pasta está vazia."},
+    {"No .iso files or folders here.", "Nenhum arquivo .iso ou pasta aqui."},
+    {"../  (parent folder)", "../  (pasta acima)"},
+    {"Choose the .iso file. Controller: D-pad to move, A to choose, B to cancel.", "Escolha o arquivo .iso. Controle: direcional para mover, A para escolher, B para cancelar."},
 };
 const size_t kPtBrPhraseCount = sizeof(kPtBrPhrases) / sizeof(kPtBrPhrases[0]);
 

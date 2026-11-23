@@ -26,6 +26,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 set(JPT_REPO_ROOT "${CMAKE_SOURCE_DIR}")
 include(JptLifts)
 include(JptAudio)
+find_package(Threads REQUIRED)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -71,7 +72,7 @@ add_library(jpt_host64 STATIC
   src/host64/guest_memory.c src/host64/guest_ptr.c src/host64/guest_thunks.c src/host64/host_os_posix.c)
 target_include_directories(jpt_host64 PUBLIC src/host64 ${PCRECOMP}/runtime/win32hle)
 target_compile_options(jpt_host64 PRIVATE ${JPT_LINUX_WARNINGS})
-target_link_libraries(jpt_host64 PUBLIC pthread)
+target_link_libraries(jpt_host64 PUBLIC Threads::Threads)
 
 # The window icon, embedded so the executable needs no icon theme or AppImage integration (packaging/icons/app-icon-256.png).
 set(JPT_APP_ICON_C ${CMAKE_BINARY_DIR}/generated/jpt_app_icon.c)
@@ -320,7 +321,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
     COMMENT "embedding the page icons")
 
   add_library(jpt_launcher_core_linux STATIC launcher/iso9660.cpp launcher/inflate.cpp launcher/is_cabinet.cpp launcher/game_files.cpp
-    launcher/game_install.cpp launcher/settings.cpp launcher/system_info.cpp launcher/file_picker.cpp launcher/options.cpp launcher/header_art.cpp
+    launcher/game_install.cpp launcher/settings.cpp launcher/system_info.cpp launcher/file_browser.cpp launcher/file_picker.cpp launcher/options.cpp launcher/header_art.cpp
     launcher/page_icons.cpp launcher/launcher_log.cpp launcher/user_data.cpp launcher/os_file.cpp launcher/pe_resources.cpp
     launcher/localization/ui_text.cpp launcher/http_post.cpp launcher/incident_client.cpp launcher/incident_report.cpp
     launcher/json_lite.cpp launcher/log_scrubber.cpp launcher/report_history.cpp launcher/process_probe.cpp
@@ -337,7 +338,8 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   if(OpenSSL_FOUND)
     set(JPT_BUG_REPORT_TRANSPORT openssl)
     target_compile_definitions(jpt_launcher_core_linux PRIVATE JPT_HAVE_OPENSSL=1)
-    target_link_libraries(jpt_launcher_core_linux PUBLIC OpenSSL::SSL OpenSSL::Crypto ${CMAKE_DL_LIBS} pthread)
+    target_compile_options(jpt_launcher_core_linux PRIVATE -ffile-prefix-map=${OPENSSL_INCLUDE_DIR}=openssl)
+    target_link_libraries(jpt_launcher_core_linux PUBLIC OpenSSL::SSL OpenSSL::Crypto ${CMAKE_DL_LIBS} Threads::Threads)
   else()
     set(JPT_BUG_REPORT_TRANSPORT none)
     if(CMAKE_BUILD_TYPE STREQUAL "Release" OR JPT_LINUX_REQUIRE_BUG_REPORT)
@@ -346,7 +348,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
     message(WARNING "OpenSSL was not found: the Bug Report cannot send in this build (development only; the Linux gate refuses it)")
   endif()
   target_compile_definitions(jpt_launcher_core_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
-  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
     launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
     launcher/updater/third_party/miniz/miniz.c launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
     launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp

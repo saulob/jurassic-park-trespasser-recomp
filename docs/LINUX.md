@@ -49,9 +49,13 @@ inventory of every feature, with its status, evidence and justification, is [LIN
 * 64-bit x86 Linux with glibc 2.31 or newer (the release baseline is Ubuntu 20.04; `ldd --version` shows it).
 * An X11 or Wayland desktop. SDL3 picks the window system; `SDL_VIDEODRIVER` overrides it.
 * For the Vulkan renderer, a Vulkan 1.1+ driver (Mesa RADV or ANV, NVIDIA). The Software renderer is the functional fallback and needs none.
-* `zenity` or `kdialog` for the launcher's disc image picker, and `xdg-open` for its folder buttons. The launcher opens without them;
-  without a picker, **Install Game** says that none was found instead of doing nothing.
-* To build: `libssl-dev` (OpenSSL with its static libraries). The Bug Report sends through OpenSSL linked statically into the executable, so
+* `zenity` or `kdialog` for the native disc image picker on desktop Linux, and `xdg-open` for its folder buttons. When neither
+  is installed, or under Gamescope (Steam Deck Gaming Mode), the launcher opens its built-in controller-friendly disc image
+  browser (`launcher/disc_browser.cpp`, `launcher/file_browser.cpp`), which lists the program folder, Home, Downloads and
+  mounted drives such as `/run/media` SD cards. `JPT_FILE_CHOOSER=builtin` or `native` overrides the choice.
+* To build: `libssl-dev` (OpenSSL with its static libraries), or let `tools/build-linux.sh` build the pinned static OpenSSL once into
+  `~/.cache/jpt-recomp/openssl` (`tools/openssl-bootstrap.sh`: no sudo, nothing installed, the tarball is verified). The Bug Report sends
+  through OpenSSL linked statically into the executable, so
   the program stays self-contained; the update download uses `curl` at run time (as TRG Launcher does). A **Release** build refuses to configure
   without OpenSSL (`tools/build-linux.sh --config Release` checks first and says so), and `-DJPT_LINUX_REQUIRE_BUG_REPORT=ON` asks the same of any
   build. A development build without it still compiles, the page then reports the service as unreachable, the executable declares the transport
@@ -128,9 +132,27 @@ the restart command starts the **original AppImage file** with the same argument
 
 ### Steam Deck
 
-Steam Deck runs the same Linux build; no special case exists for it. What is prepared: a 1280x800 window, gamepad-only navigation in
-the launcher and the game, Wayland, Vulkan on RADV and a portable `user_data`. What is not done: any run on the device; its status is
-**not validated**.
+Steam Deck support is **experimental** (preparation is complete; it has not been validated on Steam Deck hardware — status:
+**not validated**). There is no
+separate Steam Deck executable, no Steamworks/Steam Input SDK dependency and no Wine or Proton layer: Steam Deck runs the exact
+same native Linux x86_64 AppImage (built by the next branch, `feature/linux-appimage`).
+
+* **Display & Graphics.** Targets the 1280x800 (16:10) display on Vulkan (Mesa RADV). A 4:3 picture is centred with equal side
+  bars and matching mouse mapping; a 16:10 setting fills the screen. Under **Gamescope** (Gaming Mode, detected from
+  `GAMESCOPE_WAYLAND_DISPLAY`), the Vulkan swapchain keeps the surface's minimum image count (`jpt_vk_choose_image_count_for`)
+  instead of queueing an extra frame, and tolerates persistent `VK_SUBOPTIMAL_KHR` without recreation loops.
+* **Controller, trackpad & touchscreen.** SDL3 Gamepad drives both the game (with Steam Deck glyphs in Automatic mode) and the
+  launcher (D-pad/left stick, A to select, B to cancel/back). In Gaming Mode (or when `zenity`/`kdialog` are absent), **Import
+  game...** opens the launcher's built-in controller-friendly file browser, which lists the program folder, Downloads, Home and
+  mounted drives (`/run/media` SD cards). Because Trespasser uses a real mouse pointer in menus and relative mouse motion in
+  gameplay, Steam Deck trackpad and touchscreen inputs work through SDL3's mouse path without a separate Steam Input layer.
+* **Gaming Mode setup (Non-Steam Game).** Place the AppImage in a writable folder (internal storage or SD card; nothing hardcodes
+  `/home/deck`), mark it executable (`chmod +x`), add it via **Games -> Add a Non-Steam Game to My Library**, and run it. To
+  reopen the launcher after disabling **Show this launcher**, add `--launcher` to the shortcut's **Launch Options** (then remove
+  it to start directly into the game).
+* **Portable paths & updates.** `game/`, `user_data/` (settings, saves, caches, Vulkan pipeline cache) and `logs/` always live
+  beside the original `$APPIMAGE` file, never inside the read-only `/tmp/.mount_*` mount. Self-updates verify SHA-256, replace
+  the original `$APPIMAGE` with rollback on failure, and relaunch it with `--launcher`.
 
 ### Tests and commands
 
@@ -146,7 +168,7 @@ python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui and TRG Launcher a
 * No run on real hardware yet: the launcher window, controller feel, Wayland, audio devices and Steam Deck are unconfirmed.
 * Shift at start does not bring the launcher back; use `--launcher`.
 * Spanish and Brazilian Portuguese releases import but do not run on Linux until their lifted builds are added.
-* The launcher's picker needs `zenity` or `kdialog`; the folder buttons need `xdg-open`.
+* The native desktop picker uses `zenity` or `kdialog` (otherwise the built-in browser opens); the folder buttons need `xdg-open`.
 
 ## The one Linux artifact (JPT-ART4N)
 

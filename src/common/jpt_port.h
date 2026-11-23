@@ -19,6 +19,10 @@ extern "C" {
 /* 1 when appimage (the APPIMAGE variable) names a file. */
 int jpt_port_in_appimage(const char* appimage);
 
+/* 1 when running under Gamescope (non-Windows with a non-empty GAMESCOPE_WAYLAND_DISPLAY). */
+int jpt_port_is_gamescope(const char* gamescope_wayland_display, int is_windows);
+int jpt_port_in_gamescope(void);
+
 /* The port folder: the folder of the AppImage file when appimage names one, else the folder of executable_path.
  * "." when the path has no folder. 0 when the answer does not fit in out. */
 int jpt_port_folder(const char* executable_path, const char* appimage, char* out, size_t cap);

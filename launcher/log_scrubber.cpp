@@ -245,15 +245,15 @@ std::string ReplaceProfilePaths(std::string_view line) {
     std::string out;
     out.reserve(line.size());
     for (size_t i = 0; i < line.size();) {
-        if (const auto end = WindowsProfileEnd(line, i)) {
+        if (const auto windows_end = WindowsProfileEnd(line, i)) {
             out += kHome;
-            i = *end;
-        } else if (const auto end = PosixProfileEnd(line, i)) {
+            i = *windows_end;
+        } else if (const auto posix_end = PosixProfileEnd(line, i)) {
             out += kHome;
-            i = *end;
-        } else if (const auto end = NetworkPathEnd(line, i)) {
+            i = *posix_end;
+        } else if (const auto network_end = NetworkPathEnd(line, i)) {
             out += kNetworkPath;
-            i = *end;
+            i = *network_end;
         } else {
             out += line[i++];
         }

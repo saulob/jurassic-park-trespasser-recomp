@@ -62,8 +62,7 @@ static void print_build(void) {
     printf("    \"source_fingerprint\": \"%s\",\n    \"compiler\": ", JPT_BUILD_SOURCE_FINGERPRINT);
     json_string(JPT_BUILD_COMPILER);
     printf(", \"target\": \"%s\", \"config\": \"%s\",\n", JPT_BUILD_TARGET, JPT_BUILD_CONFIG);
-    printf("    \"bug_report_transport\": \"%s\",
-", JPT_BUILD_BUG_REPORT_TRANSPORT);
+    printf("    \"bug_report_transport\": \"%s\",\n", JPT_BUILD_BUG_REPORT_TRANSPORT);
     printf("    \"glibc_baseline\": \"%s\", \"contract_sha256\": \"%s\", \"contract_schema\": %d,\n", JPT_BUILD_GLIBC_BASELINE,
            JPT_BUILD_CONTRACT_SHA256, JPT_BUILD_CONTRACT_SCHEMA);
 #ifdef JPT_LINUX_GUEST
