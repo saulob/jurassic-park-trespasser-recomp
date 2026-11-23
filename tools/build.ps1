@@ -1,16 +1,18 @@
 <#
 .SYNOPSIS
-  Builds trespasser_recomp.exe incrementally (MSVC, CMake + Ninja). -Run starts the game after a successful build.
+  Builds trespasser_recomp.exe incrementally (CMake + Ninja). -Run starts the game after a successful build.
 .DESCRIPTION
   Reuses what is current and regenerates only what is stale, in this order: the pcrecomp checkout, the lifts (checked
   against lifts\manifest.json), the launcher sources and the CMake configuration. No original game executable is
   looked for, opened or needed: the three lifted builds (lift116 for English and Russian, lift_es117, lift_ptbr117) are
   project artifacts, lifts\<lift>.tar.xz, unpacked by CMake into src\recomp at configuration, and one program,
   trespasser_recomp.exe, carries all of them and runs the one the launcher's game version needs. The playable host is a
-  32-bit process on pcrecomp's native32 runtime (-Arch x86, the default, with the x64-hosted x86 MSVC). -Arch x64 builds
+  32-bit process on pcrecomp's native32 runtime (-Arch x86, the default, with the x64-hosted x86 tools). -Arch x64 builds
   the 64-bit host groundwork only (docs\X64_MIGRATION.md): it cannot run the game yet, so -Run is refused with it.
   Regenerating a lift from an original executable is a maintainer task: tools\generate-lift.ps1.
-  Development configuration: RelWithDebInfo in build\cmake\msvc-<arch>; -Config Release uses build\cmake\msvc-<arch>-release.
+  Release is the shipped Windows executable: Visual Studio's clang-cl + lld-link in the MSVC i686 ABI, in
+  build\cmake\clangcl-x86-release. Development is RelWithDebInfo with MSVC in build\cmake\msvc-<arch>. -Toolchain msvc
+  keeps an MSVC Release in build\cmake\msvc-<arch>-release for diagnosis.
   The development default compiles the lifted C with /Od (several times faster); Release uses /O2.
   Each run writes one log, build\logs\trespasser_recomp_NNN.log (the next free number): the build and, with -Run, the
   game's own output after it and its exit code. The terminal shows progress and problems only.
@@ -28,6 +30,9 @@
   x86 (default): the playable 32-bit host. x64: the 64-bit host groundwork and its headless tests, never run.
 .PARAMETER Config
   RelWithDebInfo (default) or Release.
+.PARAMETER Toolchain
+  auto (default): clang-cl for Release, MSVC for RelWithDebInfo. msvc: MSVC for both configurations. clang-cl: the
+  Release toolchain, refused with another -Config.
 .PARAMETER GenOpt
   Advanced. Compiler optimisation for the lifted C (it never regenerates it; changing it recompiles all of it).
   Default: what the build folder already uses, else /Od for RelWithDebInfo and /O2 for Release.
@@ -43,6 +48,9 @@
 .EXAMPLE
   .\tools\build.ps1
   .\tools\build.ps1 -Run
+  .\tools\build.ps1 -Config Release
+  .\tools\build.ps1 -Config Release -Clean
+  .\tools\build.ps1 -Config Release -Toolchain msvc
   .\tools\build.ps1 -Run -VerboseRuntime
   .\tools\build.ps1 -Run -GameArgs "--renderer","d3d11"
   .\tools\build.ps1 -Run -GameArgs "--watchdog","120"
@@ -56,6 +64,7 @@ param(
     [switch]$VerboseRuntime,
     [switch]$Clean,
     [ValidateSet('RelWithDebInfo', 'Release')][string]$Config = 'RelWithDebInfo',
+    [ValidateSet('auto', 'msvc', 'clang-cl')][string]$Toolchain = 'auto',
     [string]$GenOpt = '',
     [switch]$Trace,
     [string]$BuildDir = '',
@@ -79,7 +88,11 @@ $hostExitMeaning = @{
     8 = 'the game did not leave its loops within 60 s of a close request'
 }
 
-if (-not $BuildDir) { $BuildDir = if ($Config -eq 'Release') { "build\cmake\msvc-$Arch-release" } else { "build\cmake\msvc-$Arch" } }
+$clangCl = if ($Toolchain -eq 'clang-cl') { $true } elseif ($Toolchain -eq 'msvc') { $false } else { $Config -eq 'Release' -and $Arch -eq 'x86' }
+if ($Toolchain -eq 'clang-cl' -and ($Config -ne 'Release' -or $Arch -ne 'x86')) {
+    Stop-Tool '-Toolchain clang-cl builds only the x86 Release host: use -Config Release and leave -Arch at x86.'
+}
+if (-not $BuildDir) { $BuildDir = if ($clangCl) { 'build\cmake\clangcl-x86-release' } elseif ($Config -eq 'Release') { "build\cmake\msvc-$Arch-release" } else { "build\cmake\msvc-$Arch" } }
 $buildDir = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 $buildDir = [IO.Path]::GetFullPath($buildDir)
 [string[]]$hostTargets = if ($Arch -eq 'x64') { 'trespasser_x64_probe', 'x64_tests' } else { @('trespasser_recomp') }
@@ -174,12 +187,20 @@ function Sync-LauncherDependencies {
     if ($fetched -eq 0) { Write-Step 'Launcher sources: current' }
 }
 
-function Get-CmakeProblem([string]$GenOptWanted, [string]$TraceWanted) {
+function Get-CmakeProblem([string]$GenOptWanted, [string]$TraceWanted, [bool]$ClangCl) {
     $cache = Join-Path $buildDir 'CMakeCache.txt'
     if (-not ((Test-Path -LiteralPath (Join-Path $buildDir 'build.ninja')) -and (Test-Path -LiteralPath $cache))) { return 'not configured' }
     $sourceDir = Get-CmakeCacheValue $cache 'CMAKE_HOME_DIRECTORY'
     if (-not $sourceDir -or ([IO.Path]::GetFullPath($sourceDir) -ne $root)) { return 'configured for another source folder' }
     if ((Get-CmakeCacheValue $cache 'CMAKE_BUILD_TYPE') -ne $Config) { return 'another configuration' }
+    $compiler = [IO.Path]::GetFileName("$(Get-CmakeCacheValue $cache 'CMAKE_CXX_COMPILER')")
+    $linker = [IO.Path]::GetFileName("$(Get-CmakeCacheValue $cache 'CMAKE_LINKER')")
+    if ($ClangCl) {
+        if ($compiler -notmatch '^clang-cl(\.exe)?$' -or $linker -notmatch '^lld-link(\.exe)?$' -or
+            (Get-CmakeCacheValue $cache 'CMAKE_CXX_COMPILER_TARGET') -ne 'i686-pc-windows-msvc') { return 'another toolchain' }
+    } elseif ($compiler -notmatch '^cl(\.exe)?$') {
+        return 'another toolchain'
+    }
     if ((Get-CmakeCacheValue $cache 'TRESPASSER_GEN_OPT') -ne $GenOptWanted) { return 'another -GenOpt' }
     if ((Get-CmakeCacheValue $cache 'TRESPASSER_TRACE') -ne $TraceWanted) { return 'another -Trace' }
     if ("$(Get-CmakeCacheValue $cache 'CMAKE_COMMAND')".Replace('/', '\') -ne (Get-Command cmake.exe).Source) { return 'configured by another CMake' }
@@ -189,7 +210,7 @@ function Get-CmakeProblem([string]$GenOptWanted, [string]$TraceWanted) {
 Open-RunLog
 Write-Host "Log: $($script:RunLogPath)"
 Add-RunLog "command: tools\build.ps1 $(@($PSBoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value -join ' ')" }) -join ' ')"
-Add-RunLog "repository $root, build folder $buildDir, configuration $Config"
+Add-RunLog "repository $root, build folder $buildDir, configuration $Config, toolchain $(if ($clangCl) { 'clang-cl' } else { 'msvc' })"
 
 if ($Run -and $Arch -eq 'x64') {
     Write-Warn 'The x64 host cannot run the game yet (docs\X64_MIGRATION.md lists what is missing); -Run is for -Arch x86.'
@@ -218,7 +239,18 @@ if ($Clean) {
 }
 
 $msvc = Enter-Msvc $Arch
-Write-Step "Toolchain MSVC $Arch ($msvc), $Config"
+if ($clangCl) {
+    $llvm = Join-Path $env:VSINSTALLDIR 'VC\Tools\Llvm\x64\bin'
+    foreach ($tool in 'clang-cl.exe', 'lld-link.exe', 'llvm-lib.exe', 'llvm-mt.exe') {
+        if (-not (Test-Path -LiteralPath (Join-Path $llvm $tool))) {
+            Stop-Tool "Missing $(Join-Path $llvm $tool): install the 'C++ Clang tools for Windows' component of Visual Studio."
+        }
+    }
+    $env:PATH = "$llvm;$env:PATH"
+    Write-Step "Toolchain clang-cl x86 + lld-link ($((& clang-cl --version | Select-Object -First 1))), $Config"
+} else {
+    Write-Step "Toolchain MSVC $Arch ($msvc), $Config"
+}
 
 $problem = Get-PcrecompProblem
 if ($problem) {
@@ -246,11 +278,20 @@ $genOptWanted = if ($GenOpt) { $GenOpt } elseif ($cached -and (Get-CmakeCacheVal
 $traceOn = if ($PSBoundParameters.ContainsKey('Trace')) { $Trace.IsPresent } else { $cached -and ((Get-CmakeCacheValue $cache 'TRESPASSER_TRACE') -eq 'ON') }
 $traceWanted = if ($traceOn) { 'ON' } else { 'OFF' }
 
-$problem = Get-CmakeProblem $genOptWanted $traceWanted
+$problem = Get-CmakeProblem $genOptWanted $traceWanted $clangCl
+if ($problem -eq 'another toolchain') {
+    Stop-Tool "$buildDir was configured with another compiler: run with -Clean (it removes only that build folder) or choose the matching -Toolchain."
+}
 if ($problem) {
     Write-Step "Configuring CMake: $problem"
-    $configureArgs = @('-S', $root, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_BUILD_TYPE=$Config", '-DCMAKE_C_COMPILER=cl', '-DCMAKE_CXX_COMPILER=cl',
-        "-DTRESPASSER_GEN_OPT=$genOptWanted", "-DTRESPASSER_TRACE=$traceWanted")
+    $configureArgs = @('-S', $root, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_BUILD_TYPE=$Config")
+    if ($clangCl) {
+        $configureArgs += @('-DCMAKE_C_COMPILER=clang-cl', '-DCMAKE_CXX_COMPILER=clang-cl',
+            '-DCMAKE_C_COMPILER_TARGET=i686-pc-windows-msvc', '-DCMAKE_CXX_COMPILER_TARGET=i686-pc-windows-msvc')
+    } else {
+        $configureArgs += @('-DCMAKE_C_COMPILER=cl', '-DCMAKE_CXX_COMPILER=cl')
+    }
+    $configureArgs += @("-DTRESPASSER_GEN_OPT=$genOptWanted", "-DTRESPASSER_TRACE=$traceWanted")
     if ((Invoke-Logged 'cmake' $configureArgs { param($l) $l -match 'error|warning|CMake Error' }) -ne 0) {
         Show-LogTail
         Stop-Tool 'CMake configuration failed'

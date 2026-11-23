@@ -4409,6 +4409,21 @@
       "suite": "elf feature contract",
       "file": null,
       "pattern": null
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_canonical_release_artifact_is_the_gated_one"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_package_script_audits_every_elf"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_package_linux_self_test"
      }
     ]
    }
@@ -4443,9 +4458,9 @@
   },
   {
    "id": "release-contract",
-   "name": "Release contract: version, licenses, forbidden files, no developer paths",
+   "name": "Release contract: version, licenses, forbidden files, no developer paths; Windows ZIP and Linux AppImage",
    "owner": "build",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -4460,13 +4475,33 @@
       "suite": "tools\\test-release-check.ps1",
       "file": "tools/test-release-check.ps1",
       "pattern": "DEBUG_SAULO"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_release_contract_has_four_files"
      }
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "the release package is Windows only in this task; AppImage comes with the release branch"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_artifact_name_comes_from_release_json_and_project_version"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_release_contract_has_four_files"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_appdir_holds_only_the_release_files"
+     }
+    ]
    }
   },
   {
@@ -5297,13 +5332,18 @@
       "suite": "tests\\test_linux_parity.py",
       "file": "tests/test_linux_parity.py",
       "pattern": "test_the_executable_folder_is_only_read"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_paths_stay_outside_the_read_only_mount"
      }
     ]
    }
   },
   {
    "id": "appimage-packaging-files",
-   "name": "AppRun and the .desktop file of the future AppImage: AppRun starts the executable and writes nothing; the .desktop file is named and classed after the application ID",
+   "name": "The AppImage packaging files: AppRun starts the executable and writes nothing; the desktop entry, icon and AppStream metadata are one application ID; the runtime is pinned and falls back without FUSE",
    "owner": "packaging",
    "scope": "linux",
    "requirement": "none",
@@ -5325,6 +5365,51 @@
       "suite": "tests\\test_linux_parity.py",
       "file": "tests/test_linux_parity.py",
       "pattern": "test_application_id_is_one_name"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_appdir_holds_only_the_release_files"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_apprun_preserves_the_appimage_contract"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_desktop_and_appstream_are_one_application"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_icon_is_the_green_gamepad"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_runtime_is_pinned_and_falls_back_without_fuse"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_package_script_excludes_host_and_static_libraries"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_package_linux_self_test"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_desktop_file_validates"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_appstream_validates"
      }
     ]
    }
@@ -5887,6 +5972,16 @@
       "suite": "update_tests",
       "file": "tests/update_tests.cpp",
       "pattern": "TestPackagingNames"
+     },
+     {
+      "suite": "tests\\test_player_polish.py",
+      "file": "tests/test_player_polish.py",
+      "pattern": "test_the_helper_has_metadata_and_never_asks_for_elevation"
+     },
+     {
+      "suite": "tests\\build_script_tests.ps1",
+      "file": "tests/build_script_tests.ps1",
+      "pattern": "release helper build"
      }
     ]
    },
@@ -5920,6 +6015,11 @@
       "suite": "tests\\test_linux_parity.py",
       "file": "tests/test_linux_parity.py",
       "pattern": "test_apprun_starts_the_executable_and_writes_nothing"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_runtime_is_pinned_and_falls_back_without_fuse"
      }
     ]
    }
@@ -6052,6 +6152,11 @@
       "suite": "port_tests",
       "file": "tests/port_tests.c",
       "pattern": "Steam Deck AppImage"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_paths_stay_outside_the_read_only_mount"
      }
     ]
    }
@@ -6080,6 +6185,11 @@
       "suite": "tests\\test_linux_parity.py",
       "file": "tests/test_linux_parity.py",
       "pattern": "test_updater_targets_original_appimage"
+     },
+     {
+      "suite": "tests\\test_linux_packaging.py",
+      "file": "tests/test_linux_packaging.py",
+      "pattern": "test_release_contract_has_four_files"
      }
     ]
    }

@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Headless test of tools\verify-release.ps1 on scratch folders in build\release-check-test: a fresh release passes, and
-  user data, downloaded archives and game files are each refused, and a release ZIP is checked as the updater asset.
+  user data, downloaded archives, game files and wrong PE metadata (subsystem, architecture, imports, a named PDB) are
+  each refused, and a release ZIP is checked as the updater asset.
 #>
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
@@ -19,6 +20,7 @@ function New-Release([string]$Name) {
     Set-Content -LiteralPath (Join-Path $dir 'assets\launcher\sponsor-heart.png') -Value 'png' -NoNewline
     New-Item -ItemType Directory -Force (Join-Path $dir 'licenses') | Out-Null
     Set-Content -LiteralPath (Join-Path $dir 'licenses\THIRD-PARTY-LICENSES.txt') -Value 'MIT' -NoNewline
+    foreach ($text in 'LICENSE.txt', 'LEGAL.txt') { Set-Content -LiteralPath (Join-Path $dir "licenses\$text") -Value 'notice' -NoNewline }
     foreach ($dll in 'vcruntime140.dll', 'msvcp140.dll') { Set-Content -LiteralPath (Join-Path $dir $dll) -Value 'runtime' -NoNewline }
     return $dir
 }
@@ -64,6 +66,83 @@ function Add-Item([string]$Dir, [string]$Relative, [string]$Text = 'x') {
     [IO.File]::WriteAllText($path, $Text, [Text.Encoding]::GetEncoding(28591))
 }
 
+# A minimal PE image with the header fields tools\verify-release.ps1 reads: one section holding an import table, and a
+# CodeView debug entry when a PDB is named. It has no resources, so no version information.
+function New-PeImage([string]$Path, [int]$Machine = 0x14C, [int]$Subsystem = 2, [string[]]$Dlls = @('KERNEL32.dll'), [string]$Pdb = '',
+    [string]$SectionName = '.rdata', [int]$DllCharacteristics = 0x140) {
+    $sectionRva = 0x1000
+    $names = @()
+    $cursor = 0
+    foreach ($dll in $Dlls) { $names += $cursor; $cursor += $dll.Length + 1 }
+    $namesStart = $sectionRva + 20 * ($Dlls.Count + 1)
+    $debugStart = $namesStart + $cursor
+    if ($debugStart % 4) { $debugStart += 4 - ($debugStart % 4) }
+    $cvStart = $debugStart + 28
+    $cvSize = $(if ($Pdb) { 24 + $Pdb.Length + 1 } else { 0 })
+    $contentSize = [Math]::Max(0x200, $cvStart - $sectionRva + $cvSize)
+    if ($contentSize % 0x200) { $contentSize += 0x200 - ($contentSize % 0x200) }
+    $image = New-Object byte[] (0x400 + $contentSize)
+    $put16 = { param([int]$At, [int]$Value) [Array]::Copy([BitConverter]::GetBytes([uint16]$Value), 0, $image, $At, 2) }
+    $put32 = { param([int]$At, [long]$Value) [Array]::Copy([BitConverter]::GetBytes([uint32]$Value), 0, $image, $At, 4) }
+    $image[0] = 0x4D; $image[1] = 0x5A
+    & $put32 0x3C 0x80
+    [Array]::Copy([Text.Encoding]::ASCII.GetBytes('PE'), 0, $image, 0x80, 2)
+    $coff = 0x84
+    $opt = 0x98
+    & $put16 $coff $Machine
+    & $put16 ($coff + 2) 1
+    & $put16 ($coff + 16) 224
+    & $put16 ($coff + 18) 0x0102
+    & $put16 $opt 0x10B
+    $image[$opt + 2] = 14
+    & $put32 ($opt + 16) 0x1000
+    & $put32 ($opt + 20) 0x1000
+    & $put32 ($opt + 24) 0x1000
+    & $put32 ($opt + 28) 0x400000
+    & $put32 ($opt + 32) 0x1000
+    & $put32 ($opt + 36) 0x200
+    & $put16 ($opt + 40) 6
+    & $put16 ($opt + 48) 6
+    & $put32 ($opt + 56) 0x2000
+    & $put32 ($opt + 60) 0x400
+    & $put16 ($opt + 68) $Subsystem
+    & $put16 ($opt + 70) $DllCharacteristics
+    & $put32 ($opt + 72) 0x100000
+    & $put32 ($opt + 76) 0x1000
+    & $put32 ($opt + 80) 0x100000
+    & $put32 ($opt + 84) 0x1000
+    & $put32 ($opt + 92) 16
+    & $put32 ($opt + 104) $sectionRva
+    & $put32 ($opt + 108) (20 * ($Dlls.Count + 1))
+    if ($Pdb) {
+        & $put32 ($opt + 144) $debugStart
+        & $put32 ($opt + 148) 28
+    }
+    $raw = 0x400
+    for ($i = 0; $i -lt $Dlls.Count; $i++) {
+        & $put32 ($raw + 20 * $i + 12) ($namesStart + $names[$i])
+        [Array]::Copy([Text.Encoding]::ASCII.GetBytes($Dlls[$i]), 0, $image, $raw + ($namesStart - $sectionRva) + $names[$i], $Dlls[$i].Length)
+    }
+    if ($Pdb) {
+        $entry = $raw + ($debugStart - $sectionRva)
+        & $put32 ($entry + 12) 2
+        & $put32 ($entry + 16) $cvSize
+        & $put32 ($entry + 20) $cvStart
+        & $put32 ($entry + 24) ($raw + ($cvStart - $sectionRva))
+        $cv = $raw + ($cvStart - $sectionRva)
+        [Array]::Copy([Text.Encoding]::ASCII.GetBytes('RSDS'), 0, $image, $cv, 4)
+        [Array]::Copy([Text.Encoding]::ASCII.GetBytes($Pdb), 0, $image, $cv + 24, $Pdb.Length)
+    }
+    $section = $opt + 224
+    [Array]::Copy([Text.Encoding]::ASCII.GetBytes($SectionName.PadRight(8, [char]0)), 0, $image, $section, 8)
+    & $put32 ($section + 8) ($cvStart - $sectionRva + $cvSize)
+    & $put32 ($section + 12) $sectionRva
+    & $put32 ($section + 16) $contentSize
+    & $put32 ($section + 20) $raw
+    & $put32 ($section + 36) 0x40000040
+    [IO.File]::WriteAllBytes($Path, $image)
+}
+
 function Expect([string]$Name, [bool]$Clean, [scriptblock]$Setup) {
     $dir = New-Release $Name
     & $Setup $dir
@@ -72,6 +151,16 @@ function Expect([string]$Name, [bool]$Clean, [scriptblock]$Setup) {
     if ($passed -ne $Clean) {
         $script:failures++
         Write-Host "FAIL $Name (expected $(if ($Clean) { 'clean' } else { 'refused' }))" -ForegroundColor Red
+    }
+}
+
+function Expect-Problem([string]$Name, [string]$Problem, [scriptblock]$Setup) {
+    $dir = New-Release $Name
+    & $Setup $dir
+    $text = & powershell -NoProfile -ExecutionPolicy Bypass -File $Verify -Path $dir 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0 -or -not $text.Contains($Problem)) {
+        $script:failures++
+        Write-Host "FAIL $Name (expected the problem: $Problem)" -ForegroundColor Red
     }
 }
 
@@ -115,6 +204,30 @@ try {
     Expect 'object file' $false { param($d) Add-Item $d 'trespasser_recomp.obj' }
     Expect 'source file' $false { param($d) Add-Item $d 'launcher.cpp' }
     Expect 'real program of another version' $false { param($d) Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\notepad.exe') -Destination (Join-Path $d 'trespasser_recomp.exe') -Force }
+
+    Expect-Problem 'program without the Windows subsystem' 'not a Windows-subsystem program' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trespasser_recomp.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trespasser_recomp.exe') -Subsystem 3 }
+    Expect-Problem 'helper without the Windows subsystem' 'not a Windows-subsystem program' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trg-updater.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trg-updater.exe') -Subsystem 3 }
+    Expect-Problem 'helper for another architecture' 'is not the x86-64 release helper' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trespasser_recomp.exe'), (Join-Path $d 'trg-updater.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trespasser_recomp.exe')
+        New-PeImage -Path (Join-Path $d 'trg-updater.exe') }
+    Expect-Problem 'helper from the CMake build' 'not the tools\build-updater.ps1 build' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trg-updater.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trg-updater.exe') -Machine 0x8664 -DllCharacteristics 0x160 }
+    Expect-Problem 'helper with debug sections' 'holds debug sections' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trg-updater.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trg-updater.exe') -Machine 0x8664 -DllCharacteristics 0x160 -SectionName '.debug_info' }
+    Expect 'helper debug file' $false { param($d) Add-Item $d 'trg-updater.debug' }
+    Expect-Problem 'helper importing a DLL that is not Windows' 'does not come with Windows' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trg-updater.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trg-updater.exe') -Dlls 'KERNEL32.dll', 'SDL3.dll' }
+    Expect-Problem 'helper naming a PDB' 'names a PDB' { param($d)
+        Remove-Item -LiteralPath (Join-Path $d 'trg-updater.exe') -Force
+        New-PeImage -Path (Join-Path $d 'trg-updater.exe') -Pdb 'C:\build\trg-updater.pdb' }
 
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
     Expect-Zip 'clean' $true (New-ReleaseZip 'clean')

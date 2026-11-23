@@ -106,7 +106,7 @@ Write-Output "RESULT code=$code same=$($before -eq (Get-State)) passed=$($output
     [void][System.Management.Automation.Language.Parser]::ParseInput($linuxHelper, [ref]$tokens, [ref]$linuxErrors)
     Check (@($linuxErrors).Count -eq 0) 'tools\_gate_linux.ps1 parses'
     Check ($linuxHelper -match 'wsl\.exe' -and $linuxHelper -match "'wslpath'" -and $linuxHelper -match '--native-build' -and $linuxHelper -match 'test-linux\.sh') 'the Linux half goes PowerShell -> wsl.exe -> wslpath -> bash -> tools/test-linux.sh'
-    Check ($linuxHelper -match "MuaFocalBuild" -and $linuxHelper -match '2\.31') 'MuaFocalBuild and the glibc 2.31 baseline are what the distribution choice prefers'
+    Check ($linuxHelper -match "JptFocalBuild" -and $linuxHelper -match '2\.31') 'JptFocalBuild and the glibc 2.31 baseline are what the distribution choice prefers'
     Check ($linuxHelper -notmatch '(?i)/mnt/[a-z]/' -and $linuxHelper -notmatch '(?i)Start-Process|Invoke-WebRequest|wine|proton') 'no hard-coded /mnt path, no process shell-out and no Wine in the Linux half'
     Check ($text -notmatch '(?i)trespasser_recomp(\.exe)?\s+--run|--run') 'the gate never runs the game'
     Check ($text.Contains('[switch]$WindowsOnly') -and $text.Contains('[switch]$LinuxOnly') -and $text.Contains('[switch]$SkipLinux') -and $text.Contains('[string]$LinuxDistro') -and $text.Contains('[switch]$Sanitize')) 'the options of the two halves exist'

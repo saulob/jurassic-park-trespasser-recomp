@@ -2,8 +2,14 @@
 Type=Application
 Name=Jurassic Park: Trespasser
 Comment=Jurassic Park: Trespasser, native PC port
-Exec=trespasser_recomp
-Icon=trespasser_recomp
-Categories=Game;
+Exec=AppRun
+Icon=io.github.saulob.jurassic-park-trespasser
+Categories=Game;ActionGame;
+Keywords=Jurassic Park;Trespasser;DreamWorks;dinosaur;
 Terminal=false
 StartupWMClass=io.github.saulob.jurassic-park-trespasser
+Actions=Launcher;
+
+[Desktop Action Launcher]
+Name=Show launcher
+Exec=AppRun --launcher

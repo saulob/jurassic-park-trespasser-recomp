@@ -46,7 +46,7 @@
   The same as -WindowsOnly.
 
 .PARAMETER LinuxDistro
-  The WSL distribution to use. Without it MuaFocalBuild (Ubuntu 20.04, glibc 2.31) is preferred, then any other distribution
+  The WSL distribution to use. Without it JptFocalBuild (Ubuntu 20.04, glibc 2.31) is preferred, then any other distribution
   with glibc 2.31, then a newer one for development only; the summary names the one used and whether the baseline is proven.
 
 .PARAMETER Sanitize
@@ -259,6 +259,7 @@ Add-Python $s @(, @('test_run_freshness.py', 'run.ps1 refuses an executable olde
 $s = 'Release contract'
 Add-Suite $s 'check' 'release contract' 'version, licenses, README, forbidden files in the release checker, assets, no developer paths compiled into the program' @{ Run = 'Test-ReleaseContract' }
 Add-Suite $s 'script' 'tools\test-release-check.ps1' 'verify-release.ps1 on synthetic folders and ZIPs: refuses user data, saves, logs, cache, game data, PDBs, temporary files, DEBUG_SAULO and developer paths' @{}
+Add-Python $s @(, @('test_linux_packaging.py', 'Linux AppImage packaging: names from config/release.json and project VERSION, AppDir content, AppRun, desktop, icon, AppStream, runtime pin and FUSE fallback, ELF/RPATH/GLIBC audit, four release files, documentation'))
 if ($Release) {
     Add-Suite 'Release artifacts' 'check' 'dist artifacts' 'the folder and the ZIP already in dist\ pass tools\verify-release.ps1 and hold the same files' @{ Run = 'Test-ReleaseArtifacts' }
 } else {
@@ -332,14 +333,18 @@ $toolRole = @{
     'tools\source_fingerprint.py' = 'the deterministic source fingerprint embedded in the Linux executable; run by the Linux gate, checked by tests\test_linux_artifact.py'
     'tools\gen_build_info.py' = 'writes the Linux executable provenance header during its build; checked by tests\test_linux_artifact.py'
     'tools\linux_artifact.py' = 'the Linux artifact: self-check against sources and contract, atomic staging; run by tools/linux_gate.py and this script, checked by tests\test_linux_artifact.py'
-    'tools\package-linux.sh' = 'packaging entry: verifies the validated Linux binary and stages it; never builds, never run by this gate'
+    'tools\package-linux.sh' = 'packaging entry: verifies the canonical Linux Release artifact and writes the AppImage; run by tools/package-release-linux.sh, never by this gate'
+    'tools\package-release-linux.sh' = 'maintainer: mirrors the sources into the WSL build folder and runs package-linux.sh; started by package-release.ps1, never by this gate'
+    'tools\build-appimage-runtime.sh' = 'pinned AppImage Type 2 runtime with the FUSE fallback patch; run by package-linux.sh, needs root or passwordless sudo'
     'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL by this script or on Linux by hand'
     'tools\test-linux-parity.sh' = 'the Linux parity gate: the static contracts of tests\test_linux_parity.py, then tools/test-linux.sh; Linux only, run in WSL or by hand'
     'tools\linux_parity_report.py' = 'writes and checks docs\LINUX_PARITY.md from the feature contract; checked by tests\test_linux_parity.py'
     'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui and TRG Launcher at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
     'tools\make-app-icon.py' = 'maintainer: renders packaging\icons\app-icon.svg into the PNGs and the ICO (--check verifies them); checked by tests\test_app_icon.py'
-    'tools\package.ps1' = 'maintainer: builds Release and stages the Windows release ZIP: never run by the gate; checked statically by tests\test_player_polish.py and through tools\verify-release.ps1'
-    'tools\package-release.ps1' = 'maintainer: package.ps1 plus the final gates on the ZIP: never run by the gate; checked by tests\test_player_polish.py'
+    'tools\build-updater.ps1' = 'maintainer: builds the CLANG64 x64 release helper; run by tools/package.ps1, never by this gate'
+    'tools\build-clang-cl.ps1' = 'maintainer: builds the clang-cl x86 Release executable; never run by this gate'
+    'tools\package.ps1' = 'maintainer: builds the clang-cl Release and the CLANG64 helper, stages the Windows release ZIP: never run by the gate; checked statically by tests\test_player_polish.py and through tools\verify-release.ps1'
+    'tools\package-release.ps1' = 'maintainer: package.ps1 plus the Linux AppImage through WSL and the final gates on both: never run by the gate; checked by tests\test_player_polish.py'
     'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a stand-in npx'
     'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
     'tools\openssl-bootstrap.sh' = 'a pinned static OpenSSL for the Bug Report HTTPS, built once into the cache: run by tools/build-linux.sh when the machine has no development files'
@@ -475,9 +480,11 @@ function Get-RepositoryFiles {
 
 $testExtensions = '.c', '.h', '.cpp', '.inc', '.py', '.ps1', '.cmake', '.md', '.txt', '.json', '.yml', '.in'
 $sourceExtensions = '.c', '.h', '.cpp', '.inc'
-$hygieneNamedBy = 'tools/test.ps1', 'tests/gate_tests.ps1', 'tools/verify-release.ps1', 'tools/test-release-check.ps1', 'docs/user-data.md',
-    'tests/feature_contract.json', 'tests/build_script_tests.ps1', 'tests/stream_tests.c', 'tests/test_no_original_executable.py',
-    'tests/launcher_tests.cpp', 'tests/patch117_tests.c', 'tests/video_subtitle_tests.c', 'tests/bug_report_tests.cpp'
+$hygieneNamedBy = 'tools/test.ps1', 'tests/gate_tests.ps1', 'tools/verify-release.ps1', 'tools/test-release-check.ps1',
+    'tools/package-linux.sh', 'tests/test_linux_packaging.py', 'tools/build-updater.ps1', 'tools/build-clang-cl.ps1',
+    'docs/user-data.md', 'tests/feature_contract.json', 'tests/build_script_tests.ps1', 'tests/stream_tests.c',
+    'tests/test_no_original_executable.py', 'tests/launcher_tests.cpp', 'tests/patch117_tests.c', 'tests/video_subtitle_tests.c',
+    'tests/bug_report_tests.cpp'
 
 function Test-Hygiene {
     $problems = New-Object System.Collections.Generic.List[string]
@@ -799,19 +806,26 @@ function Test-ReleaseContract {
     if (-not $version) { $problems.Add('CMakeLists.txt: project VERSION is not major.minor.patch') } else { $lines += "version $version" }
     $cmake = [IO.File]::ReadAllText((Join-Path $root 'CMakeLists.txt'))
     if ($cmake -notmatch 'JPT_PORT_VERSION="\$\{PROJECT_VERSION\}"') { $problems.Add('the launcher does not take its version from the project VERSION') }
-    foreach ($file in 'README.md', 'docs\LEGAL.md', 'docs\user-data.md', 'packaging\licenses\THIRD-PARTY-LICENSES.txt', 'assets\launcher\header-art.png', 'third_party\assao\LICENSE', 'launcher\third_party\nanosvg\LICENSE.txt') {
+    foreach ($file in 'README.md', 'docs\LEGAL.md', 'docs\user-data.md', 'docs\LINUX.md', 'docs\RELEASE_SECURITY.md', 'packaging\README-linux.txt',
+                      'packaging\licenses\THIRD-PARTY-LICENSES.txt', 'packaging\licenses\LICENSE.txt',
+                      'packaging\licenses\FFmpeg-LGPL-2.1.txt', 'packaging\licenses\FFMPEG-SOURCE.txt',
+                      'packaging\licenses\OpenSSL-LICENSE.txt', 'packaging\licenses\Apache-2.0.txt',
+                      'packaging\linux\AppRun', 'packaging\linux\io.github.saulob.jurassic-park-trespasser.desktop',
+                      'packaging\linux\io.github.saulob.jurassic-park-trespasser.appdata.xml',
+                      'patches\appimage-runtime\baseline.env', 'patches\appimage-runtime\0001-extract-and-run-when-fuse-fails.patch',
+                      'assets\launcher\header-art.png', 'third_party\assao\LICENSE', 'launcher\third_party\nanosvg\LICENSE.txt') {
         $path = Join-Path $root $file
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $problems.Add("$file is missing") } elseif ((Get-Item -LiteralPath $path).Length -eq 0) { $problems.Add("$file is empty") }
     }
     $licensesPath = Join-Path $root 'packaging\licenses\THIRD-PARTY-LICENSES.txt'
     if (Test-Path -LiteralPath $licensesPath) {
         $licenses = [IO.File]::ReadAllText($licensesPath)
-        foreach ($name in 'pcrecomp', 'Dear ImGui', 'SDL', 'ASSAO', 'nanosvg') { if ($licenses -notmatch [regex]::Escape($name)) { $problems.Add("THIRD-PARTY-LICENSES.txt does not name $name") } }
+        foreach ($name in 'pcrecomp', 'Dear ImGui', 'SDL', 'ASSAO', 'nanosvg', 'OpenSSL', 'FFmpeg', 'Vulkan') { if ($licenses -notmatch [regex]::Escape($name)) { $problems.Add("THIRD-PARTY-LICENSES.txt does not name $name") } }
     }
     $deps = [IO.File]::ReadAllText((Join-Path $root 'config\launcher_deps.txt'))
     if ($deps -notmatch 'SDL is release-3\.4\.20' -or $deps -notmatch 'external/SDL\s+\S+\s+[0-9a-f]{40}') { $problems.Add('config\launcher_deps.txt does not pin SDL 3.4.20 to a commit') }
     $ignore = [IO.File]::ReadAllText((Join-Path $root '.gitignore'))
-    foreach ($entry in 'build/', 'game/', 'user_data/', 'logs/', '*.iso', '*.exe', '*.tpa', '*.scn', 'external/') { if (-not $ignore.Contains($entry)) { $problems.Add(".gitignore does not ignore $entry") } }
+    foreach ($entry in 'build/', 'game/', 'user_data/', 'logs/', 'dist/', '*.iso', '*.exe', '*.tpa', '*.scn', 'external/') { if (-not $ignore.Contains($entry)) { $problems.Add(".gitignore does not ignore $entry") } }
     $verify = [IO.File]::ReadAllText((Join-Path $root 'tools\verify-release.ps1'))
     foreach ($name in 'user_data', 'saves', 'cache', 'logs', 'game', 'trespass.exe', 'recomp-registry.txt', '*.pdb', '*.tmp', '*.log', '*.iso', 'DEBUG_SAULO') {
         if (-not $verify.Contains("'$name'") -and -not $verify.Contains($name)) { $problems.Add("tools\verify-release.ps1 no longer refuses $name") }

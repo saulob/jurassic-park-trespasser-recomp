@@ -40,6 +40,14 @@ class SingleHost(unittest.TestCase):
         for token in ("HOST_SOURCES", "PCRECOMP_SOURCES", "GEN_SOURCES"):
             self.assertNotIn(token, updater_block.group(1), token)
 
+    def test_the_windows_program_is_a_gui_subsystem_executable(self):
+        main = re.search(r"^add_executable\(trespasser_recomp\s+WIN32\s", CMAKE, re.M)
+        self.assertIsNotNone(main, "trespasser_recomp opens no console window")
+        self.assertIn("/ENTRY:mainCRTStartup", CMAKE)
+        self.assertNotRegex(CMAKE, r"(?i)/SUBSYSTEM:CONSOLE|pragma comment\(linker")
+        log = (ROOT / "src" / "host" / "log.c").read_text(encoding="utf-8")
+        self.assertIn('freopen("NUL", "w", stderr)', log)
+
     def test_no_other_host_target_exists(self):
         for name in OLD_NAMES:
             self.assertNotIn(name, CMAKE, name)

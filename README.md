@@ -313,7 +313,7 @@ feature by feature against `tests\feature_contract.json`. It ends with `ALL TEST
 .\tools\test.ps1                    # Windows gate, Linux gate in WSL, Windows/Linux feature parity
 .\tools\test.ps1 -WindowsOnly       # the Windows half only (-SkipLinux is the same); parity is then not evaluated
 .\tools\test.ps1 -LinuxOnly         # the Linux half only
-.\tools\test.ps1 -LinuxDistro MuaFocalBuild   # the WSL distribution (MuaFocalBuild, Ubuntu 20.04, is preferred by default)
+.\tools\test.ps1 -LinuxDistro JptFocalBuild   # the WSL distribution (JptFocalBuild, Ubuntu 20.04, is preferred by default)
 .\tools\test.ps1 -Sanitize          # Linux-specific suites under AddressSanitizer + UndefinedBehaviorSanitizer (separate, slower)
 .\tools\test.ps1 -List              # the sections and suites, nothing is built or run
 .\tools\test.ps1 -Filter cheats     # only suites whose section, name or description contains the text

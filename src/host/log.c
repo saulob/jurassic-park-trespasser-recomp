@@ -91,6 +91,8 @@ int host_log_open(const char* dir, const char* file) {
     }
     if (h == INVALID_HANDLE_VALUE) return 0;
     fd = _open_osfhandle((intptr_t)h, _O_APPEND | _O_TEXT);
+    /* A GUI-subsystem process starts without a descriptor behind stderr. */
+    if (fd >= 0 && _fileno(stderr) < 0) freopen("NUL", "w", stderr);
     if (fd < 0 || _dup2(fd, _fileno(stderr)) != 0) {
         if (fd < 0) CloseHandle(h);
         return 0;

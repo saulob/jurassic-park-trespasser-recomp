@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "clang-cl-x86-release",
+      "displayName": "clang-cl x86 Release",
+      "description": "Ninja + clang-cl + lld-link in the MSVC ABI, 32-bit, Release. Same build folder as tools\\build.ps1 -Config Release; run tools\\build-clang-cl.ps1 first so the Visual Studio x86 environment and its LLVM tools are on PATH.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cmake/clangcl-x86-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_C_COMPILER_TARGET": "i686-pc-windows-msvc",
+        "CMAKE_CXX_COMPILER_TARGET": "i686-pc-windows-msvc"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-cl-x86-release",
+      "configurePreset": "clang-cl-x86-release",
+      "targets": [
+        "trespasser_recomp"
+      ]
+    }
+  ]
+}

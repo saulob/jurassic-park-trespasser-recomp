@@ -49,10 +49,12 @@ class IconTests(unittest.TestCase):
         self.assertIn('1 ICON "../packaging/icons/app-icon.ico"', rc)
         for value in ("FileDescription", "ProductName", "OriginalFilename", "FileVersion", "ProductVersion", "CompanyName"):
             self.assertIn(f'VALUE "{value}"', rc)
-        self.assertNotIn("RT_MANIFEST", rc, "the linker's own manifest stays")
+        self.assertNotIn("RT_MANIFEST", rc, "the linker embeds the manifest, not the resource script")
+        self.assertTrue((ROOT / "src" / "trespasser_recomp.manifest").is_file())
         cmake = text("CMakeLists.txt")
         self.assertIn("enable_language(RC)", cmake)
         self.assertIn("src/trespasser_recomp.rc", cmake)
+        self.assertIn("src/trespasser_recomp.manifest", cmake, "the linker takes the manifest as an input")
         self.assertIn("generated/jpt_version.h", cmake)
         self.assertIn("packaging/icons/app-icon.ico", cmake, "the executable relinks when the icon changes")
 
@@ -193,12 +195,17 @@ class BugReportTests(unittest.TestCase):
 class PackagingTests(unittest.TestCase):
     def test_the_windows_package_is_built_from_release_and_verified_as_the_asset(self):
         package = text("tools/package.ps1")
-        self.assertIn("-Config', 'Release'", package)
-        self.assertIn("msvc-x86-release", package)
+        self.assertIn("Config = 'Release'", package)
+        self.assertIn("Toolchain = 'clang-cl'", package)
+        self.assertIn("clangcl-x86-release", package)
+        self.assertNotIn("msvc-x86-release", package, "the release host is the clang-cl build")
         self.assertIn("CMAKE_BUILD_TYPE", package)
+        self.assertIn(r"'CMAKE_LINKER', '^lld-link(\.exe)?$'", package)
+        self.assertIn("'i686-pc-windows-msvc'", package)
         self.assertIn("config\\release.json", package)
         self.assertIn(r"project\(trespasser_recomp VERSION", package)
-        for step in ("vcruntime140.dll", "msvcp140.dll", "licenses", "README.txt", "assets", "Get-Sha256", ".sha256", "verify-release.ps1"):
+        for step in ("vcruntime140.dll", "msvcp140.dll", "licenses", "README.txt", "assets", "Get-Sha256", ".sha256", "verify-release.ps1",
+                     "build-updater.ps1", "trg-updater.debug", "updaterBuild"):
             self.assertIn(step, package, step)
         self.assertLess(package.index("& $verify -Path $stage"), package.index("CreateEntryFromFile"))
         self.assertLess(package.index("CreateEntryFromFile"), package.index("& $verify -Path $zip"))
@@ -255,12 +262,18 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(release["program"], "trespasser_recomp.exe")
         self.assertIn(release["updater"], text("tools/test-release-check.ps1"))
 
-    def test_the_helper_is_built_with_the_program_and_never_asks_for_elevation(self):
+    def test_the_helper_has_metadata_and_never_asks_for_elevation(self):
         import xml.etree.ElementTree as ET
         cmake = text("CMakeLists.txt")
         self.assertIn("add_executable(trg-updater WIN32", cmake)
-        self.assertIn("launcher/updater/trg-updater.manifest", cmake)
         self.assertIn("launcher/updater/trg-updater.rc", cmake)
+        self.assertIn("JPT_UPDATER_HELPER_SOURCES", cmake)
+        target = re.search(r"add_executable\(trg-updater[^)]*\)", cmake, re.S)
+        self.assertIsNotNone(target)
+        self.assertNotIn("trg-updater.manifest", target.group(0), "the resource compiler embeds the manifest")
+        self.assertNotIn("trg-updater.rc", target.group(0), "the MSVC target leaves the resource script to the release build")
+        self.assertIn("JPT_UPDATER_RELEASE_RESOURCE launcher/updater/trg-updater.rc launcher/updater/trg-updater.manifest", cmake,
+                      "the release helper resource has its own list")
         self.assertIn("add_dependencies(trespasser_recomp trg-updater)", cmake)
         # /MANIFEST:EMBED in target_link_options conflicts with CMake Ninja's vs_link_exe and triggers mt.exe c10100a7.
         self.assertNotIn("/MANIFEST:EMBED", cmake, "CMake Ninja vs_link_exe must own manifest embedding")
@@ -272,7 +285,12 @@ class UpdaterTests(unittest.TestCase):
         self.assertTrue(root.tag.endswith("assembly"))
         rc = text("launcher/updater/trg-updater.rc")
         self.assertIn("VS_VERSION_INFO", rc)
-        self.assertNotIn("RT_MANIFEST", rc, "manifest is merged by CMake via trg-updater.manifest")
+        self.assertIn('RT_MANIFEST "trg-updater.manifest"', rc)
+        updater = text("tools/build-updater.ps1")
+        for needle in ("MSYS2", "clang++", "llvm-objcopy", "llvm-objdump", "windres", "-mwindows", "-static",
+                       "-fuse-ld=lld", "--no-insert-timestamp", "--only-keep-debug", "--strip-debug",
+                       "--add-gnu-debuglink", "api-ms-win-", ".gnu_debuglink"):
+            self.assertIn(needle, updater, needle)
 
     def test_protected_paths_are_this_ports(self):
         paths = text("launcher/updater/update_paths.cpp")

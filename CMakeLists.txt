@@ -69,6 +69,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 else()
   set(JPT_GEN_OPT_DEFAULT "/Od")
 endif()
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/" JPT_SOURCE_PREFIX)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_compile_options(/d1trimfile:${JPT_SOURCE_PREFIX})
+  else()
+    add_compile_options("/clang:-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=." "/clang:-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/=.")
+  endif()
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # MSVC performs no type-based alias analysis; the lifted code and its shims reinterpret guest memory through pointer casts.
+  add_compile_options(-fno-strict-aliasing)
+endif()
 set(TRESPASSER_GEN_OPT "${JPT_GEN_OPT_DEFAULT}" CACHE STRING "optimisation for the lifted C (/Od: /O2 /Ob1, as the game needs)")
 option(TRESPASSER_TRACE "build the lifted code with RECOMP_TRACE (--calltrace, --firsthit, ...)" OFF)
 
@@ -372,12 +384,13 @@ add_custom_command(OUTPUT ${JPT_RESTORED_AUDIO_SOURCE}
   DEPENDS ${JPT_RESTORED_AUDIO_LIST} ${JPT_RESTORED_AUDIO} ${CMAKE_SOURCE_DIR}/launcher/embed_files.cmake
   COMMENT "Embedding the restored audio")
 
-# The application icon, the version and the Windows resources of the executable.
+# The application icon, the version and the Windows resources of the executable. The manifest is a link input, so the
+# MSVC linker embeds its own single MANIFEST resource (the resource script must not carry one too).
 enable_language(RC)
 set_source_files_properties(src/trespasser_recomp.rc PROPERTIES OBJECT_DEPENDS
   "${CMAKE_SOURCE_DIR}/packaging/icons/app-icon.ico;${CMAKE_BINARY_DIR}/generated/jpt_version.h")
-set(JPT_RESOURCE_SOURCES src/trespasser_recomp.rc)
-add_executable(trespasser_recomp ${JPT_RESOURCE_SOURCES} ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
+set(JPT_RESOURCE_SOURCES src/trespasser_recomp.rc src/trespasser_recomp.manifest)
+add_executable(trespasser_recomp WIN32 ${JPT_RESOURCE_SOURCES} ${HOST_SOURCES} ${PCRECOMP_SOURCES} ${GEN_SOURCES} ${JPT_ASSAO_SHADER_SOURCE} ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
 target_include_directories(trespasser_recomp PRIVATE
   ${CMAKE_BINARY_DIR}/generated
   src/host
@@ -402,12 +415,15 @@ if(TRESPASSER_TRACE)
 endif()
 
 # The update helper replaces the port's files after the launcher exits (launcher/updater, tests/update_*.cpp). It ships
-# next to trespasser_recomp.exe and is built with it, as in Dragon's Crown Pro PC and 13 Sentinels.
-set_source_files_properties(launcher/updater/trg-updater.rc PROPERTIES OBJECT_DEPENDS
-  "${CMAKE_BINARY_DIR}/generated/jpt_version.h")
-add_executable(trg-updater WIN32 launcher/updater/helper_main.cpp launcher/updater/install_transaction.cpp launcher/updater/sha256.cpp
-  launcher/updater/update_job.cpp launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp
-  launcher/updater/trg-updater.rc launcher/updater/trg-updater.manifest)
+# next to trespasser_recomp.exe. The CMake target below stays for development and the helper tests and takes the linker's
+# own manifest; the release package ships tools\build-updater.ps1's CLANG64 build of the same sources.
+set(JPT_UPDATER_HELPER_SOURCES
+  launcher/updater/helper_main.cpp launcher/updater/install_transaction.cpp launcher/updater/sha256.cpp
+  launcher/updater/update_job.cpp launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp)
+# The release helper's version and manifest: tools\build-updater.ps1 compiles the script with windres, so the MSVC target
+# must not compile it (its linker embeds a manifest of its own).
+set(JPT_UPDATER_RELEASE_RESOURCE launcher/updater/trg-updater.rc launcher/updater/trg-updater.manifest)
+add_executable(trg-updater WIN32 ${JPT_UPDATER_HELPER_SOURCES})
 target_include_directories(trg-updater PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(trg-updater PRIVATE shell32)
 set_target_properties(trg-updater PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
@@ -488,7 +504,13 @@ endif()
 # The guest image has no relocations and must sit at 0x00400000, so the host links high
 # and keeps its own first stack small; lifted code runs on a thread with a large stack.
 # Not /LARGEADDRESSAWARE: the original was a 2 GB process.
+# GUI subsystem (no console window); the entry stays the C runtime's main startup.
+target_link_options(trespasser_recomp PRIVATE /ENTRY:mainCRTStartup)
 target_link_options(trespasser_recomp PRIVATE /BASE:0x60000000 /DYNAMICBASE:NO /NXCOMPAT /STACK:0x40000)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # lld-link does not derive the fixed image and the SafeSEH table from /DYNAMICBASE:NO the way link.exe does.
+  target_link_options(trespasser_recomp PRIVATE /FIXED /SAFESEH)
+endif()
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser_recomp PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)

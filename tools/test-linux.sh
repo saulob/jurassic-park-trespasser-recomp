@@ -4,8 +4,8 @@
 # drivers, no window, no sound, no launcher. The executable is inspected and asked only for --build-info and --self-check (headless). tools/test.ps1 runs this through WSL;
 # running it by hand gives the same result.
 #
-#   tools/test-linux.sh [--build-dir DIR | --native-build] [--no-build] [--cc COMPILER] [--elf-baseline 2.31] [--machine]
-#                       [--filter TEXT] [--list] [--sanitize] [--stage]
+#   tools/test-linux.sh [--build-dir DIR | --native-build] [--no-build] [--config CONFIG] [--cc COMPILER] [--elf-baseline 2.31]
+#                       [--machine] [--filter TEXT] [--list] [--sanitize] [--stage]
 #
 # --native-build builds under ~/.cache/jpt-recomp, on the Linux file system, which is much faster than a Windows drive in WSL.
 # --stage copies the validated executable to build/linux/bin (with its build manifest) when every row passed.
@@ -16,6 +16,7 @@ set -uo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 build_dir=$repo/build/linux-work
 build=1
+config=RelWithDebInfo
 baseline=2.31
 cc=${CC:-}
 machine=()
@@ -29,6 +30,7 @@ while [ $# -gt 0 ]; do
     --build-dir) build_dir=$2; shift 2 ;;
     --native-build) native=1; shift ;;
     --no-build) build=0; shift ;;
+    --config) config=$2; shift 2 ;;
     --cc) cc=$2; shift 2 ;;
     --elf-baseline) baseline=$2; shift 2 ;;
     --machine) machine=(--machine); shift ;;
@@ -44,7 +46,7 @@ done
 emit() { [ ${#machine[@]} -gt 0 ] && echo "@@$*" || echo "  $*"; }
 
 if [ -z "$cc" ]; then
-  for candidate in gcc gcc-13 gcc-12 gcc-11 clang; do
+  for candidate in gcc-13 gcc-12 gcc-11 gcc clang; do
     command -v "$candidate" >/dev/null 2>&1 && { cc=$candidate; break; }
   done
 fi
@@ -65,7 +67,9 @@ emit "INFO|build_dir|$build_dir"
 
 # Smacker video needs FFmpeg's libavformat, libavcodec and libavutil. When the machine has none, a pinned LGPL-only build is made once
 # into the cache (tools/ffmpeg-bootstrap.sh: no sudo, nothing installed, the commit is verified); without network the video rows say BLOCKED.
-if [ "${JPT_FFMPEG_BOOTSTRAP:-1}" = 1 ] && [ -z "${JPT_CMAKE_ARGS:-}" ] && ! pkg-config --exists libavformat libavcodec libavutil 2>/dev/null; then
+# JPT_FFMPEG_PINNED=1 (the release packaging) always uses that build and fails when it cannot be made.
+if [ "${JPT_FFMPEG_PINNED:-0}" = 1 ] ||
+   { [ "${JPT_FFMPEG_BOOTSTRAP:-1}" = 1 ] && [ -z "${JPT_CMAKE_ARGS:-}" ] && ! pkg-config --exists libavformat libavcodec libavutil 2>/dev/null; }; then
   started=$(date +%s)
   if ffmpeg_prefix=$(bash "$repo/tools/ffmpeg-bootstrap.sh" --cc "$cc" 2>/tmp/jpt-ffmpeg-bootstrap.$$); then
     emit "INFO|ffmpeg|$(basename "$ffmpeg_prefix") ($(( $(date +%s) - started )) s)"
@@ -73,15 +77,25 @@ if [ "${JPT_FFMPEG_BOOTSTRAP:-1}" = 1 ] && [ -z "${JPT_CMAKE_ARGS:-}" ] && ! pkg
   else
     code=$?
     emit "NOTE|ffmpeg bootstrap did not complete (exit $code): $(tail -1 /tmp/jpt-ffmpeg-bootstrap.$$ | cut -c1-200); the Smacker video rows are BLOCKED"
+    if [ "${JPT_FFMPEG_PINNED:-0}" = 1 ]; then
+      rm -f /tmp/jpt-ffmpeg-bootstrap.$$
+      emit "FAIL|ffmpeg|the release needs the pinned LGPL-only FFmpeg build"
+      exit 2
+    fi
   fi
   rm -f /tmp/jpt-ffmpeg-bootstrap.$$
+fi
+
+# A release must ship an LGPL-only FFmpeg, whether it came from the bootstrap or from the machine.
+if [ "${JPT_FFMPEG_REQUIRE_LGPL:-0}" = 1 ]; then
+  export JPT_CMAKE_ARGS="${JPT_CMAKE_ARGS:-} -DJPT_FFMPEG_REQUIRE_LGPL=ON"
 fi
 
 if [ "$build" = 1 ]; then
   started=$(date +%s)
   extra=()
   [ "$sanitize" = 1 ] && extra=(--sanitize)
-  if output=$(bash "$repo/tools/build-linux.sh" --tests --cc "$cc" --build-dir "$build_dir" "${extra[@]}" 2>&1); then
+  if output=$(bash "$repo/tools/build-linux.sh" --tests --config "$config" --cc "$cc" --build-dir "$build_dir" "${extra[@]}" 2>&1); then
     emit "BUILD|PASS|$(( $(date +%s) - started ))|$(echo "$output" | grep -E '^build-linux: OK' | head -1)"
   else
     emit "BUILD|FAIL|$(( $(date +%s) - started ))|build failed"

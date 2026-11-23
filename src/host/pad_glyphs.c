@@ -30,8 +30,9 @@ static void base(pad_glyph_t* g, int shape, float width, float text_size) {
 }
 
 static void set_text(pad_glyph_t* g, const char* text) {
-    strncpy(g->text, text ? text : "", sizeof g->text - 1);
-    g->text[sizeof g->text - 1] = 0;
+    const size_t length = text ? strnlen(text, sizeof g->text - 1) : 0;
+    if (length) memcpy(g->text, text, length);
+    g->text[length] = 0;
 }
 
 static float pill_width(const char* text, float per_char, float lo, float hi) {

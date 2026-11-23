@@ -47,10 +47,11 @@ class ApplicationIdentity(unittest.TestCase):
         self.assertRegex(app_id, r"^io\.github\.saulob\.[a-z0-9-]+$")
         desktop = ROOT / "packaging" / "linux" / f"{app_id}.desktop"
         self.assertTrue(desktop.is_file(), f"{desktop.name} must be named after the application ID")
-        entries = dict(line.split("=", 1) for line in raw(f"packaging/linux/{desktop.name}").splitlines() if "=" in line)
+        main = raw(f"packaging/linux/{desktop.name}").split("[Desktop Action", 1)[0]
+        entries = dict(line.split("=", 1) for line in main.splitlines() if "=" in line)
         self.assertEqual(entries.get("StartupWMClass"), app_id)
         self.assertEqual(entries.get("Type"), "Application")
-        self.assertEqual(entries.get("Exec"), "trespasser_recomp")
+        self.assertEqual(entries.get("Exec"), "AppRun")
         self.assertEqual(entries.get("Terminal"), "false")
         self.assertIn("Game", entries.get("Categories", ""))
         found = set()

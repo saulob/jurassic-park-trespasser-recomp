@@ -153,7 +153,8 @@ static void load_store(void) {
 static void migrate_subtitles_default(void) {
     reg_value_t* marker = find_value(SUBTITLES_MARKER);
     reg_value_t* value = find_value(SUBTITLES_VALUE);
-    DWORD on = 1, replacement;
+    DWORD on = 1;
+    uint32_t replacement;
     int value_present = value && value->data && value->type == REG_DWORD && value->size == 4;
     if (registry_subtitles_migration(marker && marker->data, value_present, value_present ? *(DWORD*)value->data : 0, &replacement)) {
         set_value(SUBTITLES_VALUE, REG_DWORD, &replacement, 4);

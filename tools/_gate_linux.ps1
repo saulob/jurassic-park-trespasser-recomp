@@ -97,7 +97,7 @@ function Test-LinuxDistro([string]$Name) {
     }
 }
 
-# The explicit choice, else MuaFocalBuild, else any other distribution that looks like Ubuntu 20.04 (glibc 2.31), else a newer one
+# The explicit choice, else JptFocalBuild, else any other distribution that looks like Ubuntu 20.04 (glibc 2.31), else a newer one
 # (development only: the glibc baseline is then not proven).
 function Find-LinuxEnvironment([string]$Requested) {
     $names = @(Get-WslDistros)
@@ -109,8 +109,8 @@ function Find-LinuxEnvironment([string]$Requested) {
         if ($candidate.Usable) { $candidate | Add-Member -NotePropertyName Found -NotePropertyValue $true -PassThru | Add-Member -NotePropertyName Why -NotePropertyValue 'chosen with -LinuxDistro' -PassThru; return $candidate }
         return [pscustomobject]@{ Found = $false; Reason = "$Requested is not usable: $($candidate.Reason)" }
     }
-    $preferred = @($names | Where-Object { $_ -eq 'MuaFocalBuild' })
-    $focal = @($names | Where-Object { $_ -match 'Focal' -and $_ -ne 'MuaFocalBuild' } | Sort-Object)
+    $preferred = @($names | Where-Object { $_ -eq 'JptFocalBuild' })
+    $focal = @($names | Where-Object { $_ -match 'Focal' -and $_ -ne 'JptFocalBuild' } | Sort-Object)
     $others = @($names | Where-Object { $_ -notmatch 'Focal' } | Sort-Object)
     $rejected = New-Object System.Collections.Generic.List[string]
     foreach ($group in @(@($preferred + $focal), $others)) {
@@ -119,7 +119,7 @@ function Find-LinuxEnvironment([string]$Requested) {
             $candidate = Test-LinuxDistro $name
             if (-not $candidate.Usable) { $rejected.Add("${name}: $($candidate.Reason)"); continue }
             if ($candidate.Baseline) {
-                $why = if ($name -eq 'MuaFocalBuild') { 'preferred baseline environment (Ubuntu 20.04, glibc 2.31)' } else { 'first usable glibc 2.31 distribution' }
+                $why = if ($name -eq 'JptFocalBuild') { 'preferred baseline environment (Ubuntu 20.04, glibc 2.31)' } else { 'first usable glibc 2.31 distribution' }
                 $candidate | Add-Member -NotePropertyName Found -NotePropertyValue $true; $candidate | Add-Member -NotePropertyName Why -NotePropertyValue $why
                 return $candidate
             }

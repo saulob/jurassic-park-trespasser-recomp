@@ -1,0 +1,22 @@
+FFmpeg in the Linux AppImage
+============================
+
+The Linux release statically links the LGPL-only FFmpeg build made by tools/ffmpeg-bootstrap.sh for the Smacker
+video backend.
+
+Upstream:   https://github.com/FFmpeg/FFmpeg
+Tag:        n7.1.1
+Commit:     db69d06eeeab4f46da15030a80d539efb4503ca8
+Licence:    LGPL-2.1-or-later (no --enable-gpl, no --enable-nonfree, no --enable-version3)
+Libraries:  libavformat, libavcodec, libavutil (static; no shared FFmpeg libraries are shipped)
+
+Configure flags:
+  --disable-everything --disable-autodetect --disable-programs --disable-doc --disable-debug --disable-network
+  --disable-avdevice --disable-avfilter --disable-swscale --disable-swresample --disable-postproc
+  --disable-x86asm --disable-asm --enable-static --disable-shared --enable-pic
+  --enable-avformat --enable-avcodec --enable-avutil
+  --enable-protocol=file --enable-demuxer=smacker --enable-decoder=smacker --enable-decoder=smackaud
+  --enable-decoder=pcm_s16le --enable-decoder=pcm_u8
+
+The full LGPL-2.1 text is in FFmpeg-LGPL-2.1.txt in this folder. The corresponding source is the upstream commit
+above; tools/ffmpeg-bootstrap.sh reproduces the same build from it.

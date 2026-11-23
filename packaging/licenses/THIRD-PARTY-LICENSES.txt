@@ -3,16 +3,21 @@ the player's own disc. The port's source code is at https://github.com/saulob/ju
 
 
 ========================================================================
-Compiled into trespasser_recomp.exe
+Compiled into the program (Windows: trespasser_recomp.exe; Linux: trespasser_recomp)
 ========================================================================
 
 pcrecomp                    MIT. Copyright (c) 2026 sp00nz.             https://github.com/sp00nznet/pcrecomp
 Dear ImGui 1.92.9b          MIT. Copyright (c) 2014-2025 Omar Cornut.   https://github.com/ocornut/imgui
 SDL 3.4.20                  zlib. Copyright (C) 1997-2026 Sam Lantinga. https://github.com/libsdl-org/SDL
+TRG Launcher 1.1.0          MIT. Copyright (c) 2026 TekRantGaming.      https://github.com/TekRantGaming/trg-launcher (the notice is below)
 nanosvg                     zlib. Copyright (c) 2013-14 Mikko Mononen.  launcher/third_party/nanosvg/LICENSE.txt
 Intel ASSAO                 MIT. Copyright (c) 2016 Intel.              third_party/assao/LICENSE
 Khronos Vulkan-Headers      Apache-2.0. The Khronos Group Inc.          third_party/vulkan/LICENSE.txt
 miniz                       MIT. Copyright 2013-2014 RAD Game Tools and Valve Software, Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC. launcher/updater/third_party/miniz/LICENSE
+stb_image / stb_truetype    Public domain (or MIT where marked). No copyright claimed. Used through SDL's image decoder and Dear ImGui's imstb_truetype.h.
+Droid Sans                  Apache-2.0. Copyright 2008 The Android Open Source Project. external/imgui/misc/fonts/DroidSans.ttf, the embedded text face.
+OpenSSL 3.5.9 (Linux)       Apache-2.0. The OpenSSL Project.           this folder's OpenSSL-LICENSE.txt
+FFmpeg n7.1.1 (Linux)       LGPL-2.1-or-later. The FFmpeg developers.  this folder's FFmpeg-LGPL-2.1.txt and FFMPEG-SOURCE.txt
 
 Intel ASSAO (https://github.com/GameTechDev/ASSAO, c21d57a95b43c700ee01a2eb18f5589d7becefb2)
   MIT License. Copyright (c) 2016 Intel. Ambient occlusion of the D3D11 renderer.
@@ -183,3 +188,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+
+========================================================================
+Linux AppImage
+========================================================================
+
+The Linux executable links SDL3, FFmpeg, OpenSSL, libstdc++ and libgcc statically. No shared copy of those libraries
+is shipped. FFmpeg is the pinned LGPL-only build of tools/ffmpeg-bootstrap.sh (n7.1.1, commit
+db69d06eeeab4f46da15030a80d539efb4503ca8); its licence text and source offer are FFmpeg-LGPL-2.1.txt and
+FFMPEG-SOURCE.txt. OpenSSL is the pinned 3.5.9 build of tools/openssl-bootstrap.sh; its licence text is
+OpenSSL-LICENSE.txt. The Apache-2.0 text used by OpenSSL, Vulkan-Headers and Droid Sans is Apache-2.0.txt.
+
+The Vulkan loader, the GPU drivers (Mesa RADV/ANV, NVIDIA), the X11/Wayland display servers and the audio servers are
+provided by the player's system and are not part of the AppImage.
+
+The port's own source code has no licence file yet; that choice belongs to the repository owner. See LEGAL.txt in
+this folder.

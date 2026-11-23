@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.saulob.jurassic-park-trespasser</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>Jurassic Park: Trespasser Recompiled</name>
+  <summary>Native PC port of Jurassic Park: Trespasser, bring your own disc</summary>
+  <description>
+    <p>
+      An unofficial native x86-64 PC port of Jurassic Park: Trespasser. The game's own code runs on the PC through a
+      replacement for the Windows system libraries, with a Vulkan renderer and a software fallback.
+    </p>
+    <p>
+      No game files are included. Import your own Trespasser disc image (.iso) from the launcher: English 1.0.116
+      (UK or US disc), Russian (Fargus), Spanish or Brazilian Portuguese. The version is recognised from its files,
+      never from the file name.
+    </p>
+    <ul>
+      <li>Launcher with game import, graphics, controls and gameplay settings</li>
+      <li>Vulkan renderer and a software fallback that needs no GPU driver</li>
+      <li>Widescreen, field of view, anti-aliasing, texture filtering and frame rate options</li>
+      <li>Controller, keyboard and mouse, with Xbox and PlayStation button prompts</li>
+      <li>Trophies, saves per game version, a Bug Report page and a built-in updater</li>
+    </ul>
+    <p>
+      The same AppImage is intended for desktop Linux and the Steam Deck; Steam Deck hardware validation is still
+      pending. Jurassic Park and Trespasser are trademarks of their rights holders. This project is not affiliated
+      with or endorsed by DreamWorks Interactive, Electronic Arts or any other rights holder.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.saulob.jurassic-park-trespasser.desktop</launchable>
+  <icon type="stock">io.github.saulob.jurassic-park-trespasser</icon>
+  <developer id="io.github.saulob">
+    <name>saulob</name>
+  </developer>
+  <url type="homepage">https://github.com/saulob/jurassic-park-trespasser-recomp</url>
+  <url type="bugtracker">https://github.com/saulob/jurassic-park-trespasser-recomp/issues</url>
+  <url type="donation">https://github.com/sponsors/saulob</url>
+  <categories>
+    <category>Game</category>
+    <category>ActionGame</category>
+  </categories>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>gamepad</control>
+  </supports>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

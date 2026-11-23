@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-178 features. 124 PASS / PASS; 33 PASS / WINDOWS ONLY (justified); 21 LINUX ONLY (justified) / PASS.
+178 features. 125 PASS / PASS; 32 PASS / WINDOWS ONLY (justified); 21 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -137,9 +137,9 @@ feature may have one.
 | `linux-build` | linux | LINUX ONLY (justified) | PASS | - | `lifted guest link` | Linux only |
 | `glibc-baseline` | linux | LINUX ONLY (justified) | PASS | - | `elf glibc <= 2.31` | Linux only |
 | `elf-hygiene` | linux | LINUX ONLY (justified) | PASS | - | `elf architecture`, `elf dependencies`, `elf rpath/runpath`, `elf local paths` | Linux only |
-| `linux-runtime-artifact` | linux | LINUX ONLY (justified) | PASS | `test_linux_artifact.py` | `test_linux_artifact.py`, `elf self-check`, `elf build provenance`, `elf feature contract` | Linux only |
+| `linux-runtime-artifact` | linux | LINUX ONLY (justified) | PASS | `test_linux_artifact.py` | `test_linux_artifact.py`, `elf self-check`, `elf build provenance`, `elf feature contract`, `test_linux_packaging.py` | Linux only |
 | `no-wine` | linux | LINUX ONLY (justified) | PASS | - | `elf no Wine/Proton`, `elf no Windows DLL` | Linux only |
-| `release-contract` | windows | PASS | WINDOWS ONLY (justified) | `release contract`, `tools/test-release-check.ps1` | - | the release package is Windows only in this task; AppImage comes with the release branch |
+| `release-contract` | global | PASS | PASS | `release contract`, `tools/test-release-check.ps1`, `test_linux_packaging.py` | `test_linux_packaging.py` | - |
 | `repository-hygiene` | windows | PASS | WINDOWS ONLY (justified) | `repository hygiene`, `git diff --check` | - | a repository-wide check run once, on Windows |
 | `test-gate` | windows | PASS | WINDOWS ONLY (justified) | `gate_tests.ps1`, `every test is wired in`, `working tree unchanged` | - | the gate is one program, run from Windows |
 | `linux-audio-probe` | linux | LINUX ONLY (justified) | PASS | `linux audio probe` | `audio_portable_tests`, `audio_backend_tests` | Linux only |
@@ -167,8 +167,8 @@ feature may have one.
 | `renderer-backend-benchmark` | windows | PASS | WINDOWS ONLY (justified) | `renderer_benchmark_vulkan_tests`, `renderer_benchmark_d3d11_tests`, `test_renderer_benchmark.py` | - | the Windows Vulkan video passes compared with the Direct3D 11 passes (video_tests); Linux's Vulkan video presentation has its own layer |
 | `vulkan-ao-cpu-mask` | windows | PASS | WINDOWS ONLY (justified) | `vulkan_render_tests` | - | the hybrid CPU/GPU target of the Windows Direct3D layer |
 | `port-folder` | global | PASS | PASS | `port_tests` | `port_tests`, `linux_paths_tests` | - |
-| `appimage-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_parity.py` | AppImage is a Linux package format |
-| `appimage-packaging-files` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | AppImage is a Linux package format |
+| `appimage-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_parity.py`, `test_linux_packaging.py` | AppImage is a Linux package format |
+| `appimage-packaging-files` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py`, `test_linux_packaging.py` | AppImage is a Linux package format |
 | `application-id` | linux | LINUX ONLY (justified) | PASS | - | `app_identity_tests`, `test_linux_parity.py` | the desktop identity of a Linux window; a Windows window is identified by its executable |
 | `window-icon` | global | PASS | PASS | `test_player_polish.py`, `app_identity_tests` | `app_identity_tests`, `test_linux_parity.py`, `test_player_polish.py` | - |
 | `relaunch` | global | PASS | PASS | `port_tests` | `port_tests`, `linux_paths_tests`, `test_linux_parity.py` | - |
@@ -184,10 +184,10 @@ feature may have one.
 | `level-select-numbers` | global | PASS | PASS | `debug_menu_tests` | `linux_panel_tests` | - |
 | `bug-report` | global | PASS | PASS | `bug_report_tests`, `test_player_polish.py`, `worker_script_tests.ps1`, `bug report worker` | `bug_report_tests`, `test_player_polish.py` | - |
 | `auto-update` | global | PASS | PASS | `update_tests`, `update_network_tests`, `update_helper_tests`, `test_player_polish.py` | `update_tests`, `update_network_tests`, `test_player_polish.py` | - |
-| `windows-release-package` | windows | PASS | WINDOWS ONLY (justified) | `tools/test-release-check.ps1`, `test_player_polish.py`, `update_tests` | - | the Linux release is the AppImage, packaged by its own branch |
-| `steam-deck-appimage` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | Steam Deck runs the native Linux x86_64 AppImage build |
+| `windows-release-package` | windows | PASS | WINDOWS ONLY (justified) | `tools/test-release-check.ps1`, `test_player_polish.py`, `update_tests`, `build_script_tests.ps1` | - | the Linux release is the AppImage, packaged by its own branch |
+| `steam-deck-appimage` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py`, `test_linux_packaging.py` | Steam Deck runs the native Linux x86_64 AppImage build |
 | `steam-deck-controller` | linux | LINUX ONLY (justified) | PASS | - | `linux_launcher_tests`, `linux_gamepad_tests`, `test_linux_parity.py` | Steam Deck gamepad-only launcher flow targets the Linux build; Windows keeps its native file dialog |
 | `steam-deck-1280x800` | linux | LINUX ONLY (justified) | PASS | - | `linux_present_tests`, `linux_launcher_tests`, `vulkan_policy_tests` | Steam Deck 1280x800 target runs the Linux build |
 | `steam-deck-gamescope` | linux | LINUX ONLY (justified) | PASS | - | `port_tests`, `vulkan_policy_tests`, `linux_sdl_window_tests`, `test_linux_parity.py` | Gamescope is a Linux Wayland microcompositor |
-| `steam-deck-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests` | AppImage and SteamOS SD card paths are Linux-specific |
-| `steam-deck-updater` | linux | LINUX ONLY (justified) | PASS | - | `update_tests`, `test_linux_parity.py` | AppImage self-update applies to Linux; Windows uses trg-updater.exe |
+| `steam-deck-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_packaging.py` | AppImage and SteamOS SD card paths are Linux-specific |
+| `steam-deck-updater` | linux | LINUX ONLY (justified) | PASS | - | `update_tests`, `test_linux_parity.py`, `test_linux_packaging.py` | AppImage self-update applies to Linux; Windows uses trg-updater.exe |

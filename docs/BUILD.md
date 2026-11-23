@@ -5,6 +5,8 @@
 - Windows 10/11 x64
 - Visual Studio 2022 or later with "Desktop development with C++" (MSVC x86/x64 tools, the
   Windows SDK, and the bundled CMake and Ninja)
+- MSYS2 CLANG64 (`clang++`, LLD, `llvm-objcopy`, `llvm-objdump`, `llvm-readobj`, `windres`) for the release update helper
+  (`tools\build-updater.ps1`)
 - Python 3.10+ through the `py` launcher (it checks the lift archives)
 - Git
 
@@ -13,9 +15,10 @@ No original game executable and no disc image are needed to build: the lifted bu
 
 About 1.5 GB of disk: 230 MB of unpacked lifted C (three lifts), the rest build output.
 
-The host is a 32-bit process on pcrecomp's `native32` runtime, so the only toolchain is the
+The game host is a 32-bit process on pcrecomp's `native32` runtime, so it is built with the
 x64-hosted x86 MSVC. `tools\build.ps1` finds the newest Visual Studio with those tools and
-switches to it for the session.
+switches to it for the session. The standalone update helper is the exception: it ships as a
+64-bit, static CLANG64 build (`tools\build-updater.ps1`), the pipeline of the other ports.
 
 ## Build
 
@@ -63,7 +66,8 @@ from before this layout stay in `logs\`.
 | `-VerboseRuntime` | with `-Run`, show the runtime output in the terminal too |
 | `-Arch x86` / `-Arch x64` | `x86` (default) is the playable 32-bit host in `build\cmake\msvc-x86`. `x64` builds only the 64-bit host groundwork (`trespasser_x64_probe`, `x64_tests`) in `build\cmake\msvc-x64` with the native x64 tools; it cannot run the game, so `-Run` is refused (`docs\X64_MIGRATION.md`) |
 | `-Clean` | delete this configuration's build folder first; `game\`, `lifts\` and `logs\` are kept |
-| `-Config Release` | build `build\cmake\msvc-x86-release` instead of RelWithDebInfo |
+| `-Config Release` | build the shipped Windows executable with clang-cl + lld-link in `build\cmake\clangcl-x86-release` instead of the MSVC RelWithDebInfo development build |
+| `-Toolchain auto` / `-Toolchain msvc` / `-Toolchain clang-cl` | `auto` (default) uses clang-cl for Release and MSVC for RelWithDebInfo; `msvc` keeps an MSVC build in `build\cmake\msvc-x86-release` for diagnosis; `clang-cl` is the Release toolchain and is refused with another `-Config` |
 | `-GenOpt /O2` | advanced: optimisation of the lifted C (compiler flags only, it never regenerates the C, but changing it recompiles all of it). Default: what the build folder already uses, else `/Od` for RelWithDebInfo and `/O2` for Release. Every lifted file runs during gameplay, so with `/Od` each is still compiled with `/O2 /Ob1`; `/Ob1` is added to any other value |
 | `-Trace` | build with `RECOMP_TRACE` (`--calltrace`, `--firsthit`); default: what the build folder already uses |
 | `-BuildDir`, `-Jobs N` | another build folder (`-Clean` only removes folders under `build\`); parallel compile jobs |
@@ -77,6 +81,25 @@ cmake --build build\cmake\msvc-x86
 ```
 
 The stages can also be run by hand: `py -3 tools\fetch_pcrecomp.py`, `py -3 tools\lifts.py verify`.
+
+### Release toolchain
+
+The Windows release is built with Visual Studio's clang-cl and lld-link in the MSVC i686 ABI. Development builds stay
+MSVC RelWithDebInfo; the MSVC Release stays available for diagnosis:
+
+```powershell
+.\tools\build.ps1 -Config Release                   # clang-cl x86 + lld-link, build\cmake\clangcl-x86-release
+.\tools\build.ps1 -Config Release -Clean            # delete that build folder first
+.\tools\build.ps1 -Config Release -Toolchain msvc   # MSVC Release, build\cmake\msvc-x86-release
+.\tools\build-clang-cl.ps1                          # shorthand for -Config Release -Toolchain clang-cl
+```
+
+`tools\build.ps1` enters the Visual Studio x86 environment, puts `VC\Tools\Llvm\x64\bin` first in `PATH`, and the CMake
+configuration pins `clang-cl`, `lld-link`, `llvm-lib`, `llvm-mt` and rc.exe with `CMAKE_<LANG>_COMPILER_TARGET=i686-pc-windows-msvc`.
+CMakePresets.json's `clang-cl-x86-release` preset configures the same folder. The executable keeps the PE32 image at
+`0x60000000`, the guest at `0x00400000`, `DYNAMICBASE:NO`/`/FIXED`, the GUI subsystem, the icon, the VERSIONINFO and the
+manifest; `trg-updater.exe` (CLANG64 x64) keeps its own pipeline. `tools\package.ps1` refuses a build
+folder that is not clang-cl + lld-link i686 Release, also with `-SkipBuild`.
 
 ### Regenerating a lift (maintainers)
 
@@ -173,8 +196,10 @@ ninja -C build\cmake\msvc-x86 bug_report_tests update_tests update_network_tests
 $env:JPT_CPP_REQUEST = "$PWD\bug-report-request.json"; (cd server\trespasser-bug-reports; npm test)  # the Worker accepts the request the launcher builds (docs/BUG_REPORTS.md)
 .\tools\worker.ps1 -DryRun   # bundles the Worker with Wrangler, uploads nothing; without -DryRun it deploys (docs/BUG_REPORTS.md)
 .\tools\worker.ps1 -Test     # the Worker's node tests through the script, nothing remote
-.\tools\package-release.ps1   # Release build, the ZIP the updater downloads and its .sha256, verified as the asset (local only)
+.\tools\build-updater.ps1      # the release update helper: MSYS2 CLANG64 x64, static, debug outside the package
+.\tools\package-release.ps1   # Release build for Windows and Linux: ZIP and AppImage, each with .sha256 (local only)
 .\tools\verify-release.ps1 -Path dist\<asset>.zip   # the same check on an existing ZIP
+# Before publishing: scan the ZIP, trespasser_recomp.exe, trg-updater.exe and the AppImage separately (docs\RELEASE_SECURITY.md)
 py -3 -m unittest discover -s tests -p "test_player_polish.py"  # gamepad icon, numbered Level Select, Bug Report and update wiring
 .\build\cmake\msvc-x86\launcher_tests.exe  # settings and their migration, render sizes, Hor+, presentation, monitors, MSAA, ISO reader, disc identity, installer staging/rollback/Cancel, Play gate, pages and icons, launcher assets
 $env:TRESPASSER_TEST_ISO = 'D:\images\trespasser.iso'; .\build\cmake\msvc-x86\launcher_tests.exe  # also identifies a real disc, read only
@@ -239,4 +264,4 @@ The native Vulkan 1.2 backend (`src/vulkan/`) builds on both Windows and Linux w
 - **Backend selection (`renderer`)**: `auto` (default), `d3d11`, `vulkan`, `software`. On Windows, `auto` selects Direct3D 11 to preserve existing behaviour while Vulkan is also selectable via `renderer = vulkan` or `--renderer vulkan`. On Linux, `auto` selects Vulkan when a compatible device is present and falls back to Software with a logged reason when Vulkan is unavailable (`d3d11` is reported unavailable on Linux).
 - **GPU selection (`graphics_card` / `--graphics-card`)**: `auto` prefers a usable discrete GPU over integrated/virtual/CPU devices (respecting `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD` when set). Explicit selection matches disambiguated adapter labels, `vendor:device`, stable `vendor:device:uuid8` IDs, or full 32-hex device UUIDs.
 - **Pipeline cache**: Stored under `<user_data>/cache/vulkan_pipeline.cache` (never inside a read-only install/AppImage directory) and discarded cleanly if vendor/device/UUID validation fails.
-- **Known limitations**: AppImage packaging and Steam Deck validation are the next branches (the Linux launcher, portable folders and application identity are in `docs/LINUX.md`); HDR is not added; D3D11 remains the primary Windows backend until Vulkan proves full manual runtime parity.
+- **Known limitations**: Steam Deck hardware validation remains; the Linux AppImage is packaged by `tools\package-release.ps1` (the Linux launcher, portable folders, application identity and AppImage are in `docs/LINUX.md`); HDR is not added; D3D11 remains the primary Windows backend until Vulkan proves full manual runtime parity.

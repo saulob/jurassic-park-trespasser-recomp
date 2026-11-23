@@ -25,7 +25,7 @@ tools/test-linux.sh --native-build --cc gcc-13             # ~/.cache/jpt-recomp
 tools/test-linux.sh --sanitize --native-build              # the Linux-specific suites under ASan + UBSan (a separate tree)
 ```
 
-From Windows nothing of this is typed: `.\tools\test.ps1` finds the WSL distribution (MuaFocalBuild, Ubuntu 20.04 with glibc 2.31,
+From Windows nothing of this is typed: `.\tools\test.ps1` finds the WSL distribution (JptFocalBuild, Ubuntu 20.04 with glibc 2.31,
 is preferred; a newer one is used only for development and the glibc baseline is then reported as not proven), converts the
 repository path with `wslpath`, runs `tools/test-linux.sh --native-build --machine` and prints each row as it arrives, then compares
 the result with the Windows half feature by feature (`tests/feature_contract.json`).
@@ -40,7 +40,7 @@ never start the game, a window, a sound device or the launcher (the binary itsel
 
 The Linux build is a native x86_64 program: **not Wine, not Proton**, no Winelib, no PE loader and no 32-bit runtime. It runs the
 same lifted game, the same launcher sources and the same settings file as the Windows build. Steam Deck is a target of this same
-Linux build; it has **not been validated** on hardware (that, and the AppImage, are the next branches). The Windows / Linux
+Linux build; it has **not been validated** on hardware (that remains the next step; the AppImage is packaged by `tools/package-linux.sh`). The Windows / Linux
 inventory of every feature, with its status, evidence and justification, is [LINUX_PARITY.md](LINUX_PARITY.md), written from
 `tests/feature_contract.json` by `tools/linux_parity_report.py`.
 
@@ -119,23 +119,105 @@ report is in the log, which the launcher's **Logs folder** button opens.
 The Wayland `app_id`, the X11 window class (`WM_CLASS`) and the `.desktop` file are one name, **`io.github.saulob.jurassic-park-trespasser`**
 (`JPT_APPLICATION_ID`, `src/common/jpt_port.h`). SDL receives it as its application identifier before any window exists
 (`jpt_app_identity_apply`), and the icon is embedded in the executable (`packaging/icons/app-icon-256.png`), so neither depends on the
-AppImage's desktop integration. `packaging/linux/` holds the `AppRun` and the `.desktop` file for the AppImage step.
+AppImage's desktop integration. `packaging/linux/` holds the `AppRun`, the `.desktop` file and the AppStream metadata the package uses.
 
-### The AppImage contract (prepared, not built here)
+### The AppImage
 
-The AppImage is built by the next branch with the project's pinned pattern: x86_64, Ubuntu 20.04 and glibc 2.31, the upstream AppImage
-Type 2 runtime pinned by commit and SHA-256, extract-and-run when FUSE fails (`APPIMAGE_EXTRACT_AND_RUN`), the same arguments and exit
-status, signals forwarded, the temporary extraction removed. This branch prepares what that needs: the port folder follows `APPIMAGE`,
-the restart command starts the **original AppImage file** with the same arguments (`jpt_port_relaunch`, `lx_relaunch`) and never
-`/proc/self/exe` of a mount or an extracted copy, and `game`, `logs` and `user_data` resolve outside the mount
-(`linux_paths_tests: test_appimage`, `test_appimage_logs`). Nothing is written into the AppImage.
+The Linux release is one native x86_64 file, `dist/JurassicParkTrespasserRecompiled-v<version>-x86_64.AppImage`, with
+`dist/JurassicParkTrespasserRecompiled-v<version>-x86_64.AppImage.sha256` beside it. The version is `project(... VERSION ...)` in
+`CMakeLists.txt`; the asset prefix and the Linux suffix are `config/release.json`, and the Linux program is
+`trespasser_recomp`. The packaging script reads them and writes neither.
+
+From Windows one command prepares the complete release (Windows ZIP and Linux AppImage, each with its `.sha256`):
+
+```powershell
+.\tools\package-release.ps1
+```
+
+`-SkipBuild` packages the existing builds of both platforms; `-Clean` rebuilds both; `-WslDistro` names another WSL distribution. Nothing
+else is typed: no `ci-deps.sh`, no WSL path, no copying and no hashing. `package-release.ps1`
+
+* removes stale artifacts of the asset prefix from `dist\`, runs `tools\package.ps1` (Release x86 build, ZIP, `.zip.sha256`) and checks the ZIP;
+* creates the WSL2 distribution **`JptFocalBuild`** when it is missing (the Ubuntu 20.04.5 base image, SHA-256
+  `60e216b60947653dc8989be3821380268315b99b2959c29882781541bfe5a426`, `wsl --import` into `%LOCALAPPDATA%\WSL\JptFocalBuild`) and, when a build
+  tool is missing, runs `packaging/linux/ci-deps.sh` in it as root (`tools\release-inputs.ps1`). Only `JptFocalBuild` is ever created or changed;
+  a distribution named with `-WslDistro` is used as it is, and the sibling ports' distributions are never touched;
+* takes the reviewed AppImage runtime from the ignored `cache\appimage-runtime\runtime-x86_64` when it has the SHA-256 pinned in
+  `patches/appimage-runtime/baseline.env` (any other file is deleted), otherwise copies it from a WSL packaging cache that holds the same file
+  (`tools/import-appimage-runtime.sh` in `JptFocalBuild`, then a read-only look into the sibling ports' distributions), and hands it to
+  the build as `JPT_APPIMAGE_RUNTIME`;
+* runs `tools/package-release-linux.sh` in WSL, which mirrors the sources (not `.git`, `game`, `user`, `user_data`, `cache`, `logs`, `saves`,
+  `build`, `dist`, `out`, `.venv`) to `${JPT_WSL_BUILD_DIR:-~/.cache/jurassic-park-trespasser-recomp-build}`, calls `tools/package-linux.sh`
+  there, starts the AppImage headless in every start mode (`packaging/linux/smoke-test.sh`: `--build-info` through the extracted `AppRun`,
+  `--appimage-extract-and-run` and the file itself) and copies the AppImage, its `.sha256` and the debug symbols to `dist\`;
+* prints Windows OK / Linux OK, or the problems; nothing is published, tagged or uploaded.
+
+The Windows ZIP is `JurassicParkTrespasserRecompiled-v<version>-windows-x86.zip` (`trespasser_recomp.exe` is a 32-bit PE: the host is the
+32-bit process the lifted guest needs, so the suffix stays `x86`). The Windows Release link writes no PDB; one that exists would go to
+`dist\<name>-symbols\`, never into the ZIP. On a Linux checkout run `tools/package-linux.sh` directly (on Ubuntu 20.04 after
+`sudo bash packaging/linux/ci-deps.sh`).
+
+Creating the distribution by hand is the same two commands:
+
+```powershell
+wsl --import JptFocalBuild <folder> ubuntu-base-20.04.5-base-amd64.tar.gz --version 2
+wsl -d JptFocalBuild -u root --exec /bin/bash packaging/linux/ci-deps.sh
+```
+
+`tools/package-linux.sh` builds the Linux **Release** gate into `build/linux-release`, stages the canonical artifact
+`build/linux/bin/trespasser_recomp` with its manifest, verifies the manifest, the source fingerprint, the feature contract and the
+headless self-check, then creates a clean AppDir under `build/appimage/AppDir`. `--skip-build` (and `package-release.ps1 -SkipBuild`)
+uses the existing canonical artifact and refuses a stale one. An ELF from `build/linux-work` or any other path is never packaged.
+
+The AppDir follows the other ports:
+
+```
+AppDir/
+  AppRun
+  io.github.saulob.jurassic-park-trespasser.desktop
+  io.github.saulob.jurassic-park-trespasser.png
+  .DirIcon
+  usr/
+    bin/trespasser_recomp
+    bin/assets/launcher/{header-art,sponsor-heart}.png
+    lib/                         (empty: every library below is static)
+    share/applications/io.github.saulob.jurassic-park-trespasser.desktop
+    share/metainfo/io.github.saulob.jurassic-park-trespasser.appdata.xml
+    share/icons/hicolor/256x256/apps/io.github.saulob.jurassic-park-trespasser.png
+    share/licenses/JurassicParkTrespasserRecompiled/
+    share/doc/JurassicParkTrespasserRecompiled/README.txt
+```
+
+SDL3, FFmpeg, OpenSSL, libstdc++ and libgcc are linked statically, so no shared copies are staged. The script still bundles any
+unexpected dynamic dependency and refuses libstdc++, libgcc, OpenSSL, FFmpeg, SDL3, the Vulkan loader, Mesa, the display servers and
+the audio servers. Every ELF in the AppDir is checked for `DT_NEEDED`, `RPATH`/`RUNPATH` and the newest `GLIBC_` import; the executable
+carries `DT_RPATH $ORIGIN/../lib` (not `DT_RUNPATH`). The baseline is Ubuntu 20.04, glibc 2.31.
+
+The AppImage runtime is the upstream AppImage Type 2 runtime at the commit pinned in `patches/appimage-runtime/baseline.env`, with
+`patches/appimage-runtime/0001-extract-and-run-when-fuse-fails.patch`; `tools/build-appimage-runtime.sh` builds it in an Alpine chroot
+and accepts it only with the pinned SHA-256; `JPT_APPIMAGE_RUNTIME=FILE` reuses an already reviewed build of it (checked by SHA-256) instead of rebuilding. When FUSE cannot mount the image, the runtime extracts it and runs from the extracted copy
+automatically; `APPIMAGE_EXTRACT_AND_RUN=1` and `--appimage-extract-and-run` force the same path, and signals are forwarded to the
+child. The runtime keeps `APPIMAGE` pointing at the original file in both modes. The appimagetool version and SHA-256 are pinned in
+`tools/package-linux.sh`.
+
+The port folder follows `APPIMAGE`: `game/`, `logs/` and `user_data/` live beside the AppImage file, never inside the read-only mount.
+The restart command starts the **original AppImage file** with the same arguments (`jpt_port_relaunch`, `lx_relaunch`) and never
+`/proc/self/exe` of a mount or an extracted copy (`linux_paths_tests: test_appimage`, `test_appimage_logs`). Nothing is written into the
+AppImage. The launcher's updater downloads the `.AppImage`, checks its `.sha256`, replaces the original `$APPIMAGE` through a temporary
+file and a backup with rollback, and relaunches it with `--launcher`.
+
+After writing the AppImage, the script extracts it again, repeats the AppDir audit on the result, verifies that the embedded runtime is
+the pinned one and that the extracted tree equals the staged AppDir byte for byte, then writes the `.sha256`. `--verify DIR` checks an
+existing AppDir; `--verify-only FILE` checks a finished AppImage. `JPT_RELEASE_DATE=YYYY-MM-DD` overrides the AppStream release date;
+`SOURCE_DATE_EPOCH` is set from the last commit when possible. The same source, version and tools produce the same tree; the AppImage
+file's SHA-256 can still change if appimagetool or the pinned runtime include their own metadata.
 
 ### Steam Deck
 
 Steam Deck support is **experimental** (preparation is complete; it has not been validated on Steam Deck hardware — status:
 **not validated**). There is no
 separate Steam Deck executable, no Steamworks/Steam Input SDK dependency and no Wine or Proton layer: Steam Deck runs the exact
-same native Linux x86_64 AppImage (built by the next branch, `feature/linux-appimage`).
+same native Linux x86_64 AppImage (built by `tools/package-linux.sh`).
 
 * **Display & Graphics.** Targets the 1280x800 (16:10) display on Vulkan (Mesa RADV). A 4:3 picture is centred with equal side
   bars and matching mouse mapping; a 16:10 setting fills the screen. Under **Gamescope** (Gaming Mode, detected from
@@ -202,8 +284,9 @@ two together.
   built from other sources, or without a feature, now fails.
 * **Staging.** `tools/linux_artifact.py stage` checks, copies to `trespasser_recomp.new` and renames; the manifest records the SHA-256,
   fingerprint, contract hash, compiler, glibc maximum, FFmpeg mode, the gate's suite counts and its UTC time. A failing gate leaves
-  the last validated binary alone. `tools/package-linux.sh` verifies the artifact against its manifest and the current sources
-  (`linux_artifact.py verify`) and stages it; it never builds. A later AppImage step starts from that file.
+  the last validated binary alone. `tools/package-linux.sh --skip-build` verifies the artifact against its manifest and the current
+  sources (`linux_artifact.py verify`), requires the Release configuration and packages it; it never builds. Without `--skip-build`,
+  the script runs the Release gate first.
 * **Boot log.** After the features are installed: `Linux features: 29/70 overrides installed (N required), 27/27 lift hooks active`
   (with the host features off it says so). 29 is what Linux can install with every option on; the number installed follows the
   settings (28 with the defaults).
@@ -680,8 +763,8 @@ Defaults: `game/`, `user_data/` and `logs/` next to the program (`TRESPASSER_GAM
 
 ## Vulkan renderer (`src/vulkan/`, `src/linux/linux_vulkan.*`)
 
-* **Requirements.** A system Vulkan loader (`libvulkan.so.1`, loaded dynamically at run time — never linked as `DT_NEEDED` and never bundled in a future AppImage) and a Vulkan 1.1/1.2+ ICD (AMD RADV, Intel ANV, NVIDIA, or Mesa `llvmpipe` for headless testing).
+* **Requirements.** A system Vulkan loader (`libvulkan.so.1`, loaded dynamically at run time — never linked as `DT_NEEDED` and never bundled in the AppImage) and a Vulkan 1.1/1.2+ ICD (AMD RADV, Intel ANV, NVIDIA, or Mesa `llvmpipe` for headless testing).
 * **Backend selection.** `trespasser.ini` (`renderer = auto | vulkan | software`) or `--renderer <name>` on the CLI. `auto` selects Vulkan when available and falls back cleanly to Software with a logged reason if no loader/ICD/compatible GPU exists. `d3d11` is unavailable on Linux and falls back cleanly without crashing.
 * **GPU selection.** `graphics_card` or `--graphics-card <auto | label | vendor:device | vendor:device:uuid8>`. `auto` checks minimum requirements first (graphics + present queues, `VK_KHR_swapchain`, depth attachment format), prefers usable discrete GPUs over integrated/virtual/CPU devices, and respects `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD`.
 * **Fallback and recovery.** Missing loader/GPU falls back to Software with a readable message. Swapchain `OUT_OF_DATE`, `SURFACE_LOST`, resize, minimize (`0x0` wait), and persistent `SUBOPTIMAL` (capped to avoid Gamescope/Wayland loops) are handled cleanly; `VK_ERROR_DEVICE_LOST` latches cleanly without infinite recovery loops.
-* **Known limitations.** AppImage packaging and manual Steam Deck verification belong to subsequent branches; no RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).
+* **Known limitations.** Manual Steam Deck verification remains; the AppImage is packaged by `tools/package-linux.sh`. No RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).

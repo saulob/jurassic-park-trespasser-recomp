@@ -84,6 +84,7 @@
     "test_audio_portability.py",
     "test_setting_parity.py",
     "test_linux_parity.py",
+    "test_linux_packaging.py",
     "test_vulkan_shaders.py",
     "test_player_polish.py"
   ],

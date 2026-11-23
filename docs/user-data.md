@@ -37,7 +37,7 @@ had that option) loads normally: the line is ignored and never written again.
 | --- | --- |
 | Windows | next to the executable: the folder that holds `trespasser_recomp.exe` |
 | Linux | next to the executable: the folder that holds `trespasser_recomp` |
-| Linux AppImage (future; not built yet) | next to the original AppImage file (the `APPIMAGE` variable), never inside its read-only mount |
+| Linux AppImage | next to the original AppImage file (the `APPIMAGE` variable), never inside its read-only mount |
 
 This is `PortFolder()` in `launcher/user_data.cpp`, which calls `jpt_port_folder()` (`src/common/jpt_port.c`), the same function the Linux
 runtime uses (`src/linux/linux_paths.c`). On Linux `game\`, `logs\` and `user_data\` follow it; the only fallback is the log folder of an

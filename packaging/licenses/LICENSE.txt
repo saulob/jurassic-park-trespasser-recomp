@@ -1,0 +1,11 @@
+Jurassic Park: Trespasser Recompiled
+====================================
+
+The port's own source code is published at
+https://github.com/saulob/jurassic-park-trespasser-recomp
+
+No licence file has been added yet; that choice belongs to the repository owner. The legal notes are in LEGAL.txt
+inside this folder and in docs/LEGAL.md of the source tree.
+
+The game and its assets are not included and are not covered by this project's licence. You need your own legally
+obtained copy of Jurassic Park: Trespasser.
