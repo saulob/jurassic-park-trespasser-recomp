@@ -18,7 +18,7 @@
 
 ## Status
 
-**v0.1.0 is the first public release.** Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
+**v0.1.1 is the current release target** (patch release over v0.1.0 with full Linux game version parity and stability fixes). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
 
 | Milestone | State |
 |---|---|
@@ -73,7 +73,7 @@ The Linux Vulkan build has its own filtering, MSAA, ambient occlusion, water, sk
 - **True Ultrawide** is this Hor+ rendering at 21:9 and 32:9: a 21:9 screen shows more than 16:9, and 32:9 more than 21:9. It is supported on **Windows**.
 - **Stretch is not ultrawide.** The launcher's Presentation setting has Letterbox (keeps the picture's shape, with bars) and Stretch (fills the window by stretching the finished picture). Stretch does not add any world to the sides; use Letterbox for correct geometry.
 - Menus and dialogs stay 4:3 and are pillarboxed. There is no dedicated ultrawide HUD layout.
-- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.0.
+- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.1.
 
 ## Navigation
 
@@ -104,7 +104,7 @@ Press **F10** in a level or from the main menu.
 | Movement Speed (0.5x to 10x), Jump Height (0.5x to 5x), Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health | Saved in the launcher's Cheats page as the starting value; F10 changes them for the running session only |
 | Health (fill), Noclip, Stealth, Teleport, Level Select, Free Camera | Session only (F10), start Off in every run |
 
-Free Camera and Noclip return to normal in another level or the main menu, and a save never keeps a cheat. The game's own console (Ctrl+F11) still works.
+Free Camera and Noclip return to normal in another level or the main menu, and a save never keeps a cheat.
 
 ## Controls
 
@@ -336,17 +336,15 @@ translations of the same captions where they exist, and the rest was translated 
 
 The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo, mod or fan-made conversion is supported. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
 
-The Windows and Linux executables carry the same three lifted builds (`lift116`, `lift_es117`, `lift_ptbr117`); the installed version selects one, and Linux also maps the lifted MSVCIRT module shared by the four releases.
+The Windows and Linux executables in v0.1.1 carry the same three lifted builds: `lift116` serves English (1.0.116) and Russian Fargus (1.0.116), `lift_es117` serves Spanish (1.1.117), and `lift_ptbr117` serves Brazilian Portuguese (1.1.117). The installed version selects the active lift, and Linux also maps the lifted MSVCIRT module shared by all four releases.
 
-The published **v0.1.0** Linux AppImage predates this parity fix and still runs English and Russian only. The current source
-tree carries the four versions and passes the headless first-frame boot for all four; gameplay, interface, audio and input
-on a real display still need manual validation.
+All four versions pass the headless first-frame boot tests on Linux. Full gameplay, interface, audio and input on real Linux hardware still require manual validation. (The earlier published **v0.1.0** Linux AppImage predated this parity fix and ran English and Russian only.)
 
 ## Windows installation
 
 Windows 10 or 11, 64-bit. The Windows program is a 32-bit (x86) host that runs on 64-bit Windows.
 
-1. Download **JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
+1. Download **JurassicParkTrespasserRecompiled-v0.1.1-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
 2. Run **trespasser_recomp.exe**, keeping `trg-updater.exe` beside it.
 3. On the **Play** page choose **Import game...** and select your own Trespasser `.iso` disc image. It is only read.
 4. When Play says the game is ready, press **PLAY**.
@@ -367,11 +365,12 @@ The Windows executable is not code-signed, so SmartScreen may warn on the first 
 
 **Steam Deck** support is experimental and uses the same AppImage: add it with **Games > Add a Non-Steam Game to My Library**. It has **not been validated on Steam Deck hardware**, and it is not Steam Deck Verified. See [docs/LINUX.md](docs/LINUX.md) and [docs/LINUX_PARITY.md](docs/LINUX_PARITY.md).
 
-Verified limits on Linux in v0.1.0:
+Verified limits on Linux in v0.1.1:
 
-- The guest keeps its 4:3 presentation, scaled to the window.
-- True Ultrawide and HD video are Windows-only; Linux plays the original videos with subtitles.
-- The Steam Deck, real desktops, GPUs and audio devices are not validated; the Linux tests run headless.
+- Linux support is still experimental, and the Steam Deck has not been validated on physical hardware.
+- The guest keeps its 4:3 presentation, scaled to the window; there is no native True Ultrawide on Linux.
+- The Windows HD video pipeline is not part of the Linux build; Linux plays the original videos with subtitles.
+- Real Vulkan GPU validation is not available in WSL; Software rendering is validated in the headless environment, and real desktops, GPUs, audio devices and controllers still need manual validation.
 
 ## Known limitations
 
@@ -381,7 +380,7 @@ Verified limits on Linux in v0.1.0:
 - Windows Vulkan is selectable but D3D11 is recommended; the playable host is 32-bit (the 64-bit host is groundwork only).
 - The Windows executable and updater are unsigned.
 
-The complete list is in the [release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations).
+See the [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md#known-limitations) and the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) for the full list.
 
 ## Bug reports
 
@@ -389,18 +388,22 @@ Use the launcher's **Bug Report** page: describe the problem, choose a log and p
 
 ## Downloads
 
-Get the files from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest). The Windows port is x86; the Linux build is x86_64.
+Get the published release files from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) page. The Windows port is x86; the Linux build is x86_64.
+
+Expected v0.1.1 release assets (available on the [releases page](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) once v0.1.1 is published):
 
 | Platform | File | Checksum |
 |---|---|---|
-| Windows 10 / 11 | [JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip) | [.sha256](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-windows-x86.zip.sha256) |
-| Linux x86_64 / Steam Deck (experimental) | [JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage) | [.sha256](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.0/JurassicParkTrespasserRecompiled-v0.1.0-x86_64.AppImage.sha256) |
+| Windows 10 / 11 | `JurassicParkTrespasserRecompiled-v0.1.1-windows-x86.zip` | `JurassicParkTrespasserRecompiled-v0.1.1-windows-x86.zip.sha256` |
+| Linux x86_64 / Steam Deck (experimental) | `JurassicParkTrespasserRecompiled-v0.1.1-x86_64.AppImage` | `JurassicParkTrespasserRecompiled-v0.1.1-x86_64.AppImage.sha256` |
 
 No game files are in the downloads.
 
 ## Security
 
-The four v0.1.0 files (the Windows ZIP, `trespasser_recomp.exe`, `trg-updater.exe` and the Linux AppImage) were scanned on VirusTotal with no detections: [ZIP](https://www.virustotal.com/gui/file/4b677fb36519f63221ff25dffd5b5a50a250672db56658b07865810649bc1a36), [EXE](https://www.virustotal.com/gui/file/52b4dc10c9da024b1c10ef152615f1235d21301f9bcacf0d1d6f742f91c0d7fd), [updater](https://www.virustotal.com/gui/file/ba019e55a195d234c8f6b02e6f2bc2dc04aeb0df27ac3aa3570c29cb514c4be6), [AppImage](https://www.virustotal.com/gui/file/eb4e8d6308fa41407b503668e59536c387da654baf0ffa87bc88b2e4447856d9). A clean scan is an additional signal, not a guarantee of safety: verify the SHA-256 and download only from this repository. The full table is in the [release notes](docs/RELEASE_NOTES_v0.1.0.md#security-and-virustotal); see also [RELEASE_SECURITY](docs/RELEASE_SECURITY.md).
+SHA-256 checksums and VirusTotal results for v0.1.1 will be published alongside the v0.1.1 release artifacts.
+
+For the published **v0.1.0** release, the four files (the Windows ZIP, `trespasser_recomp.exe`, `trg-updater.exe` and the Linux AppImage) were scanned on VirusTotal with no detections: [ZIP](https://www.virustotal.com/gui/file/4b677fb36519f63221ff25dffd5b5a50a250672db56658b07865810649bc1a36), [EXE](https://www.virustotal.com/gui/file/52b4dc10c9da024b1c10ef152615f1235d21301f9bcacf0d1d6f742f91c0d7fd), [updater](https://www.virustotal.com/gui/file/ba019e55a195d234c8f6b02e6f2bc2dc04aeb0df27ac3aa3570c29cb514c4be6), [AppImage](https://www.virustotal.com/gui/file/eb4e8d6308fa41407b503668e59536c387da654baf0ffa87bc88b2e4447856d9). A clean scan is an additional signal, not a guarantee of safety: verify the SHA-256 and download only from this repository. The full v0.1.0 table is in the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#security-and-virustotal); see also [RELEASE_SECURITY](docs/RELEASE_SECURITY.md).
 
 ## How it works and building
 

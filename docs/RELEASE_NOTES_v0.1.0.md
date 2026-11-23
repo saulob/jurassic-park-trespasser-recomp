@@ -222,7 +222,7 @@ Off runs the retail code and data. Saved games are not changed and remain retail
 
 ### Cheats
 
-Press **F10** in a level or with the main menu in front. F10 and F3 replace each other. The game's own console (Ctrl+F11) still works. The port's panel has no saved teleport points, checkpoints or level restart.
+Press **F10** in a level or with the main menu in front. F10 and F3 replace each other. The port's panel has no saved teleport points, checkpoints or level restart.
 
 | Cheat | What it does |
 |---|---|
@@ -437,7 +437,7 @@ The port includes the *English Stream TPA Fix (Subtitle Timing Fix)* by KeyofBlu
 - **Clean shutdown**: the window's X, Alt+F4 and termination signals lead the game out through its own quit path. A crash leaves a guest/host report in the log, and crash dumps are not included in the release.
 - **Localisation fixes**: French `è`/`ê` conversion errors, the Spanish OK button and the Brazilian Credits button are corrected; Russian text uses code page 1251 and the Fargus font is reproduced.
 
-The game's own console (Ctrl+F11) and its normal save/load behaviour remain available. The port does not change the save format.
+Normal save/load behaviour remains available. The port does not change the save format.
 
 ## Native Windows Port
 

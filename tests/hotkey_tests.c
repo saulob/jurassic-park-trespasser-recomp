@@ -53,7 +53,9 @@ static void test_modifiers(void) {
     CHECK(key_policy(SYSDOWN, VK_F4, 0, 0, 1) == KEY_HOST_CLOSE, "Alt+F4 closes the game");
     CHECK(key_policy(SYSDOWN, VK_F4, 1, 0, 1) == KEY_DROP && key_policy(SYSUP, VK_F4, 0, 0, 1) == KEY_DROP, "its repeat and its key-up are dropped");
     CHECK(key_policy(DOWN, VK_F4, 0, 0, 0) == KEY_HOST_SHOW_OBJECTIVE, "F4 without Alt is Show Objective");
-    CHECK(key_policy(DOWN, VK_F11, 0, 1, 0) == KEY_TO_GAME, "Ctrl+F11 stays the game's");
+    CHECK(key_policy(DOWN, VK_F11, 0, 1, 0) == KEY_DROP && key_policy(DOWN, VK_F11, 1, 1, 0) == KEY_DROP &&
+              key_policy(UP, VK_F11, 0, 1, 0) == KEY_DROP,
+          "Ctrl+F11 is dropped");
 }
 
 static void test_keys_of_the_game(void) {

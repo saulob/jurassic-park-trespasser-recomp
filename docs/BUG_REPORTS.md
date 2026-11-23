@@ -27,7 +27,7 @@ Exactly the fields of the preview, and nothing else:
 | Field | Source |
 |---|---|
 | description | typed by the player, filtered, at most 500 characters |
-| launcher_version | the port version, e.g. `0.1.0` |
+| launcher_version | the port version, e.g. `0.1.1` |
 | game_build, game_version, language, executable_sha256 | the installed game (label, version, language, hash of its executable) |
 | operating_system | e.g. `Windows 11 (build 26200)` |
 | renderer, gpu, driver, render_resolution | read from the start of the selected log, filtered |

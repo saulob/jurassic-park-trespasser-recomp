@@ -24,8 +24,7 @@ On Linux the same sources are built into `trespasser_recomp` (`cmake/JptLinux.cm
 small: `launcher/os_file.cpp` (random reads and part-file writes), `launcher/pe_resources.cpp` (the Russian release's string table
 without Win32's resource functions), `launcher/system_info.cpp` (the Vulkan device list instead of DXGI), `src/common/jpt_monitors_sdl.c`
 (SDL displays for the Monitor list), `launcher/file_picker.cpp` (zenity or kdialog present on the PATH) and `jpt_port_folder` for
-the folder the program lives in. The Direct3D 11 renderer is not offered there, and a release whose lifted build the executable does
-not carry is listed as not playable yet.
+the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.1 (any release without a lifted build would be listed as not playable yet).
 
 | Path | Purpose |
 |---|---|

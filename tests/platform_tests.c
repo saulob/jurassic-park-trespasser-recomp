@@ -254,7 +254,7 @@ static void test_hotkeys_once(void) {
     }
     CHECK(key_policy(WM_SYSKEYDOWN_, VK_F4_, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(WM_SYSKEYDOWN_, VK_F4_, 1, 0, 1) == KEY_DROP);
-    CHECK(key_policy(WM_KEYDOWN_, VK_F11_, 0, 1, 0) == KEY_TO_GAME); /* Ctrl+F11 is the game's */
+    CHECK(key_policy(WM_KEYDOWN_, VK_F11_, 0, 1, 0) == KEY_DROP && key_policy(WM_KEYUP_, VK_F11_, 0, 1, 0) == KEY_DROP);
     CHECK(key_policy(WM_KEYDOWN_, VK_ESCAPE_, 0, 0, 0) == KEY_TO_GAME);
     CHECK(key_policy(WM_KEYDOWN_, 'W', 0, 0, 0) == KEY_TO_GAME && key_policy(WM_KEYUP_, 'W', 0, 0, 0) == KEY_TO_GAME);
 }

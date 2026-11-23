@@ -155,8 +155,9 @@ static void test_keys(void) {
     CHECK(key_policy(0x100, 0x7A, 0, 0, 0) == KEY_HOST_FULLSCREEN);
     CHECK(key_policy(0x100, 0x7A, 1, 0, 0) == KEY_DROP);
     CHECK(key_policy(0x101, 0x7A, 0, 0, 0) == KEY_DROP);
-    CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
-    CHECK(key_policy(0x101, 0x7A, 0, 1, 0) == KEY_TO_GAME);
+    CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_DROP);
+    CHECK(key_policy(0x100, 0x7A, 1, 1, 0) == KEY_DROP);
+    CHECK(key_policy(0x101, 0x7A, 0, 1, 0) == KEY_DROP);
     /* F5 is the host's in every state (gameplay, menus, dialogs): the minimap toggle, which acts in gameplay only. */
     for (int mods = 0; mods < 4; mods++) {
         CHECK(key_policy(0x100, 0x74, 0, mods & 1, mods >> 1) == KEY_HOST_MINIMAP);
@@ -203,7 +204,7 @@ static void test_keys(void) {
     }
     CHECK(key_policy(0x100, 0x78, 0, 0, 0) == KEY_HOST_SNAPSHOT && key_policy(0x100, 0x78, 1, 0, 0) == KEY_DROP &&
           key_policy(0x101, 0x78, 0, 0, 0) == KEY_DROP);
-    CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
+    CHECK(key_policy(0x100, 0x7A, 0, 1, 0) == KEY_DROP);
     CHECK(key_policy(0x104, 0x73, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(0x104, 0x73, 1, 0, 1) == KEY_DROP);
     CHECK(key_policy(0x105, 0x73, 0, 0, 1) == KEY_DROP);
@@ -262,9 +263,10 @@ static void test_keys(void) {
     CHECK(key_policy(0x100, 0x75, 0, 0, 0) == KEY_HOST_QUICK_SAVE && key_policy(0x101, 0x75, 0, 0, 0) == KEY_DROP);
     key_policy_set_quick_keys(0x76, 0x77);
     CHECK(key_policy(0x100, 0x75, 0, 0, 0) == KEY_HOST_FRAME_COUNTER);
-    /* F1, F5, F11, Ctrl+F11, Esc and Alt+F4 keep what they did */
+    /* F1, F5, F11, Esc and Alt+F4 keep their actions; Ctrl+F11 is dropped */
     CHECK(key_policy(0x100, 0x70, 0, 0, 0) == KEY_TO_GAME && key_policy(0x100, 0x74, 0, 0, 0) == KEY_HOST_MINIMAP);
-    CHECK(key_policy(0x100, 0x7A, 0, 0, 0) == KEY_HOST_FULLSCREEN && key_policy(0x100, 0x7A, 0, 1, 0) == KEY_TO_GAME);
+    CHECK(key_policy(0x100, 0x7A, 0, 0, 0) == KEY_HOST_FULLSCREEN && key_policy(0x100, 0x7A, 0, 1, 0) == KEY_DROP &&
+          key_policy(0x101, 0x7A, 0, 1, 0) == KEY_DROP);
     CHECK(key_policy(0x100, 0x1B, 0, 0, 0) == KEY_TO_GAME && key_policy(0x104, 0x73, 0, 0, 1) == KEY_HOST_CLOSE);
     CHECK(key_policy(0x100, 0x57, 1, 0, 0) == KEY_TO_GAME);
     CHECK(key_policy(0x0102, 0x1B, 0, 0, 0) == KEY_TO_GAME);

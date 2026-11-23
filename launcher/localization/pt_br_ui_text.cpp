@@ -303,7 +303,6 @@ const UiTextRow kPtBrUiText[] = {
     {"The display the game opens on. Native render resolution follows it.", "O monitor em que o jogo abre. A resolução de renderização Nativa o acompanha."},
     {"The game files are not ready: see the Play page.", "Os arquivos do jogo não estão prontos: veja a página Jogar."},
     {"The game window's size in pixels in Windowed mode. Auto shows the picture at the monitor's scale. The picture keeps its shape: other window shapes get black bars.", "O tamanho da janela do jogo em pixels no modo Janela. Auto mostra a imagem na escala do monitor. A imagem mantém sua proporção: outras formas de janela recebem faixas pretas."},
-    {"The game's original cheat input", "A entrada de cheats original do jogo"},
     {"The game's own bindings as it loads them, changed in its Controls screen (Options > Controls). They keep working while a gamepad is connected.", "As teclas do próprio jogo como ele as carrega, alteradas na tela Controles dele (Opções > Controles). Continuam funcionando com um controle conectado."},
     {"The saved %sx is not supported here: choose another level.", "O valor salvo, %sx, não é compatível aqui: escolha outro nível."},
     {"The shape of the game's 3D view. Wider shapes show more of the world to the sides (Hor+): the vertical view stays the original one and nothing is stretched. Menus stay 4:3, centred.", "O formato da visão 3D do jogo. Formatos mais largos mostram mais do mundo nas laterais (Hor+): a visão vertical continua a original e nada é esticado. Os menus continuam em 4:3, centralizados."},

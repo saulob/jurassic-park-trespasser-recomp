@@ -482,11 +482,11 @@ window procedure still receives the messages it received before.
 ### Keys
 
 `F1 Hint | F2 Controls | F3 Objectives | F4 Show Objective | F5 Minimap | F6 FPS | F10 Cheats | F11 Fullscreen | Esc Menu`
-(logged once as `[hotkeys]`). F2, F3, F4, F5, F6, F10, F11 without Ctrl and Alt+F4 belong to the host and never reach the
+(logged once as `[hotkeys]`). F2, F3, F4, F5, F6, F10, F11 (without Ctrl it toggles fullscreen; Ctrl+F11 is dropped) and Alt+F4 belong to the host and never reach the
 game (F10's key-up included, which would open the window's menu bar); F2 opens and closes the port's controls card in a level, as the gamepad's View does (`CGameWnd::OnKey`'s
 table at `0x0040C220` gives F2, F3 and F4 no action: only Esc, Space, F1, F11, F12, `=` and `-` have one). F4 alone is
 Show Objective in gameplay (`debug_menu_show_objective`, D-pad Down's own); with Alt it stays Exit. F12, which opened the game's `CControlsWnd` (still under Options >
-Controls), is not passed on. Ctrl+F11 (the game's cheat box) and everything else go to the game unchanged. Esc and F1
+Controls), is not passed on. Everything else goes to the game unchanged. Esc and F1
 open a modal window of the game on key-down (`CGameWnd::OnKey`, `0x0040BE70`), but `CUIWnd::OnKey`
 (`0x0040AF50`) cancels a window on Esc key-up. The key-up of the press that opened a window (the
 game's window stack grew between the key-down and it) is kept from the game, once per press; the

@@ -184,10 +184,10 @@ through a `GLAYOUT_` descriptor (`config/layout_descriptors.json`); `py -3 -m un
 | `es-117` | yes | its own lift in the one program; addresses, ABI and every host structure offset proven (the box-box and bAddChild fixes are applied; hand/jump is native) |
 | `ptbr-117` | yes | the same; it is the official 1.1 code, so no patch group is applied |
 
-The Linux executable carries and runs the same four versions through the same lifts; its selfmod, feature and override
+Starting with v0.1.1, the Linux executable carries and runs the same four versions through the same lifts; its selfmod, feature and override
 machinery selects the active lift the same way. The headless boot validates all four installed versions through their first
-frame; gameplay, interface, audio and input on a real display remain manual. The published v0.1.0 AppImage predates this
-source change and runs the 1.0.116 releases only.
+frame; gameplay, interface, audio and input on a real display remain manual. The earlier published v0.1.0 AppImage predates this
+fix and ran the 1.0.116 releases only.
 
 A version is playable when its `unplayable` text in `src/common/jpt_game_version.c` is empty; `tests/test_profiles.py`
 allows that only when the map has nothing unresolved or unproven, every required override is resolved, the ABI check is

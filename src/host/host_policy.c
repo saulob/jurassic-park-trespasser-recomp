@@ -126,7 +126,7 @@ key_action_t key_policy(unsigned msg, unsigned vk, int repeat, int ctrl, int alt
     if (vk && vk == s_quick_load_vk) return msg == MSG_KEYDOWN && !repeat ? KEY_HOST_QUICK_LOAD : KEY_DROP;
     switch (vk) {
     case VK_F11_:
-        if (ctrl) return KEY_TO_GAME;
+        if (ctrl) return KEY_DROP;
         return down && !repeat ? KEY_HOST_FULLSCREEN : KEY_DROP;
     case VK_F5_: return down && !repeat ? KEY_HOST_MINIMAP : KEY_DROP;
     case VK_F6_: return down && !repeat ? KEY_HOST_FRAME_COUNTER : KEY_DROP;

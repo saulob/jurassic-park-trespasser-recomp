@@ -91,7 +91,7 @@ compass, the markers and the trail stay while Anne speaks.
 ### Cheats
 
 F10 opens and closes it in a level or with the main menu in front; F10 and F3 replace each other, so only one is ever
-shown. The game's own console (Ctrl+F11) still works. It has no teleport key points, checkpoints, coordinates or
+shown. It has no teleport key points, checkpoints, coordinates or
 level restart: the panel holds only the cheats below.
 
 The panel has a header with the title and an X button (top right), the rows, and a fixed help area under them that

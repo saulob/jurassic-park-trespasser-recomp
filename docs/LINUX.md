@@ -85,8 +85,8 @@ presses, B goes back). Its **Graphics card** list is the Vulkan device list the 
 counts of each card. The Windows-only **Direct3D 11** renderer is not offered. All four supported releases run: English and
 Russian use `lift116`, Spanish `lift_es117` and Brazilian Portuguese `lift_ptbr117`; the installed version selects one lift,
 once, before guest code runs. The headless boot validates all four through their first frame; gameplay and the interactive
-display, audio and input remain manual. The published v0.1.0 AppImage predates this fix and runs English and Russian only;
-this source tree needs a new build. **Install Game** copies the game files from the disc image into `game/` with the same
+display, audio and input remain manual. The earlier published v0.1.0 AppImage predates this fix and ran English and Russian only;
+v0.1.1 includes all four versions. **Install Game** copies the game files from the disc image into `game/` with the same
 reader, checks and SHA-256 manifest as Windows (`tests/linux_launcher_tests.cpp`: PE string resources, Joliet UTF-16 names, part
 files, checksums).
 

@@ -291,8 +291,8 @@ int cheats_freeze_ai(int on) {
     return 1;
 }
 
-/* The game's own flags take the effective values once per level, load or player: never every frame, so the game's own
- * console cheats still work over them. */
+/* The game's own flags take the effective values once per level, load or player:
+ * never every frame. */
 static void apply_flags(int should) {
     uint32_t p = player(), system, flags;
     if (!should) return;

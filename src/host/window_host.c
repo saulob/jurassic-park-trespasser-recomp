@@ -1119,7 +1119,7 @@ static LRESULT handle_key(HWND window, UINT msg, WPARAM wparam, LPARAM lparam, i
         }
         return 0;
     default:
-        log_key(msg, wparam, lparam, wparam == VK_F11 ? "game (Ctrl+F11)" : "game");
+        log_key(msg, wparam, lparam, "game");
         *handled = 0;
         return 0;
     }

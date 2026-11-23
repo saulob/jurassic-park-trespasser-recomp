@@ -210,7 +210,7 @@ bool LauncherHost::PumpEvents() {
             }
             break;
         case SDL_EVENT_KEY_DOWN:
-            if (event.key.key == SDLK_F11 && !event.key.repeat) {
+            if (event.key.key == SDLK_F11 && !event.key.repeat && !(event.key.mod & SDL_KMOD_CTRL)) {
                 SetFullscreen(!Fullscreen());
             }
             break;

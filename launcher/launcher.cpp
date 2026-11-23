@@ -1159,7 +1159,6 @@ private:
             ui.Info("Hint", "F1");
             ui.Info("Controls", "F2");
             ui.Info("Windowed / Borderless Fullscreen", "F11");
-            ui.Info("The game's original cheat input", "Ctrl+F11");
             ui.Info("Menu", "Esc");
             ui.Info("Exit", "Alt+F4");
             ui.EndRows();
