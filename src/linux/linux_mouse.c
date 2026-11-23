@@ -109,7 +109,7 @@ void lx_mouse_update(void) {
     if (lx_user32_cursor_get(&x, &y) && pointer_recapture(before, state, &x, &y, width, height)) lx_user32_cursor_set((int)x, (int)y);
     if (changed && S.applied)
         lx_log("Linux mouse", "relative %s, pointer %s (%s, the game's %s in front); the guest's ClipCursor and capture stay logical", S.relative ? "on" : "off",
-               S.cursor_hidden ? "hidden" : "shown", input_state_name(state), guest_ui_model_class_name(jpt_gva_canonical, S.view.top_vtable));
+               S.cursor_hidden ? "hidden" : "shown", input_state_name(state), guest_ui_model_class_name(jpt_gva_table(), S.view.top_vtable));
     S.applied = 1;
 }
 

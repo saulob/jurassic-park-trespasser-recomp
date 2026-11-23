@@ -175,7 +175,7 @@ feature may have one.
 | `graphics-failure-notice` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | the Windows host has its own graphics start-up path (Direct3D 11 or its Vulkan window); this notice is the Linux SDL window's |
 | `monitor-mode-size` | global | PASS | PASS | `test_linux_parity.py`, `presentation_tests` | `test_linux_parity.py`, `linux_sdl_window_tests` | - |
 | `cli-setting-options` | global | PASS | PASS | `test_linux_parity.py` | `test_linux_parity.py` | - |
-| `game-version-selection` | global | PASS | PASS | `launcher_tests` | `linux_launcher_tests`, `test_linux_parity.py` | - |
+| `game-version-selection` | global | PASS | PASS | `launcher_tests` | `linux_launcher_tests`, `linux_boot_tests`, `test_linux_parity.py` | - |
 | `handheld-1280x800` | linux | LINUX ONLY (justified) | PASS | - | `linux_present_tests`, `vulkan_policy_tests` | the 1280x800 handheld target is the Steam Deck, which runs the Linux build |
 | `launcher-file-picker` | linux | LINUX ONLY (justified) | PASS | - | `linux_launcher_tests`, `test_linux_parity.py` | Windows uses its own common dialog |
 | `launcher-open-folder` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | Windows opens Explorer |

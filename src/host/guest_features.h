@@ -15,6 +15,8 @@ void guest_features_configure(const jpt_config_t* cfg);
 /* The overrides of the shared features, once the target is verified: physics fixes, the CE gameplay, Active AI, the
  * official Patch 1.1 and the camera's field of view. */
 void guest_features_install(void);
+/* Disarms the shared features at the end of a run, before the active profile's tables are cleared. */
+void guest_features_stop(void);
 /* Where the game could call it itself (its UI loop on Windows, a presented frame on Linux). */
 void guest_features_step(void);
 

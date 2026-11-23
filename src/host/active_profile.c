@@ -81,3 +81,7 @@ const jpt_game_version_t* jpt_active_profile(void) { return s_profile; }
 jpt_lift_t jpt_active_lift(void) { return s_lift; }
 
 const jpt_lift_data_t* jpt_active_lift_data(void) { return s_lift == JPT_LIFT_NONE ? NULL : &jpt_lift_data[s_lift]; }
+
+uint32_t jpt_gva_or_canonical(unsigned id) { return jpt_active_profile() ? jpt_gva[id] : jpt_gva_canonical[id]; }
+
+const uint32_t* jpt_gva_table(void) { return jpt_active_profile() ? jpt_gva : jpt_gva_canonical; }

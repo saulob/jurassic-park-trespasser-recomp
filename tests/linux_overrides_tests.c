@@ -67,7 +67,7 @@ static void lifted_stub(uint32_t va) {
 #define OVERRIDE_LIST "guest_override_list.h"
 #include "guest_override_lift.inc"
 
-void lx_lift116_register_overrides(void) { lx_overrides_set_registry(&lift116_registry); }
+void lx_lift116_register_overrides(void) { lx_overrides_set_lift_registry(&lift116_registry, JPT_LIFT_116); }
 
 static void reset_calls(void) {
     g_called_count = 0;
@@ -219,7 +219,7 @@ static void test_fingerprints(void) {
     override_registry_t fresh;
     override_fn_t lifted_seen = NULL;
     install_config(&cfg);
-    CHECK(!lx_features_start(&cfg, "game", "es-117", NULL, NULL), "an executable other than the one lift116 was built from (es-117) installs nothing");
+    CHECK(!lx_features_start(&cfg, "game", "es-117", NULL, NULL), "the lift116 registry does not accept the Spanish build's addresses");
     CHECK(lx_overrides_counts().installed == 0, "no override is installed for an unknown build");
     lx_features_stop();
     CHECK(!lx_features_start(&cfg, "game", "no-such-build", NULL, NULL), "an unknown build name installs nothing");

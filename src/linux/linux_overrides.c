@@ -5,12 +5,19 @@
 
 static override_registry_t* s_table;
 static override_registry_t* s_registry;
+static jpt_lift_t s_lift = JPT_LIFT_NONE;
 
-void lx_overrides_set_registry(override_registry_t* table) { s_table = table; }
+void lx_overrides_set_registry(override_registry_t* table) { lx_overrides_set_lift_registry(table, JPT_LIFT_NONE); }
+
+void lx_overrides_set_lift_registry(override_registry_t* table, jpt_lift_t lift) {
+    s_table = table;
+    s_lift = lift;
+}
 
 int guest_overrides_enable(void) {
-    if (jpt_active_lift() != JPT_LIFT_116 || !s_table) {
-        lx_log("host", "no lift116 profile and override table are active: refusing to run");
+    jpt_lift_t active = jpt_active_lift();
+    if (!s_table || (s_lift != JPT_LIFT_NONE && s_lift != active)) {
+        lx_log("host", "no override table for the active lift: refusing to run");
         return 0;
     }
     s_registry = s_table;
@@ -59,7 +66,7 @@ int guest_overrides_check(void) {
     return 0;
 }
 
-unsigned lx_lift116_hook_count(void) {
+static unsigned count_hooks(void) {
     unsigned n = 0;
 #define LIFT_HOOK(va) n++;
 #include "lift_hook_list.h"
@@ -67,10 +74,30 @@ unsigned lx_lift116_hook_count(void) {
     return n;
 }
 
-unsigned lx_lift116_override_count(void) {
+unsigned lx_lift_hook_count(jpt_lift_t lift) { return lift == JPT_LIFT_116 ? count_hooks() : 0; }
+
+unsigned lx_lift_override_count(jpt_lift_t lift) {
     unsigned n = 0;
+    switch (lift) {
+    case JPT_LIFT_116:
 #define GUEST_OVERRIDE(va, need) n++;
 #include "guest_override_list.h"
 #undef GUEST_OVERRIDE
+        break;
+    case JPT_LIFT_ES117:
+#define GUEST_OVERRIDE(va, need) n++;
+#include "profiles/lift_es117/guest_override_list.h"
+#undef GUEST_OVERRIDE
+        break;
+    case JPT_LIFT_PTBR117:
+#define GUEST_OVERRIDE(va, need) n++;
+#include "profiles/lift_ptbr117/guest_override_list.h"
+#undef GUEST_OVERRIDE
+        break;
+    default: break;
+    }
     return n;
 }
+
+unsigned lx_lift116_hook_count(void) { return lx_lift_hook_count(JPT_LIFT_116); }
+unsigned lx_lift116_override_count(void) { return lx_lift_override_count(JPT_LIFT_116); }

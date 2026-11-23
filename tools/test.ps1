@@ -33,6 +33,10 @@
 .PARAMETER NoBuild
   Runs the test programs already in the build folder without compiling them first.
 
+.PARAMETER Build
+  Builds the test programs (and the runtime, when nothing is filtered) incrementally and exits before any suite runs:
+  a build-only run. The Linux half is not started. -NoBuild and -Build exclude each other.
+
 .PARAMETER BuildDir
   Another x86 build folder (default build\cmake\msvc-x86, configured by tools\build.ps1).
 
@@ -49,6 +53,10 @@
   The WSL distribution to use. Without it JptFocalBuild (Ubuntu 20.04, glibc 2.31) is preferred, then any other distribution
   with glibc 2.31, then a newer one for development only; the summary names the one used and whether the baseline is proven.
 
+.PARAMETER GameIsoDir
+  Folder of disc images to import headlessly before the Linux suites (default: TRESPASSER_ISO_DIR, the disc named by
+  config\local.json, or a development downloads folder found on a drive). Existing installs are not replaced.
+
 .PARAMETER Sanitize
   Runs only the Linux-specific suites of an AddressSanitizer + UndefinedBehaviorSanitizer build (a separate tree, slower); a
   partial run, never part of the default.
@@ -61,11 +69,13 @@ param(
     [switch]$Release,
     [switch]$Full,
     [switch]$NoBuild,
+    [switch]$Build,
     [string]$BuildDir = '',
     [switch]$WindowsOnly,
     [switch]$LinuxOnly,
     [switch]$SkipLinux,
     [string]$LinuxDistro = '',
+    [string]$GameIsoDir = '',
     [switch]$Sanitize
 )
 
@@ -77,9 +87,12 @@ $buildDir = [IO.Path]::GetFullPath($buildDir)
 $buildDir64 = Join-Path $root 'build\cmake\msvc-x64'
 $hostShell = (Get-Process -Id $PID).Path
 if ($WindowsOnly -and $LinuxOnly) { Write-Host 'FAILED: -WindowsOnly and -LinuxOnly exclude each other.' -ForegroundColor Red; exit 1 }
+if ($Build -and $NoBuild) { Write-Host 'FAILED: -Build (build only) and -NoBuild (run the programs already built) exclude each other.' -ForegroundColor Red; exit 1 }
+if ($Build -and ($LinuxOnly -or $Sanitize)) { Write-Host 'FAILED: -Build builds the Windows test programs; it cannot be combined with -LinuxOnly or -Sanitize.' -ForegroundColor Red; exit 1 }
 $runWindows = -not $LinuxOnly -and -not $Sanitize
 $runLinux = -not ($WindowsOnly -or $SkipLinux)
 $partial = [bool]$Filter -or [bool]$Sanitize
+$script:ImportedVersionPaths = @()
 . (Join-Path $PSScriptRoot '_gate_linux.ps1')
 
 $suites = New-Object System.Collections.Generic.List[object]
@@ -103,6 +116,40 @@ function Add-Python([string]$Section, [object[]]$Rows) {
 function Add-Tool([string]$Section, [string]$Command, [string]$Description) {
     $parts = -split $Command
     Add-Suite $Section 'tool' $Command $Description @{ Script = $parts[0]; Arguments = @($parts | Select-Object -Skip 1) }
+}
+
+function Find-GameIsoDirectory([string]$Requested) {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($Requested) { $candidates.Add($Requested) }
+    if ($env:TRESPASSER_ISO_DIR) { $candidates.Add($env:TRESPASSER_ISO_DIR) }
+    $local = Join-Path $root 'config\local.json'
+    if (Test-Path -LiteralPath $local) {
+        try {
+            $config = [IO.File]::ReadAllText($local) | ConvertFrom-Json
+            if ($config.iso_dir) { $candidates.Add([string]$config.iso_dir) }
+            if ($config.iso) {
+                $parent = Split-Path -Parent ([string]$config.iso)
+                if ($parent) { $candidates.Add($parent); $candidates.Add((Join-Path $parent 'versoes')) }
+            }
+        } catch { }
+    }
+    $downloads = 'Decomp_' + 'Downloads'
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        try {
+            $candidates.Add((Join-Path $drive.Root (Join-Path $downloads (Join-Path 'Jurassic Park' 'versoes'))))
+            $candidates.Add((Join-Path $drive.Root (Join-Path $downloads 'Jurassic Park')))
+        } catch { }
+    }
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        try {
+            if ((Test-Path -LiteralPath $candidate -PathType Container) -and
+                (@(Get-ChildItem -LiteralPath $candidate -Filter '*.iso' -File -ErrorAction SilentlyContinue).Count)) {
+                return (Get-Item -LiteralPath $candidate).FullName
+            }
+        } catch { }
+    }
+    return ''
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -352,6 +399,8 @@ $toolRole = @{
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
     'tools\linux_lifted_link_report.py' = 'maintainer: what the lifted guest needs from a Linux host, run by tools/test-linux.sh'
+    'tools\import-appimage-runtime.sh' = 'packaging helper: copies the pinned AppImage runtime from a WSL packaging cache; run by tools\package-release.ps1 in WSL, checked by tests\test_linux_packaging.py, never by this gate'
+    'tools\release-inputs.ps1' = 'packaging helper dot-sourced by tools\package-release.ps1: the reviewed AppImage runtime and the WSL build environment; checked by tests\test_linux_packaging.py, never run by this gate'
     'tools\linux_suite_scan.py' = 'maintainer: which suites compile on Linux'
     'tools\lift_module.py' = 'maintainer: lifts the guest DLLs of config/guest_modules.json; run by tools/run_lift.py, checked by tests\test_guest_module_lift.py'
     'tools\lift_selfmod.py' = 'maintainer: lifts the SelfMod section; run by tools/run_lift.py, checked by tests\test_selfmod_lift.py'
@@ -383,7 +432,8 @@ if ($List) {
     exit 0
 }
 
-if ($Filter -and @($suites | Where-Object { -not $_.Options['Always'] }).Count -eq 0) {
+if ($Filter -and @($suites | Where-Object { -not $_.Options['Always'] }).Count -eq 0 -and
+    -not ($runLinux -and @(Get-LinuxSuiteNames | Where-Object { $_ -like "*$Filter*" }).Count)) {
     Write-Host "FAILED: no suite matches '$Filter' (tools\test.ps1 -List shows them)" -ForegroundColor Red
     exit 1
 }
@@ -644,6 +694,12 @@ function Test-TreeUnchanged {
     $lines = @()
     $code = 0
     $changes = @(Compare-TreeSnapshots $script:SnapshotBefore (Get-TreeSnapshot))
+    if ($script:ImportedVersionPaths.Count) {
+        $changes = @($changes | Where-Object {
+            $path = ($_ -split ':', 2)[0].ToLowerInvariant()
+            -not (@($script:ImportedVersionPaths | Where-Object { $path.StartsWith($_.ToLowerInvariant()) }).Count)
+        })
+    }
     if ($changes.Count) {
         $code = 1
         $lines += "$($changes.Count) file(s) differ from the snapshot taken before the first suite (git status -uall, git diff --binary, git diff --cached --binary, game\, user_data, build\user_data):"
@@ -897,11 +953,11 @@ function Build-TestTargets([string]$Folder, [string]$Arch, [string[]]$Targets) {
         $configure = Invoke-Configure $Folder $Arch
         if ($configure.Code -ne 0) { return "CMake could not configure $Folder (exit $($configure.Code)); run tools\build.ps1 once to prepare the sources:`n$($configure.Lines -join "`n")" }
     }
-    $build = Invoke-Process 'ninja' (@('-C', $Folder, '-k', '0') + $Targets) $root 3600
-    $warnings = @(Show-BuildWarnings $build.Lines)
-    if ($build.Code -ne 0) { return "ninja exit code $($build.Code):`n$(($build.Lines | Select-Object -Last 60) -join "`n")" }
+    $buildRun = Invoke-Process 'ninja' (@('-C', $Folder, '-k', '0') + $Targets) $root 3600
+    $warnings = @(Show-BuildWarnings $buildRun.Lines)
+    if ($buildRun.Code -ne 0) { return "ninja exit code $($buildRun.Code):`n$(($buildRun.Lines | Select-Object -Last 60) -join "`n")" }
     if ($warnings.Count) { return "$($warnings.Count) compiler warning(s) in project sources:`n$($warnings -join "`n")" }
-    $steps = @($build.Lines | Where-Object { $_ -match '^\[\d+/\d+\]' }).Count
+    $steps = @($buildRun.Lines | Where-Object { $_ -match '^\[\d+/\d+\]' }).Count
     return [pscustomobject]@{ Steps = $steps; Targets = $Targets.Count }
 }
 
@@ -1007,6 +1063,13 @@ $gateStopped = $false
 $clock = [System.Diagnostics.Stopwatch]::StartNew()
 if (-not $runWindows) { $suites = New-Object System.Collections.Generic.List[object] }
 $linuxPlanned = @(Get-LinuxSuiteNames | Where-Object { -not $Filter -or $_ -like "*$Filter*" })
+$gameIsoDir = if ($runLinux) { Find-GameIsoDirectory $GameIsoDir } else { '' }
+$importRequested = [bool]$gameIsoDir -and (-not $Filter -or $Filter -match 'linux_boot_tests|game imports')
+$missingVersionPaths = @()
+foreach ($id in 'en-116', 'ru-116', 'es-117', 'ptbr-117') {
+    if (-not (Test-Path -LiteralPath (Join-Path $root "game\versions\$id\guest.img"))) { $missingVersionPaths += "game\versions\$id" }
+}
+if ($runLinux -and $importRequested) { $linuxPlanned = @('game imports') + $linuxPlanned }
 if ($runLinux -and -not $Filter -and -not $Sanitize) { $linuxPlanned = @('linux build') + @($linuxPlanned | Where-Object { $_ -ne 'linux build' }) }
 if ($Sanitize) { $linuxPlanned = @($linuxPlanned | Where-Object { $_ -match '^[a-z0-9_]+_tests$' }) }
 Import-TestHistory
@@ -1071,6 +1134,20 @@ try {
         }
     } elseif ($NoBuild) {
         $notes.Add('test programs were NOT rebuilt (-NoBuild): the results describe the programs already in the build folder')
+    }
+
+    if ($Build) {
+        $buildRows = @($results | Where-Object { $_.Section -eq 'Build' })
+        $buildFailed = @($buildRows | Where-Object { $_.Status -eq 'FAIL' })
+        if ($buildFailed.Count) {
+            Write-Host ('FAILED: build only: {0} build step(s) failed.' -f $buildFailed.Count) -ForegroundColor Red
+        } elseif (-not $buildRows.Count) {
+            Write-Host 'FAILED: build only: nothing was built (check -Filter and -BuildDir).' -ForegroundColor Red
+        } else {
+            Write-Host ('BUILD ONLY: {0} build step(s) passed; no suite ran and the Linux half was not started.' -f $buildRows.Count) -ForegroundColor Green
+        }
+        if (Test-Path -LiteralPath $tempDir) { Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
+        exit $(if ($buildRows.Count -and -not $buildFailed.Count) { 0 } else { 1 })
     }
 
     if (@($suites | Where-Object { $_.Name -eq 'tests\test_compile_commands.py' }).Count) {
@@ -1164,6 +1241,8 @@ if ($gateStopped) {
 # The Linux half: PowerShell -> wsl.exe -> wslpath -> bash -> tools/test-linux.sh -> tools/linux_gate.py
 # ---------------------------------------------------------------------------------------------------------------------
 $linux = [ordered]@{ Requested = $runLinux -and ($linuxPlanned.Count -gt 0); Ran = $false; Environment = $null; Why = ''; Info = @{}; Seconds = 0.0 }
+$versionReportPath = Join-Path $root 'build\logs\version_parity.json'
+if ($runLinux) { Remove-Item -LiteralPath $versionReportPath -Force -ErrorAction SilentlyContinue }
 if ($linux.Requested) {
     Write-Host '==> Linux gate (WSL)' -ForegroundColor Cyan
     $linux.Environment = Find-LinuxEnvironment $LinuxDistro
@@ -1176,7 +1255,8 @@ if ($linux.Requested) {
         $linuxEnv = $linux.Environment
         Write-Host ('  distribution : {0}  ({1}; glibc {2}; {3})' -f $linuxEnv.Name, $linuxEnv.Os, $linuxEnv.Glibc, $linuxEnv.Why)
         Write-Host ('  repository   : {0}  (converted with wslpath)' -f $linuxEnv.Repo)
-        Write-Host ('  command      : wsl.exe -d {0} --exec bash {1}/tools/test-linux.sh --native-build --machine --cc {2}{3}' -f $linuxEnv.Name, $linuxEnv.Repo, $linuxEnv.Cc, $(if ($NoBuild) { ' --no-build' } else { '' }))
+        if ($importRequested) { Write-Host ('  game images  : {0}  (imported headlessly; existing installs are kept)' -f $gameIsoDir) }
+        Write-Host ('  command      : wsl.exe -d {0} --exec bash {1}/tools/test-linux.sh --native-build --machine --cc {2}{3}{4}' -f $linuxEnv.Name, $linuxEnv.Repo, $linuxEnv.Cc, $(if ($NoBuild) { ' --no-build' } else { '' }), $(if ($importRequested) { ' --import-dir <images>' } else { '' }))
         if (-not $linuxEnv.Baseline) { Write-Host '  NOTE: the glibc 2.31 baseline is not proven by this run (no Ubuntu 20.04 environment was usable).' -ForegroundColor Yellow }
         if (-not $linuxEnv.Ffmpeg) { Write-Host "  NOTE: no FFmpeg development files in $($linuxEnv.Name): the Linux gate builds a pinned LGPL-only FFmpeg into ~/.cache/jpt-recomp/ffmpeg (tools/ffmpeg-bootstrap.sh; offline, the Smacker suites report DATA UNAVAILABLE)." -ForegroundColor Yellow }
         $print = {
@@ -1197,10 +1277,12 @@ if ($linux.Requested) {
             }
         }
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
-        $outcome = Invoke-LinuxGate $linuxEnv $Filter ([bool]$NoBuild) ([bool]$Sanitize) $print
+        $outcome = Invoke-LinuxGate $linuxEnv $Filter ([bool]$NoBuild) ([bool]$Sanitize) $(if ($importRequested) { $gameIsoDir } else { '' }) $print
         $linux.Seconds = $watch.Elapsed.TotalSeconds
         $linux.Info = $outcome.Info
         $linux.Ran = $true
+        $importRow = @($outcome.Rows | Where-Object { $_.Name -eq 'game imports' -and $_.Status -eq 'PASS' })
+        if ($importRow.Count -and $missingVersionPaths.Count) { $script:ImportedVersionPaths = $missingVersionPaths }
         foreach ($row in $outcome.Rows) {
             $skip = @($row.Notes)
             foreach ($note in $skip) { $notes.Add("Linux $($row.Name): $note") }
@@ -1247,11 +1329,11 @@ if ($parity) {
     Write-Host '==> Supported builds' -ForegroundColor Cyan
     $parityStatus = Get-Status 'tests\test_build_parity.py'
     Write-Host ('  {0,-9} {1,-13} {2,-6} {3,-12} {4,-8} {5,-10} {6}' -f 'BUILD', 'LIFT', 'LANG', 'FINGERPRINT', 'STATUS', 'EVIDENCE', 'REAL EXECUTABLE')
-    foreach ($build in @($parity.builds)) {
-        $rowStatus = if ($parityStatus -ne 'PASS' -or @($build.problems).Count) { 'FAIL' } else { 'PASS' }
-        Write-Host ('  {0,-9} {1,-13} {2,-6} {3,-12} {4,-8} {5,-10} {6}' -f $build.id, $build.lift, $build.language, $build.facts.fingerprint, $rowStatus, $build.evidence, $build.real) -ForegroundColor $(if ($rowStatus -eq 'PASS') { 'Gray' } else { 'Red' })
-        Write-Host ('            addresses: {0}; offsets: {1}; overrides {2}; cheats {3}; Patch 1.1: {4}' -f $build.facts.addresses, $build.facts.offsets, $build.facts.required_overrides, $build.facts.cheat_addresses, $build.facts.patch117) -ForegroundColor DarkGray
-        foreach ($item in @($build.problems)) { Write-Host "            $item" -ForegroundColor Red }
+    foreach ($buildRow in @($parity.builds)) {
+        $rowStatus = if ($parityStatus -ne 'PASS' -or @($buildRow.problems).Count) { 'FAIL' } else { 'PASS' }
+        Write-Host ('  {0,-9} {1,-13} {2,-6} {3,-12} {4,-8} {5,-10} {6}' -f $buildRow.id, $buildRow.lift, $buildRow.language, $buildRow.facts.fingerprint, $rowStatus, $buildRow.evidence, $buildRow.real) -ForegroundColor $(if ($rowStatus -eq 'PASS') { 'Gray' } else { 'Red' })
+        Write-Host ('            addresses: {0}; offsets: {1}; overrides {2}; cheats {3}; Patch 1.1: {4}' -f $buildRow.facts.addresses, $buildRow.facts.offsets, $buildRow.facts.required_overrides, $buildRow.facts.cheat_addresses, $buildRow.facts.patch117) -ForegroundColor DarkGray
+        foreach ($item in @($buildRow.problems)) { Write-Host "            $item" -ForegroundColor Red }
     }
 }
 
@@ -1384,6 +1466,39 @@ if (-not $partial -and $runWindows -and $linux.Ran -and -not $failed.Count -and 
 } elseif (-not $partial -and $runWindows -and $linux.Ran) {
     Write-Host '==> Linux runtime artifact: NOT STAGED (a row failed; build\linux\bin keeps the last validated binary)' -ForegroundColor Yellow
 }
+
+$versionReport = $null
+if ($linux.Ran -and (Test-Path -LiteralPath $versionReportPath)) {
+    try { $versionReport = [IO.File]::ReadAllText($versionReportPath) | ConvertFrom-Json } catch { $versionReport = $null }
+}
+$versionIds = @('en-116', 'ru-116', 'es-117', 'ptbr-117')
+$versionNames = @{ 'en-116' = 'English 1.0.116'; 'ru-116' = 'Russian 1.0.116'; 'es-117' = 'Spanish 1.1.117'; 'ptbr-117' = 'Brazilian PT 1.1.117' }
+$windowsBuilds = if ($parity) { @($parity.builds) } else { @() }
+$bootResult = @($results | Where-Object { $_.Name -eq 'linux_boot_tests' -and (Get-Prop $_ 'Platform') -eq 'linux' })
+$versionCovered = $linux.Ran -and $bootResult.Count -gt 0
+$versionFailed = $false
+Write-Host '==> Game version parity' -ForegroundColor Cyan
+Write-Host ('  {0,-22} {1,-9} {2,-12} {3,-13} {4,-9}' -f 'VERSION', 'WINDOWS', 'LINUX BUILD', 'LINUX STATIC', 'RUNTIME')
+foreach ($id in $versionIds) {
+    $row = if ($versionReport) { @($versionReport.versions | Where-Object { $_.id -eq $id }) | Select-Object -First 1 } else { $null }
+    $winBuild = @($windowsBuilds | Where-Object { $_.id -eq $id }) | Select-Object -First 1
+    $windowsState = if (-not $winBuild) { 'NOT RUN' } elseif (@($winBuild.problems).Count -or -not $winBuild.playable) { 'FAIL' } else { 'PASS' }
+    $linuxBuild = if (-not $versionCovered) { 'NOT RUN' } elseif ($row) { [string]$row.build } else { 'FAIL' }
+    $linuxStatic = if (-not $versionCovered) { 'NOT RUN' } elseif ($row) { [string]$row.static } else { 'FAIL' }
+    $runtime = if (-not $versionCovered) { 'NOT RUN' } elseif ($row) { [string]$row.runtime } else { 'BLOCKED' }
+    $states = @($windowsState, $linuxBuild, $linuxStatic, $runtime)
+    $color = if ($states -contains 'FAIL') { 'Red' } elseif ($states -contains 'BLOCKED') { 'Yellow' } elseif ($states -contains 'NOT RUN') { 'DarkGray' } else { 'Green' }
+    Write-Host ('  {0,-22} {1,-9} {2,-12} {3,-13} {4,-9}' -f $versionNames[$id], $windowsState, $linuxBuild, $linuxStatic, $runtime) -ForegroundColor $color
+    if ($row -and $row.detail) { Write-Host ("    " + $row.detail) -ForegroundColor DarkGray }
+    if ($states -contains 'FAIL') { $versionFailed = $true }
+}
+$versionStatus = if (-not $versionCovered) { 'NOT RUN' } elseif ($versionFailed -or -not $versionReport) { 'FAIL' } else { 'PASS' }
+$versionSummary = if (-not $versionCovered) { 'the Linux version parity suite did not run' } elseif ($versionFailed) { 'a version failed' } elseif (-not $versionReport) { 'the Linux version parity report is missing' } else { 'four version profiles; runtime BLOCKED where data is absent' }
+$results.Add([pscustomobject]@{ Section = 'Game versions'; Platform = 'parity'; Name = 'game version parity'; Status = $versionStatus; Seconds = 0; Checks = $versionIds.Count; Summary = $versionSummary; Lines = @(); Skipped = 0; Unavailable = $false })
+$failed = @($results | Where-Object { $_.Status -eq 'FAIL' })
+$passed = @($results | Where-Object { $_.Status -eq 'PASS' })
+$notRun = @($results | Where-Object { $_.Status -eq 'NOT RUN' })
+$checkTotal = ($results | Measure-Object -Property Checks -Sum).Sum
 
 $slowest = @($results | Where-Object { $_.Status -in 'PASS', 'FAIL' -and $_.Seconds -gt 0 } | Sort-Object Seconds -Descending | Select-Object -First 5)
 $partlySkipped = @($results | Where-Object { $_.PSObject.Properties['Skipped'] -and $_.Skipped -gt 0 })

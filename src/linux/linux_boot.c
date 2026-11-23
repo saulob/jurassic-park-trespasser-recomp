@@ -6,8 +6,11 @@
 
 #include "guest_memory.h"
 #include "guest_ptr.h"
+#include "active_profile.h"
 #include "jpt_fs.h"
+#include "jpt_game_version.h"
 #include "jpt_hash.h"
+#include "jpt_lift_meta.h"
 #include "jpt_vpath.h"
 #include "linux_advapi32.h"
 #include "linux_dsound.h"
@@ -20,7 +23,7 @@
 #include "linux_hle.h"
 #include "jpt_user_data.h"
 #include "linux_features.h"
-#include "linux_lift116.h"
+#include "linux_lift.h"
 #include "linux_overrides.h"
 #include "linux_log.h"
 #include "linux_modules.h"
@@ -153,7 +156,8 @@ void lx_boot_options_init(lx_boot_options_t* o, const char* game_dir, const char
 }
 
 lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* r) {
-    const jpt_lift_meta_t* meta = lx_lift116_meta();
+    const jpt_game_version_t* version = jpt_game_version_by_id(o->version ? o->version : "en-116");
+    const lx_lift_t* image = version ? lx_lift_for_version(version) : NULL;
     char host_image[JPT_PATH_MAX], hash[65], err[128];
     uint8_t* bytes = NULL;
     size_t size = 0;
@@ -171,17 +175,31 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     jpt_config_t settings;
 
     memset(r, 0, sizeof *r);
-    if (!vp || !jpt_vpath_mount(vp, 'C', o->game_dir)) return finish(r, LX_BOOT_SETUP_FAILED, "cannot map the game folder");
+    if (!image) {
+        jpt_vpath_free(vp);
+        return finish(r, LX_BOOT_SETUP_FAILED, version ? "this program does not carry the version's lift" : "unknown game version");
+    }
+    if (jpt_lift_meta_check(&jpt_lift_data[image->lift].expected, image->meta) != JPT_LIFT_META_OK) {
+        jpt_vpath_free(vp);
+        return finish(r, LX_BOOT_SETUP_FAILED, "the linked lift is not the one this program was built to carry");
+    }
+    if (!vp || !jpt_vpath_mount(vp, 'C', o->game_dir)) {
+        jpt_vpath_free(vp);
+        return finish(r, LX_BOOT_SETUP_FAILED, "cannot map the game folder");
+    }
     if (!find_image(vp, o->version ? o->version : "en-116", host_image, sizeof host_image)) {
         jpt_vpath_free(vp);
         return finish(r, LX_BOOT_DATA_UNAVAILABLE, "no guest image in the game folder");
     }
-    if (!read_file(host_image, &bytes, &size)) return finish(r, LX_BOOT_SETUP_FAILED, "cannot read the guest image");
+    if (!read_file(host_image, &bytes, &size)) {
+        jpt_vpath_free(vp);
+        return finish(r, LX_BOOT_SETUP_FAILED, "cannot read the guest image");
+    }
     jpt_sha256_buffer_hex(bytes, size, hash);
-    if (strcmp(hash, meta->source_sha256) != 0) {
+    if (strcmp(hash, image->meta->source_sha256) != 0) {
         free(bytes);
         jpt_vpath_free(vp);
-        return finish(r, LX_BOOT_SETUP_FAILED, "the guest image is not the build lift116 was generated from");
+        return finish(r, LX_BOOT_SETUP_FAILED, "the guest image is not the build the lift was generated from");
     }
     if (!gm_init(0, 0) || !ht_init() ||
         gm_pe_map_memory(bytes, size, GM_PE_PREFERRED, 0, &img, err, sizeof err) != 0) {
@@ -191,17 +209,18 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     }
     free(bytes);
     r->entry = img.entry;
-    r->selfmod_entries = (unsigned)lx_lift116_selfmod_table().count;
-    r->lift_hooks = lx_lift116_hook_count();
-    r->overrides_listed = lx_lift116_override_count();
-    if (img.base != meta->image_base || img.entry != meta->entry_va) {
+    r->selfmod_entries = (unsigned)image->selfmod.count;
+    r->lift_hooks = lx_lift_hook_count(image->lift);
+    r->overrides_listed = lx_lift_override_count(image->lift);
+    if (img.base != image->meta->image_base || img.entry != image->meta->entry_va) {
         gm_shutdown();
         jpt_vpath_free(vp);
         return finish(r, LX_BOOT_SETUP_FAILED, "the guest image does not sit where the lift expects");
     }
 
     lx_modules_reset();
-    module_defs = lx_lift116_modules(&module_count);
+    module_defs = image->modules;
+    module_count = image->module_count;
     if (!lx_modules_map(module_defs, module_count, vp, o->version ? o->version : "en-116", err, sizeof err)) {
         gm_shutdown();
         jpt_vpath_free(vp);
@@ -219,10 +238,10 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     lx_screen_set_frame_hook(o->frame_hook, o->hook_user);
     lx_screen_set_frame_limit(o->unbounded ? 0 : o->frame_limit ? o->frame_limit : 1);
     lx_user32_set_idle_limit(o->unbounded ? 0 : o->idle_limit ? o->idle_limit : 200000);
-    lx_spine_init(lx_lift116_main_table(), lx_lift116_selfmod_table());
+    lx_spine_init(image->main, image->selfmod);
     char cache_dir[JPT_PATH_MAX];
     snprintf(cache_dir, sizeof cache_dir, "%s/cache", o->user_root ? o->user_root : "user_data");
-    if (o->use_features) lx_lift116_register_overrides();
+    if (o->use_features) lx_lift_register_overrides(image->lift);
     if (o->use_features && !lx_features_start(&settings, o->game_dir, o->version, o->settings_file, cache_dir)) {
         gm_shutdown();
         jpt_vpath_free(vp);
@@ -254,8 +273,8 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     r->imports_implemented = counts.implemented;
     lx_log("Linux guest", "entry %08X, SelfMod lifted entries %u", r->entry, r->selfmod_entries);
     if (o->use_features)
-        lx_log("Linux features", "%u/%u overrides installed (%u required), %u/%u lift hooks active", r->overrides_installed,
-               r->overrides_listed, r->overrides_required, r->lift_hooks, lx_lift116_hook_count());
+        lx_log("Linux features", "%u/%u overrides installed (%u required), %u lift hooks active", r->overrides_installed,
+               r->overrides_listed, r->overrides_required, r->lift_hooks);
     else
         lx_log("Linux features", "host features off: the lifted game runs as retail (%u overrides listed, %u lift hooks)", r->overrides_listed, r->lift_hooks);
     lx_log("Linux HLE", "resolved %u/%u", r->imports_implemented, r->imports_total);

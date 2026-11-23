@@ -36,8 +36,6 @@ extern const jpt_game_version_t jpt_game_versions[JPT_GAME_VERSION_COUNT];
 
 const jpt_game_version_t* jpt_game_version_by_id(const char* id);
 int jpt_game_version_playable(const jpt_game_version_t* v);
-/* Why this executable cannot run a version the port can in general (the Linux build carries one lifted build), or NULL. */
-const char* jpt_game_version_unavailable_here(const jpt_game_version_t* v);
 
 /* 64 hex digits of a file's SHA-256; 0 when it cannot be read. */
 int jpt_file_sha256(const char* path, char out[65]);

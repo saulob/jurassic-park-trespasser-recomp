@@ -31,9 +31,6 @@ typedef struct {
 /* NULL restores SDL3. Set before lx_gamepad_init. */
 void lx_gamepad_set_backend(const lx_pad_backend_t* backend);
 
-/* CInput::tinReadDefaultControls: the function the gamepad is added to. */
-#define LX_CINPUT_READ_VA 0x005F80B0u
-
 /* Starts SDL's gamepad subsystem; 0 when SDL has none (the build without joystick support). */
 int lx_gamepad_init(const jpt_gamepad_settings_t* settings);
 void lx_gamepad_shutdown(void);

@@ -25,7 +25,7 @@
 #include "linux_card.h"
 #include "linux_features.h"
 #include "linux_gamepad.h"
-#include "linux_lift116.h"
+#include "linux_lift.h"
 #include "linux_mouse.h"
 #include "linux_overrides.h"
 #include "linux_text.h"
@@ -122,7 +122,7 @@ typedef struct {
 } registry_t;
 
 static void install_counts(const jpt_config_t* config, unsigned* installed, unsigned* required_refused) {
-    lx_lift116_register_overrides();
+    lx_lift_register_overrides(JPT_LIFT_116);
     if (!lx_features_start(config, "", "en-116", NULL, NULL)) {
         *installed = 0;
         *required_refused = 1;
@@ -135,13 +135,14 @@ static void install_counts(const jpt_config_t* config, unsigned* installed, unsi
 
 static registry_t probe_registry(void) {
     registry_t r;
+    const lx_lift_t* image = lx_lift_get(JPT_LIFT_116);
     jpt_config_t config;
     unsigned ignored = 0;
     memset(&r, 0, sizeof r);
-    r.listed = lx_lift116_override_count();
-    r.hooks = lx_lift116_hook_count();
-    r.selfmod = (unsigned)lx_lift116_selfmod_table().count;
-    r.main_entries = (unsigned)lx_lift116_main_table().count;
+    r.listed = lx_lift_override_count(JPT_LIFT_116);
+    r.hooks = lx_lift_hook_count(JPT_LIFT_116);
+    r.selfmod = image ? (unsigned)image->selfmod.count : 0;
+    r.main_entries = image ? (unsigned)image->main.count : 0;
     jpt_config_defaults(&config);
     install_counts(&config, &r.installed_default, &ignored);
     config.active_ai_enhanced = 1;

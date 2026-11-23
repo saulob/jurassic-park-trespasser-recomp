@@ -17,7 +17,7 @@
 #include "linux_spine.h"
 #include "linux_window.h"
 
-#define VA(address) (jpt_gva_canonical[GVA_ID(address)])
+#define VA(address) jpt_gva_or_canonical(GVAI_##address)
 #define APP VA(0x0066E338)
 #define WORLD VA(0x0073F444)
 #define PLAYER VA(0x0066EF64)
@@ -142,7 +142,7 @@ void lx_quick_pump(const lx_quick_ops_t* ops) {
     w.place = place_of(&v);
     if (w.place == QS_PLACE_NONE) {
         lx_log("quick-save", "Quick %s ignored: no level or main menu in front (%s)", request == REQUEST_SAVE ? "Save" : "Load",
-               guest_ui_model_class_name(jpt_gva_canonical, v.top_vtable));
+               guest_ui_model_class_name(jpt_gva_table(), v.top_vtable));
         return;
     }
     if (!quick_path(ops, path, sizeof path)) {

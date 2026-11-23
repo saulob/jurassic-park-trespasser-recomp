@@ -49,6 +49,7 @@ class LiftArtifacts(unittest.TestCase):
             self.assertEqual({n[len("recomp_"):-len(".json")] for n in names if n.endswith(".json")}, modules, lift)
             self.assertIn("recomp_dispatch.c", names)
             self.assertIn("recomp_funcs.h", names)
+            self.assertIn("recomp_selfmod.c", names)
 
     def test_a_tampered_archive_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:

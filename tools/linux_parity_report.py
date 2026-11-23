@@ -81,7 +81,8 @@ def main():
         print(f"{OUT.relative_to(ROOT)}: {len(contract['features'])} features")
         return 0
     if mode == "--summary":
-        print(text.split("\n\n")[5])
+        marker = f"{len(contract['features'])} features."
+        print(next((line for line in text.splitlines() if line.startswith(marker)), marker))
         return 0
     current = OUT.read_bytes().decode("utf-8").replace("\r\n", "\n") if OUT.is_file() else ""
     if current != text:

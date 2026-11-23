@@ -28,7 +28,9 @@ tools/test-linux.sh --sanitize --native-build              # the Linux-specific 
 From Windows nothing of this is typed: `.\tools\test.ps1` finds the WSL distribution (JptFocalBuild, Ubuntu 20.04 with glibc 2.31,
 is preferred; a newer one is used only for development and the glibc baseline is then reported as not proven), converts the
 repository path with `wslpath`, runs `tools/test-linux.sh --native-build --machine` and prints each row as it arrives, then compares
-the result with the Windows half feature by feature (`tests/feature_contract.json`).
+the result with the Windows half feature by feature (`tests/feature_contract.json`). Supported disc images found through
+`TRESPASSER_ISO_DIR`, `config/local.json` or a development downloads folder are imported headlessly before the suites
+(`--import-dir`); an existing version is never replaced.
 
 Needs cmake 3.20+, ninja or make, gcc or clang, python3 and `external/pcrecomp` (`tools/fetch_pcrecomp.py`). The scripts
 never start the game, a window, a sound device or the launcher (the binary itself only answers `--build-info` and `--self-check`, headless); suites run with SDL's dummy drivers. The build tree is
@@ -80,9 +82,11 @@ Windows build), then starts the game when **Play** is pressed. Every page and se
 
 The launcher is usable with mouse, touch, trackpad and keyboard, and with a gamepad (SDL3 navigation: D-pad and left stick move, A
 presses, B goes back). Its **Graphics card** list is the Vulkan device list the game uses (`jpt_vk_probe_headless`), with the sample
-counts of each card. The Windows-only **Direct3D 11** renderer is not offered. A release that needs a lifted build the Linux
-executable does not carry (Spanish and Brazilian Portuguese: `lift_es117`, `lift_ptbr117`) is listed as *not playable yet*; the
-English and Russian 1.0.116 releases run. **Install Game** copies the game files from the disc image into `game/` with the same
+counts of each card. The Windows-only **Direct3D 11** renderer is not offered. All four supported releases run: English and
+Russian use `lift116`, Spanish `lift_es117` and Brazilian Portuguese `lift_ptbr117`; the installed version selects one lift,
+once, before guest code runs. The headless boot validates all four through their first frame; gameplay and the interactive
+display, audio and input remain manual. The published v0.1.0 AppImage predates this fix and runs English and Russian only;
+this source tree needs a new build. **Install Game** copies the game files from the disc image into `game/` with the same
 reader, checks and SHA-256 manifest as Windows (`tests/linux_launcher_tests.cpp`: PE string resources, Joliet UTF-16 names, part
 files, checksums).
 
@@ -249,7 +253,8 @@ python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui and TRG Launcher a
 
 * No run on real hardware yet: the launcher window, controller feel, Wayland, audio devices and Steam Deck are unconfirmed.
 * Shift at start does not bring the launcher back; use `--launcher`.
-* Spanish and Brazilian Portuguese releases import but do not run on Linux until their lifted builds are added.
+* Spanish and Brazilian Portuguese run through their own lifts and pass the headless first-frame boot; interactive gameplay,
+  display, audio and input are still pending manual validation.
 * The native desktop picker uses `zenity` or `kdialog` (otherwise the built-in browser opens); the folder buttons need `xdg-open`.
 
 ## The one Linux artifact (JPT-ART4N)
@@ -350,11 +355,13 @@ target, and no absolute-address store into the section exists (`tools/x64_selfmo
   with MSVC x86 and is not called there. One implementation for both platforms needs a differential run of the lifted and the
   native routines on a Windows x86 build, which was not done. **The lifted rasteriser has not been compared against the
   native one.**
-* **Other lifts.** Only `lift116` carries SelfMod. `lift_es117` and `lift_ptbr117` get it when regenerated with
-  `tools/generate-lift.ps1` (the es-117 executable was not available here).
-* **Tests.** `tests/test_selfmod_lift.py`: the range, 46 sorted entries equal to the executable's routine starts, every
-  SelfMod target the lifted `.text` calls has a dispatch entry, every call out reaches lifted code, nothing is left unlifted,
-  44 patch sites are guest loads, no placeholder constants remain.
+* **Other lifts.** `lift116`, `lift_es117` and `lift_ptbr117` each carry their own SelfMod section, generated from the
+  build's own executable with `tools/lift_selfmod.py` (the profile's SelfMod range). The 117 sections have 46 entries and
+  44 patch sites like the baseline; their ranges are `0x0063D000-0x00646B75` and `0x0063F000-0x00648B75`.
+* **Tests.** `tests/test_selfmod_lift.py`: the baseline range, 46 sorted entries equal to the executable's routine starts,
+  every SelfMod target the lifted `.text` calls has a dispatch entry, every call out reaches lifted code, nothing is left
+  unlifted, 44 patch sites are guest loads, no placeholder constants remain; the 117 lifts are checked for their own range,
+  entries and patch sites.
 
 ## Guest DLLs (`tools/lift_module.py`, `src/linux/linux_modules.*`)
 
@@ -363,7 +370,7 @@ A guest DLL is lifted to C like the executable; the DLL is a development input a
 the lifter or the runtime.
 
 * **MSVCIRT, as supported.** `MSVCIRT.DLL` 6.0.8168.0, PE timestamp 1998-06-17 18:45:46 UTC, SHA-256
-  `647f7534aaaedffa93534e4cb9b24bfcf91524828ff0364d88973be58139e255` (identical in the three installed versions), base `0x780A0000`,
+  `647f7534aaaedffa93534e4cb9b24bfcf91524828ff0364d88973be58139e255` (identical in every installed version), base `0x780A0000`,
   size `0x12000`, entry (DllMain) `0x780A1000`, sections `.text` (`0x71E2` bytes), `.rdata`, `.data`, `.rsrc`, `.reloc`. 445 exports,
   all named: 390 code, 55 data, 0 forwarders. 889 relocations. No TLS directory. Imports: MSVCRT 43, KERNEL32 5.
 * **Lift.** Starts are the 390 code exports, DllMain, the 141 code addresses held in `.rdata`/`.data` and the 81 held as immediates in `.text` (both found through the relocation table:
@@ -372,7 +379,8 @@ the lifter or the runtime.
   `msvcirt_meta`) and `recomp_msvcirt.json` in the lift's folder, inside the `lift116` archive; symbols are `msvcirt_sub_<va>`, so they
   never collide with `lift116_*`. `tools/run_lift.py` runs it for every lift that lists the module; a full regeneration reproduced all
   77 files byte for byte. The manifest records the module (SHA-256, base, size, entry, text range, entry and export counts, export
-  fingerprint) and `tools/lifts.py verify --content` checks it. Only `lift116` carries MSVCIRT for now.
+  fingerprint) and `tools/lifts.py verify --content` checks it. The generated lift lives in `lift116`; the runtime maps it for
+  every version, because the installed `MSVCIRT.DLL` is the same file in all four releases.
 * **Runtime.** The installed DLL (`versions/<id>/MSVCIRT.DLL`, then the game folder) is read, its SHA-256 compared with the lift's and
   mapped by the same PE loader as the executable at its preferred base, before anything else allocates in the window; a different DLL
   is refused. The lifted code has its absolute addresses baked in, so the module must sit at `0x780A0000`. The DLL is a runtime input
@@ -400,13 +408,14 @@ the lifter or the runtime.
 
 ## Bootstrap (`src/linux/linux_boot.*`, `--bootstrap-headless`)
 
-Maps `guest.img` (SHA-256 checked against the lift's source) and the lifted DLLs, binds the imports of both, attaches the DLL and calls
-the lifted entry point `0x00626BE2` on a guest thread. The host window is the virtual backend: no window, no audio. The run stops, with a
+Maps the selected version's `guest.img` (SHA-256 checked against its lift's source) and the lifted MSVCIRT DLL, binds the imports of
+both, attaches the DLL and calls the active lift's entry point on a guest thread (`0x00626BE2` for `lift116`). The host window is the
+virtual backend: no window, no audio. The run stops, with a
 status, when the guest presents its first frame (`BOOTSTRAP_FRAME_PRESENTED`, the default), after `frame_limit` frames, when it polls
 `PeekMessageA` 200 000 times with nothing to deliver (`BOOTSTRAP_IDLE`), at the first import with no implementation, or when it exits.
-Run by `tests/linux_boot_tests.c` (needs the installed game, else `DATA UNAVAILABLE`); log lines: `Linux guest: entry ...`,
-`Linux HLE: resolved N/297`, `Linux USER32: registered class ...`, `Linux USER32: created window ...`, `Linux GDI: framebuffer ...`,
-`Linux DDRAW: primary surface ...`, `Linux presentation: ...`.
+Run by `tests/linux_boot_tests.c` (needs the installed game, else `DATA UNAVAILABLE`; it checks every installed version); log lines:
+`Linux guest: entry ...`, `Linux HLE: resolved N/297`, `Linux USER32: registered class ...`, `Linux USER32: created window ...`,
+`Linux GDI: framebuffer ...`, `Linux DDRAW: primary surface ...`, `Linux presentation: ...`.
 
 Measured with the game installed here, in the order the guest does it: CRT start-up and the static initialisers of the executable and of
 MSVCIRT; the registry (`ClipCursor`, `RegOpenKeyExA`, `RegQueryValueExA`, `RegSetValueExA`); `RegisterWindowMessageA`;
@@ -604,9 +613,10 @@ in `src/linux/linux_host.c`, `linux_overrides.c` and `linux_features.c`.
   `CPartition::bAddChild`), and the lift hooks, which run in front of one instruction with the guest's registers and may change them.
   `g_alias_entry` is checked by every override that must leave alias entries to the original.
 - **Fingerprints and failure.** The registry refuses an install before the executable is verified (`target_verified`; the boot has
-  compared the image with the build lift116 was generated from), an unlisted address, a second install, a missing replacement and the
-  lifted body as its own replacement; each refusal is recorded and a required one stops the run. A version whose lift is not the one
-  linked (es-117, ptbr-117 on Linux) installs nothing. `lx_overrides_reset` puts every entry back on its lifted body.
+  compared the image with the build the active lift was generated from), an unlisted address, a second install, a missing replacement
+  and the lifted body as its own replacement; each refusal is recorded and a required one stops the run. The registry chosen is the
+  one of the active lift; a registry that belongs to another lift is refused. `lx_overrides_reset` puts every entry back on its
+  lifted body.
 - **Shared features.** Dual stow, Maximum object detail, the collision-sound re-arm, the 100 MB disk-space bypass and the Quick Save
   list filter (`ce_gameplay.c`), Active AI (`active_ai.c`), the official Patch 1.1 (`patch117*.c`, its level files served fixed from the
   LZ calls through `patch117_level_bytes`), the pelvis and water physics (`physics_fixes.c`), the terrain tolerances, the field of view
@@ -700,7 +710,7 @@ shared.
 | Guest address space (4 GB window, commit/decommit/protect, guest heap, PE mapping, import binding) | `src/host64/` | tested on Linux and Windows x64 (`x64_tests`, 346 checks) |
 | Call spine, guest threads, recovery frames | `src/linux/linux_spine.*` | tested (`linux_call_spine_tests`, 22 checks) |
 | Guest DLL lift and loader (MSVCIRT) | `tools/lift_module.py`, `src/linux/linux_modules.*` | 578 functions lifted, tested (`linux_module_tests`, 42 checks) |
-| Lifted `lift116` with SelfMod, Linux bindings for the 70 stable entries and 27 hooks (the shared features install over them: see above) | `src/linux/linux_lift116.c` | links into the executable |
+| Lifted builds `lift116`, `lift_es117`, `lift_ptbr117` with their SelfMod sections, Linux bindings for the profile override lists and the 27 baseline hooks (the shared features install over them: see above) | `src/linux/linux_lift.c` | all three link into the executable; the installed version selects one |
 | Guest path resolution, registry store, synchronisation, file interface | `src/common/jpt_vpath.*`, `jpt_reg_store.*`, `jpt_sync.*`, `jpt_fs*.c` | tested |
 | kernel32 HLE: 46 of 59 imports | `src/linux/linux_hle.c` | tested (`linux_hle_tests`) |
 | msvcrt HLE (start-up, `_EH_prolog`, exit, heap, x87 helpers, descriptors and `FILE`, `sprintf`, strings, numbers) and the data exports `_acmdln`, `_adjust_fdiv`, `_iob`, `__pioinfo`, `__badioinfo` | `src/linux/linux_msvcrt*.c` | reached by the bootstrap; no unit test of its own yet |

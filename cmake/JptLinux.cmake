@@ -268,7 +268,7 @@ if(JPT_LINUX_LIFTED)
     message(FATAL_ERROR "pcrecomp not found at ${PCRECOMP}: run `python3 tools/fetch_pcrecomp.py`")
   endif()
   jpt_unpack_lifts("${CMAKE_SOURCE_DIR}")
-  add_library(jpt_lifted_objects OBJECT ${lift116_SOURCES})
+  add_library(jpt_lifted_objects OBJECT ${GEN_SOURCES})
   target_include_directories(jpt_lifted_objects PRIVATE ${PCRECOMP}/runtime/recomp32 src/common)
   target_compile_definitions(jpt_lifted_objects PRIVATE ${JPT_RECOMP_DEFINES})
   target_compile_options(jpt_lifted_objects PRIVATE -w ${JPT_LINUX_GEN_OPT})
@@ -279,7 +279,7 @@ if(JPT_LINUX_LIFTED)
 
   # The lifted guest with its Linux bindings and the bootstrap, one archive so the guest's references to the runtime
   # (jpt_linux_core) and the bindings' references to the lifted bodies resolve in either order.
-  add_library(jpt_linux_guest STATIC $<TARGET_OBJECTS:jpt_lifted_objects> src/linux/linux_lift116.c src/linux/linux_boot.c src/linux/linux_override_table.c)
+  add_library(jpt_linux_guest STATIC $<TARGET_OBJECTS:jpt_lifted_objects> src/linux/linux_lift.c src/linux/linux_boot.c src/linux/linux_override_table.c)
   target_compile_options(jpt_linux_guest PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
   target_link_libraries(jpt_linux_guest PUBLIC jpt_linux_core)
   jpt_linux_test(linux_boot_tests SOURCES tests/linux_boot_tests.c LIBS jpt_linux_guest)

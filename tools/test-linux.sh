@@ -5,9 +5,10 @@
 # running it by hand gives the same result.
 #
 #   tools/test-linux.sh [--build-dir DIR | --native-build] [--no-build] [--config CONFIG] [--cc COMPILER] [--elf-baseline 2.31]
-#                       [--machine] [--filter TEXT] [--list] [--sanitize] [--stage]
+#                       [--machine] [--filter TEXT] [--list] [--sanitize] [--stage] [--import-dir DIR]
 #
 # --native-build builds under ~/.cache/jpt-recomp, on the Linux file system, which is much faster than a Windows drive in WSL.
+# --import-dir imports the supported disc images it finds into the checkout's game/ before the suites (read only on the images).
 # --stage copies the validated executable to build/linux/bin (with its build manifest) when every row passed.
 # --sanitize builds a separate AddressSanitizer + UndefinedBehaviorSanitizer tree and runs only the Linux-specific suites in it.
 # Exit code 0 when every row passes; a suite that needs data that is absent says DATA UNAVAILABLE and is never counted as a pass.
@@ -25,6 +26,7 @@ list=0
 native=0
 sanitize=0
 stage=0
+import_dir=""
 while [ $# -gt 0 ]; do
   case $1 in
     --build-dir) build_dir=$2; shift 2 ;;
@@ -38,7 +40,8 @@ while [ $# -gt 0 ]; do
     --list) list=1; shift ;;
     --sanitize) sanitize=1; shift ;;
     --stage) stage=1; shift ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    --import-dir) import_dir=$2; shift 2 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "test-linux: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -100,6 +103,21 @@ if [ "$build" = 1 ]; then
   else
     emit "BUILD|FAIL|$(( $(date +%s) - started ))|build failed"
     echo "$output" | tail -40 | sed 's/^/@@OUT|build|/'
+    exit 1
+  fi
+fi
+
+if [ -n "$import_dir" ]; then
+  if [ ! -x "$build_dir/linux_launcher_tests" ]; then
+    emit "IMPORT|FAIL|0|linux_launcher_tests is not built"
+    exit 1
+  fi
+  started=$(date +%s)
+  if output=$("$build_dir/linux_launcher_tests" --import-dir "$import_dir" "$repo/game" 2>&1); then
+    emit "IMPORT|PASS|$(( $(date +%s) - started ))|$(echo "$output" | grep -c '^IMPORT|') disc image(s) checked, supported versions installed or current"
+  else
+    emit "IMPORT|FAIL|$(( $(date +%s) - started ))|a supported disc image could not be imported"
+    echo "$output" | tail -40 | sed 's/^/@@OUT|import|/'
     exit 1
   fi
 fi

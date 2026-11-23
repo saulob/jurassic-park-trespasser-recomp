@@ -8,6 +8,7 @@
 #include "guest_memory.h"
 #include "guest_abi.h"
 #include "guest_ptr.h"
+#include "guest_va.h"
 #include "gamepad.h"
 #include "gamepad_ui.h"
 #include "jpt_sync.h"
@@ -22,7 +23,6 @@
 #define SINPUT_MOVE_Y 0x10u
 #define SINPUT_STATE 0x14u
 #define SINPUT_HIT 0x18u
-#define INVERT_MOUSE_VA 0x006603D8u
 #define HOTPLUG_SCAN_MS 200u
 #define VK_ESCAPE 0x1Bu
 #define VK_SPACE 0x20u
@@ -243,7 +243,7 @@ static uint32_t read_u32(uint32_t va) {
 }
 
 static int invert_mouse(void) {
-    const uint8_t* p = (const uint8_t*)gm_ptr_checked(INVERT_MOUSE_VA, 1, 0);
+    const uint8_t* p = (const uint8_t*)gm_ptr_checked(jpt_gva_or_canonical(GVAI_0x006603D8), 1, 0);
     return p && *p;
 }
 

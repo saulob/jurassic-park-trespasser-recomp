@@ -10,12 +10,12 @@
 #include "frontend_platform.h"
 #include "gamepad.h"
 #include "guest_abi.h"
+#include "guest_va.h"
 #include "host_input.h"
 #include "linux_log.h"
 #include "linux_user32.h"
 #include "loading_hd.h"
 
-#define CENTRE_WINDOW_VA 0x00411EA0u
 #define RASTER_W 0x08u
 #define RASTER_H 0x0Cu
 #define RASTER_BPP 0x10u
@@ -160,7 +160,7 @@ static void centre_window(void) {
 
 int lx_frontend_install(void) {
     loading_hd_install();
-    return guest_override_install(CENTRE_WINDOW_VA, centre_window, &S.centre_lifted);
+    return guest_override_install(GVA(0x00411EA0), centre_window, &S.centre_lifted);
 }
 
 void lx_frontend_reset(void) {

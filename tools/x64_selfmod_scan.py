@@ -81,24 +81,27 @@ def data_pointers(secs):
     return out
 
 
-def analyse(sm):
+def analyse(sm, lo=SM_LO, hi=SM_HI):
+    def in_range(v):
+        return lo <= v < hi
+
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
     md.detail = True
     md.skipdata = True
-    ins = [i for i in md.disasm(sm, SM_LO)]
+    ins = [i for i in md.disasm(sm, lo)]
     addrs = [i.address for i in ins]
 
     def containing(va):
         k = bisect.bisect_right(addrs, va) - 1
         return ins[k] if k >= 0 else None
 
-    starts = sorted(a for a in range(SM_LO, SM_HI - 3, 16) if sm[a - SM_LO:a - SM_LO + 3] == b"\x55\x8b\xec")
+    starts = sorted(a for a in range(lo, hi - 3, 16) if sm[a - lo:a - lo + 3] == b"\x55\x8b\xec")
     routines = []
-    for n, lo in enumerate(starts):
-        hi = starts[n + 1] if n + 1 < len(starts) else SM_HI
-        body = [i for i in ins if lo <= i.address < hi and i.id != 0]
+    for n, entry in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else hi
+        body = [i for i in ins if entry <= i.address < end and i.id != 0]
         r = {
-            "entry": lo, "end": hi, "insns": len(body), "x87": 0, "fdiv": 0, "store16": 0, "store8": 0,
+            "entry": entry, "end": end, "insns": len(body), "x87": 0, "fdiv": 0, "store16": 0, "store8": 0,
             "texel8": 0, "texel16": 0, "backedges": 0, "calls_out": [], "pushes_sm": [], "patches": [],
             "rets": 0, "cmov": 0,
         }
@@ -121,14 +124,14 @@ def analyse(sm):
             if m == "movzx" and len(ops) == 2 and ops[1].type == x86.X86_OP_MEM and ops[1].mem.base:
                 r["texel8" if ops[1].size == 1 else "texel16"] += 1
             if (m.startswith("j") or m == "loop") and ops and ops[0].type == x86.X86_OP_IMM:
-                if lo <= ops[0].imm < i.address:
+                if entry <= ops[0].imm < i.address:
                     r["backedges"] += 1
-            if m == "call" and ops and ops[0].type == x86.X86_OP_IMM and not in_sm(ops[0].imm):
+            if m == "call" and ops and ops[0].type == x86.X86_OP_IMM and not in_range(ops[0].imm):
                 r["calls_out"].append((i.address, ops[0].imm))
-            if m == "push" and ops and ops[0].type == x86.X86_OP_IMM and in_sm(ops[0].imm):
+            if m == "push" and ops and ops[0].type == x86.X86_OP_IMM and in_range(ops[0].imm):
                 r["pushes_sm"].append((i.address, ops[0].imm))
             if m == "lea" and ops[1].type == x86.X86_OP_MEM and not ops[1].mem.base and not ops[1].mem.index \
-                    and in_sm(ops[1].mem.disp & 0xFFFFFFFF):
+                    and in_range(ops[1].mem.disp & 0xFFFFFFFF):
                 label = ops[1].mem.disp & 0xFFFFFFFF
                 reg = ops[0].reg
                 for j in body[k + 1:k + 4]:
@@ -144,7 +147,7 @@ def analyse(sm):
                                 field = "disp32"
                             elif tgt.imm_size == 4 and rel == tgt.imm_offset:
                                 field = "imm32"
-                        placeholder = struct.unpack_from("<I", sm, site - SM_LO)[0]
+                        placeholder = struct.unpack_from("<I", sm, site - lo)[0]
                         r["patches"].append({
                             "writer": j.address, "store": f"{j.mnemonic} {j.op_str}", "site": site, "size": jo[0].size,
                             "insn": tgt.address if tgt else None,
@@ -159,7 +162,7 @@ def analyse(sm):
     # count stores with an absolute SelfMod displacement as a cross-check (expected 0)
     abs_writes = [i.address for i in ins if i.id and i.operands and i.operands[0].type == x86.X86_OP_MEM
                   and not i.operands[0].mem.base and not i.operands[0].mem.index
-                  and in_sm(i.operands[0].mem.disp & 0xFFFFFFFF) and i.mnemonic.startswith(("mov", "add", "sub", "or", "and", "xor", "inc", "dec"))]
+                  and in_range(i.operands[0].mem.disp & 0xFFFFFFFF) and i.mnemonic.startswith(("mov", "add", "sub", "or", "and", "xor", "inc", "dec"))]
     return routines, abs_writes
 
 

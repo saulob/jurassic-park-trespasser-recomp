@@ -110,6 +110,7 @@ Write-Output "RESULT code=$code same=$($before -eq (Get-State)) passed=$($output
     Check ($linuxHelper -notmatch '(?i)/mnt/[a-z]/' -and $linuxHelper -notmatch '(?i)Start-Process|Invoke-WebRequest|wine|proton') 'no hard-coded /mnt path, no process shell-out and no Wine in the Linux half'
     Check ($text -notmatch '(?i)trespasser_recomp(\.exe)?\s+--run|--run') 'the gate never runs the game'
     Check ($text.Contains('[switch]$WindowsOnly') -and $text.Contains('[switch]$LinuxOnly') -and $text.Contains('[switch]$SkipLinux') -and $text.Contains('[string]$LinuxDistro') -and $text.Contains('[switch]$Sanitize')) 'the options of the two halves exist'
+    Check ($text -match '(?m)^\s*\[switch\]\$Build\s*,' -and $text -match '(?m)^\s*\[string\]\$BuildDir\s*=') '-Build is an explicit switch, so it is never read as an abbreviation of -BuildDir'
 
     . (Join-Path $root 'tools\_gate_linux.ps1')
     $passEvidence = @([pscustomobject]@{ suite = 'a' })
@@ -160,10 +161,19 @@ Write-Output "RESULT code=$code same=$($before -eq (Get-State)) passed=$($output
     Check ($listed.Code -eq 0 -and $listed.Text.Contains('platform_tests') -and -not $listed.Text.Contains('gamepad_tests')) '-Filter narrows -List to the matching suites'
     $none = Invoke-Gate $gate @('-Filter', 'no suite has this text 7f3a', '-NoBuild')
     Check ($none.Code -ne 0 -and $none.Text -match 'no suite matches') 'a filter that matches nothing fails instead of passing'
+    $wiredReal = Invoke-Gate $gate @('-Filter', 'every test is wired in', '-NoBuild')
+    Check ($wiredReal.Code -eq 0 -and $wiredReal.Text -match 'PASS\s+every test is wired in' -and $wiredReal.Text -match 'every tool classified') 'the repository''s tools, including the packaging helpers, are each run or classified with a role'
+    $buildConflict = Invoke-Gate $gate @('-Build', '-NoBuild')
+    Check ($buildConflict.Code -ne 0 -and $buildConflict.Text -match '-Build \(build only\) and -NoBuild') '-Build is an explicit build-only switch and excludes -NoBuild'
+    $buildLinux = Invoke-Gate $gate @('-Build', '-LinuxOnly')
+    Check ($buildLinux.Code -ne 0 -and $buildLinux.Text -match 'cannot be combined with -LinuxOnly') '-Build never pretends to build the Linux half'
 
     $cheap = Invoke-Gate $gate @('-Filter', 'tests\build_script_tests.ps1', '-NoBuild') $env:PATH $other
     Check ($cheap.Code -eq 0 -and $cheap.Text -match 'PASS\s+tests\\build_script_tests\.ps1' -and $cheap.Text -match 'PARTIAL RUN') 'a filtered run works from another folder and says it is partial'
     Check ($cheap.Text -notmatch 'ALL TESTS PASSED') 'a partial run never claims all tests passed'
+
+    $builds = Invoke-Gate $gate @('-Filter', 'test_build_parity.py', '-WindowsOnly', '-NoBuild')
+    Check ($builds.Code -eq 0 -and $builds.Text -match '==> Supported builds' -and $builds.Text -match 'en-116\s+lift116' -and $builds.Text -match 'ru-116\s+lift116' -and $builds.Text -match 'es-117\s+lift_es117' -and $builds.Text -match 'ptbr-117\s+lift_ptbr117' -and $builds.Text -notmatch 'Cannot convert value') 'the Supported builds table prints all four versions without a loop variable overwriting a switch parameter'
 
     $missing = Invoke-Gate $gate @('-Filter', 'platform_tests', '-NoBuild', '-BuildDir', (Join-Path $work 'no-build'))
     Check ($missing.Code -ne 0 -and $missing.Text -match 'no test program' -and $missing.Text.Contains('FAILED: platform_tests')) 'a missing test program fails its suite and says how to build it'

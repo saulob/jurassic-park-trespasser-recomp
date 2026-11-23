@@ -17,5 +17,5 @@ void lx_guest_ui_set_probe(lx_guest_ui_fn fn) { s_probe = fn; }
 
 int lx_guest_ui_probe(guest_ui_view_t* out) {
     if (s_probe) return s_probe(out);
-    return guest_ui_model_probe(jpt_gva_canonical, read32, NULL, out);
+    return guest_ui_model_probe(jpt_gva_table(), read32, NULL, out);
 }

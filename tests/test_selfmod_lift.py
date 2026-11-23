@@ -26,8 +26,8 @@ def selfmod_source():
     return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
-def selfmod_entries(text):
-    start = text.index("lift116_selfmod_dispatch_table[]")
+def selfmod_entries(text, lift="lift116"):
+    start = text.index(f"{lift}_selfmod_dispatch_table[]")
     return [(int(a, 16), name) for a, name in TABLE.findall(text[start:])]
 
 
@@ -126,6 +126,34 @@ class SelfModLift(unittest.TestCase):
         lo, hi, starts = exe_routine_starts()
         self.assertEqual((lo, hi), (self.lo, self.hi))
         self.assertEqual(starts, [va for va, _ in self.entries])
+
+
+class EveryLiftCarriesItsSelfMod(unittest.TestCase):
+    LIFTS = (
+        ("lift_es117", "gen_es117", 0x0063D000, 0x00646B75),
+        ("lift_ptbr117", "gen_ptbr117", 0x0063F000, 0x00648B75),
+    )
+
+    def test_each_117_lift_has_its_own_section(self):
+        for lift, folder, lo, hi in self.LIFTS:
+            with self.subTest(lift=lift):
+                path = ROOT / "src" / "recomp" / folder / "recomp_selfmod.c"
+                if not path.is_file():
+                    self.skipTest(f"{path.relative_to(ROOT)} is not unpacked (configure the build)")
+                text = path.read_text(encoding="utf-8")
+                entries = selfmod_entries(text, lift)
+                self.assertEqual(len(entries), 46)
+                self.assertEqual([va for va, _ in entries], sorted({va for va, _ in entries}))
+                self.assertTrue(all(lo <= va < hi for va, _ in entries))
+                self.assertTrue(all(name == f"{lift}_sub_{va:08X}" for va, name in entries))
+                self.assertIn(f"{lift}_selfmod_dispatch_count = 46u;", text)
+                self.assertNotIn("RECOMP_NOT_LIFTED", text)
+                sites = {int(a, 16) for a in re.findall(r"MEM32\(0x(006[0-9A-F]{5})u\)", text) if lo <= int(a, 16) < hi}
+                self.assertEqual(len(sites), 44)
+                folder_path = ROOT / "src" / "recomp" / folder
+                main = {int(a, 16) for a, _ in TABLE.findall((folder_path / "recomp_dispatch.c").read_text(encoding="utf-8"))}
+                called = {int(a, 16) for a in re.findall(r"RECOMP_CALL\(\w+_sub_([0-9A-F]{8})\)", text)}
+                self.assertEqual(sorted(a for a in called if not lo <= a < hi and a not in main), [])
 
 
 if __name__ == "__main__":

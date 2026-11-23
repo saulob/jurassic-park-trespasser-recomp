@@ -4207,7 +4207,7 @@
      {
       "suite": "linux_overrides_tests",
       "file": "tests/linux_overrides_tests.c",
-      "pattern": "an executable other than the one lift116 was built from"
+      "pattern": "does not accept the Spanish build"
      },
      {
       "suite": "linux_overrides_tests",
@@ -5637,7 +5637,7 @@
   },
   {
    "id": "game-version-selection",
-   "name": "The version Play starts is the launcher's choice among the installed ones the executable can run; each version keeps its saves",
+   "name": "All four game versions import, resolve and Play on both hosts; each version keeps its saves",
    "owner": "launcher",
    "scope": "global",
    "requirement": "none",
@@ -5661,9 +5661,14 @@
       "pattern": "TestVersions"
      },
      {
+      "suite": "linux_boot_tests",
+      "file": "tests/linux_boot_tests.c",
+      "pattern": "test_version_matrix"
+     },
+     {
       "suite": "tests\\test_linux_parity.py",
       "file": "tests/test_linux_parity.py",
-      "pattern": "test_an_unavailable_version_is_named_not_started"
+      "pattern": "test_every_installed_version_runs_on_linux"
      }
     ]
    }

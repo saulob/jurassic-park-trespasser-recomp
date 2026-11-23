@@ -1023,7 +1023,7 @@ void lx_user32_set_ui_loop(void (*fn)(void)) { s_ui_loop = fn; }
 static uint64_t u_GetCursorPos(const uint32_t* a, void* u) {
     int32_t pt[2];
     (void)u;
-    if (s_ui_loop && lx_guest_eip() == jpt_gva_canonical[GVA_ID(0x00417840)]) s_ui_loop();
+    if (s_ui_loop && lx_guest_eip() == jpt_gva_or_canonical(GVAI_0x00417840)) s_ui_loop();
     pt[0] = s_cursor_x, pt[1] = s_cursor_y;
     return gp_copy_out(a[0], pt, sizeof pt);
 }

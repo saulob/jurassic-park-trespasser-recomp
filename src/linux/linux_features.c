@@ -10,6 +10,7 @@
 #include "guest_features.h"
 #include "guest_memory.h"
 #include "guest_ui_model.h"
+#include "guest_va.h"
 #include "host_input.h"
 #include "l10n.h"
 #include "linux_gamepad.h"
@@ -39,7 +40,7 @@ static recomp_func_t s_cinput_lifted;
 
 int guest_ui_probe(guest_ui_view_t* out) { return lx_guest_ui_probe(out); }
 
-const char* guest_ui_class_name(uint32_t vtable) { return guest_ui_model_class_name(jpt_gva_canonical, vtable); }
+const char* guest_ui_class_name(uint32_t vtable) { return guest_ui_model_class_name(jpt_gva_table(), vtable); }
 
 int guest_writable(uint32_t va, uint32_t bytes) { return bytes == 0 || gm_ptr_checked(va, bytes, 1) != NULL; }
 
@@ -185,6 +186,7 @@ int lx_features_start(const jpt_config_t* cfg, const char* game_dir, const char*
 void lx_features_stop(void) {
     if (!s_started) return;
     s_started = 0;
+    guest_features_stop();
     lx_panel_release();
     lx_frontend_reset();
     lx_card_reset();
@@ -229,7 +231,7 @@ static void cinput_read(void) {
 }
 
 int lx_features_install_cinput(void) {
-    return guest_override_install(LX_CINPUT_READ_VA, cinput_read, &s_cinput_lifted);
+    return guest_override_install(GVA(0x005F80B0), cinput_read, &s_cinput_lifted);
 }
 
 int lx_features_pointer_move(int x, int y) { return s_started && debug_menu_visible() && debug_menu_pointer(0, x, y); }

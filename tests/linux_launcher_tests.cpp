@@ -3,6 +3,8 @@
 // an AppImage, the version lookup with POSIX separators and the file picker probe. Scratch folders only; no window, no GPU.
 #include <unistd.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -350,17 +352,17 @@ static void TestVersions() {
     CHECK(jpt_game_version_saves_dir("U", "U/saves", jpt_game_version_by_id("en-116"), out, sizeof out) && std::string(out) == "U/saves");
     CHECK(jpt_game_version_saves_dir("U", "U/saves", jpt_game_version_by_id("ru-116"), out, sizeof out) &&
           std::string(out) == "U/versions/ru-116/saves");
-    CHECK(!jpt_game_version_unavailable_here(jpt_game_version_by_id("en-116")) && !jpt_game_version_unavailable_here(jpt_game_version_by_id("ru-116")));
-    CHECK(jpt_game_version_unavailable_here(jpt_game_version_by_id("es-117")) && jpt_game_version_unavailable_here(jpt_game_version_by_id("ptbr-117")));
+    CHECK(jpt_game_version_playable(jpt_game_version_by_id("en-116")) && jpt_game_version_playable(jpt_game_version_by_id("ru-116")) &&
+          jpt_game_version_playable(jpt_game_version_by_id("es-117")) && jpt_game_version_playable(jpt_game_version_by_id("ptbr-117")));
     const jpt_game_version_t* chosen = nullptr;
     CHECK(!jpt_game_version_resolve(root.c_str(), "", 1, out, sizeof out, &chosen));
-    for (const char* id : {"es-117", "ru-116"}) {
+    for (const char* id : {"en-116", "ru-116", "es-117", "ptbr-117"}) {
         fs::create_directories(dir / "versions" / id, ec);
         Touch(dir / "versions" / id / JPT_GUEST_IMAGE);
     }
-    CHECK(jpt_game_version_resolve(root.c_str(), "es-117", 1, out, sizeof out, &chosen) && chosen == jpt_game_version_by_id("ru-116"));
-    CHECK(jpt_game_version_resolve(root.c_str(), "ru-116", 1, out, sizeof out, &chosen) && chosen == jpt_game_version_by_id("ru-116"));
-    CHECK(std::string(out) == root + "/versions/ru-116");
+    for (const char* id : {"en-116", "ru-116", "es-117", "ptbr-117"})
+        CHECK(jpt_game_version_resolve(root.c_str(), id, 1, out, sizeof out, &chosen) && chosen == jpt_game_version_by_id(id));
+    CHECK(jpt_game_version_resolve(root.c_str(), "unknown", 1, out, sizeof out, &chosen) && chosen == jpt_game_version_by_id("en-116"));
     fs::remove_all(dir, ec);
 }
 
@@ -444,7 +446,54 @@ static void TestSteamDeck1280x800() {
     CHECK(FormatLinuxOperatingSystem("Ubuntu 24.04", "LENOVO", "ThinkPad") == "Linux: Ubuntu 24.04");
 }
 
-int main() {
+static int ImportDirectory(const fs::path& images, const fs::path& game_root) {
+    std::vector<fs::path> found;
+    std::error_code ec;
+    for (const fs::directory_entry& entry : fs::directory_iterator(images, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file(ec) || ec) continue;
+        std::string extension = entry.path().extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+        if (extension == ".iso") found.push_back(entry.path());
+    }
+    if (ec || found.empty()) {
+        std::fprintf(stderr, "import: no disc images in %s\n", images.string().c_str());
+        return 2;
+    }
+    std::sort(found.begin(), found.end());
+    int failed = 0;
+    for (const fs::path& iso : found) {
+        IsoImage image;
+        std::string why;
+        if (image.Open(iso, why)) {
+            const DiscMatch match = IdentifyDisc(image, KnownProfiles(), why);
+            if (match.profile && fs::is_regular_file(VersionFolder(game_root, *match.profile) / JPT_GUEST_IMAGE)) {
+                std::printf("IMPORT|%s|Already installed|%s|%s is already installed\n", iso.filename().string().c_str(),
+                            match.profile->id(), match.profile->label());
+                continue;
+            }
+        }
+        InstallHooks hooks;
+        hooks.phase = [](const char* phase) { std::fprintf(stderr, "  %s\n", phase); };
+        hooks.log = [](const std::string& line) { std::fprintf(stderr, "  %s\n", line.c_str()); };
+        const InstallResult result = InstallFromIso(iso, game_root, hooks);
+        std::printf("IMPORT|%s|%s|%s|%s\n", iso.filename().string().c_str(), InstallStatusTitle(result.status),
+                    result.profile ? result.profile->id() : "-", result.detail.c_str());
+        if (result.ok()) continue;
+        if (result.status == InstallStatus::kWrongDisc || result.status == InstallStatus::kUnsupportedBuild ||
+            result.status == InstallStatus::kNotAnImage)
+            continue;
+        failed = 1;
+    }
+    return failed;
+}
+
+int main(int argc, char** argv) {
+    if (argc == 4 && !std::strcmp(argv[1], "--import-dir")) return ImportDirectory(argv[2], argv[3]);
+    if (argc != 1 && !(argc == 2 && !std::strcmp(argv[1], "game"))) {
+        std::fprintf(stderr, "usage: linux_launcher_tests [--import-dir IMAGE_DIR GAME_DIR]\n");
+        return 2;
+    }
     TestPeResources();
     TestPartFile();
     TestSha256();

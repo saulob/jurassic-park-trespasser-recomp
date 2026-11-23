@@ -177,9 +177,16 @@ class LauncherOnLinux(unittest.TestCase):
         self.assertIn("msaa_color_counts", info)
         self.assertIn("Vulkan", text("launcher/launcher.cpp"))
 
-    def test_an_unavailable_version_is_named_not_started(self):
-        self.assertIn("jpt_game_version_unavailable_here", text("launcher/launcher.cpp"))
-        self.assertIn("jpt_game_version_unavailable_here", text("src/common/jpt_game_version.c"))
+    def test_every_installed_version_runs_on_linux(self):
+        self.assertNotIn("unavailable_here", text("launcher/launcher.cpp"))
+        self.assertNotIn("unavailable_here", text("src/common/jpt_game_version.c"))
+        cmake = text("cmake/JptLinux.cmake")
+        self.assertIn("add_library(jpt_lifted_objects OBJECT ${GEN_SOURCES})", cmake)
+        boot = text("src/linux/linux_boot.c")
+        self.assertIn("lx_lift_for_version", boot)
+        lift = text("src/linux/linux_lift.c")
+        for name in ("lift116", "lift_es117", "lift_ptbr117"):
+            self.assertIn(name, lift)
 
 
 class SettingsReachTheLinuxRuntime(unittest.TestCase):

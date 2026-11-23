@@ -106,7 +106,11 @@ function Find-LinuxEnvironment([string]$Requested) {
     if ($Requested) {
         if ($names -notcontains $Requested) { return [pscustomobject]@{ Found = $false; Reason = "no WSL distribution named $Requested (installed: $($names -join ', '))" } }
         $candidate = Test-LinuxDistro $Requested
-        if ($candidate.Usable) { $candidate | Add-Member -NotePropertyName Found -NotePropertyValue $true -PassThru | Add-Member -NotePropertyName Why -NotePropertyValue 'chosen with -LinuxDistro' -PassThru; return $candidate }
+        if ($candidate.Usable) {
+            $candidate = $candidate | Add-Member -NotePropertyName Found -NotePropertyValue $true -PassThru |
+                Add-Member -NotePropertyName Why -NotePropertyValue 'chosen with -LinuxDistro' -PassThru
+            return $candidate
+        }
         return [pscustomobject]@{ Found = $false; Reason = "$Requested is not usable: $($candidate.Reason)" }
     }
     $preferred = @($names | Where-Object { $_ -eq 'JptFocalBuild' })
@@ -173,7 +177,7 @@ function Wait-ProcStreaming($Handle, [scriptblock]$OnLine) {
 
 # Runs tools/test-linux.sh in the chosen distribution (PowerShell -> wsl.exe -> wslpath -> bash -> the Linux gate) and returns its rows.
 # A row is printed when the next one starts, so the notes and the output lines that follow it are on it.
-function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$Sanitize, [scriptblock]$Print) {
+function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$Sanitize, [string]$ImportDir, [scriptblock]$Print) {
     $rows = New-Object System.Collections.Generic.List[object]
     $info = @{}
     $other = New-Object System.Collections.Generic.List[string]
@@ -182,6 +186,10 @@ function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$
     if ($NoBuild) { $arguments += '--no-build' }
     if ($Filter) { $arguments += @('--filter', $Filter) }
     if ($Sanitize) { $arguments += '--sanitize' }
+    if ($ImportDir) {
+        $wslImport = if ($ImportDir.StartsWith('/')) { $ImportDir } else { Get-WslPath $Environment.Name $ImportDir }
+        if ($wslImport) { $arguments += @('--import-dir', $wslImport) }
+    }
     $flush = { if ($gateState.Pending) { & $Print $gateState.Pending; $gateState.Pending = $null } }
     $handle = Start-Proc 'wsl.exe' $arguments $root 3600
     $onLine = {
@@ -199,6 +207,13 @@ function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$
                 $row = [pscustomobject]@{ Name = 'linux build'; Status = $(if ($parts[1] -eq 'PASS') { 'PASS' } else { 'FAIL' }); Checks = 0; Seconds = $seconds; Unavailable = $false; Summary = ($parts[3..($parts.Count - 1)] -join '|'); Lines = @(); Notes = @() }
                 $rows.Add($row); $gateState.Pending = $row
             }
+            'IMPORT' {
+                & $flush
+                $seconds = 0.0
+                [void][double]::TryParse($parts[2], [ref]$seconds)
+                $row = [pscustomobject]@{ Name = 'game imports'; Status = $(if ($parts[1] -eq 'PASS') { 'PASS' } else { 'FAIL' }); Checks = 0; Seconds = $seconds; Unavailable = $false; Summary = ($parts[3..($parts.Count - 1)] -join '|'); Lines = @(); Notes = @() }
+                $rows.Add($row); $gateState.Pending = $row
+            }
             'SUITE' {
                 & $flush
                 $row = [pscustomobject]@{ Name = $parts[1]; Status = $parts[2]; Checks = [int]$parts[3]; Seconds = [double]$parts[4]; Unavailable = ($parts[5] -eq '1'); Summary = ($parts[6..($parts.Count - 1)] -join '|'); Lines = @(); Notes = @() }
@@ -207,7 +222,8 @@ function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$
             'NOTE' { if ($gateState.Pending -and $gateState.Pending.Name -eq $parts[1]) { $gateState.Pending.Notes += $tail } }
             'OUT' {
                 $target = $gateState.Pending
-                if ($target -and ($target.Name -eq $parts[1] -or ($parts[1] -eq 'build' -and $target.Name -eq 'linux build'))) { $target.Lines += $tail }
+                if ($target -and ($target.Name -eq $parts[1] -or ($parts[1] -eq 'build' -and $target.Name -eq 'linux build') -or
+                                  ($parts[1] -eq 'import' -and $target.Name -eq 'game imports'))) { $target.Lines += $tail }
             }
             'END' { & $flush }
         }

@@ -73,6 +73,10 @@ const jpt_game_version_t* jpt_active_profile(void);
 jpt_lift_t jpt_active_lift(void);
 const jpt_lift_data_t* jpt_active_lift_data(void);
 
+/* For host code that also runs before a profile is chosen (headless suites): the active address, or the 1.0.116 one. */
+uint32_t jpt_gva_or_canonical(unsigned id);
+const uint32_t* jpt_gva_table(void);
+
 #ifdef __cplusplus
 }
 #endif

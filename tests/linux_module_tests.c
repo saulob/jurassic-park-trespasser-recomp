@@ -13,7 +13,7 @@
 #include "jpt_fs.h"
 #include "jpt_vpath.h"
 #include "linux_hle.h"
-#include "linux_lift116.h"
+#include "linux_lift.h"
 #include "linux_modules.h"
 #include "linux_spine.h"
 
@@ -169,7 +169,9 @@ static void test_wrong_dll_is_refused(void) {
     char path[300];
     jpt_vpath_t* vp = jpt_vpath_new();
     size_t count;
-    const lx_module_def_t* defs = lx_lift116_modules(&count);
+    const lx_lift_t* image = lx_lift_get(JPT_LIFT_116);
+    const lx_module_def_t* defs = image ? image->modules : NULL;
+    count = image ? image->module_count : 0;
     FILE* f;
     snprintf(root, sizeof root, "%s/jpt_module_tests_%d", getenv("TMPDIR") && *getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
     jpt_fs_mkdir(root);
@@ -195,6 +197,7 @@ int main(int argc, char** argv) {
     const char* game = argc > 1 ? argv[1] : env && *env ? env : "game";
     jpt_vpath_t* vp;
     size_t count;
+    const lx_lift_t* image;
     const lx_module_def_t* defs;
     char err[160];
     lx_thread_t* thread;
@@ -208,7 +211,9 @@ int main(int argc, char** argv) {
     test_wrong_dll_is_refused();
     vp = jpt_vpath_new();
     if (!jpt_vpath_mount(vp, 'C', game)) return 2;
-    defs = lx_lift116_modules(&count);
+    image = lx_lift_get(JPT_LIFT_116);
+    defs = image->modules;
+    count = image->module_count;
     if (!lx_modules_map(defs, count, vp, "en-116", err, sizeof err)) {
         printf("linux_module_tests: skipped - DATA UNAVAILABLE (%s)\n", err);
         printf("linux_module_tests: %d checks, %d failures\n", g_checks + 1, g_failures);

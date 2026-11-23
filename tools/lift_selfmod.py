@@ -79,7 +79,7 @@ def lift(exe_bytes, info, text_entries, referenced):
     """Returns (C source, entries, report) for the SelfMod section of the executable."""
     sm, lo, hi = selfmod_range(info)
     data = decodable(exe_bytes[sm.raw_offset:sm.raw_offset + sm.virtual_size], lo)
-    routines, abs_writes = scan.analyse(data)
+    routines, abs_writes = scan.analyse(data, lo, hi)
     if abs_writes:
         sys.exit(f"SelfMod is written through absolute addresses at {[hex(a) for a in abs_writes]}: not modelled")
     starts = {r["entry"] for r in routines}

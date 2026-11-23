@@ -22,6 +22,13 @@ void guest_features_install(void) {
     patch117_physics_install();
 }
 
+void guest_features_stop(void) {
+    patch117_configure(0);
+    patch117_player_configure(0);
+    patch117_physics_configure(0);
+    skip_intro_configure(0);
+}
+
 void guest_features_step(void) {
     ce_gameplay_step();
     widescreen_apply_fov();

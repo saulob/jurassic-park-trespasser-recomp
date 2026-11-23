@@ -273,15 +273,13 @@ constexpr char kRemoveVersionHelp[] =
     "Deletes this version's copied game files. Your disc image, your saves and the other versions are not touched.";
 
 bool Playable(const InstalledVersion* v) {
-    return v && v->profile && v->check.state == GameState::kReady && jpt_game_version_playable(v->profile->version) &&
-           !jpt_game_version_unavailable_here(v->profile->version);
+    return v && v->profile && v->check.state == GameState::kReady && jpt_game_version_playable(v->profile->version);
 }
 
 std::string VersionName(const InstalledVersion& v) {
     std::string name = Tr(v.profile->label());
     if (v.check.state != GameState::kReady) name += std::string(" (") + Tr(GameStateTitle(v.check.state)) + ")";
-    else if (!jpt_game_version_playable(v.profile->version) || jpt_game_version_unavailable_here(v.profile->version))
-        name += Tr(" (not playable yet)");
+    else if (!jpt_game_version_playable(v.profile->version)) name += Tr(" (not playable yet)");
     return name;
 }
 
@@ -289,7 +287,6 @@ std::string StatusDetail(const InstalledVersion* v, const GameCheck& check) {
     if (v && v->profile && check.state == GameState::kReady) {
         const jpt_game_version_t& g = *v->profile->version;
         if (!jpt_game_version_playable(&g)) return TrMessage(g.unplayable);
-        if (const char* here = jpt_game_version_unavailable_here(&g)) return TrMessage(here);
         return TrFormat("Game language: %s", Tr(g.language)) + "  \xC2\xB7  " + TrMessage(g.release);
     }
     if (check.state == GameState::kMissing) return Tr("Import the game from your Trespasser disc image.");

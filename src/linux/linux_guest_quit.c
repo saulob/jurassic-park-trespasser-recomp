@@ -2,14 +2,15 @@
 
 #include "guest_memory.h"
 #include "guest_ptr.h"
+#include "guest_va.h"
 #include "linux_log.h"
 #include "linux_user32.h"
 
-#define MODAL_PUMP 0x00417760u
-#define VIDEO_PLAYER 0x00418AE0u
-#define MAIN_WINDOW_OBJECT 0x0066E010u
-#define QUITTING_TO_WINDOWS 0x0066DE4Cu
-#define END_MODAL_FN 0x004176F0u
+#define MODAL_PUMP jpt_gva_or_canonical(GVAI_0x00417760)
+#define VIDEO_PLAYER jpt_gva_or_canonical(GVAI_0x00418AE0)
+#define MAIN_WINDOW_OBJECT jpt_gva_or_canonical(GVAI_0x0066E010)
+#define QUITTING_TO_WINDOWS jpt_gva_or_canonical(GVAI_0x0066DE4C)
+#define END_MODAL_FN jpt_gva_or_canonical(GVAI_0x004176F0)
 #define END_MODAL_SLOT 0x4Cu
 #define MANAGER_OFFSET 0x08u
 #define MANAGER_ACTIVE_OFFSET 0x04u
@@ -25,10 +26,11 @@
 typedef enum { WND_OTHER, WND_GAME, WND_INGAME_OPTIONS, WND_QUIT, WND_MAIN_MENU, WND_VIDEO, WND_LOADER } wnd_kind_t;
 
 static const struct {
-    uint32_t vtable;
+    unsigned id;
     wnd_kind_t kind;
 } k_classes[] = {
-    { 0x00645C3C, WND_GAME }, { 0x00646B40, WND_INGAME_OPTIONS }, { 0x00646970, WND_QUIT }, { 0x006466B8, WND_MAIN_MENU }, { 0x00646FC8, WND_VIDEO }, { 0x006467A0, WND_LOADER },
+    { GVAI_0x00645C3C, WND_GAME }, { GVAI_0x00646B40, WND_INGAME_OPTIONS }, { GVAI_0x00646970, WND_QUIT },
+    { GVAI_0x006466B8, WND_MAIN_MENU }, { GVAI_0x00646FC8, WND_VIDEO }, { GVAI_0x006467A0, WND_LOADER },
 };
 
 static unsigned s_ended, s_reactivations;
@@ -40,7 +42,7 @@ static int read32(uint32_t va, uint32_t* out) { return gp_read_u32(va, out); }
 
 static wnd_kind_t kind_of(uint32_t vtable) {
     for (unsigned i = 0; i < sizeof k_classes / sizeof k_classes[0]; i++)
-        if (k_classes[i].vtable == vtable) return k_classes[i].kind;
+        if (jpt_gva_or_canonical(k_classes[i].id) == vtable) return k_classes[i].kind;
     return WND_OTHER;
 }
 

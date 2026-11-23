@@ -69,6 +69,9 @@ without any executable. Maintainers regenerate one with `tools/generate-lift.ps1
 the same sources pack to the same archive. The source SHA-256 is metadata embedded in the lift and in the build's
 expectations; nothing compares it with a file on the player's machine.
 
+Both hosts link the three lifts. Linux also maps the lifted `MSVCIRT` guest DLL shared by the four releases (the installed
+`MSVCIRT.DLL` is one file, SHA-256 `647f7534…`), so a 117 version runs with the same module the 116 one uses.
+
 | Step | Tool |
 |---|---|
 | facts of a build's executable (hash, entry, SelfMod, decoder fixups) | `py -3 tools/make_profile.py <id> --exe <trespass.exe> --gen-dir gen_<x> --lift lift_<x>` writes `config/profiles/<id>.json` |
@@ -180,6 +183,11 @@ through a `GLAYOUT_` descriptor (`config/layout_descriptors.json`); `py -3 -m un
 | `ru-116` | yes | the same executable; the Russian text and font are data |
 | `es-117` | yes | its own lift in the one program; addresses, ABI and every host structure offset proven (the box-box and bAddChild fixes are applied; hand/jump is native) |
 | `ptbr-117` | yes | the same; it is the official 1.1 code, so no patch group is applied |
+
+The Linux executable carries and runs the same four versions through the same lifts; its selfmod, feature and override
+machinery selects the active lift the same way. The headless boot validates all four installed versions through their first
+frame; gameplay, interface, audio and input on a real display remain manual. The published v0.1.0 AppImage predates this
+source change and runs the 1.0.116 releases only.
 
 A version is playable when its `unplayable` text in `src/common/jpt_game_version.c` is empty; `tests/test_profiles.py`
 allows that only when the map has nothing unresolved or unproven, every required override is resolved, the ABI check is

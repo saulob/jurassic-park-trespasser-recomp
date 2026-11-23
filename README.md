@@ -326,10 +326,16 @@ translations of the same captions where they exist, and the rest was translated 
 |---|---|---|---|
 | English retail (UK `Trespass_UK_116`, US `Trespasser_116d`) | 1.0.116 | Yes | Yes |
 | Russian Fargus (`TRESPASSER_116D`) | 1.0.116 | Yes | Yes |
-| Spanish (`TRESPASSER_S`) | 1.1.117 | Yes | Import only |
-| Brazilian Portuguese | 1.1.117 | Yes | Import only |
+| Spanish (`TRESPASSER_S`) | 1.1.117 | Yes | Yes |
+| Brazilian Portuguese | 1.1.117 | Yes | Yes |
 
 The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo, mod or fan-made conversion is supported. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
+
+The Windows and Linux executables carry the same three lifted builds (`lift116`, `lift_es117`, `lift_ptbr117`); the installed version selects one, and Linux also maps the lifted MSVCIRT module shared by the four releases.
+
+The published **v0.1.0** Linux AppImage predates this parity fix and still runs English and Russian only. The current source
+tree carries the four versions and passes the headless first-frame boot for all four; gameplay, interface, audio and input
+on a real display still need manual validation.
 
 ## Windows installation
 
@@ -360,7 +366,6 @@ Verified limits on Linux in v0.1.0:
 
 - The guest keeps its 4:3 presentation, scaled to the window.
 - True Ultrawide and HD video are Windows-only; Linux plays the original videos with subtitles.
-- All four versions import, but only English and Russian (1.0.116) run; Spanish and Brazilian Portuguese are not playable yet.
 - The Steam Deck, real desktops, GPUs and audio devices are not validated; the Linux tests run headless.
 
 ## Known limitations
@@ -454,6 +459,7 @@ feature by feature against `tests\feature_contract.json`. It ends with `ALL TEST
 .\tools\test.ps1 -LinuxOnly         # the Linux half only
 .\tools\test.ps1 -LinuxDistro JptFocalBuild   # the WSL distribution (JptFocalBuild, Ubuntu 20.04, is preferred by default)
 .\tools\test.ps1 -Sanitize          # Linux-specific suites under AddressSanitizer + UndefinedBehaviorSanitizer (separate, slower)
+.\tools\test.ps1 -Build             # build the test programs incrementally, then exit (no suite, no Linux gate)
 .\tools\test.ps1 -List              # the sections and suites, nothing is built or run
 .\tools\test.ps1 -Filter cheats     # only suites whose section, name or description contains the text
 .\tools\test.ps1 -Detail            # also show the output of passing suites
