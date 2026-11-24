@@ -1,0 +1,59 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Jurassic Park: Trespasser",
+  "wikidata": "Q1299587",
+  "system": "PC (Windows)",
+  "type": "recomp",
+  "original": [
+    {
+      "region": "UK, USA",
+      "revision": "1.0.116"
+    },
+    {
+      "region": "Russia",
+      "revision": "1.0.116"
+    },
+    {
+      "region": "Spain",
+      "revision": "1.1.117"
+    },
+    {
+      "region": "Brazil",
+      "revision": "1.1.117"
+    }
+  ],
+  "project": "Jurassic Park: Trespasser Recompiled",
+  "status": "released",
+  "targets": [
+    "Windows",
+    "Linux"
+  ],
+  "toolchain": "pcrecomp",
+  "approach": "Static recompilation of the original Windows x86 executable to native C, with compatibility layers and modern renderers",
+  "maintainers": [
+    {
+      "name": "saulob",
+      "link": "https://github.com/saulob"
+    }
+  ],
+  "links": [
+    {
+      "label": "Latest release",
+      "url": "https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest"
+    },
+    {
+      "label": "Reddit announcement",
+      "url": "https://www.reddit.com/r/recomps/comments/1y3x9a8/jurassic_park_trespasser_1998_recompiled_for_pc/"
+    }
+  ],
+  "tags": [
+    "launcher",
+    "Direct3D 11",
+    "Vulkan",
+    "4K",
+    "ultrawide",
+    "minimap",
+    "gamepad"
+  ],
+  "notes": "Public native Windows release with the TRG launcher, importing the user's own compatible retail disc, Direct3D 11, Vulkan and software rendering, rendering up to 4K and true 21:9 and 32:9 ultrawide on Windows, a minimap with dinosaur tracking, compass and objective waypoints, Quick Save and Quick Load, built-in cheats, Dual Stow, enhanced dinosaur AI, graphics improvements, seven languages, SDL3 controller support and four supported original versions. An experimental native Linux AppImage uses Vulkan or software rendering without Wine or Proton, but does not have the Windows native-resolution and ultrawide path; Steam Deck is experimental and not validated on hardware. No game files are included."
+}
