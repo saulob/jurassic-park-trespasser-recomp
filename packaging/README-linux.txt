@@ -37,7 +37,8 @@ INSTALL
 
      chmod +x JurassicParkTrespasserRecompiled-v@VERSION@-x86_64.AppImage
 
-2. Run it (double-click, or from a terminal). The launcher opens.
+2. Run it (double-click, or from a terminal). The launcher opens, also before the game is installed: the Play page
+   then shows "Game not installed" until you import a disc image.
 3. On the Play page, click "Import game..." and select your .iso disc image. The launcher uses the desktop's chooser
    (zenity or kdialog) when there is one, and its own controller-friendly file browser otherwise (mouse, keyboard or
    controller).

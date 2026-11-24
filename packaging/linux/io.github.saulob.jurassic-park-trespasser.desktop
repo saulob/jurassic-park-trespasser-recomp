@@ -1,7 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Jurassic Park: Trespasser
-Comment=Jurassic Park: Trespasser, native PC port
+Name=Jurassic Park: Trespasser Recompiled
+GenericName=Game launcher
+Comment=Native PC game launcher for Jurassic Park: Trespasser (bring your own disc image)
 Exec=AppRun
 Icon=io.github.saulob.jurassic-park-trespasser
 Categories=Game;ActionGame;

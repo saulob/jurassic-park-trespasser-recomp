@@ -57,6 +57,29 @@ def baselines():
     return values
 
 
+CATALOG_NAME = "Jurassic_Park_Trespasser_Recompiled"
+
+# code/manager-hint.sh in AppImage/appimage.github.io matches these words in the desktop entry's Name, GenericName and
+# Comment; only then is "Not installed" on the screenshot a warning instead of a test failure.
+MANAGER_WORDS = {"launcher", "manager", "installer", "downloader", "updater", "marketplace"}
+
+
+def desktop_entry():
+    app_id = application_id()
+    desktop = raw("packaging/linux/%s.desktop" % app_id)
+    main = desktop.split("[Desktop Action", 1)[0]
+    return app_id, desktop, dict(line.split("=", 1) for line in main.splitlines() if "=" in line)
+
+
+def manager_hint(text):
+    spaced = re.sub(r"[-_.]+", " ", re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text))
+    return [word for word in re.findall(r"[A-Za-z]+", spaced) if word.lower() in MANAGER_WORDS]
+
+
+def normalize_name(text):
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
 class Names(unittest.TestCase):
     def test_artifact_name_comes_from_release_json_and_project_version(self):
         version = project_version()
@@ -141,10 +164,7 @@ class AppDir(unittest.TestCase):
         self.assertIn('install -m755 packaging/linux/AppRun "$appdir/AppRun"', package)
 
     def test_desktop_and_appstream_are_one_application(self):
-        app_id = application_id()
-        desktop = raw("packaging/linux/%s.desktop" % app_id)
-        main = desktop.split("[Desktop Action", 1)[0]
-        entries = dict(line.split("=", 1) for line in main.splitlines() if "=" in line)
+        app_id, desktop, entries = desktop_entry()
         self.assertEqual(entries.get("Type"), "Application")
         self.assertEqual(entries.get("Exec"), "AppRun")
         self.assertEqual(entries.get("Icon"), app_id)
@@ -163,6 +183,10 @@ class AppDir(unittest.TestCase):
         self.assertEqual(appdata.find("launchable").get("type"), "desktop-id")
         self.assertEqual(appdata.findtext("icon"), app_id)
         self.assertEqual(appdata.find("icon").get("type"), "stock")
+        self.assertEqual(entries.get("Name"), appdata.findtext("name"))
+        self.assertIn("bring your own disc", appdata.findtext("summary"))
+        description = " ".join("".join(appdata.find("description").itertext()).split())
+        self.assertIn("No game files are included", description)
         self.assertIn("@VERSION@", raw("packaging/linux/%s.appdata.xml" % app_id))
         self.assertIn("@DATE@", raw("packaging/linux/%s.appdata.xml" % app_id))
         self.assertIn(app_id, raw("docs/LINUX.md"))
@@ -197,6 +221,34 @@ class AppDir(unittest.TestCase):
         self.assertIn("--game", readme)
         self.assertIn("--log-dir", readme)
         self.assertIn("--user_data_root", readme)
+
+
+class Catalog(unittest.TestCase):
+    """The AppImage catalog's launcher exception and entry-name rules (code/manager-hint.sh, code/check-name.sh)."""
+
+    def test_desktop_identifies_the_game_launcher(self):
+        _, _, entries = desktop_entry()
+        self.assertEqual(entries.get("GenericName"), "Game launcher")
+        self.assertEqual(manager_hint(entries["GenericName"]), ["launcher"])
+        self.assertTrue(entries.get("Comment"))
+        self.assertFalse(manager_hint(entries["Name"]), "a game's name should not need the launcher exception")
+
+    def test_catalog_name_follows_the_catalog_rules(self):
+        _, _, entries = desktop_entry()
+        self.assertLessEqual(CATALOG_NAME.count("-"), 2, "more than two hyphens needs a manual check")
+        for forbidden in (" ", ":", "?", "#", "%", "/", "\\"):
+            self.assertNotIn(forbidden, CATALOG_NAME)
+        self.assertNotRegex(CATALOG_NAME, r"(?i)\.appimage$|x86[-_]64|amd64|aarch64|arm64|armhf|i[36]86")
+        self.assertNotRegex(CATALOG_NAME, r"[0-9]+\.[0-9]+")
+        self.assertRegex(CATALOG_NAME, r"[A-Z]")
+        self.assertEqual(normalize_name(CATALOG_NAME), normalize_name(entries["Name"]))
+
+    def test_launcher_opens_without_the_game_and_does_not_start_it(self):
+        self.assertIn('case GameState::kMissing: return "Game not installed";', raw("launcher/game_files.cpp"))
+        self.assertIn('Tr("Import the game from your Trespasser disc image.")', raw("launcher/launcher.cpp"))
+        play_gate = raw("launcher/play_gate.h")
+        self.assertIn("if (!files_ready)", play_gate)
+        self.assertIn("return PlayRequest::kFilesNotReady;", play_gate)
 
 
 class Runtime(unittest.TestCase):

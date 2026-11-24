@@ -117,6 +117,8 @@ class GameplayOrderTests(unittest.TestCase):
         expected = [
             "kLanguage",
             "kMinimap",
+            "kCompass",
+            "kWaypoints",
             "kVideoSubtitles",
             "kSkipIntro",
             "kTrespasserCeHeading",
@@ -154,7 +156,16 @@ class BugReportTests(unittest.TestCase):
         self.assertIn('kTicketPrefix[] = "JPT-"', report)
         self.assertIn("JPT-", incidents)
         self.assertIn("trespasser_recomp_", report)
-        self.assertIn("trespasser_recomp_", incidents)
+        log_name = re.search(r"const LOG_FILE = /(.+)/;", incidents)
+        self.assertIsNotNone(log_name, "the Worker declares LOG_FILE")
+        accepts = re.compile(log_name.group(1)).fullmatch
+        for name in ("trespasser_recomp_001.log", "trespasser_recomp_1234.log", "trespasser_linux_001.log", "trespasser_linux_1234.log"):
+            self.assertIsNotNone(accepts(name), name)
+        for name in ("trespasser_001.log", "trespasser_windows_001.log", "trespasser_recomp_12.log", "trespasser_recomp_12345678901.log",
+                     "trespasser_recomp_001.txt", "trespasser_recomp_001.dmp", "../trespasser_recomp_001.log",
+                     "logs/trespasser_recomp_001.log", "C:\\logs\\trespasser_recomp_001.log", "/abs/trespasser_recomp_001.log",
+                     "trespasser_recomp_001.log\n"):
+            self.assertIsNone(accepts(name), name)
         for key in ("description", "launcher_version", "game_build", "game_version", "operating_system", "log_file", "log_clipped", "log_text"):
             self.assertIn(f'"{key}"', report)
             self.assertIn(key, incidents)
