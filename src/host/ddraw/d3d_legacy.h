@@ -66,6 +66,10 @@ void d3dr_device_lost(void);
 
 HRESULT d3dr_attach(d3d_device_t* dev);
 void d3dr_detach(d3d_device_t* dev);
+/* The engine's fog colour is kept by the game, not by the device: apply it to this device. 1 when it changed. */
+int d3dr_set_fog_color(d3d_device_t* dev, DWORD color);
+/* Called at BeginScene to read the engine's current fog colour and apply it before the frame's draws. */
+void d3d_set_fog_sync(void (*sync)(d3d_device_t*));
 void d3dr_begin_scene(d3d_device_t* dev);
 void d3dr_end_scene(d3d_device_t* dev);
 /* A state the open batch was drawn with is about to change: D3DR_CHANGE_* and, for render or stage states, which. */

@@ -13,6 +13,13 @@
 
 uint32_t g_cur_func;
 static int s_failures, s_checks, s_draws, s_clears, s_attached, s_flushes, s_kept;
+static int s_fog_syncs;
+static DWORD s_fog_engine = 0x00FDF6E9u;
+
+static void fog_sync(d3d_device_t* dev) {
+    s_fog_syncs++;
+    d3dr_set_fog_color(dev, s_fog_engine);
+}
 
 #define CHECK(cond) do { s_checks++; if (!(cond)) { s_failures++; printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
 
@@ -407,13 +414,55 @@ int main(void) {
     CHECK(SUCCEEDED(dev->lpVtbl->EndScene(dev)));
     CHECK(dev->lpVtbl->DrawPrimitiveVB(dev, D3DPT_TRIANGLEFAN, NULL, 0, 0, 0) == DDERR_UNSUPPORTED);
 
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGENABLE, TRUE)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGCOLOR, 0x00C8D4E0u)));
     CHECK(SUCCEEDED(dev->lpVtbl->SetTexture(dev, 0, NULL)));
+    CHECK(vp->lpVtbl->Release(vp) == 1);
+    CHECK(dev->lpVtbl->Release(dev) == 0 && s_attached == 0);
+    {
+        IDirect3DDevice3* dev2 = NULL;
+        DWORD fog_en = 99, fog_col = 99;
+        int flush_before;
+        CHECK(SUCCEEDED(d3d->lpVtbl->CreateDevice(d3d, &IID_IDirect3DHALDevice, back, &dev2, NULL)) && s_attached == 1);
+        CHECK(SUCCEEDED(dev2->lpVtbl->GetRenderState(dev2, D3DRENDERSTATE_FOGENABLE, &fog_en)) && fog_en == 0);
+        CHECK(SUCCEEDED(dev2->lpVtbl->GetRenderState(dev2, D3DRENDERSTATE_FOGCOLOR, &fog_col)) && fog_col == 0);
+        CHECK(SUCCEEDED(dev2->lpVtbl->SetRenderState(dev2, D3DRENDERSTATE_FOGENABLE, TRUE)));
+        CHECK(SUCCEEDED(dev2->lpVtbl->SetRenderState(dev2, D3DRENDERSTATE_FOGCOLOR, 0x00C8D4E0u)));
+        CHECK(SUCCEEDED(dev2->lpVtbl->SetTexture(dev2, 0, vid_tex)));
+        d3d_set_fog_sync(fog_sync);
+        CHECK(SUCCEEDED(dev2->lpVtbl->BeginScene(dev2)) && s_fog_syncs == 1);
+        CHECK(SUCCEEDED(dev2->lpVtbl->GetRenderState(dev2, D3DRENDERSTATE_FOGCOLOR, &fog_col)) &&
+              fog_col == 0xFFFDF6E9u);
+        CHECK(SUCCEEDED(dev2->lpVtbl->DrawPrimitive(dev2, D3DPT_TRIANGLEFAN, D3DFVF_TLVERTEX, fan, 4, 0x1C)));
+        CHECK(SUCCEEDED(dev2->lpVtbl->EndScene(dev2)));
+        flush_before = s_flushes;
+        CHECK(SUCCEEDED(dev2->lpVtbl->BeginScene(dev2)) && s_fog_syncs == 2 && s_flushes == flush_before);
+        CHECK(SUCCEEDED(dev2->lpVtbl->EndScene(dev2)));
+        s_fog_engine = 0x00123456u;
+        CHECK(SUCCEEDED(dev2->lpVtbl->BeginScene(dev2)));
+        CHECK(SUCCEEDED(dev2->lpVtbl->GetRenderState(dev2, D3DRENDERSTATE_FOGCOLOR, &fog_col)) &&
+              fog_col == 0xFF123456u);
+        CHECK(SUCCEEDED(dev2->lpVtbl->EndScene(dev2)));
+        CHECK(SUCCEEDED(dev2->lpVtbl->SetTexture(dev2, 0, NULL)));
+        CHECK(dev2->lpVtbl->Release(dev2) == 0 && s_attached == 0);
+    }
+    {
+        IDirect3DDevice3* dev3 = NULL;
+        DWORD fog_col = 99;
+        s_fog_engine = 0x00FDF6E9u;
+        CHECK(SUCCEEDED(d3d->lpVtbl->CreateDevice(d3d, &IID_IDirect3DHALDevice, back, &dev3, NULL)) && s_attached == 1);
+        CHECK(SUCCEEDED(dev3->lpVtbl->GetRenderState(dev3, D3DRENDERSTATE_FOGCOLOR, &fog_col)) && fog_col == 0);
+        CHECK(SUCCEEDED(dev3->lpVtbl->BeginScene(dev3)));
+        CHECK(SUCCEEDED(dev3->lpVtbl->GetRenderState(dev3, D3DRENDERSTATE_FOGCOLOR, &fog_col)) &&
+              fog_col == 0xFFFDF6E9u);
+        CHECK(SUCCEEDED(dev3->lpVtbl->EndScene(dev3)));
+        CHECK(dev3->lpVtbl->Release(dev3) == 0 && s_attached == 0);
+    }
+    d3d_set_fog_sync(NULL);
     CHECK(vid_tex->lpVtbl->Release(vid_tex) == 1);
     CHECK(sys_tex->lpVtbl->Release(sys_tex) == 1);
     CHECK(vid->lpVtbl->Release(vid) == 0);
     CHECK(sys->lpVtbl->Release(sys) == 0);
-    CHECK(vp->lpVtbl->Release(vp) == 1);
-    CHECK(dev->lpVtbl->Release(dev) == 0 && s_attached == 0);
     CHECK(z->lpVtbl->Release(z) == 1);
     CHECK(back->lpVtbl->Release(back) == 0);
     CHECK(d3d->lpVtbl->Release(d3d) == 2);

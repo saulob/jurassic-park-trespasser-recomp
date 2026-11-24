@@ -2011,6 +2011,12 @@
    "votes": 14,
    "where": "src/host/terrain_quality.c:27"
   },
+  "006D1E94": {
+   "class": "data",
+   "to": "006D4804",
+   "votes": 48,
+   "where": "src/host/ce_graphics.c:21"
+  },
   "006D2040": {
    "class": "data",
    "to": "006D49B0",

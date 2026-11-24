@@ -20,6 +20,9 @@ static const IDirect3DTexture2Vtbl s_texture2_vtbl;
 static int s_lines;
 static unsigned char s_unknown_render[D3D_RENDER_STATES / 8], s_unknown_stage[D3D_TEXTURE_STAGES][D3D_STAGE_STATES / 8];
 static unsigned long s_refused_render, s_refused_stage, s_failed_calls;
+static void (*s_fog_sync)(d3d_device_t*);
+
+void d3d_set_fog_sync(void (*sync)(d3d_device_t*)) { s_fog_sync = sync; }
 
 void d3d_objects_counts(unsigned long* render_states, unsigned long* stage_states, unsigned long* failed_calls) {
     *render_states = s_refused_render;
@@ -622,6 +625,7 @@ static HRESULT STDMETHODCALLTYPE dv_BeginScene(IDirect3DDevice3* This) {
     D3D_METHOD("IDirect3DDevice3::BeginScene");
     if (dev->in_scene) D3D_RETURN(D3DERR_SCENE_IN_SCENE);
     dev->in_scene = 1;
+    if (s_fog_sync) s_fog_sync(dev);
     d3dr_begin_scene(dev);
     D3D_RETURN(DD_OK);
 }
@@ -801,6 +805,16 @@ static HRESULT STDMETHODCALLTYPE dv_SetRenderState(IDirect3DDevice3* This, D3DRE
         }
     }
     D3D_RETURN(DD_OK);
+}
+
+int d3dr_set_fog_color(d3d_device_t* dev, DWORD color) {
+    DWORD old;
+    if (!dev) return 0;
+    color = (color & 0xFFFFFFu) | 0xFF000000u;
+    old = dev->render[D3DRENDERSTATE_FOGCOLOR];
+    if (old == color) return 0;
+    dv_SetRenderState(&dev->face, D3DRENDERSTATE_FOGCOLOR, color);
+    return 1;
 }
 
 static HRESULT STDMETHODCALLTYPE dv_GetLightState(IDirect3DDevice3* This, D3DLIGHTSTATETYPE state, LPDWORD value) {

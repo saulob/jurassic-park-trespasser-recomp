@@ -994,12 +994,19 @@ static int pool_take(d3dr_texture_t* t, UINT w, UINT h, UINT levels) {
     return 1;
 }
 
+static void invalidate_bound_srv(ID3D11ShaderResourceView* srv) {
+    if (!srv || !R.bound.valid) return;
+    for (unsigned i = 0; i < R.bound.srvs; i++)
+        if (R.bound.srv[i] == srv) R.bound.srv[i] = NULL;
+}
+
 static void pool_give_back(d3dr_texture_t* t) {
     texture_pool_t* p = t->pool;
     if (!p) return;
     p->free_slices[t->slice / 32] |= 1u << (t->slice % 32);
     t->pool = NULL;
     if (--p->used) return;
+    invalidate_bound_srv(p->srv);
     SAFE_RELEASE(p->srv);
     SAFE_RELEASE(p->tex);
     R.pool_pages--;
@@ -1023,6 +1030,7 @@ static void settle_batch_texture(const d3dr_texture_t* t) {
 static void destroy_texture(d3dr_texture_t* t) {
     settle_batch_texture(t);
     pool_give_back(t);
+    invalidate_bound_srv(t->srv);
     SAFE_RELEASE(t->srv);
     SAFE_RELEASE(t->tex);
     R.texture_memory -= t->bytes;
@@ -1404,6 +1412,9 @@ static HRESULT d3d11_be_attach(d3d_device_t* dev) {
     tsync_attach(&t->sync);
     s->target = t;
     dev->backend = t;
+    R.bound.valid = 0;
+    R.draw_cb_valid = 0;
+    R.frame_cb_valid = 0;
     R.devices++;
     host_log("d3d", "Direct3D device #%u: %lux%lu target at %ux%u, %ux MSAA, %u textures alive, texture filter %s%s, "
              "mipmaps %s", R.devices, s->width, s->height, t->width, t->height, t->samples, R.textures_alive,
@@ -1418,6 +1429,11 @@ static void d3d11_be_detach(d3d_device_t* dev) {
     settle_deferred();
     if (R.batch_dev == dev) flush_for(FLUSH_SURFACE);
     if (R.batch_dev == dev) R.batch_dev = NULL;
+    R.bound.valid = 0;
+    R.draw_cb_valid = 0;
+    R.frame_cb_valid = 0;
+    R.fx.copied_valid = 0;
+    R.batch_tex = NULL;
     if (!t) return;
     if (t->surface && target_usable(t)) {
         int exact = t->sync.exact;
@@ -2029,6 +2045,7 @@ static void make_dynamic(d3dr_texture_t* t) {
         if (t->pool) {
             pool_give_back(t);
         } else {
+            invalidate_bound_srv(t->srv);
             SAFE_RELEASE(t->srv);
             SAFE_RELEASE(t->tex);
         }
@@ -2054,6 +2071,7 @@ static void make_dynamic(d3dr_texture_t* t) {
     } else if (!(top = array_view(t->tex, 1, 1))) {
         return;
     }
+    invalidate_bound_srv(t->srv);
     SAFE_RELEASE(t->srv);
     t->srv = top;
     R.textures_dynamic++;
