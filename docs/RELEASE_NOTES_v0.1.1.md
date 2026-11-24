@@ -6,7 +6,7 @@
 
 ## Introduction
 
-v0.1.1 is an update to [v0.1.0](RELEASE_NOTES_v0.1.0.md), the first public release. It adds no new gameplay features. Its work is on the rendering paths players hit most, on how the renderer is chosen, and on the Linux build's coverage of the supported game versions.
+v0.1.1 is an update to [v0.1.0](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/RELEASE_NOTES_v0.1.0.md), the first public release. It adds no new gameplay features. Its work is on the rendering paths players hit most, on how the renderer is chosen, and on the Linux build's coverage of the supported game versions.
 
 Everything in the v0.1.0 notes still applies, including the native builds, the three renderers, native resolutions and Hor+ widescreen on Windows, the minimap and compass, cheats, gamepad support, seven languages and the TRG launcher. Those features are not repeated here.
 
@@ -45,7 +45,7 @@ Windows remains the primary platform. The Linux AppImage remains experimental, a
 
 - Magenta pixels and mis-textured fragments after focus loss and recovery are fixed.
 - The CPU-drawn parts of a frame (menus, text and some polygons) are composited only where the CPU actually wrote, so unwritten areas are not taken for picture data.
-- A recreated Vulkan device starts from the picture already on the game's surface instead of an undefined reference.
+- When the legacy device and surface are recreated, the Vulkan target initializes its CPU-side reference from the new surface instead of undefined data. The underlying VkDevice is preserved.
 - Pending CPU polygon work is cleared when the device is released, so it cannot leak into the next session.
 - Blending polygons read back only the parts of the render target that are stale.
 - Shadows, transparencies, textures, water and the other effects are preserved.
@@ -103,7 +103,7 @@ The disc is recognised by file sizes and SHA-256, never by its file name or volu
 - **Windows Vulkan** is selectable, but Direct3D 11 remains the recommended renderer.
 - **Unsigned Windows executables.** SmartScreen may warn on first launch.
 - The project does not distribute commercial game files. You import your own compatible disc.
-- All other limitations in the [v0.1.0 notes](RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) still apply.
+- All other limitations in the [v0.1.0 notes](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) still apply.
 
 ## Downloads
 
@@ -142,6 +142,6 @@ The program and updater inside the ZIP are listed in the Security table above.
 
 ## Credits and Feedback
 
-Thanks to everyone who tested v0.1.0, reported problems and sent logs. The full credits are in the [v0.1.0 notes](RELEASE_NOTES_v0.1.0.md#credits-and-acknowledgements).
+Thanks to everyone who tested v0.1.0, reported problems and sent logs. The full credits are in the [v0.1.0 notes](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/RELEASE_NOTES_v0.1.0.md#credits-and-acknowledgements).
 
 Report problems from the launcher's Bug Report page or on the project's GitHub issues, and include the log file. This is an unofficial fan preservation project, not affiliated with or endorsed by DreamWorks, Universal or EA.
