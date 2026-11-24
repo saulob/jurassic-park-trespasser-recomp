@@ -813,7 +813,7 @@ int d3dr_set_fog_color(d3d_device_t* dev, DWORD color) {
     color = (color & 0xFFFFFFu) | 0xFF000000u;
     old = dev->render[D3DRENDERSTATE_FOGCOLOR];
     if (old == color) return 0;
-    dv_SetRenderState(&dev->face, D3DRENDERSTATE_FOGCOLOR, color);
+    dv_SetRenderState((IDirect3DDevice3*)&dev->face, D3DRENDERSTATE_FOGCOLOR, color);
     return 1;
 }
 

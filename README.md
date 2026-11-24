@@ -18,7 +18,7 @@
 
 ## Status
 
-**v0.1.1 is the current release target** (patch release over v0.1.0 with full Linux game version parity and stability fixes). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
+**v0.1.1 is the current release** (an update to v0.1.0 with Vulkan and Direct3D 11 rendering fixes, correct renderer selection, and all four game versions on Linux; see the [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
 
 | Milestone | State |
 |---|---|

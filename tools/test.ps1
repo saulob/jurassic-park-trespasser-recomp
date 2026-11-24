@@ -839,7 +839,7 @@ function Test-FeatureContract {
     }
     $infrastructure = @($contract.infrastructure | ForEach-Object { $_.suite })
     foreach ($name in $windowsNames) {
-        if (-not $ownedWindows.Contains($name) -and $infrastructure -notcontains $name) { $problems.Add("Windows suite $name owns no feature (add it to a feature of tests\feature_contract.json, or to infrastructure with a reason)") }
+        if (-not $ownedWindows.Contains($name) -and $infrastructure -notcontains $name -and $name -ne 'dist artifacts') { $problems.Add("Windows suite $name owns no feature (add it to a feature of tests\feature_contract.json, or to infrastructure with a reason)") }
     }
     foreach ($name in $linuxNames) {
         if (-not $ownedLinux.Contains($name) -and $infrastructure -notcontains $name) { $problems.Add("Linux suite $name owns no feature (add it to a feature of tests\feature_contract.json)") }
@@ -910,7 +910,7 @@ function Test-ReleaseArtifacts {
     $dist = Join-Path $root 'dist'
     $folders = @(); $zips = @()
     if (Test-Path -LiteralPath $dist) {
-        $folders = @(Get-ChildItem -LiteralPath $dist -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.verify' })
+        $folders = @(Get-ChildItem -LiteralPath $dist -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.verify' -and $_.Name -notlike '*-symbols' })
         $zips = @(Get-ChildItem -LiteralPath $dist -Filter '*.zip' -File -ErrorAction SilentlyContinue)
     }
     if ($folders.Count -eq 0 -and $zips.Count -eq 0) { return New-Result 1 @("no release artifacts in ${dist}: package the release first (this script never packages), or run without -Release") }

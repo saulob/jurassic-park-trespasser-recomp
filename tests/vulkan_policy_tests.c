@@ -153,7 +153,7 @@ static void test_renderer_selection_precedence(void) {
             const char* v = modes[i];
             CHECK(jpt_ini_set(tmp_ini, &k, &v, 1), "persist renderer=%s", v);
             CHECK(jpt_config_load(tmp_ini, &cfg), "reload INI for renderer=%s", v);
-            CHECK(cfg.renderer_from_ini == 1 && cfg.renderer == expected_req[i],
+            CHECK(cfg.renderer_from_ini == 1 && cfg.renderer == (int)expected_req[i],
                   "loaded INI renderer=%s (got %d, from_ini=%d)", v, cfg.renderer, cfg.renderer_from_ini);
             CHECK(cfg.msaa == 4 && cfg.fov == 85, "other INI preferences preserved after saving renderer=%s", v);
 
