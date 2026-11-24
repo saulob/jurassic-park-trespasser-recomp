@@ -130,6 +130,70 @@ static void test_compass(void) {
     CHECK(lit_in(0, (float)H / 2, (float)W, (float)H / 2) == 0, "and nothing below the HUD");
 }
 
+static void hud_target_ahead(cp_hud_t* hud) {
+    memset(hud, 0, sizeof *hud);
+    hud->alpha = 1.0f;
+    hud->view = 1;
+    hud->camera.rot[0] = 1.0f;
+    hud->camera.tan_half_h = 0.75f;
+    hud->target[1] = 50.0f;
+}
+
+static void test_hud_visibility(void) {
+    dmp_frame_t f;
+    cp_hud_t hud;
+    cp_layout_t l;
+    static uint32_t with_waypoint[W * H];
+    const float centre_x = (float)W / 2 - 24.0f, centre_y = (float)H / 2 - 24.0f;
+    const minimap_bounds_t* bounds = minimap_bounds("BE");
+    memset(&f, 0, sizeof f);
+    f.view_w = (float)W, f.view_h = (float)H, f.dpi_scale = 1.0f, f.hud = &hud;
+    cp_layout_in(0.0f, 0.0f, (float)W, (float)H, &l);
+
+    hud_target_ahead(&hud);
+    hud.marker = 1;
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    CHECK(lit_in(centre_x, centre_y, 48.0f, 48.0f) > 20 && lit_in(l.left, l.top, l.right - l.left, l.height) == 0,
+          "compass off, waypoint on: the 3D diamond is drawn and the strip is not");
+
+    hud.compass = 1;
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    CHECK(lit_in(centre_x, centre_y, 48.0f, 48.0f) > 20 && lit_in(l.left, l.top, l.right - l.left, l.height) > 200,
+          "compass on, waypoint on: both are drawn");
+
+    hud.marker = 0;
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    CHECK(lit_in(centre_x, centre_y, 48.0f, 48.0f) == 0 && lit_in(l.left, l.top, l.right - l.left, l.height) > 200,
+          "compass on, waypoint off: the strip is drawn and no marker is");
+
+    hud.compass = 0;
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    CHECK(lit_in(0.0f, 0.0f, (float)W, (float)H) == 0, "compass and waypoint off: nothing is drawn");
+
+    hud_target_ahead(&hud);
+    snprintf(hud.minimap_level, sizeof hud.minimap_level, "BE");
+    hud.minimap = 1;
+    CHECK(bounds != NULL, "the beach level has its minimap bounds");
+    if (!bounds) return;
+    hud.player_pos[0] = (bounds->min_x + bounds->max_x) * 0.5f;
+    hud.player_pos[1] = (bounds->min_y + bounds->max_y) * 0.5f;
+    hud.waypoint = 1;
+    hud.waypoint_pos[0] = hud.player_pos[0] + 30.0f;
+    hud.waypoint_pos[1] = hud.player_pos[1] + 30.0f;
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    memcpy(with_waypoint, s_pixels, sizeof with_waypoint);
+    hud.waypoint = 0;
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    CHECK(lit_in(0.0f, (float)H / 2, (float)W, (float)H / 2) > 1000 && memcmp(with_waypoint, s_pixels, sizeof with_waypoint) != 0,
+          "minimap on, waypoint off: the map stays and only the objective marker leaves it");
+}
+
 static void test_cheats_panel(void) {
     const dml_hits_t* hits;
     unsigned lit, again;
@@ -272,6 +336,7 @@ int main(void) {
     test_level_select_numbers();
     test_minimap();
     test_compass();
+    test_hud_visibility();
     test_cheats_panel();
     test_objectives_window();
     test_main_menu_refuses_objectives();

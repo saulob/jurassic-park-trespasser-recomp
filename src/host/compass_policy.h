@@ -63,6 +63,11 @@ typedef enum { CP_TEXT_SUBTITLE, CP_TEXT_HOST_PROMPT, CP_TEXT_GAME_PROMPT, CP_TE
 cp_text_kind_t cp_text_kind(uint32_t category, int host_prompt, int first_y, int raster_h);
 int cp_text_hides_hud(cp_text_kind_t kind);
 
+/* Keys compass and waypoints (default on): the strip, and every objective marker (3D diamond, arrow, trail, strip and minimap). */
+void cp_configure(int compass, int waypoints);
+int cp_compass_enabled(void);
+int cp_waypoints_enabled(void);
+
 int cp_hud_allowed(const cp_scene_t* s);
 /* The minimap and its waypoint: gameplay only, but unlike the compass they survive gameplay text (subtitles, narration,
  * tutorial prompts, messages). */

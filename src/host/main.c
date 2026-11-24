@@ -14,6 +14,7 @@
 #include "audio/platform/windows_dsound_imports.h"
 #include "audio/sdl_audio.h"
 #include "cheats.h"
+#include "compass_policy.h"
 #include "ddraw/d3d_legacy.h"
 #include "ddraw/renderer_backend.h"
 #include "gamepad.h"
@@ -698,6 +699,7 @@ int main(int argc, char** argv) {
     video_hd_install();
     video_subtitles_configure(cfg.video_subtitles, game_dir);
     minimap_configure(cfg.minimap);
+    cp_configure(cfg.compass, cfg.waypoints);
     guest_features_install();
     host_log("ce", "active AI: %s", active_ai_installed() ? "enhanced (6)" : "original (3)");
     ce_graphics_install(d3dr_hardware());

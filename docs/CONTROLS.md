@@ -62,6 +62,12 @@ shows the same setting as **Enable Minimap** (on by default). A line under the c
 Off". F5 and L3 + R3 do nothing in a host panel or the controls card. M belongs to the game again; = and - no longer resize the 3D view. L3 or R3
 alone act as bound, 50 ms after the press: the pair is waited for that long so the chord never also crouches.
 
+The compass strip and the objective waypoints have their own switches on the launcher's Gameplay page, **Enable Compass** and
+**Enable Waypoints** (`compass` and `waypoints` in `trespasser.ini`, both on by default). They have no key or button, and
+are independent of each other and of the minimap: Compass Off hides only the strip, Waypoints Off hides the objective's
+3D marker, distance, route markers and its marker on the compass and the minimap. F4 Show Objective, objectives and
+subtitles are not affected.
+
 Living creatures near Anne are dots, red while their brain is awake and engaged and green otherwise. A dot grows with
 the animal's size in four steps (the instance's scale, about 1 px less than a raptor's for a small animal and 1 and 2 px
 more for medium and large ones at 1080p: raptors are the standard dot, Triceratops, Stegosaurus and Parasaurolophus

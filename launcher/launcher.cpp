@@ -121,6 +121,12 @@ constexpr char kShowResolutionTitleHelp[] = "Shows the game's render resolution 
 constexpr char kMinimapHelp[] =
     "Shows a circular map of the current level in the bottom-left corner, centred on Anne, with the direction she "
     "faces. North is always up. F5, or L3 + R3 on a gamepad, shows or hides it while playing.";
+constexpr char kCompassHelp[] =
+    "Shows the compass strip at the top of the screen, with the cardinal directions. Off hides only the strip: the "
+    "minimap and the objective waypoints stay as set.";
+constexpr char kWaypointsHelp[] =
+    "Shows the current objective on the screen, on the compass and on the minimap: the diamond, the arrow, the "
+    "distance and the route markers. Off hides only those; objectives and F4 Show Objective still work.";
 constexpr char kSkipIntroHelp[] =
     "Skips the opening video before the main menu and the one after New Game. The credits and the ending still play.";
 constexpr char kVideoSubtitlesHelp[] =
@@ -1023,6 +1029,12 @@ private:
                 break;
             case GameplayItem::kMinimap:
                 ui.Toggle("Enable Minimap", kMinimapHelp, JPT_KEY_MINIMAP, true, "Off", "On");
+                break;
+            case GameplayItem::kCompass:
+                ui.Toggle("Enable Compass", kCompassHelp, JPT_KEY_COMPASS, true, "Off", "On");
+                break;
+            case GameplayItem::kWaypoints:
+                ui.Toggle("Enable Waypoints", kWaypointsHelp, JPT_KEY_WAYPOINTS, true, "Off", "On");
                 break;
             case GameplayItem::kVideoSubtitles:
                 ui.Toggle("Video subtitles", kVideoSubtitlesHelp, JPT_KEY_VIDEO_SUBTITLES, true, "Off", "On");

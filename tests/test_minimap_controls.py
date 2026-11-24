@@ -60,6 +60,18 @@ class MinimapControls(unittest.TestCase):
         self.assertIn('"Enable Minimap"', page)
         self.assertEqual(len(re.findall(r"JPT_KEY_MINIMAP", launcher)), 1)
         self.assertEqual(read(ROOT / "src" / "host" / "main.c").count("minimap_configure(cfg.minimap)"), 1)
+        self.assertRegex(launcher, r'ui\.Toggle\("Enable Compass", kCompassHelp, JPT_KEY_COMPASS, true, "Off", "On"\);')
+        self.assertRegex(launcher, r'ui\.Toggle\("Enable Waypoints", kWaypointsHelp, JPT_KEY_WAYPOINTS, true, "Off", "On"\);')
+        self.assertLess(page.index('"Enable Minimap"'), page.index('"Enable Compass"'))
+        self.assertLess(page.index('"Enable Compass"'), page.index('"Enable Waypoints"'))
+        self.assertEqual(read(ROOT / "src" / "host" / "main.c").count("cp_configure(cfg.compass, cfg.waypoints)"), 1)
+        self.assertEqual(read(ROOT / "src" / "linux" / "linux_features.c").count("cp_configure(cfg->compass, cfg->waypoints)"), 1)
+
+    def test_compass_and_waypoints_have_no_hotkey(self):
+        for path in (HOST / "host_policy.c", ROOT / "src" / "linux" / "linux_hostkeys.c", HOST / "overlay.c"):
+            text = read(path)
+            self.assertNotIn("JPT_KEY_COMPASS", text, path.name)
+            self.assertNotIn("JPT_KEY_WAYPOINTS", text, path.name)
 
     def test_the_controls_lists_name_the_new_controls(self):
         text = read(ROOT / "src" / "common" / "jpt_prompt_text.c")

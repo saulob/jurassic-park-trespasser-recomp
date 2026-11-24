@@ -646,7 +646,7 @@ void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* sce
         snprintf(hud->minimap_level, sizeof hud->minimap_level, "%s", w->level);
         memcpy(hud->player_pos, w->at.pos, sizeof hud->player_pos);
         if (w->eye) hud->heading = cp_heading(dm_yaw(w->eye_at.rot));
-        if (goal && goal->set && goal->target) {
+        if (cp_waypoints_enabled() && goal && goal->set && goal->target) {
             hud->waypoint = 1;
             memcpy(hud->waypoint_pos, goal->pos, sizeof hud->waypoint_pos);
         }
@@ -656,13 +656,13 @@ void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* sce
         snprintf(hud->notice, sizeof hud->notice, "%.*s", (int)sizeof hud->notice - 1, s->notice);
     if (!w->eye) return;
     heading = cp_heading(dm_yaw(w->eye_at.rot));
-    hud->compass = hud_ok;
+    hud->compass = hud_ok && cp_compass_enabled();
     hud->heading = heading;
     hud->view = w->tan_half_h > 0.0f;
     memcpy(hud->camera.pos, w->eye_at.pos, sizeof hud->camera.pos);
     memcpy(hud->camera.rot, w->eye_at.rot, sizeof hud->camera.rot);
     hud->camera.tan_half_h = w->tan_half_h;
-    if (!goal || !goal->set || !goal->target) return;
+    if (!cp_waypoints_enabled() || !goal || !goal->set || !goal->target) return;
     hud->marker = 1;
     memcpy(hud->target, goal->pos, sizeof hud->target);
     hud->relative = cp_relative(cp_bearing(w->eye_at.pos, goal->pos), heading);

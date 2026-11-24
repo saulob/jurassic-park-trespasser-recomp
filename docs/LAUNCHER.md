@@ -85,7 +85,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
-| Gameplay | Language, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
+| Gameplay | Language, Enable Minimap, Enable Compass, Enable Waypoints, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats | Movement Speed, Jump Height, Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health: what every session starts with ([Cheats](#cheats)) |
 | Bug Report | description, one scrubbed game log, Open preview, Send report with a confirmation, My Reports ([BUG_REPORTS](BUG_REPORTS.md)) |
@@ -467,6 +467,13 @@ is not part of this work.
 - **Frame counter** (Gameplay, as in the other ports; key `show_frame_counter`, Off by default): `FPS: 60.0` in a small
   panel in the top right corner of the game, from the same measured rate as the title. F6 shows or hides it for the
   session without writing the setting (it starts as the launcher left it).
+- **Enable Minimap**, **Enable Compass** and **Enable Waypoints** (Gameplay; keys `minimap`, `compass` and `waypoints`, On by
+  default; a file without the keys and Reset all settings give On): three independent switches. Minimap is the circular
+  map (F5 and L3 + R3 flip it in game). Compass is the strip at the top of the screen with the cardinal directions; Off
+  hides only the strip. Waypoints is the current objective's marker everywhere it appears: the 3D diamond and arrow, their
+  distance, the route markers, the strip's marker and the minimap's marker; Off keeps the compass, the minimap, the
+  creature and vehicle markers, objectives, F4 Show Objective and subtitles. Compass and Waypoints have no hotkey; they
+  are read when the game starts, so a change in the launcher applies to that run.
 - **Skip Intro** (Gameplay, as in Dragon's Crown Pro PC; key `skip_intro`, Off by default): the opening video before
   the main menu (`tpassintro.smk`) and the one after New Game (`newgame.smk`) are not shown. When the game is about to
   play one of them, its own `NoVideo` value reads 1 for that call only, so `CVideoWnd::Play` takes the game's own

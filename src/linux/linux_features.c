@@ -5,6 +5,7 @@
 
 #include "active_profile.h"
 #include "cheats.h"
+#include "compass_policy.h"
 #include "debug_menu.h"
 #include "guest_abi.h"
 #include "guest_features.h"
@@ -171,6 +172,7 @@ int lx_features_start(const jpt_config_t* cfg, const char* game_dir, const char*
     guest_features_configure(cfg);
     cheats_start(cfg->cheat);
     minimap_configure(cfg->minimap);
+    cp_configure(cfg->compass, cfg->waypoints);
     guest_features_install();
     widescreen_install_camera(cfg->aspect);
     terrain_quality_install();

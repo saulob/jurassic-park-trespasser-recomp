@@ -28,6 +28,8 @@ const char* PageName(PageId page);
 enum class GameplayItem {
     kLanguage,
     kMinimap,
+    kCompass,
+    kWaypoints,
     kVideoSubtitles,
     kSkipIntro,
     kTrespasserCeHeading,
@@ -43,6 +45,8 @@ enum class GameplayItem {
 inline constexpr GameplayItem kGameplayOrder[] = {
     GameplayItem::kLanguage,
     GameplayItem::kMinimap,
+    GameplayItem::kCompass,
+    GameplayItem::kWaypoints,
     GameplayItem::kVideoSubtitles,
     GameplayItem::kSkipIntro,
     GameplayItem::kTrespasserCeHeading,

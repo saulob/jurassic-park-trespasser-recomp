@@ -1232,6 +1232,128 @@ static void test_independent_visibility(void) {
     minimap_configure(1);
 }
 
+static void hud_toggles_frame(cp_hud_t* hud, int minimap, int compass, int waypoints, int game_text) {
+    dm_state_t s;
+    dm_world_t w;
+    cp_scene_t scene;
+    cp_goal_t goal;
+    world_be(&s, &w, &scene, &goal);
+    scene.game_text = game_text;
+    goal.route_count = 2;
+    goal.route[0][0] = -950.0f;
+    goal.route[0][1] = -450.0f;
+    goal.route[1][0] = -900.0f;
+    goal.route[1][1] = -400.0f;
+    w.tan_half_h = 0.75f;
+    minimap_configure(minimap);
+    cp_configure(compass, waypoints);
+    dm_navigate(&s, &w, &scene, &goal, 1000u, hud);
+}
+
+static void test_hud_toggles_defaults(void) {
+    jpt_config_t c;
+    jpt_config_defaults(&c);
+    CHECK(c.minimap == 1 && c.compass == 1 && c.waypoints == 1, "minimap, compass and waypoints are on by default");
+    CHECK(!strcmp(jpt_default_value(JPT_KEY_COMPASS), "1") && !strcmp(JPT_KEY_COMPASS, "compass"),
+          "the compass is on by default under the key the launcher writes");
+    CHECK(!strcmp(jpt_default_value(JPT_KEY_WAYPOINTS), "1") && !strcmp(JPT_KEY_WAYPOINTS, "waypoints"),
+          "the waypoints are on by default under the key the launcher writes");
+    cp_configure(1, 1);
+    CHECK(cp_compass_enabled() && cp_waypoints_enabled(), "the policy starts with both on");
+}
+
+static void test_hud_toggles_persistence(void) {
+    const char* path = "hud_toggles_settings.ini";
+    const char* keys[3] = { JPT_KEY_MINIMAP, JPT_KEY_COMPASS, JPT_KEY_WAYPOINTS };
+    const char* off[3] = { "0", "0", "0" };
+    const char* on[3] = { "1", "1", "1" };
+    jpt_config_t c;
+    FILE* f = fopen(path, "w");
+    CHECK(f != NULL, "a settings file for the test");
+    if (!f) return;
+    fputs("minimap = 0\n", f);
+    fclose(f);
+    CHECK(jpt_config_load(path, &c) && c.minimap == 0 && c.compass == 1 && c.waypoints == 1,
+          "an older settings file without the new keys keeps compass and waypoints on");
+    for (int only = 0; only < 3; only++) {
+        const char* values[3] = { "1", "1", "1" };
+        int* fields[3];
+        values[only] = "0";
+        CHECK(jpt_ini_set(path, keys, values, 3) && jpt_config_load(path, &c), "option %d written and read back", only);
+        fields[0] = &c.minimap;
+        fields[1] = &c.compass;
+        fields[2] = &c.waypoints;
+        for (int i = 0; i < 3; i++)
+            CHECK(*fields[i] == (i != only), "only option %d is off: option %d reads %d", only, i, *fields[i]);
+    }
+    CHECK(jpt_ini_set(path, keys, off, 3) && jpt_config_load(path, &c) && !c.minimap && !c.compass && !c.waypoints,
+          "all three can be off together and survive a restart");
+    CHECK(jpt_ini_set(path, keys, on, 3) && jpt_config_load(path, &c) && c.minimap && c.compass && c.waypoints,
+          "all three can be turned back on");
+    remove(path);
+}
+
+static void test_hud_toggles_policy(void) {
+    cp_hud_t hud;
+    cp_goal_t goal;
+    cp_reminder_t reminder;
+
+    hud_toggles_frame(&hud, 1, 1, 1, 0);
+    CHECK(hud.minimap && hud.compass && hud.marker && hud.waypoint && hud.trail_count > 0 && hud.distance[0],
+          "all on: the minimap, the compass strip and every objective marker draw");
+
+    hud_toggles_frame(&hud, 1, 0, 1, 0);
+    CHECK(!hud.compass, "compass off: the strip is hidden");
+    CHECK(hud.marker && hud.view && hud.trail_count > 0 && hud.distance[0],
+          "compass off: the 3D diamond, arrow, distance and route markers stay");
+    CHECK(hud.minimap && hud.waypoint, "compass off: the minimap and its waypoint stay");
+
+    hud_toggles_frame(&hud, 1, 1, 0, 0);
+    CHECK(hud.compass, "waypoints off: the compass strip stays");
+    CHECK(!hud.marker && !hud.waypoint && hud.trail_count == 0 && !hud.distance[0],
+          "waypoints off: no strip or 3D marker, no distance, no route markers, no minimap waypoint");
+    CHECK(hud.minimap && hud.view && near(hud.player_pos[0], -1000.0f, 1e-3f) && near(hud.player_pos[1], -500.0f, 1e-3f),
+          "waypoints off: the minimap, the camera and the player's position stay");
+    CHECK(strcmp(hud.minimap_level, "BE") == 0, "waypoints off: the minimap keeps its level");
+
+    hud_toggles_frame(&hud, 0, 1, 1, 0);
+    CHECK(!hud.minimap && !hud.waypoint, "minimap off: the minimap and its waypoint hide");
+    CHECK(hud.compass && hud.marker && hud.trail_count > 0, "minimap off: the compass and the 3D waypoints stay");
+
+    hud_toggles_frame(&hud, 0, 0, 1, 0);
+    CHECK(!hud.minimap && !hud.compass && hud.marker && hud.trail_count > 0,
+          "minimap and compass off: the 3D waypoints stay alone");
+
+    hud_toggles_frame(&hud, 0, 1, 0, 0);
+    CHECK(!hud.minimap && !hud.waypoint && !hud.marker && hud.trail_count == 0 && hud.compass,
+          "minimap and waypoints off: the compass stays alone");
+
+    hud_toggles_frame(&hud, 1, 0, 0, 0);
+    CHECK(hud.minimap && !hud.waypoint && !hud.compass && !hud.marker && hud.trail_count == 0,
+          "compass and waypoints off: the minimap stays alone");
+
+    hud_toggles_frame(&hud, 0, 0, 0, 0);
+    CHECK(!hud.minimap && !hud.compass && !hud.marker && !hud.waypoint && hud.trail_count == 0 && !hud.distance[0],
+          "all off: no minimap, compass or waypoint");
+
+    hud_toggles_frame(&hud, 1, 1, 0, 1);
+    CHECK(hud.minimap && !hud.compass && !hud.marker && !hud.waypoint,
+          "waypoints off with gameplay text: the text rules for the other two are unchanged");
+
+    memset(&goal, 0, sizeof goal);
+    memset(&reminder, 0, sizeof reminder);
+    goal.set = goal.target = 1;
+    snprintf(goal.title, sizeof goal.title, "%s", "Find the raptor");
+    hud_toggles_frame(&hud, 0, 0, 0, 0);
+    CHECK(cp_reminder_press(&reminder, 1000u, &goal), "Show Objective starts with every toggle off");
+    cp_hud_reminder(&hud, &goal, cp_reminder_step(&reminder, 1000u, &goal));
+    CHECK(!strcmp(hud.objective, "Find the raptor") && hud.objective_alpha > 0.99f,
+          "Show Objective still shows the title with every toggle off");
+
+    minimap_configure(1);
+    cp_configure(1, 1);
+}
+
 static void test_creature_sizes(void) {
     const float scales[] = { 0.4f, 1.9f, 2.5f, 3.06f, 4.46f, 4.86f, 5.66f, 6.24f, 7.84f, 15.0f };
     const int expected[] = { 0, 0, 1, 1, 2, 2, 2, 3, 3, 3 };
@@ -1491,6 +1613,9 @@ void minimap_tests(int* checks, int* failures) {
     test_released_keys();
     test_fixed_zoom();
     test_persistence();
+    test_hud_toggles_defaults();
+    test_hud_toggles_persistence();
+    test_hud_toggles_policy();
     test_water_positions();
     test_extra_maps();
     test_landmarks_in_level();

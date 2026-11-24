@@ -1743,6 +1743,8 @@ static void TestGameplayOrder() {
     constexpr GameplayItem kExpected[] = {
         GameplayItem::kLanguage,
         GameplayItem::kMinimap,
+        GameplayItem::kCompass,
+        GameplayItem::kWaypoints,
         GameplayItem::kVideoSubtitles,
         GameplayItem::kSkipIntro,
         GameplayItem::kTrespasserCeHeading,
@@ -1767,6 +1769,8 @@ static void TestGameplayOrder() {
     const char* const markers[] = {
         "case GameplayItem::kLanguage:",
         "case GameplayItem::kMinimap:",
+        "case GameplayItem::kCompass:",
+        "case GameplayItem::kWaypoints:",
         "case GameplayItem::kVideoSubtitles:",
         "case GameplayItem::kSkipIntro:",
         "case GameplayItem::kTrespasserCeHeading:",
@@ -1784,6 +1788,13 @@ static void TestGameplayOrder() {
         CHECK(at != std::string::npos && at > prev);
         prev = at;
     }
+    CHECK(body.find("ui.Toggle(\"Enable Compass\", kCompassHelp, JPT_KEY_COMPASS, true, \"Off\", \"On\")") != std::string::npos);
+    CHECK(body.find("ui.Toggle(\"Enable Waypoints\", kWaypointsHelp, JPT_KEY_WAYPOINTS, true, \"Off\", \"On\")") != std::string::npos);
+    CHECK(std::string(jpt_default_value(JPT_KEY_MINIMAP)) == "1" && std::string(jpt_default_value(JPT_KEY_COMPASS)) == "1" &&
+          std::string(jpt_default_value(JPT_KEY_WAYPOINTS)) == "1");
+    CHECK(HasRow("Enable Compass") && HasRow("Enable Waypoints") &&
+          HasRow("Shows the compass strip at the top of the screen, with the cardinal directions. Off hides only the strip: the minimap and the objective waypoints stay as set.") &&
+          HasRow("Shows the current objective on the screen, on the compass and on the minimap: the diamond, the arrow, the distance and the route markers. Off hides only those; objectives and F4 Show Objective still work."));
 }
 
 static void TestNoLanguagePage() {

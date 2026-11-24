@@ -52,6 +52,17 @@ int cp_format_distance(float metres, char* out, size_t cap) {
     return n > 0 && (size_t)n < cap;
 }
 
+static int s_compass = 1, s_waypoints = 1;
+
+void cp_configure(int compass, int waypoints) {
+    s_compass = compass != 0;
+    s_waypoints = waypoints != 0;
+}
+
+int cp_compass_enabled(void) { return s_compass; }
+
+int cp_waypoints_enabled(void) { return s_waypoints; }
+
 int cp_hud_allowed(const cp_scene_t* s) { return s->level && !s->menu && !s->card && !s->loading && !s->game_text; }
 
 int cp_minimap_allowed(const cp_scene_t* s) { return s->level && !s->menu && !s->card && !s->loading; }

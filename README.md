@@ -79,7 +79,8 @@ The Linux Vulkan build has its own filtering, MSAA, ambient occlusion, water, sk
 
 The minimap, compass, objective markers and waypoint were added by this port; the 1998 interface had none of them.
 
-- **Minimap**: circular, bottom-left, player-up, fixed 2x zoom. Press **F5** (keyboard) or **L3 + R3** (gamepad) to toggle it. It can start on or off from the launcher's Gameplay page.
+- **Minimap**: circular, bottom-left, player-up, fixed 2x zoom. Press **F5** (keyboard) or **L3 + R3** (gamepad) to toggle it. It can start on or off from the launcher's Gameplay page (**Enable Minimap**, On by default).
+- **Compass** and **Waypoints**: the compass strip with the cardinal directions, and the objective markers (3D diamond and arrow, distance, route markers, and the objective on the compass and the minimap). Each has its own On/Off switch in the launcher's Gameplay page (**Enable Compass**, **Enable Waypoints**, both On by default), independent of each other and of the minimap; they have no hotkey.
 - **Creature markers**: red when the animal's brain is awake and engaged, green otherwise; the dot grows in four steps with the animal's size.
 - **Vehicle markers**: ground vehicles such as jeeps, trucks and the Unimog appear as small orange rectangles.
 - **Compass**: a strip at the top of the picture. The objective is a diamond with Anne's distance in metres, and an arrow when it is beyond the ends of the strip.
@@ -93,7 +94,7 @@ The minimap, compass, objective markers and waypoint were added by this port; th
 - **Level Select** (F10 Cheats), numbered in the game's order.
 - **Dual Stow**, **Active AI** (6 creatures active instead of 3), **water refraction**, **enhanced sky**, **maximum object detail**, mouse sensitivity and restored footstep and collision sounds, from [Trespasser CE-inspired improvements](#trespasser-ce-inspired-improvements).
 - **Physics, collision and stability fixes**: a subset of the official v1.1 build 117 patch, widescreen culling, clean shutdown and window presentation fixes ([Official Trespasser v1.1 build 117 fixes](#official-trespasser-v11-build-117-fixes)).
-- **Gameplay options** in the launcher: Skip Intro, Video subtitles, Minimap, Dual stow, Active AI, Official Patch 1.1. Every option has an Original or Off choice that keeps the retail behaviour.
+- **Gameplay options** in the launcher: Skip Intro, Video subtitles, Minimap, Compass, Waypoints, Dual stow, Active AI, Official Patch 1.1. Every option has an Original or Off choice that keeps the retail behaviour.
 
 ## Cheats
 
@@ -125,7 +126,7 @@ The TRG launcher opens before the game and keeps its settings in `user_data/laun
 | Play | Game status, version selection, Import and Reinstall, Remove version |
 | Display | Display mode, window size, monitor, aspect ratio, presentation |
 | Graphics | Renderer, graphics card, render resolution, field of view, anti-aliasing, ambient occlusion, water, sky, texture filtering, VSync |
-| Gameplay | Language, Minimap, Video subtitles, Skip Intro, Dual stow, Active AI, Official Patch 1.1 |
+| Gameplay | Language, Minimap, Compass, Waypoints, Video subtitles, Skip Intro, Dual stow, Active AI, Official Patch 1.1 |
 | Controls | Gamepad bindings and feel, mouse, hotkeys |
 | Cheats | Starting values of the persistent cheats |
 | Bug Report | A description and one privacy-filtered log, with a preview |
