@@ -313,5 +313,27 @@ class SteamDeckPreparation(unittest.TestCase):
         self.assertIn('"--launcher"', cfg)
 
 
+class LinuxStartupAndEncoding(unittest.TestCase):
+    def test_version_folder_is_mounted_as_c_drive_in_boot_and_main(self):
+        boot = text("src/linux/linux_boot.c")
+        self.assertIn("jpt_game_version_installed", boot)
+        self.assertLess(boot.index("resolve_game_dir"), boot.index("jpt_vpath_mount(vp, 'C'"))
+        self.assertIn("lx_features_start(&settings, mount_dir", boot)
+        main = text("src/linux/linux_main.c")
+        self.assertIn("snprintf(paths->game_dir, sizeof paths->game_dir", main)
+
+    def test_messagebox_converts_to_utf8_and_never_auto_retries(self):
+        user32 = text("src/linux/linux_user32.c")
+        self.assertIn("lx_text_to_utf8", user32)
+        self.assertIn("lx_text_active_codepage", user32)
+        mb = re.search(r"static uint64_t u_MessageBoxA\(.*?\n\}", user32, re.S)
+        self.assertIsNotNone(mb)
+        self.assertNotIn("case 5: return 4", mb.group(0))
+        self.assertIn("case 1: case 5: case 6: return 2", mb.group(0))
+        text_c = text("src/linux/linux_text.c")
+        self.assertIn("jpt_utf8_valid", text_c)
+        self.assertIn("jpt_cp_to_utf8", text_c)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,6 +28,7 @@
 #include "linux_dsound.h"
 #include "linux_lz32.h"
 #include "linux_shutdown.h"
+#include "linux_text.h"
 #include "linux_smack.h"
 #include "linux_gdi32.h"
 #include "linux_processor.h"
@@ -190,7 +191,10 @@ static uint64_t k_ExitProcess(const uint32_t* a, void* u) {
 static uint64_t k_OutputDebugStringA(const uint32_t* a, void* u) {
     const char* s = cstr(a[0]);
     (void)u;
-    if (s) lx_log("guest", "%s", s);
+    if (s) {
+        char utf8[2048];
+        lx_log("guest", "%s", lx_text_to_utf8(s, lx_text_active_codepage(), utf8, sizeof utf8));
+    }
     return 0;
 }
 

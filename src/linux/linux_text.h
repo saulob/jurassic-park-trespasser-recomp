@@ -3,6 +3,7 @@
 #ifndef JPT_LINUX_TEXT_H
 #define JPT_LINUX_TEXT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct {
@@ -17,6 +18,8 @@ void lx_text_metrics(float scale, lx_text_metrics_t* out);
 /* Code page of the guest's 8-bit strings: 1252 (default) or 1251. */
 void lx_text_set_codepage(int codepage);
 int lx_text_codepage(void);
+int lx_text_active_codepage(void);
+const char* lx_text_to_utf8(const char* src, int codepage, char* out, size_t cap);
 int lx_text_advance(float scale, uint8_t ch, int bold);
 int lx_text_width(float scale, const char* s, int n, int bold);
 /* Draws one glyph with its baseline origin at (x, baseline). */

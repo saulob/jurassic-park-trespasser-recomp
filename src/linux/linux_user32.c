@@ -19,6 +19,7 @@
 #include "linux_mouse.h"
 #include "linux_resource.h"
 #include "linux_screen.h"
+#include "linux_text.h"
 #include "linux_spine.h"
 #include "linux_window.h"
 
@@ -418,7 +419,10 @@ static int write_rect(uint32_t va, const int32_t r[4]) { return gp_copy_out(va, 
 
 static void set_text(window_t* w, const char* text) {
     snprintf(w->text, sizeof w->text, "%s", text ? text : "");
-    if (hwnd_of(w) == s_main) lx_screen_set_title(w->text);
+    if (hwnd_of(w) == s_main) {
+        char title_utf8[MAX_TEXT * 3];
+        lx_screen_set_title(lx_text_to_utf8(w->text, lx_text_active_codepage(), title_utf8, sizeof title_utf8));
+    }
 }
 
 static void paint_invalidate(window_t* w, int erase) {
@@ -1371,13 +1375,18 @@ static uint64_t u_wvsprintfA(const uint32_t* a, void* u) {
 static uint64_t u_MessageBoxA(const uint32_t* a, void* u) {
     const char* text = a[1] ? gp_string(a[1], 1024) : "";
     const char* caption = a[2] ? gp_string(a[2], 256) : "";
+    char text_utf8[2048], caption_utf8[512];
+    int cp = lx_text_active_codepage();
     uint32_t kind = a[3] & MB_TYPEMASK;
     (void)u;
-    lx_log("Linux USER32", "MessageBox \"%s\": %s", caption ? caption : "", text ? text : "");
+    lx_log("Linux USER32", "MessageBox \"%s\": %s",
+           lx_text_to_utf8(caption, cp, caption_utf8, sizeof caption_utf8),
+           lx_text_to_utf8(text, cp, text_utf8, sizeof text_utf8));
+    /* Never auto-return IDOK/IDRETRY for cancelable prompts: retry loops (e.g. missing media) would spin forever. */
     switch (kind) {
+    case 1: case 5: case 6: return 2;
     case 2: return 3;
     case 3: case 4: return 6;
-    case 5: return 4;
     default: return 1;
     }
 }

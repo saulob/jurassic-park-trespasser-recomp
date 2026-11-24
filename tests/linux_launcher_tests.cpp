@@ -366,6 +366,57 @@ static void TestVersions() {
     fs::remove_all(dir, ec);
 }
 
+static void TestVersionCompleteness() {
+    const fs::path base = Scratch("completeness") / "Jurassic Park Trespasser" / "game";
+    std::error_code ec;
+    for (const GameProfile& p : KnownProfiles()) {
+        bool has_intro = false;
+        for (const InstallFile& f : p.files)
+            if (std::strcmp(f.installed, "data/menu/tpassintro.smk") == 0) has_intro = true;
+        CHECK(has_intro);
+    }
+
+    const GameProfile* en = ProfileById(KnownProfiles(), "en-116");
+    CHECK(en != nullptr);
+    const fs::path ver_dir = base / JPT_VERSIONS_DIR / "en-116";
+    fs::create_directories(ver_dir, ec);
+    Touch(ver_dir / JPT_GUEST_IMAGE);
+    {
+        const GameCheck incomplete = CheckGameFolder(ver_dir, *en);
+        CHECK(incomplete.state == GameState::kInvalid);
+        const std::vector<InstalledVersion> found = FindInstalledVersions(base);
+        CHECK(found.size() == 1 && found[0].check.state == GameState::kInvalid);
+        CHECK(ChooseVersion(found, "en-116") == nullptr);
+    }
+
+    for (const InstallFile& f : en->files) {
+        const fs::path target = ver_dir / f.installed;
+        fs::create_directories(target.parent_path(), ec);
+        std::ofstream out(target, std::ios::binary);
+        if (f.size > 0) {
+            out.seekp(static_cast<std::streamoff>(f.size - 1));
+            out.put('\0');
+        }
+    }
+    {
+        const GameCheck ready = CheckGameFolder(ver_dir, *en);
+        CHECK(ready.state == GameState::kReady);
+        const std::vector<InstalledVersion> found = FindInstalledVersions(base);
+        const InstalledVersion* chosen = ChooseVersion(found, "en-116");
+        CHECK(chosen != nullptr && std::strcmp(chosen->profile->id(), "en-116") == 0);
+    }
+
+    fs::remove(ver_dir / "data/menu/tpassintro.smk", ec);
+    {
+        const GameCheck missing_intro = CheckGameFolder(ver_dir, *en);
+        CHECK(missing_intro.state == GameState::kInvalid);
+        CHECK(missing_intro.detail == "missing data/menu/tpassintro.smk");
+        const std::vector<InstalledVersion> found = FindInstalledVersions(base);
+        CHECK(ChooseVersion(found, "en-116") == nullptr);
+    }
+    fs::remove_all(base.parent_path().parent_path(), ec);
+}
+
 static void TestFilePicker() {
     const fs::path dir = Scratch("picker");
     const std::string saved = std::getenv("PATH") ? std::getenv("PATH") : "";
@@ -500,6 +551,7 @@ int main(int argc, char** argv) {
     TestIso();
     TestPortFolder();
     TestVersions();
+    TestVersionCompleteness();
     TestFilePicker();
     TestFileBrowser();
     TestSteamDeck1280x800();

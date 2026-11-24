@@ -251,6 +251,26 @@ static void test_steam_deck_appimage_and_sd_card(void) {
     clear_environment();
 }
 
+static void test_paths_with_spaces_and_unicode(void) {
+    const char* mount = "/tmp/.mount_jpt999";
+    const char* exe = "/tmp/.mount_jpt999/usr/bin/trespasser_recomp";
+    const char* spaced_img = "/home/user/My Games/Jurassic Park Trespasser/JPT.AppImage";
+    const char* utf8_img = "/home/user/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B/Jurassic Park/JPT.AppImage";
+    lx_paths_t p;
+    char err[200];
+    clear_environment();
+
+    CHECK(lx_paths_resolve_for(&p, exe, spaced_img, NULL, NULL, NULL, err, sizeof err), "AppImage in a folder with spaces resolves");
+    CHECK(!strcmp(p.game_dir, "/home/user/My Games/Jurassic Park Trespasser/game") &&
+              !strcmp(p.saves_dir, "/home/user/My Games/Jurassic Park Trespasser/user_data/saves") && !inside(p.game_dir, mount),
+          "paths with spaces stay outside the AppImage mount (%s)", p.game_dir);
+
+    CHECK(lx_paths_resolve_for(&p, exe, utf8_img, NULL, NULL, NULL, err, sizeof err), "AppImage in a non-ASCII UTF-8 folder resolves");
+    CHECK(!strcmp(p.game_dir, "/home/user/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B/Jurassic Park/game") && !inside(p.game_dir, mount),
+          "non-ASCII UTF-8 paths are preserved outside the AppImage mount (%s)", p.game_dir);
+    clear_environment();
+}
+
 int main(void) {
     test_choice();
     test_prepare();
@@ -258,6 +278,7 @@ int main(void) {
     test_appimage_logs();
     test_relaunch();
     test_steam_deck_appimage_and_sd_card();
+    test_paths_with_spaces_and_unicode();
     printf("linux_paths_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

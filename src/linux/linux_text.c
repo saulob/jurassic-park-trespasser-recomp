@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "imstb_truetype.h"
+#include "jpt_l10n.h"
 
 extern const unsigned char lx_font_data[];
 extern const unsigned long lx_font_data_size;
@@ -21,6 +22,34 @@ static int font_ready(void) {
 void lx_text_set_codepage(int codepage) { s_codepage = codepage == 1251 ? 1251 : 1252; }
 
 int lx_text_codepage(void) { return s_codepage; }
+
+int lx_text_active_codepage(void) {
+    int cp = jpt_l10n_display_codepage();
+    return cp ? cp : s_codepage;
+}
+
+const char* lx_text_to_utf8(const char* src, int codepage, char* out, size_t cap) {
+    size_t n;
+    int cp;
+    if (!src) return "";
+    n = strlen(src);
+    if (jpt_utf8_valid(src, n)) return src;
+    if (!out || !cap) return "";
+    cp = codepage == 1251 ? 1251 : 1252;
+    if (jpt_cp_to_utf8(cp, src, n, out, cap) != (size_t)-1) return out;
+    {
+        size_t o = 0;
+        char tmp[8];
+        for (size_t i = 0; i < n; i++) {
+            size_t k = jpt_cp_to_utf8(cp, src + i, 1, tmp, sizeof tmp);
+            if (k == (size_t)-1 || o + k >= cap) break;
+            memcpy(out + o, tmp, k);
+            o += k;
+        }
+        out[o] = 0;
+    }
+    return out;
+}
 
 static int to_unicode(uint8_t c) {
     static const uint16_t cp1252[32] = { 0x20AC, 0x20, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x20,

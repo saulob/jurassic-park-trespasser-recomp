@@ -27,9 +27,11 @@
 #include "linux_hostkeys.h"
 #include "linux_hle.h"
 #include "linux_log.h"
+#include "jpt_l10n.h"
 #include "l10n.h"
 #include "linux_overrides.h"
 #include "linux_spine.h"
+#include "linux_text.h"
 #include "override_registry.h"
 #include "recomp_types.h"
 
@@ -548,6 +550,44 @@ static void test_safe_mode_and_registry_policy(void) {
     guest_skip_video(1);
     CHECK(query_dword(key, "NoVideo") == 1, "Skip Intro: NoVideo reads 1 while an opening is skipped");
     guest_skip_video(0);
+    {
+        uint32_t out = 0x00A80600u, len_va = 0x00A80640u, type_va = 0x00A80644u;
+        args[0] = key, args[1] = put_text(0x00A80400u, "Data Drive"), args[2] = 0, args[3] = type_va, args[4] = out, args[5] = len_va;
+        write32(len_va, 64);
+        CHECK(call_import("advapi32.dll", "RegQueryValueExA", 6, args) == 0 && !strcmp((const char*)gm_ptr(out, 64), "C:\\"),
+              "virtual registry preserves Data Drive = C:\\");
+        args[1] = put_text(0x00A80400u, "Installed Directory");
+        write32(len_va, 64);
+        CHECK(call_import("advapi32.dll", "RegQueryValueExA", 6, args) == 0 && !strcmp((const char*)gm_ptr(out, 64), "D:\\"),
+              "virtual registry preserves Installed Directory = D:\\");
+    }
+}
+
+static void test_language_vs_version_codepage(void) {
+    const jpt_game_version_t* en = jpt_game_version_by_id("en-116");
+    const jpt_game_version_t* ru = jpt_game_version_by_id("ru-116");
+    jpt_config_t cfg;
+
+    jpt_config_defaults(&cfg);
+    jpt_config_apply(&cfg, "language_en-116", "ru");
+    jpt_config_select_language(&cfg, en);
+    CHECK(!strcmp(cfg.language, "ru"), "en-116 can select Russian interface language");
+    l10n_init("build/linux_overrides_l10n_cache", "C:", "game", cfg.language, en);
+    lx_text_set_codepage(jpt_l10n_display_codepage());
+    CHECK(jpt_l10n_display_codepage() == 1251 && lx_text_active_codepage() == 1251,
+          "en-116 with Russian UI activates CP1251 display codepage");
+
+    jpt_config_defaults(&cfg);
+    jpt_config_apply(&cfg, "language_ru-116", "en");
+    jpt_config_select_language(&cfg, ru);
+    CHECK(!strcmp(cfg.language, "en"), "ru-116 can select English interface language");
+    l10n_init("build/linux_overrides_l10n_cache", "C:", "game", cfg.language, ru);
+    lx_text_set_codepage(jpt_l10n_display_codepage());
+    CHECK(jpt_l10n_display_codepage() == 0 && lx_text_active_codepage() == 1252,
+          "ru-116 with English UI keeps CP1252 display codepage");
+
+    jpt_l10n_set_display_codepage(0);
+    lx_text_set_codepage(1252);
 }
 
 /* ---- menu DDF text --------------------------------------------------------------------------------------------------- */
@@ -693,6 +733,7 @@ int main(void) {
     test_dual_stow();
     test_footstep_sounds_rearm();
     test_safe_mode_and_registry_policy();
+    test_language_vs_version_codepage();
     test_menu_ddf_translation();
     test_threads();
     lx_thread_detach();

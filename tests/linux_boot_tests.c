@@ -5,16 +5,20 @@
  * The version matrix always checks the compiled lifts, profiles and registries; an installed guest image is booted to its
  * first frame. Needs the game's guest data for that boot; without it the suite says DATA UNAVAILABLE and still reports the
  * static matrix. */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "active_profile.h"
 #include "guest_thunks.h"
 #include "guest_va.h"
+#include "jpt_fs.h"
 #include "jpt_game_version.h"
 #include "jpt_hash.h"
+#include "jpt_user_data.h"
 #include "linux_boot.h"
 #include "linux_hle.h"
 #include "linux_lift.h"
@@ -308,6 +312,147 @@ static void test_version_matrix(const char* game_dir, const char* user_root) {
     write_version_report(results, sizeof results / sizeof results[0]);
 }
 
+static int join_path(char* out, size_t cap, const char* base, const char* leaf) {
+    int n = snprintf(out, cap, "%s/%s", base, leaf);
+    return n > 0 && (size_t)n < cap;
+}
+
+static int link_fixture(const char* src, const char* dst) {
+    if (symlink(src, dst) == 0) return 1;
+    CHECK(0, "cannot symlink fixture %s -> %s (errno %d)", dst, src, errno);
+    return 0;
+}
+
+static void remove_joined(const char* base, const char* leaf) {
+    char p[1024];
+    if (join_path(p, sizeof p, base, leaf)) jpt_fs_remove(p);
+}
+
+static void rmdir_joined(const char* base, const char* leaf) {
+    char p[1024];
+    if (join_path(p, sizeof p, base, leaf)) jpt_fs_remove_dir(p);
+}
+
+static void test_isolated_version_layout(const char* game_dir, const char* user_root) {
+    const jpt_game_version_t* en = jpt_game_version_by_id("en-116");
+    const char* tmp_base = getenv("TMPDIR") && *getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp";
+    char cwd[512], real_ver[1024], abs_ver[1600], src_img[1664], src_dll[1664], src_data[1664], src_proc[1664];
+    char iso_root[512], iso_game[600], iso_ver[640], iso_user[600], dst[768];
+    char miss_root[512], miss_game[600], miss_ver[640], miss_user[600];
+    int has_proc = 0, iso_ready = 0, miss_ready = 0;
+    lx_boot_options_t o;
+    lx_boot_result_t r;
+
+    (void)user_root;
+    iso_root[0] = iso_game[0] = iso_ver[0] = iso_user[0] = 0;
+    miss_root[0] = miss_game[0] = miss_ver[0] = miss_user[0] = 0;
+
+    if (!en || !jpt_game_version_installed(game_dir, en, real_ver, sizeof real_ver)) return;
+    if (real_ver[0] == '/') {
+        if (snprintf(abs_ver, sizeof abs_ver, "%s", real_ver) >= (int)sizeof abs_ver) return;
+    } else {
+        if (!getcwd(cwd, sizeof cwd)) return;
+        if (!join_path(abs_ver, sizeof abs_ver, cwd, real_ver)) return;
+    }
+    if (!join_path(src_img, sizeof src_img, abs_ver, "guest.img") ||
+        !join_path(src_dll, sizeof src_dll, abs_ver, "MSVCIRT.DLL") ||
+        !join_path(src_proc, sizeof src_proc, abs_ver, "Processor.dll") ||
+        !join_path(src_data, sizeof src_data, abs_ver, "data"))
+        return;
+    if (!jpt_fs_is_dir(src_data)) return;
+    has_proc = jpt_fs_exists(src_proc);
+
+    /* Create fixtures under TMPDIR (/tmp on Linux/WSL) so symlinks stay on the native Linux filesystem. */
+    if (snprintf(iso_root, sizeof iso_root, "%s/jpt_iso_boot_%d", tmp_base, (int)getpid()) >= (int)sizeof iso_root ||
+        !join_path(iso_game, sizeof iso_game, iso_root, "My Games/game") ||
+        !join_path(iso_ver, sizeof iso_ver, iso_game, "versions/en-116") ||
+        !join_path(iso_user, sizeof iso_user, iso_root, "My Games/user_data")) {
+        CHECK(0, "isolated fixture path overflow");
+        goto cleanup;
+    }
+    if (!jpt_make_dirs(iso_ver) || !jpt_make_dirs(iso_user)) {
+        CHECK(0, "cannot create isolated fixture directories under %s", iso_root);
+        goto cleanup;
+    }
+
+    iso_ready = join_path(dst, sizeof dst, iso_ver, "guest.img") && link_fixture(src_img, dst) &&
+                join_path(dst, sizeof dst, iso_ver, "MSVCIRT.DLL") && link_fixture(src_dll, dst) &&
+                (!has_proc || (join_path(dst, sizeof dst, iso_ver, "Processor.dll") && link_fixture(src_proc, dst))) &&
+                join_path(dst, sizeof dst, iso_ver, "data") && link_fixture(src_data, dst);
+    if (!iso_ready) goto cleanup;
+
+    jpt_profile_reset();
+    lx_overrides_reset();
+    lx_boot_options_init(&o, iso_game, "en-116", iso_user, NULL, NULL, 0);
+    o.use_features = 1;
+    o.frame_limit = 1;
+    lx_boot_headless(&o, &r);
+    CHECK(r.status == LX_BOOT_FRAME_PRESENTED,
+          "isolated launcher layout (versions/en-116 with spaces, no root data/) boots past CD check: %s (%s)",
+          lx_boot_status_name(r.status), r.detail);
+
+    if (snprintf(miss_root, sizeof miss_root, "%s/jpt_miss_boot_%d", tmp_base, (int)getpid()) >= (int)sizeof miss_root ||
+        !join_path(miss_game, sizeof miss_game, miss_root, "game") ||
+        !join_path(miss_ver, sizeof miss_ver, miss_game, "versions/en-116") ||
+        !join_path(miss_user, sizeof miss_user, miss_root, "user_data")) {
+        CHECK(0, "missing-media fixture path overflow");
+        goto cleanup;
+    }
+    if (!jpt_make_dirs(miss_ver) || !jpt_make_dirs(miss_user)) {
+        CHECK(0, "cannot create missing-media fixture directories under %s", miss_root);
+        goto cleanup;
+    }
+
+    miss_ready = join_path(dst, sizeof dst, miss_ver, "guest.img") && link_fixture(src_img, dst) &&
+                 join_path(dst, sizeof dst, miss_ver, "MSVCIRT.DLL") && link_fixture(src_dll, dst);
+    if (!miss_ready) goto cleanup;
+
+    jpt_profile_reset();
+    lx_overrides_reset();
+    lx_boot_options_init(&o, miss_game, "en-116", miss_user, NULL, NULL, 0);
+    o.use_features = 1;
+    o.frame_limit = 1;
+    lx_boot_headless(&o, &r);
+    CHECK(r.status == LX_BOOT_EXITED,
+          "missing tpassintro.smk exits cleanly without an infinite CD prompt loop: %s (%s)",
+          lx_boot_status_name(r.status), r.detail);
+
+cleanup:
+    if (iso_ver[0]) {
+        remove_joined(iso_ver, "guest.img");
+        remove_joined(iso_ver, "MSVCIRT.DLL");
+        remove_joined(iso_ver, "Processor.dll");
+        remove_joined(iso_ver, "data");
+        jpt_fs_remove_dir(iso_ver);
+        rmdir_joined(iso_game, "versions");
+        jpt_fs_remove_dir(iso_game);
+    }
+    if (iso_user[0]) {
+        remove_joined(iso_user, "saves/recomp-registry.txt");
+        rmdir_joined(iso_user, "saves");
+        rmdir_joined(iso_user, "cache");
+        jpt_fs_remove_dir(iso_user);
+    }
+    if (iso_root[0]) {
+        rmdir_joined(iso_root, "My Games");
+        jpt_fs_remove_dir(iso_root);
+    }
+    if (miss_ver[0]) {
+        remove_joined(miss_ver, "guest.img");
+        remove_joined(miss_ver, "MSVCIRT.DLL");
+        jpt_fs_remove_dir(miss_ver);
+        rmdir_joined(miss_game, "versions");
+        jpt_fs_remove_dir(miss_game);
+    }
+    if (miss_user[0]) {
+        remove_joined(miss_user, "saves/recomp-registry.txt");
+        rmdir_joined(miss_user, "saves");
+        rmdir_joined(miss_user, "cache");
+        jpt_fs_remove_dir(miss_user);
+    }
+    if (miss_root[0]) jpt_fs_remove_dir(miss_root);
+}
+
 static void test_features_on_after_off(const char* game_dir, const char* user_root) {
     static const char* const ids[] = { "en-116", "ptbr-117" };
     for (size_t i = 0; i < sizeof ids / sizeof ids[0]; i++) {
@@ -418,6 +563,7 @@ int main(int argc, char** argv) {
         CHECK(ng.status == LX_BOOT_FRAME_PRESENTED, "New Game runs without a missing import: %s (%s)", lx_boot_status_name(ng.status), ng.detail);
     }
     test_features_on_after_off(o.game_dir, o.user_root);
+    test_isolated_version_layout(o.game_dir, o.user_root);
     printf("linux_boot_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

@@ -4,9 +4,13 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "jpt_fs.h"
+#include "jpt_l10n.h"
 #include "jpt_sync.h"
+#include "linux_log.h"
 #include "linux_screen.h"
 #include "linux_shutdown.h"
+#include "linux_text.h"
 #include "linux_user32.h"
 #include "linux_win32_harness.h"
 
@@ -237,6 +241,70 @@ static void test_helpers(void) {
     CHECK(U32(MessageBoxA, 4, 0u, put_string(g_scratch + 0xE00, "text"), put_string(g_scratch + 0xE40, "caption"), 4u) == 6, "MessageBoxA answers the default button of Yes/No");
 }
 
+static void test_messagebox_encoding_and_retry(void) {
+    char log_dir[256], log_path[320], buf[4096];
+    const char* cp1251_caption = "\xCE\xF8\xE8\xE1\xEA\xE0";
+    const char* cp1251_text = "\xC2\xF1\xF2\xE0\xE2\xFC\xF2\xE5 \xE4\xE8\xF1\xEA C:\\.";
+    const char* utf8_caption = "\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0";
+    const char* utf8_text = "\xD0\x92\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD1\x8C\xD1\x82\xD0\xB5 \xD0\xB4\xD0\xB8\xD1\x81\xD0\xBA C:\\.";
+    const char* cp1252_text = "Aten\xE7\xE3o: insert CD";
+    const char* cp1252_utf8 = "Aten\xC3\xA7\xC3\xA3o: insert CD";
+    uint32_t text_va = g_scratch + 0xF00, cap_va = g_scratch + 0xF80;
+    FILE* f;
+    size_t n = 0;
+
+    snprintf(log_dir, sizeof log_dir, "%s/jpt_u32_log_%d", getenv("TMPDIR") && *getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
+    snprintf(log_path, sizeof log_path, "%s/u32.log", log_dir);
+    jpt_fs_mkdir(log_dir);
+    lx_log_quiet(1);
+    lx_log_open(log_dir, log_path);
+
+    CHECK(U32(MessageBoxA, 4, 0u, put_string(text_va, "Please Insert the Trespasser CD into C:\\.\r\n\r\nPress the OK button to continue.\r\nPress Cancel to Quit."),
+              put_string(cap_va, "Trespasser Error"), 1u) == 2,
+          "MessageBoxA MB_OKCANCEL returns IDCANCEL (2), preventing infinite CD prompt loops");
+    CHECK(U32(MessageBoxA, 4, 0u, text_va, cap_va, 5u) == 2,
+          "MessageBoxA MB_RETRYCANCEL returns IDCANCEL (2), never IDRETRY (4)");
+    CHECK(U32(MessageBoxA, 4, 0u, text_va, cap_va, 2u) == 3, "MessageBoxA MB_ABORTRETRYIGNORE returns IDABORT (3)");
+    CHECK(U32(MessageBoxA, 4, 0u, text_va, cap_va, 0u) == 1, "MessageBoxA MB_OK returns IDOK (1)");
+
+    lx_text_set_codepage(1251);
+    put_string(text_va, cp1251_text);
+    put_string(cap_va, cp1251_caption);
+    CHECK(U32(MessageBoxA, 4, 0u, text_va, cap_va, 1u) == 2, "Russian CP1251 MessageBoxA MB_OKCANCEL returns IDCANCEL");
+    CHECK(!strcmp((const char*)gm_ptr(text_va, 64), cp1251_text) && !strcmp((const char*)gm_ptr(cap_va, 32), cp1251_caption),
+          "guest memory stays in CP1251 without host-side mutation");
+
+    /* Valid UTF-8 passed while CP1251 is active must not be double-converted. */
+    U32(MessageBoxA, 4, 0u, put_string(text_va, utf8_text), put_string(cap_va, utf8_caption), 0u);
+
+    lx_text_set_codepage(1252);
+    U32(MessageBoxA, 4, 0u, put_string(text_va, cp1252_text), put_string(cap_va, "CP1252"), 0u);
+
+    lx_log_close();
+    lx_log_quiet(0);
+
+    buf[0] = 0;
+    f = fopen(log_path, "rb");
+    if (f) {
+        n = fread(buf, 1, sizeof buf - 1, f);
+        buf[n] = 0;
+        fclose(f);
+    }
+    CHECK(n > 0 && jpt_utf8_valid(buf, n), "Linux log written by MessageBoxA is valid UTF-8");
+    CHECK(strstr(buf, "Please Insert the Trespasser CD into C:\\.") != NULL, "English ASCII message is preserved");
+    CHECK(strstr(buf, utf8_caption) != NULL && strstr(buf, utf8_text) != NULL, "CP1251 Cyrillic message is converted to UTF-8");
+    CHECK(strstr(buf, cp1252_utf8) != NULL, "CP1252 accented message is converted to UTF-8");
+
+    {
+        char out[128];
+        const char* kept = lx_text_to_utf8(utf8_caption, 1251, out, sizeof out);
+        CHECK(kept == utf8_caption && !strcmp(kept, utf8_caption), "lx_text_to_utf8 leaves valid UTF-8 untouched");
+    }
+
+    jpt_fs_remove(log_path);
+    jpt_fs_remove_dir(log_dir);
+}
+
 int main(void) {
     if (!harness_start()) return 2;
     test_classes_and_messages();
@@ -246,6 +314,7 @@ int main(void) {
     test_input();
     test_cursor_and_clip();
     test_helpers();
+    test_messagebox_encoding_and_retry();
     harness_stop();
     printf("linux_user32_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

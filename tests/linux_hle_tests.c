@@ -13,9 +13,12 @@
 #include "guest_thunks.h"
 #include "jpt_fs.h"
 #include "jpt_sync.h"
+#include "jpt_user_data.h"
 #include "jpt_vpath.h"
 #include "linux_abi.h"
 #include "linux_hle.h"
+#include "linux_log.h"
+#include "linux_text.h"
 
 static int g_checks, g_failures;
 
@@ -239,6 +242,72 @@ static void test_modules_and_missing(void) {
     CHECK(hle_find("kernel32.dll", "CreateFileA") != NULL && hle_find("USER32.DLL", "DialogBoxParamA") == NULL, "the table lists only what is implemented");
 }
 
+static void test_media_check_and_spaces(void) {
+    char base[400], spaced[512], data_dir[540], menu_dir[560], smk[580], log_path[440];
+    uint32_t path = s_scratch + 1024;
+    jpt_vpath_t* vp = jpt_vpath_new();
+    FILE* f;
+    char buf[2048];
+    size_t n;
+
+    snprintf(base, sizeof base, "%s/jpt_hle_space_%d", getenv("TMPDIR") && *getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
+    snprintf(spaced, sizeof spaced, "%s/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B/Jurassic Park: Trespasser/versions/en-116", base);
+    snprintf(data_dir, sizeof data_dir, "%s/data", spaced);
+    snprintf(menu_dir, sizeof menu_dir, "%s/menu", data_dir);
+    snprintf(smk, sizeof smk, "%s/tpassintro.smk", menu_dir);
+    snprintf(log_path, sizeof log_path, "%s/debug.log", base);
+
+    jpt_make_dirs(menu_dir);
+    f = fopen(smk, "wb");
+    CHECK(f != NULL && fwrite("SMK2", 1, 4, f) == 4, "create fixture tpassintro.smk");
+    if (f) fclose(f);
+
+    jpt_vpath_mount(vp, 'C', spaced);
+    hle_shutdown();
+    hle_init(vp, IMAGE_BASE, "C:\\trespass.exe");
+    hle_set_exit_handler(on_exit_request);
+
+    CHECK(K32(GetFileAttributesA, 1, put_string(path, "C:\\data\\menu\\tpassintro.smk")) == 0x80,
+          "GetFileAttributesA resolves C:\\data\\menu\\tpassintro.smk in a version folder with spaces");
+    CHECK(K32(GetFileAttributesA, 1, put_string(path, "C:\\DATA\\MENU\\TPASSINTRO.SMK")) == 0x80,
+          "GetFileAttributesA matches case-insensitively with Windows backslashes");
+    CHECK(K32(GetFileAttributesA, 1, put_string(path, "C:\\data\\menu\\absent.smk")) == 0xFFFFFFFFu && K32(GetLastError, 0) == 2,
+          "GetFileAttributesA reports missing media file without faking success");
+
+    lx_log_quiet(1);
+    lx_log_open(base, log_path);
+    lx_text_set_codepage(1251);
+    K32(OutputDebugStringA, 1, put_string(path, "\xCE\xF8\xE8\xE1\xEA\xE0"));
+    lx_text_set_codepage(1252);
+    lx_log_close();
+    lx_log_quiet(0);
+
+    buf[0] = 0;
+    f = fopen(log_path, "rb");
+    if (f) {
+        n = fread(buf, 1, sizeof buf - 1, f);
+        buf[n] = 0;
+        fclose(f);
+    }
+    CHECK(strstr(buf, "\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0") != NULL,
+          "OutputDebugStringA converts CP1251 guest text to UTF-8 in the Linux log");
+
+    hle_shutdown();
+    jpt_vpath_free(vp);
+    jpt_fs_remove(smk);
+    jpt_fs_remove(log_path);
+    jpt_fs_remove_dir(menu_dir);
+    jpt_fs_remove_dir(data_dir);
+    jpt_fs_remove_dir(spaced);
+    snprintf(spaced, sizeof spaced, "%s/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B/Jurassic Park: Trespasser/versions", base);
+    jpt_fs_remove_dir(spaced);
+    snprintf(spaced, sizeof spaced, "%s/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B/Jurassic Park: Trespasser", base);
+    jpt_fs_remove_dir(spaced);
+    snprintf(spaced, sizeof spaced, "%s/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B", base);
+    jpt_fs_remove_dir(spaced);
+    jpt_fs_remove_dir(base);
+}
+
 int main(void) {
     char tree[400];
     jpt_vpath_t* vp;
@@ -272,6 +341,7 @@ int main(void) {
 
     hle_shutdown();
     jpt_vpath_free(vp);
+    test_media_check_and_spaces();
     gm_shutdown();
     {
         const char* files[] = { "Data/Menu/Title.TGA", "Data/Stream.tpa", "savegame/SAVEGAME.001" };

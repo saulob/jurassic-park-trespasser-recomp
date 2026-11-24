@@ -297,6 +297,7 @@ static void choose_version(options_t* o, lx_paths_t* paths, const char* settings
     if (wanted[0] && strcasecmp(wanted, version->id))
         lx_log("game-version", "the selected version %s is not installed or this build cannot run it: %s is used", wanted, version->id);
     o->version = version->id;
+    snprintf(paths->game_dir, sizeof paths->game_dir, "%s", dir);
     if (jpt_game_version_saves_dir(paths->user_root, paths->saves_dir, version, saves, sizeof saves) &&
         strcmp(saves, paths->saves_dir) && jpt_make_dirs(saves))
         strcpy(paths->saves_dir, saves);
@@ -367,9 +368,16 @@ int main(int argc, char** argv) {
     }
 #endif
     vp = jpt_vpath_new();
-    if (!vp || !jpt_vpath_mount(vp, 'C', paths.game_dir)) {
-        lx_log("boot", "cannot map the game folder");
-        return EXIT_SETUP;
+    {
+        char version_dir[JPT_PATH_MAX];
+        const jpt_game_version_t* v = jpt_game_version_by_id(o.version);
+        const char* mount_dir = (v && jpt_game_version_installed(paths.game_dir, v, version_dir, sizeof version_dir))
+                                    ? version_dir
+                                    : paths.game_dir;
+        if (!vp || !jpt_vpath_mount(vp, 'C', mount_dir)) {
+            lx_log("boot", "cannot map the game folder");
+            return EXIT_SETUP;
+        }
     }
     if (!find_guest_image(&paths, o.version, vp, image_path, sizeof image_path)) {
         lx_log("boot", "no guest image for %s under %s (versions/%s/guest.img)", o.version, paths.game_dir, o.version);

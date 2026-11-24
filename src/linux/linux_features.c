@@ -190,6 +190,7 @@ void lx_features_stop(void) {
     lx_panel_release();
     lx_frontend_reset();
     lx_card_reset();
+    jpt_l10n_set_display_codepage(0);
     lx_text_set_codepage(1252);
     lx_overrides_reset();
     lx_host_reset();

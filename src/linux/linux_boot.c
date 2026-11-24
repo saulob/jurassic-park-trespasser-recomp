@@ -41,13 +41,24 @@ typedef struct {
     uint32_t entry;
 } entry_call_t;
 
-static void prepare_saves(jpt_vpath_t* vp, const lx_boot_options_t* o) {
-    char saves[JPT_PATH_MAX];
-    if (o->saves_dir) snprintf(saves, sizeof saves, "%s", o->saves_dir);
-    else snprintf(saves, sizeof saves, "%s/saves", o->user_root ? o->user_root : "user_data");
+static void prepare_saves(jpt_vpath_t* vp, const lx_boot_options_t* o, const jpt_game_version_t* version) {
+    char default_saves[JPT_PATH_MAX], saves[JPT_PATH_MAX];
+    const char* user_root = o->user_root ? o->user_root : "user_data";
+    if (o->saves_dir) {
+        snprintf(saves, sizeof saves, "%s", o->saves_dir);
+    } else {
+        snprintf(default_saves, sizeof default_saves, "%s/saves", user_root);
+        if (!jpt_game_version_saves_dir(user_root, default_saves, version, saves, sizeof saves))
+            snprintf(saves, sizeof saves, "%s", default_saves);
+    }
     jpt_make_dirs(saves);
     jpt_vpath_mount(vp, 'D', saves);
     hle_advapi32_init(saves, "C:\\", "D:\\");
+}
+
+static const char* resolve_game_dir(const char* game_dir, const jpt_game_version_t* version, char* out, size_t cap) {
+    if (game_dir && version && jpt_game_version_installed(game_dir, version, out, cap)) return out;
+    return game_dir;
 }
 
 #define THREAD_JOIN_MS 3000u
@@ -158,7 +169,8 @@ void lx_boot_options_init(lx_boot_options_t* o, const char* game_dir, const char
 lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* r) {
     const jpt_game_version_t* version = jpt_game_version_by_id(o->version ? o->version : "en-116");
     const lx_lift_t* image = version ? lx_lift_for_version(version) : NULL;
-    char host_image[JPT_PATH_MAX], hash[65], err[128];
+    char version_dir[JPT_PATH_MAX], host_image[JPT_PATH_MAX], hash[65], err[128];
+    const char* mount_dir;
     uint8_t* bytes = NULL;
     size_t size = 0;
     jpt_vpath_t* vp = jpt_vpath_new();
@@ -183,7 +195,8 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
         jpt_vpath_free(vp);
         return finish(r, LX_BOOT_SETUP_FAILED, "the linked lift is not the one this program was built to carry");
     }
-    if (!vp || !jpt_vpath_mount(vp, 'C', o->game_dir)) {
+    mount_dir = resolve_game_dir(o->game_dir, version, version_dir, sizeof version_dir);
+    if (!vp || !mount_dir || !jpt_vpath_mount(vp, 'C', mount_dir)) {
         jpt_vpath_free(vp);
         return finish(r, LX_BOOT_SETUP_FAILED, "cannot map the game folder");
     }
@@ -232,7 +245,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     hle_init(vp, img.base, "C:\\trespass.exe");
     lx_settings_load(o->settings_file, &settings);
     hle_set_exit_handler(on_exit_request);
-    prepare_saves(vp, o);
+    prepare_saves(vp, o, version);
     lx_window_set_backend(o->backend);
     lx_virtual_reset();
     lx_screen_set_frame_hook(o->frame_hook, o->hook_user);
@@ -242,7 +255,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     char cache_dir[JPT_PATH_MAX];
     snprintf(cache_dir, sizeof cache_dir, "%s/cache", o->user_root ? o->user_root : "user_data");
     if (o->use_features) lx_lift_register_overrides(image->lift);
-    if (o->use_features && !lx_features_start(&settings, o->game_dir, o->version, o->settings_file, cache_dir)) {
+    if (o->use_features && !lx_features_start(&settings, mount_dir, o->version, o->settings_file, cache_dir)) {
         gm_shutdown();
         jpt_vpath_free(vp);
         return finish(r, LX_BOOT_SETUP_FAILED, "the host features cannot be installed over the lifted game");
