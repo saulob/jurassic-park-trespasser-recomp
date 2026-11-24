@@ -610,26 +610,26 @@ private:
         case PageId::kPlay:
             return {name, "Import game versions from your discs, choose one and start it.",
                     [this](trg::Ui& ui) { PagePlay(ui); },
-                    [this] { return !Ready(); }, nullptr};
+                    [this] { return !Ready(); }, nullptr, nullptr, {}};
         case PageId::kDisplay:
             return {name, "Window, monitor, aspect ratio and presentation.", [this](trg::Ui& ui) { PageDisplay(ui); },
-                    nullptr, nullptr};
+                    nullptr, nullptr, {}, {}};
         case PageId::kGraphics:
             return {name, "Renderer, graphics card, resolution, field of view, anti-aliasing and texture filtering.",
-                    [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr};
+                    [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr, {}, {}};
         case PageId::kGameplay:
             return {name, "Language, Skip Intro, video subtitles and what the window title shows.",
-                    [this](trg::Ui& ui) { PageGameplay(ui); }, nullptr, nullptr};
+                    [this](trg::Ui& ui) { PageGameplay(ui); }, nullptr, nullptr, {}, {}};
         case PageId::kControls:
-            return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr};
+            return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr, {}, {}};
         case PageId::kCheats:
-            return {name, kCheatsPageSubtitle, [this](trg::Ui& ui) { PageCheats(ui); }, nullptr, nullptr};
+            return {name, kCheatsPageSubtitle, [this](trg::Ui& ui) { PageCheats(ui); }, nullptr, nullptr, {}, {}};
         case PageId::kBugReport:
             return {name, "Describe a problem and send a report with one game log.",
-                    [this](trg::Ui& ui) { PageBugReport(ui); }, nullptr, nullptr};
+                    [this](trg::Ui& ui) { PageBugReport(ui); }, nullptr, nullptr, {}, {}};
         case PageId::kAbout:
             return {name, "This port, and where your files and settings live.", [this](trg::Ui& ui) { PageAbout(ui); },
-                    nullptr, nullptr};
+                    nullptr, nullptr, {}, {}};
         }
         return {};
     }
