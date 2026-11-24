@@ -97,6 +97,27 @@ static void test_producers(void) {
     free(limits);
 }
 
+static void test_numbered_parity(void) {
+    char dir[MAX_PATH], f1[MAX_PATH], f2[MAX_PATH], f3[MAX_PATH], f4[MAX_PATH];
+    FILE* f;
+    snprintf(dir, sizeof dir, "%s\\jpt_log_parity_%lu", getenv("TEMP") ? getenv("TEMP") : ".", GetCurrentProcessId());
+    CreateDirectoryA(dir, NULL);
+    snprintf(f1, sizeof f1, "%s\\trespasser_recomp_003.log", dir);
+    snprintf(f2, sizeof f2, "%s\\trespasser_linux_005.log", dir);
+    snprintf(f3, sizeof f3, "%s\\trespasser_002.log", dir);
+    snprintf(f4, sizeof f4, "%s\\trespasser_recomp_004.dmp", dir);
+    if ((f = fopen(f1, "wb")) != NULL) { fputs("win3\n", f); fclose(f); }
+    if ((f = fopen(f2, "wb")) != NULL) { fputs("lin5\n", f); fclose(f); }
+    if ((f = fopen(f3, "wb")) != NULL) { fputs("old2\n", f); fclose(f); }
+    if ((f = fopen(f4, "wb")) != NULL) { fputs("MDMP", f); fclose(f); }
+    CHECK(host_log_open(dir, NULL));
+    CHECK(strstr(host_log_path(), "trespasser_recomp_006.log") != NULL);
+    remove(f1);
+    remove(f2);
+    remove(f3);
+    remove(f4);
+}
+
 int main(void) {
     char path[MAX_PATH];
     char* text;
@@ -124,6 +145,7 @@ int main(void) {
     free(text);
     remove(path);
     test_producers();
+    test_numbered_parity();
     printf("log_tests: %d checks, %d failures\n", s_checks, s_failures);
     return s_failures ? 1 : 0;
 }

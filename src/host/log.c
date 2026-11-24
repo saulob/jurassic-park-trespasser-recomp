@@ -1,4 +1,5 @@
 #include "host.h"
+#include "jpt_port.h"
 
 #include <fcntl.h>
 #include <io.h>
@@ -6,9 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#define LOG_NAME "trespasser_recomp"
-#define PREVIOUS_LOG_NAME "trespasser"
-#define MAX_LOG_NUMBER 99999
+#define LOG_NAME JPT_LOG_NAME
+#define PREVIOUS_LOG_NAME JPT_LEGACY_LOG_NAME
+#define LEGACY_LINUX_LOG_NAME JPT_LEGACY_LINUX_LOG_NAME
+#define MAX_LOG_NUMBER JPT_MAX_LOG_NUMBER
 
 static HANDLE s_file = INVALID_HANDLE_VALUE;
 static HANDLE s_console = INVALID_HANDLE_VALUE;
@@ -60,6 +62,8 @@ static unsigned highest_numbered(const char* dir, const char* name) {
  * from the numbers of the earlier trespasser_NNN.log. */
 static HANDLE create_numbered(const char* dir) {
     unsigned highest = highest_numbered(dir, LOG_NAME), n = highest_numbered(dir, PREVIOUS_LOG_NAME);
+    if (n > highest) highest = n;
+    n = highest_numbered(dir, LEGACY_LINUX_LOG_NAME);
     if (n > highest) highest = n;
     for (n = highest + 1; n <= MAX_LOG_NUMBER; n++) {
         HANDLE h;

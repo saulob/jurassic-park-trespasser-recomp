@@ -15,6 +15,10 @@ extern "C" {
 #define JPT_APPLICATION_ID "io.github.saulob.jurassic-park-trespasser"
 #define JPT_APPLICATION_NAME "Jurassic Park: Trespasser"
 #define JPT_PORT_PATH_MAX 1024
+#define JPT_LOG_NAME "trespasser_recomp"
+#define JPT_LEGACY_LOG_NAME "trespasser"
+#define JPT_LEGACY_LINUX_LOG_NAME "trespasser_linux"
+#define JPT_MAX_LOG_NUMBER 99999u
 
 /* 1 when appimage (the APPIMAGE variable) names a file. */
 int jpt_port_in_appimage(const char* appimage);

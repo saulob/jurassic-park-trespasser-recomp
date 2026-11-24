@@ -31,7 +31,7 @@ Exactly the fields of the preview, and nothing else:
 | game_build, game_version, language, executable_sha256 | the installed game (label, version, language, hash of its executable) |
 | operating_system | e.g. `Windows 11 (build 26200)` |
 | renderer, gpu, driver, render_resolution | read from the start of the selected log, filtered |
-| log_file | the name of the chosen log, `trespasser_recomp_NNN.log` |
+| log_file | the name of the chosen log, `trespasser_recomp_NNN.log` (Windows and Linux; historical v0.1.1 Linux logs named `trespasser_linux_NNN.log` are also accepted for reporting) |
 | log_clipped | whether only the end of the log was kept |
 | log_text | the end of the chosen log after the privacy filter, at most 64 KiB |
 
@@ -65,7 +65,7 @@ every private value**, which is why the page shows the preview and says so.
   program blocks it, the page says so and names port 443.
 - Connections happen only from three buttons: Send report (after confirming), Refresh and What was sent. Nothing happens
   at startup, when the page opens, or in the background. `tests/bug_report_tests.cpp` checks this in the source.
-- Game logs live in `gameogs` next to the executable (`trespasser_recomp_NNN.log`).
+- Game logs live in `logs` next to the executable (`trespasser_recomp_NNN.log` on Windows and Linux; historical v0.1.1 `trespasser_linux_NNN.log` files remain readable by Bug Report without renaming).
 - Timeouts: 8 s to connect, 15 s to send, 20 s to receive, 30 s in all.
 - The game process has no network code.
 

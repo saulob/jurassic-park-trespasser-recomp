@@ -9,6 +9,7 @@
 
 #include "jpt_fs.h"
 #include "jpt_port.h"
+#include "linux_log.h"
 #include "linux_paths.h"
 
 static int g_checks, g_failures;
@@ -271,6 +272,153 @@ static void test_paths_with_spaces_and_unicode(void) {
     clear_environment();
 }
 
+static int write_text_file(const char* path, const char* text) {
+    FILE* f = fopen(path, "wb");
+    if (!f) return 0;
+    size_t n = strlen(text);
+    int ok = fwrite(text, 1, n, f) == n;
+    fclose(f);
+    return ok;
+}
+
+static int read_text_file(const char* path, char* out, size_t cap) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return 0;
+    size_t n = fread(out, 1, cap - 1, f);
+    fclose(f);
+    out[n] = 0;
+    return 1;
+}
+
+static int ends_with(const char* s, const char* suffix) {
+    size_t sl = strlen(s), sufl = strlen(suffix);
+    return sl >= sufl && strcmp(s + sl - sufl, suffix) == 0;
+}
+
+static void test_linux_log(void) {
+    char root[256], dir[400], file[512], buf[1024];
+    const char* tmp = getenv("TMPDIR");
+    snprintf(root, sizeof root, "%s/jpt_linux_log_%d", tmp && *tmp ? tmp : "/tmp", (int)getpid());
+    snprintf(dir, sizeof dir, "%s/logs", root);
+    jpt_fs_mkdir(root);
+    jpt_fs_mkdir(dir);
+    lx_log_quiet(1);
+
+    CHECK(lx_log_open(dir, NULL), "first numbered Linux log opens");
+    CHECK(ends_with(lx_log_path(), "/trespasser_recomp_001.log") && !strstr(lx_log_path(), "trespasser_linux_"),
+          "first log is trespasser_recomp_001.log (%s)", lx_log_path());
+    lx_log("test", "first-run");
+    lx_log_close();
+
+    CHECK(lx_log_open(dir, NULL), "second numbered Linux log opens");
+    CHECK(ends_with(lx_log_path(), "/trespasser_recomp_002.log"), "second log is trespasser_recomp_002.log (%s)", lx_log_path());
+    lx_log("test", "second-run");
+    lx_log_close();
+
+    snprintf(file, sizeof file, "%s/trespasser_recomp_001.log", dir);
+    CHECK(read_text_file(file, buf, sizeof buf) && strstr(buf, "first-run") && !strstr(buf, "second-run"),
+          "first log preserved without overwrite");
+
+    snprintf(file, sizeof file, "%s/trespasser_recomp_005.log", dir);
+    CHECK(write_text_file(file, "existing-005\n"), "create gap fixture 005");
+    CHECK(lx_log_open(dir, NULL) && ends_with(lx_log_path(), "/trespasser_recomp_006.log"),
+          "gap 003-004 is skipped, next is 006 (%s)", lx_log_path());
+    lx_log_close();
+
+    snprintf(file, sizeof file, "%s/trespasser_linux_010.log", dir);
+    CHECK(write_text_file(file, "legacy-linux\n"), "create legacy Linux log 010");
+    CHECK(lx_log_open(dir, NULL) && ends_with(lx_log_path(), "/trespasser_recomp_011.log"),
+          "legacy trespasser_linux_010 advances to 011 (%s)", lx_log_path());
+    lx_log_close();
+
+    snprintf(file, sizeof file, "%s/trespasser_015.log", dir);
+    CHECK(write_text_file(file, "legacy-win\n"), "create legacy trespasser 015");
+    CHECK(lx_log_open(dir, NULL) && ends_with(lx_log_path(), "/trespasser_recomp_016.log"),
+          "legacy trespasser_015 advances to 016 (%s)", lx_log_path());
+    lx_log_close();
+
+    snprintf(file, sizeof file, "%s/trespasser_recomp_020.dmp", dir);
+    CHECK(write_text_file(file, "MDMP"), "create crash dump 020");
+    snprintf(file, sizeof file, "%s/trespasser_recomp_025_2.dmp", dir);
+    CHECK(write_text_file(file, "MDMP"), "create secondary crash dump 025_2");
+    CHECK(lx_log_open(dir, NULL) && ends_with(lx_log_path(), "/trespasser_recomp_026.log"),
+          "crash dumps advance numbering to 026 (%s)", lx_log_path());
+    lx_log_close();
+
+    snprintf(file, sizeof file, "%s/trespasser_recomp_026.log", dir);
+    CHECK(write_text_file(file, "untouched-026\n"), "mark 026 content");
+    CHECK(lx_log_open_from(dir, 26) && ends_with(lx_log_path(), "/trespasser_recomp_027.log"),
+          "EEXIST on 026 retries and creates 027 (%s)", lx_log_path());
+    lx_log_close();
+    CHECK(read_text_file(file, buf, sizeof buf) && !strcmp(buf, "untouched-026\n"), "026 content untouched after EEXIST");
+
+    snprintf(file, sizeof file, "%s/not_a_dir", root);
+    CHECK(write_text_file(file, "blocker"), "create blocker file");
+    {
+        char bad_dir[sizeof file + sizeof "/child"];
+        int written = snprintf(bad_dir, sizeof bad_dir, "%s/child", file);
+        CHECK(written > 0 && (size_t)written < sizeof bad_dir, "child under a file path fits its buffer");
+        CHECK(!lx_log_open(bad_dir, NULL), "path under regular file fails");
+        CHECK(lx_log_fd() == -1 && !lx_log_path()[0], "failed open leaves no fd or stale path");
+    }
+    if (geteuid() != 0) {
+        char ro_dir[400];
+        snprintf(ro_dir, sizeof ro_dir, "%s/readonly", root);
+        jpt_fs_mkdir(ro_dir);
+        chmod(ro_dir, 0555);
+        CHECK(!lx_log_open(ro_dir, NULL), "read-only log directory fails");
+        chmod(ro_dir, 0755);
+        jpt_fs_remove_dir(ro_dir);
+    }
+    CHECK(!lx_log_open("", NULL), "empty dir fails");
+    CHECK(!lx_log_open(dir, ""), "empty --log-file fails");
+
+    snprintf(file, sizeof file, "%s/explicit_session.log", root);
+    CHECK(write_text_file(file, "prior-line\n"), "seed explicit log file");
+    CHECK(lx_log_open(dir, file) && !strcmp(lx_log_path(), file), "--log-file opens explicit path");
+    lx_log("explicit", "appended-line");
+    lx_log_close();
+    CHECK(read_text_file(file, buf, sizeof buf) && strstr(buf, "prior-line") && strstr(buf, "appended-line"),
+          "--log-file appends without truncating");
+    jpt_fs_remove(file);
+
+    {
+        char spaced[450], unicode[450];
+        snprintf(spaced, sizeof spaced, "%s/My Logs Folder", root);
+        snprintf(unicode, sizeof unicode, "%s/\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B \xD0\x9B\xD0\xBE\xD0\xB3\xD0\xB8", root);
+        CHECK(lx_log_open(spaced, NULL) && ends_with(lx_log_path(), "/trespasser_recomp_001.log"),
+              "directory with spaces creates trespasser_recomp_001.log (%s)", lx_log_path());
+        snprintf(file, sizeof file, "%s", lx_log_path());
+        lx_log_close();
+        jpt_fs_remove(file);
+        jpt_fs_remove_dir(spaced);
+
+        CHECK(lx_log_open(unicode, NULL) && ends_with(lx_log_path(), "/trespasser_recomp_001.log"),
+              "directory with Unicode creates trespasser_recomp_001.log (%s)", lx_log_path());
+        snprintf(file, sizeof file, "%s", lx_log_path());
+        lx_log_close();
+        jpt_fs_remove(file);
+        jpt_fs_remove_dir(unicode);
+    }
+
+    lx_log_quiet(0);
+    {
+        const char* files[] = {
+            "logs/trespasser_recomp_001.log", "logs/trespasser_recomp_002.log", "logs/trespasser_recomp_005.log",
+            "logs/trespasser_recomp_006.log", "logs/trespasser_linux_010.log",  "logs/trespasser_recomp_011.log",
+            "logs/trespasser_015.log",        "logs/trespasser_recomp_016.log", "logs/trespasser_recomp_020.dmp",
+            "logs/trespasser_recomp_025_2.dmp", "logs/trespasser_recomp_026.log", "logs/trespasser_recomp_027.log",
+            "not_a_dir"
+        };
+        for (size_t i = 0; i < sizeof files / sizeof files[0]; i++) {
+            snprintf(file, sizeof file, "%s/%s", root, files[i]);
+            jpt_fs_remove(file);
+        }
+    }
+    jpt_fs_remove_dir(dir);
+    jpt_fs_remove_dir(root);
+}
+
 int main(void) {
     test_choice();
     test_prepare();
@@ -279,6 +427,7 @@ int main(void) {
     test_relaunch();
     test_steam_deck_appimage_and_sd_card();
     test_paths_with_spaces_and_unicode();
+    test_linux_log();
     printf("linux_paths_tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

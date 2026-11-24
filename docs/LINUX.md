@@ -714,7 +714,7 @@ shared.
 | Guest path resolution, registry store, synchronisation, file interface | `src/common/jpt_vpath.*`, `jpt_reg_store.*`, `jpt_sync.*`, `jpt_fs*.c` | tested |
 | kernel32 HLE: 46 of 59 imports | `src/linux/linux_hle.c` | tested (`linux_hle_tests`) |
 | msvcrt HLE (start-up, `_EH_prolog`, exit, heap, x87 helpers, descriptors and `FILE`, `sprintf`, strings, numbers) and the data exports `_acmdln`, `_adjust_fdiv`, `_iob`, `__pioinfo`, `__badioinfo` | `src/linux/linux_msvcrt*.c` | reached by the bootstrap; no unit test of its own yet |
-| Folders and logging | `src/linux/linux_paths.*`, `linux_log.*` | tested |
+| Folders and logging (`trespasser_recomp_NNN.log`, same canonical format as Windows; v0.1.1 `trespasser_linux_NNN.log` kept as historical compatibility) | `src/linux/linux_paths.*`, `linux_log.*` | tested |
 | user32, gdi32, DirectDraw, presentation policy | `src/linux/linux_user32.*`, `linux_gdi32.*`, `linux_ddraw.*`, `linux_screen.*` | tested (`linux_user32_tests` 68, `linux_gdi_tests` 35, `linux_ddraw_tests` 58, `linux_present_tests` 23 checks) |
 | Window backends (virtual, SDL3) | `src/linux/linux_window.*`, `linux_sdl_window.c` | virtual tested; SDL3 built, never run |
 | Processor.dll, dsound (no device), PE resources | `src/linux/linux_processor.*`, `linux_dsound.*`, `linux_resource.*` | exercised by `linux_boot_tests` |

@@ -975,11 +975,84 @@ void TestNothingSentOnItsOwn() {
 
 } // namespace
 
+void TestLegacyLinuxAndBootstrapLogs() {
+    const fs::path dir = MakeTempDir("linux_legacy");
+    const fs::path running = dir / "trespasser_recomp_004.log";
+    const fs::path boot_guest = dir / "trespasser_recomp_003.log";
+    const fs::path legacy_cp1251 = dir / "trespasser_linux_002.log";
+    const fs::path legacy_closed = dir / "trespasser_linux_001.log";
+
+    WriteBytes(legacy_closed, "[launcher] closed\n");
+    // Raw CP1251 Russian ("Ошибка") alongside valid UTF-8 Cyrillic ("Привет") and a private Linux path.
+    WriteBytes(legacy_cp1251,
+               "[launcher] closed, starting the game\n"
+               "[boot] error: \xCE\xF8\xE8\xE1\xEA\xE0 path /home/SecretUser/game.dat utf8 \xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82\n");
+    WriteBytes(boot_guest, "[Linux guest] entry 00412340, SelfMod lifted entries 12\n[boot] failed during init\n");
+    WriteBytes(running, "[launcher] shown\n");
+
+    std::error_code ec;
+    const auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(legacy_closed, now - std::chrono::minutes(40), ec);
+    fs::last_write_time(legacy_cp1251, now - std::chrono::minutes(30), ec);
+    fs::last_write_time(boot_guest, now - std::chrono::minutes(20), ec);
+    fs::last_write_time(running, now - std::chrono::minutes(10), ec);
+
+    // Optional symlink check (may be denied on Windows without Developer Mode).
+    const fs::path symlink_log = dir / "trespasser_recomp_099.log";
+    fs::create_symlink(boot_guest, symlink_log, ec);
+    const bool symlink_created = !ec;
+    ec.clear();
+
+    const fs::path legacy_dmp = dir / "trespasser_linux_002.dmp";
+    WriteBytes(legacy_dmp, MakeMinidump(128));
+    fs::last_write_time(legacy_dmp, now - std::chrono::minutes(30), ec);
+
+    const auto logs = FindGameLogs(dir, running);
+    Check(logs.size() == 3, "discovers canonical and legacy logs, omits closed launcher and symlinks");
+    Check(logs[0].name == "trespasser_recomp_004.log" && logs[0].role == LogRole::kCurrentLauncher, "running canonical log first");
+    Check(logs[1].name == "trespasser_recomp_003.log" && logs[1].activity == LogActivity::kGameStarted,
+          "Linux guest entry classified as game started");
+    Check(logs[1].role == LogRole::kNone, "bootstrap log not falsely classified as gameplay");
+    Check(DefaultGameLog(logs) == 1, "default log prefers Linux bootstrap attempt over current launcher");
+    Check(logs[2].name == "trespasser_linux_002.log" && logs[2].activity == LogActivity::kGameStarted,
+          "legacy trespasser_linux_002.log discovered without renaming");
+    Check(fs::exists(legacy_cp1251), "legacy file preserved in place");
+    Check(logs[2].Crashed() && logs[2].CanAttachCrash(), "legacy crash dump paired");
+    Check(DumpNameOf("trespasser_linux_002.log") == "trespasser_linux_002.dmp", "legacy dump name rule");
+    if (symlink_created) {
+        const bool found_symlink = std::any_of(logs.begin(), logs.end(), [](const GameLog& l) { return l.name == "trespasser_recomp_099.log"; });
+        Check(!found_symlink, "symlinked log rejected");
+    }
+
+    PrivateFacts pf;
+    pf.user_names = {"SecretUser"};
+    pf.profile_folders = {"/home/SecretUser"};
+    const ReportFacts facts{"0.1.1", "English (Retail 116)", "116", "Linux: SteamOS"};
+    const auto pkg = BuildIncidentPackage("Startup crash on Linux v0.1.1 log.", logs[2], facts, pf, false);
+    Check(pkg.has_value(), "CP1251 legacy log builds package");
+    if (pkg) {
+        Check(pkg->Value("log_file") == "trespasser_linux_002.log", "legacy log_file name preserved");
+        Check(pkg->Value("log_text").find("SecretUser") == std::string::npos, "CP1251 log still scrubbed");
+        Check(pkg->Value("log_text").find("\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82") != std::string::npos,
+              "valid UTF-8 preserved alongside CP1251 bytes");
+        const std::string preview = IncidentPreviewText(*pkg);
+        Check(preview.find("trespasser_linux_002.log") != std::string::npos && preview.find("SecretUser") == std::string::npos,
+              "CP1251 legacy preview valid and scrubbed");
+        const std::string req_json = IncidentRequestJson(*pkg);
+        const auto parsed = json::Parse(req_json);
+        Check(parsed && parsed->IsObject() && parsed->StringOr("log_file") == "trespasser_linux_002.log",
+              "CP1251 legacy log produces valid JSON");
+    }
+
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestJson();
     TestEndpointAndTransportAddress();
     TestPrivacyScrubber();
     TestLogDiscoveryAndCrashValidation();
+    TestLegacyLinuxAndBootstrapLogs();
     TestDraftPayloadAndPreview();
     TestOutcomeMappingAndClientId();
     TestClientAgainstStandInTransport();

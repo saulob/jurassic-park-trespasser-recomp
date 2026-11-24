@@ -85,6 +85,11 @@ static void test_logs(void) {
     snprintf(logs, sizeof logs, "%s/logs", port);
     jpt_make_dirs(port);
 
+    CHECK(!strcmp(JPT_LOG_NAME, "trespasser_recomp"), "canonical log prefix matches Windows and Linux (%s)", JPT_LOG_NAME);
+    CHECK(!strcmp(JPT_LEGACY_LOG_NAME, "trespasser"), "legacy log prefix preserved (%s)", JPT_LEGACY_LOG_NAME);
+    CHECK(!strcmp(JPT_LEGACY_LINUX_LOG_NAME, "trespasser_linux"), "legacy Linux log prefix preserved (%s)", JPT_LEGACY_LINUX_LOG_NAME);
+    CHECK(JPT_MAX_LOG_NUMBER == 99999u, "shared max log number");
+
     CHECK(jpt_port_logs_folder("/p", "/p/user_data", "/elsewhere/trespasser_recomp_007.log", 0, out, sizeof out) &&
               !strcmp(out, "/elsewhere"),
           "the folder of the active log (%s)", out);

@@ -42,6 +42,29 @@ test('incident validation, ticket format, receipt secrecy and download names', (
   assert.equal(readIncident(sampleIncident({ dump_file: 'trespasser_recomp_294.dmp', dump_bytes: 16 })).code, 'bad_request');
   assert.equal(readIncident(sampleIncident({ dump_file: 'trespasser_recomp_294.dmp', dump_bytes: INCIDENT.dumpBytes + 1 })).code, 'too_large');
   assert.equal(readIncident(sampleIncident({ log_file: '../evil.log' })).code, 'bad_request');
+  assert.equal(readIncident(sampleIncident({ log_file: 'trespasser_001.log' })).code, 'bad_request');
+  assert.equal(readIncident(sampleIncident({ log_file: 'trespasser_windows_001.log' })).code, 'bad_request');
+  assert.equal(readIncident(sampleIncident({ log_file: 'trespasser_linux_12.log' })).code, 'bad_request');
+  assert.equal(readIncident(sampleIncident({ log_file: 'trespasser_linux_001.txt' })).code, 'bad_request');
+
+  const linuxCanonical = readIncident(sampleIncident({
+    operating_system: 'Linux: SteamOS',
+    log_file: 'trespasser_recomp_001.log',
+  }));
+  assert.ok(linuxCanonical.incident);
+  assert.equal(linuxCanonical.incident.log_file, 'trespasser_recomp_001.log');
+
+  const linuxLegacy = readIncident(sampleIncident({
+    operating_system: 'Steam Deck: SteamOS',
+    log_file: 'trespasser_linux_001.log',
+    dump_file: 'trespasser_linux_001.dmp',
+    dump_bytes: 128,
+  }));
+  assert.ok(linuxLegacy.incident);
+  assert.equal(linuxLegacy.incident.log_file, 'trespasser_linux_001.log');
+  assert.deepEqual(linuxLegacy.dump, { file: 'trespasser_linux_001.dmp', bytes: 128 });
+  assert.equal(logDownloadName({ ticket: 'JPT-234567', log_file: 'trespasser_linux_001.log' }), 'JPT-234567-trespasser_linux_001.log');
+  assert.equal(dumpDownloadName({ ticket: 'JPT-234567', log_file: 'trespasser_linux_001.log' }), 'JPT-234567-trespasser_linux_001.dmp');
 
   assert.equal(logDownloadName({ ticket: 'JPT-234567', log_file: 'trespasser_recomp_294.log' }), 'JPT-234567-trespasser_recomp_294.log');
   assert.equal(dumpDownloadName({ ticket: 'JPT-234567', log_file: 'trespasser_recomp_294.log' }), 'JPT-234567-trespasser_recomp_294.dmp');

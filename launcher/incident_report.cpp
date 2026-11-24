@@ -24,6 +24,7 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr std::string_view kLogPrefix = "trespasser_recomp_";
+constexpr std::string_view kLegacyLinuxLogPrefix = "trespasser_linux_";
 constexpr std::string_view kLogSuffix = ".log";
 constexpr std::string_view kDumpSuffix = ".dmp";
 constexpr char kMinidumpSignature[] = {'M', 'D', 'M', 'P'};
@@ -33,7 +34,7 @@ constexpr size_t kLogsLookedAt = 200;
 constexpr size_t kSessionHeadBytes = 128 * 1024;
 constexpr size_t kLogTailBytes = 256 * 1024;
 
-constexpr std::string_view kGameStartMarks[] = {"[launcher] closed, starting the game", "[loader  ] image mapped at"};
+constexpr std::string_view kGameStartMarks[] = {"[launcher] closed, starting the game", "[loader  ] image mapped at", "[Linux guest] entry"};
 constexpr std::string_view kLauncherClosedMark = "[launcher] closed";
 constexpr std::string_view kGuestCodeMark = "[guest   ] entering the CRT entry point";
 
@@ -58,8 +59,10 @@ constexpr FieldName kFieldNames[] = {
 constexpr const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 bool IsGameLogName(std::string_view name) {
-    if (!name.starts_with(kLogPrefix) || !name.ends_with(kLogSuffix)) return false;
-    name.remove_prefix(kLogPrefix.size());
+    if (!name.ends_with(kLogSuffix)) return false;
+    if (name.starts_with(kLogPrefix)) name.remove_prefix(kLogPrefix.size());
+    else if (name.starts_with(kLegacyLinuxLogPrefix)) name.remove_prefix(kLegacyLinuxLogPrefix.size());
+    else return false;
     name.remove_suffix(kLogSuffix.size());
     return name.size() >= kFewestLogDigits && name.size() <= kMostLogDigits &&
            std::all_of(name.begin(), name.end(), [](char c) { return c >= '0' && c <= '9'; });
