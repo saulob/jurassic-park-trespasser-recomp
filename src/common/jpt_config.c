@@ -346,9 +346,12 @@ int jpt_config_load(const char* path, jpt_config_t* c) {
         line[strcspn(line, "\r\n")] = 0;
         if (!jpt_ini_parse_line(line, 0, key, sizeof key, value, sizeof value)) continue;
         note_earlier_language(&earlier, key, value);
-        if (jpt_config_apply(c, key, value) && !strcmp(key, JPT_KEY_LANGUAGE)) {
-            c->language_forced = 0;
-            strcpy(c->earlier_language, c->language);
+        if (jpt_config_apply(c, key, value)) {
+            if (!strcmp(key, JPT_KEY_RENDERER)) c->renderer_from_ini = 1;
+            if (!strcmp(key, JPT_KEY_LANGUAGE)) {
+                c->language_forced = 0;
+                strcpy(c->earlier_language, c->language);
+            }
         }
     }
     fclose(f);

@@ -57,6 +57,8 @@ typedef struct {
     int dev_filter;
     int lifted_water;
     const char* debug_d3d_output;
+    const char* env_renderer;
+    const char* cli_renderer;
     override_t overrides[MAX_OVERRIDES];
     int override_count;
 } options_t;
@@ -154,7 +156,7 @@ static const char* default_log_dir(void) {
 static void usage(void) {
     printf("usage: trespasser_recomp [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user_data_root DIR]\n"
            "                  [--log-file FILE | --log-dir DIR] [--watchdog SECONDS] [--ddraw compat|system]\n"
-           "                  [--native-trace] [--callbacks] [--renderer software|d3d11]\n"
+           "                  [--native-trace] [--callbacks] [--renderer auto|d3d11|vulkan|software]\n"
            "                  [--render-resolution original|720p|1080p|1440p|4k|native|WxH]\n"
            "                  [--aspect-ratio 4:3|16:9|16:10|21:9|32:9]\n"
            "                  [--texture-filter original|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
@@ -221,7 +223,7 @@ static int parse_options(int argc, char** argv, options_t* o) {
     o->dev_filter = -1;
     {
         const char* env_r = getenv("TRESPASSER_RENDERER");
-        if (env_r && env_r[0]) add_override(o, JPT_KEY_RENDERER, env_r);
+        if (env_r && env_r[0]) o->env_renderer = env_r;
     }
     for (int i = 1; i < argc; i++) {
         int taken = recomp_trace_arg(argc, argv, i), matched = 0;
@@ -231,7 +233,13 @@ static int parse_options(int argc, char** argv, options_t* o) {
         }
         for (size_t k = 0; k < sizeof settings / sizeof settings[0] && !matched; k++) {
             if (strcmp(argv[i], settings[k].option) || i + 1 >= argc) continue;
-            if (!add_override(o, settings[k].key, argv[++i])) return 0;
+            if (!strcmp(settings[k].key, JPT_KEY_RENDERER)) {
+                const char* val = argv[++i];
+                if (!jpt_config_valid(JPT_KEY_RENDERER, val)) return 0;
+                o->cli_renderer = val;
+            } else if (!add_override(o, settings[k].key, argv[++i])) {
+                return 0;
+            }
             matched = 1;
         }
         if (matched) continue;
@@ -382,14 +390,17 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
              jpt_renderer_key((jpt_renderer_t)c->renderer), jpt_filter_keys[c->texture_filter], c->msaa,
              c->vsync ? "on" : "off", jpt_ao_names[c->ambient_occlusion]);
     if (box.width > 0) {
+        const char* hw_name = (c->renderer == JPT_RENDERER_VULKAN)  ? "Vulkan"
+                              : (c->renderer == JPT_RENDERER_D3D11) ? "D3D11"
+                                                                    : "hardware renderer";
         host_log("settings", "render resolution %s, aspect ratio %s: gameplay resolution %dx%d (the game's own screen "
-                 "with D3D11, %.0f MB of host buffers), 3D render target %dx%d", preset, jpt_aspects[c->aspect].key,
-                 hardware.width, hardware.height, jpt_gameplay_host_bytes(hardware) / 1048576.0, target.width,
+                 "with %s, %.0f MB of host buffers), 3D render target %dx%d", preset, jpt_aspects[c->aspect].key,
+                 hardware.width, hardware.height, hw_name, jpt_gameplay_host_bytes(hardware) / 1048576.0, target.width,
                  target.height);
         if (hardware.width != box.width || hardware.height != box.height)
             host_log("settings", "the %dx%d box is above the gameplay budget of %d pixels: the game plays at %dx%d and "
-                     "D3D11 rasterises at %dx%d", box.width, box.height, JPT_GAMEPLAY_MAX_PIXELS, hardware.width,
-                     hardware.height, target.width, target.height);
+                     "%s rasterises at %dx%d", box.width, box.height, JPT_GAMEPLAY_MAX_PIXELS, hardware.width,
+                     hardware.height, hw_name, target.width, target.height);
     } else {
         host_log("settings", "render resolution Original, aspect ratio %s: gameplay resolution %dx%d, 3D render target "
                  "chosen from the window", jpt_aspects[c->aspect].key, hardware.width, hardware.height);
@@ -544,6 +555,21 @@ int main(int argc, char** argv) {
     }
 
     jpt_config_load(settings_file, &cfg);
+    {
+        jpt_renderer_selection_t rsel;
+        jpt_renderer_select_request(cfg.renderer_from_ini, (jpt_renderer_t)cfg.renderer, opt.env_renderer,
+                                    opt.cli_renderer, &rsel);
+        jpt_config_apply(&cfg, JPT_KEY_RENDERER, jpt_renderer_key(rsel.requested));
+        host_log("settings",
+                 "renderer selection: ini=%s, env(TRESPASSER_RENDERER)=%s%s, cli=%s -> requested=%s (source=%s)",
+                 rsel.ini_present ? jpt_renderer_key(rsel.ini_value) : "unset",
+                 rsel.env_present ? opt.env_renderer : "unset",
+                 rsel.env_present ? (!rsel.env_valid ? " [invalid, ignored]"
+                                                     : (rsel.env_ignored ? " [ignored]" : ""))
+                                  : "",
+                 rsel.cli_present ? opt.cli_renderer : "unset", jpt_renderer_key(rsel.requested),
+                 jpt_renderer_source_name(rsel.source));
+    }
     for (int i = 0; i < opt.override_count; i++) {
         jpt_config_apply(&cfg, opt.overrides[i].key, opt.overrides[i].value);
         host_log("settings", "%s = %s (command line)", opt.overrides[i].key, opt.overrides[i].value);

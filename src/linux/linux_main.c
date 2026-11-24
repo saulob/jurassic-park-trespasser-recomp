@@ -232,6 +232,7 @@ static int boot_guest(const options_t* o, const lx_paths_t* paths, int window) {
     options.use_gamepad = 1;
     options.use_features = 1;
     lx_vk_set_cli_overrides(o->renderer, o->graphics_card);
+    lx_vk_set_env_renderer(getenv("TRESPASSER_RENDERER"));
     snprintf(settings_file, sizeof settings_file, "%s/trespasser.ini", paths->launcher_dir);
     options.settings_file = settings_file;
     status = lx_boot_headless(&options, &r);
@@ -317,7 +318,6 @@ static int play(options_t* o, lx_paths_t* paths) {
     }
 #endif
     choose_version(o, paths, settings_file);
-    if (!o->renderer && getenv("TRESPASSER_RENDERER") && *getenv("TRESPASSER_RENDERER")) o->renderer = getenv("TRESPASSER_RENDERER");
     lx_settings_set_overrides(o->override_key, o->override_value, o->override_count);
     return boot_guest(o, paths, 1);
 }

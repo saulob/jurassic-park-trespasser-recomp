@@ -71,6 +71,103 @@ static void test_renderer_policy(void) {
           "config software");
 }
 
+static void test_renderer_selection_precedence(void) {
+    jpt_renderer_selection_t s;
+    jpt_renderer_decision_t d;
+
+    /* INI d3d11 without override -> D3D11 */
+    jpt_renderer_select_request(1, JPT_RENDERER_D3D11, NULL, NULL, &s);
+    jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+    CHECK(s.requested == JPT_RENDERER_D3D11 && s.source == JPT_RENDERER_SOURCE_INI && !s.env_present && !s.cli_present,
+          "INI d3d11 without override");
+    CHECK(d.chosen == JPT_RENDERER_D3D11 && !d.fallback, "INI d3d11 resolves to D3D11");
+
+    /* INI vulkan without override -> Vulkan */
+    jpt_renderer_select_request(1, JPT_RENDERER_VULKAN, NULL, NULL, &s);
+    jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+    CHECK(s.requested == JPT_RENDERER_VULKAN && s.source == JPT_RENDERER_SOURCE_INI && !s.env_present,
+          "INI vulkan without override");
+    CHECK(d.chosen == JPT_RENDERER_VULKAN && !d.fallback, "INI vulkan resolves to Vulkan");
+
+    /* INI auto on Windows -> D3D11 */
+    jpt_renderer_select_request(1, JPT_RENDERER_AUTO, "", NULL, &s);
+    jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+    CHECK(s.requested == JPT_RENDERER_AUTO && s.source == JPT_RENDERER_SOURCE_INI && !s.env_present,
+          "INI auto without env");
+    CHECK(d.chosen == JPT_RENDERER_D3D11 && !d.fallback, "INI auto on Windows resolves to D3D11");
+
+    /* Explicit CLI overrides INI and env */
+    jpt_renderer_select_request(1, JPT_RENDERER_D3D11, NULL, "vulkan", &s);
+    jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+    CHECK(s.requested == JPT_RENDERER_VULKAN && s.source == JPT_RENDERER_SOURCE_CLI &&
+              strcmp(jpt_renderer_source_name(s.source), "cli") == 0,
+          "CLI vulkan overrides INI d3d11");
+    CHECK(d.chosen == JPT_RENDERER_VULKAN && !d.fallback, "CLI vulkan resolves to Vulkan");
+
+    jpt_renderer_select_request(1, JPT_RENDERER_VULKAN, "vulkan", "d3d11", &s);
+    jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+    CHECK(s.requested == JPT_RENDERER_D3D11 && s.source == JPT_RENDERER_SOURCE_CLI && s.env_present && s.env_ignored,
+          "CLI d3d11 overrides INI and env");
+    CHECK(d.chosen == JPT_RENDERER_D3D11 && !d.fallback, "CLI d3d11 resolves to D3D11");
+
+    /* Forgotten env var must NOT silently override explicit INI selection */
+    jpt_renderer_select_request(1, JPT_RENDERER_D3D11, "vulkan", NULL, &s);
+    jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+    CHECK(s.requested == JPT_RENDERER_D3D11 && s.source == JPT_RENDERER_SOURCE_INI && s.env_present && s.env_valid &&
+              s.env_ignored,
+          "INI d3d11 wins over forgotten TRESPASSER_RENDERER=vulkan");
+    CHECK(d.chosen == JPT_RENDERER_D3D11 && !d.fallback, "forgotten env does not switch D3D11 to Vulkan");
+
+    /* Env var applies when INI is auto or unset, and reports source=env (never cli) */
+    jpt_renderer_select_request(1, JPT_RENDERER_AUTO, "vulkan", NULL, &s);
+    CHECK(s.requested == JPT_RENDERER_VULKAN && s.source == JPT_RENDERER_SOURCE_ENV && !s.env_ignored &&
+              strcmp(jpt_renderer_source_name(s.source), "env") == 0,
+          "env vulkan applies over INI auto with source=env");
+
+    jpt_renderer_select_request(0, JPT_RENDERER_AUTO, "vulkan", NULL, &s);
+    CHECK(s.requested == JPT_RENDERER_VULKAN && s.source == JPT_RENDERER_SOURCE_ENV && !s.ini_present &&
+              strcmp(jpt_renderer_source_name(s.source), "env") == 0,
+          "env vulkan applies when INI unset with source=env");
+
+    /* Invalid env var is ignored cleanly */
+    jpt_renderer_select_request(0, JPT_RENDERER_AUTO, "invalid_backend", NULL, &s);
+    CHECK(s.requested == JPT_RENDERER_AUTO && s.source == JPT_RENDERER_SOURCE_DEFAULT && s.env_present && !s.env_valid,
+          "invalid env ignored and falls back to default");
+
+    /* Launcher INI persistence round-trip: save choice, reload config, resolve runtime renderer */
+    {
+        const char* tmp_ini = "tmp_renderer_selection_test.ini";
+        const char* base_keys[] = { JPT_KEY_MSAA, JPT_KEY_FOV, JPT_KEY_RENDERER };
+        const char* base_vals[] = { "4", "85", "d3d11" };
+        const char* modes[] = { "d3d11", "vulkan", "software", "auto" };
+        const jpt_renderer_t expected_req[] = { JPT_RENDERER_D3D11, JPT_RENDERER_VULKAN, JPT_RENDERER_SOFTWARE,
+                                                JPT_RENDERER_AUTO };
+        const jpt_renderer_t expected_win[] = { JPT_RENDERER_D3D11, JPT_RENDERER_VULKAN, JPT_RENDERER_SOFTWARE,
+                                                JPT_RENDERER_D3D11 };
+        jpt_config_t cfg;
+
+        remove(tmp_ini);
+        CHECK(jpt_ini_set(tmp_ini, base_keys, base_vals, 3), "write initial test INI");
+        for (int i = 0; i < 4; i++) {
+            const char* k = JPT_KEY_RENDERER;
+            const char* v = modes[i];
+            CHECK(jpt_ini_set(tmp_ini, &k, &v, 1), "persist renderer=%s", v);
+            CHECK(jpt_config_load(tmp_ini, &cfg), "reload INI for renderer=%s", v);
+            CHECK(cfg.renderer_from_ini == 1 && cfg.renderer == expected_req[i],
+                  "loaded INI renderer=%s (got %d, from_ini=%d)", v, cfg.renderer, cfg.renderer_from_ini);
+            CHECK(cfg.msaa == 4 && cfg.fov == 85, "other INI preferences preserved after saving renderer=%s", v);
+
+            jpt_renderer_select_request(cfg.renderer_from_ini, (jpt_renderer_t)cfg.renderer, NULL, NULL, &s);
+            jpt_renderer_resolve_policy(s.requested, 1, 1, 1, NULL, &d);
+            CHECK(s.requested == expected_req[i] && s.source == JPT_RENDERER_SOURCE_INI,
+                  "runtime request matches launcher choice %s", v);
+            CHECK(d.chosen == expected_win[i] && !d.fallback, "Windows policy resolves %s -> %s", v,
+                  jpt_renderer_key(expected_win[i]));
+        }
+        remove(tmp_ini);
+    }
+}
+
 static jpt_vk_gpu_info_t make_fake_gpu(const char* name, uint32_t vendor, uint32_t dev, VkPhysicalDeviceType type,
                                        uint64_t vram, int usable_swapchain, uint32_t depth_mask, uint8_t uuid_seed) {
     jpt_vk_gpu_info_t g;
@@ -525,6 +622,7 @@ static void test_controls_card_and_prompts_policy(void) {
 
 int main(void) {
     test_renderer_policy();
+    test_renderer_selection_precedence();
     test_gpu_selection();
     test_device_capabilities();
     test_present_mode_and_swapchain_stress();

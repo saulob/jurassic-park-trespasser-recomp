@@ -24,6 +24,51 @@ const char* jpt_renderer_label(jpt_renderer_t renderer) {
     return k_labels[renderer];
 }
 
+const char* jpt_renderer_source_name(jpt_renderer_source_t source) {
+    switch (source) {
+    case JPT_RENDERER_SOURCE_INI: return "ini";
+    case JPT_RENDERER_SOURCE_ENV: return "env";
+    case JPT_RENDERER_SOURCE_CLI: return "cli";
+    default: return "default";
+    }
+}
+
+void jpt_renderer_select_request(int ini_present, jpt_renderer_t ini_value, const char* env_text,
+                                 const char* cli_text, jpt_renderer_selection_t* out) {
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->ini_present = ini_present ? 1 : 0;
+    out->ini_value = (ini_value >= 0 && ini_value < JPT_RENDERER_COUNT) ? ini_value : JPT_RENDERER_AUTO;
+
+    if (env_text && env_text[0]) {
+        out->env_present = 1;
+        out->env_valid = jpt_renderer_parse(env_text, &out->env_value);
+    }
+    if (cli_text && cli_text[0]) {
+        out->cli_present = 1;
+        out->cli_valid = jpt_renderer_parse(cli_text, &out->cli_value);
+    }
+
+    if (out->cli_present && out->cli_valid) {
+        out->requested = out->cli_value;
+        out->source = JPT_RENDERER_SOURCE_CLI;
+        if (out->env_present && out->env_valid) out->env_ignored = 1;
+    } else if (out->ini_present && out->ini_value != JPT_RENDERER_AUTO) {
+        out->requested = out->ini_value;
+        out->source = JPT_RENDERER_SOURCE_INI;
+        if (out->env_present && out->env_valid) out->env_ignored = 1;
+    } else if (out->env_present && out->env_valid) {
+        out->requested = out->env_value;
+        out->source = JPT_RENDERER_SOURCE_ENV;
+    } else if (out->ini_present) {
+        out->requested = out->ini_value;
+        out->source = JPT_RENDERER_SOURCE_INI;
+    } else {
+        out->requested = JPT_RENDERER_AUTO;
+        out->source = JPT_RENDERER_SOURCE_DEFAULT;
+    }
+}
+
 int jpt_renderer_parse(const char* text, jpt_renderer_t* out) {
     if (!text || !text[0]) return 0;
     for (int i = 0; i < JPT_RENDERER_COUNT; i++) {

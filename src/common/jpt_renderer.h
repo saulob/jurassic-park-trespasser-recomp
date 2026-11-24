@@ -16,6 +16,27 @@ typedef enum {
     JPT_RENDERER_COUNT = 4
 } jpt_renderer_t;
 
+typedef enum {
+    JPT_RENDERER_SOURCE_DEFAULT = 0,
+    JPT_RENDERER_SOURCE_INI = 1,
+    JPT_RENDERER_SOURCE_ENV = 2,
+    JPT_RENDERER_SOURCE_CLI = 3
+} jpt_renderer_source_t;
+
+typedef struct {
+    int ini_present;
+    jpt_renderer_t ini_value;
+    int env_present;
+    int env_valid;
+    jpt_renderer_t env_value;
+    int env_ignored;
+    int cli_present;
+    int cli_valid;
+    jpt_renderer_t cli_value;
+    jpt_renderer_t requested;
+    jpt_renderer_source_t source;
+} jpt_renderer_selection_t;
+
 typedef struct {
     jpt_renderer_t requested;
     jpt_renderer_t chosen;
@@ -25,9 +46,13 @@ typedef struct {
 
 const char* jpt_renderer_key(jpt_renderer_t renderer);
 const char* jpt_renderer_label(jpt_renderer_t renderer);
+const char* jpt_renderer_source_name(jpt_renderer_source_t source);
 int jpt_renderer_parse(const char* text, jpt_renderer_t* out);
 int jpt_renderer_available_on_platform(jpt_renderer_t renderer, int is_windows);
 int jpt_renderer_is_hardware(jpt_renderer_t renderer);
+
+void jpt_renderer_select_request(int ini_present, jpt_renderer_t ini_value, const char* env_text,
+                                 const char* cli_text, jpt_renderer_selection_t* out);
 
 void jpt_renderer_resolve_policy(jpt_renderer_t requested, int is_windows, int d3d11_available, int vulkan_available,
                                  const char* vulkan_unavailable_reason, jpt_renderer_decision_t* out);

@@ -35,6 +35,7 @@ typedef struct {
 typedef struct {
     int configured;
     jpt_config_t cfg;
+    char env_renderer[32];
     char cli_renderer[32];
     char cli_gpu[JPT_GPU_LABEL_MAX];
     char cache_path[512];
@@ -79,7 +80,13 @@ void lx_vk_set_cli_overrides(const char* renderer_opt, const char* gpu_opt) {
     else g_vk.cli_gpu[0] = 0;
 }
 
+void lx_vk_set_env_renderer(const char* renderer_env) {
+    if (renderer_env && renderer_env[0]) snprintf(g_vk.env_renderer, sizeof g_vk.env_renderer, "%s", renderer_env);
+    else g_vk.env_renderer[0] = 0;
+}
+
 void lx_vk_configure(const jpt_config_t* cfg, const char* cache_dir) {
+    jpt_renderer_selection_t rsel;
     jpt_renderer_t req = JPT_RENDERER_AUTO;
     jpt_vk_probe_result_t probe;
     const char* gpu_req = "";
@@ -87,10 +94,22 @@ void lx_vk_configure(const jpt_config_t* cfg, const char* cache_dir) {
     if (cfg) g_vk.cfg = *cfg;
     else jpt_config_defaults(&g_vk.cfg);
 
-    if (g_vk.cli_renderer[0]) jpt_config_apply(&g_vk.cfg, JPT_KEY_RENDERER, g_vk.cli_renderer);
+    jpt_renderer_select_request(g_vk.cfg.renderer_from_ini, (jpt_renderer_t)g_vk.cfg.renderer, g_vk.env_renderer,
+                                g_vk.cli_renderer, &rsel);
+    jpt_config_apply(&g_vk.cfg, JPT_KEY_RENDERER, jpt_renderer_key(rsel.requested));
     if (g_vk.cli_gpu[0]) jpt_config_apply(&g_vk.cfg, JPT_KEY_GRAPHICS_CARD, g_vk.cli_gpu);
 
-    req = (jpt_renderer_t)g_vk.cfg.renderer;
+    lx_log("Linux settings",
+           "renderer selection: ini=%s, env(TRESPASSER_RENDERER)=%s%s, cli=%s -> requested=%s (source=%s)",
+           rsel.ini_present ? jpt_renderer_key(rsel.ini_value) : "unset",
+           rsel.env_present ? g_vk.env_renderer : "unset",
+           rsel.env_present ? (!rsel.env_valid ? " [invalid, ignored]"
+                                               : (rsel.env_ignored ? " [ignored]" : ""))
+                            : "",
+           rsel.cli_present ? g_vk.cli_renderer : "unset", jpt_renderer_key(rsel.requested),
+           jpt_renderer_source_name(rsel.source));
+
+    req = rsel.requested;
     gpu_req = g_vk.cfg.graphics_card;
 
     if (cache_dir && cache_dir[0])

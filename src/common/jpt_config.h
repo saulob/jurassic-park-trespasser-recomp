@@ -119,6 +119,7 @@ typedef struct {
     int window_w, window_h;   /* 0 x 0: auto */
     int stretch;
     int renderer;             /* jpt_renderer_t */
+    int renderer_from_ini;
     int hardware;
     char graphics_card[JPT_GPU_LABEL_MAX];
     int render_preset;        /* jpt_render_presets index, -1 with render_w x render_h */

@@ -17,6 +17,7 @@
 static int g_checks = 0;
 static int g_failures = 0;
 static int g_d3d11_startup_calls = 0;
+static int g_d3d11_fail_startup = 0;
 static int g_sw_startup_calls = 0;
 static int g_d3d11_present_calls = 0;
 
@@ -98,7 +99,7 @@ int dd_format_bytes(const DDPIXELFORMAT* pf) { return pf ? (int)(pf->dwRGBBitCou
 static int stub_d3d11_startup(void) {
     if (!renderer_backend_guard_d3d11("stub_d3d11_startup")) return 0;
     g_d3d11_startup_calls++;
-    return 1;
+    return g_d3d11_fail_startup ? 0 : 1;
 }
 static int stub_d3d11_hw(void) { return 1; }
 static const char* stub_d3d11_name(void) { return "D3D11"; }
@@ -282,6 +283,21 @@ static void test_d3d11_software_and_auto(void) {
     renderer_backend_configure_with_probe(&cfg, 0, 0, "no GPU");
     CHECK(renderer_backend_chosen() == JPT_RENDERER_SOFTWARE && renderer_backend_state()->fallback,
           "Auto without D3D11/Vulkan -> Software");
+
+    /* Explicit D3D11 startup failure falls back to Software (never silently to Vulkan) and reports active accurately */
+    cfg = make_cfg(JPT_RENDERER_D3D11);
+    g_d3d11_startup_calls = 0;
+    g_sw_startup_calls = 0;
+    g_d3d11_fail_startup = 1;
+    renderer_backend_reset_for_test(1);
+    renderer_backend_configure_with_probe(&cfg, 1, 1, NULL);
+    CHECK(renderer_backend_startup() == 1, "explicit D3D11 startup failure falls back to Software");
+    CHECK(renderer_backend_requested() == JPT_RENDERER_D3D11 && renderer_backend_chosen() == JPT_RENDERER_SOFTWARE &&
+              renderer_backend_active() == JPT_RENDERER_SOFTWARE && renderer_backend_state()->fallback == 1,
+          "explicit D3D11 fallback reports requested=d3d11 chosen=software active=software (never claims D3D11 or Vulkan)");
+    CHECK(g_d3d11_startup_calls == 1 && g_sw_startup_calls == 1 && strcmp(d3dr_name(), "Software") == 0,
+          "D3D11 failed once and Software activated");
+    g_d3d11_fail_startup = 0;
 }
 
 int main(void) {

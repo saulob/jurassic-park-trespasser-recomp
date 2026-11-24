@@ -40,7 +40,7 @@ int ddraw_compat_init(int enabled) {
     }
     for (int i = 0; i < ROUTE_COUNT; i++) s_routes[i].system = (uint32_t)(uintptr_t)GetProcAddress(ddraw, s_routes[i].name);
     s_enabled = 1;
-    host_log("ddraw", "video: DirectDraw compatibility layer (virtual 16 bpp display, D3D11 presentation); "
+    host_log("ddraw", "video: DirectDraw compatibility layer (virtual 16 bpp display, host presentation); "
              "ddraw.dll's exports are routed to it");
     return 1;
 }

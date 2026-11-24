@@ -15,6 +15,7 @@ extern "C" {
 
 void lx_vk_configure(const jpt_config_t* cfg, const char* cache_dir);
 void lx_vk_set_cli_overrides(const char* renderer_opt, const char* gpu_opt);
+void lx_vk_set_env_renderer(const char* renderer_env);
 int lx_vk_active(void);
 const jpt_renderer_decision_t* lx_vk_decision(void);
 /* Why the game runs with the Software renderer although the settings asked for another (or auto found no usable GPU): one
