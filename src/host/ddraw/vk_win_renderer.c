@@ -89,6 +89,8 @@ typedef struct vk_win_target_s {
     int tile_clear_known;
     uint16_t tile_clear_color;
     unsigned tiles_x, tiles_y;
+    int lazy;
+    tsync_tiles_t fresh;
 } vk_win_target_t;
 
 typedef struct {
@@ -272,6 +274,11 @@ static struct {
     unsigned long long sync_composites, sync_uploads, sync_readbacks, sync_readback_pixels, sync_synthesized,
         sync_front_copies, sync_captures, sync_overlay_failures, sync_readback_failures, cpu_polygons,
         cpu_polygon_locks, text_boxes, inert_locks;
+    struct {
+        unsigned long long runs, captured_runs, added, denied, forced, reads, stale, box_reads;
+        uint32_t caller;
+        int last_reads, last_captured, last_stale;
+    } poly_stats;
     uint16_t* readback_scratch;
     size_t readback_scratch_cap;
     vk_sync_stat_t sync_win[VSR_COUNT], sync_all[VSR_COUNT];
@@ -312,6 +319,7 @@ static void settle_deferred(void);
 static void drop_deferred(const struct vk_win_target_s* t);
 
 #define VK_TILE_SHIFT 5
+#define VK_TILE_MASK ((1u << VK_TILE_SHIFT) - 1u)
 #define VK_READ_RECTS 128u
 
 static size_t tile_count(const vk_win_target_t* t) { return (size_t)t->tiles_x * (size_t)t->tiles_y; }
@@ -721,7 +729,6 @@ static int upload_surface_pixels(dd_surface_t* s, int fmt, const jpt_render_rect
             d3dt_convert_row(fmt, in, out, w, s->has_src_key, s->src_key.dwColorSpaceLowValue,
                              s->src_key.dwColorSpaceHighValue);
     }
-
     memset(&desc, 0, sizeof desc);
     desc.width = s->width;
     desc.height = s->height;
@@ -1492,6 +1499,13 @@ static void vk_win_summary(void) {
     log_evidence_summary(&st);
     host_log("vulkan", "mipmaps: %llu textures with generated chains, %llu of them became dynamic (level 0 only)",
              V.mipped_textures, V.dynamic_textures);
+    host_log("vulkan", "CPU polygons: %llu runs (%llu captured), %llu added, %llu reading, %llu refused by caller, %llu "
+             "forced store-only, %llu stale boxes, %llu box readbacks, %llu GPU readbacks total; last caller 0x%08lX reads "
+             "%d captured %d stale %d",
+             V.poly_stats.runs, V.poly_stats.captured_runs, V.poly_stats.added, V.poly_stats.reads, V.poly_stats.denied,
+             V.poly_stats.forced, V.poly_stats.stale, V.poly_stats.box_reads, V.sync_readbacks,
+             (unsigned long)V.poly_stats.caller, V.poly_stats.last_reads, V.poly_stats.last_captured,
+             V.poly_stats.last_stale);
     host_log("vulkan", "GPU polygons (perspective-textured and bump-mapped software primitives): %llu drawn by the GPU, %llu "
              "uploads of %.1f MiB, %llu failed uploads, %llu failed draws, %llu without room in the constants ring",
              V.poly.drawn, (unsigned long long)st.poly_uploads, (double)st.poly_upload_bytes / (1024.0 * 1024.0),
@@ -1862,6 +1876,11 @@ static HRESULT vk_win_attach(d3d_device_t* dev) {
                  t->tiles_x, t->tiles_y, t->legacy_w, t->legacy_h);
     }
     tsync_attach(&t->sync);
+    /* A new reference is undefined; the surface is the picture the device starts from. */
+    if (t->surface->bits && t->surface->pitch > 0)
+        for (uint32_t y = 0; y < t->legacy_h; y++)
+            memcpy(t->reference + (size_t)y * t->legacy_w,
+                   t->surface->bits + (size_t)y * (size_t)t->surface->pitch, (size_t)t->legacy_w * 2u);
     choose_internal_size(t->legacy_w, t->legacy_h, &t->internal_w, &t->internal_h);
     dev->backend = (d3dr_target_t*)t;
     dev->target->target = (d3dr_target_t*)t;
@@ -1877,6 +1896,7 @@ static void vk_win_detach(d3d_device_t* dev) {
     t = (vk_win_target_t*)dev->backend;
     drop_deferred(t);
     end_polygon_run(t);
+    V.polys.pending = 0;
     if (t->surface && t->surface->target == dev->backend) t->surface->target = NULL;
     if (V.active_target == t) V.active_target = NULL;
     free(t->reference);
@@ -1929,6 +1949,28 @@ static void fill_copy(vk_win_target_t* t, const d3dt_rect_t* r, uint16_t value) 
     tiles_select(t);
     tiles_mark_rect(t, t->tile_stale, r, 1);
     tsync_fill(t->surface->bits, t->surface->pitch, t->reference, t->legacy_w, r, value);
+}
+
+static void mark_fresh(void* context, const d3dt_rect_t* r) {
+    (void)context;
+    (void)r;
+}
+
+/* Captures whole tiles: a fresh tile is compared as a unit, so every pixel the CPU did not write must hold the mark. */
+static void capture_tiles(void* context, const d3dt_rect_t* r) {
+    vk_win_target_t* t = (vk_win_target_t*)context;
+    fill_copy(t, r, TSYNC_UNWRITTEN);
+    if (t->lazy) tsync_tiles_claim(&t->fresh, r, mark_fresh, NULL);
+}
+
+static void claim_fresh(vk_win_target_t* t, const d3dt_rect_t* r) {
+    if (t->lazy) tsync_tiles_claim(&t->fresh, r, capture_tiles, t);
+}
+
+static void start_lazy_capture(vk_win_target_t* t) {
+    d3dt_rect_t all = whole_target(t);
+    t->lazy = tsync_tiles_reset(&t->fresh, t->legacy_w, t->legacy_h);
+    if (!t->lazy) fill_copy(t, &all, TSYNC_UNWRITTEN);
 }
 
 static double sync_ms_total(void) {
@@ -2029,6 +2071,7 @@ static void sync_readback(vk_win_target_t* t, const d3dt_rect_t* region) {
     unsigned stale = 0, kept = 0, work = 0, filled = 0, count;
     size_t total = 0;
     long tx0, ty0, tx1, ty1;
+    int whole;
     if (!target_usable(t) || !t->tile_set[0]) return;
     tiles_select(t);
     if (region && !d3dt_rect_empty(region)) {
@@ -2039,6 +2082,7 @@ static void sync_readback(vk_win_target_t* t, const d3dt_rect_t* region) {
         if (want.bottom > all.bottom) want.bottom = all.bottom;
         if (d3dt_rect_empty(&want)) want = all;
     }
+    whole = want.left == all.left && want.top == all.top && want.right == all.right && want.bottom == all.bottom;
     tx0 = want.left >> VK_TILE_SHIFT;
     ty0 = want.top >> VK_TILE_SHIFT;
     tx1 = (want.right - 1) >> VK_TILE_SHIFT;
@@ -2069,6 +2113,7 @@ static void sync_readback(vk_win_target_t* t, const d3dt_rect_t* region) {
     V.tiles_stale_total += stale;
     if (!work) {
         if (!stale) V.tile_reads_avoided++;
+        if (whole) t->lazy = 0;
         return;
     }
     count = overlay_tile_rects(t->tile_work, (int)t->tiles_x, (int)t->tiles_y, t->legacy_w, t->legacy_h, rects, VK_READ_RECTS);
@@ -2110,6 +2155,7 @@ static void sync_readback(vk_win_target_t* t, const d3dt_rect_t* region) {
     if (!pixels || !jpt_vk_renderer_read_scene_rects_rgb565(V.vk, rects, count, t->legacy_w, t->legacy_h, pixels)) {
         d3dt_rect_t whole = all;
         tsync_fill(s->bits, s->pitch, t->reference, t->legacy_w, &whole, t->gpu_clear);
+        t->lazy = 0;
         V.sync_readback_failures++;
         tiles_invalidate_all(t, TILE_INVAL_FAILURE);
         return;
@@ -2134,6 +2180,7 @@ static void sync_readback(vk_win_target_t* t, const d3dt_rect_t* region) {
     V.sync_readbacks++;
     V.sync_readback_pixels += total;
     V.readbacks++;
+    if (whole) t->lazy = 0;
 }
 
 /* CPU -> GPU: only pixels that differ from the reference, uploaded as the box that holds them. */
@@ -2141,7 +2188,10 @@ static void sync_composite_region(vk_win_target_t* t, const d3dt_rect_t* written
     dd_surface_t* s = t->surface;
     d3dt_rect_t region = dirty_region(t, written), box;
     tsync_counts_t counts = { 0, 0 };
-    if (!tsync_changed_box(s->bits, s->pitch, t->reference, t->legacy_w, &region, &box)) return;
+    if (t->lazy) region = tsync_tiles_clip(&t->fresh, &region);
+    if (!tsync_changed_box_in(s->bits, s->pitch, t->reference, t->legacy_w, &region, t->lazy ? &t->fresh : NULL,
+                              &box))
+        return;
     {
         d3dt_rect_t apron = d3dt_overlay_upload_rect(&box, t->legacy_w, t->legacy_h);
         jpt_render_rect_t rect;
@@ -2149,7 +2199,8 @@ static void sync_composite_region(vk_win_target_t* t, const d3dt_rect_t* written
         rect.y = (int32_t)apron.top;
         rect.w = (uint32_t)(apron.right - apron.left);
         rect.h = (uint32_t)(apron.bottom - apron.top);
-        tsync_overlay_box(s->bits, s->pitch, t->reference, t->legacy_w, &apron, t->scratch, &counts);
+        tsync_overlay_box_in(s->bits, s->pitch, t->reference, t->legacy_w, &apron, t->lazy ? &t->fresh : NULL,
+                             t->scratch, &counts);
         if (jpt_vk_renderer_queue_overlay(V.vk, t->scratch, rect.w, &rect, t->legacy_w, t->legacy_h, 0)) {
             gpu_box_add(t, &apron);
             V.sync_composites++;
@@ -2181,6 +2232,7 @@ static void sync_upload_all(vk_win_target_t* t) {
         for (unsigned x = 0; x < t->legacy_w; x++) out[x] = d3dt_rgb565_to_bgra(row[x]);
         memcpy(t->reference + (size_t)y * t->legacy_w, row, (size_t)t->legacy_w * 2u);
     }
+    t->lazy = 0;
     if (jpt_vk_renderer_draw_overlay(V.vk, t->scratch, t->legacy_w, &rect, t->legacy_w, t->legacy_h, 1)) {
         gpu_box_add(t, &all);
         tiles_select(t);
@@ -2202,6 +2254,7 @@ static void sync_copy_front(vk_win_target_t* t) {
     }
     tiles_select(t);
     tiles_set_all(t, t->tile_stale, 0);
+    t->lazy = 0;
     V.sync_front_copies++;
 }
 
@@ -2256,6 +2309,7 @@ static void apply_sync_untimed(vk_win_target_t* t, unsigned acts, const d3dt_rec
         fill_copy(t, &all, t->sync.color);
         tiles_select(t);
         tiles_set_all(t, t->tile_stale, 0);
+        t->lazy = 0;
         V.sync_synthesized++;
     }
     if (acts & (TSYNC_CAPTURE | TSYNC_CAPTURE_ALL)) {
@@ -2266,7 +2320,14 @@ static void apply_sync_untimed(vk_win_target_t* t, unsigned acts, const d3dt_rec
             if (r.right > all.right) r.right = all.right;
             if (r.bottom > all.bottom) r.bottom = all.bottom;
         }
-        fill_copy(t, &r, TSYNC_UNWRITTEN);
+        if (acts & TSYNC_CAPTURE_ALL) {
+            fill_copy(t, &r, TSYNC_UNWRITTEN);
+            t->lazy = 0;
+        } else if (t->lazy) {
+            claim_fresh(t, &r);
+        } else {
+            fill_copy(t, &r, TSYNC_UNWRITTEN);
+        }
         V.sync_captures++;
     }
 }
@@ -2305,8 +2366,6 @@ static d3dt_rect_t clip_to_lock(const dd_surface_t* s, d3dt_rect_t box) {
     return box;
 }
 
-static void capture_polygon_tiles(void* context, const d3dt_rect_t* r) { fill_copy((vk_win_target_t*)context, r, TSYNC_UNWRITTEN); }
-
 /* A polygon that reads the target (blending) takes its box from the GPU first. */
 static void sync_readback_region(vk_win_target_t* t, const d3dt_rect_t* r) {
     dd_surface_t* s = t->surface;
@@ -2325,17 +2384,32 @@ static void sync_readback_region(vk_win_target_t* t, const d3dt_rect_t* r) {
         return;
     }
     tsync_fill_unwritten(s->bits, s->pitch, t->reference, t->legacy_w, r, pixels, bw);
+    tiles_select(t);
+    for (long ty = (r->top + (long)VK_TILE_MASK) >> VK_TILE_SHIFT; ty < (r->bottom >> VK_TILE_SHIFT); ty++)
+        for (long tx = (r->left + (long)VK_TILE_MASK) >> VK_TILE_SHIFT; tx < (r->right >> VK_TILE_SHIFT); tx++) {
+            if (tx < 0 || ty < 0 || tx >= (long)t->tiles_x || ty >= (long)t->tiles_y) continue;
+            t->tile_stale[ty * (long)t->tiles_x + tx] = 0;
+        }
     V.sync_readbacks++;
     V.sync_readback_pixels += (unsigned long long)bw * rect.h;
     V.readbacks++;
 }
 
+/* A primitive that reads finds its destination here: this frame's pixels, not a capture's mark or another region's. */
 static void add_polygon(vk_win_target_t* t, const d3dt_rect_t* box, int reads) {
     d3dt_dirty_add(&V.polys.dirty, box);
     V.cpu_polygons++;
-    if (!V.polys.captured || d3dt_rect_empty(box)) return;
-    tsync_tiles_claim(&V.polys.tiles, box, capture_polygon_tiles, t);
-    if (reads) sync_readback_region(t, box);
+    V.poly_stats.added++;
+    V.poly_stats.last_captured = V.polys.captured;
+    if (reads) V.poly_stats.reads++;
+    if (d3dt_rect_empty(box)) return;
+    if (V.polys.captured) tsync_tiles_claim(&V.polys.tiles, box, capture_tiles, t);
+    if (reads) V.poly_stats.last_stale = (int)tiles_stale_in(t, box);
+    if (reads && V.poly_stats.last_stale) {
+        V.poly_stats.stale++;
+        V.poly_stats.box_reads++;
+        sync_readback_region(t, box);
+    }
 }
 
 static void begin_polygon_run(vk_win_target_t* t) {
@@ -2347,11 +2421,17 @@ static void begin_polygon_run(vk_win_target_t* t) {
     apply_sync(t, acts & ~(unsigned)(TSYNC_CAPTURE | TSYNC_CAPTURE_ALL), &all, VSR_POLYGON_RUN);
     V.polys.target = t;
     V.polys.captured = !(t->sync.valid & TSYNC_CPU);
+    if (!V.polys.captured) t->lazy = 0;
+    V.poly_stats.runs++;
+    if (V.polys.captured) V.poly_stats.captured_runs++;
     memset(&V.polys.dirty, 0, sizeof V.polys.dirty);
     if (V.polys.captured) {
         if (!tsync_tiles_reset(&V.polys.tiles, s->width, s->height)) {
             fill_copy(t, &all, TSYNC_UNWRITTEN);
+            t->lazy = 0;
             tsync_tiles_claim_all(&V.polys.tiles);
+        } else if (acts & TSYNC_CAPTURE_ALL) {
+            start_lazy_capture(t);
         }
     }
 }
@@ -2470,6 +2550,7 @@ static void target_cpu_access(vk_win_target_t* t, int will_write, cpu_access_t a
         apply_sync(t, acts, &region, reason);
         if (kind == TSYNC_ACCESS_READ && (t->sync.valid & TSYNC_CPU) && !(acts & TSYNC_READBACK))
             apply_sync(t, TSYNC_READBACK, &region, reason);
+        if (t->sync.valid & TSYNC_CPU) t->lazy = 0;
         if (V.sync_readbacks != reads_before) V.epoch_locks_gpu++;
     }
 }
@@ -3374,8 +3455,16 @@ static void vk_win_cpu_polygon(void* surface_iface, const long raster_box[4], ui
     box.right = at[2];
     box.bottom = at[3];
     caller = vkp_lock_caller();
-    if (!vkp_polygon_caller_ok(caller)) return;
-    if (reads && vkp_polygon_store_only(caller)) reads = 0;
+    V.poly_stats.caller = caller;
+    if (!vkp_polygon_caller_ok(caller)) {
+        V.poly_stats.denied++;
+        return;
+    }
+    if (reads && vkp_polygon_store_only(caller)) {
+        reads = 0;
+        V.poly_stats.forced++;
+    }
+    V.poly_stats.last_reads = reads;
     if (!s->locked) {
         V.polys.pending = 1;
         V.polys.pending_reads = reads;

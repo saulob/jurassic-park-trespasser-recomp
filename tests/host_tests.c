@@ -3431,6 +3431,30 @@ static void test_lazy_capture(void) {
           tsync_changed_box((const uint8_t*)copy, 128, reference, 64, &tile0, &box));
 }
 
+/* After a Flip or a device attach the reference belongs to another buffer: a mark left in the CPU copy must not reach
+ * the overlay from a tile the run did not capture. */
+static void test_lazy_marks_not_published(void) {
+    static uint16_t copy[64 * 64], reference[64 * 64];
+    static uint32_t out[64 * 64];
+    static tsync_tiles_t fresh;
+    d3dt_rect_t all = { 0, 0, 64, 64 }, tile0 = { 0, 0, 32, 32 }, box;
+    tsync_counts_t counts = { 0, 0 };
+    for (int i = 0; i < 64 * 64; i++) copy[i] = reference[i] = 0x1111;
+    copy[40 * 64 + 40] = TSYNC_UNWRITTEN;
+    reference[40 * 64 + 40] = 0x2222;
+    CHECK(tsync_tiles_reset(&fresh, 64, 64));
+    tsync_fill((uint8_t*)copy, 128, reference, 64, &tile0, TSYNC_UNWRITTEN);
+    tsync_tiles_claim(&fresh, &tile0, count_tile_rect, &(tile_calls_t){ 0, 0 });
+    copy[5 * 64 + 6] = 0x0777;
+    CHECK(tsync_changed_box((const uint8_t*)copy, 128, reference, 64, &all, &box));
+    CHECK(box.left <= 40 && box.right > 40 && box.top <= 40 && box.bottom > 40);
+    CHECK(tsync_changed_box_in((const uint8_t*)copy, 128, reference, 64, &all, &fresh, &box));
+    CHECK(box.left == 6 && box.right == 7 && box.top == 5 && box.bottom == 6);
+    tsync_overlay_box_in((const uint8_t*)copy, 128, reference, 64, &all, &fresh, out, &counts);
+    CHECK(counts.changed == 1 && out[5 * 64 + 6] != 0);
+    CHECK(out[40 * 64 + 40] == 0);
+}
+
 /* The text overlay's capture: only the strings' boxes are claimed, and a composite compares nothing outside the bounds
  * of the claimed tiles, which find every changed pixel the full compare would inside them. */
 static void test_text_box_capture(void) {
@@ -3478,6 +3502,35 @@ static void test_cpu_polygon_box_readback(void) {
         d3dt_rect_t changed;
         CHECK(tsync_changed_box((const uint8_t*)copy, 16, reference, 8, &all, &changed));
         CHECK(changed.left == 3 && changed.right == 4 && changed.top == 1 && changed.bottom == 2);
+    }
+}
+
+/* A primitive that reads needs this frame's pixels, so its box is read back before it runs: the capture's marks become
+ * the GPU picture, and the CPU's own pixel is published even when its value is the mark's. */
+static void test_readback_makes_the_box_current(void) {
+    uint16_t copy[4 * 2], reference[4 * 2], gpu[4 * 2];
+    uint32_t out[4 * 2];
+    d3dt_rect_t all = { 0, 0, 4, 2 };
+    tsync_counts_t counts = { 0, 0 };
+    for (int i = 0; i < 8; i++) gpu[i] = (uint16_t)(0x1000 + i);
+    tsync_fill((uint8_t*)copy, 8, reference, 4, &all, TSYNC_UNWRITTEN);
+    tsync_fill_unwritten((uint8_t*)copy, 8, reference, 4, &all, gpu, 4);
+    for (int i = 0; i < 8; i++) CHECK(copy[i] == gpu[i] && reference[i] == gpu[i]);
+    copy[1 * 4 + 2] = TSYNC_UNWRITTEN;
+    tsync_overlay_box((const uint8_t*)copy, 8, reference, 4, &all, out, &counts);
+    CHECK(counts.changed == 1 && out[1 * 4 + 2] == 0xFFFF00FFu);
+    CHECK(out[0] == 0 && out[7] == 0);
+    CHECK(reference[1 * 4 + 2] == TSYNC_UNWRITTEN);
+    {
+        static tsync_tiles_t fresh;
+        CHECK(tsync_tiles_reset(&fresh, 4, 2));
+        tsync_tiles_claim_all(&fresh);
+        copy[1 * 4 + 2] = TSYNC_UNWRITTEN;
+        reference[1 * 4 + 2] = gpu[1 * 4 + 2];
+        memset(out, 0, sizeof out);
+        counts.changed = 0;
+        tsync_overlay_box_in((const uint8_t*)copy, 8, reference, 4, &all, &fresh, out, &counts);
+        CHECK(counts.changed == 1 && out[1 * 4 + 2] == 0xFFFF00FFu);
     }
 }
 
@@ -4456,10 +4509,12 @@ int main(void) {
     test_colour_keyed_span_store_only();
     test_perf_stat();
     test_lazy_capture();
+    test_lazy_marks_not_published();
     test_cache_never_and_groups();
     test_scene_heap_stress();
     test_text_box_capture();
     test_cpu_polygon_box_readback();
+    test_readback_makes_the_box_current();
     test_planar_gradient_limit();
     test_terrain_shadow_pool();
     test_target_sync_buffers();

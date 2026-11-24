@@ -17,15 +17,21 @@
 #define SKY_SCROLL_V 0x4Cu
 #define CAMERA_POSITION GVA(0x00732978) /* CSkyRender's copy, refreshed by 0x00523D00 before each draw */
 #define FOG_COLOR GVA(0x006D1E94)
+/* CRasterD3D's background: the colour its Clear2 passes, which the device's fog application fills with the fog colour. */
+#define RENDER_BACKGROUND GVA(0x006D0F14)
 
 static recomp_func_t s_sky_lifted;
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
 
-/* The game keeps the level's fog colour in its own state; the device's copy is a cache that a recreated device loses. */
+/* The game keeps the level's fog colour in its own state; the device's copy is a cache that a recreated device loses.
+ * The background is cached the same way, and only when the device is created, so it keeps the previous level's fog. */
 static void sync_fog_color(d3d_device_t* dev) {
-    uint32_t color;
-    if (guest_read32(FOG_COLOR, &color)) d3dr_set_fog_color(dev, color);
+    uint32_t color, background;
+    if (!guest_read32(FOG_COLOR, &color)) return;
+    d3dr_set_fog_color(dev, color);
+    color |= 0xFF000000u;
+    if (guest_read32(RENDER_BACKGROUND, &background) && background != color) guest_write32(RENDER_BACKGROUND, color);
 }
 
 /* thiscall, no arguments. */
