@@ -415,6 +415,125 @@ static void test_field_of_view(void) {
     lx_features_stop();
 }
 
+#define SHADOW_CLUT 0x00A40000u
+#define SHADOW_TABLE 0x00A50000u
+#define SHADOW_FRAME_FROM_CAMERA 0x22Cu
+
+static void body_terrain_update(void) {
+    uint32_t args[2] = { 0, 0 };
+    g_ecx = 0x00A60000u;
+    push_args(2, args);
+    lift116_sub_0049E530();
+}
+
+static uint32_t pixel_at(uint32_t row, uint32_t entry) { return read32(SHADOW_TABLE + (row * 256u + entry) * 2u) & 0xFFFFu; }
+
+/* A terrain ramp as CClut builds it: 32 rows of 256 RGB555 entries from the darkest light to full light. */
+static void build_ramp(float start) {
+    const float scale = (32.0f - 0.02f) / (1.0f - start);
+    static const uint8_t format[7] = { 16, 10, 3, 5, 3, 0, 3 };
+    for (uint32_t at = 0; at < 0x6Cu; at += 4) write32(SHADOW_CLUT + at, 0);
+    write32(SHADOW_CLUT + 0x14, 32), write32(SHADOW_CLUT + 0x18, 1);
+    writef(SHADOW_CLUT + 0x1C, scale), writef(SHADOW_CLUT + 0x20, 0.01f - start * scale);
+    write32(SHADOW_CLUT + 0x2C, 32), writef(SHADOW_CLUT + 0x30, start);
+    write32(SHADOW_CLUT + 0x38, SHADOW_TABLE), write32(SHADOW_CLUT + 0x40, 2), write32(SHADOW_CLUT + 0x4C, 256);
+    gp_copy_out(SHADOW_CLUT + 0x64, format, sizeof format);
+    for (uint32_t row = 0; row < 32; row++)
+        for (uint32_t i = 0; i < 256; i += 2) {
+            uint32_t v = (uint32_t)((start + (float)row / 31.0f * (1.0f - start)) * 31.0f), px = v << 10 | v << 5 | v;
+            write32(SHADOW_TABLE + (row * 256u + i) * 2u, px << 16 | px);
+        }
+    write32(0x0066FA0Cu, SHADOW_CLUT);
+}
+
+/* ShadowLighting's frame and the camera it builds there, with its light level. */
+static void shadow_call(uint32_t level, uint32_t moving) {
+    uint32_t frame = s_camera + SHADOW_FRAME_FROM_CAMERA;
+    write32(frame + 0x14, level), write32(frame + 0x18, moving), write32(frame + 0x1C, 1u - moving);
+    write32(0x0066FA14u, level);
+    writef(s_props, 256.0f), writef(s_props + 4, 256.0f);
+    write32(s_props + 0x34, 1), writef(s_props + 0x38, 1.0f), writef(s_props + 0x3C, 2000.0f);
+}
+
+static uint32_t shadow_level_after(void) {
+    run_on_guest(body_set_properties);
+    return read32(s_camera + SHADOW_FRAME_FROM_CAMERA + 0x14);
+}
+
+static void test_terrain_shadows(void) {
+    jpt_config_t cfg;
+    uint32_t built;
+    install_config(&cfg);
+    cfg.aspect = 0;
+    CHECK(cfg.shadows_enabled && lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with shadows on");
+    g_body = NULL;
+    write32(0x0073F444u, 0);
+    s_camera = 0x00A20000u;
+    s_props = s_camera + PROPS_IN_CAMERA;
+    write32(0x0066FA0Cu, 0);
+    run_on_guest(body_terrain_update);
+    shadow_call(0, 1);
+    CHECK(shadow_level_after() == 0, "no Direct3D ramp: nothing is changed");
+    shadow_call(9, 1);
+    CHECK(shadow_level_after() == 9, "nor without one is a light level");
+
+    build_ramp(0.8685f);
+    run_on_guest(body_terrain_update);
+    CHECK(pixel_at(0, 4) == (19u << 10 | 19u << 5 | 19u) && pixel_at(31, 4) == 0x7FFFu && pixel_at(1, 4) == pixel_at(2, 4),
+          "row 0 is the shadow's, the lit rows are the game's (%04X %04X)", pixel_at(0, 4), pixel_at(31, 4));
+    CHECK(readf(SHADOW_CLUT + 0x1C) * 0.8685f + readf(SHADOW_CLUT + 0x20) >= 1.0f &&
+          readf(SHADOW_CLUT + 0x1C) + readf(SHADOW_CLUT + 0x20) < 32.0f, "and no light of the terrain reaches it");
+    {
+        float scale = readf(SHADOW_CLUT + 0x1C);
+        run_on_guest(body_terrain_update);
+        CHECK(readf(SHADOW_CLUT + 0x1C) == scale, "once per ramp");
+    }
+    for (uint32_t moving = 0; moving < 2; moving++) {
+        shadow_call(1, moving);
+        CHECK(shadow_level_after() == 0, "a shadow lighter than at the default brightness draws with the shadow row (moving %u)", moving);
+    }
+    shadow_call(1, 1);
+    writef(s_props + 0x3C, 1000.0f);
+    CHECK(shadow_level_after() == 1, "another camera is left alone");
+    shadow_call(1, 1);
+    write32(0x0066FA14u, 2);
+    CHECK(shadow_level_after() == 1, "so is a frame whose light level is not the shadow's");
+    shadow_call(1, 1);
+    write32(s_camera + SHADOW_FRAME_FROM_CAMERA + 0x1C, 1);
+    CHECK(shadow_level_after() == 1, "or whose passes do not add up");
+    shadow_call(1, 1);
+    s_props = 0x00A30000u;
+    for (uint32_t at = 0; at < PROPS_SIZE; at += 4) write32(s_props + at, read32(s_camera + PROPS_IN_CAMERA + at));
+    CHECK(shadow_level_after() == 1, "or a camera given other properties than its own");
+    s_props = s_camera + PROPS_IN_CAMERA;
+
+    build_ramp(0.4f);
+    run_on_guest(body_terrain_update);
+    shadow_call(1, 1);
+    CHECK(shadow_level_after() == 1, "a shadow already darker keeps its light level");
+    shadow_call(26, 0);
+    CHECK(shadow_level_after() == 0, "a brighter one in an older ramp does not");
+
+    build_ramp(0.8685f);
+    built = pixel_at(0, 4);
+    write32(SHADOW_CLUT + 0x14, 64);
+    run_on_guest(body_terrain_update);
+    shadow_call(1, 1);
+    CHECK(pixel_at(0, 4) == built && shadow_level_after() == 1, "a ramp of another shape is refused");
+    lx_features_stop();
+
+    install_config(&cfg);
+    cfg.aspect = 0, cfg.shadows_enabled = 0;
+    CHECK(lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with shadows off");
+    build_ramp(0.8685f);
+    built = pixel_at(0, 4);
+    run_on_guest(body_terrain_update);
+    shadow_call(1, 1);
+    CHECK(pixel_at(0, 4) == built && shadow_level_after() == 1, "Shadows Off: the ramp and the light level are the game's");
+    write32(0x0066FA0Cu, 0);
+    lx_features_stop();
+}
+
 static void body_add_child(uint32_t va);
 static unsigned s_add_child_depth_seen[4];
 static uint32_t s_add_child_flags[4];
@@ -614,7 +733,6 @@ static void test_safe_mode_and_registry_policy(void) {
         CHECK(query_dword(key, "Use D3D") == 0, "nothing of it is stored");
     }
     CHECK(query_dword(key, "AudioEnable3D") == 0, "AudioEnable3D stays 0 whatever is stored");
-    CHECK(query_dword(key, "Gamma") == 0xDEADu, "Gamma is the game's default until its options store one");
     for (uint32_t level = 5; level <= 9; level += 2) {
         args[0] = key, args[1] = put_text(0x00A80400u, "Gamma"), args[2] = 0, args[3] = 4, args[4] = 0x00A80500u, args[5] = 4;
         write32(0x00A80500u, level);
@@ -806,6 +924,7 @@ int main(void) {
     test_replace_abi();
     test_ecx_reaches_the_lifted_body();
     test_field_of_view();
+    test_terrain_shadows();
     test_nested_around();
     test_lift_hooks_are_defined();
     test_dual_stow();

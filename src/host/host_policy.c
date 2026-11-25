@@ -851,6 +851,36 @@ uint32_t engine_render_quality_policy(int hardware, int value_stored) {
 
 uint32_t engine_gamma_level(uint32_t stored) { return stored > ENGINE_GAMMA_TOP ? ENGINE_GAMMA_TOP : stored; }
 
+int engine_ramp_reserved(float scale, float offset, float start) { return scale * start + offset >= 0.999f; }
+
+int engine_ramp_reserve(float* scale, float* offset, float start, uint32_t rows) {
+    const float n = (float)rows, first = *scale * start + *offset, last = *scale + *offset;
+    if (rows < 2u || !(start > 0.0f && start < 1.0f)) return 0;
+    if (!(first > -0.5f && first < 0.5f) || !(last > n - 1.0f && last < n + 0.5f)) return 0;
+    *scale *= (n - 1.0f) / n;
+    *offset = *offset * (n - 1.0f) / n + 1.0f;
+    return 1;
+}
+
+float engine_ramp_brightness(uint32_t level, uint32_t rows, float start) {
+    float light;
+    if (rows < 2u) return 1.0f;
+    light = level > 1u ? (float)(level - 1u) / (float)(rows - 1u) : 0.0f;
+    return start + (light > 1.0f ? 1.0f : light) * (1.0f - start);
+}
+
+uint16_t engine_scale_pixel(uint16_t pixel, const uint8_t channels[6], float scale) {
+    uint32_t out = pixel;
+    for (int i = 0; i < 6; i += 2) {
+        uint32_t mask, value;
+        if (channels[i] > 15u || channels[i + 1] > 7u) return pixel;
+        mask = 0xFFu >> channels[i + 1];
+        value = (uint32_t)((float)((pixel >> channels[i]) & mask) * scale + 0.5f);
+        out = (out & ~(mask << channels[i])) | (value > mask ? mask : value) << channels[i];
+    }
+    return (uint16_t)out;
+}
+
 uint32_t engine_upload_clock(uint32_t start_tick, double elapsed_ms, double budget_ms) {
     return elapsed_ms <= budget_ms ? start_tick : start_tick + ENGINE_UPLOAD_MS_ORIGINAL + 1u;
 }

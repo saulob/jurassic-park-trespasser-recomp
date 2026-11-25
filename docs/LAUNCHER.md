@@ -435,10 +435,13 @@ is not part of this work.
   through the moving-shadow pool, near the camera only (the level's `TrrNoShadowDist` times the quality's scale) and only
   where `qdQualitySettings[quality].bShadows` is set. Off clears that flag in the five quality rows, which is how the retail
   game's two lowest qualities have no shadows; nothing else reads it. Ambient occlusion is independent. The game draws no
-  shadows on objects (its object shadow buffer is never filled) and none for Anne. Read at start. How dark they are follows the
-  game's own brightness slider (`Gamma`, 0 to 9, 5 by default): a shadow is 0.65 of the lit ground at 5 and 0.88 at 7. The game's
-  table ends in zeros, so 8 and 9 light everything alike and hide every shadow; the game reads those two as 7 (`registry.c`,
-  `linux_advapi32.c`; the stored value is kept).
+  shadows on objects (its object shadow buffer is never filled) and none for Anne. Read at start. With Direct3D
+  a shadow is never lighter than 0.63 of the lit ground, its value at the game's default brightness (`Gamma` 5 of 0 to 9); the game
+  alone lightens it with the slider (0.88 at 7). `terrain_shadows.c` keeps row 0 of the terrain's colour ramp for it, the ground's own
+  light using rows 1 to 31, and gives that row to ShadowLighting, for static objects, plants with see-through textures and moving
+  ones alike. The game's table ends in zeros, so 8 and 9 light everything alike; the game reads those two as 7 (`registry.c`,
+  `linux_advapi32.c`; the stored value is kept). An object casts one unless its level says `Shadow` = False or it is beyond its
+  `ShadowCulling` (30 or 40 m for most plants).
 - **Water refraction** (key `water_refraction`, On by default; Direct3D 11 and Vulkan, greyed out with Software and kept; on Linux
   it needs the Vulkan renderer, docs/LINUX.md):
   after Trespasser CE's refractive water. The game writes CEntityWater's rows (`water_rows`, 0x0060E3F0, from

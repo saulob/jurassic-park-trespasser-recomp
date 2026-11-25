@@ -199,6 +199,22 @@
    "status": "unmoved",
    "value": "0x28",
    "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/terrain_shadows.c",
+   "name": "FRAME_FROM_CAMERA",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x22C",
+   "evidence": "ShadowLighting (0x00515150) passes [ebp-0x22C] to the camera constructor at 0x00515303 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+  },
+  {
+   "file": "src/host/terrain_shadows.c",
+   "name": "FRAME_FROM_CAMERA",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x22C",
+   "evidence": "ShadowLighting (0x00516E00) passes [ebp-0x22C] to the camera constructor at 0x00516FB3 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
   }
  ]
 }

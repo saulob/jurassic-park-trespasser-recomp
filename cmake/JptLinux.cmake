@@ -135,7 +135,7 @@ set(JPT_STREAM_SOURCES src/host/stream_pack.c src/host/stream_vfile.c src/linux/
 # The host features written against guest_abi.h (src/host/guest_abi.h): the same sources the Windows host builds, over the Linux
 # implementation of that interface (src/linux/linux_host.c, linux_overrides.c).
 set(JPT_GUEST_FEATURE_SOURCES
-  src/host/guest_features.c src/host/scene_options.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c
+  src/host/guest_features.c src/host/scene_options.c src/host/terrain_shadows.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c
   src/host/patch117.c src/host/patch117_objects.c src/host/patch117_physics.c src/host/patch117_player.c
   src/host/patch117_rules.c src/host/patch117_policy.c src/host/physics_fixes.c src/host/physics_watch.c
   src/host/physics_watch_policy.c src/host/terrain_quality.c src/host/widescreen.c src/host/fov_policy.c

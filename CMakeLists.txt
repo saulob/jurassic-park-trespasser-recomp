@@ -166,6 +166,7 @@ set(HOST_SOURCES
   src/host/guest_ui_actions.c
   src/host/guest_features.c
   src/host/scene_options.c
+  src/host/terrain_shadows.c
   src/host/skip_intro.c
   src/host/host_input.c
   src/host/debug_menu_policy.c

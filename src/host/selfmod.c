@@ -11,6 +11,7 @@
 #include <stddef.h>
 
 #include "recomp_trace.h"
+#include "terrain_shadows.h"
 
 #if !defined(_MSC_VER) || !defined(_M_IX86)
 #error "the SelfMod bridge is MSVC x86 inline assembly"
@@ -198,6 +199,7 @@ static void selfmod_bridge(void) {
 
     report_first_entry(s_target);
     InterlockedIncrement(&s_entries);
+    terrain_shadows_span(s_target); /* DEBUG_SAULO */
 
     c.fn = s_target;
     c.in[0] = g_eax; c.in[1] = g_ecx; c.in[2] = g_edx; c.in[3] = g_ebx;

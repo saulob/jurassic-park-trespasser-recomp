@@ -5007,6 +5007,35 @@
    }
   },
   {
+   "file": "src/host/terrain_shadows.c",
+   "name": "CAMERA_PROPS",
+   "value": "0x74",
+   "struct": "CCamera",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CCamera+CEntityAttached+CEntity: 393 functions, 0 without a counterpart; +0x74 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CCamera+CEntityAttached+CEntity: 393 functions, 0 without a counterpart; +0x74 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/terrain_shadows.c",
+   "name": "FRAME_FROM_CAMERA",
+   "value": "0x22C",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x22C",
+    "evidence": "ShadowLighting (0x00515150) passes [ebp-0x22C] to the camera constructor at 0x00515303 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x22C",
+    "evidence": "ShadowLighting (0x00516E00) passes [ebp-0x22C] to the camera constructor at 0x00516FB3 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+   }
+  },
+  {
    "file": "src/host/tutorial_prompts.c",
    "name": "RASTER_WIDTH",
    "value": "0x8",
@@ -7223,7 +7252,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    86
+    87
    ],
    "es-117": {
     "status": "unmoved",
@@ -7242,8 +7271,8 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    85,
-    87
+    86,
+    88
    ],
    "es-117": {
     "status": "unmoved",
@@ -7262,7 +7291,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    85
+    86
    ],
    "es-117": {
     "status": "unmoved",
@@ -7750,10 +7779,10 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    53,
-    53,
-    72,
-    176
+    54,
+    54,
+    74,
+    178
    ],
    "es-117": {
     "status": "unmoved",

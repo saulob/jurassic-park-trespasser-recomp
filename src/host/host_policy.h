@@ -589,6 +589,14 @@ uint32_t engine_render_quality_policy(int hardware, int value_stored);
  * surfaces become one brightness and the terrain shadows disappear. */
 #define ENGINE_GAMMA_TOP 7u
 uint32_t engine_gamma_level(uint32_t stored);
+/* A terrain ramp's shading (row = scale * light + offset) taken off row 0: its darkest light, start, then maps to row 1. */
+#define ENGINE_SHADOW_BRIGHTNESS 0.627f /* the ambient light, 0.2, at the default Gamma's exponent, 0.29 */
+int engine_ramp_reserved(float scale, float offset, float start);
+int engine_ramp_reserve(float* scale, float* offset, float start, uint32_t rows);
+/* The brightness of a row of a reserved ramp. */
+float engine_ramp_brightness(uint32_t level, uint32_t rows, float start);
+/* channels: position and 8 - width of red, green and blue. */
+uint16_t engine_scale_pixel(uint16_t pixel, const uint8_t channels[6], float scale);
 
 /* The game's UseSubTitles registry value is On until a choice is stored. A store that holds the Off the game wrote at
  * exit before the port kept this default becomes On once (marker absent); a stored choice after that is kept. Returns 1

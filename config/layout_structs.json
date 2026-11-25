@@ -1087,10 +1087,12 @@
   },
   {
    "names": [
-    "PROPS_IN_CAMERA"
+    "PROPS_IN_CAMERA",
+    "CAMERA_PROPS"
    ],
    "files": [
-    "widescreen.c"
+    "widescreen.c",
+    "terrain_shadows.c"
    ],
    "class": "CCamera"
   },

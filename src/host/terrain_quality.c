@@ -9,6 +9,7 @@
 #include "guest_abi.h"
 #include "guest_features.h"
 #include "perf_sections.h"
+#include "terrain_shadows.h"
 
 #include <string.h>
 
@@ -115,6 +116,7 @@ static void quad_root_update(void) {
         s_update_lifted();
         return;
     }
+    terrain_shadows_frame();
     begin = perf_section_begin();
     quad_root_update_modern();
     perf_section_end(PS_TERRAIN_UPDATE, begin);

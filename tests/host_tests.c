@@ -2862,6 +2862,47 @@ static void test_projected_cull(void) {
 }
 
 /* An object visited first and kept 3D holds its parts 3D in the same frame; the next frame starts empty. */
+static int ramp_row(float scale, float offset, float light, float start) {
+    return (int)((light < start ? start : light) * scale + offset);
+}
+
+/* CClu's ramp: 32 rows from the darkest light to full light, inset by the engine's tolerance. */
+static void test_terrain_shadow_row(void) {
+    static const uint8_t rgb555[6] = { 10, 3, 5, 3, 0, 3 }, rgb565[6] = { 11, 3, 5, 2, 0, 3 }, bad[6] = { 16, 3, 5, 3, 0, 3 };
+    static const float starts[] = { 0.38f, 0.627f, 0.8685f };
+    const float tolerance = 0.2f, rows = 32.0f;
+    for (int i = 0; i < 3; i++) {
+        float start = starts[i], scale = (rows - 2.0f * tolerance) / (1.0f - start), offset = tolerance - start * scale;
+        const float was_scale = scale, was_offset = offset;
+        CHECK(ramp_row(scale, offset, 0.2f, start) == 0 && !engine_ramp_reserved(scale, offset, start));
+        CHECK(engine_ramp_reserve(&scale, &offset, start, 32) && engine_ramp_reserved(scale, offset, start));
+        CHECK(!engine_ramp_reserve(&scale, &offset, start, 32));
+        for (float light = 0.0f; light <= 1.0f; light += 0.001f) {
+            int row = ramp_row(scale, offset, light, start), was = ramp_row(was_scale, was_offset, light, start);
+            CHECK(row >= 1 && row < 32 && row >= was && row <= was + 1);
+        }
+        CHECK(ramp_row(scale, offset, 1.0f, start) == 31 && ramp_row(scale, offset, 0.2f, start) == 1);
+    }
+    CHECK(engine_ramp_brightness(1, 32, 0.8685f) == 0.8685f && engine_ramp_brightness(0, 32, 0.8685f) == 0.8685f);
+    CHECK(engine_ramp_brightness(1, 32, 0.8685f) > ENGINE_SHADOW_BRIGHTNESS);
+    CHECK(engine_ramp_brightness(26, 32, 0.38f) > ENGINE_SHADOW_BRIGHTNESS);
+    CHECK(engine_ramp_brightness(1, 32, (float)pow(0.2, 0.406)) < ENGINE_SHADOW_BRIGHTNESS);
+    CHECK(engine_ramp_brightness(40, 32, 0.5f) == 1.0f && engine_ramp_brightness(5, 1, 0.5f) == 1.0f);
+    CHECK(fabs(pow(0.2, 0.29) - ENGINE_SHADOW_BRIGHTNESS) < 0.001);
+    {
+        float scale = INFINITY, offset = 0.0f, start = 1.0f;
+        CHECK(!engine_ramp_reserve(&scale, &offset, start, 32) && !engine_ramp_reserve(&scale, &offset, 0.5f, 1));
+        scale = NAN;
+        CHECK(!engine_ramp_reserve(&scale, &offset, 0.5f, 32) && !engine_ramp_reserved(scale, offset, 0.5f));
+    }
+    CHECK(engine_scale_pixel(0x7FFF, rgb555, 1.0f) == 0x7FFF && engine_scale_pixel(0xFFFF, rgb565, 1.0f) == 0xFFFF);
+    CHECK(engine_scale_pixel(0xFFFF, rgb555, 0.0f) == 0x8000 && engine_scale_pixel(0xFFFF, rgb565, 0.0f) == 0);
+    CHECK(engine_scale_pixel(0x7FFF, rgb555, ENGINE_SHADOW_BRIGHTNESS) == (19 << 10 | 19 << 5 | 19));
+    CHECK(engine_scale_pixel(0xFFFF, rgb565, ENGINE_SHADOW_BRIGHTNESS) == (19 << 11 | 40 << 5 | 19));
+    CHECK(engine_scale_pixel(0x1234, bad, 0.5f) == 0x1234);
+    for (uint32_t p = 0; p < 0x10000u; p++) CHECK(engine_scale_pixel((uint16_t)p, rgb565, ENGINE_SHADOW_BRIGHTNESS) <= p);
+}
+
 /* g_afGamma (retail .rdata): the exponent of level i is gamma[i] * (3.0 - 0.1) * 0.1. */
 static void test_gamma_level(void) {
     static const double gamma[10] = { 3.0, 2.6, 2.2, 1.8, 1.4, 1.0, 0.6, 0.3, 0.0, 0.0 };
@@ -3679,6 +3720,7 @@ static void test_engine_limits(void) {
     CHECK(engine_render_quality_policy(1, 0) == 4 && !engine_render_quality_policy(1, 1) &&
           !engine_render_quality_policy(0, 0));
     test_gamma_level();
+    test_terrain_shadow_row();
     /* x86: the texture memory the game may hold, twice over for its pages and ours, stays far below 2 GB. */
     CHECK((unsigned long long)ENGINE_TEXTURE_MB_MODERN * 2 * 1048576 < 256ull * 1048576);
     /* Terrain pages: 256 px, 16-bit, and the regular textures keep more than the old 40 MB budget gave them. */

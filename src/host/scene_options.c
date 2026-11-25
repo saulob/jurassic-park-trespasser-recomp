@@ -2,6 +2,7 @@
 
 #include "guest_abi.h"
 #include "host_policy.h"
+#include "terrain_shadows.h"
 
 #define FOG_VALUE_TABLE GVA(0x00732874) /* the terrain CFog's float table; the objects' CFog follows that object */
 #define FOG_INT_TABLE 0x1Cu             /* CFog: the fog band by distance, {length, data} */
@@ -27,6 +28,7 @@ static struct {
 void scene_options_configure(int fog, int shadows) {
     S.fog_off = !fog;
     S.shadows_off = !shadows;
+    terrain_shadows_configure(shadows);
     S.fog_logged = S.fog_refused = S.shadows_logged = 0;
     host_log("graphics", "fog %s, shadows %s", fog ? "on" : "off", shadows ? "on" : "off");
 }
