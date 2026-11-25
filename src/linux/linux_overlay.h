@@ -21,5 +21,7 @@ void lx_overlay_notice(const char* text, uint64_t now_ms);
 void lx_overlay_set_picture(int x, int y, int w, int h);
 /* The frame with the overlay drawn in (XRGB8888, an internal buffer valid until the next call); 0 when nothing shows. */
 int lx_overlay_compose(const lx_frame_t* in, lx_frame_t* out, uint64_t now_ms);
+/* The overlay alone, as premultiplied RGBA of w x h (an internal buffer valid until the next call); NULL when nothing shows. */
+const uint8_t* lx_overlay_compose_layer(int w, int h, uint64_t now_ms);
 
 #endif

@@ -555,6 +555,10 @@ uint32_t engine_terrain_shadow_kb(uint32_t page_px);
 int terrain_shadow_pool_call(const uint8_t* code, uint32_t code_va, uint32_t size, uint32_t* pool_va,
                              uint32_t* alloc_va);
 #define ENGINE_RENDER_QUALITY_TOP 4u
+/* Fog Off: every distance of a CFog's tables unfogged, and the terrain's fog starting past the far clip (distances
+ * are shares of it). 1 when anything changed. */
+#define SCENE_FOG_NEVER 2.0f
+int scene_fog_clear(int32_t* bands, float* values, unsigned count, float* terrain_start);
 /* SPartitionSettings::fGetCullDistance (0x004A22D0) plus the radius: how far an object of that radius stays drawn
  * with level cull distance max_at (CullMaxDist, 800 by default). */
 float engine_cull_distance(float radius, float max_at, float scale, float cap);
@@ -581,6 +585,10 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim);
 /* "Max Recommended Tex Dim" and "RenderQuality" answers: 0 leaves the stored value or the game default. */
 uint32_t engine_texture_dim_policy(int modern);
 uint32_t engine_render_quality_policy(int hardware, int value_stored);
+/* InitGamma (0x00414F20) raises every reflectance to g_afGamma[level] * 0.29, which is 0 past level 7: lit and shadowed
+ * surfaces become one brightness and the terrain shadows disappear. */
+#define ENGINE_GAMMA_TOP 7u
+uint32_t engine_gamma_level(uint32_t stored);
 
 /* The game's UseSubTitles registry value is On until a choice is stored. A store that holds the Off the game wrote at
  * exit before the port kept this default becomes On once (marker absent); a stored choice after that is kept. Returns 1

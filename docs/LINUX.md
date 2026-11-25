@@ -499,7 +499,7 @@ words on the stack that point into the executable's code. Stages are single atom
   `1`..`4`, clipper and palette, as guest COM objects: 16-byte faces in guest memory, vtables of thunks in the standard method order,
   one reference count per object. The semantics follow `src/host/ddraw` (the virtual 16 bpp RGB565 display, the same mode list and caps,
   flip chains with pixel exchange, Lock with a real guest address, colour fill, source colour keys, stretch, surface loss when the mode
-  changes). No Direct3D: `QueryInterface` for it is refused and the game keeps its software renderer. Pixels live in guest memory, so the
+  changes). Without a GPU renderer there is no Direct3D: `QueryInterface` for it is refused and the game keeps its software renderer. Pixels live in guest memory, so the
   guest's own rasteriser (SelfMod) writes straight into the surface the presenter shows.
 * **Presenter** (`linux_screen.*`, `linux_window.*`): frames go to the backend unconverted (RGB565 stays RGB565; other formats become
   XRGB8888). `jpt_presentation` decides the view: letterboxed, a new guest screen size takes effect only with the first frame of that
@@ -777,4 +777,24 @@ Defaults: `game/`, `user_data/` and `logs/` next to the program (`TRESPASSER_GAM
 * **Backend selection.** `trespasser.ini` (`renderer = auto | vulkan | software`) or `--renderer <name>` on the CLI. `auto` selects Vulkan when available and falls back cleanly to Software with a logged reason if no loader/ICD/compatible GPU exists. `d3d11` is unavailable on Linux and falls back cleanly without crashing.
 * **GPU selection.** `graphics_card` or `--graphics-card <auto | label | vendor:device | vendor:device:uuid8>`. `auto` checks minimum requirements first (graphics + present queues, `VK_KHR_swapchain`, depth attachment format), prefers usable discrete GPUs over integrated/virtual/CPU devices, and respects `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD`.
 * **Fallback and recovery.** Missing loader/GPU falls back to Software with a readable message. Swapchain `OUT_OF_DATE`, `SURFACE_LOST`, resize, minimize (`0x0` wait), and persistent `SUBOPTIMAL` (capped to avoid Gamescope/Wayland loops) are handled cleanly; `VK_ERROR_DEVICE_LOST` latches cleanly without infinite recovery loops.
-* **Known limitations.** Manual Steam Deck verification remains; the AppImage is packaged by `tools/package-linux.sh`. No RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).
+* **Direct3D 6 bridge (`linux_d3d.c`, `linux_d3d_target.c`, `linux_d3d_guest.c`).** With Vulkan the game takes its own Direct3D path
+  (`Use D3D`, `D3D GUID`, `Hardware Water` and, until the game stores one, `RenderQuality` are answered as on Windows). The vtables are
+  those of `d3d.h`: IDirect3D3 12, IDirect3DDevice3 42, IDirect3DViewport3 21 and IDirect3DTexture2 6 methods, each popping its own
+  arguments; what the game never calls is refused with DDERR_UNSUPPORTED and one log line. IDirect3D3 and IDirect3DTexture2 are faces of
+  the DirectDraw object and of the texture surface. z-buffers attach, and a level's worth of surfaces fits (8192).
+  The target is hybrid as on Windows: text and the polygons the game rasterises go to its 16-bit copy and only what changed is drawn
+  over the GPU's scene; a Lock that reads gets the scene back (a polygon only its box). In gameplay Flip shows the GPU's scene with the
+  host's overlays as a layer; under a menu, a dialog or a loading screen the CPU's picture is made complete and takes the usual path,
+  so the HD front end is unchanged. The target keeps the guest's shape inside the launcher's render resolution, and a CPU picture is
+  shown in its own shape, as the SDL renderer shows it and as the mouse is mapped.
+* **Water refraction, Enhanced sky, Fog, Shadows, Ambient occlusion.** With Vulkan they have effect on Linux: the water's rows run as
+  the host kernel, a Load links the drawn texture to its wave field (one field per water texture), the sky's draws take the level's fog
+  band, the device's fog colour and the Clear2 background follow the level at BeginScene, and ambient occlusion gets the camera's view.
+  Fog and Shadows act on the engine's own data, so they also apply to Software. All are read at start.
+* **Validation state.** Implemented, and covered headless by `linux_d3d_tests` (vtables and stack sizes of every method, HRESULTs, guest
+  writes, device life, states, textures, water, sky, the hybrid target, Flip) with a recorder in place of the GPU. **Not validated by
+  eye yet**: no gameplay frame through this bridge on a real Linux GPU. `--renderer software` keeps the game's own rasteriser. At exit
+  the log's `[d3d]` line counts frames, draws, texture uploads, water and sky draws, readbacks and refused states.
+* **Known limitations.** A host-rasterised text or a blended software polygon costs a readback of its area or of the screen; the
+  software polygons Windows can draw on the GPU (textured and bump, 1.0.116) stay on the CPU; a texture changed without Lock, Load or
+  Blt is not noticed (none was seen on Windows). Manual Steam Deck verification remains; the AppImage is packaged by `tools/package-linux.sh`. No RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).

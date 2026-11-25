@@ -73,7 +73,7 @@ README), so it is a behavioural reference only; "-" means it adds nothing specif
 | 25 ALPHAFUNC | 5 GREATER | alpha test comparison |
 | 26 DITHERENABLE | 0, register | accepted; irrelevant on an 8-bit-per-channel target |
 | 27 ALPHABLENDENABLE | 0, 1, register | blend state |
-| 28 FOGENABLE | 0, 1, register | vertex fog from specular alpha |
+| 28 FOGENABLE | 0, 1, register | vertex fog from specular alpha: colour = lerp(FOGCOLOR, colour, alpha), alpha 255 unfogged. The launcher's Fog Off leaves the state on: the game's fog tables give every vertex 255 |
 | 29 SPECULARENABLE | 0, 1, register | adds specular RGB |
 | 31 SUBPIXEL | 1 | accepted (always sub-pixel) |
 | 34 FOGCOLOR | register | fog colour constant |
@@ -115,7 +115,7 @@ logged under the type number only (12, 16, 17), which made them look like unknow
 |---|---|---|---|---|---|---|
 | 0x00 | QueryInterface | 00510240, 00513740, 00513C80 | from both surfaces of a texture | implemented | IDirect3DTextureX.cpp | - |
 | 0x08 | Release | 00513740, 00513C80 | | implemented (count shared with the surface) | IDirect3DTextureX.cpp | - |
-| 0x14 | Load | 00510240, 00510320, 00513740, 00513C80 | system-memory copy -> device copy | implemented: immediate copy, texture marked dirty | IDirect3DTextureX.cpp | - |
+| 0x14 | Load | 00510240, 00510320, 00513740, 00513C80 | system-memory copy -> device copy | implemented: immediate copy; only the rows that differ are marked dirty | IDirect3DTextureX.cpp | - |
 | 0x0C, 0x10 | GetHandle, PaletteChanged | none | never called | refused | | |
 
 ## DirectDraw calls that belong to the Direct3D path

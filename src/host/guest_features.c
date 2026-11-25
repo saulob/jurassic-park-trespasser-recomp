@@ -2,6 +2,7 @@
 
 #include "ce_gameplay.h"
 #include "guest_abi.h"
+#include "scene_options.h"
 
 void guest_features_configure(const jpt_config_t* cfg) {
     ce_gameplay_configure(cfg->dual_stow, cfg->max_object_detail);
@@ -11,6 +12,7 @@ void guest_features_configure(const jpt_config_t* cfg) {
     patch117_physics_configure(cfg->official_patch_117);
     widescreen_set_fov(cfg->fov);
     skip_intro_configure(cfg->skip_intro);
+    scene_options_configure(cfg->fog_enabled, cfg->shadows_enabled);
 }
 
 void guest_features_install(void) {
@@ -33,4 +35,5 @@ void guest_features_stop(void) {
 void guest_features_step(void) {
     ce_gameplay_step();
     widescreen_apply_fov();
+    scene_options_step();
 }

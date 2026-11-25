@@ -135,7 +135,7 @@ set(JPT_STREAM_SOURCES src/host/stream_pack.c src/host/stream_vfile.c src/linux/
 # The host features written against guest_abi.h (src/host/guest_abi.h): the same sources the Windows host builds, over the Linux
 # implementation of that interface (src/linux/linux_host.c, linux_overrides.c).
 set(JPT_GUEST_FEATURE_SOURCES
-  src/host/guest_features.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c
+  src/host/guest_features.c src/host/scene_options.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c
   src/host/patch117.c src/host/patch117_objects.c src/host/patch117_physics.c src/host/patch117_player.c
   src/host/patch117_rules.c src/host/patch117_policy.c src/host/physics_fixes.c src/host/physics_watch.c
   src/host/physics_watch_policy.c src/host/terrain_quality.c src/host/widescreen.c src/host/fov_policy.c
@@ -164,7 +164,7 @@ set_target_properties(jpt_panel_linux PROPERTIES CXX_STANDARD 17 CXX_STANDARD_RE
 target_compile_options(jpt_panel_linux PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti -include ${CMAKE_SOURCE_DIR}/src/common/jpt_compat.h)
 target_link_libraries(jpt_panel_linux PUBLIC jpt_imgui_linux jpt_panel_model_linux)
 
-add_library(jpt_linux_core STATIC ${JPT_STREAM_SOURCES} src/linux/linux_hle.c src/linux/linux_paths.c src/linux/linux_log.c src/linux/linux_crash.c src/linux/linux_shutdown.c src/linux/linux_guest_quit.c src/linux/linux_spine.c src/linux/linux_msvcrt.c src/linux/linux_modules.c src/linux/linux_msvcrt_io.c src/linux/linux_user32.c src/linux/linux_advapi32.c src/linux/linux_signatures.c src/linux/linux_processor.c src/linux/linux_window.c src/linux/linux_screen.c src/linux/linux_gdi32.c src/linux/linux_text.c src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} src/linux/linux_dsound.c src/linux/linux_smack.c src/linux/linux_video_subtitles.c src/linux/linux_mouse.c src/linux/linux_guest_ui.c src/linux/linux_overlay.c src/linux/linux_quick.c src/linux/linux_hostkeys.c src/linux/linux_settings.c src/host/guest_ui_model.c src/host/host_policy.c src/host/ce_policy.c src/host/window_title.c ${JPT_GUEST_FEATURE_SOURCES} ${JPT_AUDIO_CORE} ${AUDIO_DIR}/sdl_audio.c ${JPT_SMACKER_PORTABLE_SOURCES} src/linux/linux_ddraw.c src/linux/linux_vulkan.c src/linux/linux_lz32.c src/linux/linux_resource.c)
+add_library(jpt_linux_core STATIC ${JPT_STREAM_SOURCES} src/linux/linux_hle.c src/linux/linux_paths.c src/linux/linux_log.c src/linux/linux_crash.c src/linux/linux_shutdown.c src/linux/linux_guest_quit.c src/linux/linux_spine.c src/linux/linux_msvcrt.c src/linux/linux_modules.c src/linux/linux_msvcrt_io.c src/linux/linux_user32.c src/linux/linux_advapi32.c src/linux/linux_signatures.c src/linux/linux_processor.c src/linux/linux_window.c src/linux/linux_screen.c src/linux/linux_gdi32.c src/linux/linux_text.c src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} src/linux/linux_dsound.c src/linux/linux_smack.c src/linux/linux_video_subtitles.c src/linux/linux_mouse.c src/linux/linux_guest_ui.c src/linux/linux_overlay.c src/linux/linux_quick.c src/linux/linux_hostkeys.c src/linux/linux_settings.c src/host/guest_ui_model.c src/host/host_policy.c src/host/ce_policy.c src/host/window_title.c ${JPT_GUEST_FEATURE_SOURCES} ${JPT_AUDIO_CORE} ${AUDIO_DIR}/sdl_audio.c ${JPT_SMACKER_PORTABLE_SOURCES} src/linux/linux_ddraw.c src/linux/linux_d3d.c src/linux/linux_d3d_target.c src/linux/linux_d3d_guest.c src/linux/linux_vulkan.c src/host/ce_effects.c src/host/ddraw/d3d_translate.c src/host/ddraw/target_sync.c src/linux/linux_lz32.c src/linux/linux_resource.c)
 if(JPT_LINUX_SDL_VIDEO)
   target_sources(jpt_linux_core PRIVATE src/linux/linux_sdl_window.c src/linux/linux_gamepad.c src/host/pad_sdl.c src/host/gamepad_policy.c src/host/gamepad_ui.c src/host/gamepad_menu.c src/host/frontend_layout.c src/host/frontend_assets.c src/host/frontend_art.c src/host/frontend_plaque.c src/host/frontend_text_stb.c src/host/loading_layout.c src/host/pad_glyphs.c src/host/save_preview.c src/host/frontend_hd.c src/host/loading_hd.c src/linux/linux_frontend.c src/linux/linux_card.c)
   target_compile_definitions(jpt_linux_core PUBLIC JPT_LINUX_SDL_VIDEO=1)
@@ -253,6 +253,7 @@ jpt_linux_test(linux_call_spine_tests SOURCES tests/linux_call_spine_tests.c tes
 jpt_linux_test(linux_user32_tests SOURCES tests/linux_user32_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_gdi_tests SOURCES tests/linux_gdi_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_ddraw_tests SOURCES tests/linux_ddraw_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(linux_d3d_tests SOURCES tests/linux_d3d_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_present_tests SOURCES tests/linux_present_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_crash_tests SOURCES tests/linux_crash_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 if(JPT_LINUX_SDL_VIDEO)

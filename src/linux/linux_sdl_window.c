@@ -141,6 +141,7 @@ static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     s.window = create_window(d, flags, display);
     if (!s.window && want_vk) {
         lx_log("Linux presentation", "SDL3 Vulkan window failed (%s); retrying Software window", SDL_GetError());
+        lx_vk_window_failed(SDL_GetError());
         want_vk = 0;
         flags &= ~SDL_WINDOW_VULKAN;
         s.window = create_window(d, flags, display);
@@ -357,6 +358,13 @@ static void sdl_present(lx_window_backend_t* b, const lx_frame_t* f) {
     SDL_RenderPresent(s.renderer);
 }
 
+static void sdl_present_scene(lx_window_backend_t* b, const lx_scene_frame_t* f) {
+    (void)b;
+    if (!s.using_vulkan) return;
+    lx_crash_present_stage(LX_PRESENT_RENDER_PRESENT);
+    lx_vk_present_scene(f);
+}
+
 static void sdl_set_cursor_visible(lx_window_backend_t* b, int visible) {
     (void)b;
     if (visible) SDL_ShowCursor();
@@ -388,6 +396,6 @@ static void sdl_destroy(lx_window_backend_t* b) {
 }
 
 static lx_window_backend_t s_backend = { "SDL3", sdl_open, sdl_close, sdl_set_title, sdl_set_client_size, sdl_client_size, sdl_set_visible,
-                                         sdl_next_event, sdl_present, sdl_set_cursor_visible, sdl_set_mouse_grab, sdl_set_relative_mouse, sdl_destroy, sdl_toggle_fullscreen };
+                                         sdl_next_event, sdl_present, sdl_set_cursor_visible, sdl_set_mouse_grab, sdl_set_relative_mouse, sdl_destroy, sdl_toggle_fullscreen, sdl_present_scene };
 
 lx_window_backend_t* lx_sdl_backend(void) { return &s_backend; }

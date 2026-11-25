@@ -1788,7 +1788,7 @@
    "linux": {
     "status": "PLATFORM_ONLY",
     "evidence": [],
-    "reason": "Direct3D 11 is Windows only; Linux presents the software renderer through SDL3 and Vulkan is future work"
+    "reason": "Direct3D 11 is Windows only; the guest's Direct3D 6 reaches Vulkan on Linux through linux-direct3d-bridge"
    }
   },
   {
@@ -2438,9 +2438,9 @@
   },
   {
    "id": "water-refraction",
-   "name": "Water Refraction: Direct3D 11 pass and host water kernels",
+   "name": "Water Refraction: the renderer pass, the wave link and the host water kernels",
    "owner": "render",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -2459,16 +2459,24 @@
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_water"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
    "id": "enhanced-sky",
    "name": "Enhanced Sky",
    "owner": "render",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -2487,16 +2495,24 @@
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_sky"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
    "id": "ambient-occlusion",
    "name": "Ambient occlusion Off, Low, Medium, High, Ultra",
    "owner": "render",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -2510,9 +2526,17 @@
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "ao_level == 2"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
@@ -3698,6 +3722,39 @@
    }
   },
   {
+   "id": "fog-shadows-options",
+   "name": "Fog and Shadows On/Off: the engine's fog tables and shadow quality flag",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "test_fog_tables"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestFogAndShadowsRows"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "test_fog_shadow_sources"
+     }
+    ]
+   }
+  },
+  {
    "id": "footstep-fix",
    "name": "Footstep and collision sounds after load or restart",
    "owner": "gameplay",
@@ -4628,7 +4685,7 @@
    },
    "linux": {
     "status": "PLATFORM_ONLY",
-    "reason": "the Direct3D 6 translation layer of the Windows backend; Linux reaches Vulkan through its own DirectDraw layer and vulkan_render_tests"
+    "reason": "the Windows host's Direct3D 6 objects; Linux has its own (linux-direct3d-bridge)"
    }
   },
   {
@@ -4650,7 +4707,52 @@
    },
    "linux": {
     "status": "PLATFORM_ONLY",
-    "reason": "the hybrid CPU/GPU target of the Windows Direct3D layer"
+    "reason": "the Windows renderer's target; the Linux one is in linux-direct3d-bridge"
+   }
+  },
+  {
+   "id": "linux-direct3d-bridge",
+   "name": "Direct3D 6 of the guest on Linux: d3d.h vtables, HRESULTs, device life, states, textures and the hybrid CPU/GPU target over Vulkan",
+   "owner": "render",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "reason": "Windows uses the host's own COM objects (d3d_objects.c, com_tests)"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_vtables"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_essential_slots"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_scene_and_draws"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_textures"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_hybrid"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {

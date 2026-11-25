@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-178 features. 125 PASS / PASS; 32 PASS / WINDOWS ONLY (justified); 21 LINUX ONLY (justified) / PASS.
+180 features. 129 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -64,7 +64,7 @@ feature may have one.
 | `sdl3-platform` | global | PASS | PASS | `platform_tests`, `build_script_tests.ps1` | `linux_sdl_window_tests` | - |
 | `fullscreen` | global | PASS | PASS | `hotkey_tests`, `platform_tests` | `hotkey_tests`, `linux_sdl_window_tests` | - |
 | `software-renderer` | global | PASS | PASS | `host_tests`, `launcher_tests` | `linux_ddraw_tests`, `linux_present_tests`, `linux_gdi_tests` | - |
-| `d3d11-renderer` | windows | PASS | WINDOWS ONLY (justified) | `host_tests`, `com_tests`, `video_tests` | - | Direct3D 11 is Windows only; Linux presents the software renderer through SDL3 and Vulkan is future work |
+| `d3d11-renderer` | windows | PASS | WINDOWS ONLY (justified) | `host_tests`, `com_tests`, `video_tests` | - | Direct3D 11 is Windows only; the guest's Direct3D 6 reaches Vulkan on Linux through linux-direct3d-bridge |
 | `vulkan-renderer` | global | PASS | PASS | `vulkan_policy_tests`, `vulkan_render_tests`, `test_vulkan_shaders.py`, `vulkan_dispatch_tests` | `vulkan_policy_tests`, `vulkan_render_tests`, `test_vulkan_shaders.py` | - |
 | `windows-runtime-vulkan-dispatch` | windows | PASS | WINDOWS ONLY (justified) | `vulkan_dispatch_tests` | - | Linux has no D3D11 host backend; its native SDL3/Vulkan dispatch is covered by vulkan-renderer and linux_sdl_window_tests |
 | `vulkan-instance` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
@@ -84,9 +84,9 @@ feature may have one.
 | `vulkan-frontend-hd` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
 | `vulkan-loading-hd` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
 | `vulkan-gpu-selection` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
-| `water-refraction` | windows | PASS | WINDOWS ONLY (justified) | `ce_gpu_tests`, `water_tests` | - | a Direct3D 11 / DXGI effect: Windows only |
-| `enhanced-sky` | windows | PASS | WINDOWS ONLY (justified) | `ce_gpu_tests`, `ce_tests` | - | a Direct3D 11 / DXGI effect: Windows only |
-| `ambient-occlusion` | windows | PASS | WINDOWS ONLY (justified) | `ao_tests` | - | a Direct3D 11 / DXGI effect: Windows only |
+| `water-refraction` | global | PASS | PASS | `ce_gpu_tests`, `water_tests` | `linux_d3d_tests` | - |
+| `enhanced-sky` | global | PASS | PASS | `ce_gpu_tests`, `ce_tests` | `linux_d3d_tests` | - |
+| `ambient-occlusion` | global | PASS | PASS | `ao_tests` | `linux_d3d_tests` | - |
 | `texture-filtering` | windows | PASS | WINDOWS ONLY (justified) | `launcher_tests`, `host_tests` | - | a Direct3D 11 / DXGI effect: Windows only |
 | `anti-aliasing` | windows | PASS | WINDOWS ONLY (justified) | `launcher_tests`, `test_setting_parity.py` | - | a Direct3D 11 / DXGI effect: Windows only |
 | `gpu-selection` | windows | PASS | WINDOWS ONLY (justified) | `launcher_tests` | - | a Direct3D 11 / DXGI effect: Windows only |
@@ -117,6 +117,7 @@ feature may have one.
 | `dual-stow` | global | PASS | PASS | `ce_tests` | `linux_overrides_tests` | - |
 | `active-ai` | global | PASS | PASS | `active_ai_tests` | `linux_features_tests`, `active_ai_tests` | - |
 | `max-object-detail` | global | PASS | PASS | `ce_tests` | `linux_features_tests` | - |
+| `fog-shadows-options` | global | PASS | PASS | `ce_tests`, `launcher_tests` | `ce_tests` | - |
 | `footstep-fix` | global | PASS | PASS | `ce_tests` | `linux_overrides_tests` | - |
 | `patch-1.1` | global | PASS | PASS | `patch117_tests` | `linux_features_tests`, `linux_overrides_tests` | - |
 | `hand-physics` | global | PASS | PASS | `host_tests` | `linux_features_tests` | - |
@@ -143,8 +144,9 @@ feature may have one.
 | `repository-hygiene` | windows | PASS | WINDOWS ONLY (justified) | `repository hygiene`, `git diff --check` | - | a repository-wide check run once, on Windows |
 | `test-gate` | windows | PASS | WINDOWS ONLY (justified) | `gate_tests.ps1`, `every test is wired in`, `working tree unchanged` | - | the gate is one program, run from Windows |
 | `linux-audio-probe` | linux | LINUX ONLY (justified) | PASS | `linux audio probe` | `audio_portable_tests`, `audio_backend_tests` | Linux only |
-| `vulkan-real-draw-path` | windows | PASS | WINDOWS ONLY (justified) | `vulkan_runtime_tests` | - | the Direct3D 6 translation layer of the Windows backend; Linux reaches Vulkan through its own DirectDraw layer and vulkan_render_tests |
-| `vulkan-software-polygons` | windows | PASS | WINDOWS ONLY (justified) | `vulkan_runtime_tests` | - | the hybrid CPU/GPU target of the Windows Direct3D layer |
+| `vulkan-real-draw-path` | windows | PASS | WINDOWS ONLY (justified) | `vulkan_runtime_tests` | - | the Windows host's Direct3D 6 objects; Linux has its own (linux-direct3d-bridge) |
+| `vulkan-software-polygons` | windows | PASS | WINDOWS ONLY (justified) | `vulkan_runtime_tests` | - | the Windows renderer's target; the Linux one is in linux-direct3d-bridge |
+| `linux-direct3d-bridge` | linux | LINUX ONLY (justified) | PASS | - | `linux_d3d_tests` | Windows uses the host's own COM objects (d3d_objects.c, com_tests) |
 | `vulkan-video-upload` | windows | PASS | WINDOWS ONLY (justified) | `video_tests`, `vulkan_render_tests` | - | the HD video path of the Windows host |
 | `frontend-parity` | global | PASS | PASS | `vulkan_policy_tests`, `vulkan_render_tests`, `vulkan_runtime_tests` | `vulkan_policy_tests`, `vulkan_render_tests` | - |
 | `loading-parity` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |

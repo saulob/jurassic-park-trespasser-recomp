@@ -4753,6 +4753,124 @@
    }
   },
   {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_TABLE",
+   "value": "0x1C",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x1C",
+    "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x1C",
+    "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_DATA",
+   "value": "0x20",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x20",
+    "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x20",
+    "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_TABLE",
+   "value": "0x24",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x24",
+    "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x24",
+    "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_DATA",
+   "value": "0x28",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x28",
+    "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x28",
+    "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_TERRAIN_START",
+   "value": "0x30",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x30",
+    "evidence": "SetFogLevelsFloat clears [this+0x30] (0x00507AA3) and the terrain clip 0x00502F00 compares it at 0x007351F0 (0x0050357C, 0x00503634, 0x0050364F), as 0x0051CF90 does with 0x00732880 in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x30",
+    "evidence": "the terrain clip 0x005045C0 compares the terrain CFog's +0x30 at 0x007369A0 (0x00504D0B, 0x00504DC0, 0x00504DD8), as 0x0051CF90 does with 0x00732880 in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_SIZE",
+   "value": "0x38",
+   "es-117": {
+    "status": "unmoved",
+    "value": "0x38",
+    "evidence": "the objects' CFog (0x007351F8) lies 0x38 after the terrain's (0x007351C0), as 0x00732888 after 0x00732850 in 1.0.116"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "value": "0x38",
+    "evidence": "the objects' CFog (0x007369A8) lies 0x38 after the terrain's (0x00736970), as 0x00732888 after 0x00732850 in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "QUALITY_STRIDE",
+   "value": "0x5C",
+   "struct": "QualityTable",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "QualityTable: the array's stride 0x5c is built by the same address arithmetic (33 accesses in 1.0.116, 33 here)"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "QualityTable: the array's stride 0x5c is built by the same address arithmetic (33 accesses in 1.0.116, 34 here)"
+   }
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "QUALITY_SHADOWS",
+   "value": "0x38",
+   "struct": "QualityTable",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "QualityTable: 21 functions, 0 without a counterpart; +0x38 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "QualityTable: 21 functions, 0 without a counterpart; +0x38 used by 1 identical functions"
+   }
+  },
+  {
    "file": "src/host/stream_pack.c",
    "name": "TPA_DESCRIPTOR_FIELD",
    "value": "0x14",
@@ -5985,8 +6103,8 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    41,
-    47
+    34,
+    40
    ],
    "es-117": {
     "status": "unmoved",
@@ -6005,7 +6123,7 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    48
+    41
    ],
    "es-117": {
     "status": "unmoved",

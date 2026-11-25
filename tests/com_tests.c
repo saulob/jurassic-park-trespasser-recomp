@@ -14,6 +14,13 @@
 uint32_t g_cur_func;
 static int s_failures, s_checks, s_draws, s_clears, s_attached, s_flushes, s_kept;
 static int s_fog_syncs;
+/* The open batch as the renderer keeps it: it is drawn, with the states the device still has, when a change is announced. */
+static struct {
+    int open, drawn;
+    DWORD fog, color, specular;
+} s_batch;
+static int s_written;
+static RECT s_written_rect;
 static DWORD s_fog_engine = 0x00FDF6E9u;
 
 static void fog_sync(d3d_device_t* dev) {
@@ -54,8 +61,14 @@ void d3dr_detach(d3d_device_t* dev) { (void)dev; s_attached--; }
 void d3dr_begin_scene(d3d_device_t* dev) { (void)dev; }
 void d3dr_end_scene(d3d_device_t* dev) { (void)dev; }
 void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD value) {
-    (void)dev; (void)change; (void)state;
+    (void)change; (void)state; (void)value;
     s_flushes++;
+    if (!s_batch.open) return;
+    s_batch.open = 0;
+    s_batch.drawn++;
+    s_batch.fog = dev->render[D3DRENDERSTATE_FOGENABLE];
+    s_batch.color = dev->render[D3DRENDERSTATE_FOGCOLOR];
+    s_batch.specular = dev->render[D3DRENDERSTATE_SPECULARENABLE];
 }
 void d3dr_state_kept_batch(d3d_device_t* dev) {
     (void)dev;
@@ -66,6 +79,7 @@ HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, 
     (void)dev; (void)vertices; (void)indices; (void)index_count;
     if (type != D3DPT_TRIANGLEFAN || fvf != D3DFVF_TLVERTEX || count < 3) return DDERR_INVALIDPARAMS;
     s_draws++;
+    s_batch.open = 1;
     return DD_OK;
 }
 HRESULT d3dr_clear(d3d_device_t* dev, DWORD count, const D3DRECT* rects, DWORD flags, D3DCOLOR color, float z) {
@@ -98,7 +112,11 @@ void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t acces
         s_readbacks++;
     }
 }
-void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) { (void)s; (void)r; }
+void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
+    RECT whole = { 0, 0, (LONG)s->width, (LONG)s->height };
+    s_written++;
+    s_written_rect = r ? *r : whole;
+}
 int d3dr_surface_unlocked(dd_surface_t* s) {
     if (s != s_guarded || !page_guard_disarm()) return 0;
     s_untouched++;
@@ -412,6 +430,35 @@ int main(void) {
     CHECK(dev->lpVtbl->BeginScene(dev) == D3DERR_SCENE_IN_SCENE);
     CHECK(SUCCEEDED(dev->lpVtbl->DrawPrimitive(dev, D3DPT_TRIANGLEFAN, D3DFVF_TLVERTEX, fan, 4, 0x1C)) && s_draws >= 1);
     CHECK(SUCCEEDED(dev->lpVtbl->EndScene(dev)));
+    /* Fog changing inside a scene: each batch is drawn with the fog it was recorded under. */
+    CHECK(SUCCEEDED(dev->lpVtbl->BeginScene(dev)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGENABLE, TRUE)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGCOLOR, 0xFF102030u)));
+    s_batch.open = s_batch.drawn = 0;
+    CHECK(SUCCEEDED(dev->lpVtbl->DrawPrimitive(dev, D3DPT_TRIANGLEFAN, D3DFVF_TLVERTEX, fan, 4, 0x1C)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGCOLOR, 0xFF405060u)));
+    CHECK(s_batch.drawn == 1 && s_batch.fog == TRUE && s_batch.color == 0xFF102030u);
+    CHECK(SUCCEEDED(dev->lpVtbl->DrawPrimitive(dev, D3DPT_TRIANGLEFAN, D3DFVF_TLVERTEX, fan, 4, 0x1C)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGENABLE, FALSE)));
+    CHECK(s_batch.drawn == 2 && s_batch.fog == TRUE && s_batch.color == 0xFF405060u);
+    CHECK(SUCCEEDED(dev->lpVtbl->DrawPrimitive(dev, D3DPT_TRIANGLEFAN, D3DFVF_TLVERTEX, fan, 4, 0x1C)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_SPECULARENABLE, TRUE)));
+    CHECK(s_batch.drawn == 3 && s_batch.fog == FALSE && s_batch.specular == FALSE);
+    CHECK(SUCCEEDED(dev->lpVtbl->DrawPrimitive(dev, D3DPT_TRIANGLEFAN, D3DFVF_TLVERTEX, fan, 4, 0x1C)));
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_SPECULARENABLE, TRUE)) && s_batch.drawn == 3);
+    CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_SPECULARENABLE, FALSE)) && s_batch.drawn == 4 &&
+          s_batch.specular == TRUE);
+    CHECK(SUCCEEDED(dev->lpVtbl->EndScene(dev)));
+    /* Load announces only the rows that changed, so the texture is not invalidated whole; nothing when nothing did. */
+    CHECK(SUCCEEDED(vid_tex->lpVtbl->Load(vid_tex, sys_tex)));
+    s_written = 0;
+    CHECK(SUCCEEDED(vid_tex->lpVtbl->Load(vid_tex, sys_tex)) && s_written == 0);
+    CHECK(SUCCEEDED(sys->lpVtbl->Lock(sys, NULL, &lock, DDLOCK_WAIT, NULL)));
+    ((WORD*)((BYTE*)lock.lpSurface + (size_t)7 * lock.lPitch))[9] = 0x0BAD;
+    CHECK(SUCCEEDED(sys->lpVtbl->Unlock(sys, NULL)));
+    s_written = 0;
+    CHECK(SUCCEEDED(vid_tex->lpVtbl->Load(vid_tex, sys_tex)) && s_written == 1);
+    CHECK(s_written_rect.top == 7 && s_written_rect.bottom == 8 && s_written_rect.left <= 9 && s_written_rect.right >= 10);
     CHECK(dev->lpVtbl->DrawPrimitiveVB(dev, D3DPT_TRIANGLEFAN, NULL, 0, 0, 0) == DDERR_UNSUPPORTED);
 
     CHECK(SUCCEEDED(dev->lpVtbl->SetRenderState(dev, D3DRENDERSTATE_FOGENABLE, TRUE)));

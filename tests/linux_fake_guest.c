@@ -129,6 +129,7 @@ uint32_t g_fake_wp_hwnd[FAKE_WNDPROC_LOG], g_fake_wp_msg[FAKE_WNDPROC_LOG], g_fa
 unsigned g_fake_wp_count;
 unsigned g_fake_enum_count;
 uint32_t g_fake_enum_first_dword[64];
+uint32_t g_fake_enum_device[5];
 
 void fake_wndproc(void) {
     GUEST_BEGIN(FAKE_WNDPROC)
@@ -151,6 +152,17 @@ void fake_enumcb(void) {
     GUEST_RET(8)
 }
 
+void fake_enumdevice(void) {
+    GUEST_BEGIN(FAKE_ENUMDEVICE)
+    g_fake_enum_device[0]++;
+    g_fake_enum_device[1] = MEM32(MEM32(esp + 16));
+    g_fake_enum_device[2] = MEM32(MEM32(esp + 16) + 12);
+    g_fake_enum_device[3] = MEM32(esp + 24);
+    g_fake_enum_device[4] = MEM32(MEM32(esp + 20));
+    eax = 1;
+    GUEST_RET(24)
+}
+
 /* A thread procedure that waits forever on the event handle it is given. */
 void fake_waiter(void) {
     GUEST_BEGIN(FAKE_WAITER)
@@ -170,5 +182,6 @@ const fake_entry_t g_fake_table[] = {
     { FAKE_RECURSE, fake_recurse },          { FAKE_WNDPROC, fake_wndproc },
     { FAKE_ENUMCB, fake_enumcb },
     { FAKE_WAITER, fake_waiter },
+    { FAKE_ENUMDEVICE, fake_enumdevice },
 };
 const unsigned g_fake_table_count = sizeof g_fake_table / sizeof g_fake_table[0];

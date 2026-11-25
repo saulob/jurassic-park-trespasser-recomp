@@ -317,10 +317,15 @@ struct jpt_vk_renderer_s {
     VkFramebuffer ao_blur_out_fb;
 
     /* Water waves & Gamma LUT */
-    VkImage water_waves_img;
-    jpt_vk_allocation_t water_waves_alloc;
-    VkImageView water_waves_view;
-    uint32_t water_waves_w, water_waves_h;
+    struct {
+        VkImage img;
+        jpt_vk_allocation_t alloc;
+        VkImageView view;
+        uint32_t w, h;
+        VkImageLayout layout;
+    } waves[JPT_VK_WAVE_SLOTS];
+    uint32_t wave_slot;
+    VkImageView water_waves_view; /* waves[wave_slot]'s, or the zero field's until it has one */
 
     VkImage gamma_lut_img;
     jpt_vk_allocation_t gamma_lut_alloc;
@@ -1963,12 +1968,12 @@ static void init_default_textures(jpt_vk_renderer_t* r) {
     /* 2x2 zero water waves texture (R16G16_SFLOAT) */
     if (create_image_2d(r, 2, 2, VK_FORMAT_R16G16_SFLOAT, VK_SAMPLE_COUNT_1_BIT,
                         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT,
-                        &r->water_waves_img, &r->water_waves_alloc, &r->water_waves_view)) {
+                        &r->waves[0].img, &r->waves[0].alloc, &r->waves[0].view)) {
         uint16_t zeros[2 * 2 * 2] = { 0 };
-        VkImageLayout l = VK_IMAGE_LAYOUT_UNDEFINED;
-        upload_rgba_to_image(r, r->water_waves_img, &l, 0, 0, 2, 2, 0, zeros, sizeof zeros);
-        r->water_waves_w = 2;
-        r->water_waves_h = 2;
+        r->waves[0].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        upload_rgba_to_image(r, r->waves[0].img, &r->waves[0].layout, 0, 0, 2, 2, 0, zeros, sizeof zeros);
+        r->waves[0].w = r->waves[0].h = 2;
+        r->water_waves_view = r->waves[0].view;
     }
 
     /* 256x1 identity gamma LUT */
@@ -2270,7 +2275,8 @@ void jpt_vk_renderer_destroy(jpt_vk_renderer_t* r) {
     for (int i = 0; i < JPT_VK_MAX_POOLS; i++) {
         if (r->pools[i].used) destroy_rt_image(r, &r->pools[i].image, &r->pools[i].alloc, &r->pools[i].view);
     }
-    destroy_rt_image(r, &r->water_waves_img, &r->water_waves_alloc, &r->water_waves_view);
+    for (uint32_t i = 0; i < JPT_VK_WAVE_SLOTS; i++)
+        destroy_rt_image(r, &r->waves[i].img, &r->waves[i].alloc, &r->waves[i].view);
     destroy_rt_image(r, &r->gamma_lut_img, &r->gamma_lut_alloc, &r->gamma_lut_view);
 
     for (int i = 0; i < JPT_VK_FRAMES_IN_FLIGHT; i++) {
@@ -3067,6 +3073,13 @@ static uint16_t float_to_half(float f) {
     return (uint16_t)(sign | ((uint32_t)exp << 10) | (mant >> 13));
 }
 
+void jpt_vk_renderer_select_waves(jpt_vk_renderer_t* r, uint32_t slot) {
+    if (!r || slot >= JPT_VK_WAVE_SLOTS || r->wave_slot == slot) return;
+    flush_batch(r);
+    r->wave_slot = slot;
+    r->water_waves_view = r->waves[slot].view != VK_NULL_HANDLE ? r->waves[slot].view : r->waves[0].view;
+}
+
 void jpt_vk_renderer_set_water_params(jpt_vk_renderer_t* r, float strength, float rhw_metre, float vp_u0, float vp_v0,
                                       float vp_u1, float vp_v1, const float* waves_rg, uint32_t waves_w,
                                       uint32_t waves_h) {
@@ -3079,16 +3092,25 @@ void jpt_vk_renderer_set_water_params(jpt_vk_renderer_t* r, float strength, floa
     r->water_vp[3] = vp_v1;
 
     if (waves_rg && waves_w > 0 && waves_h > 0) {
-        if (waves_w != r->water_waves_w || waves_h != r->water_waves_h) {
-            r->ctx.vk.vkDeviceWaitIdle(r->ctx.device);
-            destroy_rt_image(r, &r->water_waves_img, &r->water_waves_alloc, &r->water_waves_view);
+        const uint32_t slot = r->wave_slot;
+        if (waves_w != r->waves[slot].w || waves_h != r->waves[slot].h) {
+            VkImage img = VK_NULL_HANDLE;
+            jpt_vk_allocation_t alloc;
+            VkImageView view = VK_NULL_HANDLE;
+            memset(&alloc, 0, sizeof alloc);
             if (!create_image_2d(r, waves_w, waves_h, VK_FORMAT_R16G16_SFLOAT, VK_SAMPLE_COUNT_1_BIT,
                                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                                 VK_IMAGE_ASPECT_COLOR_BIT, &r->water_waves_img, &r->water_waves_alloc,
-                                 &r->water_waves_view))
+                                 VK_IMAGE_ASPECT_COLOR_BIT, &img, &alloc, &view))
                 return;
-            r->water_waves_w = waves_w;
-            r->water_waves_h = waves_h;
+            flush_batch(r);
+            retire_image(r, &r->waves[slot].img, &r->waves[slot].alloc, &r->waves[slot].view);
+            r->waves[slot].img = img;
+            r->waves[slot].alloc = alloc;
+            r->waves[slot].view = view;
+            r->waves[slot].w = waves_w;
+            r->waves[slot].h = waves_h;
+            r->waves[slot].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+            r->water_waves_view = view;
             world_ds_invalidate(r);
         }
         size_t count = (size_t)waves_w * (size_t)waves_h * 2u;
@@ -3097,8 +3119,7 @@ void jpt_vk_renderer_set_water_params(jpt_vk_renderer_t* r, float strength, floa
             for (size_t i = 0; i < count; i++) halfs[i] = float_to_half(waves_rg[i]);
             int was_open = r->in_scene_pass;
             if (was_open) end_scene_pass_for(r, JPT_VK_BREAK_WATER);
-            VkImageLayout l = VK_IMAGE_LAYOUT_UNDEFINED;
-            upload_rgba_to_image(r, r->water_waves_img, &l, 0, 0, waves_w, waves_h, 0, halfs,
+            upload_rgba_to_image(r, r->waves[slot].img, &r->waves[slot].layout, 0, 0, waves_w, waves_h, 0, halfs,
                                  count * sizeof(uint16_t));
             if (was_open) ensure_scene_pass(r, 0, NULL, 0.0f, 0);
             free(halfs);

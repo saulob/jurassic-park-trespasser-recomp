@@ -45,6 +45,13 @@ int d3dt_depth_bias(uint32_t zbias, uint32_t zfunc);
  * reference the pixel shader follows; texture_alpha says whether the texture format has alpha. */
 uint32_t d3dt_texture_blend(uint32_t mode, uint32_t texel, uint32_t diffuse, int texture_alpha);
 int d3dt_texture_blend_known(uint32_t mode);
+/* The pixel shader's per-draw constants (cbuffer Draw of d3d11_shaders.c) for a device's render states. */
+typedef struct {
+    uint32_t flags, blend_mode, alpha_func;
+    float alpha_ref;
+    float fog[4];
+} d3dt_draw_constants_t;
+void d3dt_draw_constants(const uint32_t* render, d3dt_draw_constants_t* out);
 /* Vertex fog: fog_alpha (specular alpha) 255 keeps the colour, 0 gives the fog colour; alpha kept. */
 uint32_t d3dt_apply_fog(uint32_t color, uint32_t fog_color, uint32_t fog_alpha);
 

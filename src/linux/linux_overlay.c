@@ -21,11 +21,14 @@ static struct {
     uint64_t notice_until;
     uint32_t* buffer;
     size_t capacity;
+    uint32_t* layer; /* three pictures: the solid input, the overlay over black, the result */
+    size_t layer_capacity;
     int pic_x, pic_y, pic_w, pic_h;
 } O;
 
 void lx_overlay_reset(void) {
     free(O.buffer);
+    free(O.layer);
     memset(&O, 0, sizeof O);
 }
 
@@ -145,4 +148,40 @@ int lx_overlay_compose(const lx_frame_t* in, lx_frame_t* out, uint64_t now_ms) {
     out->pitch = in->width * 4;
     out->format = LX_PF_XRGB8888;
     return 1;
+}
+
+/* Drawn over black and over white: what a pixel lets through of the difference is its transparency, what it shows over black its
+ * premultiplied colour. */
+const uint8_t* lx_overlay_compose_layer(int w, int h, uint64_t now_ms) {
+    const size_t n = w > 0 && h > 0 ? (size_t)w * (size_t)h : 0;
+    lx_frame_t in, out;
+    uint32_t *solid, *black, *result;
+    if (!n) return NULL;
+    if (O.layer_capacity < n) {
+        uint32_t* grown = (uint32_t*)realloc(O.layer, n * 3u * sizeof(uint32_t));
+        if (!grown) return NULL;
+        O.layer = grown;
+        O.layer_capacity = n;
+    }
+    solid = O.layer;
+    black = solid + n;
+    result = black + n;
+    memset(solid, 0, n * sizeof(uint32_t));
+    memset(&in, 0, sizeof in);
+    in.pixels = solid, in.width = w, in.height = h, in.pitch = w * 4, in.format = LX_PF_XRGB8888;
+    if (!lx_overlay_compose(&in, &out, now_ms)) return NULL;
+    memcpy(black, out.pixels, n * sizeof(uint32_t));
+    memset(solid, 0xFF, n * sizeof(uint32_t));
+    if (!lx_overlay_compose(&in, &out, now_ms)) return NULL;
+    for (size_t i = 0; i < n; i++) {
+        const uint32_t b = black[i] & 0xFFFFFFu, white = ((const uint32_t*)out.pixels)[i] & 0xFFFFFFu;
+        uint32_t alpha;
+        if (!b && white == 0xFFFFFFu) {
+            result[i] = 0;
+            continue;
+        }
+        alpha = 255u - (((white >> 8) & 0xFFu) - ((b >> 8) & 0xFFu));
+        result[i] = (alpha & 0xFFu) << 24 | (b & 0xFFu) << 16 | (b & 0xFF00u) | b >> 16;
+    }
+    return (const uint8_t*)result;
 }

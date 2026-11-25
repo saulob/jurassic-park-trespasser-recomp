@@ -28,6 +28,7 @@
   ],
   "linux_specific": [
     "linux_paths_tests",
+    "linux_d3d_tests",
     "linux_launcher_tests",
     "app_identity_tests",
     "linux_hle_tests",

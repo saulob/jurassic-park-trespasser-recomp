@@ -525,6 +525,44 @@ static void test_dirty_tracking(rig_t* g) {
     tex_free(&src);
 }
 
+/* A texture the game Loads every frame (water, terrain pages) becomes a single-level texture, as in Direct3D 11. */
+static void test_loaded_textures_become_dynamic(rig_t* g) {
+    tex_t t;
+    vk_win_test_bridge_stats_t b0, b1;
+    jpt_vk_renderer_stats_t s0, s1;
+    RECT row = { 0, 0, 64, 1 };
+    set_defaults(&g->dev);
+    tex_init(&t, 64, 64, DDPF_RGB | DDPF_ALPHAPIXELS, 16, 0x0F00, 0x00F0, 0x000F, 0xF000);
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++) ((uint16_t*)(t.bits + (size_t)y * t.s.pitch))[x] = (uint16_t)(((x + y) & 1) ? 0xFFFF : 0xF000);
+    g->dev.texture = &t.s;
+    vk_win_test_bridge_stats(&b0);
+    for (int frame = 0; frame < 8; frame++) {
+        stats(&s0);
+        if (frame) {
+            ops()->texture_loaded(&t.s, &t.s);
+            ops()->surface_cpu_written(&t.s, &row);
+        }
+        begin_frame(g, 0xFF000000u);
+        draw_quad(g, 8, 8, 16, 16, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        CHECK(end_frame(g), "loaded texture frame %d", frame);
+        stats(&s1);
+    }
+    vk_win_test_bridge_stats(&b1);
+    CHECK(b1.dynamic_textures == b0.dynamic_textures + 1, "a texture Loaded every frame becomes dynamic");
+    CHECK(s1.texture_upload_bytes - s0.texture_upload_bytes == 64u * 4u, "then only the rows that changed are uploaded (%llu bytes)",
+          (unsigned long long)(s1.texture_upload_bytes - s0.texture_upload_bytes));
+    stats(&s0);
+    ops()->texture_loaded(&t.s, &t.s);
+    begin_frame(g, 0xFF000000u);
+    draw_quad(g, 8, 8, 16, 16, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+    CHECK(end_frame(g), "unchanged Load frame");
+    stats(&s1);
+    CHECK(s1.texture_upload_bytes == s0.texture_upload_bytes, "a Load that changed nothing uploads nothing");
+    g->dev.texture = NULL;
+    tex_free(&t);
+}
+
 static void test_palette_and_unavailable(rig_t* g) {
     tex_t t, none;
     dd_palette_t pal;
@@ -1475,6 +1513,7 @@ int main(int argc, char** argv) {
         test_dynamic_vertices(g);
         test_fog_and_specular(g);
         test_dirty_tracking(g);
+        test_loaded_textures_become_dynamic(g);
         test_palette_and_unavailable(g);
         test_batching(g);
         test_software_polygons(g);

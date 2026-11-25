@@ -23,6 +23,7 @@
 #include "jpt_vpath.h"
 #include "linux_advapi32.h"
 #include "linux_card.h"
+#include "linux_d3d.h"
 #include "linux_features.h"
 #include "linux_hostkeys.h"
 #include "linux_hle.h"
@@ -198,6 +199,58 @@ static void test_install(void) {
         CHECK(lift116_registry.entries[i].state != OVERRIDE_FAILED, "sub_%08X did not fail", lift116_registry.entries[i].va);
     test_f2_card();
     lx_features_stop();
+}
+
+static int gpu_yes(void) { return 1; }
+static unsigned gpu_generation(void) { return 0; }
+
+/* With a GPU renderer the Direct3D path's hooks are part of the features; without one the lifted game keeps its functions. */
+static void test_direct3d_hooks(void) {
+    static const uint32_t hooks[] = { 0x00503400, 0x005242C0, 0x0055F540, 0x00563890, 0x005668C0, 0x00568EF0, 0x0057B7B0, 0x0057DB50, 0x0060E3F0 };
+    static lx_gpu_ops_t ops;
+    jpt_config_t cfg;
+    override_counts_t c;
+    install_config(&cfg);
+    CHECK(lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with the Software renderer");
+    for (size_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++) CHECK(!installed(hooks[i]), "sub_%08X stays the game's", hooks[i]);
+    lx_features_stop();
+    memset(&ops, 0, sizeof ops);
+    ops.name = "test", ops.available = gpu_yes, ops.generation = gpu_generation;
+    lx_d3d_set_gpu(&ops);
+    CHECK(lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with a GPU renderer");
+    for (size_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++) CHECK(installed(hooks[i]), "sub_%08X is hooked", hooks[i]);
+    c = lx_overrides_counts();
+    CHECK(c.refused == 0 && guest_overrides_check(), "no refusal (%u)", c.refused);
+    lx_features_stop();
+    lx_d3d_set_gpu(NULL);
+}
+
+/* The other lifts list the same functions at their own addresses, or the install above would refuse their run. */
+static void test_direct3d_hooks_of_every_lift(void) {
+    static const unsigned hooks[] = { GVA_ID(0x00503400), GVA_ID(0x005242C0), GVA_ID(0x0055F540), GVA_ID(0x00563890), GVA_ID(0x005668C0),
+                                      GVA_ID(0x00568EF0), GVA_ID(0x0057B7B0), GVA_ID(0x0057DB50), GVA_ID(0x0060E3F0) };
+    static const uint32_t es[] = {
+#define GUEST_OVERRIDE(va, need) 0x##va##u,
+#include "profiles/lift_es117/guest_override_list.h"
+#undef GUEST_OVERRIDE
+    };
+    static const uint32_t ptbr[] = {
+#define GUEST_OVERRIDE(va, need) 0x##va##u,
+#include "profiles/lift_ptbr117/guest_override_list.h"
+#undef GUEST_OVERRIDE
+    };
+    static const struct {
+        jpt_lift_t lift;
+        const uint32_t* list;
+        size_t count;
+    } k[] = { { JPT_LIFT_ES117, es, sizeof es / sizeof es[0] }, { JPT_LIFT_PTBR117, ptbr, sizeof ptbr / sizeof ptbr[0] } };
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        for (size_t h = 0; h < sizeof hooks / sizeof hooks[0]; h++) {
+            uint32_t va = jpt_lift_data[k[i].lift].gva[hooks[h]];
+            int listed = 0;
+            for (size_t n = 0; n < k[i].count; n++) listed |= k[i].list[n] == va;
+            CHECK(va && listed, "lift %d lists sub_%08X (hook %u)", (int)k[i].lift, va, (unsigned)h);
+        }
 }
 
 static void test_settings_choose(void) {
@@ -545,7 +598,30 @@ static void test_safe_mode_and_registry_policy(void) {
     call_import("advapi32.dll", "RegSetValueExA", 6, args);
     CHECK(query_dword(key, "Safemode") == 0, "Safe Mode is suppressed: the game's 'unstable last time' flag reads 0 even after it wrote 1");
     CHECK(safemode_value_virtual(0) == 1 && safemode_value_virtual(1) == 0, "the shared policy: virtual unless the legacy dialog is asked for");
+    {
+        static lx_gpu_ops_t ops;
+        uint32_t guid = 0x00A80700u, size_va = 0x00A80740u, type_va = 0x00A80744u;
+        CHECK(query_dword(key, "Use D3D") == 0, "Use D3D is 0 without a GPU renderer");
+        ops.available = gpu_yes, ops.generation = gpu_generation;
+        lx_d3d_set_gpu(&ops);
+        CHECK(query_dword(key, "Use D3D") == 1 && query_dword(key, "Hardware Water") == 1 && query_dword(key, "RenderQuality") == ENGINE_RENDER_QUALITY_TOP,
+              "with one the game takes its Direct3D path, its hardware water and its top quality");
+        args[0] = key, args[1] = put_text(0x00A80400u, "D3D GUID"), args[2] = 0, args[3] = type_va, args[4] = guid, args[5] = size_va;
+        write32(size_va, 16);
+        CHECK(call_import("advapi32.dll", "RegQueryValueExA", 6, args) == 0 && read32(type_va) == 3 && read32(size_va) == 16 && read32(guid) == 0x84E63DE0u,
+              "and the hardware device's GUID");
+        lx_d3d_set_gpu(NULL);
+        CHECK(query_dword(key, "Use D3D") == 0, "nothing of it is stored");
+    }
     CHECK(query_dword(key, "AudioEnable3D") == 0, "AudioEnable3D stays 0 whatever is stored");
+    CHECK(query_dword(key, "Gamma") == 0xDEADu, "Gamma is the game's default until its options store one");
+    for (uint32_t level = 5; level <= 9; level += 2) {
+        args[0] = key, args[1] = put_text(0x00A80400u, "Gamma"), args[2] = 0, args[3] = 4, args[4] = 0x00A80500u, args[5] = 4;
+        write32(0x00A80500u, level);
+        call_import("advapi32.dll", "RegSetValueExA", 6, args);
+        CHECK(query_dword(key, "Gamma") == (level > ENGINE_GAMMA_TOP ? ENGINE_GAMMA_TOP : level),
+              "a brightness level without shading reads as the last one that has it");
+    }
     CHECK(query_dword(key, "UseSubTitles") == 1, "subtitles are On until the game's options store a choice");
     guest_skip_video(1);
     CHECK(query_dword(key, "NoVideo") == 1, "Skip Intro: NoVideo reads 1 while an opening is skipped");
@@ -722,6 +798,8 @@ int main(void) {
     lx_lift116_register_overrides();
     test_tables();
     test_install();
+    test_direct3d_hooks();
+    test_direct3d_hooks_of_every_lift();
     test_settings_choose();
     test_fingerprints();
     test_duplicates_and_rollback();

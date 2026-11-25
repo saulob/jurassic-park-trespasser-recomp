@@ -103,6 +103,102 @@
    "status": "unmoved",
    "value": "0xC",
    "evidence": "CInfluenceList::See (0x0061A280, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x0061A300) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x0061A316, the same distance from See as 0x00424B46"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_TABLE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x1C",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_TABLE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x1C",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_TABLE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x24",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_TABLE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x24",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_TERRAIN_START",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x30",
+   "evidence": "SetFogLevelsFloat clears [this+0x30] (0x00507AA3) and the terrain clip 0x00502F00 compares it at 0x007351F0 (0x0050357C, 0x00503634, 0x0050364F), as 0x0051CF90 does with 0x00732880 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_TERRAIN_START",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x30",
+   "evidence": "the terrain clip 0x005045C0 compares the terrain CFog's +0x30 at 0x007369A0 (0x00504D0B, 0x00504DC0, 0x00504DD8), as 0x0051CF90 does with 0x00732880 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_SIZE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x38",
+   "evidence": "the objects' CFog (0x007351F8) lies 0x38 after the terrain's (0x007351C0), as 0x00732888 after 0x00732850 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_SIZE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x38",
+   "evidence": "the objects' CFog (0x007369A8) lies 0x38 after the terrain's (0x00736970), as 0x00732888 after 0x00732850 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_DATA",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x20",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_DATA",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x20",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_DATA",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x28",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_DATA",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x28",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
   }
  ]
 }

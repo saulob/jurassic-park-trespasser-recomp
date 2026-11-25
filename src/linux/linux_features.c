@@ -14,6 +14,7 @@
 #include "guest_va.h"
 #include "host_input.h"
 #include "l10n.h"
+#include "linux_d3d.h"
 #include "linux_gamepad.h"
 #include "linux_guest_ui.h"
 #include "linux_host.h"
@@ -176,6 +177,7 @@ int lx_features_start(const jpt_config_t* cfg, const char* game_dir, const char*
     guest_features_install();
     widescreen_install_camera(cfg->aspect);
     terrain_quality_install();
+    lx_d3d_guest_install(cfg);
     skip_intro_install();
     l10n_install();
     lx_frontend_install();
@@ -189,6 +191,7 @@ void lx_features_stop(void) {
     if (!s_started) return;
     s_started = 0;
     guest_features_stop();
+    lx_d3d_guest_remove();
     lx_panel_release();
     lx_frontend_reset();
     lx_card_reset();

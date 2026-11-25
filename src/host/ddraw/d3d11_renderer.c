@@ -99,12 +99,6 @@ typedef struct {
 } tl_vertex_t;
 
 typedef struct {
-    uint32_t flags, blend_mode, alpha_func;
-    float alpha_ref;
-    float fog[4];
-} draw_constants_t;
-
-typedef struct {
     float rect[4], uv[4], color[4];
     float depth, pad[3];
 } pass_constants_t;
@@ -255,7 +249,7 @@ static struct {
     ID3D11Texture2D *front_down, *front_staging;
     ID3D11RenderTargetView* front_rtv;
     UINT front_w, front_h;
-    draw_constants_t draw_cb;
+    d3dt_draw_constants_t draw_cb;
     int draw_cb_valid;
     float frame_cb[4];
     int frame_cb_valid;
@@ -651,7 +645,7 @@ static int create_static_objects(void) {
     R.vb = make_buffer(R.vb_size, D3D11_BIND_VERTEX_BUFFER);
     R.ib = make_buffer(R.ib_size, D3D11_BIND_INDEX_BUFFER);
     R.cb_frame = make_buffer(16, D3D11_BIND_CONSTANT_BUFFER);
-    R.cb_draw = make_buffer(sizeof(draw_constants_t), D3D11_BIND_CONSTANT_BUFFER);
+    R.cb_draw = make_buffer(sizeof(d3dt_draw_constants_t), D3D11_BIND_CONSTANT_BUFFER);
     R.cb_pass = make_buffer(sizeof(pass_constants_t), D3D11_BIND_CONSTANT_BUFFER);
     R.vb_pos = R.ib_pos = 0;
     R.blend_none = make_blend(0, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_ZERO,
@@ -2705,7 +2699,7 @@ static void end_batch(void) {
 static void flush(void) {
     d3d_device_t* dev = R.batch_dev;
     d3dr_target_t* t = dev ? dev->backend : NULL;
-    draw_constants_t dc;
+    d3dt_draw_constants_t dc;
     d3dr_texture_t* tex = R.batch_tex;
     UINT vb_offset = 0, ib_offset = 0, stride = sizeof(tl_vertex_t);
     D3D11_VIEWPORT vp;
@@ -2723,19 +2717,8 @@ static void flush(void) {
         sampled = samplers_for(dev, samplers);
         R.textures_bound++;
     }
-    memset(&dc, 0, sizeof dc);
-    if (dev->render[D3DRENDERSTATE_ALPHATESTENABLE]) dc.flags |= D3D11_PS_ALPHA_TEST;
-    if (dev->render[D3DRENDERSTATE_FOGENABLE]) dc.flags |= D3D11_PS_FOG;
-    if (dev->render[D3DRENDERSTATE_SPECULARENABLE]) dc.flags |= D3D11_PS_SPECULAR;
-    if (dev->render[D3DRENDERSTATE_SHADEMODE] == D3DSHADE_FLAT) dc.flags |= D3D11_PS_FLAT;
+    d3dt_draw_constants((const uint32_t*)dev->render, &dc);
     if (R.debug_output) dc.flags |= D3D11_PS_DEBUG_TEXTURE << (R.debug_output - 1);
-    dc.blend_mode = dev->render[D3DRENDERSTATE_TEXTUREMAPBLEND];
-    dc.alpha_func = dev->render[D3DRENDERSTATE_ALPHAFUNC];
-    dc.alpha_ref = (float)d3dt_alpha_ref(dev->render[D3DRENDERSTATE_ALPHAREF]) / 255.0f;
-    dc.fog[0] = ((dev->render[D3DRENDERSTATE_FOGCOLOR] >> 16) & 0xFF) / 255.0f;
-    dc.fog[1] = ((dev->render[D3DRENDERSTATE_FOGCOLOR] >> 8) & 0xFF) / 255.0f;
-    dc.fog[2] = (dev->render[D3DRENDERSTATE_FOGCOLOR] & 0xFF) / 255.0f;
-    dc.fog[3] = 1.0f;
     if (!R.draw_cb_valid || memcmp(&dc, &R.draw_cb, sizeof dc)) {
         update_constants(R.cb_draw, &dc, sizeof dc);
         R.draw_cb = dc;

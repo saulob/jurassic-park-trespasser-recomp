@@ -140,6 +140,12 @@ constexpr char kWaterRefractionHelp[] =
 constexpr char kEnhancedSkyHelp[] =
     "Fades the sky into the level's fog colour towards the horizon by view direction, with the level's own sky fog "
     "band, as Trespasser CE's enhanced sky. Off keeps the original sky fog.";
+constexpr char kFogHelp[] =
+    "The original game's distance fog over objects, terrain and water, in every renderer. Off draws them without it; "
+    "the sky keeps its own haze, and the draw distance does not change.";
+constexpr char kShadowsHelp[] =
+    "The original game's shadows of objects and dinosaurs on the ground, in every renderer. Off draws the ground without "
+    "them. Ambient occlusion is a separate setting.";
 constexpr char kActiveAiHelp[] =
     "Controls how many AI creatures can be active at once. Original uses the retail limit of 3; Enhanced uses 6, as "
     "supported by Trespasser CE. Applies the next time the game starts.";
@@ -940,6 +946,8 @@ private:
         AntiAliasingRow(ui);
         ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "medium",
                  {{"off", "Off"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}, {"ultra", "Ultra"}});
+        ui.Toggle("Fog", kFogHelp, JPT_KEY_FOG_ENABLED, true, "Off", "On");
+        ui.Toggle("Shadows", kShadowsHelp, JPT_KEY_SHADOWS_ENABLED, true, "Off", "On");
         {
             const bool available = Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER));
             ImGui::BeginDisabled(!available);

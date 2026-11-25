@@ -2093,6 +2093,22 @@ static void TestDirect3DEffectsPolicy() {
           launcher.find("Set(JPT_KEY_ENHANCED_SKY") == std::string::npos);
 }
 
+static void TestFogAndShadowsRows() {
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t page = launcher.find("void PageGraphics(");
+    const size_t fog = launcher.find("ui.Toggle(\"Fog\", kFogHelp, JPT_KEY_FOG_ENABLED, true, \"Off\", \"On\")", page);
+    const size_t shadows =
+        launcher.find("ui.Toggle(\"Shadows\", kShadowsHelp, JPT_KEY_SHADOWS_ENABLED, true, \"Off\", \"On\")", fog);
+    const size_t ao = launcher.find("JPT_KEY_AMBIENT_OCCLUSION", page);
+    const size_t gate = launcher.find("Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER))", page);
+    CHECK(page != std::string::npos && ao < fog && fog < shadows && shadows < gate && gate != std::string::npos);
+    CHECK(HasRow("Fog") && HasRow("Shadows"));
+    CHECK(HasRow("The original game's distance fog over objects, terrain and water, in every renderer. Off draws them without "
+                 "it; the sky keeps its own haze, and the draw distance does not change."));
+    CHECK(HasRow("The original game's shadows of objects and dinosaurs on the ground, in every renderer. Off draws the ground "
+                 "without them. Ambient occlusion is a separate setting."));
+}
+
 static std::vector<int> CheatValues(const fs::path& ini) {
     jpt_config_t c;
     jpt_config_load(ini.string().c_str(), &c);
@@ -2278,6 +2294,7 @@ int main() {
     TestUiCoverage();
     TestNoLanguagePage();
     TestDirect3DEffectsPolicy();
+    TestFogAndShadowsRows();
     TestLanguageNames();
     TestGoreAndTitleOptions();
     TestGameplayOrder();

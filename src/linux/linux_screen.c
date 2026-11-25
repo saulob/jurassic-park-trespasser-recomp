@@ -113,6 +113,35 @@ void lx_screen_set_client_size(int w, int h) {
     jpt_presentation_set_host(&s_pres, w, h);
 }
 
+static void frame_presented(int width, int height, const char* kind) {
+    if (++s_frames == 1) lx_log("Linux presentation", "first frame %dx%d %s presented", width, height, kind);
+    if (lx_quick_pending()) lx_quick_pump(lx_quick_guest_ops());
+    if (s_hook) {
+        lx_crash_present_stage(LX_PRESENT_FRAME_HOOK);
+        s_hook(s_frames, s_hook_user);
+    }
+    lx_crash_present_stage(LX_PRESENT_END);
+    if (s_frame_limit && s_frames >= s_frame_limit) lx_abort(LX_STOP, s_frames, "frame presented");
+}
+
+void lx_screen_present_scene(int width, int height) {
+    lx_scene_frame_t f = { width, height, NULL, 0, 0 };
+    int window_w = 0, window_h = 0;
+    if (!s_open || !lx_window_backend()->present_scene) return;
+    ensure_presentation();
+    lx_screen_window_client(&window_w, &window_h);
+    lx_frontend_frame(width, height, window_w, window_h);
+    lx_frontend_frame_done();
+    lx_overlay_set_picture(0, 0, 0, 0);
+    lx_overlay_frame_presented(jpt_time_ms());
+    f.overlay = lx_overlay_compose_layer(width, height, jpt_time_ms());
+    f.overlay_w = width, f.overlay_h = height;
+    if (width == s_mode.width && height == s_mode.height) jpt_presentation_commit(&s_pres, s_generation);
+    lx_crash_present_stage(LX_PRESENT_BEGIN);
+    lx_window_backend()->present_scene(lx_window_backend(), &f);
+    frame_presented(width, height, "Direct3D scene");
+}
+
 void lx_screen_present(const lx_frame_t* frame) {
     lx_frame_t f = *frame, composed;
     if (!s_open) return;
@@ -138,15 +167,7 @@ void lx_screen_present(const lx_frame_t* frame) {
     if (frame->width == s_mode.width && frame->height == s_mode.height) jpt_presentation_commit(&s_pres, s_generation);
     lx_crash_present_stage(LX_PRESENT_BEGIN);
     lx_window_backend()->present(lx_window_backend(), &f);
-    if (++s_frames == 1)
-        lx_log("Linux presentation", "first frame %dx%d %s presented", f.width, f.height, f.format == LX_PF_RGB565 ? "RGB565" : "XRGB8888");
-    if (lx_quick_pending()) lx_quick_pump(lx_quick_guest_ops());
-    if (s_hook) {
-        lx_crash_present_stage(LX_PRESENT_FRAME_HOOK);
-        s_hook(s_frames, s_hook_user);
-    }
-    lx_crash_present_stage(LX_PRESENT_END);
-    if (s_frame_limit && s_frames >= s_frame_limit) lx_abort(LX_STOP, s_frames, "frame presented");
+    frame_presented(f.width, f.height, f.format == LX_PF_RGB565 ? "RGB565" : "XRGB8888");
 }
 
 unsigned lx_screen_frames(void) { return s_frames; }

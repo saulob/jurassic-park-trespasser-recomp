@@ -379,10 +379,12 @@
    "names": [
     "QUALITY_DISTANCE_SCALE",
     "QUALITY_PIXEL_TOL_ADJ",
-    "ROOT_QUALITY"
+    "ROOT_QUALITY",
+    "QUALITY_SHADOWS"
    ],
    "files": [
-    "terrain_quality.c"
+    "terrain_quality.c",
+    "scene_options.c"
    ],
    "set": "QualityTable"
   },
@@ -391,7 +393,8 @@
     "QUALITY_STRIDE"
    ],
    "files": [
-    "terrain_quality.c"
+    "terrain_quality.c",
+    "scene_options.c"
    ],
    "set": "QualityTable",
    "kind": "size"

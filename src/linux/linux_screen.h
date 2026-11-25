@@ -27,6 +27,8 @@ void lx_screen_set_client_size(int w, int h);
 
 /* Shows a frame of the guest's screen. */
 void lx_screen_present(const lx_frame_t* frame);
+/* The same for a frame whose picture is the GPU's scene. */
+void lx_screen_present_scene(int width, int height);
 unsigned lx_screen_frames(void);
 /* Headless runs: ends the run (LX_STOP) after this many frames were presented; 0 = never. */
 void lx_screen_set_frame_limit(unsigned frames);

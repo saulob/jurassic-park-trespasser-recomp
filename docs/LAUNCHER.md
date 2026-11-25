@@ -84,7 +84,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 |---|---|
 | Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
+| Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Fog, Shadows, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Enable Minimap, Enable Compass, Enable Waypoints, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats | Movement Speed, Jump Height, Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health: what every session starts with ([Cheats](#cheats)) |
@@ -188,6 +188,8 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
 | `msaa` | 0, 2, 4, 8 | 4 |
 | `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `medium` |
+| `fog_enabled` | 1, 0 | 1 |
+| `shadows_enabled` | 1, 0 | 1 |
 | `water_refraction` | 1, 0 | 1 |
 | `enhanced_sky` | 1, 0 | 1 |
 | `max_object_detail` | 1, 0 | 0 |
@@ -419,7 +421,26 @@ is not part of this work.
   for one run). Intel ASSAO over the D3D11 3D scene only: Low, Medium, High and Ultra are ASSAO's quality levels 0-3
   (Ultra is its adaptive level). It needs feature level 11.0; without it, or if the effect cannot be created, it stays
   Off and the log says why.
-- **Water refraction** (key `water_refraction`, On by default; Direct3D 11 only, greyed out with Software and kept):
+- **Fog** (key `fog_enabled`, On by default; every renderer, Windows and Linux). On is the game's own fog, untouched:
+  `CFog::SetProperties` (0x00521500) builds its two tables (1024 steps of the distance as a share of the far clip, 8 bands)
+  from the level's `SET_FOG` (`FogHalf`, `FogPower`, colour). Direct3D takes the terrain table per vertex into the specular
+  alpha (1 + 0.5/6.5 - level/6.5, 255 unfogged, 0 the fog colour) and `D3DRENDERSTATE_FOGCOLOR`; the software polygons take
+  the objects' table as a CLUT band. Off clears both tables and the terrain's fog start after the game builds them
+  (`scene_options.c`, every frame, only when they hold fog): objects, terrain, water, impostors and CPU-drawn meshes are
+  drawn unfogged in every renderer. The far clip, culling, LOD, geometry, sorting, physics and the level's fog properties
+  (also in saves) are not changed. The sky keeps its own haze (it does not read these tables) and the frame is still cleared
+  to the level's fog colour, so the far clip's edge shows against it. Read at start.
+- **Shadows** (key `shadows_enabled`, On by default; every renderer, Windows and Linux). The original shadows are drawn into
+  the terrain's own textures by 0x0052F210: static objects once (from 0x00493C30), moving objects and dinosaurs every frame
+  through the moving-shadow pool, near the camera only (the level's `TrrNoShadowDist` times the quality's scale) and only
+  where `qdQualitySettings[quality].bShadows` is set. Off clears that flag in the five quality rows, which is how the retail
+  game's two lowest qualities have no shadows; nothing else reads it. Ambient occlusion is independent. The game draws no
+  shadows on objects (its object shadow buffer is never filled) and none for Anne. Read at start. How dark they are follows the
+  game's own brightness slider (`Gamma`, 0 to 9, 5 by default): a shadow is 0.65 of the lit ground at 5 and 0.88 at 7. The game's
+  table ends in zeros, so 8 and 9 light everything alike and hide every shadow; the game reads those two as 7 (`registry.c`,
+  `linux_advapi32.c`; the stored value is kept).
+- **Water refraction** (key `water_refraction`, On by default; Direct3D 11 and Vulkan, greyed out with Software and kept; on Linux
+  it needs the Vulkan renderer, docs/LINUX.md):
   after Trespasser CE's refractive water. The game writes CEntityWater's rows (`water_rows`, 0x0060E3F0, from
   `FillWaterTexture`, 0x0060E590) into the system-memory source surface of its water raster (the pointer
   `CRasterD3D::Lock` got), then `CRasterD3D` vtbl+0x1C (0x00510240) copies that surface into the Direct3D texture the
@@ -444,14 +465,15 @@ is not part of this work.
   wave difference and the shift in pixels of the water's pixels (average, p95, p99, largest, with the wave and distance
   of the largest), sampled per triangle and weighted by area. With Software, the launcher greys it out ("Available with the Direct3D 11
   renderer") and keeps its value.
-- **Enhanced sky** (key `enhanced_sky`, On by default; Direct3D 11 only): the retail hardware sky (`CSkyRender::DrawD3D`,
+- **Enhanced sky** (key `enhanced_sky`, On by default; Direct3D 11 and Vulkan): the retail hardware sky (`CSkyRender::DrawD3D`,
   0x005242C0) is one textured plane fogged per vertex by depth, so its horizon haze ignores the level's sky fog band.
   CE's enhanced sky fogs by view direction instead: with v the horizontal length of the unit view direction (0 straight
   up, 1 at the horizon), none up to the band's low edge (CSkyRender +0x30), all of it from the high edge (+0x2C),
   linear between; equal or inverted edges give a step and never a division, and unusable values (NaN, infinite, far
   out of range) keep the retail sky. The port draws the same retail plane and texture and takes v per pixel from the
   plane point the texture coordinates give (u = x · 1e-4 + 1.5 + scroll, v = y · 1e-4 + scroll) against the camera.
-  Object, terrain and water fog are unchanged.
+  Object, terrain and water fog are unchanged, and so is this haze with Fog Off. (The retail hardware haze is at most half
+  fog, 1 - 1.5 x distance / 50 km clamped to 0.5; the software sky uses the same band on 1 - |z|.)
 - **Maximum object detail** (key `max_object_detail`, Off by default; a saved value is kept): as Trespasser CE's `ForceMaxObjectDetail`, the
   renderer's `bDetailReduce` (render settings `[[0x006D2224]]+0x33`) is cleared, so the object pipeline (0x00519B20)
   and the terrain shadow pass always take an object's top mesh instead of the lower-detail one 0x004A7F10 would pick
@@ -560,7 +582,7 @@ Quick Save and Quick Load are not options: they are always available, with their
   re-files it with `CPartition::bAddChild(object, test_priority = 1)` (0x00475F60, from the move path 0x00605AF0): a
   partition refuses an object of lower priority (bits 0-3 of +0x10) and otherwise offers it to its children first. Build
   116 asks the children with the test off, so a moved object could be filed under a child of higher priority, which the
-  render traversal (0x00519B20) and the shadow pass (0x00543C20) skip with everything under it when the render quality
+  render traversal (0x00519B20, the shadow pass with it) skips with everything under it when the render quality
   is below that priority: the object and its shadow vanished. Build 117 passes the caller's flag down; the port's
   override of 0x00475F60 does the same when the setting is On and leaves every call as retail when Off. Loading and
   rebuilding the partitions pass the flag off in both builds and are unchanged.

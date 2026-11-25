@@ -804,6 +804,14 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim) {
 
 uint32_t engine_texture_dim_policy(int modern) { return modern ? ENGINE_TEX_DIM_MODERN : 0u; }
 
+int scene_fog_clear(int32_t* bands, float* values, unsigned count, float* terrain_start) {
+    if (!count || (!bands[count - 1] && values[count - 1] == 0.0f && *terrain_start == SCENE_FOG_NEVER)) return 0;
+    memset(bands, 0, count * sizeof *bands);
+    memset(values, 0, count * sizeof *values);
+    *terrain_start = SCENE_FOG_NEVER;
+    return 1;
+}
+
 uint32_t engine_terrain_shadow_kb(uint32_t page_px) {
     uint32_t kb = page_px <= 1024u ? ENGINE_TERRAIN_SHADOW_PAGES * page_px * page_px * 2u / 1024u : 0u;
     return kb > ENGINE_TERRAIN_SHADOW_KB_ORIGINAL ? kb : ENGINE_TERRAIN_SHADOW_KB_ORIGINAL;
@@ -840,6 +848,8 @@ int registry_view_margin_name(const char* name) {
 uint32_t engine_render_quality_policy(int hardware, int value_stored) {
     return hardware && !value_stored ? ENGINE_RENDER_QUALITY_TOP : 0u;
 }
+
+uint32_t engine_gamma_level(uint32_t stored) { return stored > ENGINE_GAMMA_TOP ? ENGINE_GAMMA_TOP : stored; }
 
 uint32_t engine_upload_clock(uint32_t start_tick, double elapsed_ms, double budget_ms) {
     return elapsed_ms <= budget_ms ? start_tick : start_tick + ENGINE_UPLOAD_MS_ORIGINAL + 1u;

@@ -62,6 +62,8 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_ACTIVE_AI, "enhanced" },
     { JPT_KEY_WATER_REFRACTION, "1" },
     { JPT_KEY_ENHANCED_SKY, "1" },
+    { JPT_KEY_FOG_ENABLED, "1" },
+    { JPT_KEY_SHADOWS_ENABLED, "1" },
     { JPT_KEY_MINIMAP, "1" },
     { JPT_KEY_COMPASS, "1" },
     { JPT_KEY_WAYPOINTS, "1" },
@@ -169,6 +171,8 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_MAX_OBJECT_DETAIL)) return jpt_parse_bool(value, &c->max_object_detail);
     if (!strcmp(key, JPT_KEY_WATER_REFRACTION)) return jpt_parse_bool(value, &c->water_refraction);
     if (!strcmp(key, JPT_KEY_ENHANCED_SKY)) return jpt_parse_bool(value, &c->enhanced_sky);
+    if (!strcmp(key, JPT_KEY_FOG_ENABLED)) return jpt_parse_bool(value, &c->fog_enabled);
+    if (!strcmp(key, JPT_KEY_SHADOWS_ENABLED)) return jpt_parse_bool(value, &c->shadows_enabled);
     if (!strcmp(key, JPT_KEY_MINIMAP)) return jpt_parse_bool(value, &c->minimap);
     if (!strcmp(key, JPT_KEY_COMPASS)) return jpt_parse_bool(value, &c->compass);
     if (!strcmp(key, JPT_KEY_WAYPOINTS)) return jpt_parse_bool(value, &c->waypoints);

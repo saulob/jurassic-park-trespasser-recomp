@@ -214,6 +214,40 @@ static void run_offscreen_parity_fixtures(void) {
     CHECK(px_at(rgba, W, 24, 32)[2] > 180, "water refraction shifted blue from right onto x=24 (got %u,%u,%u)",
           px_at(rgba, W, 24, 32)[0], px_at(rgba, W, 24, 32)[1], px_at(rgba, W, 24, 32)[2]);
 
+    /* 5b. Two waters in one frame keep their own wave fields, whichever was uploaded last */
+    {
+        float still[8 * 2] = { 0 };
+        jpt_render_vertex_t top[4] = {
+            make_v(0, 0, 0.6f, 0x00000000u, 0xFF000000u, 0, 0), make_v(64, 0, 0.6f, 0x00000000u, 0xFF000000u, 1, 0),
+            make_v(64, 32, 0.6f, 0x00000000u, 0xFF000000u, 1, 1), make_v(0, 32, 0.6f, 0x00000000u, 0xFF000000u, 0, 1),
+        };
+        jpt_render_vertex_t bottom[4] = {
+            make_v(0, 32, 0.6f, 0x00000000u, 0xFF000000u, 0, 0), make_v(64, 32, 0.6f, 0x00000000u, 0xFF000000u, 1, 0),
+            make_v(64, 64, 0.6f, 0x00000000u, 0xFF000000u, 1, 1), make_v(0, 64, 0.6f, 0x00000000u, 0xFF000000u, 0, 1),
+        };
+        CHECK(jpt_vk_renderer_begin_frame(r), "begin_frame 5b");
+        jpt_vk_renderer_clear(r, 1, 0xFF000000u, 1, 0.0f, 1, 0);
+        st = default_state();
+        jpt_vk_renderer_draw(r, &st, JPT_PRIM_TRIANGLEFAN, left_q, 4, NULL, NULL, 0);
+        jpt_vk_renderer_draw(r, &st, JPT_PRIM_TRIANGLEFAN, right_q, 4, NULL, NULL, 0);
+        st.water_mode = 1;
+        jpt_vk_renderer_select_waves(r, 1);
+        jpt_vk_renderer_set_water_params(r, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, still, 4, 2);
+        jpt_vk_renderer_select_waves(r, 0);
+        jpt_vk_renderer_set_water_params(r, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, NULL, 2, 2);
+        jpt_vk_renderer_draw(r, &st, JPT_PRIM_TRIANGLEFAN, top, 4, NULL, NULL, 0);
+        jpt_vk_renderer_select_waves(r, 1);
+        jpt_vk_renderer_set_water_params(r, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, NULL, 4, 2);
+        jpt_vk_renderer_draw(r, &st, JPT_PRIM_TRIANGLEFAN, bottom, 4, NULL, NULL, 0);
+        CHECK(jpt_vk_renderer_end_and_present(r), "present 5b");
+        CHECK(jpt_vk_renderer_readback_rgba(r, rgba, &rw, &rh, sizeof rgba), "readback 5b");
+        CHECK(px_at(rgba, W, 24, 16)[2] > 180, "the moving water refracts with its own waves (got %u,%u,%u)",
+              px_at(rgba, W, 24, 16)[0], px_at(rgba, W, 24, 16)[1], px_at(rgba, W, 24, 16)[2]);
+        CHECK(near_rgb(px_at(rgba, W, 24, 48), 255, 0, 0, 4), "the still water beside it does not (got %u,%u,%u)",
+              px_at(rgba, W, 24, 48)[0], px_at(rgba, W, 24, 48)[1], px_at(rgba, W, 24, 48)[2]);
+        jpt_vk_renderer_select_waves(r, 0);
+    }
+
     /* 6. Enhanced Sky + Host Overlay order + RGB565 readback */
     jpt_vk_renderer_set_sky_params(r, 0.5f, 0.5f, 0.25f, 0.2f, 0.8f);
     st = default_state();

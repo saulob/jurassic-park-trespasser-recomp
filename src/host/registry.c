@@ -306,11 +306,21 @@ static int policy_value(const char* name, int stored, policy_t* p) {
     return 0;
 }
 
+static int gamma_policy(const reg_value_t* v, policy_t* p) {
+    DWORD level;
+    if (!v || !v->data || _stricmp(v->name, "Gamma") || v->type != REG_DWORD || v->size != sizeof level) return 0;
+    memcpy(&level, v->data, sizeof level);
+    if (engine_gamma_level(level) == level) return 0;
+    policy_dword(p, engine_gamma_level(level), "host policy: 7, the brightest level with shading and shadows (the stored "
+                                               "one lights everything alike)");
+    return 1;
+}
+
 static LONG query_value(const char* name, DWORD* type, BYTE* data, DWORD* size, const char** policy_text) {
     reg_value_t* v = find_value(name ? name : "");
     policy_t policy;
     *policy_text = NULL;
-    if (policy_value(name, v && v->data, &policy)) {
+    if (gamma_policy(v, &policy) || policy_value(name, v && v->data, &policy)) {
         *policy_text = policy.text;
         if (type) *type = policy.type;
         if (data) {

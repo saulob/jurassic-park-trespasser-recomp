@@ -1,5 +1,5 @@
 /*
- * ps_water and ps_sky drawn offscreen on a WARP device (no window): the water shows the scene behind displaced by the
+ * ps_fixed's fog, ps_water and ps_sky drawn offscreen on a WARP device (no window): the water shows the scene behind displaced by the
  * wave differences under its own colour, the sky fogs by view direction, and a multisampled scene resolves into the
  * copy the water samples. The composition tests prove the screen position, the shift in pixels and what reaches the
  * target through the retail blend, and that no offset brings the black outside the 3D viewport into the picture.
@@ -48,6 +48,7 @@ typedef struct {
 
 static ID3D11Device* dev;
 static ID3D11BlendState* s_blend;
+static uint32_t s_specular = 0xFF000000u;
 static ID3D11DeviceContext* ctx;
 static compile_fn compile;
 
@@ -163,7 +164,7 @@ static void draw(ID3D11RenderTargetView* rtv, ID3DBlob* vs_code, ID3D11VertexSha
         q[i].z = 0.5f;
         q[i].rhw = rhw;
         q[i].diffuse = diffuse;
-        q[i].specular = 0xFF000000u;
+        q[i].specular = s_specular;
         q[i].u = u;
         q[i].v = v;
         q[i].layer = 0;
@@ -488,6 +489,25 @@ int main(void) {
         CHECK(close_to(pixel(target, 10, 32), 0, 255, 0), "opaque water");
         draw(rtv, vs_code, vs, water, 0x0000FF00u, 0.5f, 0.5f, 1.0f, draw_cb, fx, still_v, behind_v, linear);
         CHECK(close_to(pixel(target, 10, 32), 255, 0, 0), "clear water");
+        /* The game's vertex fog: the specular alpha is the share of the colour that is kept. */
+        {
+            static const uint32_t alphas[3] = { 0xFFu, 0x80u, 0x00u };
+            const float fog_color[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+            uint32_t fog_cb[8] = { F_FOG, 0, 0, 0 };
+            float none[20] = { 0 };
+            memcpy(&fog_cb[4], fog_color, sizeof fog_color);
+            for (int i = 0; i < 3; i++) {
+                s_specular = alphas[i] << 24;
+                draw(rtv, vs_code, vs, fixed, 0xFFFF0000u, 0.0f, 0.0f, 1.0f, fog_cb, none, NULL, NULL, linear);
+                p = pixel(target, 10, 10);
+                CHECK(close_to(p, (int)alphas[i], 0, 255 - (int)alphas[i]), "fog at specular alpha %u: 0x%08X", alphas[i], p);
+            }
+            fog_cb[0] = 0;
+            draw(rtv, vs_code, vs, fixed, 0xFFFF0000u, 0.0f, 0.0f, 1.0f, fog_cb, none, NULL, NULL, linear);
+            p = pixel(target, 10, 10);
+            CHECK(close_to(p, 255, 0, 0), "no fog without the state: 0x%08X", p);
+            s_specular = 0xFF000000u;
+        }
         /* The sky: black under white fog, v = 1/sqrt(2) between the band's edges 0.25 and 0.75 -> 0.914 fog. */
         {
             float sky_fx[20] = { 0, 0, 0, 0, 0.0f, 0.0f, 1.0f, 0.25f, 0.75f, 0, 0, 0, 0, 0, 0, 0, FULL_BOUNDS };

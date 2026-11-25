@@ -16,6 +16,13 @@ typedef struct {
     unsigned generation; /* the guest screen this frame belongs to (jpt_presentation_commit) */
 } lx_frame_t;
 
+/* The GPU's 3D scene, shown without a CPU picture, with the host's overlays over it (premultiplied RGBA, NULL for none). */
+typedef struct {
+    int width, height; /* of the guest screen */
+    const uint8_t* overlay;
+    int overlay_w, overlay_h;
+} lx_scene_frame_t;
+
 typedef enum {
     LX_EV_NONE,
     LX_EV_CLOSE,
@@ -66,6 +73,7 @@ struct lx_window_backend {
     void (*destroy)(lx_window_backend_t* b);
     /* F11, a key of the shared hotkey table: windowed and fullscreen swap. */
     void (*toggle_fullscreen)(lx_window_backend_t* b);
+    void (*present_scene)(lx_window_backend_t* b, const lx_scene_frame_t* frame);
 };
 
 /* The window the guest's windows use. A backend is installed before the guest runs; with none, the virtual one is. */
@@ -77,7 +85,8 @@ typedef struct {
     int opened, visible, width, height, cursor_visible, grabbed, relative;
     unsigned grab_calls, relative_changes, cursor_changes;
     char title[128];
-    unsigned presents;
+    unsigned presents, scene_presents;
+    int scene_overlay; /* the last scene frame had one */
     lx_frame_t last; /* the pixels pointer is cleared: only the geometry is kept */
     uint32_t last_checksum;
     unsigned events_returned;

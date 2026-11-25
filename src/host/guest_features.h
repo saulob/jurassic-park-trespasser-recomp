@@ -9,8 +9,8 @@
 #include "guest_abi.h"
 #include "jpt_config.h"
 
-/* Reads the settings the features use (Active AI, Dual stow, Maximum object detail, Official Patch 1.1, FOV, the saved
- * cheats). Before guest_overrides_enable. */
+/* Reads the settings the features use (Active AI, Dual stow, Maximum object detail, Official Patch 1.1, FOV, Fog, Shadows,
+ * the saved cheats). Before guest_overrides_enable. */
 void guest_features_configure(const jpt_config_t* cfg);
 /* The overrides of the shared features, once the target is verified: physics fixes, the CE gameplay, Active AI, the
  * official Patch 1.1 and the camera's field of view. */

@@ -204,6 +204,25 @@ uint32_t d3dt_texture_blend(uint32_t mode, uint32_t texel, uint32_t diffuse, int
     }
 }
 
+enum { RS_SHADEMODE = 9, RS_ALPHATESTENABLE = 15, RS_TEXTUREMAPBLEND = 21, RS_ALPHAREF = 24, RS_ALPHAFUNC = 25,
+       RS_FOGENABLE = 28, RS_SPECULARENABLE = 29, RS_FOGCOLOR = 34 };
+
+void d3dt_draw_constants(const uint32_t* render, d3dt_draw_constants_t* out) {
+    const uint32_t fog = render[RS_FOGCOLOR];
+    memset(out, 0, sizeof *out);
+    if (render[RS_ALPHATESTENABLE]) out->flags |= D3D11_PS_ALPHA_TEST;
+    if (render[RS_FOGENABLE]) out->flags |= D3D11_PS_FOG;
+    if (render[RS_SPECULARENABLE]) out->flags |= D3D11_PS_SPECULAR;
+    if (render[RS_SHADEMODE] == 1) out->flags |= D3D11_PS_FLAT;
+    out->blend_mode = render[RS_TEXTUREMAPBLEND];
+    out->alpha_func = render[RS_ALPHAFUNC];
+    out->alpha_ref = (float)d3dt_alpha_ref(render[RS_ALPHAREF]) / 255.0f;
+    out->fog[0] = ((fog >> 16) & 0xFF) / 255.0f;
+    out->fog[1] = ((fog >> 8) & 0xFF) / 255.0f;
+    out->fog[2] = (fog & 0xFF) / 255.0f;
+    out->fog[3] = 1.0f;
+}
+
 uint32_t d3dt_apply_fog(uint32_t color, uint32_t fog_color, uint32_t fog_alpha) {
     uint32_t f = fog_alpha > 255 ? 255 : fog_alpha, out = color & 0xFF000000u;
     for (int shift = 0; shift < 24; shift += 8) {

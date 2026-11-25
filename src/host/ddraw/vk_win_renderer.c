@@ -200,7 +200,11 @@ static struct {
     size_t sub_rgba_cap;
     float* wave_buf;
     size_t wave_cap;
-    unsigned wave_serial;
+    struct {
+        const void* drawn;
+        unsigned serial, used;
+    } wave_slots[JPT_VK_WAVE_SLOTS];
+    unsigned wave_clock;
 
     /* Frontend HD / UI Canvas / Still picture state */
     const uint32_t* fe_pixels;
@@ -262,7 +266,7 @@ static struct {
     unsigned long long tex_palette_refresh;
     unsigned long long tex_unavailable_logged;
     unsigned long long water_requested;
-    unsigned long long water_no_link;
+    unsigned long long blended_not_water;
     unsigned long long water_wave_uploads;
     unsigned long long sky_requested;
     struct {
@@ -551,6 +555,7 @@ static int ensure_vk_renderer(HWND game_window, uint32_t legacy_w, uint32_t lega
                      (uint32_t)(uintptr_t)surf, err[0] ? err : "unknown error");
             return 0;
         }
+        memset(V.wave_slots, 0, sizeof V.wave_slots);
         V.game_hwnd = game_window;
         V.surface_hwnd = surf;
         V.rt_w = iw;
@@ -1460,9 +1465,9 @@ static void log_u64_histogram(const char* label, const uint64_t* counts, const c
 
 static void log_evidence_summary(const jpt_vk_renderer_stats_t* st) {
     host_log("vulkan", "evidence: ambient occlusion %llu passes executed (requested level %s), water %llu requested / "
-             "%llu Vulkan draws (%llu without a wave link, %llu wave uploads), enhanced sky %llu requested / %llu "
+             "%llu Vulkan draws (%llu wave uploads; %llu alpha-blended draws of other textures), enhanced sky %llu requested / %llu "
              "Vulkan draws", (unsigned long long)st->ao_passes, jpt_ao_names[V.ao_level], V.water_requested,
-             (unsigned long long)st->water_draws, V.water_no_link, V.water_wave_uploads, V.sky_requested,
+             (unsigned long long)st->water_draws, V.water_wave_uploads, V.blended_not_water, V.sky_requested,
              (unsigned long long)st->sky_draws);
 }
 
@@ -2580,6 +2585,20 @@ static void note_fvf(DWORD fvf) {
     }
 }
 
+/* Each water texture keeps its own wave field, as in the Direct3D 11 renderer. */
+static unsigned wave_slot_for(const void* drawn) {
+    unsigned at = 0;
+    for (unsigned i = 0; i < JPT_VK_WAVE_SLOTS; i++) {
+        if (V.wave_slots[i].drawn == drawn) {
+            at = i;
+            break;
+        }
+        if (V.wave_slots[i].used < V.wave_slots[at].used) at = i;
+    }
+    V.wave_slots[at].used = ++V.wave_clock;
+    return at;
+}
+
 static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                            DWORD index_count);
 static HRESULT vk_win_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
@@ -2692,7 +2711,7 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
         st.src_blend == D3DBLEND_SRCALPHA && st.dst_blend == D3DBLEND_INVSRCALPHA) {
         const fx_water_link_t* link = fx_water_link(dev->texture);
         if (link && link->width > 0 && link->height > 0) {
-            unsigned serial = fx_water_serial();
+            unsigned serial = fx_water_serial(), slot = wave_slot_for(dev->texture);
             size_t floats = (size_t)link->width * (size_t)link->height * 2u;
             if (floats > V.wave_cap) {
                 float* grown = (float*)realloc(V.wave_buf, floats * sizeof(float));
@@ -2702,14 +2721,17 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
                 }
             }
             const float* upload_waves = NULL;
-            if (V.wave_buf && V.wave_cap >= floats && V.wave_serial != serial) {
+            if (V.wave_buf && V.wave_cap >= floats &&
+                (V.wave_slots[slot].drawn != dev->texture || V.wave_slots[slot].serial != serial)) {
                 fx_water_fill(link->bits, link->pitch, link->width, link->height, V.wave_buf, NULL);
-                V.wave_serial = serial;
+                V.wave_slots[slot].drawn = dev->texture;
+                V.wave_slots[slot].serial = serial;
                 upload_waves = V.wave_buf;
                 V.water_wave_uploads++;
             }
             float bounds[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
             fx_water_scene_bounds(vpx, vpy, vpx + (long)vpw, vpy + (long)vph, (int)V.rt_w, (int)V.rt_h, bounds);
+            jpt_vk_renderer_select_waves(V.vk, slot);
             jpt_vk_renderer_set_water_params(V.vk, FX_WATER_STRENGTH, FX_WATER_RHW_METRE, bounds[0], bounds[1],
                                              bounds[2], bounds[3], upload_waves, (uint32_t)link->width,
                                              (uint32_t)link->height);
@@ -2720,7 +2742,7 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
             V.water_requested++;
             V.water_batches++;
         } else {
-            V.water_no_link++;
+            V.blended_not_water++;
         }
     }
 
@@ -2950,7 +2972,6 @@ static void vk_win_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
     if (!dst || !src) return;
     fx_water_loaded(dst, src, (uintptr_t)src->bits, src->pitch, (int)src->width, (int)src->height,
                     dd_format_bytes(&src->format));
-    if (dst->gpu_texture) ((vk_win_tex_t*)dst->gpu_texture)->dirty = 1;
 }
 
 static void vk_win_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h) {
@@ -3717,6 +3738,7 @@ void vk_win_test_bridge_stats(vk_win_test_bridge_stats_t* out) {
     out->untracked_writes = V.tex_untracked_writes;
     out->palette_refreshes = V.tex_palette_refresh;
     out->water_requested = V.water_requested;
+    out->dynamic_textures = V.dynamic_textures;
     out->sky_requested = V.sky_requested;
     out->composites = V.sync_composites;
     out->uploads = V.sync_uploads;

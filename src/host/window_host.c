@@ -27,6 +27,7 @@
 #include "overlay_policy.h"
 #include "physics_watch.h"
 #include "platform.h"
+#include "scene_options.h"
 #include "tutorial_prompts.h"
 #include "window_title.h"
 
@@ -1602,6 +1603,7 @@ void shim_GetCursorPos(void) {
             overlay_ui_loop();
             debug_menu_ui_loop();
             widescreen_apply_fov();
+            scene_options_step();
             ce_gameplay_ui_loop();
             update_input("GetCursorPos");
             perf_section_end(PS_UI_LOOP, section);

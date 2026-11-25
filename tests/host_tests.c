@@ -1297,6 +1297,32 @@ static void test_terrain_blend(void) {
     CHECK(d3dt_texture_blend(8, 0xFFF0F0F0u, 0x20404040u, 0) == 0x20FFFFFFu);
 }
 
+/* What a batch is drawn with follows the device's states, and a change of any state in it draws the open batch first. */
+static void test_draw_constants(void) {
+    enum { SHADE = 9, ALPHATEST = 15, MAPBLEND = 21, ALPHAREF = 24, ALPHAFUNC = 25, FOG = 28, SPECULAR = 29, FOGCOLOR = 34 };
+    static const unsigned flushes[] = { SHADE, ALPHATEST, MAPBLEND, ALPHAREF, ALPHAFUNC, FOG, SPECULAR, FOGCOLOR };
+    uint32_t render[256] = { 0 };
+    d3dt_draw_constants_t off, on, c;
+    render[SHADE] = 2;
+    d3dt_draw_constants(render, &off);
+    CHECK(off.flags == 0 && off.fog[3] == 1.0f && sizeof off == 32);
+    render[FOG] = 1;
+    render[FOGCOLOR] = 0xFF336699u;
+    d3dt_draw_constants(render, &on);
+    CHECK(on.flags == D3D11_PS_FOG && on.fog[0] == 0x33 / 255.0f && on.fog[1] == 0x66 / 255.0f && on.fog[2] == 0x99 / 255.0f);
+    render[FOGCOLOR] = 0x00010203u;
+    d3dt_draw_constants(render, &c);
+    CHECK(c.flags == on.flags && c.fog[0] == 1 / 255.0f && memcmp(&c, &on, sizeof c));
+    render[FOG] = 0;
+    d3dt_draw_constants(render, &c);
+    CHECK(c.flags == 0);
+    render[SPECULAR] = 1, render[ALPHATEST] = 1, render[SHADE] = 1, render[MAPBLEND] = 2, render[ALPHAFUNC] = 5, render[ALPHAREF] = 0x10FF;
+    d3dt_draw_constants(render, &c);
+    CHECK(c.flags == (D3D11_PS_SPECULAR | D3D11_PS_ALPHA_TEST | D3D11_PS_FLAT) && c.blend_mode == 2 && c.alpha_func == 5 && c.alpha_ref == 1.0f);
+    for (size_t i = 0; i < sizeof flushes / sizeof flushes[0]; i++)
+        CHECK(d3dt_render_change_flushes(flushes[i], 0, 1) && !d3dt_render_state_keeps_batch(flushes[i]));
+}
+
 static void test_fog_and_layout(void) {
     unsigned stride, diffuse, specular, uv;
     CHECK(d3dt_apply_fog(0xFF102030u, 0xC0C0C0u, 255) == 0xFF102030u);
@@ -2836,6 +2862,20 @@ static void test_projected_cull(void) {
 }
 
 /* An object visited first and kept 3D holds its parts 3D in the same frame; the next frame starts empty. */
+/* g_afGamma (retail .rdata): the exponent of level i is gamma[i] * (3.0 - 0.1) * 0.1. */
+static void test_gamma_level(void) {
+    static const double gamma[10] = { 3.0, 2.6, 2.2, 1.8, 1.4, 1.0, 0.6, 0.3, 0.0, 0.0 };
+    const double ambient = 0.2, lit = 0.909;
+    for (uint32_t level = 0; level < 10; level++) {
+        uint32_t used = engine_gamma_level(level);
+        double power = gamma[used] * 0.29, shadow = pow(ambient, power) / pow(lit, power);
+        CHECK(used == (level < ENGINE_GAMMA_TOP ? level : ENGINE_GAMMA_TOP));
+        CHECK(power > 0.0 && shadow < 0.9);
+    }
+    CHECK(pow(ambient, gamma[9] * 0.29) == pow(lit, gamma[9] * 0.29));
+    CHECK(engine_gamma_level(10) == ENGINE_GAMMA_TOP && engine_gamma_level(0xFFFFFFFFu) == ENGINE_GAMMA_TOP);
+}
+
 static void test_object_atomicity(void) {
     static engine_frame_slot_t set[64];
     const uint32_t object = 0x01234560u, other = 0x0BADF00Du;
@@ -3638,6 +3678,7 @@ static void test_engine_limits(void) {
     CHECK(engine_texture_dim_policy(1) == 256 && engine_texture_dim_policy(0) == 0);
     CHECK(engine_render_quality_policy(1, 0) == 4 && !engine_render_quality_policy(1, 1) &&
           !engine_render_quality_policy(0, 0));
+    test_gamma_level();
     /* x86: the texture memory the game may hold, twice over for its pages and ours, stays far below 2 GB. */
     CHECK((unsigned long long)ENGINE_TEXTURE_MB_MODERN * 2 * 1048576 < 256ull * 1048576);
     /* Terrain pages: 256 px, 16-bit, and the regular textures keep more than the old 40 MB budget gave them. */
@@ -4543,6 +4584,7 @@ int main(void) {
     test_hardware_water();
     test_skip_intro();
     test_pelvis_clamps();
+    test_draw_constants();
     test_fog_and_layout();
     test_depth_and_cull();
     test_coverage_and_uv();
