@@ -207,6 +207,22 @@ static void test_levels(void) {
     CHECK(!dm_item_enabled(&s, &menu, DM_LEVEL_SELECT), "nowhere to load from: disabled");
 }
 
+static void test_start_level(void) {
+    dm_start_t s;
+    char scene[DM_SCENE_MAX] = "";
+    CHECK(!dm_start_request(&s, "") && !dm_start_request(&s, "..\\x.scn") && !dm_start_request(&s, "a name.scn"), "only a scene the game can load");
+    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 5000, scene), "nothing was asked for");
+    CHECK(dm_start_request(&s, "LostJungle.scn"), "a scene is asked for");
+    CHECK(!dm_start_due(&s, DM_PLACE_NONE, 1000, scene), "not during a video");
+    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 2000, scene), "not on the menu's first frame");
+    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 2000 + DM_START_SETTLE_MS - 1, scene), "not before the menu settled");
+    CHECK(!dm_start_due(&s, DM_PLACE_NONE, 2100, scene) && !dm_start_due(&s, DM_PLACE_MAIN_MENU, 3000, scene), "the menu settles again after a window");
+    CHECK(dm_start_due(&s, DM_PLACE_MAIN_MENU, 3000 + DM_START_SETTLE_MS, scene) && !strcmp(scene, "LostJungle.scn"), "then the scene is due");
+    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 9000, scene), "once");
+    dm_start_request(&s, "nemlevl.scn");
+    CHECK(!dm_start_due(&s, DM_PLACE_LEVEL, 100, scene) && !dm_start_due(&s, DM_PLACE_MAIN_MENU, 9000, scene), "a level that is already running drops the request");
+}
+
 static void test_level_names(void) {
     static const struct {
         const char* file;
@@ -1428,6 +1444,7 @@ int main(void) {
     test_input_capture();
     test_navigation_and_pad();
     test_levels();
+    test_start_level();
     test_level_names();
     test_teleport();
     test_yaw();

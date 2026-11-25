@@ -25,6 +25,7 @@ struct Place {
     std::filesystem::path path;
 };
 
+// extension: one of them or several as ".zip;.7z"; empty lists every file.
 FolderListing ListFolder(const std::filesystem::path& folder, std::string_view extension, bool show_hidden);
 std::vector<Place> StandardPlaces(const std::filesystem::path& program_folder);
 std::filesystem::path StartingFolder(const std::vector<Place>& places, std::string_view extension);

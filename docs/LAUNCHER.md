@@ -1,19 +1,54 @@
 # Launcher, display and graphics
 
-`trespasser_recomp.exe` opens the launcher before the game, in the same process, and runs the lifted build of the version you play. Pages: Play, Display, Graphics, Gameplay,
+`trespasser_recomp.exe` opens the launcher before the game, in the same process, and runs the lifted build of the version you play. Pages: Play, Custom Levels, Display, Graphics, Gameplay,
 Controls, Cheats, Bug Report and About. There is no online or multiplayer page.
 
 ## Architecture
 
 The launcher is the one of Dragon's Crown Pro PC and 13 Sentinels: Aegis Rim PC.
 [TRG Launcher](https://github.com/TekRantGaming/trg-launcher) 1.1.0 with their patch series
-(`launcher/patches/trg-launcher`, the 19 patches of 13 Sentinels), in an SDL3 window with SDL's software renderer and
-Dear ImGui's SDL3 backends. The host, placement, header art, page icons, Play gate and page layout are their files
+(`launcher/patches/trg-launcher`, the 19 patches of 13 Sentinels and the scrolling sidebar), in an SDL3 window with an SDL renderer (Direct3D 11, or
+SDL's software renderer when it is unavailable) and Dear ImGui's SDL3 backends. The host, placement, header art, page icons, Play gate and page layout are their files
 with this port's names. SDL 3.4.20, Dear ImGui and TRG are fetched by `tools\build.ps1` at the commits
 in `config/launcher_deps.txt` into `external\` (not committed); SDL is built as a static library, since MSVC x86 has
 no SDL package. TRG's downloader is built for the update check and the update download; the launcher makes no other request unless you press Send report or Refresh on the Bug Report page ([Updates](#updates), [BUG_REPORTS](BUG_REPORTS.md)). Only one SDL window and one ImGui
 context exist at a time, and all of SDL is shut down (`SDL_Quit`) before the game's window and Direct3D 11 device
 exist; the game starts SDL again on its own thread (docs/ARCHITECTURE.md, Platform).
+
+The launcher window's renderer is its own choice and does not touch the game's. On Windows it tries Direct3D 11 first and
+falls back to the software renderer; on Linux it takes SDL's first working renderer, then the software one. `d3d11.dll` and
+`dxgi.dll` are pinned in the process before the device exists, because SDL unloads them right after the device's last
+Release while a driver thread may still be returning through them (the NVIDIA shutdown crash of the sibling ports); if they
+cannot be pinned, Direct3D 11 is skipped. The log shows `renderer=... fallback=... pinned_modules=...`, the VSync outcome
+and, once, a loop sample after the window has been visible for five seconds. Frames are capped at 60 a second by a deadline
+pacer that sleeps between frames, wakes for input and does not draw while the window is minimised; the software renderer's
+simulated VSync is turned off so that it cannot slow the loop. Imports and other tasks run on their own threads.
+
+### Recovery without graphics support
+
+Opening the launcher does not depend on being able to run the game. Each renderer is tried on a window of its own: pin, window,
+renderer, a texture with a clear, a draw and a present, then Dear ImGui's backends. A failure at any of these, or in the
+launcher's own first frame, releases what was opened and moves on to the software renderer. The log has one `startup:` line per
+step (requested, tried, failed with its reason, effective).
+
+| `--launcher-renderer` | Tried |
+|---|---|
+| `auto` (default) | Windows: Direct3D 11, then software. Linux: SDL's first working renderer, then software |
+| `software` | software only; graphics card detection (Direct3D, Vulkan) is skipped |
+| `direct3d11` | Direct3D 11 only (Windows) |
+
+```
+trespasser_recomp.exe --launcher --launcher-renderer software
+```
+
+The option holds for that run, is never saved and does not change the game's `renderer`. On Linux the software renderer asks for
+X11 (or XWayland), because SDL presents software frames through an accelerated texture on Wayland; with no X server it stays on
+Wayland and still needs a working driver there. `SDL_VIDEO_DRIVER` set by the player wins.
+
+A graphics card list that cannot be made (no Vulkan, no adapter, a failed instance or enumeration) leaves the Graphics page usable:
+it says so, keeps the saved card and anti-aliasing, and the log has `startup: gpu enumeration result=... reason=...`. Failures
+are handled from return codes; a driver that crashes the process cannot be caught this way, which is what
+`--launcher-renderer software` is for.
 
 What differs, because the game differs: the game window is the host's Win32 window, so the Monitor list is the one
 that window uses (primary first, then the system's order); images are decoded with SDL's own `SDL_LoadPNG` instead of
@@ -40,7 +75,8 @@ the folder the program lives in. The Direct3D 11 renderer is not offered there; 
 | `assets/launcher/` | header art, sponsor heart, page icons with `SOURCES.md` (README.md there) |
 | `src/common/` (C) | `trespasser.ini` parsing and writing, render sizes, presentation, monitors, user files: shared by host, launcher and tests |
 | `src/host/widescreen.c` | the gameplay mode and the Hor+ camera |
-| `tests/launcher_tests.cpp` | headless tests (docs/BUILD.md) |
+| `launcher/launcher_renderer.h`, `graphics_cards.h` | the launcher window's renderer choice and fallback; the Graphics page's card list |
+| `tests/launcher_tests.cpp`, `tests/launcher_startup_tests.cpp` | headless tests (docs/BUILD.md) |
 
 ## Folders
 
@@ -67,7 +103,8 @@ from `game\` to `user_data\saves` when it has no file of that name.
 | ready | any, with Shift held or `--launcher` | the launcher opens |
 | ready | any, with `--skip-launcher` | the game starts directly (a skip wins over Shift, as in the other ports) |
 
-`--dry-run` never opens it. When its window cannot be opened, the game starts if the files are ready.
+`--dry-run` never opens it. When its window cannot be opened, a system message box says why, the program ends with exit code 1
+and the game is not started; `--skip-launcher` and Show this launcher Off still start it directly.
 
 The host reserves the game's fixed address range by restarting itself before anything loads
 (`native32_hold_range`): `0x00400000` up to the largest guest image of any lift the program carries (their `SizeOfImage`
@@ -77,12 +114,13 @@ range is held even with nothing installed, so no second process is started after
 ## Pages
 
 The header reads **JURASSIC PARK: TRESPASSER** over `RECOMPILED · v<version> · BY SAULOB`, over the header art.
-The sidebar has the other ports' icons; the footer has the hints, **Sponsor on GitHub** (with the heart, left of Quit,
+The sidebar has the other ports' icons and gets its own scroll bar when the pages do not fit (mouse wheel, keyboard and controller focus; the selected page is kept in view); the footer has the hints, **Sponsor on GitHub** (with the heart, left of Quit,
 opening `https://github.com/sponsors/saulob` in the browser and nothing else), Quit, Save and PLAY.
 
 | Page | Rows |
 |---|---|
 | Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
+| Custom Levels | Import ZIP / 7z, Import Folder, one row per level: name, scene, the version selected on Play, status; Play, Readme (only with instructions; opens the original file in the system's application), Open Folder, Delete ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)) |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Fog, Shadows, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Enable Minimap, Enable Compass, Enable Waypoints, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |

@@ -6300,6 +6300,81 @@
      }
     ]
    }
+  },
+  {
+   "id": "launcher-recovery",
+   "name": "The launcher opens without modern graphics support: renderer fallback, --launcher-renderer software, safe graphics card detection; a launcher that cannot open never starts the game",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "launcher_startup_tests",
+     "file": "tests/launcher_startup_tests.cpp",
+     "pattern": "TestSelection"
+    },
+    {
+     "suite": "launcher_startup_tests",
+     "file": "tests/launcher_startup_tests.cpp",
+     "pattern": "TestFailureDoesNotStartTheGame"
+    },
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "test_launcher_probe_failures"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-levels",
+   "name": "Custom Levels: packages imported from ZIP, 7z or a folder into user_data/custom_levels, read through the game's own loader without touching the installed versions",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_tests.cpp",
+     "pattern": "TestImportKinds"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_tests.cpp",
+     "pattern": "TestRollback"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_tests.cpp",
+     "pattern": "TestGuestPaths"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "custom_level_tests",
+      "file": "tests/custom_level_tests.cpp",
+      "pattern": "TestWindowsHost"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "test_start_level"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
   }
  ],
  "infrastructure": [

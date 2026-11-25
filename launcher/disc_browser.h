@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include <imgui.h>
@@ -11,15 +12,31 @@
 
 namespace jpt {
 
+struct BrowsePurpose {
+    const char* title;
+    const char* extensions; // ".iso", ".zip;.7z"; the folder purpose lists folders only
+    const char* none_here;
+    const char* hint;
+    bool folder = false;
+};
+
+extern const BrowsePurpose kBrowseDisc;
+extern const BrowsePurpose kBrowseLevelArchive;
+extern const BrowsePurpose kBrowseLevelFolder;
+
 class DiscBrowser {
 public:
-    void Open(const std::filesystem::path& program_folder);
+    void Open(const std::filesystem::path& program_folder, const BrowsePurpose& purpose = kBrowseDisc);
+    const BrowsePurpose& purpose() const { return *purpose_; }
     bool active() const { return active_; }
     std::optional<std::filesystem::path> Draw(ImFont* font, float font_size, const trg::Theme& theme);
 
 private:
     void Go(const std::filesystem::path& folder);
 
+    std::string_view Filter() const;
+
+    const BrowsePurpose* purpose_ = &kBrowseDisc;
     bool active_ = false;
     bool popup_open_ = false;
     bool show_all_ = false;

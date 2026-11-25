@@ -29,8 +29,8 @@ void shim_MessageBoxA(void);
 void shim_DialogBoxParamA(void);
 void shim_OutputDebugStringA(void);
 
-/* The store lives in user_dir. Installed Directory (saves, level swap files) is user_dir, Data Drive is game_dir. */
-void guest_registry_init(const char* game_dir, const char* user_dir);
+/* The store lives in store_dir. Installed Directory (saves, level swap files) is user_dir, Data Drive is game_dir. */
+void guest_registry_init(const char* game_dir, const char* store_dir, const char* user_dir);
 void registry_show_ddraw_cert_dialog(void);
 void registry_software_water(void);
 /* While on, the game's "NoVideo" reads 1: CVideoWnd::Play returns at once, as it does with the value stored. */
@@ -60,6 +60,20 @@ void shim_FreeLibrary(void);
 void shim_fopen(void);
 void shim_open(void);
 void shim_DeleteFileA(void);
+void shim_mkdir(void);
+void shim_remove(void);
+void shim_rename(void);
+
+int custom_level_files_start(const char* game_dir);
+/* The active package's file for a guest path that only reads. */
+int custom_level_file(const char* path, char* out, size_t cap);
+/* While a package is active nothing under the game's data folder is created, changed or removed. */
+int custom_level_write_refused(const char* path);
+/* -2: LZ32 opens the file; else a handle for the calls below, or a negative LZ error. */
+int custom_level_lz_open(const char* path, int for_reading);
+int custom_level_lz_read(int handle, char* buffer, int wanted, int* result);
+int custom_level_lz_seek(int handle, long offset, int origin, int* result);
+int custom_level_lz_close(int handle);
 
 void milestones_init(void);
 void milestones_observe(uint32_t target);

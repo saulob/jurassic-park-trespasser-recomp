@@ -18,10 +18,11 @@ inline constexpr char kIssuesUrl[] = "https://github.com/saulob/jurassic-park-tr
 inline constexpr char kAuthorUrl[] = "https://github.com/saulob";
 inline constexpr char kSponsorUrl[] = "https://github.com/sponsors/saulob";
 
-enum class PageId { kPlay, kDisplay, kGraphics, kGameplay, kControls, kCheats, kBugReport, kAbout };
+enum class PageId { kPlay, kCustomLevels, kDisplay, kGraphics, kGameplay, kControls, kCheats, kBugReport, kAbout };
 
-inline constexpr PageId kPageOrder[] = {PageId::kPlay,     PageId::kDisplay, PageId::kGraphics,  PageId::kGameplay,
-                                        PageId::kControls, PageId::kCheats,  PageId::kBugReport, PageId::kAbout};
+inline constexpr PageId kPageOrder[] = {PageId::kPlay,     PageId::kCustomLevels, PageId::kDisplay,
+                                        PageId::kGraphics, PageId::kGameplay,     PageId::kControls,
+                                        PageId::kCheats,   PageId::kBugReport,    PageId::kAbout};
 
 const char* PageName(PageId page);
 

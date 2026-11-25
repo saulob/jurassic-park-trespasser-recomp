@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#include "jpt_custom_level.h"
 #include "linux_window.h"
 
 typedef enum {
@@ -27,6 +28,7 @@ typedef struct {
     const char* user_root;
     const char* saves_dir; /* the game's "Installed Directory"; default <user_root>/saves */
     const char* settings_file; /* trespasser.ini: the language and the video subtitles switch; NULL = the defaults */
+    const jpt_custom_level_request_t* custom_level; /* the custom level to start; NULL or an empty scene for none */
     lx_window_backend_t* backend; /* the host window; NULL = the virtual backend (no window) */
     int unbounded;         /* run until the guest exits: no frame and no idle limit */
     int use_features;      /* the host features over the lifted game (src/host guest_features.h); the executable turns them on */

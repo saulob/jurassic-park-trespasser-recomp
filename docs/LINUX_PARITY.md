@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-180 features. 129 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
+182 features. 131 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -193,3 +193,5 @@ feature may have one.
 | `steam-deck-gamescope` | linux | LINUX ONLY (justified) | PASS | - | `port_tests`, `vulkan_policy_tests`, `linux_sdl_window_tests`, `test_linux_parity.py` | Gamescope is a Linux Wayland microcompositor |
 | `steam-deck-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_packaging.py` | AppImage and SteamOS SD card paths are Linux-specific |
 | `steam-deck-updater` | linux | LINUX ONLY (justified) | PASS | - | `update_tests`, `test_linux_parity.py`, `test_linux_packaging.py` | AppImage self-update applies to Linux; Windows uses trg-updater.exe |
+| `launcher-recovery` | global | PASS | PASS | `launcher_startup_tests`, `vulkan_policy_tests` | `launcher_startup_tests`, `vulkan_policy_tests` | - |
+| `custom-levels` | global | PASS | PASS | `custom_level_tests`, `debug_menu_tests` | `custom_level_tests` | - |

@@ -11,27 +11,34 @@
 namespace fs = std::filesystem;
 
 namespace jpt {
-namespace {
 
-constexpr char kTitle[] = "Select your Trespasser disc image (.iso)";
-constexpr char kExtension[] = ".iso";
+const BrowsePurpose kBrowseDisc = {"Select your Trespasser disc image (.iso)", ".iso", "No .iso files or folders here.",
+                                   "Choose the .iso file. Controller: D-pad to move, A to choose, B to cancel."};
+const BrowsePurpose kBrowseLevelArchive = {"Select a custom level (.zip or .7z)", ".zip;.7z", "No .zip or .7z files or folders here.",
+                                           "Choose the archive. Controller: D-pad to move, A to choose, B to cancel."};
+const BrowsePurpose kBrowseLevelFolder = {"Select the folder of a custom level", "/", "No folders here.",
+                                          "Open the level's folder, then choose it. Controller: D-pad to move, A to choose, B to cancel.",
+                                          true};
 
-}  // namespace
+std::string_view DiscBrowser::Filter() const {
+    return show_all_ && !purpose_->folder ? std::string_view() : std::string_view(purpose_->extensions);
+}
 
-void DiscBrowser::Open(const fs::path& program_folder) {
+void DiscBrowser::Open(const fs::path& program_folder, const BrowsePurpose& purpose) {
+    purpose_ = &purpose;
     places_ = StandardPlaces(program_folder);
     std::error_code ec;
     show_all_ = false;
     active_ = true;
     popup_open_ = false;
-    Go(!folder_.empty() && fs::is_directory(folder_, ec) ? folder_ : StartingFolder(places_, kExtension));
+    Go(!folder_.empty() && fs::is_directory(folder_, ec) ? folder_ : StartingFolder(places_, purpose_->extensions));
 }
 
 void DiscBrowser::Go(const fs::path& folder) {
     std::error_code ec;
     const fs::path resolved = fs::weakly_canonical(folder, ec);
     folder_ = ec ? folder : resolved;
-    listing_ = ListFolder(folder_, show_all_ ? std::string_view() : std::string_view(kExtension), false);
+    listing_ = ListFolder(folder_, Filter(), false);
     focus_list_ = true;
 }
 
@@ -39,7 +46,7 @@ std::optional<fs::path> DiscBrowser::Draw(ImFont* font, float font_size, const t
     if (!active_) {
         return std::nullopt;
     }
-    const char* title = Tr(kTitle);
+    const char* title = Tr(purpose_->title);
     if (!popup_open_) {
         ImGui::OpenPopup(title);
         popup_open_ = true;
@@ -90,7 +97,7 @@ std::optional<fs::path> DiscBrowser::Draw(ImFont* font, float font_size, const t
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Checkbox(Tr("Show all files"), &show_all_)) {
+    if (!purpose_->folder && ImGui::Checkbox(Tr("Show all files"), &show_all_)) {
         Go(folder_);
     }
     ImGui::SameLine();
@@ -114,7 +121,7 @@ std::optional<fs::path> DiscBrowser::Draw(ImFont* font, float font_size, const t
         if (!listing_.readable) {
             ImGui::TextDisabled("%s", Tr("This folder cannot be read."));
         } else if (listing_.entries.empty()) {
-            ImGui::TextDisabled("%s", Tr(show_all_ ? "This folder is empty." : "No .iso files or folders here."));
+            ImGui::TextDisabled("%s", Tr(show_all_ ? "This folder is empty." : purpose_->none_here));
         }
         const float right_edge = ImGui::GetContentRegionAvail().x;
         if (!parent.empty() && parent != folder_ && ImGui::Selectable(Tr("../  (parent folder)"))) {
@@ -145,11 +152,17 @@ std::optional<fs::path> DiscBrowser::Draw(ImFont* font, float font_size, const t
     }
     ImGui::EndChild();
 
+    if (purpose_->folder) {
+        if (ImGui::Button(Tr("Choose this folder"))) {
+            picked = folder_;
+        }
+        ImGui::SameLine();
+    }
     if (ImGui::Button(Tr("Cancel"))) {
         keep = false;
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", Tr("Choose the .iso file. Controller: D-pad to move, A to choose, B to cancel."));
+    ImGui::TextDisabled("%s", Tr(purpose_->hint));
 
     if (!enter.empty()) {
         Go(enter);

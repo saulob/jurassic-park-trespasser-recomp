@@ -737,6 +737,19 @@ static int resolve(const char* guest, int create, char* host, size_t cap) {
     return 0;
 }
 
+static int resolve_read(const char* guest, char* host, size_t cap, int* overlaid) {
+    int r = jpt_vpath_resolve_read(s_vpath, guest, host, cap, overlaid);
+    if (r == JPT_VP_OK) return 1;
+    set_error(r == JPT_VP_NOT_FOUND ? ERROR_FILE_NOT_FOUND : ERROR_PATH_NOT_FOUND);
+    return 0;
+}
+
+static int write_refused(const char* guest) {
+    if (!s_vpath || !jpt_vpath_write_refused(s_vpath, guest)) return 0;
+    set_error(ERROR_ACCESS_DENIED);
+    return 1;
+}
+
 static int pread_exact(void* context, uint64_t offset, void* buffer, size_t bytes) {
     int fd = (int)(intptr_t)context;
     uint8_t* out = (uint8_t*)buffer;
@@ -759,14 +772,19 @@ static uint64_t k_CreateFileA(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     uint32_t access = a[1], disposition = a[4];
     char host[JPT_PATH_MAX], translated[JPT_PATH_MAX];
-    int flags = 0, fd, served;
+    int flags = 0, fd, served, overlaid = 0;
     handle_t h;
     (void)u;
     if (!name || !s_vpath) return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
     flags = (access & GENERIC_WRITE) ? ((access & GENERIC_READ) ? O_RDWR : O_WRONLY) : O_RDONLY;
     served = disposition == OPEN_EXISTING && stream_pack_serves_open(name, access, a[5]);
     if (served) flags = O_RDONLY;
-    if (!resolve(name, disposition != OPEN_EXISTING && disposition != TRUNCATE_EXISTING, host, sizeof host)) return INVALID_HANDLE;
+    if (disposition == OPEN_EXISTING) {
+        if (!resolve_read(name, host, sizeof host, &overlaid)) return INVALID_HANDLE;
+        if (overlaid) flags = O_RDONLY, served = 0;
+    } else if (write_refused(name) || !resolve(name, disposition != TRUNCATE_EXISTING, host, sizeof host)) {
+        return INVALID_HANDLE;
+    }
     if (disposition == OPEN_EXISTING && l10n_menu_file(name, translated, sizeof translated)) memcpy(host, translated, strlen(translated) + 1), served = 0;
     switch (disposition) {
     case CREATE_NEW: flags |= O_CREAT | O_EXCL; break;
@@ -913,7 +931,7 @@ static uint64_t k_GetFileAttributesA(const uint32_t* a, void* u) {
     struct stat st;
     (void)u;
     if (!name || !s_vpath) return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
-    if (!resolve(name, 0, host, sizeof host) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), INVALID_HANDLE;
+    if (!resolve_read(name, host, sizeof host, NULL) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), INVALID_HANDLE;
     return attributes_of(&st);
 }
 
@@ -922,7 +940,8 @@ static uint64_t k_SetFileAttributesA(const uint32_t* a, void* u) {
     char host[JPT_PATH_MAX];
     struct stat st;
     (void)u;
-    if (!name || !s_vpath || !resolve(name, 0, host, sizeof host) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), 0;
+    if (!name || !s_vpath || write_refused(name)) return 0;
+    if (!resolve(name, 0, host, sizeof host) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), 0;
     if (a[1] & FILE_ATTRIBUTE_READONLY) chmod(host, st.st_mode & ~(mode_t)(S_IWUSR | S_IWGRP | S_IWOTH));
     else chmod(host, st.st_mode | S_IWUSR);
     return 1;
@@ -932,7 +951,7 @@ static uint64_t k_DeleteFileA(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     char host[JPT_PATH_MAX];
     (void)u;
-    if (!name || !s_vpath || !resolve(name, 0, host, sizeof host)) return 0;
+    if (!name || !s_vpath || write_refused(name) || !resolve(name, 0, host, sizeof host)) return 0;
     if (unlink(host) != 0) return set_error(error_of_errno()), 0;
     jpt_vpath_invalidate(s_vpath, host);
     lx_frontend_file_deleted(name);

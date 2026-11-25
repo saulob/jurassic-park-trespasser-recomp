@@ -88,6 +88,7 @@ add_library(jpt_common_linux STATIC
   src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c
   src/common/jpt_gamepad.c src/common/jpt_prompt_text.c src/common/jpt_l10n.c src/common/jpt_tr.c
   src/common/jpt_video_subtitles.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_gpu.c src/common/jpt_monitors_sdl.c src/common/jpt_app_identity.c ${JPT_APP_ICON_C} src/common/jpt_fs_posix.c src/common/jpt_vpath.c
+  src/common/jpt_custom_level.c src/common/jpt_szdd.c
   src/common/jpt_reg_store.c src/common/jpt_sync.c src/common/jpt_renderer.c src/common/jpt_present_policy.c)
 target_include_directories(jpt_common_linux PUBLIC src/common)
 target_compile_options(jpt_common_linux PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
@@ -349,14 +350,19 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
     message(WARNING "OpenSSL was not found: the Bug Report cannot send in this build (development only; the Linux gate refuses it)")
   endif()
   target_compile_definitions(jpt_launcher_core_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
-  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+  # The 7z decoder of the LZMA SDK (custom level packages).
+  set(JPT_LZMA_SOURCES 7zArcIn.c 7zBuf.c 7zCrc.c 7zCrcOpt.c 7zDec.c 7zStream.c Bcj2.c Bra.c Bra86.c BraIA64.c CpuArch.c Delta.c Lzma2Dec.c LzmaDec.c)
+  list(TRANSFORM JPT_LZMA_SOURCES PREPEND launcher/third_party/lzma/)
+  add_library(jpt_lzma_linux STATIC ${JPT_LZMA_SOURCES})
+  target_compile_options(jpt_lzma_linux PRIVATE -w)
+  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp launcher/custom_levels_page.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
     launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
     launcher/updater/third_party/miniz/miniz.c launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
     launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
     launcher/updater/update_zip.cpp launcher/updater/version.cpp)
   set_source_files_properties(launcher/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
   target_include_directories(jpt_launcher_linux PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
-  target_link_libraries(jpt_launcher_linux PUBLIC jpt_launcher_core_linux trg_ui_linux)
+  target_link_libraries(jpt_launcher_linux PUBLIC jpt_launcher_core_linux trg_ui_linux jpt_lzma_linux)
   target_compile_definitions(jpt_launcher_linux PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
   set_target_properties(jpt_launcher_core_linux jpt_launcher_linux PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
   foreach(lib jpt_launcher_core_linux jpt_launcher_linux)
@@ -368,6 +374,14 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
 
   jpt_linux_test(linux_launcher_tests SOURCES tests/linux_launcher_tests.cpp LIBS jpt_launcher_core_linux INCLUDES launcher)
   set_target_properties(linux_launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+  jpt_linux_test(launcher_startup_tests SOURCES tests/launcher_startup_tests.cpp LIBS jpt_common_linux INCLUDES launcher)
+  set_target_properties(launcher_startup_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+  jpt_linux_test(custom_level_tests SOURCES tests/custom_level_tests.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp
+                 launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp launcher/updater/third_party/miniz/miniz.c
+                 LIBS jpt_launcher_core_linux jpt_lzma_linux INCLUDES launcher)
+  set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
   # The Bug Report page and the auto update: the same sources and the same tests as Windows (tests/bug_report_tests.cpp,
   # tests/update_tests.cpp, tests/update_network_tests.cpp); the update helper process is Windows only.

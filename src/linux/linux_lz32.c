@@ -8,6 +8,7 @@
 #include "guest_features.h"
 #include "guest_ptr.h"
 #include "jpt_fs.h"
+#include "jpt_szdd.h"
 #include "linux_log.h"
 
 #define MAX_FILES 16
@@ -16,8 +17,6 @@
 #define OFSTRUCT_BYTES 136
 #define OFSTRUCT_PATH 8
 #define OFSTRUCT_PATH_MAX 128
-#define SZDD_HEADER 14
-#define WINDOW 4096
 
 typedef struct {
     int used;
@@ -39,44 +38,6 @@ static uint8_t* read_file(const char* path, size_t* size) {
     }
     fclose(f);
     return data;
-}
-
-/* The LZSS of expand.exe: a 4096-byte window of spaces, written from 4096 - 16; a control byte tells literals (1) from
- * matches (0), a match is a 12-bit window position and a 4-bit length - 3. */
-static uint8_t* expand(const uint8_t* in, size_t in_size, size_t* out_size) {
-    static const uint8_t magic[8] = { 'S', 'Z', 'D', 'D', 0x88, 0xF0, 0x27, 0x33 };
-    uint8_t window[WINDOW];
-    uint8_t* out;
-    size_t want, o = 0, i = SZDD_HEADER;
-    int w = WINDOW - 16;
-    if (in_size < SZDD_HEADER || memcmp(in, magic, sizeof magic) != 0 || in[8] != 'A') return NULL;
-    want = (size_t)in[10] | (size_t)in[11] << 8 | (size_t)in[12] << 16 | (size_t)in[13] << 24;
-    out = (uint8_t*)malloc(want ? want : 1);
-    if (!out) return NULL;
-    memset(window, ' ', sizeof window);
-    while (o < want && i < in_size) {
-        unsigned control = in[i++];
-        for (int bit = 0; bit < 8 && o < want; bit++, control >>= 1) {
-            if (control & 1) {
-                if (i >= in_size) break;
-                out[o++] = window[w] = in[i++];
-                w = (w + 1) & (WINDOW - 1);
-            } else {
-                int pos, len;
-                if (i + 1 >= in_size) break;
-                pos = in[i] | ((in[i + 1] & 0xF0) << 4);
-                len = (in[i + 1] & 0x0F) + 3;
-                i += 2;
-                for (int k = 0; k < len && o < want; k++) {
-                    uint8_t c = window[(pos + k) & (WINDOW - 1)];
-                    out[o++] = window[w] = c;
-                    w = (w + 1) & (WINDOW - 1);
-                }
-            }
-        }
-    }
-    *out_size = o;
-    return out;
 }
 
 static lz_file_t* file_of(uint32_t handle) {
@@ -133,12 +94,13 @@ static uint64_t z_LZOpenFileA(const uint32_t* a, void* u) {
     uint8_t info[OFSTRUCT_BYTES];
     int slot = -1;
     (void)u;
-    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return HFILE_ERROR;
+    if (!name || !hle_vpath() || jpt_vpath_resolve_read(hle_vpath(), name, host, sizeof host, NULL) != JPT_VP_OK)
+        return HFILE_ERROR;
     for (int i = 0; i < MAX_FILES && slot < 0; i++)
         if (!s_file[i].used) slot = i;
     raw = slot < 0 ? NULL : read_file(host, &size);
     if (!raw) return HFILE_ERROR;
-    data = expand(raw, size, &expanded);
+    data = jpt_szdd_expand(raw, size, &expanded);
     if (!data) data = raw, expanded = size;
     serve_fixed_level(host, raw, size, &data, &expanded);
     if (data != raw) free(raw);

@@ -83,6 +83,8 @@ PLAYING
 - Controllers are read through SDL's gamepad support: Xbox controllers and the Steam Deck's own controls.
 - To open the launcher again after turning it off, start the AppImage with --launcher (or use the "Show launcher"
   action of its desktop entry).
+- If the launcher does not open on this graphics driver, start the AppImage with
+  --launcher --launcher-renderer software
 - The launcher's Bug Report page sends a report, with the log you choose, only when you press Send report. My Reports
   keeps the reports sent from this computer.
 

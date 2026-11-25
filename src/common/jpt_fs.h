@@ -11,6 +11,8 @@ extern "C" {
 
 int jpt_fs_exists(const char* path);
 int jpt_fs_is_dir(const char* path);
+/* A symbolic link, or a reparse point on Windows. */
+int jpt_fs_is_link(const char* path);
 /* Creates one folder; 1 when it exists afterwards. */
 int jpt_fs_mkdir(const char* path);
 /* Moves from onto to, replacing it, and flushes it to disk. */

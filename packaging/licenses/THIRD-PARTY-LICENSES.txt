@@ -14,6 +14,7 @@ nanosvg                     zlib. Copyright (c) 2013-14 Mikko Mononen.  launcher
 Intel ASSAO                 MIT. Copyright (c) 2016 Intel.              third_party/assao/LICENSE
 Khronos Vulkan-Headers      Apache-2.0. The Khronos Group Inc.          third_party/vulkan/LICENSE.txt
 miniz                       MIT. Copyright 2013-2014 RAD Game Tools and Valve Software, Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC. launcher/updater/third_party/miniz/LICENSE
+LZMA SDK 26.06              Public domain. Igor Pavlov. The 7z decoder of the custom level import. launcher/third_party/lzma/LICENSE.txt
 stb_image / stb_truetype    Public domain (or MIT where marked). No copyright claimed. Used through SDL's image decoder and Dear ImGui's imstb_truetype.h.
 Droid Sans                  Apache-2.0. Copyright 2008 The Android Open Source Project. external/imgui/misc/fonts/DroidSans.ttf, the embedded text face.
 OpenSSL 3.5.9 (Linux)       Apache-2.0. The OpenSSL Project.           this folder's OpenSSL-LICENSE.txt

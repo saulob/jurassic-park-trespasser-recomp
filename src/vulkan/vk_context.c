@@ -325,6 +325,7 @@ static VkResult create_instance(jpt_vk_context_t* ctx, int windowed, int want_va
     free(avail_layers);
     if (vr != VK_SUCCESS) {
         set_error(ctx, "vkCreateInstance failed: %s (%d)", jpt_vk_result_str(vr), (int)vr);
+        ctx->instance = VK_NULL_HANDLE;
         return vr;
     }
     return VK_SUCCESS;
@@ -650,41 +651,71 @@ void jpt_vk_set_object_name(const jpt_vk_context_t* ctx, VkObjectType type, uint
     ctx->vk.vkSetDebugUtilsObjectNameEXT(ctx->device, &info);
 }
 
+const char* jpt_vk_probe_status_name(jpt_vk_probe_status_t status) {
+    switch (status) {
+    case JPT_VK_PROBE_OK: return "ok";
+    case JPT_VK_PROBE_LOADER: return "loader";
+    case JPT_VK_PROBE_INSTANCE: return "instance";
+    case JPT_VK_PROBE_ENTRY_POINTS: return "entry_points";
+    case JPT_VK_PROBE_ENUMERATION: return "enumeration";
+    case JPT_VK_PROBE_NO_DEVICE: return "no_device";
+    case JPT_VK_PROBE_NO_USABLE_DEVICE: return "no_usable_device";
+    default: return "not_run";
+    }
+}
+
+static int probe_failed(jpt_vk_context_t* ctx, jpt_vk_probe_result_t* out, jpt_vk_probe_status_t status, const char* why) {
+    out->status = status;
+    snprintf(out->summary, sizeof out->summary, "%s", why);
+    jpt_vk_context_shutdown(ctx);
+    return 0;
+}
+
 int jpt_vk_probe_headless(const char* gpu_request, jpt_vk_probe_result_t* out) {
+    jpt_vk_loader_t vk;
+    char err[256] = "";
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    out->selected_index = -1;
+    if (!jpt_vk_loader_open(&vk, 0, err, sizeof err)) {
+        out->status = JPT_VK_PROBE_LOADER;
+        snprintf(out->summary, sizeof out->summary, "%s", err);
+        return 0;
+    }
+    return jpt_vk_probe_loader(&vk, gpu_request, out);
+}
+
+int jpt_vk_probe_loader(jpt_vk_loader_t* vk, const char* gpu_request, jpt_vk_probe_result_t* out) {
     jpt_vk_context_t tmp;
-    char err[256];
+    char err[256] = "";
     uint32_t pd_count = 0;
     VkPhysicalDevice pds[JPT_VK_MAX_GPUS];
     VkResult vr;
 
-    if (!out) return 0;
+    if (!out || !vk) return 0;
     memset(out, 0, sizeof *out);
     out->selected_index = -1;
     memset(&tmp, 0, sizeof tmp);
+    tmp.vk = *vk;
+    memset(vk, 0, sizeof *vk);
 
-    if (!jpt_vk_loader_open(&tmp.vk, 0, err, sizeof err)) {
-        snprintf(out->summary, sizeof out->summary, "%s", err);
-        return 0;
-    }
-    if (create_instance(&tmp, 0, 0) != VK_SUCCESS) {
-        snprintf(out->summary, sizeof out->summary, "%s", tmp.last_error);
-        jpt_vk_context_shutdown(&tmp);
-        return 0;
-    }
-    if (!jpt_vk_loader_load_instance(&tmp.vk, tmp.instance, err, sizeof err)) {
-        snprintf(out->summary, sizeof out->summary, "%s", err);
-        jpt_vk_context_shutdown(&tmp);
-        return 0;
-    }
+    if (create_instance(&tmp, 0, 0) != VK_SUCCESS)
+        return probe_failed(&tmp, out, JPT_VK_PROBE_INSTANCE, tmp.last_error);
+    if (!jpt_vk_loader_load_instance(&tmp.vk, tmp.instance, err, sizeof err))
+        return probe_failed(&tmp, out, JPT_VK_PROBE_ENTRY_POINTS, err);
 
     vr = tmp.vk.vkEnumeratePhysicalDevices(tmp.instance, &pd_count, NULL);
-    if (vr != VK_SUCCESS || pd_count == 0) {
-        snprintf(out->summary, sizeof out->summary, "no Vulkan physical devices found (%s)", jpt_vk_result_str(vr));
-        jpt_vk_context_shutdown(&tmp);
-        return 0;
+    if (vr == VK_SUCCESS && pd_count == 0)
+        return probe_failed(&tmp, out, JPT_VK_PROBE_NO_DEVICE, "no Vulkan physical devices found");
+    if (vr == VK_SUCCESS) {
+        if (pd_count > JPT_VK_MAX_GPUS) pd_count = JPT_VK_MAX_GPUS;
+        vr = tmp.vk.vkEnumeratePhysicalDevices(tmp.instance, &pd_count, pds);
     }
-    if (pd_count > JPT_VK_MAX_GPUS) pd_count = JPT_VK_MAX_GPUS;
-    tmp.vk.vkEnumeratePhysicalDevices(tmp.instance, &pd_count, pds);
+    if (vr != VK_SUCCESS && vr != VK_INCOMPLETE) {
+        snprintf(err, sizeof err, "vkEnumeratePhysicalDevices failed: %s (%d)", jpt_vk_result_str(vr), (int)vr);
+        return probe_failed(&tmp, out, JPT_VK_PROBE_ENUMERATION, err);
+    }
+    if (pd_count == 0) return probe_failed(&tmp, out, JPT_VK_PROBE_NO_DEVICE, "no Vulkan physical devices found");
 
     for (uint32_t i = 0; i < pd_count; i++) inspect_physical_device(&tmp.vk, pds[i], VK_NULL_HANDLE, &out->gpus[i]);
     jpt_vk_gpu_assign_labels(out->gpus, (int)pd_count);
@@ -693,6 +724,7 @@ int jpt_vk_probe_headless(const char* gpu_request, jpt_vk_probe_result_t* out) {
     out->selected_index = jpt_vk_gpu_select(out->gpus, out->gpu_count, gpu_request, has_gpu_env_override(),
                                             out->summary, sizeof out->summary);
     out->available = out->selected_index >= 0 ? 1 : 0;
+    out->status = out->available ? JPT_VK_PROBE_OK : JPT_VK_PROBE_NO_USABLE_DEVICE;
     jpt_vk_context_shutdown(&tmp);
     return out->available;
 }

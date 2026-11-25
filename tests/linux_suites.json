@@ -24,7 +24,9 @@
     "vulkan_render_tests",
     "bug_report_tests",
     "update_tests",
-    "update_network_tests"
+    "update_network_tests",
+    "custom_level_tests",
+    "launcher_startup_tests"
   ],
   "linux_specific": [
     "linux_paths_tests",

@@ -24,6 +24,7 @@
 #include <tuple>
 #include <vector>
 
+#include "frame_pacer.h"
 #include "game_files.h"
 #include "game_install.h"
 #include "inflate.h"
@@ -38,6 +39,7 @@
 #include "jpt_l10n.h"
 #include "jpt_prompt_text.h"
 #include "jpt_string_table.h"
+#include "launcher_renderer.h"
 #include "jpt_user_data.h"
 #include "options.h"
 #include "user_data.h"
@@ -45,6 +47,7 @@
 #include "play_gate.h"
 #include "settings.h"
 #include "system_info.h"
+#include "trg/layout.h"
 #include "utf8.h"
 
 namespace fs = std::filesystem;
@@ -451,7 +454,7 @@ static void TestMigration(const fs::path& dir) {
 }
 
 static void TestPages() {
-    const char* expected[] = {"Play", "Display", "Graphics", "Gameplay", "Controls", "Cheats", "Bug Report", "About"};
+    const char* expected[] = {"Play", "Custom Levels", "Display", "Graphics", "Gameplay", "Controls", "Cheats", "Bug Report", "About"};
     CHECK(std::size(kPageOrder) == std::size(expected));
     for (size_t i = 0; i < std::size(kPageOrder) && i < std::size(expected); ++i) {
         const std::string name = PageName(kPageOrder[i]);
@@ -1634,7 +1637,7 @@ static void TestUiCoverage() {
     const std::regex group(R"re("(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)re");
     const std::regex piece(R"re("((?:[^"\\]|\\.)*)")re");
     for (const char* file : {"launcher/launcher.cpp", "launcher/options.cpp", "launcher/incident_page.cpp", "launcher/my_reports_page.cpp",
-                              "launcher/incident_client.cpp", "launcher/updater/update_ui.cpp"}) {
+                              "launcher/incident_client.cpp", "launcher/updater/update_ui.cpp", "launcher/custom_levels_page.cpp"}) {
         std::string source = ReadSource(file);
         const size_t stop = source.find("extern \"C\" jpt_launcher_result_t jpt_launcher_run");
         if (stop != std::string::npos) source.resize(stop);
@@ -1714,6 +1717,195 @@ static void TestLanguageNames() {
         CHECK(std::string(Tr("Gameplay")) == (std::string(language) == "pt-BR" ? "Jogabilidade" : "Gameplay"));
     }
     SetLauncherLanguage("en");
+}
+
+// ---- Launcher window: renderer choice, frame pacing, scrolling sidebar, Custom Levels page
+
+static size_t At(const std::string& text, const char* needle, size_t from = 0) { return text.find(needle, from); }
+
+static void TestLauncherRenderer() {
+    using Names = std::vector<std::string_view>;
+    CHECK(LauncherRendererOrder(true) == Names({"direct3d11", "software"}));
+    CHECK(LauncherRendererOrder(false) == Names({"", "software"}));
+    CHECK(RendererModulesToPin("direct3d11") == Names({"d3d11.dll", "dxgi.dll"}));
+    for (const char* other : {"software", "opengl", "vulkan", ""}) CHECK(RendererModulesToPin(other).empty());
+    CHECK(RendererSelectedLine("direct3d11", false, 2) == "renderer=direct3d11 fallback=0 pinned_modules=2");
+    CHECK(RendererSelectedLine("software", true, 2) == "renderer=software fallback=1 pinned_modules=2");
+    CHECK(RendererLabel("Direct 3D!") == "direct_3d_" && RendererLabel("") == "unknown");
+
+    const std::string host = ReadSource("launcher/host.cpp");
+    const size_t create = At(host, "LauncherHost::OpenRenderer(");
+    const size_t pin = At(host, "PinRendererModules(name, pinned_modules_)", create), make = At(host, "SDL_CreateRenderer(window_", create);
+    CHECK(create != std::string::npos && pin != std::string::npos && pin < make);
+    CHECK(At(host, "GET_MODULE_HANDLE_EX_FLAG_PIN") != std::string::npos && At(host, "LOAD_LIBRARY_SEARCH_SYSTEM32") != std::string::npos);
+    CHECK(At(host, "return RendererFailure{RendererStage::kPin", pin) < make);
+    CHECK(At(host, "RendererSelectedLine(renderer_name_, selection.fallback, pinned_modules_)") != std::string::npos);
+
+    const size_t close = At(host, "void LauncherHost::ReleaseWindow()");
+    const size_t textures = At(host, "SDL_DestroyTexture(texture)", close), backend = At(host, "ImGui_ImplSDLRenderer3_Shutdown", close),
+                 renderer = At(host, "SDL_DestroyRenderer(renderer_)", close), window = At(host, "SDL_DestroyWindow(window_)", close),
+                 quit = At(host, "SDL_Quit()", close);
+    CHECK(close != std::string::npos && textures < backend && backend < renderer && renderer < window && window < quit);
+
+    const std::string header = ReadSource("launcher/host.h") + host + ReadSource("launcher/frame_pacer.h") + ReadSource("launcher/launcher_renderer.h");
+    CHECK(header.find("DEBUG_SAULO") == std::string::npos);
+    CHECK(ReadSource("docs/LAUNCHER.md").find("Direct3D 11") != std::string::npos);
+}
+
+static void TestFramePacing() {
+    FramePacer pacer;
+    CHECK(pacer.interval_ns() == kLauncherFrameNs && kLauncherTargetHz == 60);
+    FrameWait wait = pacer.Next(1000);
+    CHECK(wait.draw && wait.wait_ns == 0);
+    wait = pacer.Next(1000 + kNsPerMs);
+    CHECK(!wait.draw && wait.wait_ns == kLauncherFrameNs - kNsPerMs);
+    CHECK(pacer.Next(1000 + kLauncherFrameNs).draw);
+
+    // A loop that polls every 100 microseconds while it waits still draws about 60 frames a second.
+    FramePacer polled;
+    int drawn = 0;
+    for (int64_t now = 0; now < kNsPerSecond; now += 100'000) drawn += polled.Next(now).draw ? 1 : 0;
+    CHECK(drawn >= 59 && drawn <= 61);
+
+    // Sleeping exactly as long as asked also gives 60, so the loop does not spin between frames.
+    FramePacer sleeping;
+    int64_t now = 0;
+    int64_t polls = 0;
+    drawn = 0;
+    while (now < kNsPerSecond) {
+        const FrameWait next = sleeping.Next(now);
+        ++polls;
+        if (next.draw) {
+            ++drawn;
+            now += kNsPerMs;
+        } else {
+            now += next.wait_ns;
+        }
+    }
+    CHECK(drawn >= 59 && drawn <= 61 && polls <= 2 * 61 + 2);
+
+    // A stall is not followed by a burst of frames.
+    FramePacer stalled;
+    stalled.Next(0);
+    CHECK(stalled.Next(kNsPerSecond).draw);
+    CHECK(!stalled.Next(kNsPerSecond + kNsPerMs).draw);
+    // A clock that went back does not freeze the loop.
+    FramePacer back;
+    back.Next(10 * kNsPerSecond);
+    const FrameWait early = back.Next(0);
+    CHECK(early.wait_ns <= kLauncherFrameNs);
+    // Minimising starts the schedule again; a hidden window is not limited.
+    pacer.Reset();
+    CHECK(pacer.Next(5).draw);
+    FramePacer hidden(0);
+    for (int i = 0; i < 100; ++i) CHECK(hidden.Next(i).draw);
+
+    LoopMonitor monitor;
+    const FrameTimes frame{2 * kNsPerMs, kNsPerMs, 3 * kNsPerMs};
+    std::optional<LoopSample> sample;
+    int samples = 0;
+    for (int64_t t = 0; t <= 20 * kNsPerSecond; t += kLauncherFrameNs) {
+        monitor.Waited(kNsPerMs);
+        sample = monitor.FrameDrawn(t, frame, t / 10);
+        samples += sample ? 1 : 0;
+        if (sample) {
+            CHECK(sample->hz > 59.0 && sample->hz < 61.0 && sample->frames > 290 && sample->cpu_pct >= 9 && sample->cpu_pct <= 10);
+            const std::string line = LoopSampleLine("direct3d11", *sample);
+            CHECK(line.find("renderer=direct3d11") != std::string::npos && line.find("present_ms=3.0") != std::string::npos);
+        }
+    }
+    CHECK(samples == 1);
+    monitor.Reset();
+    CHECK(!monitor.FrameDrawn(30 * kNsPerSecond, frame));
+
+    VsyncState vsync;
+    vsync.requested = true;
+    CHECK(PacingLine("software", vsync) == "frame pacing: renderer=software requested_vsync=1 effective_vsync=0 target_hz=60");
+
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t loop = At(launcher, "while (outcome == Outcome::kRunning)");
+    CHECK(loop != std::string::npos);
+    const std::string body = launcher.substr(loop, At(launcher, "host_.EndFrame", loop) - loop);
+    CHECK(body.find("host_.WaitForFrame()") != std::string::npos && body.find("SDL_Delay") == std::string::npos &&
+          body.find("PumpEvents") == std::string::npos);
+    const std::string host = ReadSource("launcher/host.cpp");
+    const size_t waiting = At(host, "bool LauncherHost::WaitForFrame()");
+    const std::string wait_body = host.substr(waiting, At(host, "void LauncherHost::NoteFrameDrawn", waiting) - waiting);
+    CHECK(wait_body.find("PumpEvents()") != std::string::npos && wait_body.find("SDL_DelayNS") != std::string::npos &&
+          wait_body.find("SDL_Delay(kMinimizedSleepMs)") != std::string::npos);
+    CHECK(At(host, "SDL_SetRenderVSync(renderer_, 0)") != std::string::npos && At(host, "SDL_GetWindowSurfaceVSync") != std::string::npos);
+}
+
+static void TestSidebarScroll() {
+    constexpr int kPages = 9;
+    const float full = trg::layout::SidebarHeight(kPages), least = trg::layout::SidebarHeight(kPages, trg::layout::kSidebarRowMin);
+    CHECK(trg::layout::SidebarScrollMax(kPages, trg::layout::kSidebarRow, full) == 0.0f);
+    CHECK(trg::layout::SidebarRowFor(kPages, full) == trg::layout::kSidebarRow);
+    CHECK(trg::layout::SidebarRowFor(kPages, least) == trg::layout::kSidebarRowMin);
+
+    // Logical heights of a 560 px window at 100%, 150% and 225% display scale, and shorter ones that need the bar.
+    for (const float scale : {1.0f, 1.5f, 2.25f}) {
+        for (const float physical : {1080.0f, 560.0f, 420.0f, 360.0f, 300.0f, 240.0f}) {
+            const float body = std::floor(physical * scale) / scale;
+            const float row = trg::layout::SidebarRowFor(kPages, body);
+            const float max = trg::layout::SidebarScrollMax(kPages, row, body);
+            CHECK(row >= trg::layout::kSidebarRowMin && row <= trg::layout::kSidebarRow);
+            CHECK((max > 0.0f) == (trg::layout::SidebarHeight(kPages, row) > body));
+            float scroll = 0.0f;
+            for (int page = 0; page < kPages; ++page) {
+                scroll = trg::layout::SidebarScrollToShow(page, kPages, row, body, scroll);
+                const float top = trg::layout::SidebarRowTop(page, row);
+                CHECK(scroll >= 0.0f && scroll <= max + 0.001f);
+                CHECK(top - scroll >= -0.001f && top + row - scroll <= body + 0.001f);
+            }
+            for (int page = kPages - 1; page >= 0; --page) {
+                scroll = trg::layout::SidebarScrollToShow(page, kPages, row, body, scroll);
+                const float top = trg::layout::SidebarRowTop(page, row);
+                CHECK(top - scroll >= -0.001f && top + row - scroll <= body + 0.001f);
+            }
+            // A page that is already in view leaves the scroll where the player put it.
+            if (max > 0.0f) {
+                const float mid = max / 2.0f;
+                for (int page = 0; page < kPages; ++page) {
+                    const float top = trg::layout::SidebarRowTop(page, row) - trg::layout::kSidebarPadding;
+                    const bool inside = top >= mid && top + row + trg::layout::kSidebarPadding * 2.0f - mid <= body;
+                    if (inside) CHECK(trg::layout::SidebarScrollToShow(page, kPages, row, body, mid) == mid);
+                }
+            }
+        }
+    }
+    const float bar = 14.0f;
+    CHECK(trg::layout::SidebarRowWidth(168.0f, 0.0f) == 168.0f - trg::layout::kSidebarPadding * 2.0f);
+    CHECK(trg::layout::SidebarRowWidth(168.0f, bar) == 168.0f - trg::layout::kSidebarPadding - bar);
+
+    const std::string patch = ReadSource("launcher/patches/trg-launcher/0020-sidebar-scroll.patch");
+    for (const char* text : {"SetNextWindowScroll", "SetNextWindowContentSize", "ImGuiButtonFlags_EnableNav", "sidebar_scroll_ = ImGui::GetScrollY()",
+                             "SidebarScrollToShow", "SidebarRowWidth", "navigation_.current() != sidebar_shown_"})
+        CHECK(patch.find(text) != std::string::npos);
+    CHECK(patch.find("-  ImGui::BeginChild(\"##sidebar\", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);") != std::string::npos);
+}
+
+static void TestCustomLevelsPageUi() {
+    const std::string page = ReadSource("launcher/custom_levels_page.cpp"), header = ReadSource("launcher/custom_levels_page.h"),
+                      launcher = ReadSource("launcher/launcher.cpp"), incident = ReadSource("launcher/incident_page.cpp");
+    CHECK(page.find("Game version") == std::string::npos && page.find("version_selector") == std::string::npos &&
+          page.find("several_versions") == std::string::npos && header.find("version_selector") == std::string::npos &&
+          header.find("several_versions") == std::string::npos);
+    const size_t hooks = At(launcher, "CustomLevelsHooks MakeCustomLevelsHooks()");
+    const std::string made = launcher.substr(hooks, At(launcher, "void BrowseForLevel", hooks) - hooks);
+    CHECK(made.find("VersionCombo") == std::string::npos && made.find("SelectVersion") == std::string::npos &&
+          made.find("JPT_KEY_GAME_VERSION") == std::string::npos && made.find("Selected()") != std::string::npos);
+    CHECK(At(launcher, "ui.Row(\"Game version\", kGameVersionHelp)") != std::string::npos);
+
+    // The readme goes to the system's own application, through the helper "View selected log" uses.
+    CHECK(incident.find("trg::OpenUrl(Utf8(log.path))") != std::string::npos);
+    CHECK(made.find("hooks.open_file = [](const std::filesystem::path& file) { trg::OpenUrl(Utf8(file)); };") != std::string::npos);
+    CHECK(page.find("ResolveReadme(user_dir_, package, file)") != std::string::npos && page.find("hooks_.open_file(file)") != std::string::npos);
+    for (const char* text : {"BeginPopupModal(kPopup, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize", "level_readme", "readme_text_"})
+        CHECK(page.find(text) == std::string::npos && header.find(text) == std::string::npos);
+    CHECK(page.find("const bool readme = !package.readme.empty();") != std::string::npos);
+    CHECK(HasRow("The readme could not be opened.") && !HasRow("This file could not be read.") &&
+          !HasRow("The installed version the levels below are played with. Each version keeps its own saves."));
 }
 
 static void TestGoreAndTitleOptions() {
@@ -1813,12 +2005,12 @@ static void TestNoLanguagePage() {
     for (size_t at = launcher.find("\"Language\""); at != std::string::npos; at = launcher.find("\"Language\"", at + 1)) ++combos;
     CHECK(combos == 1);
     for (const char* forbidden : {"\"game_text_language\"", "\"subtitle_language\"", "JPT_KEY_LEGACY", "Install downloaded",
-                                  "Open TresCom", "BrowseForFolder"})
+                                  "Open TresCom"})
         CHECK(launcher.find(forbidden) == std::string::npos);
     CHECK(launcher.find("Translation credits") != std::string::npos);
     std::size_t sections = 0;
     for (const PageId page : kPageOrder) sections += std::string(PageName(page)) == "Language";
-    CHECK(sections == 0 && std::size(kPageOrder) == 8);
+    CHECK(sections == 0 && std::size(kPageOrder) == 9);
 }
 
 static std::vector<jpt_gpu_t> Gpus(std::initializer_list<const char*> names) {
@@ -1959,11 +2151,15 @@ static void TestGraphicsCard(const fs::path& dir) {
     CHECK(renderer != std::string::npos && renderer < card && card < resolution && resolution != std::string::npos);
     CHECK(launcher.find("ui.Info(\"Graphics card\"") == std::string::npos);
     CHECK(launcher.find("BeginCombo(\"##graphics_card\"") != std::string::npos);
-    CHECK(launcher.find("\"No graphics card found\"") != std::string::npos);
+    CHECK(launcher.find("Tr(GraphicsCardsProblem(cards_))") != std::string::npos);
+    GraphicsCards unknown;
+    CHECK(HasRow(GraphicsCardsProblem(unknown)));
+    unknown.state = GraphicsCards::State::kSkipped;
+    CHECK(HasRow(GraphicsCardsProblem(unknown)));
     CHECK(launcher.find("NormalizeGraphicsCard();") != std::string::npos);
     for (const char* gone : {"Render size", "RenderSizeText", "Not detected", "QueryGpu", "\"Automatic\", \"Auto\""})
         CHECK(launcher.find(gone) == std::string::npos && ReadSource("launcher/options.cpp").find(gone) == std::string::npos);
-    CHECK(!HasRow("Render size") && !HasRow("Not detected") && HasRow("No graphics card found") && HasRow("Graphics card"));
+    CHECK(!HasRow("Render size") && !HasRow("Not detected") && HasRow("Graphics card"));
     SetLauncherLanguage("pt-BR");
     CHECK(std::string(Tr("Selects which graphics card renders the game. If the selected card is no longer available, the "
                          "first available card is used.")) ==
@@ -2296,6 +2492,10 @@ int main() {
     TestDirect3DEffectsPolicy();
     TestFogAndShadowsRows();
     TestLanguageNames();
+    TestLauncherRenderer();
+    TestFramePacing();
+    TestSidebarScroll();
+    TestCustomLevelsPageUi();
     TestGoreAndTitleOptions();
     TestGameplayOrder();
     TestGraphicsCard(dir);

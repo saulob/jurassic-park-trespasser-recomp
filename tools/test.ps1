@@ -277,6 +277,8 @@ Add-Suite $s 'check' 'linux audio probe' 'the portable audio and Smacker layers 
 
 $s = 'Launcher'
 Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
+Add-Exes $s @(, @('launcher_startup_tests', 'launcher start without graphics support: renderer order and fallback, --launcher-renderer, graphics card list failures, a failed launcher never starts the game', 120))
+Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths', 200))
 Add-Python $s @(, @('test_setting_parity.py', 'launcher rows and runtime settings agree: parsers, defaults, ranges, lists, readers'))
 Add-Python $s @(, @('test_player_polish.py', 'gamepad icon in the executable and both windows, numbered Level Select, Bug Report page and Worker, auto update wiring and release contract, Windows and Linux'))
 Add-Exes $s @(

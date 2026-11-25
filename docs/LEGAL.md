@@ -67,6 +67,7 @@ lines were written for the port (PC port completion).
 | [FFmpeg](https://ffmpeg.org/) libavformat, libavcodec and libavutil n7.1.1 | LGPL-2.1-or-later for the Smacker demuxer and decoders it uses | not in the Windows release (it runs the original SMACKW32.DLL); the Linux release statically links the LGPL-only build of `tools/ffmpeg-bootstrap.sh` (`src/host/video/smacker_backend_ffmpeg.c`), with the LGPL-2.1 text and the source offer in the AppImage (`packaging/licenses`) |
 | [OpenSSL](https://www.openssl.org/) 3.5.9 | Apache-2.0 | statically linked into the Linux executable by `tools/openssl-bootstrap.sh` for the Bug Report's HTTPS; the licence text is in the AppImage (`packaging/licenses/OpenSSL-LICENSE.txt`) |
 | [memononen/nanosvg](https://github.com/memononen/nanosvg) | zlib | vendored in `launcher/third_party/nanosvg` (from 13 Sentinels), draws the sidebar icons |
+| [ip7z/7zip](https://github.com/ip7z/7zip) LZMA SDK 26.06 at `d3296e39e1f1f92c7b41c0c3848e65640428d42d` | public domain (Igor Pavlov) | the 7z, LZMA and LZMA2 decoders vendored in `launcher/third_party/lzma`; read custom level packages |
 | Launcher icons and sponsor heart | CC0, CC BY (`display.svg`), MIT (`bug-report.svg`) | `assets/launcher`; sources in `assets/launcher/icons/SOURCES.md`, notices in `packaging/licenses/THIRD-PARTY-LICENSES.txt` |
 
 `src/host/selfmod.c` adapts the register hand-over of pcrecomp's `gen_bridge`.

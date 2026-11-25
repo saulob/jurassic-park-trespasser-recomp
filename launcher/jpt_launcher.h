@@ -2,13 +2,14 @@
 #ifndef JPT_LAUNCHER_H
 #define JPT_LAUNCHER_H
 
+#include "jpt_custom_level.h"
 #include "jpt_user_data.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef enum { JPT_LAUNCHER_PLAY = 0, JPT_LAUNCHER_QUIT = 1 } jpt_launcher_result_t;
+typedef enum { JPT_LAUNCHER_PLAY = 0, JPT_LAUNCHER_QUIT = 1, JPT_LAUNCHER_FAILED = 2 } jpt_launcher_result_t;
 
 #define JPT_USER_PATH_CAP 260
 
@@ -42,11 +43,14 @@ typedef struct {
     int user_data_outcome;
     int force_show;            /* --launcher */
     int skip_once;             /* --skip-launcher: not shown unless the game files are not ready */
+    const char* launcher_renderer; /* --launcher-renderer (jpt_launcher_renderer_valid); NULL is auto. Never saved */
     jpt_log_fn log;
+    jpt_custom_level_request_t* custom_level; /* out: the custom level to start, an empty scene for the game itself */
 } jpt_launcher_config_t;
 
 /* Shows the launcher when it is wanted and returns once its window and every resource of it are gone. PLAY when the
- * game should start (also when the launcher was not wanted, or its window could not open with valid files). */
+ * game should start (also when the launcher was not wanted). FAILED when its window could not open: the player has been
+ * told and the game must not start. */
 jpt_launcher_result_t jpt_launcher_run(const jpt_launcher_config_t* config);
 
 #ifdef __cplusplus

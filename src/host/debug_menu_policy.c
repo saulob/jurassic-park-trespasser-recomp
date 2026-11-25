@@ -448,6 +448,32 @@ int dm_scene_valid(const char* scene) {
     return 1;
 }
 
+int dm_start_request(dm_start_t* s, const char* scene) {
+    memset(s, 0, sizeof *s);
+    if (!dm_scene_valid(scene)) return 0;
+    snprintf(s->scene, sizeof s->scene, "%s", scene);
+    return 1;
+}
+
+int dm_start_due(dm_start_t* s, dm_place_t place, uint32_t now_ms, char scene[DM_SCENE_MAX]) {
+    if (!s->scene[0] || place == DM_PLACE_NONE) {
+        s->seen = 0;
+        return 0;
+    }
+    if (place == DM_PLACE_LEVEL) {
+        s->scene[0] = 0;
+        return 0;
+    }
+    if (!s->seen) {
+        s->seen = 1;
+        s->since = now_ms;
+    }
+    if (now_ms - s->since < DM_START_SETTLE_MS) return 0;
+    snprintf(scene, DM_SCENE_MAX, "%s", s->scene);
+    s->scene[0] = 0;
+    return 1;
+}
+
 int dm_level_id(const char* scene, char* out, size_t cap) {
     size_t n;
     if (!cap) return 0;

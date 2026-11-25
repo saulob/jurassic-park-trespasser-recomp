@@ -99,7 +99,12 @@ static uint64_t io__sopen(const uint32_t* a, void* u) {
     if (mode & O_CREAT_G) flags |= O_CREAT;
     if (mode & O_TRUNC_G) flags |= O_TRUNC;
     if (mode & O_EXCL_G) flags |= O_EXCL;
-    if (jpt_vpath_resolve(hle_vpath(), name, (mode & O_CREAT_G) != 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    if (mode & (O_CREAT_G | O_TRUNC_G | O_WRONLY_G | O_RDWR_G)) {
+        if (jpt_vpath_write_refused(hle_vpath(), name)) return (uint32_t)-1;
+        if (jpt_vpath_resolve(hle_vpath(), name, (mode & O_CREAT_G) != 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    } else if (jpt_vpath_resolve_read(hle_vpath(), name, host, sizeof host, NULL) != JPT_VP_OK) {
+        return (uint32_t)-1;
+    }
     fd = open(host, flags | O_CLOEXEC, 0666);
     if (fd < 0) return (uint32_t)-1;
     if (mode & O_CREAT_G) jpt_vpath_invalidate(hle_vpath(), host);
@@ -119,7 +124,8 @@ static uint64_t io_remove(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     char host[JPT_PATH_MAX];
     (void)u;
-    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    if (!name || !hle_vpath() || jpt_vpath_write_refused(hle_vpath(), name)) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
     if (!jpt_fs_remove(host)) return (uint32_t)-1;
     jpt_vpath_invalidate(hle_vpath(), host);
     return 0;
@@ -129,9 +135,11 @@ static uint64_t io_rename(const uint32_t* a, void* u) {
     const char *from = cstr(a[0]), *to_name;
     char source[JPT_PATH_MAX], target[JPT_PATH_MAX];
     (void)u;
-    if (!from || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), from, 0, source, sizeof source) != JPT_VP_OK) return (uint32_t)-1;
     to_name = cstr(a[1]);
-    if (!to_name || jpt_vpath_resolve(hle_vpath(), to_name, 1, target, sizeof target) != JPT_VP_OK) return (uint32_t)-1;
+    if (!from || !to_name || !hle_vpath()) return (uint32_t)-1;
+    if (jpt_vpath_write_refused(hle_vpath(), from) || jpt_vpath_write_refused(hle_vpath(), to_name)) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), from, 0, source, sizeof source) != JPT_VP_OK) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), to_name, 1, target, sizeof target) != JPT_VP_OK) return (uint32_t)-1;
     if (rename(source, target) != 0) return (uint32_t)-1;
     jpt_vpath_invalidate(hle_vpath(), source);
     jpt_vpath_invalidate(hle_vpath(), target);
@@ -210,7 +218,8 @@ static uint64_t io__mkdir(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     char host[JPT_PATH_MAX];
     (void)u;
-    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 1, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    if (!name || !hle_vpath() || jpt_vpath_write_refused(hle_vpath(), name)) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), name, 1, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
     if (jpt_fs_is_dir(host)) return (uint32_t)-1;
     if (!jpt_fs_mkdir(host)) return (uint32_t)-1;
     jpt_vpath_invalidate(hle_vpath(), host);

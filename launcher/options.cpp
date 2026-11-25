@@ -15,6 +15,7 @@ std::string Dimensions(int width, int height) { return std::to_string(width) + k
 const char* PageName(PageId page) {
     switch (page) {
     case PageId::kPlay: return "Play";
+    case PageId::kCustomLevels: return "Custom Levels";
     case PageId::kDisplay: return "Display";
     case PageId::kGraphics: return "Graphics";
     case PageId::kGameplay: return "Gameplay";

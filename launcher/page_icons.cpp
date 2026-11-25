@@ -29,7 +29,8 @@ extern const EmbeddedFile kPageIconFiles[];
 namespace {
 
 constexpr PageIconAsset kAssets[] = {
-    {PageId::kPlay, "play.svg", 0.84f},         {PageId::kDisplay, "display.svg", 0.90f},
+    {PageId::kPlay, "play.svg", 0.84f},         {PageId::kCustomLevels, "custom-levels.svg", 0.88f},
+    {PageId::kDisplay, "display.svg", 0.90f},
     {PageId::kGraphics, "graphics.svg", 0.84f}, {PageId::kGameplay, "gameplay.svg", 0.92f},
     {PageId::kControls, "controls.svg", 0.94f}, {PageId::kCheats, "cheats.svg", 0.92f},
     {PageId::kBugReport, "bug-report.svg", 0.90f}, {PageId::kAbout, "about.svg", 0.88f},

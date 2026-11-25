@@ -75,6 +75,7 @@ Windows build), then starts the game when **Play** is pressed. Every page and se
 | --- | --- |
 | `--launcher` | show the launcher even when it is turned off (Shift at start is not available on Linux) |
 | `--skip-launcher` | skip it once, unless the game files are not ready |
+| `--launcher-renderer auto\|software` | what draws the launcher's own window, for this run only; `software` needs no Vulkan (docs/LAUNCHER.md). The game's renderer does not change |
 | `--run` | start the game at once, without the launcher |
 | `--dry-run`, `--bootstrap-headless` | the headless modes of the earlier bring-up |
 | `--renderer`, `--graphics-card` | override the renderer and the Vulkan card for this run |
@@ -764,7 +765,7 @@ the launcher are the first things to try by hand; the log (`Linux presentation: 
 
 ```
 trespasser_recomp [--game DIR] [--version ID] [--user_data_root DIR] [--log-dir DIR] [--log-file FILE]
-                  [--launcher | --skip-launcher | --run | --dry-run | --bootstrap-headless]
+                  [--launcher | --skip-launcher | --run | --dry-run | --bootstrap-headless] [--launcher-renderer NAME]
                   [--renderer NAME] [--graphics-card ID] [--<setting> VALUE ...]
 ```
 

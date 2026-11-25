@@ -1,5 +1,7 @@
 #include "linux_boot.h"
 
+#include "debug_menu.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,7 +44,7 @@ typedef struct {
 } entry_call_t;
 
 static void prepare_saves(jpt_vpath_t* vp, const lx_boot_options_t* o, const jpt_game_version_t* version) {
-    char default_saves[JPT_PATH_MAX], saves[JPT_PATH_MAX];
+    char default_saves[JPT_PATH_MAX], saves[JPT_PATH_MAX], store[JPT_PATH_MAX];
     const char* user_root = o->user_root ? o->user_root : "user_data";
     if (o->saves_dir) {
         snprintf(saves, sizeof saves, "%s", o->saves_dir);
@@ -52,8 +54,23 @@ static void prepare_saves(jpt_vpath_t* vp, const lx_boot_options_t* o, const jpt
             snprintf(saves, sizeof saves, "%s", default_saves);
     }
     jpt_make_dirs(saves);
+    snprintf(store, sizeof store, "%s", saves);
+    if (jpt_custom_level_active() && jpt_custom_level_saves_dir(store, jpt_custom_level_package(), saves, sizeof saves))
+        jpt_make_dirs(saves);
     jpt_vpath_mount(vp, 'D', saves);
-    hle_advapi32_init(saves, "C:\\", "D:\\");
+    hle_advapi32_init(store, "C:\\", "D:\\");
+}
+
+/* The chosen package answers for C:\data and plays with its own Installed Directory (its saves name its files, and level
+ * swap files are told apart only by name); the registry store stays the version's. */
+static int start_custom_level(jpt_vpath_t* vp, const lx_boot_options_t* o, char* error, size_t cap) {
+    const char* user_root = o->user_root ? o->user_root : "user_data";
+    jpt_custom_level_deactivate();
+    if (!o->custom_level || !o->custom_level->scene[0]) return 1;
+    if (!jpt_custom_level_activate(user_root, o->custom_level, error, cap)) return 0;
+    jpt_vpath_set_overlay(vp, 'C', "data", jpt_custom_level_find);
+    lx_log("custom-level", "%s, scene %s loaded as %s", o->custom_level->package, o->custom_level->scene, jpt_custom_level_scene());
+    return 1;
 }
 
 static const char* resolve_game_dir(const char* game_dir, const jpt_game_version_t* version, char* out, size_t cap) {
@@ -169,7 +186,7 @@ void lx_boot_options_init(lx_boot_options_t* o, const char* game_dir, const char
 lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* r) {
     const jpt_game_version_t* version = jpt_game_version_by_id(o->version ? o->version : "en-116");
     const lx_lift_t* image = version ? lx_lift_for_version(version) : NULL;
-    char version_dir[JPT_PATH_MAX], host_image[JPT_PATH_MAX], hash[65], err[128];
+    char version_dir[JPT_PATH_MAX], host_image[JPT_PATH_MAX], hash[65], err[128], custom_error[512];
     const char* mount_dir;
     uint8_t* bytes = NULL;
     size_t size = 0;
@@ -199,6 +216,10 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     if (!vp || !mount_dir || !jpt_vpath_mount(vp, 'C', mount_dir)) {
         jpt_vpath_free(vp);
         return finish(r, LX_BOOT_SETUP_FAILED, "cannot map the game folder");
+    }
+    if (!start_custom_level(vp, o, custom_error, sizeof custom_error)) {
+        jpt_vpath_free(vp);
+        return finish(r, LX_BOOT_SETUP_FAILED, custom_error);
     }
     if (!find_image(vp, o->version ? o->version : "en-116", host_image, sizeof host_image)) {
         jpt_vpath_free(vp);
@@ -244,6 +265,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     lx_vsub_init(o->settings_file, o->version ? o->version : "en-116");
     hle_init(vp, img.base, "C:\\trespass.exe");
     lx_settings_load(o->settings_file, &settings);
+    if (jpt_custom_level_active()) settings.skip_intro = 1;
     hle_set_exit_handler(on_exit_request);
     prepare_saves(vp, o, version);
     lx_window_set_backend(o->backend);
@@ -278,6 +300,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
         r->overrides_installed = counts_now.installed;
         r->overrides_required = counts_now.required_installed;
         lx_user32_set_ui_loop(lx_host_ui_loop);
+        debug_menu_start_custom_level();
     }
     if (!lx_modules_bind(&r->module_imports, &r->module_imports_implemented))
         return finish(r, LX_BOOT_SETUP_FAILED, "a guest module's imports cannot be bound");
@@ -338,6 +361,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     lx_screen_window_close();
     lx_modules_reset();
     jpt_vpath_free(vp);
+    jpt_custom_level_deactivate();
     r->cleanup_complete = threads_ended;
     if (threads_ended) gm_shutdown();
     else lx_log("boot", "guest memory stays mapped: a guest thread is still running");

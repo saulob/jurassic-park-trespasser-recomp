@@ -163,10 +163,10 @@ static void migrate_subtitles_default(void) {
     if (!marker || !marker->data) set_value(SUBTITLES_MARKER, REG_DWORD, &on, 4);
 }
 
-void guest_registry_init(const char* game_dir, const char* user_dir) {
+void guest_registry_init(const char* game_dir, const char* store_dir, const char* user_dir) {
     char data_root[MAX_PATH], user_root[MAX_PATH];
     DWORD installed = 1;
-    _snprintf(s_store_path, sizeof s_store_path - 1, "%s\\" STORE_FILE, user_dir);
+    _snprintf(s_store_path, sizeof s_store_path - 1, "%s\\" STORE_FILE, store_dir);
     _snprintf(data_root, sizeof data_root - 1, "%s\\", game_dir);
     _snprintf(user_root, sizeof user_root - 1, "%s\\", user_dir);
     data_root[sizeof data_root - 1] = 0;

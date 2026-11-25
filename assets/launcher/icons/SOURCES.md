@@ -35,6 +35,10 @@ CC0 asks for no attribution; the sources are kept for provenance.
 | `controls.svg` | Keyboard | https://www.svgrepo.com/svg/524665/keyboard | CC0 |
 | `about.svg` | About | https://www.svgrepo.com/svg/486929/about | CC0 |
 
+## Drawn for this port
+
+`custom-levels.svg` (a folded map) was drawn for the launcher and comes under the project's licence.
+
 ## Changes from the downloaded files
 
 All files have LF line endings and their canonical names. No path was changed, and each file keeps the colours it was

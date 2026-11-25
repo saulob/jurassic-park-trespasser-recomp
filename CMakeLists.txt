@@ -110,6 +110,7 @@ set(HOST_SOURCES
   src/host/guest_env.c
   src/host/registry.c
   src/host/io_trace.c
+  src/host/custom_level_files.c
   src/host/menu_audio_policy.c
   src/host/menu_audio.c
   ${JPT_AUDIO_PORTABLE_SOURCES}
@@ -247,7 +248,7 @@ set(PCRECOMP_SOURCES
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c src/common/jpt_renderer.c src/common/jpt_present_policy.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
-  src/common/jpt_video_subtitles.c)
+  src/common/jpt_custom_level.c src/common/jpt_szdd.c src/common/jpt_video_subtitles.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
 target_compile_options(jpt_common PRIVATE /W4)
@@ -324,12 +325,17 @@ target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 
 add_library(jpt_miniz STATIC launcher/updater/third_party/miniz/miniz.c)
 target_include_directories(jpt_miniz PUBLIC launcher)
 target_compile_options(jpt_miniz PRIVATE /W3)
-add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+# The 7z decoder of the LZMA SDK (custom level packages).
+set(JPT_LZMA_SOURCES 7zArcIn.c 7zBuf.c 7zCrc.c 7zCrcOpt.c 7zDec.c 7zStream.c Bcj2.c Bra.c Bra86.c BraIA64.c CpuArch.c Delta.c Lzma2Dec.c LzmaDec.c)
+list(TRANSFORM JPT_LZMA_SOURCES PREPEND launcher/third_party/lzma/)
+add_library(jpt_lzma STATIC ${JPT_LZMA_SOURCES})
+target_compile_options(jpt_lzma PRIVATE /W3)
+add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp launcher/custom_levels_page.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
   launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
   launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
   launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
   launcher/updater/update_zip.cpp launcher/updater/version.cpp)
-target_link_libraries(jpt_launcher PUBLIC jpt_launcher_core trg_ui jpt_miniz)
+target_link_libraries(jpt_launcher PUBLIC jpt_launcher_core trg_ui jpt_miniz jpt_lzma)
 target_compile_definitions(jpt_launcher PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(jpt_launcher_core PRIVATE JPT_PORT_VERSION="${PROJECT_VERSION}")
 target_include_directories(jpt_launcher PRIVATE launcher ${CMAKE_BINARY_DIR}/generated)
@@ -587,6 +593,27 @@ target_link_libraries(launcher_tests PRIVATE jpt_launcher_core)
 target_compile_definitions(launcher_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_options(launcher_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# The launcher's start on scripted systems: renderer fallback, recovery option, graphics card list (headless):
+#   ninja -C <build dir> launcher_startup_tests
+add_executable(launcher_startup_tests EXCLUDE_FROM_ALL tests/launcher_startup_tests.cpp)
+target_include_directories(launcher_startup_tests PRIVATE launcher)
+target_link_libraries(launcher_startup_tests PRIVATE jpt_common)
+target_compile_definitions(launcher_startup_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_options(launcher_startup_tests PRIVATE /W4 /utf-8)
+set_target_properties(launcher_startup_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# Custom levels: the package import (ZIP, 7z, folder), its limits and rollback, the listing and README, and the file overlay the
+# game reads an active package through, on scratch folders (headless): ninja -C <build dir> custom_level_tests
+add_executable(custom_level_tests EXCLUDE_FROM_ALL tests/custom_level_tests.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp
+  launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp src/common/jpt_vpath.c src/host/custom_level_files.c
+  src/host/audio/audio_policy.c src/host/audio/platform/windows_dsound_imports.c)
+target_link_libraries(custom_level_tests PRIVATE jpt_launcher_core jpt_miniz jpt_lzma lz32)
+target_include_directories(custom_level_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32
+  ${CMAKE_BINARY_DIR}/generated)
+target_compile_definitions(custom_level_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_options(custom_level_tests PRIVATE /W3 /utf-8)
+set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # Text translations: the language choice, GameStrings, code pages, captions, DDF labels, the overlay's word wrap and the
 # embedded text itself (headless): ninja -C <build dir> l10n_tests && l10n_tests.exe

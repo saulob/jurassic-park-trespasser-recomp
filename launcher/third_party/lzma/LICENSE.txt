@@ -1,0 +1,11 @@
+LZMA SDK (7-Zip source code, C folder)
+
+Version 26.06, https://github.com/ip7z/7zip commit d3296e39e1f1f92c7b41c0c3848e65640428d42d,
+files unchanged but for trailing whitespace.
+Only the 7z, LZMA, LZMA2, BCJ, BCJ2, ARM and delta decoders and the headers they include are kept here.
+
+Igor Pavlov : Public domain
+
+Each file in this folder states "Igor Pavlov : Public domain" in its header. The LZMA SDK is placed in the public domain:
+anyone is free to copy, modify, publish, use, compile, sell, or distribute it, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any means.

@@ -31,7 +31,19 @@ typedef struct {
     void* log_user;
 } jpt_vk_context_desc_t;
 
+typedef enum {
+    JPT_VK_PROBE_NOT_RUN = 0,
+    JPT_VK_PROBE_OK,
+    JPT_VK_PROBE_LOADER,
+    JPT_VK_PROBE_INSTANCE,
+    JPT_VK_PROBE_ENTRY_POINTS,
+    JPT_VK_PROBE_ENUMERATION,
+    JPT_VK_PROBE_NO_DEVICE,
+    JPT_VK_PROBE_NO_USABLE_DEVICE
+} jpt_vk_probe_status_t;
+
 typedef struct {
+    jpt_vk_probe_status_t status;
     int available;
     int gpu_count;
     int selected_index;
@@ -80,7 +92,11 @@ void jpt_vk_context_shutdown(jpt_vk_context_t* ctx);
 void jpt_vk_set_object_name(const jpt_vk_context_t* ctx, VkObjectType type, uint64_t handle, const char* name);
 void jpt_vk_log(const jpt_vk_context_t* ctx, const char* fmt, ...);
 
+/* Enumerates only: no device is created. Every failure is reported in `out`. */
 int jpt_vk_probe_headless(const char* gpu_request, jpt_vk_probe_result_t* out);
+/* The same over an open loader, which it closes. */
+int jpt_vk_probe_loader(jpt_vk_loader_t* vk, const char* gpu_request, jpt_vk_probe_result_t* out);
+const char* jpt_vk_probe_status_name(jpt_vk_probe_status_t status);
 
 void jpt_vk_format_startup_summary(const jpt_vk_context_t* ctx, VkPresentModeKHR present_mode, VkFormat swap_format,
                                    uint32_t internal_w, uint32_t internal_h, uint32_t msaa, float anisotropy,

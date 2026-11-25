@@ -527,6 +527,7 @@ declare -A built_in=(
     [SDL]=external/SDL/LICENSE.txt [Dear-ImGui]=external/imgui/LICENSE.txt
     [pcrecomp]=external/pcrecomp/LICENSE
     [miniz]=launcher/updater/third_party/miniz/LICENSE [nanosvg]=launcher/third_party/nanosvg/LICENSE.txt
+    [LZMA-SDK]=launcher/third_party/lzma/LICENSE.txt
     [ASSAO]=third_party/assao/LICENSE [Vulkan-Headers]=third_party/vulkan/LICENSE.txt)
 for component in $(printf '%s\n' "${!built_in[@]}" | sort); do
     [[ -f ${built_in[$component]} ]] || die "Missing licence file: ${built_in[$component]}"

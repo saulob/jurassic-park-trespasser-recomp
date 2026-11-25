@@ -7,6 +7,7 @@
 #include "jpt_present_policy.h"
 #include "jpt_prompt_text.h"
 #include "jpt_renderer.h"
+#include "vk_context.h"
 #include "vk_policy.h"
 #include "vk_shaders.h"
 
@@ -620,7 +621,201 @@ static void test_controls_card_and_prompts_policy(void) {
     }
 }
 
+/* The launcher's Vulkan probe over a scripted loader: no Vulkan, device or driver. */
+static struct {
+    const char* missing;
+    uint32_t loader_version;
+    uint32_t device_version;
+    VkResult instance, count, list;
+    uint32_t devices, listed;
+    int instances, destroyed, devices_created;
+} F;
+
+static VkResult VKAPI_CALL fake_version(uint32_t* version) { return *version = F.loader_version, VK_SUCCESS; }
+static VkResult VKAPI_CALL fake_instance_exts(const char* layer, uint32_t* count, VkExtensionProperties* out) {
+    (void)layer, (void)out;
+    return *count = 0, VK_SUCCESS;
+}
+static VkResult VKAPI_CALL fake_create_instance(const VkInstanceCreateInfo* ci, const VkAllocationCallbacks* a, VkInstance* out) {
+    (void)a;
+    CHECK(ci->pApplicationInfo->apiVersion <= F.loader_version, "the instance asks for no more than the loader has");
+    *out = (VkInstance)(uintptr_t)(F.instance == VK_SUCCESS ? 0x10 : 0xBAD);
+    F.instances += F.instance == VK_SUCCESS;
+    return F.instance;
+}
+static void VKAPI_CALL fake_destroy_instance(VkInstance i, const VkAllocationCallbacks* a) {
+    (void)a;
+    CHECK(i == (VkInstance)(uintptr_t)0x10, "only a created instance is destroyed");
+    F.destroyed++;
+}
+static VkResult VKAPI_CALL fake_enumerate(VkInstance i, uint32_t* count, VkPhysicalDevice* out) {
+    (void)i;
+    if (!out) return *count = F.devices, F.count;
+    if (F.list != VK_SUCCESS && F.list != VK_INCOMPLETE) return F.list;
+    *count = F.listed < *count ? F.listed : *count;
+    for (uint32_t n = 0; n < *count; n++) out[n] = (VkPhysicalDevice)(uintptr_t)(0x100 + n);
+    return F.list;
+}
+static void VKAPI_CALL fake_properties(VkPhysicalDevice d, VkPhysicalDeviceProperties* out) {
+    CHECK((uintptr_t)d >= 0x100 && (uintptr_t)d < 0x110, "only a listed device is inspected");
+    memset(out, 0, sizeof *out);
+    out->apiVersion = F.device_version;
+    out->vendorID = 0x8086;
+    out->deviceID = 0x0102;
+    out->deviceType = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    out->limits.framebufferColorSampleCounts = out->limits.framebufferDepthSampleCounts = VK_SAMPLE_COUNT_4_BIT;
+    strcpy(out->deviceName, "Old GPU");
+}
+static void VKAPI_CALL fake_properties2(VkPhysicalDevice d, VkPhysicalDeviceProperties2* out) { (void)d, (void)out; }
+static void VKAPI_CALL fake_features(VkPhysicalDevice d, VkPhysicalDeviceFeatures* out) { (void)d, memset(out, 0, sizeof *out); }
+static void VKAPI_CALL fake_memory(VkPhysicalDevice d, VkPhysicalDeviceMemoryProperties* out) { (void)d, memset(out, 0, sizeof *out); }
+static void VKAPI_CALL fake_queues(VkPhysicalDevice d, uint32_t* count, VkQueueFamilyProperties* out) {
+    (void)d;
+    *count = 1;
+    if (out) memset(out, 0, sizeof *out), out->queueFlags = VK_QUEUE_GRAPHICS_BIT;
+}
+static void VKAPI_CALL fake_formats(VkPhysicalDevice d, VkFormat f, VkFormatProperties* out) {
+    (void)d, (void)f;
+    memset(out, 0, sizeof *out);
+    out->optimalTilingFeatures = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+}
+static VkResult VKAPI_CALL fake_device_exts(VkPhysicalDevice d, const char* layer, uint32_t* count, VkExtensionProperties* out) {
+    (void)d, (void)layer, (void)out;
+    return *count = 0, VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+static VkResult VKAPI_CALL fake_create_device(VkPhysicalDevice d, const VkDeviceCreateInfo* ci, const VkAllocationCallbacks* a, VkDevice* out) {
+    (void)d, (void)ci, (void)a, (void)out;
+    F.devices_created++;
+    return VK_ERROR_INITIALIZATION_FAILED;
+}
+static PFN_vkVoidFunction VKAPI_CALL fake_device_proc(VkDevice d, const char* name) { return (void)d, (void)name, NULL; }
+
+static PFN_vkVoidFunction VKAPI_CALL fake_proc(VkInstance instance, const char* name) {
+    static const struct {
+        const char* name;
+        PFN_vkVoidFunction fn;
+    } k[] = {
+        { "vkEnumerateInstanceVersion", (PFN_vkVoidFunction)fake_version },
+        { "vkEnumerateInstanceExtensionProperties", (PFN_vkVoidFunction)fake_instance_exts },
+        { "vkCreateInstance", (PFN_vkVoidFunction)fake_create_instance },
+        { "vkDestroyInstance", (PFN_vkVoidFunction)fake_destroy_instance },
+        { "vkEnumeratePhysicalDevices", (PFN_vkVoidFunction)fake_enumerate },
+        { "vkGetPhysicalDeviceProperties", (PFN_vkVoidFunction)fake_properties },
+        { "vkGetPhysicalDeviceProperties2", (PFN_vkVoidFunction)fake_properties2 },
+        { "vkGetPhysicalDeviceFeatures", (PFN_vkVoidFunction)fake_features },
+        { "vkGetPhysicalDeviceMemoryProperties", (PFN_vkVoidFunction)fake_memory },
+        { "vkGetPhysicalDeviceQueueFamilyProperties", (PFN_vkVoidFunction)fake_queues },
+        { "vkGetPhysicalDeviceFormatProperties", (PFN_vkVoidFunction)fake_formats },
+        { "vkEnumerateDeviceExtensionProperties", (PFN_vkVoidFunction)fake_device_exts },
+        { "vkCreateDevice", (PFN_vkVoidFunction)fake_create_device },
+        { "vkGetDeviceProcAddr", (PFN_vkVoidFunction)fake_device_proc },
+    };
+    (void)instance;
+    if (F.missing && !strcmp(name, F.missing)) return NULL;
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        if (!strcmp(name, k[i].name)) return k[i].fn;
+    return NULL;
+}
+
+static void fake_reset(void) {
+    memset(&F, 0, sizeof F);
+    F.loader_version = F.device_version = VK_API_VERSION_1_2;
+    F.devices = F.listed = 1;
+}
+
+static jpt_vk_probe_result_t fake_probe(void) {
+    jpt_vk_probe_result_t r;
+    jpt_vk_loader_t vk;
+    char err[128] = "";
+    memset(&r, 0, sizeof r);
+    memset(&vk, 0, sizeof vk);
+    if (!jpt_vk_loader_bind(&vk, fake_proc, err, sizeof err)) {
+        r.status = JPT_VK_PROBE_LOADER;
+        CHECK(err[0] && !vk.loaded && !vk.vkGetInstanceProcAddr, "a loader without its entry points is closed with a reason");
+        return r;
+    }
+    jpt_vk_probe_loader(&vk, "", &r);
+    CHECK(!vk.loaded, "the probe takes the loader");
+    CHECK(F.instances == F.destroyed, "every created instance is destroyed");
+    CHECK(F.devices_created == 0, "the probe creates no device");
+    CHECK(r.available == (r.status == JPT_VK_PROBE_OK), "available only with status ok");
+    CHECK(r.summary[0], "every probe ends with a summary");
+    CHECK(jpt_vk_probe_status_name(r.status)[0] && strcmp(jpt_vk_probe_status_name(r.status), "not_run"), "named status");
+    return r;
+}
+
+static void test_launcher_probe_failures(void) {
+    static const char* const k_instance_functions[] = {
+        "vkDestroyInstance", "vkEnumeratePhysicalDevices", "vkGetPhysicalDeviceProperties", "vkGetPhysicalDeviceFeatures",
+        "vkGetPhysicalDeviceMemoryProperties", "vkGetPhysicalDeviceQueueFamilyProperties", "vkGetPhysicalDeviceFormatProperties",
+        "vkEnumerateDeviceExtensionProperties", "vkCreateDevice", "vkGetDeviceProcAddr",
+    };
+    jpt_vk_probe_result_t r;
+
+    fake_reset();
+    r = fake_probe();
+    CHECK(r.status == JPT_VK_PROBE_OK && r.gpu_count == 1 && r.selected_index == 0 && r.gpus[0].usable, "a capable device is listed");
+
+    fake_reset();
+    F.missing = "vkCreateInstance";
+    CHECK(fake_probe().status == JPT_VK_PROBE_LOADER, "no vkCreateInstance");
+
+    for (size_t i = 1; i < sizeof k_instance_functions / sizeof k_instance_functions[0]; i++) {
+        fake_reset();
+        F.missing = k_instance_functions[i];
+        r = fake_probe();
+        CHECK(r.status == JPT_VK_PROBE_ENTRY_POINTS && r.gpu_count == 0, "without %s nothing is called", F.missing);
+    }
+
+    fake_reset();
+    F.instance = VK_ERROR_INCOMPATIBLE_DRIVER;
+    r = fake_probe();
+    CHECK(r.status == JPT_VK_PROBE_INSTANCE && strstr(r.summary, "VK_ERROR_INCOMPATIBLE_DRIVER"), "instance failure: %s", r.summary);
+
+    fake_reset();
+    F.devices = 0;
+    CHECK(fake_probe().status == JPT_VK_PROBE_NO_DEVICE, "no device");
+
+    fake_reset();
+    F.count = VK_ERROR_INITIALIZATION_FAILED;
+    CHECK(fake_probe().status == JPT_VK_PROBE_ENUMERATION, "counting devices fails");
+
+    fake_reset();
+    F.devices = 4;
+    F.list = VK_ERROR_OUT_OF_HOST_MEMORY;
+    r = fake_probe();
+    CHECK(r.status == JPT_VK_PROBE_ENUMERATION && r.gpu_count == 0, "listing devices fails after counting them");
+
+    fake_reset();
+    F.devices = 4;
+    F.listed = 0;
+    CHECK(fake_probe().status == JPT_VK_PROBE_NO_DEVICE, "the devices are gone when they are listed");
+
+    fake_reset();
+    F.devices = F.listed = JPT_VK_MAX_GPUS + 5;
+    F.list = VK_INCOMPLETE;
+    r = fake_probe();
+    CHECK(r.status == JPT_VK_PROBE_OK && r.gpu_count == JPT_VK_MAX_GPUS, "more devices than fit: %d", r.gpu_count);
+
+    /* A loader of Vulkan 1.0 has no vkEnumerateInstanceVersion. */
+    fake_reset();
+    F.missing = "vkEnumerateInstanceVersion";
+    F.loader_version = F.device_version = VK_API_VERSION_1_0;
+    r = fake_probe();
+    CHECK(r.status == JPT_VK_PROBE_NO_USABLE_DEVICE && r.gpu_count == 1 && !r.gpus[0].usable && strstr(r.gpus[0].reject_reason, "1.0"),
+          "Vulkan 1.0 is listed and refused: %s", r.gpus[0].reject_reason);
+
+    for (uint32_t minor = 1; minor <= 3; minor++) {
+        fake_reset();
+        F.device_version = VK_MAKE_API_VERSION(0, 1, minor, 0);
+        F.loader_version = F.device_version;
+        CHECK(fake_probe().status == JPT_VK_PROBE_OK, "Vulkan 1.%u keeps the game's own requirement", minor);
+    }
+    CHECK(!jpt_vk_probe_headless("", NULL), "no result to fill");
+}
+
 int main(void) {
+    test_launcher_probe_failures();
     test_renderer_policy();
     test_renderer_selection_precedence();
     test_gpu_selection();

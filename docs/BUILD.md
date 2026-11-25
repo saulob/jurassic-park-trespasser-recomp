@@ -140,6 +140,7 @@ the game.
 | `--run` | accepted for older scripts; the game runs unless `--dry-run` is given |
 | `--dry-run` | fingerprint, map and bind, then stop |
 | `--launcher` / `--skip-launcher` | show the launcher even when it is turned off / skip it once (it still opens when the game files are not ready); holding Shift while starting also shows it |
+| `--launcher-renderer auto\|software\|direct3d11` | what draws the launcher's own window, for this run only; `software` needs no graphics driver (docs/LAUNCHER.md). The game's renderer does not change |
 | `--game DIR` | game directory (default `game\`, or `TRESPASSER_GAME_DIR`) |
 | `--user_data_root DIR` | user data root: `launcher\trespasser.ini`, `saves\` (the game's registry store and saves) (default `user_data\` next to the program, or `TRESPASSER_USER_DATA_ROOT`; `build.ps1 -Run` passes `build\user_data`; see `docs\user-data.md`) |
 | `--log-file FILE` | append to FILE (what `build.ps1 -Run` passes) |

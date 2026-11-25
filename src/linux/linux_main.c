@@ -24,6 +24,7 @@
 #include "jpt_vpath.h"
 #ifdef JPT_LINUX_LAUNCHER
 #include "jpt_launcher.h"
+#include "jpt_renderer.h"
 #endif
 #include "linux_abi.h"
 #ifdef JPT_LINUX_GUEST
@@ -70,9 +71,11 @@ typedef struct {
     int bootstrap;
     int build_info, self_check;
     int dry_run_asked, run_direct, force_launcher, skip_launcher, version_given;
+    const char* launcher_renderer;
     const char* override_key[MAX_OVERRIDES];
     const char* override_value[MAX_OVERRIDES];
     int override_count;
+    jpt_custom_level_request_t custom_level;
 } options_t;
 
 /* The command-line spellings of the settings the launcher saves; each one overrides the settings file for this run. */
@@ -99,6 +102,8 @@ static void usage(void) {
            "  --log-file FILE        append to FILE instead of the next numbered log\n"
            "  --launcher             show the launcher even when it is turned off\n"
            "  --skip-launcher        skip the launcher once (unless the game files are not ready)\n"
+           "  --launcher-renderer NAME  what draws the launcher's own window, for this run only: auto, software (needs no\n"
+           "                         graphics driver). The game's renderer does not change\n"
            "  --dry-run              lay out the guest, bind the imports, report, stop\n"
            "  --bootstrap-headless   run the lifted entry point with no window and no audio until the first import with no\n"
            "                         implementation, and report it\n"
@@ -154,6 +159,11 @@ static int parse(int argc, char** argv, options_t* o, int* run) {
         else if ((v = argument_of(&i, argc, argv, "--log-dir")) != NULL) o->log_dir = v;
         else if ((v = argument_of(&i, argc, argv, "--log-file")) != NULL) o->log_file = v;
         else if ((v = argument_of(&i, argc, argv, "--renderer")) != NULL) o->renderer = v;
+        else if ((v = argument_of(&i, argc, argv, "--launcher-renderer")) != NULL) {
+            if (!jpt_launcher_renderer_valid(v, 0))
+                return fprintf(stderr, "trespasser_recomp: --launcher-renderer needs auto or software\n"), EXIT_SETUP;
+            o->launcher_renderer = v;
+        }
         else if ((v = argument_of(&i, argc, argv, "--graphics-card")) != NULL) o->graphics_card = v;
         else {
             fprintf(stderr, "trespasser_recomp: unknown option %s\n", argv[i]);
@@ -235,6 +245,7 @@ static int boot_guest(const options_t* o, const lx_paths_t* paths, int window) {
     lx_vk_set_env_renderer(getenv("TRESPASSER_RENDERER"));
     snprintf(settings_file, sizeof settings_file, "%s/trespasser.ini", paths->launcher_dir);
     options.settings_file = settings_file;
+    options.custom_level = &o->custom_level;
     status = lx_boot_headless(&options, &r);
     if (window && options.backend) options.backend->destroy(options.backend);
     printf("%s\n", lx_boot_status_name(status));
@@ -261,8 +272,7 @@ static int boot_guest(const options_t* o, const lx_paths_t* paths, int window) {
 #ifdef JPT_LINUX_LAUNCHER
 static void launcher_log(const char* line) { lx_log("launcher", "%s", line); }
 
-/* 1 when the player pressed Play (or the launcher was not wanted), 0 when it was closed. */
-static int run_launcher(const options_t* o, const lx_paths_t* paths, const char* settings_file) {
+static jpt_launcher_result_t run_launcher(options_t* o, const lx_paths_t* paths, const char* settings_file) {
     jpt_launcher_config_t config;
     memset(&config, 0, sizeof config);
     config.game_dir = paths->game_dir;
@@ -274,8 +284,10 @@ static int run_launcher(const options_t* o, const lx_paths_t* paths, const char*
     config.user_data_outcome = o->user_root || getenv("TRESPASSER_USER_DATA_ROOT") ? USER_DATA_EXPLICIT : USER_DATA_PORTABLE;
     config.force_show = o->force_launcher && !o->skip_launcher;
     config.skip_once = o->skip_launcher;
+    config.launcher_renderer = o->launcher_renderer;
     config.log = launcher_log;
-    return jpt_launcher_run(&config) == JPT_LAUNCHER_PLAY;
+    config.custom_level = &o->custom_level;
+    return jpt_launcher_run(&config);
 }
 #endif
 
@@ -312,10 +324,12 @@ static int play(options_t* o, lx_paths_t* paths) {
     if (jpt_config_migrate_language(settings_file))
         lx_log("Linux settings", "%s: the earlier game text and subtitle language settings became language", settings_file);
 #ifdef JPT_LINUX_LAUNCHER
-    if (!o->run_direct && !run_launcher(o, paths, settings_file)) {
-        lx_log("boot", "the launcher was closed without starting the game");
+    const jpt_launcher_result_t launched = o->run_direct ? JPT_LAUNCHER_PLAY : run_launcher(o, paths, settings_file);
+    if (launched != JPT_LAUNCHER_PLAY) {
+        lx_log("boot", launched == JPT_LAUNCHER_FAILED ? "the launcher could not open: the game was not started"
+                                                       : "the launcher was closed without starting the game");
         lx_log_close();
-        return 0;
+        return launched == JPT_LAUNCHER_FAILED ? EXIT_SETUP : 0;
     }
 #endif
     choose_version(o, paths, settings_file);

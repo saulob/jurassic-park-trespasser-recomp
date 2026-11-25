@@ -17,6 +17,7 @@
 #include "debug_menu_panel.h"
 #include "debug_menu_policy.h"
 #include "jpt_config.h"
+#include "jpt_custom_level.h"
 #include "jpt_fs.h"
 #include "jpt_gamepad.h"
 #include "jpt_sync.h"
@@ -52,6 +53,7 @@ static struct {
     dm_state_t state;
     dm_world_t world;
     dm_row_t rows[DM_ROWS_MAX];
+    dm_start_t start;
     int was_open;
     dm_menu_t was_menu;
     cp_hud_t hud;
@@ -177,6 +179,20 @@ static int load_level(const char* scene, const guest_ui_view_t* v, uint32_t scra
         return 0;
     }
     return guest_ui_end_window(v, MAIN_MENU_PLAY, 0) == 1;
+}
+
+void debug_menu_start_custom_level(void) {
+    if (!jpt_custom_level_active()) return;
+    if (!dm_start_request(&D.start, jpt_custom_level_scene()))
+        host_log("custom-level", "the game cannot load a scene named %s", jpt_custom_level_scene());
+}
+
+static void start_level(const guest_ui_view_t* v, uint32_t scratch, uint32_t now) {
+    char scene[DM_SCENE_MAX];
+    if (!dm_start_due(&D.start, D.world.place, now, scene)) return;
+    cheats_suspend();
+    host_log("custom-level", "loading %s of %s", scene, jpt_custom_level_package());
+    if (!load_level(scene, v, scratch)) host_log("custom-level", "%s could not be loaded", scene);
 }
 
 static dm_item_t action_item(dm_action_kind_t kind) {
@@ -322,6 +338,7 @@ void debug_menu_ui_loop(void) {
     scratch = g_esp;
     sample(&v, scratch);
     dm_world_seen(&D.state, &D.world);
+    start_level(&v, scratch, now);
     if (dm_take(&D.state, &action)) run(&action, &v, scratch, now);
     {
         int64_t section = perf_section_begin();
@@ -341,6 +358,7 @@ static void read_levels(void) {
     char dir[LEVEL_PATH_MAX];
     dm_levels_t levels;
     memset(&levels, 0, sizeof levels);
+    for (int i = 0; i < jpt_custom_level_scene_count(); i++) dm_levels_add(&levels, jpt_custom_level_scene_at(i));
     if (guest_data_dir(dir, sizeof dir)) jpt_fs_list(dir, add_level, &levels);
     dm_set_levels(&D.state, &levels);
 }

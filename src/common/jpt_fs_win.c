@@ -12,6 +12,11 @@ int jpt_fs_is_dir(const char* path) {
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+int jpt_fs_is_link(const char* path) {
+    DWORD attributes = GetFileAttributesA(path);
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
+}
+
 int jpt_fs_mkdir(const char* path) {
     CreateDirectoryA(path, NULL);
     return jpt_fs_is_dir(path);

@@ -20,6 +20,11 @@ int jpt_fs_is_dir(const char* path) {
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+int jpt_fs_is_link(const char* path) {
+    struct stat st;
+    return lstat(path, &st) == 0 && S_ISLNK(st.st_mode);
+}
+
 int jpt_fs_mkdir(const char* path) {
     if (mkdir(path, 0777) != 0 && errno != EEXIST) return 0;
     return jpt_fs_is_dir(path);

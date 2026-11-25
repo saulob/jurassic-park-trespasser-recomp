@@ -19,10 +19,13 @@
 #include "ddraw/renderer_backend.h"
 #include "gamepad.h"
 #include "jpt_config.h"
+#include "jpt_custom_level.h"
+#include "debug_menu.h"
 #include "jpt_display.h"
 #include "vk_context.h"
 #include "vk_shaders.h"
 #include "jpt_launcher.h"
+#include "jpt_renderer.h"
 #include "jpt_user_data.h"
 #include "l10n.h"
 #include "loading_hd.h"
@@ -54,6 +57,7 @@ typedef struct {
     int dry_run;
     int self_check;
     int force_launcher, skip_launcher;
+    const char* launcher_renderer;
     int system_ddraw;
     int dev_filter;
     int lifted_water;
@@ -94,6 +98,9 @@ static native32_shim_t s_shims[] = {
     { "fopen", shim_fopen },
     { "_open", shim_open },
     { "DeleteFileA", shim_DeleteFileA },
+    { "_mkdir", shim_mkdir },
+    { "remove", shim_remove },
+    { "rename", shim_rename },
     { "CreateWindowExA", shim_CreateWindowExA },
     { "DestroyWindow", shim_DestroyWindow },
     { "PostQuitMessage", shim_PostQuitMessage },
@@ -155,7 +162,8 @@ static const char* default_log_dir(void) {
 }
 
 static void usage(void) {
-    printf("usage: trespasser_recomp [--launcher | --skip-launcher] [--dry-run] [--game DIR] [--user_data_root DIR]\n"
+    printf("usage: trespasser_recomp [--launcher | --skip-launcher] [--launcher-renderer auto|software|direct3d11]\n"
+           "                  [--dry-run] [--game DIR] [--user_data_root DIR]\n"
            "                  [--log-file FILE | --log-dir DIR] [--watchdog SECONDS] [--ddraw compat|system]\n"
            "                  [--native-trace] [--callbacks] [--renderer auto|d3d11|vulkan|software]\n"
            "                  [--render-resolution original|720p|1080p|1440p|4k|native|WxH]\n"
@@ -171,6 +179,8 @@ static void usage(void) {
            "    for this run only\n"
            "  --launcher shows the launcher even when it is turned off; --skip-launcher skips it once (unless\n"
            "    the game files are not ready); --run is still accepted and changes nothing\n"
+           "  --launcher-renderer chooses what draws the launcher's own window, for this run only; software needs no\n"
+           "    graphics driver: --launcher --launcher-renderer software. The game's renderer does not change\n"
            "  --user_data_root keeps saves and settings in DIR instead of user_data next to the\n"
            "    program\n"
            "  --dry-run maps, fingerprints and binds the image, and nothing executes\n"
@@ -254,6 +264,9 @@ static int parse_options(int argc, char** argv, options_t* o) {
             o->force_launcher = 1;
         } else if (!strcmp(argv[i], "--skip-launcher")) {
             o->skip_launcher = 1;
+        } else if (!strcmp(argv[i], "--launcher-renderer") && i + 1 < argc) {
+            o->launcher_renderer = argv[++i];
+            if (!jpt_launcher_renderer_valid(o->launcher_renderer, 1)) return 0;
         } else if (!strcmp(argv[i], "--game") && i + 1 < argc) {
             o->game_dir = argv[++i];
         } else if (!strcmp(argv[i], "--user_data_root") && i + 1 < argc) {
@@ -381,6 +394,27 @@ static const jpt_game_version_t* select_game_version(const char* game_root, cons
     return version;
 }
 
+/* The chosen package answers for the data folder and plays with its own Installed Directory: its saves name its files,
+ * and level swap files are told apart only by name. The registry store stays the version's. */
+static int start_custom_level(const jpt_custom_level_request_t* request, jpt_user_data_t* user, jpt_config_t* cfg) {
+    char saves[JPT_USER_PATH_CAP], error[512];
+    if (!request->scene[0]) return 1;
+    if (!jpt_custom_level_activate(user->root, request, error, sizeof error)) {
+        host_log("custom-level", "%s", error);
+        MessageBoxA(NULL, error, "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR);
+        return 0;
+    }
+    if (!jpt_custom_level_saves_dir(user->saves_dir, request->package, saves, sizeof saves) || !jpt_make_dirs(saves)) {
+        host_log("custom-level", "cannot create the saves folder of %s", request->package);
+        return 0;
+    }
+    strcpy(user->saves_dir, saves);
+    cfg->skip_intro = 1;
+    host_log("custom-level", "%s, scene %s loaded as %s; saves in %s", request->package, request->scene,
+             jpt_custom_level_scene(), user->saves_dir);
+    return 1;
+}
+
 static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, int monitor_h) {
     const jpt_size_t hardware = jpt_gameplay_mode(box, c->aspect, 1), software = jpt_gameplay_mode(box, c->aspect, 0);
     const jpt_size_t target = jpt_render_target(box, hardware.width, hardware.height);
@@ -443,6 +477,8 @@ int main(int argc, char** argv) {
     char game_root[MAX_PATH], game_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH];
     const jpt_game_version_t* version;
     const char* settings_file;
+    char store_dir[JPT_USER_PATH_CAP];
+    jpt_custom_level_request_t custom_level = { "", "" };
     jpt_user_data_t user;
     jpt_config_t cfg;
     jpt_size_t box = { 0, 0 };
@@ -548,8 +584,15 @@ int main(int argc, char** argv) {
         launcher.settings_file = settings_file;
         launcher.force_show = opt.force_launcher && !opt.skip_launcher;
         launcher.skip_once = opt.skip_launcher;
+        launcher.launcher_renderer = opt.launcher_renderer;
         launcher.log = log_line;
-        if (jpt_launcher_run(&launcher) == JPT_LAUNCHER_QUIT) {
+        launcher.custom_level = &custom_level;
+        switch (jpt_launcher_run(&launcher)) {
+        case JPT_LAUNCHER_PLAY: break;
+        case JPT_LAUNCHER_FAILED:
+            host_log("host", "the launcher could not open: the game was not started");
+            return HOST_EXIT_SETUP;
+        default:
             host_log("host", "the launcher was closed without starting the game");
             return 0;
         }
@@ -579,6 +622,8 @@ int main(int argc, char** argv) {
     if (!version) return HOST_EXIT_SETUP;
     if (!activate_profile(version)) return HOST_EXIT_SETUP;
     jpt_config_select_language(&cfg, version);
+    strcpy(store_dir, user.saves_dir);
+    if (!start_custom_level(&custom_level, &user, &cfg)) return HOST_EXIT_SETUP;
     guest_env_init(game_dir, opt.guest_args);
     window_host_monitor_size(cfg.monitor, &monitor_w, &monitor_h);
     if (cfg.render_preset < 0) {
@@ -630,7 +675,7 @@ int main(int argc, char** argv) {
              lift_text_start, lift_text_end);
     if (!selfmod_init()) return HOST_EXIT_SETUP;
 
-    guest_registry_init(game_dir, user.saves_dir);
+    guest_registry_init(game_dir, store_dir, user.saves_dir);
     io_trace_user_dir(user.saves_dir);
     l10n_set_user_folder(user.saves_dir);
     if (native32_bind(JPT_GUEST_IMAGE_BASE, s_shims, (int)(sizeof s_shims / sizeof s_shims[0]))) {
@@ -643,6 +688,10 @@ int main(int argc, char** argv) {
         host_log("audio", "SMACKW32.DLL does not resolve DirectSound through the host: its audio may use the system");
     if (!guest_env_apply_command_line() || !io_trace_init()) {
         host_log("host", "msvcrt.dll lacks _acmdln, fopen or _open; cannot set up the guest CRT");
+        return HOST_EXIT_SETUP;
+    }
+    if (jpt_custom_level_active() && !custom_level_files_start(game_dir)) {
+        host_log("custom-level", "the game's level files cannot be redirected");
         return HOST_EXIT_SETUP;
     }
     milestones_init();
@@ -712,6 +761,7 @@ int main(int argc, char** argv) {
     l10n_install();
     menu_audio_install();
     if (!guest_overrides_check()) return HOST_EXIT_SETUP;
+    debug_menu_start_custom_level();
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
     host_log("guest", "entering the CRT entry point 0x%08X", lift_entry_va);
     return run_guest();

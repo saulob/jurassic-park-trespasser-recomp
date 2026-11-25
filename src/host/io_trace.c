@@ -26,9 +26,13 @@
 
 typedef void* (__cdecl* crt_fopen_t)(const char*, const char*);
 typedef int (__cdecl* crt_open_t)(const char*, int, int);
+typedef int (__cdecl* crt_path_t)(const char*);
+typedef int (__cdecl* crt_rename_t)(const char*, const char*);
 
 static crt_fopen_t s_crt_fopen;
 static crt_open_t s_crt_open;
+static crt_path_t s_crt_mkdir, s_crt_remove;
+static crt_rename_t s_crt_rename;
 static LONG s_success_lines, s_failure_lines, s_resolved_misses, s_repeated_successes, s_expected_misses;
 static char s_game_dir[MAX_PATH];
 static char s_user_dir[MAX_PATH];
@@ -47,7 +51,10 @@ int io_trace_init(void) {
     if (slash) *slash = 0;
     s_crt_fopen = (crt_fopen_t)GetProcAddress(crt, "fopen");
     s_crt_open = (crt_open_t)GetProcAddress(crt, "_open");
-    return s_crt_fopen && s_crt_open;
+    s_crt_mkdir = (crt_path_t)GetProcAddress(crt, "_mkdir");
+    s_crt_remove = (crt_path_t)GetProcAddress(crt, "remove");
+    s_crt_rename = (crt_rename_t)GetProcAddress(crt, "rename");
+    return s_crt_fopen && s_crt_open && s_crt_mkdir && s_crt_remove && s_crt_rename;
 }
 
 static int is_relative(const char* path) { return path[0] != '\\' && path[0] != '/' && !strchr(path, ':'); }
@@ -177,14 +184,26 @@ void shim_CreateFileA(void) {
     const char* path = (const char*)GUEST_PTR(0);
     char translated[MAX_PATH];
     char menu_audio[MAX_PATH];
+    char level[MAX_PATH];
+    DWORD access = GUEST_ARG(1);
+    int from_level = path && GUEST_ARG(4) == OPEN_EXISTING && custom_level_file(path, level, sizeof level);
     HANDLE h;
+    if (path && GUEST_ARG(4) != OPEN_EXISTING && custom_level_write_refused(path)) {
+        g_eax = (uint32_t)(uintptr_t)INVALID_HANDLE_VALUE;
+        GUEST_RETURN_STDCALL(7);
+        return;
+    }
+    if (from_level) {
+        path = level;
+        access &= ~(DWORD)GENERIC_WRITE;
+    }
     if (path && GUEST_ARG(4) == OPEN_EXISTING && l10n_menu_file(path, translated, sizeof translated)) path = translated;
     if (path && GUEST_ARG(4) == OPEN_EXISTING) path = menu_audio_file(path, menu_audio, sizeof menu_audio);
-    h = CreateFileA(path, GUEST_ARG(1), GUEST_ARG(2), (LPSECURITY_ATTRIBUTES)GUEST_PTR(3),
+    h = CreateFileA(path, access, GUEST_ARG(2) | (from_level ? FILE_SHARE_READ : 0), (LPSECURITY_ATTRIBUTES)GUEST_PTR(3),
                            GUEST_ARG(4), GUEST_ARG(5), (HANDLE)GUEST_PTR(6));
     DWORD error = GetLastError();
-    if (h != INVALID_HANDLE_VALUE && is_swap_file(path)) note_swap_file(path, h);
-    if (h != INVALID_HANDLE_VALUE && GUEST_ARG(4) == OPEN_EXISTING) stream_audio_attach(h, path, GUEST_ARG(1), GUEST_ARG(5));
+    if (h != INVALID_HANDLE_VALUE && !from_level && is_swap_file(path)) note_swap_file(path, h);
+    if (h != INVALID_HANDLE_VALUE && !from_level && GUEST_ARG(4) == OPEN_EXISTING) stream_audio_attach(h, path, GUEST_ARG(1), GUEST_ARG(5));
     SetLastError(error);
     report("CreateFileA", path, h != INVALID_HANDLE_VALUE, GetLastError());
     g_eax = (uint32_t)(uintptr_t)h;
@@ -193,7 +212,10 @@ void shim_CreateFileA(void) {
 
 void shim_GetFileAttributesA(void) {
     const char* path = (const char*)GUEST_PTR(0);
-    DWORD attributes = GetFileAttributesA(path);
+    char level[MAX_PATH];
+    DWORD attributes;
+    if (custom_level_file(path, level, sizeof level)) path = level;
+    attributes = GetFileAttributesA(path);
     report("GetFileAttributesA", path, attributes != INVALID_FILE_ATTRIBUTES, GetLastError());
     g_eax = attributes;
     GUEST_RETURN_STDCALL(1);
@@ -224,8 +246,23 @@ void shim_FindFirstFileA(void) {
 void shim_LZOpenFileA(void) {
     char* path = (char*)GUEST_PTR(0);
     OFSTRUCT* opened = (OFSTRUCT*)GUEST_PTR(1);
-    INT h = LZOpenFileA(path, opened, (WORD)GUEST_ARG(2));
+    const WORD mode = (WORD)GUEST_ARG(2);
+    INT h = custom_level_lz_open(path, !(mode & (OF_WRITE | OF_READWRITE | OF_CREATE | OF_DELETE | OF_EXIST | OF_PARSE)));
     DWORD error = GetLastError();
+    if (h != -2) {
+        if (opened) {
+            memset(opened, 0, sizeof *opened);
+            opened->cBytes = sizeof *opened;
+            opened->fFixedDisk = 1;
+            _snprintf(opened->szPathName, sizeof opened->szPathName - 1, "%s", path);
+        }
+        report("LZOpenFileA", path, h >= 0, error);
+        g_eax = (uint32_t)h;
+        GUEST_RETURN_STDCALL(3);
+        return;
+    }
+    h = LZOpenFileA(path, opened, mode);
+    error = GetLastError();
     if (h >= 0) patch117_lz_opened(opened && opened->szPathName[0] ? opened->szPathName : path, h);
     report("LZOpenFileA", path, h >= 0, error);
     g_eax = (uint32_t)h;
@@ -268,7 +305,12 @@ void shim_FreeLibrary(void) {
  * msvcrt.dll, so msvcrt's own functions must create them. */
 void shim_fopen(void) {
     const char* path = (const char*)GUEST_PTR(0);
-    void* file = s_crt_fopen(path, (const char*)GUEST_PTR(1));
+    const char* mode = (const char*)GUEST_PTR(1);
+    char level[MAX_PATH];
+    void* file = NULL;
+    if (mode[0] == 'r' && !strchr(mode, '+') && custom_level_file(path, level, sizeof level)) path = level;
+    else if ((mode[0] != 'r' || strchr(mode, '+')) && custom_level_write_refused(path)) path = NULL;
+    if (path) file = s_crt_fopen(path, mode);
     report("fopen", path, file != NULL, GetLastError());
     g_eax = (uint32_t)(uintptr_t)file;
     g_esp += 4;
@@ -276,8 +318,13 @@ void shim_fopen(void) {
 
 void shim_open(void) {
     const char* path = (const char*)GUEST_PTR(0);
-    int flags = (int)GUEST_ARG(1), fd = s_crt_open(path, flags, (int)GUEST_ARG(2));
-    DWORD error = GetLastError();
+    char level[MAX_PATH];
+    int flags = (int)GUEST_ARG(1), fd = -1;
+    DWORD error;
+    const int writes = flags & (_O_CREAT | _O_TRUNC | _O_WRONLY | _O_RDWR);
+    if (!writes && custom_level_file(path, level, sizeof level)) path = level;
+    if (!writes || !custom_level_write_refused(path)) fd = s_crt_open(path, flags, (int)GUEST_ARG(2));
+    error = GetLastError();
     report("_open", path, fd >= 0, error);
     if (fd >= 0 && (flags & (_O_CREAT | _O_TRUNC)) == (_O_CREAT | _O_TRUNC)) frontend_hd_save_opened(path, s_user_dir);
     SetLastError(error);
@@ -287,11 +334,30 @@ void shim_open(void) {
 
 void shim_DeleteFileA(void) {
     const char* path = (const char*)GUEST_PTR(0);
-    BOOL ok = DeleteFileA(path);
+    BOOL ok = !custom_level_write_refused(path) && DeleteFileA(path);
     DWORD error = GetLastError();
     report("DeleteFileA", path, ok, error);
     if (ok) frontend_hd_save_deleted(path, s_user_dir);
     SetLastError(error);
     g_eax = (uint32_t)ok;
     GUEST_RETURN_STDCALL(1);
+}
+
+void shim_mkdir(void) {
+    const char* path = (const char*)GUEST_PTR(0);
+    g_eax = (uint32_t)(custom_level_write_refused(path) ? -1 : s_crt_mkdir(path));
+    g_esp += 4;
+}
+
+void shim_remove(void) {
+    const char* path = (const char*)GUEST_PTR(0);
+    g_eax = (uint32_t)(custom_level_write_refused(path) ? -1 : s_crt_remove(path));
+    g_esp += 4;
+}
+
+void shim_rename(void) {
+    const char* from = (const char*)GUEST_PTR(0);
+    const char* to = (const char*)GUEST_PTR(1);
+    g_eax = (uint32_t)(custom_level_write_refused(from) || custom_level_write_refused(to) ? -1 : s_crt_rename(from, to));
+    g_esp += 4;
 }
