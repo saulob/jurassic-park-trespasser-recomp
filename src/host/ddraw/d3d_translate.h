@@ -26,6 +26,9 @@ unsigned d3dt_indexed_triangles(int type, const uint16_t* in, unsigned count, ui
 /* Render and texture stage state values; 0 means the value is not valid for Direct3D 6. */
 int d3dt_blend(uint32_t value, int alpha_channel);
 int d3dt_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11);
+/* The same pair for a target whose alpha is the fog visibility: the shader's alpha is the second source and the
+ * destination's reads 1, as in RGB565; visibility mixes as colour does, or stays when no factor says how. */
+int d3dt_ao_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11);
 int d3dt_compare(uint32_t value);
 int d3dt_address(uint32_t value);
 int d3dt_cull(uint32_t value);

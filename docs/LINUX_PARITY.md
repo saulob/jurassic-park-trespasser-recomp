@@ -86,7 +86,7 @@ feature may have one.
 | `vulkan-gpu-selection` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
 | `water-refraction` | global | PASS | PASS | `ce_gpu_tests`, `water_tests` | `linux_d3d_tests` | - |
 | `enhanced-sky` | global | PASS | PASS | `ce_gpu_tests`, `ce_tests` | `linux_d3d_tests` | - |
-| `ambient-occlusion` | global | PASS | PASS | `ao_tests` | `linux_d3d_tests` | - |
+| `ambient-occlusion` | global | PASS | PASS | `ao_tests`, `ao_fog_tests` | `linux_d3d_tests` | - |
 | `texture-filtering` | windows | PASS | WINDOWS ONLY (justified) | `launcher_tests`, `host_tests` | - | a Direct3D 11 / DXGI effect: Windows only |
 | `anti-aliasing` | windows | PASS | WINDOWS ONLY (justified) | `launcher_tests`, `test_setting_parity.py` | - | a Direct3D 11 / DXGI effect: Windows only |
 | `gpu-selection` | windows | PASS | WINDOWS ONLY (justified) | `launcher_tests` | - | a Direct3D 11 / DXGI effect: Windows only |

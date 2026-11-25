@@ -34,6 +34,7 @@ static int s_failures, s_checks;
 
 #define SIZE 64
 #define F_FOG 16u
+#define F_AO_CLOSED 1024u
 #define FULL_BOUNDS 0.5f / SIZE, 0.5f / SIZE, (SIZE - 0.5f) / SIZE, (SIZE - 0.5f) / SIZE
 
 typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT,
@@ -421,6 +422,59 @@ static void edge_tests(ID3DBlob* vs_code, ID3D11VertexShader* vs, ID3D11PixelSha
     ID3D11SamplerState_Release(bilinear);
 }
 
+/* The ambient occlusion variants: the colours of the plain shaders and, in the alpha, the share the fog leaves visible. */
+static void ao_tests(ID3DBlob* vs_code, ID3D11VertexShader* vs, ID3D11PixelShader* const plain[3], ID3D11SamplerState* sampler) {
+    static const char* const entries[3] = { "ps_fixed_ao", "ps_water_ao", "ps_sky_ao" };
+    static uint32_t scene[SIZE * SIZE];
+    const float fog_color[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+    float fx[20] = { 1.0f / SIZE, 1.0f / SIZE, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 0.25f, 0.75f, 0, 0, 0, 10.0f, 0, 0, 0, FULL_BOUNDS };
+    ID3D11PixelShader* ao[3] = { NULL, NULL, NULL };
+    ID3D11Texture2D *target = texture(SIZE, SIZE, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_BIND_RENDER_TARGET, NULL, 0), *behind, *still;
+    ID3D11ShaderResourceView *behind_v, *still_v = uniform_waves(0.0f, 0.0f, &still);
+    ID3D11RenderTargetView* rtv = NULL;
+    for (int i = 0; i < SIZE * SIZE; i++) scene[i] = 0x40FF0000u;
+    behind = texture(SIZE, SIZE, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_BIND_SHADER_RESOURCE, scene, SIZE * 4);
+    behind_v = view(behind);
+    ID3D11Device_CreateRenderTargetView(dev, (ID3D11Resource*)target, NULL, &rtv);
+    for (int k = 0; k < 3; k++) {
+        ID3DBlob* code = build(entries[k], "ps_4_0");
+        CHECK(code != NULL, "%s compiles", entries[k]);
+        if (!code) return;
+        ID3D11Device_CreatePixelShader(dev, ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), NULL, &ao[k]);
+        ID3D10Blob_Release(code);
+    }
+    for (unsigned fog = 0; fog <= 255; fog += 51)
+        for (int k = 0; k < 3; k++) {
+            uint32_t cb[8] = { F_FOG, 0, 0, 0 }, off, on;
+            const uint32_t diffuse = k == 1 ? 0x80FF8040u : 0xFFFF8040u;
+            int expected = (int)fog;
+            memcpy(&cb[4], fog_color, sizeof fog_color);
+            s_specular = fog << 24;
+            draw(rtv, vs_code, vs, plain[k], diffuse, 0.0f, 0.0f, 1.0f, cb, fx, still_v, behind_v, sampler);
+            off = pixel(target, 10, 10);
+            draw(rtv, vs_code, vs, ao[k], diffuse, 0.0f, 0.0f, 1.0f, cb, fx, still_v, behind_v, sampler);
+            on = pixel(target, 10, 10);
+            CHECK(((off ^ on) & 0xFFFFFF) == 0, "%s keeps the colours: 0x%08X, 0x%08X", entries[k], off, on);
+            if (k == 1) expected = mix((int)fog, 0x40, 128);
+            if (k == 2) expected = 255; /* overhead: no directional fog */
+            CHECK(abs(channel(on, 24) - expected) <= 1, "%s at fog %u: visibility %d of %d", entries[k], fog, channel(on, 24), expected);
+            cb[0] = 0;
+            draw(rtv, vs_code, vs, ao[0], diffuse, 0.0f, 0.0f, 1.0f, cb, fx, still_v, behind_v, sampler);
+            CHECK(channel(pixel(target, 10, 10), 24) == 255, "no fog state: all visible");
+            cb[0] = F_FOG | F_AO_CLOSED;
+            draw(rtv, vs_code, vs, ao[k == 1 ? 0 : k], diffuse, 0.0f, 0.0f, 1.0f, cb, fx, still_v, behind_v, sampler);
+            CHECK(channel(pixel(target, 10, 10), 24) == 0, "a closed draw leaves nothing to darken");
+        }
+    s_specular = 0xFF000000u;
+    for (int k = 0; k < 3; k++) ID3D11PixelShader_Release(ao[k]);
+    ID3D11RenderTargetView_Release(rtv);
+    ID3D11ShaderResourceView_Release(behind_v);
+    ID3D11ShaderResourceView_Release(still_v);
+    ID3D11Texture2D_Release(behind);
+    ID3D11Texture2D_Release(still);
+    ID3D11Texture2D_Release(target);
+}
+
 int main(void) {
     HMODULE dll = LoadLibraryA("d3dcompiler_47.dll");
     D3D_FEATURE_LEVEL level;
@@ -539,6 +593,10 @@ int main(void) {
     }
     composition_tests(vs_code, vs, water, fixed, linear);
     edge_tests(vs_code, vs, water);
+    {
+        ID3D11PixelShader* const plain[3] = { fixed, water, sky };
+        ao_tests(vs_code, vs, plain, linear);
+    }
     /* The copy the water samples, from a multisampled scene: resolved, never read back by the game's path. */
     for (UINT samples = 1; samples <= 8; samples *= 2) {
         UINT quality = 0;

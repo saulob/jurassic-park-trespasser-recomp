@@ -16,6 +16,9 @@ enum {
     D3D11_SHADER_VS_POLY,
     D3D11_SHADER_PS_POLY_TEXTURE,
     D3D11_SHADER_PS_POLY_BUMP,
+    D3D11_SHADER_PS_FIXED_AO,
+    D3D11_SHADER_PS_WATER_AO,
+    D3D11_SHADER_PS_SKY_AO,
     D3D11_SHADER_COUNT
 };
 
@@ -30,7 +33,8 @@ enum {
     D3D11_PS_FLAT = 64,
     D3D11_PS_DEBUG_TEXTURE = 128,
     D3D11_PS_DEBUG_VERTEX = 256,
-    D3D11_PS_DEBUG_DEPTH = 512
+    D3D11_PS_DEBUG_DEPTH = 512,
+    D3D11_PS_AO_CLOSED = 1024 /* ambient occlusion never darkens what this draw leaves */
 };
 
 /* A world vertex's layer: the slice, which of the batch's texture arrays (t2 onwards), the texture's

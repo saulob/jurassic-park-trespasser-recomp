@@ -170,6 +170,7 @@ struct d3dr_target {
     d3dt_rect_t gpu_box;
     uint16_t gpu_clear;
     int ao_scene; /* a depth-writing draw since the last Flip */
+    float ao_fog[3];
 };
 
 typedef HRESULT(WINAPI* compile_fn)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT,
@@ -273,6 +274,7 @@ static struct {
         ID3D11ShaderResourceView* srv[D3D11_WORLD_ARRAYS];
         unsigned srvs;
         ID3D11SamplerState* sampler[D3D11_DEVICE_SAMPLER + 1];
+        ID3D11PixelShader* ps;
         ID3D11RasterizerState* raster;
         ID3D11BlendState* blend;
         ID3D11DepthStencilState* depth;
@@ -354,8 +356,6 @@ static struct {
     d3dr_target_t* deferred;
     int capture_text;
     d3dr_target_t* text_target;
-    /* Ambient occlusion: while marking, the stencil holds 0 where a depth-writing draw made the pixel and 1 where the
-     * CPU, a colour fill or a draw without depth writes did; the effect darkens only the 0s. */
     /* Water refraction and Enhanced sky (ce_effects.h). Their resources live from first use to the device's end. */
     struct {
         fx_switch_t water, sky;
@@ -380,10 +380,15 @@ static struct {
         size_t wave_capacity;
         unsigned long long copies, resolves, water_batches, sky_batches;
     } fx;
+    /* Ambient occlusion: while marking, the stencil holds 0 where a depth-writing draw made the pixel and 1 where the
+     * CPU, a colour fill or a draw without depth writes did; the effect darkens only the 0s, by the fog visibility in
+     * the target's alpha. */
     struct {
         int level, capable, marking;
         ID3D11DepthStencilState* depth[2][2][9];
         ID3D11DepthStencilState* cpu;
+        ID3D11BlendState* blend[14][14];
+        ID3D11BlendState* blend_opaque;
         d3dr_target_t* frame;
     } ao;
 } R;
@@ -654,6 +659,8 @@ static int create_static_objects(void) {
                                  D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN |
                                      D3D11_COLOR_WRITE_ENABLE_BLUE);
     R.blend_nowrite = make_blend(0, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, 0);
+    R.ao.blend_opaque = make_blend(0, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_ZERO,
+                                   D3D11_COLOR_WRITE_ENABLE_ALL);
     R.blend_premultiplied = make_blend(1, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_ZERO,
                                        D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN |
                                            D3D11_COLOR_WRITE_ENABLE_BLUE);
@@ -688,7 +695,8 @@ static int create_static_objects(void) {
     R.gamma_valid = 0;
     R.draw_cb_valid = R.frame_cb_valid = 0;
     if (!R.vb || !R.ib || !R.cb_frame || !R.cb_draw || !R.cb_pass || !R.blend_none || !R.blend_overlay || !R.blend_nowrite ||
-        !R.depth_write_always || !R.ao.cpu || !R.raster_pass || !R.point_clamp || !R.linear_clamp || !R.gamma_srv) {
+        !R.depth_write_always || !R.ao.cpu || !R.ao.blend_opaque || !R.raster_pass || !R.point_clamp || !R.linear_clamp ||
+        !R.gamma_srv) {
         host_log("d3d11", "creating the renderer's buffers and states failed");
         return 0;
     }
@@ -696,6 +704,7 @@ static int create_static_objects(void) {
 }
 
 static void release_poly_resources(void);
+static void gpu_span_release(void);
 
 static void release_static_objects(void) {
     SAFE_RELEASE(R.vs_tl);
@@ -712,6 +721,9 @@ static void release_static_objects(void) {
     for (int a = 0; a < 2; a++)
         for (int b = 0; b < 14; b++)
             for (int c = 0; c < 14; c++) SAFE_RELEASE(R.blend[a][b][c]);
+    for (int a = 0; a < 14; a++)
+        for (int b = 0; b < 14; b++) SAFE_RELEASE(R.ao.blend[a][b]);
+    SAFE_RELEASE(R.ao.blend_opaque);
     SAFE_RELEASE(R.blend_overlay);
     SAFE_RELEASE(R.blend_none);
     SAFE_RELEASE(R.blend_nowrite);
@@ -735,6 +747,7 @@ static void release_static_objects(void) {
     SAFE_RELEASE(R.depth_write_always);
     SAFE_RELEASE(R.ao.cpu);
     ao_stop();
+    gpu_span_release();
     for (int a = 0; a < 4; a++)
         for (int b = 0; b < 4; b++)
             for (int c = 0; c < 2; c++)
@@ -1840,10 +1853,22 @@ static void gpu_write(d3dr_target_t* t) {
 
 /* ---- state objects (cached; created on first use) ---- */
 
+static ID3D11BlendState* ao_blend_for(const d3d_device_t* dev) {
+    DWORD src = dev->render[D3DRENDERSTATE_SRCBLEND], dst = dev->render[D3DRENDERSTATE_DESTBLEND];
+    int s11, d11, sa, da;
+    ID3D11BlendState** slot;
+    if (!dev->render[D3DRENDERSTATE_ALPHABLENDENABLE] || src > 13 || dst > 13) return R.ao.blend_opaque;
+    slot = &R.ao.blend[src][dst];
+    if (!*slot && d3dt_ao_blend_pair(src, dst, &s11, &d11, &sa, &da))
+        *slot = make_blend(1, s11, d11, sa, da, D3D11_COLOR_WRITE_ENABLE_ALL);
+    return *slot ? *slot : R.ao.blend_opaque;
+}
+
 static ID3D11BlendState* blend_for(const d3d_device_t* dev) {
     DWORD src = dev->render[D3DRENDERSTATE_SRCBLEND], dst = dev->render[D3DRENDERSTATE_DESTBLEND];
     int s11, d11, sa, da;
     ID3D11BlendState** slot;
+    if (R.ao.marking) return ao_blend_for(dev);
     if (!dev->render[D3DRENDERSTATE_ALPHABLENDENABLE] || src > 13 || dst > 13) return R.blend_none;
     slot = &R.blend[1][src][dst];
     if (!*slot && d3dt_blend_pair(src, dst, &s11, &d11, &sa, &da))
@@ -2393,6 +2418,15 @@ static void count_state_class(uint32_t key, unsigned long long triangles) {
     }
 }
 
+static ID3D11PixelShader* fixed_shader(void) {
+    return R.ps[R.ao.marking ? D3D11_SHADER_PS_FIXED_AO : D3D11_SHADER_PS_FIXED];
+}
+
+static ID3D11PixelShader* effect_shader(int effect) {
+    if (effect == EFFECT_WATER) return R.ps[R.ao.marking ? D3D11_SHADER_PS_WATER_AO : D3D11_SHADER_PS_WATER];
+    return R.ps[R.ao.marking ? D3D11_SHADER_PS_SKY_AO : D3D11_SHADER_PS_SKY];
+}
+
 /* The draw states flush() binds, each set only when it differs from what flush() last bound. */
 static void bind_draw_states(d3d_device_t* dev, d3dr_target_t* t, int has_depth, ID3D11SamplerState* const* samplers,
                              const D3D11_VIEWPORT* vp, const D3D11_RECT* scissor) {
@@ -2400,13 +2434,13 @@ static void bind_draw_states(d3d_device_t* dev, d3dr_target_t* t, int has_depth,
     ID3D11RasterizerState* raster = raster_for(dev, t->samples > 1);
     ID3D11BlendState* blend = blend_for(dev);
     ID3D11DepthStencilState* depth = depth_for(dev, has_depth);
+    ID3D11PixelShader* ps = fixed_shader();
     float factor[4] = { 0, 0, 0, 0 };
     if (!R.bound.valid) {
         memset(&R.bound, 0, sizeof R.bound);
         ID3D11DeviceContext_IASetInputLayout(R.ctx, R.layout);
         ID3D11DeviceContext_VSSetShader(R.ctx, R.vs_tl, NULL, 0);
         ID3D11DeviceContext_VSSetConstantBuffers(R.ctx, 0, 1, &R.cb_frame);
-        ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[D3D11_SHADER_PS_FIXED], NULL, 0);
         ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 1, 1, &R.cb_draw);
         R.bound.valid = 1;
         R.bound.topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
@@ -2416,6 +2450,10 @@ static void bind_draw_states(d3d_device_t* dev, d3dr_target_t* t, int has_depth,
     if (R.bound.rtv != t->rtv || R.bound.dsv != dsv) {
         ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, dsv);
         R.bound.rtv = t->rtv, R.bound.dsv = dsv;
+    }
+    if (R.bound.ps != ps) {
+        ID3D11DeviceContext_PSSetShader(R.ctx, ps, NULL, 0);
+        R.bound.ps = ps;
     }
     if (R.bound.topology != R.batch_topology) {
         ID3D11DeviceContext_IASetPrimitiveTopology(R.ctx, R.batch_topology);
@@ -2673,8 +2711,7 @@ static int sky_ready(void) {
 }
 
 static void effect_bind(int effect, ID3D11ShaderResourceView* const* views) {
-    ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[effect == EFFECT_WATER ? D3D11_SHADER_PS_WATER : D3D11_SHADER_PS_SKY],
-                                    NULL, 0);
+    ID3D11DeviceContext_PSSetShader(R.ctx, effect_shader(effect), NULL, 0);
     ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 3, 1, &R.fx.cb);
     if (effect != EFFECT_WATER) return;
     ID3D11DeviceContext_PSSetShaderResources(R.ctx, 18, 2, views);
@@ -2683,7 +2720,7 @@ static void effect_bind(int effect, ID3D11ShaderResourceView* const* views) {
 
 static void effect_unbind(int effect) {
     ID3D11ShaderResourceView* none[2] = { NULL, NULL };
-    ID3D11DeviceContext_PSSetShader(R.ctx, R.ps[D3D11_SHADER_PS_FIXED], NULL, 0);
+    ID3D11DeviceContext_PSSetShader(R.ctx, R.bound.ps, NULL, 0);
     if (effect == EFFECT_WATER) ID3D11DeviceContext_PSSetShaderResources(R.ctx, 18, 2, none);
 }
 
@@ -2706,7 +2743,7 @@ static void flush(void) {
     D3D11_RECT scissor;
     ID3D11SamplerState* samplers[D3D11_DEVICE_SAMPLER + 1];
     ID3D11ShaderResourceView* effect_views[2] = { NULL, NULL };
-    int has_depth, sampled = 0, effect = R.batch_effect;
+    int has_depth, writes_depth, sampled = 0, effect = R.batch_effect;
     int64_t start;
     if (!R.nindices || !t || !t->surface || !target_ready(t)) {
         end_batch();
@@ -2717,7 +2754,10 @@ static void flush(void) {
         sampled = samplers_for(dev, samplers);
         R.textures_bound++;
     }
+    has_depth = dev->target->zbuffer != NULL;
+    writes_depth = has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && dev->render[D3DRENDERSTATE_ZWRITEENABLE];
     d3dt_draw_constants((const uint32_t*)dev->render, &dc);
+    if (R.ao.marking && !writes_depth) dc.flags |= D3D11_PS_AO_CLOSED;
     if (R.debug_output) dc.flags |= D3D11_PS_DEBUG_TEXTURE << (R.debug_output - 1);
     if (!R.draw_cb_valid || memcmp(&dc, &R.draw_cb, sizeof dc)) {
         update_constants(R.cb_draw, &dc, sizeof dc);
@@ -2736,7 +2776,6 @@ static void flush(void) {
         end_batch();
         return;
     }
-    has_depth = dev->target->zbuffer != NULL;
     vp.TopLeftX = vp.TopLeftY = 0.0f;
     vp.Width = (float)t->width;
     vp.Height = (float)t->height;
@@ -2759,8 +2798,10 @@ static void flush(void) {
     if (effect) effect_bind(effect, effect_views);
     ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, (INT)(vb_offset / stride));
     if (effect) effect_unbind(effect);
-    if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && dev->render[D3DRENDERSTATE_ZWRITEENABLE])
+    if (writes_depth) {
         t->ao_scene = 1;
+        if (dc.flags & D3D11_PS_FOG) memcpy(t->ao_fog, dc.fog, sizeof t->ao_fog);
+    }
     if (has_depth && dev->render[D3DRENDERSTATE_ZENABLE] != D3DZB_FALSE && !R.depth_active) {
         R.depth_active = 1;
         host_log("renderer", "depth_buffer_active = true (z-tested draws into the %ux%u depth buffer)", t->width, t->height);
@@ -2980,6 +3021,7 @@ static void clear_rect(d3dr_target_t* t, const d3dt_rect_t* r, DWORD flags, D3DC
     int full = r->left <= 0 && r->top <= 0 && r->right >= (long)t->width && r->bottom >= (long)t->height;
     int target = (flags & D3DCLEAR_TARGET) != 0, depth = (flags & D3DCLEAR_ZBUFFER) != 0;
     int mark = R.ao.marking && target && !depth; /* a colour fill over a scene keeps no depth of its own */
+    if (R.ao.marking) rgba[3] = 0.0f;
     if (full) {
         if (target) ID3D11DeviceContext_ClearRenderTargetView(R.ctx, t->rtv, rgba);
         if (depth) ID3D11DeviceContext_ClearDepthStencilView(R.ctx, t->dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, z, 0);
@@ -2989,7 +3031,8 @@ static void clear_rect(d3dr_target_t* t, const d3dt_rect_t* r, DWORD flags, D3DC
     ID3D11DeviceContext_OMSetRenderTargets(R.ctx, 1, &t->rtv, depth || mark ? t->dsv : NULL);
     R.bound.valid = 0;
     set_pass(k_full_rect, NULL, rgba, z);
-    draw_pass(R.ps[D3D11_SHADER_PS_FILL], NULL, NULL, target ? R.blend_none : R.blend_nowrite,
+    draw_pass(R.ps[D3D11_SHADER_PS_FILL], NULL, NULL,
+              !target ? R.blend_nowrite : R.ao.marking ? R.ao.blend_opaque : R.blend_none,
               depth ? R.depth_write_always : mark ? R.ao.cpu : NULL, t->width, t->height, &scissor);
 }
 
@@ -4100,6 +4143,15 @@ static struct {
     int failed;
 } s_gpu_span;
 
+static void gpu_span_release(void) {
+    for (unsigned i = 0; i < GPU_SPAN_RING; i++) {
+        SAFE_RELEASE(s_gpu_span.disjoint[i]);
+        SAFE_RELEASE(s_gpu_span.start[i]);
+        SAFE_RELEASE(s_gpu_span.end[i]);
+    }
+    memset(&s_gpu_span, 0, sizeof s_gpu_span);
+}
+
 static void gpu_span_collect(perf_stat_t* stat) {
     for (unsigned i = 0; i < GPU_SPAN_RING; i++) {
         D3D11_QUERY_DATA_TIMESTAMP_DISJOINT dj;
@@ -4157,6 +4209,8 @@ static void apply_ambient_occlusion(d3dr_target_t* t, ID3D11RenderTargetView* rt
     memset(&scene, 0, sizeof scene);
     scene.depth = t->depth_srv;
     scene.stencil = t->stencil_srv;
+    scene.color = t->single_srv;
+    memcpy(scene.fog, t->ao_fog, sizeof scene.fog);
     scene.width = t->width;
     scene.height = t->height;
     scene.samples = t->samples;

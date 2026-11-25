@@ -100,6 +100,31 @@ int d3dt_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src
     return *src11 && *dst11;
 }
 
+static int ao_blend_factor(int factor) {
+    enum { ZERO = 1, ONE = 2, SRC_ALPHA = 5, INV_SRC_ALPHA = 6, DEST_ALPHA = 7, INV_DEST_ALPHA = 8, SRC_ALPHA_SAT = 11,
+           SRC1_ALPHA = 18, INV_SRC1_ALPHA = 19 };
+    switch (factor) {
+    case SRC_ALPHA: return SRC1_ALPHA;
+    case INV_SRC_ALPHA: return INV_SRC1_ALPHA;
+    case DEST_ALPHA: return ONE;
+    case INV_DEST_ALPHA:
+    case SRC_ALPHA_SAT: return ZERO;
+    default: return factor;
+    }
+}
+
+int d3dt_ao_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11) {
+    static const int mixes[4][2] = { { 2, 1 }, { 1, 2 }, { 18, 19 }, { 19, 18 } };
+    if (!d3dt_blend_pair(src, dst, src11, dst11, src_alpha11, dst_alpha11)) return 0;
+    *src11 = ao_blend_factor(*src11);
+    *dst11 = ao_blend_factor(*dst11);
+    *src_alpha11 = 1;
+    *dst_alpha11 = 2;
+    for (int i = 0; i < 4; i++)
+        if (*src11 == mixes[i][0] && *dst11 == mixes[i][1]) *src_alpha11 = *src11, *dst_alpha11 = *dst11;
+    return 1;
+}
+
 int d3dt_compare(uint32_t value) { return value >= 1 && value <= 8 ? (int)value : 0; }
 
 int d3dt_address(uint32_t value) { return value >= 1 && value <= 4 ? (int)value : 0; }

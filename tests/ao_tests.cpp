@@ -275,9 +275,15 @@ struct Target {
     ID3D11Texture2D* color;
     ID3D11RenderTargetView* rtv;
     ID3D11Texture2D* staging;
+    ID3D11Texture2D* scene;
+    ID3D11RenderTargetView* scene_rtv;
+    ID3D11ShaderResourceView* scene_srv;
 };
 
 static void release_target(Target& t) {
+    release(t.scene_srv);
+    release(t.scene_rtv);
+    release(t.scene);
     release(t.staging);
     release(t.rtv);
     release(t.color);
@@ -319,6 +325,11 @@ static bool make_target(Target& t, unsigned w, unsigned h, unsigned samples) {
     td.BindFlags = D3D11_BIND_RENDER_TARGET;
     if (FAILED(g_dev->CreateTexture2D(&td, nullptr, &t.color)) || FAILED(g_dev->CreateRenderTargetView(t.color, nullptr, &t.rtv)))
         return false;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(g_dev->CreateTexture2D(&td, nullptr, &t.scene)) ||
+        FAILED(g_dev->CreateRenderTargetView(t.scene, nullptr, &t.scene_rtv)) ||
+        FAILED(g_dev->CreateShaderResourceView(t.scene, nullptr, &t.scene_srv)))
+        return false;
     td.Usage = D3D11_USAGE_STAGING;
     td.BindFlags = 0;
     td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -355,6 +366,7 @@ static void draw_scene(const Target& t) {
     scene_pass(t, g_s.mark, left, -1.0f);
     scene_pass(t, g_s.zero, right, 0.0f);
     g_ctx->ClearRenderTargetView(t.rtv, white);
+    g_ctx->ClearRenderTargetView(t.scene_rtv, white);
 }
 
 static std::vector<unsigned char> read_red(const Target& t) {
@@ -372,6 +384,7 @@ static assao_scene_t scene_of(const Target& t) {
     assao_scene_t s = {};
     s.depth = t.depth_srv;
     s.stencil = t.stencil_srv;
+    s.color = t.scene_srv;
     s.width = t.w;
     s.height = t.h;
     s.samples = t.samples;
@@ -458,6 +471,23 @@ static void test_lifecycle() {
     }
     CHECK(log_count("[assao] High 320x180") == 1 && log_count("ASSAO quality level 2") == 1,
           "one log line per quality or size change, none per frame");
+
+    /* A white scene in white fog: the less of it is visible, the less darkens. */
+    int last = -1;
+    assao_set_quality(JPT_AO_HIGH);
+    s.fog[0] = s.fog[1] = s.fog[2] = 1.0f;
+    for (int visible = 4; visible >= 0; visible--) {
+        const float scene[4] = { 1, 1, 1, visible / 4.0f };
+        draw_scene(t);
+        g_ctx->ClearRenderTargetView(t.scene_rtv, scene);
+        CHECK(assao_render(g_ctx, &s, t.rtv), "renders at visibility %d/4", visible);
+        red = read_red(t);
+        range(red, t, { 0, 0, t.w, t.h }, &lo, &hi);
+        CHECK(lo > last, "visibility %d/4 darkens less than the one before (%d after %d)", visible, lo, last);
+        if (!visible) CHECK(lo == 255, "nothing visible: the fog is untouched (darkest %d)", lo);
+        last = lo;
+    }
+    s = scene_of(t);
 
     /* Runtime toggles: High -> Off -> High -> Low -> Ultra on the same effect. */
     const int toggles[] = { JPT_AO_OFF, JPT_AO_HIGH, JPT_AO_LOW, JPT_AO_ULTRA, JPT_AO_OFF };
@@ -562,6 +592,9 @@ static void test_failures() {
     s.stencil = nullptr;
     CHECK(assao_init(g_dev, g_hlsl.data(), g_hlsl.size()), "init again after failures");
     CHECK(!assao_render(g_ctx, &s, t.rtv), "a target without a readable stencil gets no effect");
+    s = scene_of(t);
+    s.color = nullptr;
+    CHECK(!assao_render(g_ctx, &s, t.rtv), "a scene without its colour and visibility gets no effect");
     s = scene_of(t);
     s.tan_half_y = 0.0f;
     CHECK(!assao_render(g_ctx, &s, t.rtv), "no camera tangents: no effect");

@@ -228,6 +228,7 @@ Add-Exes $s @(
 $s = 'Graphics'
 Add-Exes $s @(
     , @('ao_tests', 'ambient occlusion levels, configuration and the ASSAO pass on a WARP device', 150)
+    , @('ao_fog_tests', 'ambient occlusion and fog through the real Direct3D 11 renderer on a WARP device: levels, vegetation, sky, translucency, gamma, MSAA, resize, device recreation', 150)
     , @('ce_gpu_tests', 'water refraction and enhanced sky shaders on a WARP device', 50)
     , @('video_tests', 'HD video presentation and GPU passes on a WARP device', 300)
     , @('video_focus_tests', 'video focus and pause policy', 20)

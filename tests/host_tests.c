@@ -1046,6 +1046,14 @@ static void test_states(void) {
     CHECK(d3dt_blend_pair(12, 1, &s, &d, &sa, &da) && s == 5 && d == 6);
     CHECK(d3dt_blend_pair(13, 1, &s, &d, &sa, &da) && s == 6 && d == 5);
     CHECK(!d3dt_blend_pair(0, 2, &s, &d, &sa, &da));
+    CHECK(d3dt_ao_blend_pair(5, 6, &s, &d, &sa, &da) && s == 18 && d == 19 && sa == 18 && da == 19);
+    CHECK(d3dt_ao_blend_pair(6, 5, &s, &d, &sa, &da) && s == 19 && d == 18 && sa == 19 && da == 18);
+    CHECK(d3dt_ao_blend_pair(2, 1, &s, &d, &sa, &da) && s == 2 && d == 1 && sa == 2 && da == 1);
+    CHECK(d3dt_ao_blend_pair(2, 2, &s, &d, &sa, &da) && s == 2 && d == 2 && sa == 1 && da == 2);
+    CHECK(d3dt_ao_blend_pair(9, 1, &s, &d, &sa, &da) && s == 9 && d == 1 && sa == 1 && da == 2);
+    CHECK(d3dt_ao_blend_pair(7, 8, &s, &d, &sa, &da) && s == 2 && d == 1);
+    CHECK(d3dt_ao_blend_pair(11, 8, &s, &d, &sa, &da) && s == 1 && d == 1);
+    CHECK(!d3dt_ao_blend_pair(0, 2, &s, &d, &sa, &da));
     CHECK(d3dt_compare(7) == 7 && d3dt_compare(0) == 0 && d3dt_compare(9) == 0);
     CHECK(d3dt_address(3) == 3 && d3dt_address(5) == 0);
     CHECK(d3dt_cull(1) == 1 && d3dt_cull(2) == 2 && d3dt_cull(3) == 3 && d3dt_cull(4) == 0);

@@ -924,6 +924,18 @@ target_include_directories(ao_tests PRIVATE src/host src/host/ddraw)
 target_compile_options(ao_tests PRIVATE /W3)
 target_compile_definitions(ao_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 target_link_libraries(ao_tests PRIVATE assao jpt_common d3d11 dxguid)
+# Ambient occlusion and fog through the real Direct3D 11 renderer on a WARP device, into an offscreen back buffer
+# (headless): ninja -C <build dir> ao_fog_tests && ao_fog_tests.exe
+add_executable(ao_fog_tests EXCLUDE_FROM_ALL tests/ao_fog_tests.c tests/renderer_benchmark_d3d11_stubs.c
+  src/host/ddraw/d3d11_renderer.c src/host/ddraw/d3d11_shaders.c
+  src/host/ddraw/assao_host.cpp src/host/ddraw/assao_shader.cpp ${JPT_ASSAO_SHADER_SOURCE} src/host/ao_policy.c src/host/ce_effects.c
+  src/host/texture_gpu_policy.c src/host/ddraw/d3d_translate.c src/host/ddraw/target_sync.c
+  src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c src/host/text_layer.c src/host/host_policy.c src/host/ddraw/dd_common.c)
+target_include_directories(ao_fog_tests PRIVATE src/host src/host/ddraw src/common src/vulkan third_party/vulkan launcher tests
+  ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(ao_fog_tests PRIVATE assao jpt_common user32 gdi32 d3d11 dxgi d3dcompiler dxguid)
+target_compile_options(ao_fog_tests PRIVATE /W3)
+target_compile_definitions(ao_fog_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_executable(com_tests EXCLUDE_FROM_ALL tests/com_tests.c src/host/ce_effects.c src/host/ddraw/dd_common.c src/host/ddraw/dd_device.c
   src/host/ddraw/dd_surface.c src/host/ddraw/dd_objects.c src/host/ddraw/d3d_objects.c src/host/ddraw/d3d_translate.c
   src/host/ddraw/page_guard.c src/host/ddraw/page_arena.c src/host/text_layer.c)

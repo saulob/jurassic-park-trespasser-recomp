@@ -2522,6 +2522,11 @@
       "suite": "ao_tests",
       "file": "tests/ao_tests.cpp",
       "pattern": "JPT_AO_ULTRA"
+     },
+     {
+      "suite": "ao_fog_tests",
+      "file": "tests/ao_fog_tests.c",
+      "pattern": "test_fog_exact"
      }
     ]
    },

@@ -345,8 +345,10 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   `0x0051FF0B`) with the matching projection (the main camera's vertical tangent, Hor+, divided by its zoom; the
   target's own aspect) and reconstructs normals itself. While AO is on, the stencil marks every pixel without a depth
   of its own: CPU composites (game text, subtitles, CPU polygons), colour fills and draws without depth writes; only
-  pixels left by depth-writing draws are darkened, and only on gameplay frames that drew 3D. Off creates nothing and
-  draws nothing. A failure (shaders, resources, device) logs and turns
+  pixels left by depth-writing draws are darkened, and only on gameplay frames that drew 3D. The fog is part of the
+  colour by then, so while AO is on the scene's alpha holds the share of the pixel the vertex fog leaves visible
+  (`ps_*_ao`; blended draws mix it through a second blend source) and `ps_apply` darkens only that share, as if the
+  occlusion came before the fog. Off creates nothing and draws nothing. A failure (shaders, resources, device) logs and turns
   it Off.
 - If the D3D11 device, feature level 10.0 or `d3dcompiler_47.dll` is missing, the host logs it and
   falls back to the software renderer before the game starts.

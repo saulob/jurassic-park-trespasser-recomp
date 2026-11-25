@@ -43,6 +43,7 @@ const char d3d11_shader_source[] =
     "#define F_DEBUG_TEXTURE 128u\n"
     "#define F_DEBUG_VERTEX 256u\n"
     "#define F_DEBUG_DEPTH 512u\n"
+    "#define F_AO_CLOSED 1024u\n"
     "struct VSIn { float4 pos : POSITION; float4 diffuse : COLOR0; float4 specular : COLOR1; float2 uv : TEXCOORD0;\n"
     "              uint layer : TEXCOORD1; };\n"
     "struct PSIn {\n"
@@ -139,25 +140,53 @@ const char d3d11_shader_source[] =
     "  return saturate(c);\n"
     "}\n"
     "float4 ps_fixed(PSIn i) : SV_Target { return fixed_color(i, i.specular.a); }\n"
+    /* With ambient occlusion on, the target's alpha is the share of the pixel the fog leaves visible. The coverage is
+     * the second blend source, so a blended draw mixes colour and visibility alike. */
+    "struct AoOut { float4 color : SV_Target0; float4 cover : SV_Target1; };\n"
+    "float ao_visibility(float fog) {\n"
+    "  return (flags & F_AO_CLOSED) ? 0.0 : (flags & F_FOG) ? saturate(fog) : 1.0;\n"
+    "}\n"
+    "AoOut ao_out(float4 c, float visibility) {\n"
+    "  AoOut o;\n"
+    "  o.color = float4(c.rgb, visibility);\n"
+    "  o.cover = c.aaaa;\n"
+    "  return o;\n"
+    "}\n"
+    "AoOut ps_fixed_ao(PSIn i) {\n"
+    "  float4 c = fixed_color(i, i.specular.a);\n"
+    "  return ao_out(c, ao_visibility(i.specular.a));\n"
+    "}\n"
     /* The scene behind the water, displaced by the wave heights' differences under this texel, under the water's own
      * colour at its own alpha. */
-    "float4 ps_water(PSIn i) : SV_Target {\n"
-    "  float4 c = fixed_color(i, i.specular.a);\n"
+    "float4 water_behind(PSIn i) {\n"
     "  float2 waves = water_waves.Sample(samp_linear, i.uv).rg;\n"
     "  float2 shift = waves * fx_water.z * saturate(i.rhw * fx_water2.x) * float2(fx_water.w, 1.0);\n"
     "  float2 base = i.pos.xy * fx_water.xy;\n"
     "  float2 room = float2(shift.x > 0.0 ? (fx_water3.z - base.x) / shift.x : shift.x < 0.0 ? (fx_water3.x - base.x) / shift.x : 1.0,\n"
     "                       shift.y > 0.0 ? (fx_water3.w - base.y) / shift.y : shift.y < 0.0 ? (fx_water3.y - base.y) / shift.y : 1.0);\n"
-    "  float3 behind = scene_behind.Sample(samp_linear, base + shift * saturate(min(room.x, room.y))).rgb;\n"
-    "  return float4(lerp(behind, c.rgb, c.a), 1.0);\n"
+    "  return scene_behind.Sample(samp_linear, base + shift * saturate(min(room.x, room.y)));\n"
+    "}\n"
+    "float4 ps_water(PSIn i) : SV_Target {\n"
+    "  float4 c = fixed_color(i, i.specular.a);\n"
+    "  return float4(lerp(water_behind(i).rgb, c.rgb, c.a), 1.0);\n"
+    "}\n"
+    "AoOut ps_water_ao(PSIn i) {\n"
+    "  float4 c = fixed_color(i, i.specular.a), behind = water_behind(i);\n"
+    "  return ao_out(float4(lerp(behind.rgb, c.rgb, c.a), 1.0), lerp(behind.a, ao_visibility(i.specular.a), c.a));\n"
     "}\n"
     /* The sky's fog from the view direction (fx_sky_fog), in place of the retail per-vertex depth fog. */
-    "float4 ps_sky(PSIn i) : SV_Target {\n"
+    "float sky_fog(PSIn i) {\n"
     "  float2 d = i.uv - fx_sky.xy;\n"
     "  float all = sqrt(dot(d, d) + fx_sky.z * fx_sky.z);\n"
     "  float v = all > 0.0 ? sqrt(dot(d, d)) / all : 0.0;\n"
     "  float f = v <= fx_sky.w ? 0.0 : v >= fx_sky2.x ? 1.0 : (v - fx_sky.w) / (fx_sky2.x - fx_sky.w);\n"
-    "  return fixed_color(i, 1.0 - f);\n"
+    "  return 1.0 - f;\n"
+    "}\n"
+    "float4 ps_sky(PSIn i) : SV_Target { return fixed_color(i, sky_fog(i)); }\n"
+    "AoOut ps_sky_ao(PSIn i) {\n"
+    "  float fog = sky_fog(i);\n"
+    "  float4 c = fixed_color(i, fog);\n"
+    "  return ao_out(c, ao_visibility(fog));\n"
     "}\n"
     /* Rectangle passes: clears, the legacy picture, overlays and presentation, from pass_rect in NDC. */
     "struct QuadOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
@@ -252,6 +281,7 @@ const d3d11_shader_entry_t d3d11_shader_entries[D3D11_SHADER_COUNT] = {
     { "ps_pack565", "ps_4_0" }, { "ps_copy_cpu", "ps_4_0" }, { "ps_water", "ps_4_0" },
     { "ps_sky", "ps_4_0" },   { "ps_copy_raw", "ps_4_0" },
     { "vs_poly", "vs_4_0" },   { "ps_poly_texture", "ps_4_0" }, { "ps_poly_bump", "ps_4_0" },
+    { "ps_fixed_ao", "ps_4_0" }, { "ps_water_ao", "ps_4_0" }, { "ps_sky_ao", "ps_4_0" },
 };
 
 /* Bump-mapped spans of the software renderer (bump_spans.c), one instance per span record: the texel index by the

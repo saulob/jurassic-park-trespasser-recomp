@@ -105,6 +105,7 @@
     "linux_guest_ptr_tests"
   ],
   "windows_specific": {
+    "ao_fog_tests": "D3D11 device (WARP)",
     "ao_tests": "ImGui D3D11 effect host",
     "audio_tests": "includes windows.h (DirectSound ABI against the Windows SDK)",
     "ce_gpu_tests": "D3D11 device (WARP)",
