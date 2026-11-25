@@ -26,6 +26,8 @@ void active_ai_install(void);
 int active_ai_installed(void);
 /* Active animals per AI update, at exit. */
 void active_ai_summary(void);
+/* ai_vocals.c: Dinosaur and Vocal numbers outside the game's vocal table. */
+void ai_vocals_install(void);
 /* The living animals the game's AI holds, awake (engaged) or not, with their world position; read-only. */
 typedef struct {
     float x, y;

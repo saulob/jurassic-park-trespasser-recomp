@@ -21,6 +21,13 @@ extern "C" {
 /* The physics box pool (0x00699D40, 0x1090 bytes per box): its allocator gives up past 50. */
 #define ACTIVE_AI_BOX_POOL 50
 
+/* CAISystem +0x388: the vocal table, one slot of ten 12-byte sounds per (Dinosaur, Vocal). */
+#define AI_VOCAL_DINOSAURS 7
+#define AI_VOCAL_KINDS 14
+#define AI_VOCAL_SLOT_BYTES 120u
+
+int ai_vocal_slot_valid(int32_t dinosaur, int32_t vocal);
+
 int active_ai_limit(int enhanced);
 
 /* The retail loops visit the active entries from the limit down to 1: out[0] = limit. Returns the count. */

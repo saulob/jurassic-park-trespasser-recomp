@@ -28,6 +28,10 @@ int active_ai_overrides(uint32_t va) {
     return 0;
 }
 
+int ai_vocal_slot_valid(int32_t dinosaur, int32_t vocal) {
+    return dinosaur >= 0 && dinosaur < AI_VOCAL_DINOSAURS && vocal >= 0 && vocal < AI_VOCAL_KINDS;
+}
+
 int active_ai_limit(int enhanced) { return enhanced ? ACTIVE_AI_ENHANCED_LIMIT : ACTIVE_AI_ORIGINAL_LIMIT; }
 
 int active_ai_descending(int limit, int out[ACTIVE_AI_MAX_LIMIT]) {

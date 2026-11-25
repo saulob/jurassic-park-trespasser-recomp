@@ -319,6 +319,13 @@
    "via": "hash",
    "where": "src/host/active_ai.c:58"
   },
+  "0041ADF0": {
+   "class": "identical",
+   "to": "0060F270",
+   "function": "0041ADF0",
+   "via": "hash",
+   "where": "src/host/ai_vocals.c:10"
+  },
   "0041AE50": {
    "class": "identical",
    "to": "0060F2D0",

@@ -15,6 +15,7 @@ void guest_features_configure(const jpt_config_t* cfg) {
 
 void guest_features_install(void) {
     physics_fixes_install();
+    ai_vocals_install();
     ce_gameplay_install();
     active_ai_install();
     patch117_install();

@@ -278,7 +278,7 @@ two together.
   `build`, `user_data`, `logs`, `game`, `.git` never take part. `tools/gen_build_info.py` writes the header during the build and
   rewrites it only when it changed. No clock goes into the binary.
 * **Self-check.** `trespasser_recomp --self-check` opens no window, no audio device, no log and writes no file; no guest code runs.
-  Each capability is a real call into its module: SelfMod entries, the override registry (70 listed, the number Linux can install, the
+  Each capability is a real call into its module: SelfMod entries, the override registry (71 listed, the number Linux can install, the
   number installed with default settings), the 27 lift hooks, the host features, the audio pacer (policy version, queue target,
   periods that follow the mixer rate) and SDL's audio stream, the input context (menus: free absolute pointer; gameplay: relative
   motion), the gamepad layer and its menu step, the HD front end and loading screen, the controls card, Russian text, FFmpeg Smacker,
@@ -292,9 +292,9 @@ two together.
   the last validated binary alone. `tools/package-linux.sh --skip-build` verifies the artifact against its manifest and the current
   sources (`linux_artifact.py verify`), requires the Release configuration and packages it; it never builds. Without `--skip-build`,
   the script runs the Release gate first.
-* **Boot log.** After the features are installed: `Linux features: 29/70 overrides installed (N required), 27/27 lift hooks active`
-  (with the host features off it says so). 29 is what Linux can install with every option on; the number installed follows the
-  settings (28 with the defaults).
+* **Boot log.** After the features are installed: `Linux features: 30/71 overrides installed (N required), 27/27 lift hooks active`
+  (with the host features off it says so). 30 is what Linux can install with every option on; the number installed follows the
+  settings (29 with the defaults).
 * **Audio log.** One line after the device opens (`SDL3 pacer active (policy 1): source 22050 Hz ..., device N Hz, ..., queue target N
   periods`) and one at shutdown with the underruns, backlog drops, queue minimum and maximum and the longest wake-up gap; they
   separate our bugs from device jitter. `JPT_AUDIO_STATS=1` still logs while running.
@@ -604,7 +604,7 @@ and writes (`guest_read32`, `guest_readable`, `guest_writable`, `guest_load_stri
 (`guest_override_install`) and the game's window stack (`guest_ui_probe`). Windows implements it in the host (`host.h` includes it), Linux
 in `src/linux/linux_host.c`, `linux_overrides.c` and `linux_features.c`.
 
-- **One table.** `src/host/guest_override_list.h` (70 sites) and `src/host/lift_hook_list.h` (27 hooks) are read by both hosts.
+- **One table.** `src/host/guest_override_list.h` (71 sites) and `src/host/lift_hook_list.h` (27 hooks) are read by both hosts.
   `guest_override_lift.inc` gives each listed function its stable entry `lift116_sub_<va>` and its row in the registry
   (`override_registry.c`); a replacement is installed through the entry, never into the ELF. The lifted code calls the entries, so an
   override is reached by every direct call, alias entry and dispatch.
@@ -680,7 +680,7 @@ is below; nothing is copied.
 
 Suites: `linux_frontend_tests` (219 checks: scene reading, painter, text, compositor geometry, pointer, resize, session, performance,
 loading, card), `linux_gamepad_tests` (73: menu navigation, Start/View/B, device sharing), `linux_save_files_tests` (save pictures),
-`linux_overrides_tests` (F2 through the host key table, 29 overrides of 70 installed).
+`linux_overrides_tests` (F2 through the host key table, 30 overrides of 71 installed).
 
 ## Next blocker
 

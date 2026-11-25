@@ -69,6 +69,7 @@ GUEST_OVERRIDE(0060E200, REQUIRED) /* nearest active animal sees an object, Acti
 GUEST_OVERRIDE(0060E2D0, REQUIRED) /* active animals near a point hear it, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060E350, REQUIRED) /* AI think scheduler, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060E720, REQUIRED) /* CAISystem::Process, Active AI (active_ai.c) */
+GUEST_OVERRIDE(0060F270, REQUIRED) /* CAISystem vocal table slot, bounds (ai_vocals.c) */
 GUEST_OVERRIDE(0060F2D0, REQUIRED) /* CAISystem save, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060F380, REQUIRED) /* CAISystem load, Active AI (active_ai.c) */
 GUEST_OVERRIDE(00612FB0, REQUIRED) /* brain influences, Active AI (active_ai.c) */

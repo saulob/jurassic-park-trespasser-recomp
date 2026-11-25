@@ -202,6 +202,7 @@ set(HOST_SOURCES
   src/host/ce_quick.c
   src/host/active_ai_policy.c
   src/host/active_ai.c
+  src/host/ai_vocals.c
   src/host/patch117_policy.c
   src/host/patch117_objects.c
   src/host/patch117.c

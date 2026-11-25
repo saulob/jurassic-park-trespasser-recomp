@@ -46,6 +46,7 @@ const unsigned char jpt_gva_gate[JPT_GVA_COUNT] = {
     0, /* 0x00419E30 */
     0, /* 0x0041A200 */
     0, /* 0x0041A520 */
+    0, /* 0x0041ADF0 */
     0, /* 0x0041AE50 */
     0, /* 0x0041AF00 */
     0, /* 0x0041BC00 */
@@ -361,6 +362,7 @@ const uint32_t jpt_gva_canonical[JPT_GVA_COUNT] = {
     0x00419E30u,
     0x0041A200u,
     0x0041A520u,
+    0x0041ADF0u,
     0x0041AE50u,
     0x0041AF00u,
     0x0041BC00u,
@@ -685,6 +687,7 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00419E30u,
             0x0041A200u,
             0x0041A520u,
+            0x0041ADF0u,
             0x0041AE50u,
             0x0041AF00u,
             0x0041BC00u,
@@ -1008,6 +1011,7 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x0060E350u,
             0x0060E720u,
             0x0060EA40u,
+            0x0060F270u,
             0x0060F2D0u,
             0x0060F380u,
             0x00610070u,
@@ -1331,6 +1335,7 @@ const jpt_lift_data_t jpt_lift_data[JPT_LIFT_COUNT] = {
             0x00610860u,
             0x00610C30u,
             0x00610F50u,
+            0x00611780u,
             0x006117E0u,
             0x00611890u,
             0x00612580u,
