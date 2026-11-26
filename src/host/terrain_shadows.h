@@ -10,8 +10,5 @@ void terrain_shadows_configure(int shadows);
 void terrain_shadows_frame(void);
 /* A camera being given its properties: ShadowLighting builds its own, then reads its light level. */
 void terrain_shadows_camera(uint32_t camera, uint32_t props);
-/* DEBUG_SAULO: the shadow span routines ShadowLighting reached, and the totals at exit. */
-void terrain_shadows_span(uint32_t routine);
-void terrain_shadows_summary(void);
 
 #endif

@@ -10,9 +10,6 @@
 #define SHADOW_FAR 2000.0f
 #define RAMP_ROW 256u
 #define FRAME_FROM_CAMERA 0x22Cu /* ShadowLighting builds its camera in its own frame */
-#define SPAN_SOLID 0x00641570u
-#define SPAN_LEAF 0x006416E0u
-#define SPAN_LAST 0x00641890u
 
 typedef struct {
     uint32_t material, start_ramp, end_ramp, end_depth, reflection, rows, depths;
@@ -36,9 +33,8 @@ typedef struct {
 } camera_props_t;
 
 static struct {
-    int on, ready, moving;
-    unsigned ramps, refused, passes[2], darkened[2];
-    unsigned long long solid[2], leaf[2];
+    int on, ready;
+    unsigned ramps, refused;
 } S;
 
 void terrain_shadows_configure(int shadows) { S.on = shadows; }
@@ -95,23 +91,8 @@ void terrain_shadows_camera(uint32_t camera, uint32_t props) {
     shadow_frame_t* frame;
     const guest_clut_t* c;
     if (!S.ready || !(frame = shadow_frame(camera, props)) || !(c = terrain_clut())) return;
-    S.moving = frame->moving != 0;
-    S.passes[S.moving]++;
     if (!engine_ramp_reserved(c->shade_scale, c->shade_offset, c->start) ||
         engine_ramp_brightness(frame->light_level, c->shaded_rows, c->start) <= ENGINE_SHADOW_BRIGHTNESS)
         return;
     frame->light_level = 0;
-    S.darkened[S.moving]++;
-}
-
-void terrain_shadows_span(uint32_t routine) {
-    if (routine == SPAN_SOLID) S.solid[S.moving]++;
-    else if (routine >= SPAN_LEAF && routine <= SPAN_LAST) S.leaf[S.moving]++;
-}
-
-void terrain_shadows_summary(void) {
-    if (!S.passes[0] && !S.passes[1]) return;
-    host_log("graphics", "DEBUG_SAULO terrain shadows: static %u passes (%u darkened), %llu solid and %llu leaf spans; moving "
-             "%u passes (%u darkened), %llu solid and %llu leaf spans", S.passes[0], S.darkened[0], S.solid[0], S.leaf[0],
-             S.passes[1], S.darkened[1], S.solid[1], S.leaf[1]);
 }

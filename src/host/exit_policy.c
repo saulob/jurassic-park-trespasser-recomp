@@ -9,7 +9,6 @@
 #include "gamepad.h"
 #include "audio/audio_host.h"
 #include "platform.h"
-#include "terrain_shadows.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -96,7 +95,6 @@ static void finish_logging(void) {
     cpu_polygons_summary();
     texture_streaming_summary();
     engine_limits_cache_summary();
-    terrain_shadows_summary(); /* DEBUG_SAULO */
     guest_profile_summary();
     io_trace_summary();
 }
