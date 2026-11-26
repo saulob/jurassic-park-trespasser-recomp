@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetches the sources of config/launcher_deps.txt (SDL3, Dear ImGui, TRG Launcher) into external/ at their pinned commits and
+"""Fetches the sources of config/launcher_deps.txt (SDL3, Dear ImGui, TRG Launcher, Squirrel) into external/ at their pinned commits and
 applies launcher/patches/<name>/*.patch, the same result as Sync-LauncherDependencies in tools/build.ps1 (the stamp
 external/<name>/.jpt_commit is the same text, so either tool leaves a tree the other accepts).
 

@@ -886,6 +886,13 @@ add_executable(level_session_tests EXCLUDE_FROM_ALL tests/level_session_tests.c)
 target_link_libraries(level_session_tests PRIVATE jpt_common)
 target_compile_options(level_session_tests PRIVATE /W3)
 target_compile_definitions(level_session_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The interpreter of Trespasser CE scripts (headless): ninja -C <build dir> script_vm_tests
+include(${CMAKE_SOURCE_DIR}/cmake/JptSquirrel.cmake)
+add_executable(script_vm_tests EXCLUDE_FROM_ALL tests/script_vm_tests.cpp)
+target_link_libraries(script_vm_tests PRIVATE jpt_script)
+target_compile_options(script_vm_tests PRIVATE /W3 /utf-8)
+target_compile_definitions(script_vm_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+set_target_properties(script_vm_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 # PLAY to the game window, the launch handoff state machine (headless, no window): ninja -C <build dir> launch_handoff_tests
 add_executable(launch_handoff_tests EXCLUDE_FROM_ALL tests/launch_handoff_tests.c)
 target_link_libraries(launch_handoff_tests PRIVATE jpt_common)

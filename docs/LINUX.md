@@ -247,7 +247,7 @@ same native Linux x86_64 AppImage (built by `tools/package-linux.sh`).
 tools/test-linux-parity.sh                 # the parity checks of this chapter, headless, no build needed beyond the suites
 tools/test-linux.sh                        # the whole headless Linux gate
 python3 -I tools/linux_parity_report.py --write   # rewrite docs/LINUX_PARITY.md after editing tests/feature_contract.json
-python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui and TRG Launcher at their pinned commits (build-linux.sh runs it)
+python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui, TRG Launcher and Squirrel at their pinned commits (build-linux.sh runs it)
 ```
 
 ### Known limits

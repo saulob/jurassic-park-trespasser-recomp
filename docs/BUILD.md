@@ -40,7 +40,7 @@ The original executables are development inputs only; neither the build nor the 
 |---|---|---|
 | pcrecomp | `external\pcrecomp` | the checkout is missing, not at the commit in `config\target.json`, or `patches\pcrecomp` (applied in `series` order, recorded in `external\pcrecomp.patches`) changed |
 | Lifts | `lifts\manifest.json`, `lifts\*.tar.xz` | always checked (a few hundred ms): each archive's SHA-256 against the manifest, its generator format and source metadata |
-| Launcher sources | `external\imgui`, `external\trg-launcher`, `external\SDL` | missing, at another commit than `config\launcher_deps.txt`, or `launcher\patches\` changed |
+| Launcher sources | `external\imgui`, `external\trg-launcher`, `external\SDL`, `external\squirrel` | missing, at another commit than `config\launcher_deps.txt`, or `launcher\patches\` changed |
 | CMake configure | `build\cmake\msvc-x86\` | the cache is missing, or the configuration, `-GenOpt`, `-Trace` or the source folder changed |
 | Build | `build\cmake\msvc-x86\trespasser_recomp.exe` | always asked of Ninja, which compiles only what changed |
 

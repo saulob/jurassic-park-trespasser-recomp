@@ -1,6 +1,6 @@
 # Trespasser CE scripts (Squirrel): plan
 
-Status: planned, nothing implemented. Custom levels with object scripts are refused today as `CE_SCRIPTS`
+Status: phase 1 done (the interpreter, tested, not linked into the game); phases 0, 2, 3 and 4 planned. Custom levels with object scripts are refused today as `CE_SCRIPTS`
 ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)).
 
 ## Scope
@@ -73,14 +73,27 @@ The requirement moves from the package to the level. A level requires `CE_SCRIPT
 besides the script's own state (`constructor`, `OnScriptInit`, `OnPrepareSave`, `OnWorldPurge`). Script files no level
 needs are information. Expected: `tc_prequel`, `tc_rescue` and `tc_isle` become `READY` if nothing else holds them.
 
-### 1. Interpreter
+### 1. Interpreter (done)
 
-* Squirrel 3 sources under `external/`, built for Windows x86, x64 and Linux with the project's warnings as errors.
-* Only the base, math, string and blob libraries; no file, system or I/O library. A script reaches files only through
-  `GetTexture`, `GetBitmap` and `ResolveFileName`, inside the package.
-* Every call into a script runs under an instruction budget; a script that exceeds it, or raises an error, is stopped and
-  disabled for the level with a `[script]` log line naming the class, function and line. The game continues.
-* `print` goes to the log, capped per level.
+`src/common/jpt_script_vm.cpp` over Squirrel, built by `cmake/JptSquirrel.cmake` as `jpt_script`. Nothing of the game links
+it yet, so the campaign and custom sessions run exactly as before.
+
+* Squirrel is fetched like the launcher's sources (`config/launcher_deps.txt`, a pinned commit after 3.2) and patched by
+  `launcher/patches/squirrel/0001-instruction-budget.patch`. Its sources build without the project's warnings, as Dear
+  ImGui; `jpt_script_vm.cpp` builds with them as errors (`/W4 /WX`, `-Werror`). Windows x86 has CE's 32-bit integers; the
+  64-bit Linux host has Squirrel's 64-bit ones, so the engine API will mask colours and handles to 32 bits.
+* The base, math, string and blob libraries only; no file, system or auxiliary library. Removed from the base library:
+  `seterrorhandler`, `setdebughook`, `enabledebuginfo`, `setroottable`, `setconsttable`, `newthread`, `suspend`. A script
+  will reach files only through `GetTexture`, `GetBitmap` and `ResolveFileName`, inside the package.
+* Each entry into a script (loading a file, a call) gets 1,000,000 instructions. Running out is an error that `try` and
+  `catch` cannot keep alive, also inside callbacks such as a sort's comparator; loops and recursion are instructions too.
+  Memory is not limited yet.
+* An error, compile or runtime, is a `[script]` line with the file, line and function. The owner the host called (a class,
+  from phase 2) stops until the level ends (`jpt_script_vm_end_level`); the others go on, and so does the game.
+* `print` and `error` go to the log as `[script] print:` lines, 200 per level. Control characters become spaces, so a script
+  never writes a line of its own. Files over 1 MB are not read; a UTF-8 BOM is skipped.
+* Test: `script_vm_tests`, Windows x86 and Linux, in `tools/test.ps1`.
+* Before the game links it (phase 2): Squirrel's licence in `packaging/licenses/THIRD-PARTY-LICENSES.txt`.
 
 ### 2. Lifecycle and values
 
@@ -113,7 +126,7 @@ with `CE_SCRIPTS` and that name, so the rule stays generic for packages outside 
 
 ## Tests (headless)
 
-* interpreter: load, compile errors, budget, disabled libraries, `print` cap;
+* interpreter (done, `script_vm_tests`): load, compile errors, budget, disabled libraries, `print` cap;
 * values: Vector3 and Rotate3 operators against the documented results;
 * lifecycle order for a new level, a transition, a save load and a restart, over a model engine as `level_actions_tests`;
 * `nvram`: every documented type, arrays, the 65536-element and 256 kB limits, save and load;

@@ -6650,6 +6650,43 @@
    }
   },
   {
+   "id": "ce-script-interpreter",
+   "name": "Interpreter of Trespasser CE scripts (Squirrel, custom levels only, not linked into the game yet): language with math, string and blob libraries only, an instruction budget per entry, errors named with file, line and function, the failing owner stopped until the level ends, print() capped and never forging a log line",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_budget"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_runtime_error_stops_owner_for_the_level"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_libraries"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_print_lines_and_log_text"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
    "id": "custom-level-full-restart",
    "name": "Restart Level of a custom session is a full level cycle: the world purged and the current level loaded whole again through the game's level load, the session kept; the campaign keeps the game's own restart",
    "owner": "lifecycle",

@@ -688,7 +688,11 @@ static VkResult VKAPI_CALL fake_create_device(VkPhysicalDevice d, const VkDevice
     F.devices_created++;
     return VK_ERROR_INITIALIZATION_FAILED;
 }
-static PFN_vkVoidFunction VKAPI_CALL fake_device_proc(VkDevice d, const char* name) { return (void)d, (void)name, NULL; }
+static PFN_vkVoidFunction VKAPI_CALL fake_device_proc(VkDevice d, const char* name) {
+    (void)d;
+    (void)name;
+    return NULL;
+}
 
 static PFN_vkVoidFunction VKAPI_CALL fake_proc(VkInstance instance, const char* name) {
     static const struct {

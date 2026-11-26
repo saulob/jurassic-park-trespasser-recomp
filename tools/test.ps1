@@ -294,6 +294,9 @@ Add-Exes $s @(, @('level_actions_tests', 'the actions of ATX and Trespasser CE o
 $s = 'Session logging'
 Add-Exes $s @(, @('level_session_tests', 'the [session], [level] and [restart] lines: campaign and custom sessions, reasons new_game/initial/transition/restart/load_save, package or retail source, world generations, failed loads and restarts, no line without a lifecycle event', 40))
 
+$s = 'CE scripts'
+Add-Exes $s @(, @('script_vm_tests', 'the interpreter of Trespasser CE scripts (Squirrel): loading and calls, compile and runtime errors with file, line and function, an owner stopped until the level ends, the instruction budget (loops, recursion, callbacks, try and catch cannot keep a script running), only the math, string and blob libraries (no I/O, system, threads, debug hooks or error handler), print() and its cap, no log line forged by a script', 1500))
+
 $s = 'Launch handoff'
 Add-Exes $s @(, @('launch_handoff_tests', 'PLAY to the game window without opening one: campaign and custom, slow and fast starts, a created but not ready window, black frame and first present, failure before the window, no way back after PLAY, D3D11 and Vulkan alike; never a moment without one of our windows, no launcher input after PLAY', 200))
 
@@ -410,7 +413,7 @@ $toolRole = @{
     'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL by this script or on Linux by hand'
     'tools\test-linux-parity.sh' = 'the Linux parity gate: the static contracts of tests\test_linux_parity.py, then tools/test-linux.sh; Linux only, run in WSL or by hand'
     'tools\linux_parity_report.py' = 'writes and checks docs\LINUX_PARITY.md from the feature contract; checked by tests\test_linux_parity.py'
-    'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui and TRG Launcher at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
+    'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui, TRG Launcher and Squirrel at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
     'tools\make-app-icon.py' = 'maintainer: renders packaging\icons\app-icon.svg into the PNGs and the ICO (--check verifies them); checked by tests\test_app_icon.py'
     'tools\build-updater.ps1' = 'maintainer: builds the CLANG64 x64 release helper; run by tools/package.ps1, never by this gate'
     'tools\build-clang-cl.ps1' = 'maintainer: builds the clang-cl x86 Release executable; never run by this gate'
