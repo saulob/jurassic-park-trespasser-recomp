@@ -13,6 +13,7 @@
 
 #include "custom_levels.h"
 #include "jpt_custom_level.h"
+#include "jpt_level_scripts.h"
 #include "jpt_groff.h"
 #include "jpt_level_session.h"
 #include "custom_level_guide.h"
@@ -177,6 +178,144 @@ static bool HasIssue(const LevelScene* scene, const char* code) {
 
 static bool Runtime(const ImportResult& result, const std::string& line) {
     return std::any_of(result.log.begin(), result.log.end(), [&line](const std::string& l) { return l.find(line) != std::string::npos; });
+}
+
+// A fan mission with a script one of its levels needs: imported whole, the script installed and named in the runtime map, read
+// back by the game, and a VM only while that level is played.
+static void TestScripts() {
+    const fs::path user = Fresh("scripts user");
+    const Files files = Level("Sc/data/", "alpha") + Level("Sc/data/", "beta") +
+                        Files{{"Sc/fm.ini", "[General]\nStartLevel=alpha.scn\n"},
+                              {"Sc/scripts/shared.nut", "class AlphaRules extends LevelScript { static SCN = \"alpha.scn\"; function OnLevelStart() { print(\"alpha\"); } }\n"},
+                              {"Sc/doc/sample.nut", "class Sample extends GameScript { function OnPaint() {} }\n"}};
+    const ImportResult result = Install(user, "Scripted", files);
+    CHECK(result.ok() && result.levels == 2 && Runtime(result, "info: SCRIPT_CLASS AlphaRules"));
+    const LevelScene* found = SceneNamed(user, result.package, "alpha.scn");
+    const LevelScene alpha = found ? *found : LevelScene{};
+    found = SceneNamed(user, result.package, "beta.scn");
+    const LevelScene beta = found ? *found : LevelScene{};
+    CHECK(alpha.scripted && alpha.script_files == std::vector<std::string>{"Sc/scripts/shared.nut"} && alpha.playable() && HasIssue(&alpha, "SCRIPT_CLASS"));
+    CHECK(!beta.scripted && beta.playable() && !HasIssue(&beta, "SCRIPT_CLASS"));
+    CHECK(Activate(user, result.package, "Sc/data/alpha.scn"));
+    CHECK(jpt_custom_level_script_file(0) && std::string(jpt_custom_level_script_file(0)) == "Sc/scripts/shared.nut" && !jpt_custom_level_script_file(1));
+    jpt_level_scripts_start(JPT_SESSION_CUSTOM, nullptr);
+    jpt_script_session* s = jpt_level_scripts_session();
+    CHECK(s != nullptr);
+    jpt_level_scripts_begin(JPT_REASON_INITIAL, "alpha.scn", nullptr);
+    jpt_level_scripts_ready(1);
+    CHECK(jpt_script_session_has_vm(s) && jpt_script_session_generation(s) == 1);
+    jpt_level_scripts_begin(JPT_REASON_TRANSITION, "beta.scn", nullptr);
+    jpt_level_scripts_ready(1);
+    CHECK(!jpt_script_session_has_vm(s));
+    jpt_level_scripts_begin(JPT_REASON_RESTART, "beta.scn", nullptr);
+    CHECK(!jpt_script_session_has_vm(s));
+    jpt_level_scripts_begin(JPT_REASON_TRANSITION, "alpha.scn", nullptr);
+    CHECK(jpt_script_session_has_vm(s) && jpt_script_session_generation(s) == 2);
+    jpt_custom_level_deactivate();
+    CHECK(jpt_level_scripts_session() == nullptr);
+}
+
+static std::vector<std::string> g_script_lines;
+static void ScriptLine(const char* line) { g_script_lines.push_back(line); }
+
+static std::string Text(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+static LevelScene Listed(const fs::path& user, const fs::path& game, const std::string& package, const char* file) {
+    for (const LevelPackage& p : ListLevelPackages(user, game))
+        for (const LevelScene& scene : p.scenes)
+            if (p.id == package && SameText(scene.file, file)) return scene;
+    return {};
+}
+
+static bool Has(const std::vector<std::string>& lines, const std::string& part) {
+    return std::any_of(lines.begin(), lines.end(), [&part](const std::string& l) { return l.find(part) != std::string::npos; });
+}
+
+// One package, four levels, each judged on its own: alpha without scripts, beta with a script the port runs, gamma with one that
+// asks for CE's API, delta beside a script no level of it uses. A sibling never changes another's state, Play or report.
+static void TestLevelsApart() {
+    // A game folder of its own: the listing key covers the folder the game's data is in.
+    const fs::path user = Fresh("apart user"), game = Fresh("apart game") / "version" / "data";
+    fs::create_directories(game);
+    const Files files = Level("Four/data/", "alpha") + Level("Four/data/", "beta") + Level("Four/data/", "gamma") + Level("Four/data/", "delta") +
+                        Files{{"Four/fm.ini", "[General]\nStartLevel=alpha.scn\n"},
+                              {"Four/scripts/beta.nut", "class BetaRules extends LevelScript { static SCN = \"beta.scn\"; function OnLevelStart() { print(\"beta start\"); } }\n"},
+                              {"Four/scripts/gamma.nut", "class GammaHud extends LevelScript { static SCN = \"gamma.scn\"; function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"},
+                              {"Four/scripts/spare.nut", "class Spare extends LevelScript { static SCN = \"elsewhere.scn\"; function OnLevelStart() {} }\n"}};
+    const fs::path source = Fresh("apart source");
+    for (const auto& [path, bytes] : files) Write(source / PathFromUtf8(path), bytes);
+    const ImportResult result = ImportLevelFolder(source, user, {}, {}, game);
+    CHECK(result.ok() && result.levels == 3);
+    const std::string id = result.package;
+    ListingStats first;
+    ListLevelPackages(user, game, &first);
+    const LevelScene alpha = Listed(user, game, id, "alpha.scn"), beta = Listed(user, game, id, "beta.scn"), gamma = Listed(user, game, id, "gamma.scn"), delta = Listed(user, game, id, "delta.scn");
+    CHECK(alpha.playable() && beta.playable() && delta.playable() && gamma.state == LevelState::kNotSupported);
+    CHECK(gamma.level_class() == LevelClass::kRejectedUnsupported && HasIssue(&gamma, "UNSUPPORTED_FEATURE"));
+    for (const LevelScene* s : {&alpha, &beta, &delta}) CHECK(s->level_class() == LevelClass::kReady && !HasIssue(s, "PACKAGE_NOT_SUPPORTED") && !HasIssue(s, "UNSUPPORTED_FEATURE"));
+    CHECK(!alpha.scripted && !delta.scripted && alpha.script_files.empty() && delta.script_files.empty());
+    CHECK(beta.scripted && beta.script_files == std::vector<std::string>{"Four/scripts/beta.nut"} && beta.script_required.empty());
+    CHECK(gamma.scripted && std::find(gamma.script_required.begin(), gamma.script_required.end(), "GetPlayer") != gamma.script_required.end());
+    for (const LevelScene* s : {&alpha, &delta})
+        for (const LevelIssue& i : s->issues) CHECK(i.subject != "CE_SCRIPT_API" && i.subject != "CE_SCRIPT_FILES" && i.subject != "CE_SCRIPTS" && i.code != "SCRIPT_CLASS");
+    CHECK(ActionsOf(&alpha, false).play && ActionsOf(&beta, false).play && ActionsOf(&delta, false).play);
+    CHECK(!ActionsOf(&gamma, false).play && ActionsOf(&gamma, false).report);
+
+    // The listing record keeps each level as it is; a script that changes is read again.
+    ListingStats cached;
+    ListLevelPackages(user, game, &cached);
+    const LevelScene again = Listed(user, game, id, "beta.scn");
+    CHECK(cached.cached >= 1 && again.scripted && again.script_files == beta.script_files && Listed(user, game, id, "gamma.scn").script_required == gamma.script_required);
+
+    // The manifest and the runtime map, per level.
+    const fs::path dir = CustomLevelsDir(user) / id;
+    const std::string manifest = Text(dir / "manifest.json"), map = Text(dir / JPT_CUSTOM_LEVEL_RUNTIME_MAP);
+    const size_t status = manifest.find("\"level_status\"");
+    CHECK(status != std::string::npos && manifest.find("REJECTED_UNSUPPORTED", status) != std::string::npos && manifest.find("Four/data/alpha.scn", status) != std::string::npos);
+    CHECK(manifest.find("GetPlayer", status) != std::string::npos && manifest.find("Four/scripts/beta.nut", status) != std::string::npos);
+    CHECK(map.find("\nuses beta.scn|Four/scripts/beta.nut\n") != std::string::npos && map.find("uses alpha.scn") == std::string::npos && map.find("uses delta.scn") == std::string::npos);
+
+    // Play and its preflight: the level that is asked, never the package.
+    for (const char* scene : {"Four/data/alpha.scn", "Four/data/beta.scn", "Four/data/delta.scn"}) CHECK(CheckBeforePlay(user, game, id, scene).ok);
+    const PlayCheck refused = CheckBeforePlay(user, game, id, "Four/data/gamma.scn");
+    CHECK(!refused.ok && refused.reason == ImportStatus::kNotSupported && Has(refused.log, "CE_SCRIPT_API") && !Has(refused.log, "alpha.scn") && !Has(refused.log, "beta.scn"));
+
+    // Bug Report of gamma: its diagnosis, not a sibling's.
+    LevelPackage listed;
+    for (const LevelPackage& p : ListLevelPackages(user, game))
+        if (p.id == id) listed = p;
+    const auto at = std::find_if(listed.scenes.begin(), listed.scenes.end(), [](const LevelScene& s) { return s.file == "gamma.scn"; });
+    CHECK(at != listed.scenes.end());
+    if (at != listed.scenes.end()) {
+        const std::vector<std::string> report = ReportLines(listed, &*at, game);
+        CHECK(!report.empty() && Has(report, "level Four/data/gamma.scn: REJECTED_UNSUPPORTED") && Has(report, "CE_SCRIPT_API") && !Has(report, "alpha.scn") && !Has(report, "beta.scn") && !Has(report, "delta.scn"));
+        const std::vector<std::string> all = ReportLines(listed, nullptr, game);
+        CHECK(Has(all, "gamma.scn") && !Has(all, "level Four/data/alpha.scn"));
+    }
+
+    // At run time: a VM only for beta, nothing at all for alpha and delta.
+    for (const char* scene : {"alpha.scn", "beta.scn", "delta.scn"}) {
+        CHECK(Activate(user, id, std::string("Four/data/") + scene));
+        g_script_lines.clear();
+        jpt_level_scripts_start(JPT_SESSION_CUSTOM, ScriptLine);
+        jpt_script_session* s = jpt_level_scripts_session();
+        jpt_level_scripts_begin(JPT_REASON_INITIAL, scene, nullptr);
+        jpt_level_scripts_ready(1);
+        jpt_level_scripts_step(0.1f);
+        const bool vm = s && jpt_script_session_has_vm(s);
+        if (!strcmp(scene, "beta.scn")) CHECK(vm && Has(g_script_lines, "[script] print: beta start") && Has(g_script_lines, "vm create level=beta.scn"));
+        else CHECK(s && !vm && g_script_lines.empty());
+        jpt_custom_level_deactivate();
+    }
+
+    // gamma's script changes into one the port runs: the listing reads the package again and gamma alone changes.
+    Write(dir / "Four" / "scripts" / "gamma.nut", "class GammaHud extends LevelScript { static SCN = \"gamma.scn\"; function OnLevelStart() { print(\"g\"); } }\n");
+    ListingStats changed;
+    ListLevelPackages(user, game, &changed);
+    CHECK(changed.analysed >= 1 && Listed(user, game, id, "gamma.scn").playable() && Listed(user, game, id, "alpha.scn").playable());
 }
 
 static void TestBitmaps() {
@@ -651,6 +790,8 @@ int main() {
     std::error_code ec;
     fs::remove_all(g_scratch, ec);
     g_game = Fresh("game");
+    TestScripts();
+    TestLevelsApart();
     TestBitmaps();
     TestMapPaths();
     TestMapPictures();

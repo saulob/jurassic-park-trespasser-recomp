@@ -25,6 +25,7 @@
 #include "vk_context.h"
 #include "vk_shaders.h"
 #include "jpt_launcher.h"
+#include "jpt_level_scripts.h"
 #include "jpt_renderer.h"
 #include "jpt_user_data.h"
 #include "l10n.h"
@@ -816,6 +817,7 @@ static int host_main(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     const int code = host_main(argc, argv);
+    jpt_level_scripts_end();
     jpt_session_end();
     launch_handoff_finish(code);
     return code;

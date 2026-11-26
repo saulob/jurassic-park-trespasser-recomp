@@ -27,11 +27,19 @@ struct PackageOrigin {
 std::string DateText(int64_t seconds); // "2026-11-25T10:12:48Z"
 int64_t DateOf(const std::string& text); // 0 when it is none
 
+// The result of one level, which its siblings never change.
+struct LevelVerdict {
+    std::string scn, status; // LevelClassName
+    bool playable = false, scripted = false;
+    std::vector<std::string> script_files, script_required, blockers; // blockers: "CODE subject"
+};
+
 struct PackageManifest {
     std::string package_id;
     PackageOrigin origin;
     PackageAnalysis analysis;
     std::vector<std::string> missing; // "PV.scn: Pv-130.pid", where the installed game was known
+    std::vector<LevelVerdict> verdicts;
 };
 
 std::string ManifestJson(const PackageManifest& manifest);

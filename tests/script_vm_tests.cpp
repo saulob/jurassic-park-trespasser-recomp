@@ -160,7 +160,7 @@ static void test_classes_and_state() {
 static void test_compile_error() {
     jpt_script_vm* vm = Vm();
     CHECK(Load(vm, "broken.nut", "function A() {\n  local x = ;\n}\n") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] broken.nut line 2 column"));
+    CHECK(Contains("[script] level=- file=broken.nut callback=load line=2 column="));
     CHECK(jpt_script_vm_call(vm, "A", "A") == JPT_SCRIPT_ABSENT);
     Destroy(vm);
 }
@@ -177,8 +177,7 @@ static void test_runtime_error_stops_owner_for_the_level() {
         "function Caught() { try { throw \"inner\"; } catch (e) { print(\"caught \" + e); } }\n";
     CHECK(Load(vm, "errors.nut", text) == JPT_SCRIPT_OK);
     CHECK(jpt_script_vm_call(vm, "Spitter", "Bad") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] Spitter: the index 'missing' does not exist (errors.nut line 4, function Bad)"));
-    CHECK(Has("[script] Spitter stops until the level ends"));
+    CHECK(Has("[script] level=- script=Spitter file=errors.nut callback=Bad line=4 result=disabled error=the index 'missing' does not exist"));
     CHECK(jpt_script_vm_disabled(vm, "Spitter"));
     g_lines.clear();
     CHECK(jpt_script_vm_call(vm, "Spitter", "Good") == JPT_SCRIPT_DISABLED);
@@ -186,7 +185,7 @@ static void test_runtime_error_stops_owner_for_the_level() {
     CHECK(jpt_script_vm_call(vm, "SpitterHelper", "Good") == JPT_SCRIPT_OK);
     CHECK(Has("[script] print: good"));
     CHECK(jpt_script_vm_call(vm, "Hud", "Thrown") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] Hud: boom (errors.nut line 6, function Thrown)"));
+    CHECK(Has("[script] level=- script=Hud file=errors.nut callback=Thrown line=6 result=disabled error=boom"));
     CHECK(jpt_script_vm_call(vm, "Map", "Caught") == JPT_SCRIPT_OK);
     CHECK(Has("[script] print: caught inner"));
     jpt_script_vm_end_level(vm);
@@ -198,9 +197,7 @@ static void test_runtime_error_stops_owner_for_the_level() {
 static void test_top_level_error() {
     jpt_script_vm* vm = Vm();
     CHECK(Load(vm, "top.nut", "function Later() {}\nlocal a = null;\na.b = 1;\n") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] top.nut: "));
-    CHECK(Contains("(top.nut line 3, function main)"));
-    CHECK(Has("[script] top.nut stops until the level ends"));
+    CHECK(Contains("[script] level=- script=top.nut file=top.nut callback=load line=3 function=main result=failed error="));
     Destroy(vm);
 }
 
@@ -220,8 +217,8 @@ static void test_budget() {
     for (const char* name : spinners) {
         g_lines.clear();
         CHECK(jpt_script_vm_call(vm, name, name) == JPT_SCRIPT_FAILED);
-        CHECK(Contains("instruction budget exceeded (10000)") || (!strcmp(name, "Deep") && Count("[script] Deep: ") == 1));
-        CHECK(Has(std::string("[script] ") + name + " stops until the level ends"));
+        CHECK(Contains("instruction budget exceeded (10000)") || (!strcmp(name, "Deep") && Count("[script] level=- script=Deep ") == 1));
+        CHECK(Count(std::string("[script] level=- script=") + name + " ") == 1 && Contains("result=disabled"));
     }
     g_lines.clear();
     CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
@@ -232,7 +229,7 @@ static void test_budget() {
 
     vm = Vm(10000);
     CHECK(Load(vm, "loop.nut", "while (true) {}") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] loop.nut: instruction budget exceeded (10000)"));
+    CHECK(Contains("[script] level=- script=loop.nut") && Contains("result=failed error=instruction budget exceeded (10000)"));
     Destroy(vm);
 }
 
@@ -303,7 +300,7 @@ static void test_files() {
     CHECK(Has("[script] print: bom"));
     std::string large(JPT_SCRIPT_MAX_SOURCE + 1, ' ');
     CHECK(Load(vm, "large.nut", large) == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] large.nut is larger than"));
+    CHECK(Contains("[script] level=- file=large.nut callback=load result=failed error=larger than"));
     CHECK(Load(vm, "empty.nut", "") == JPT_SCRIPT_OK);
     CHECK(jpt_script_vm_load(vm, "null.nut", nullptr, 0) == JPT_SCRIPT_FAILED);
     Destroy(vm);
@@ -418,8 +415,8 @@ static void test_heap_accounting() {
 }
 
 static bool MemoryExceeded(const char* owner) {
-    return Contains(std::string("memory budget exceeded (limit ") ) &&
-           Contains(std::string("bytes) while running ") + owner) && Has("[script] every script of this VM stops");
+    return Contains("result=vm_disabled error=memory budget exceeded (limit ") && Contains(std::string("script=") + owner + " ") &&
+           Has("[script] level=- result=vm_disabled every script of this VM stops");
 }
 
 static void CheckAbandoned(jpt_script_vm* vm) {
@@ -467,9 +464,9 @@ static void test_memory_budget() {
     CHECK(m.allocations > 0 && m.budget_failures == 0 && m.system_failures == 0 && !m.abandoned);
     CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
     CHECK(jpt_script_vm_call(vm, "Spin", "Spin") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] Spin: instruction budget exceeded (1000000)"));
+    CHECK(Contains("[script] level=- script=Spin ") && Contains("error=instruction budget exceeded (1000000)"));
     CHECK(jpt_script_vm_call(vm, "Bad", "Bad") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] Bad: the index 'missing' does not exist"));
+    CHECK(Contains("[script] level=- script=Bad file=memory.nut callback=Bad line=3 result=disabled error=the index 'missing' does not exist"));
     CHECK(jpt_script_vm_call(vm, "ManySmall", "ManySmall") == JPT_SCRIPT_OK);
     CHECK(Has("[script] print: kept 2000"));
     m = Memory(vm);
@@ -479,7 +476,7 @@ static void test_memory_budget() {
 
     vm = MemoryVm(20000, 0);
     CHECK(jpt_script_vm_call(vm, "Deep", "Deep") == JPT_SCRIPT_FAILED);
-    CHECK(Contains("[script] Deep: instruction budget exceeded (20000)") && !Memory(vm).abandoned);
+    CHECK(Contains("[script] level=- script=Deep ") && Contains("error=instruction budget exceeded (20000)") && !Memory(vm).abandoned);
     CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
     Destroy(vm);
 
@@ -517,7 +514,7 @@ static void test_memory_failures() {
     config.allocator = &kFake;
     config.memory_limit = 1024;
     CHECK(jpt_script_vm_create(&config) == nullptr);
-    CHECK(Contains("[script] disabled: memory budget exceeded (limit 1024 bytes) while running the interpreter"));
+    CHECK(Contains("[script] level=- script=the_interpreter callback=open result=vm_disabled error=memory budget exceeded (limit 1024 bytes)"));
     CHECK(g_bytes == 0 && g_blocks.empty());
 
     jpt_script_vm* vm = MemoryVm(0, 0);
@@ -525,7 +522,7 @@ static void test_memory_failures() {
     g_refuse_after = 50;
     CHECK(jpt_script_vm_call(vm, "ManySmall", "ManySmall") == JPT_SCRIPT_FAILED);
     g_refuse_after = -1;
-    CHECK(Contains("[script] disabled: out of memory (the system refused ") && Contains("while running ManySmall"));
+    CHECK(Contains("result=vm_disabled error=out of memory (the system refused ") && Contains("script=ManySmall "));
     CHECK(!Contains("memory budget exceeded"));
     const jpt_script_memory m = Memory(vm);
     CHECK(m.system_failures == 1 && m.budget_failures == 0 && m.peak >= before);
@@ -536,8 +533,144 @@ static void test_memory_failures() {
     g_refuse_after = 3;
     CHECK(Load(vm, "late.nut", "gLate <- [1, 2, 3, \"four\", { five = 5 }]; function Late() {}") == JPT_SCRIPT_FAILED);
     g_refuse_after = -1;
-    CHECK(Contains("while running late.nut"));
+    CHECK(Contains("script=late.nut "));
     CheckAbandoned(vm);
+    Destroy(vm);
+}
+
+static void test_instances() {
+    jpt_script_vm* vm = Vm(10000);
+    jpt_script_vm_set_level(vm, "alpha.scn");
+    CHECK(jpt_script_vm_define_class(vm, "GameScript") && jpt_script_vm_define_class(vm, "LevelScript"));
+    const char* text =
+        "class Base extends GameScript { function OnLevelStart() { print(\"base start\"); } }\n"
+        "class Hud extends Base {\n"
+        "  n = 0;\n"
+        "  constructor() { print(\"hud made\"); }\n"
+        "  function OnSimStep(dt) { n++; print(\"step \" + dt + \" \" + n); }\n"
+        "  function OnLevelEnd(b) { print(\"end \" + b); }\n"
+        "  function Say(s) { print(\"say \" + s); }\n"
+        "}\n"
+        "class Odd extends LevelScript { constructor() { throw \"no\"; } }\n"
+        "class Spin extends LevelScript { function OnSimStep(dt) { while (true) {} } }\n"
+        "class Plain {}\n"
+        "NotAClass <- 3;\n";
+    CHECK(Load(vm, "classes.nut", text) == JPT_SCRIPT_OK);
+    CHECK(jpt_script_vm_extends(vm, "Hud", "GameScript") && jpt_script_vm_extends(vm, "Hud", "Base") && jpt_script_vm_extends(vm, "Hud", "Hud"));
+    CHECK(!jpt_script_vm_extends(vm, "Hud", "LevelScript") && !jpt_script_vm_extends(vm, "Plain", "GameScript"));
+    CHECK(!jpt_script_vm_extends(vm, "NotAClass", "GameScript") && !jpt_script_vm_extends(vm, "Missing", "GameScript"));
+    const int hud = jpt_script_vm_instantiate(vm, "Hud", "Hud");
+    CHECK(hud > 0 && Has("[script] print: hud made"));
+    CHECK(jpt_script_vm_has_method(vm, hud, "OnSimStep") && jpt_script_vm_has_method(vm, hud, "OnLevelStart"));
+    CHECK(!jpt_script_vm_has_method(vm, hud, "OnPaint") && !jpt_script_vm_has_method(vm, hud, "n"));
+    const jpt_script_arg dt{JPT_SCRIPT_ARG_FLOAT, 0, 0.25f, nullptr};
+    const jpt_script_arg yes{JPT_SCRIPT_ARG_BOOL, 1, 0.0f, nullptr};
+    const jpt_script_arg text_arg{JPT_SCRIPT_ARG_STRING, 0, 0.0f, "hi"};
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_OK && Has("[script] print: step 0.25 1"));
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_OK && Has("[script] print: step 0.25 2"));
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnLevelEnd", &yes, 1) == JPT_SCRIPT_OK && Has("[script] print: end true"));
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "Say", &text_arg, 1) == JPT_SCRIPT_OK && Has("[script] print: say hi"));
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnLevelStart", nullptr, 0) == JPT_SCRIPT_OK && Has("[script] print: base start"));
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnPaint", nullptr, 0) == JPT_SCRIPT_ABSENT);
+    CHECK(jpt_script_vm_invoke(vm, 99, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_ABSENT);
+    CHECK(jpt_script_vm_invoke(vm, 0, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_ABSENT);
+
+    g_lines.clear();
+    CHECK(jpt_script_vm_instantiate(vm, "Odd", "Odd") == 0);
+    CHECK(Has("[script] level=alpha.scn script=Odd file=classes.nut callback=constructor line=9 result=disabled error=no"));
+    CHECK(jpt_script_vm_instantiate(vm, "Odd", "Odd") == 0 && g_lines.size() == 1);
+    CHECK(jpt_script_vm_instantiate(vm, "Ghost", "Ghost") == 0);
+    CHECK(Has("[script] level=alpha.scn script=Ghost callback=constructor result=disabled error=the class Ghost is not declared"));
+    CHECK(jpt_script_vm_instantiate(vm, "NotAClass", "NotAClass") == 0);
+
+    // One script running out of its instruction budget stops only itself; the next call of another gets a whole budget.
+    const int spin = jpt_script_vm_instantiate(vm, "Spin", "Spin");
+    CHECK(spin > 0);
+    g_lines.clear();
+    CHECK(jpt_script_vm_invoke(vm, spin, "Spin", "OnSimStep", &dt, 1) == JPT_SCRIPT_FAILED);
+    CHECK(Has("[script] level=alpha.scn script=Spin file=classes.nut callback=OnSimStep line=10 result=disabled error=instruction budget exceeded (10000)"));
+    CHECK(jpt_script_vm_invoke(vm, spin, "Spin", "OnSimStep", &dt, 1) == JPT_SCRIPT_DISABLED);
+    CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_OK && Has("[script] print: step 0.25 3"));
+    CHECK(Count("[script] level=alpha.scn script=Spin ") == 1);
+    Destroy(vm);
+}
+
+static jpt::script::Value Int(int64_t i) {
+    jpt::script::Value v;
+    v.type = jpt::script::Value::kInt;
+    v.i = i;
+    return v;
+}
+
+static const jpt::script::Slot* SlotOf(const std::vector<jpt::script::Slot>& slots, const char* name) {
+    for (const jpt::script::Slot& s : slots)
+        if (s.name == name) return &s;
+    return nullptr;
+}
+
+static void test_nvram() {
+    using jpt::script::Value;
+    jpt_script_vm* vm = Vm();
+    const char* text =
+        "class Keeper {\n"
+        "  nvram = null;\n"
+        "  constructor() {\n"
+        "    nvram = { i = 7, f = 1.5, b = true, s = \"text\", n = null, list = [1, 2.5, false, \"x\"], extra = \"kept\" };\n"
+        "    nvram.bin <- blob(0); nvram.bin.writen(65, 'b'); nvram.bin.writen(66, 'b'); nvram.bin.writen(67, 'b');\n"
+        "  }\n"
+        "  function Odd() {\n"
+        "    nvram.big <- array(70000, 1);\n"
+        "    nvram.huge <- blob(300 * 1024);\n"
+        "    nvram.table <- { a = 1 };\n"
+        "    nvram.fn <- function() {};\n"
+        "    nvram.nested <- [[1], blob(1), 3];\n"
+        "    nvram[5] <- 1;\n"
+        "  }\n"
+        "  function Show() { print(nvram.i + \" \" + nvram.f + \" \" + nvram.b + \" \" + nvram.s + \" \" + nvram.list.len() + \" \" + nvram.extra + \" \" + nvram.bin.len()); }\n"
+        "}\n"
+        "class NoTable { nvram = 3; }\n"
+        "class NoNvram {}\n";
+    CHECK(Load(vm, "nvram.nut", text) == JPT_SCRIPT_OK);
+    const int keeper = jpt_script_vm_instantiate(vm, "Keeper", "Keeper");
+    std::vector<jpt::script::Slot> slots;
+    std::vector<std::string> notes;
+    CHECK(jpt_script_vm_get_nvram(vm, keeper, slots, notes) && notes.empty());
+    CHECK(slots.size() == 8);
+    const jpt::script::Slot* list = SlotOf(slots, "list");
+    CHECK(SlotOf(slots, "i") && SlotOf(slots, "i")->value.type == Value::kInt && SlotOf(slots, "i")->value.i == 7);
+    CHECK(SlotOf(slots, "f") && SlotOf(slots, "f")->value.type == Value::kFloat && SlotOf(slots, "f")->value.f == 1.5f);
+    CHECK(SlotOf(slots, "b") && SlotOf(slots, "b")->value.type == Value::kBool && SlotOf(slots, "b")->value.b);
+    CHECK(SlotOf(slots, "s") && SlotOf(slots, "s")->value.bytes == "text" && SlotOf(slots, "n")->value.type == Value::kNull);
+    CHECK(SlotOf(slots, "bin") && SlotOf(slots, "bin")->value.type == Value::kBlob && SlotOf(slots, "bin")->value.bytes == "ABC");
+    CHECK(list && list->value.type == Value::kArray && list->value.items.size() == 4 && list->value.items[3].bytes == "x");
+
+    // Into another instance: saved slots replace and add, the others stay.
+    const int other = jpt_script_vm_instantiate(vm, "Keeper", "Keeper");
+    std::vector<jpt::script::Slot> saved = {{"i", Int(42)}, {"added", Int(5)}};
+    CHECK(jpt_script_vm_set_nvram(vm, other, saved));
+    std::vector<jpt::script::Slot> after;
+    CHECK(jpt_script_vm_get_nvram(vm, other, after, notes));
+    CHECK(SlotOf(after, "i") && SlotOf(after, "i")->value.i == 42 && SlotOf(after, "added") && SlotOf(after, "added")->value.i == 5);
+    CHECK(SlotOf(after, "extra") && SlotOf(after, "extra")->value.bytes == "kept");
+    CHECK(jpt_script_vm_set_nvram(vm, other, slots));
+    g_lines.clear();
+    CHECK(jpt_script_vm_invoke(vm, other, "Keeper", "Show", nullptr, 0) == JPT_SCRIPT_OK);
+    CHECK(Has("[script] print: 7 1.5 true text 4 kept 3"));
+
+    // What a save cannot hold: cut to CE's limits or left out, each named.
+    CHECK(jpt_script_vm_invoke(vm, keeper, "Keeper", "Odd", nullptr, 0) == JPT_SCRIPT_OK);
+    CHECK(jpt_script_vm_get_nvram(vm, keeper, slots, notes));
+    CHECK(SlotOf(slots, "big") && SlotOf(slots, "big")->value.items.size() == jpt::script::kArrayMax);
+    CHECK(SlotOf(slots, "huge") && SlotOf(slots, "huge")->value.bytes.size() == jpt::script::kBlobMax);
+    CHECK(!SlotOf(slots, "table") && !SlotOf(slots, "fn"));
+    CHECK(SlotOf(slots, "nested") && SlotOf(slots, "nested")->value.items.size() == 3 && SlotOf(slots, "nested")->value.items[0].type == Value::kNull);
+    CHECK(notes.size() == 6);
+
+    const int no_table = jpt_script_vm_instantiate(vm, "NoTable", "NoTable");
+    const int no_nvram = jpt_script_vm_instantiate(vm, "NoNvram", "NoNvram");
+    CHECK(!jpt_script_vm_get_nvram(vm, no_table, slots, notes) && slots.empty() && !jpt_script_vm_set_nvram(vm, no_table, saved));
+    CHECK(!jpt_script_vm_get_nvram(vm, no_nvram, slots, notes) && !jpt_script_vm_set_nvram(vm, no_nvram, saved));
+    CHECK(!jpt_script_vm_get_nvram(vm, 0, slots, notes) && !jpt_script_vm_set_nvram(vm, 77, saved));
     Destroy(vm);
 }
 
@@ -554,6 +687,8 @@ int main() {
     test_libraries();
     test_print_lines_and_log_text();
     test_files();
+    test_instances();
+    test_nvram();
     printf("script_vm_tests: %lu checks, %lu failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

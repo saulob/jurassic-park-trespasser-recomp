@@ -9,6 +9,7 @@
 #include "guest_abi.h"
 #include "jpt_custom_level.h"
 #include "jpt_fs.h"
+#include "jpt_level_scripts.h"
 #include "jpt_picture.h"
 #include "jpt_save.h"
 #include "level_actions_policy.h"
@@ -1011,9 +1012,11 @@ static void load_world(void) {
  * changed stay as they are: a custom session loads the level whole instead, purged first, through the game's level load. */
 static void game_restart(uint32_t self, const char* scene, jpt_level_source_t source) {
     jpt_session_level_begin(JPT_REASON_RESTART, scene, source);
+    jpt_level_scripts_begin(JPT_REASON_RESTART, scene, NULL);
     g_ecx = self;
     A.restart();
     jpt_session_level_end((int32_t)g_eax >= 0, (int)(int32_t)g_eax);
+    jpt_level_scripts_ready((int32_t)g_eax >= 0);
     jpt_session_restart_end((int32_t)g_eax >= 0);
 }
 
@@ -1132,6 +1135,7 @@ void level_actions_step(void) {
     A.last_time = now;
     if (!(passed > 0.0f)) return;
     if (passed > STEP_LONGEST) passed = 0.0f;
+    jpt_level_scripts_step(passed);
     if (A.state.speed.active && passed > 0.0f) {
         la_speed_step(&A.state.speed, passed);
         set_game_speed();

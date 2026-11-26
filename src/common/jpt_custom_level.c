@@ -30,6 +30,8 @@
 #define LOADING_MAX JPT_CUSTOM_LEVEL_SCENES_MAX
 #define LIMITS_MAX 4
 #define ENDS_MAX 12
+#define SCRIPTS_MAX 256
+#define SCRIPT_REFS_MAX 1024
 #define ACTION_FIRST 99
 #define ACTION_LAST 121
 
@@ -86,6 +88,17 @@ static struct {
     unsigned format_caps; /* of the scenes read so far */
     uint32_t actions;     /* bit 0: ActionType 99 */
     int scene_version;
+    const char* scripts[SCRIPTS_MAX];
+    int script_count;
+    struct {
+        const char *scene, *class_name, *object;
+        int action;
+    } script_refs[SCRIPT_REFS_MAX];
+    int script_ref_count;
+    struct {
+        const char *scene, *file;
+    } script_uses[SCRIPT_REFS_MAX];
+    int script_use_count;
 } C;
 
 static jpt_custom_level_game_fn s_game;
@@ -173,6 +186,24 @@ const char* jpt_custom_level_package(void) { return C.package; }
 const char* jpt_custom_level_layout(void) { return C.layout; }
 const char* jpt_custom_level_scene(void) { return C.active ? C.scenes[C.scene].name : ""; }
 int jpt_custom_level_scene_count(void) { return C.scene_count; }
+
+const char* jpt_custom_level_script_file(int index) { return C.active && index >= 0 && index < C.script_count ? C.scripts[index] : NULL; }
+
+int jpt_custom_level_script_reference(int index, const char** scene, const char** class_name, const char** object, int* action) {
+    if (!C.active || index < 0 || index >= C.script_ref_count) return 0;
+    *scene = C.script_refs[index].scene;
+    *class_name = C.script_refs[index].class_name;
+    *object = C.script_refs[index].object;
+    *action = C.script_refs[index].action;
+    return 1;
+}
+
+int jpt_custom_level_script_use(int index, const char** scene, const char** file) {
+    if (!C.active || index < 0 || index >= C.script_use_count) return 0;
+    *scene = C.script_uses[index].scene;
+    *file = C.script_uses[index].file;
+    return 1;
+}
 
 const char* jpt_custom_level_scene_at(int index) {
     return index >= 0 && index < C.scene_count ? C.scenes[index].name : "";
@@ -302,7 +333,7 @@ static int is_clean_path(const char* path) {
 }
 
 static void map_line(const char* kind, char* rest) {
-    char *a = next_field(&rest), *b = next_field(&rest), *c = next_field(&rest);
+    char *a = next_field(&rest), *b = next_field(&rest), *c = next_field(&rest), *d = next_field(&rest);
     const char* file;
     jpt_level_tpa_t pack;
     if (!strcmp(kind, "scene") && a) {
@@ -337,6 +368,16 @@ static void map_line(const char* kind, char* rest) {
     } else if (!strcmp(kind, "action") && a) {
         const long type = strtol(a, NULL, 10);
         if (type >= ACTION_FIRST && type <= ACTION_LAST) C.actions |= 1u << (type - ACTION_FIRST);
+    } else if (!strcmp(kind, "nut") && a && (file = own_file(a)) != NULL && C.script_count < SCRIPTS_MAX) {
+        C.scripts[C.script_count++] = file;
+    } else if (!strcmp(kind, "script") && a && b && *b && c && d && C.script_ref_count < SCRIPT_REFS_MAX) {
+        C.script_refs[C.script_ref_count].scene = a;
+        C.script_refs[C.script_ref_count].class_name = b;
+        C.script_refs[C.script_ref_count].object = c;
+        C.script_refs[C.script_ref_count++].action = !strcmp(d, "1");
+    } else if (!strcmp(kind, "uses") && a && b && (file = own_file(b)) != NULL && C.script_use_count < SCRIPT_REFS_MAX) {
+        C.script_uses[C.script_use_count].scene = a;
+        C.script_uses[C.script_use_count++].file = file;
     } else if (!strcmp(kind, "skip") && a && !strcmp(a, "win")) {
         C.skip_win = 1;
         C.map_caps |= bit(JPT_LEVEL_CAP_SKIP_ENDING);

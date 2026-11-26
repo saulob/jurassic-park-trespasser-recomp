@@ -6,8 +6,14 @@
 #include "guest_abi.h"
 #include "jpt_custom_level.h"
 #include "jpt_fs.h"
+#include "jpt_level_scripts.h"
 
 static void log_line(const char* tag, const char* text) { host_log(tag, "%s", text); }
+
+static void script_line(const char* line) {
+    static const char prefix[] = "[script] ";
+    host_log("script", "%s", strncmp(line, prefix, sizeof prefix - 1) ? line : line + sizeof prefix - 1);
+}
 
 static void capability_names(char* out, size_t cap) {
     size_t used = 0;
@@ -38,6 +44,7 @@ void level_session_start(const char* build, const char* renderer, const char* la
         info.capabilities = caps;
     }
     jpt_session_begin(&info);
+    jpt_level_scripts_start(info.kind, script_line);
 }
 
 jpt_level_source_t level_session_source(const char* scene) {

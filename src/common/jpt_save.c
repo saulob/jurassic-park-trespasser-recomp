@@ -29,6 +29,7 @@
 #define STATE_MAGIC "JPTSTATE"
 #define STATE_HEAD 12u
 #define STATE_MAX 8192u
+#define SCRIPTS_MAGIC "JPTSCRPT"
 #define TEMP_NAME "~save.tmp"
 
 static uint32_t s_buffer = JPT_SAVE_SECTION_BYTES_MAX;
@@ -257,8 +258,24 @@ int jpt_save_begin(const char* path, char* temp, size_t cap) {
 }
 
 static jpt_save_state_fn s_write_state;
+static jpt_save_scripts_fn s_write_scripts;
 
 void jpt_save_set_state(jpt_save_state_fn write) { s_write_state = write; }
+void jpt_save_set_scripts(jpt_save_scripts_fn write) { s_write_scripts = write; }
+
+static int append_scripts(FILE* f) {
+    uint8_t head[STATE_HEAD];
+    size_t size = 0;
+    uint8_t* bytes = s_write_scripts ? s_write_scripts(&size) : NULL;
+    int ok = 1;
+    if (bytes && size && size <= JPT_SAVE_SCRIPTS_MAX) {
+        memcpy(head, SCRIPTS_MAGIC, 8);
+        wr(head + 8, (uint32_t)size);
+        ok = fwrite(head, 1, sizeof head, f) == sizeof head && fwrite(bytes, 1, size, f) == size;
+    }
+    free(bytes);
+    return ok;
+}
 
 static int append_state(FILE* f) {
     uint8_t bytes[STATE_HEAD + STATE_MAX];
@@ -282,6 +299,33 @@ size_t jpt_save_read_state(const char* path, uint8_t* out, size_t cap) {
     return length;
 }
 
+uint8_t* jpt_save_read_scripts(const char* path, size_t* size, char* problem, size_t cap) {
+    size_t total = 0, at;
+    uint8_t *bytes = read_whole(path, &total), *out = NULL;
+    jpt_save_info_t info;
+    *size = 0;
+    if (cap) problem[0] = 0;
+    if (!bytes || !jpt_save_inspect(bytes, total, &info) || !info.stamped || (at = info.image_size + STAMP_BYTES) > total) {
+        free(bytes);
+        return NULL;
+    }
+    if (total - at >= STATE_HEAD && !memcmp(bytes + at, STATE_MAGIC, 8)) {
+        const uint32_t length = rd(bytes + at + 8);
+        at = length <= total - at - STATE_HEAD ? at + STATE_HEAD + length : total;
+    }
+    if (total - at >= 8 && !memcmp(bytes + at, SCRIPTS_MAGIC, 8)) {
+        const uint32_t length = total - at >= STATE_HEAD ? rd(bytes + at + 8) : 0;
+        if (total - at < STATE_HEAD || length > total - at - STATE_HEAD) snprintf(problem, cap, "its script block is truncated");
+        else if (!length || length > JPT_SAVE_SCRIPTS_MAX) snprintf(problem, cap, "its script block has a size of %u bytes", length);
+        else if ((out = (uint8_t*)malloc(length)) != NULL) {
+            memcpy(out, bytes + at + STATE_HEAD, length);
+            *size = length;
+        }
+    }
+    free(bytes);
+    return out;
+}
+
 static int append_stamp(const char* path, const char* package, uint32_t content) {
     uint8_t stamp[STAMP_BYTES];
     FILE* f = fopen(path, "ab");
@@ -291,7 +335,7 @@ static int append_stamp(const char* path, const char* package, uint32_t content)
     memcpy(stamp, STAMP_MAGIC, 8);
     snprintf((char*)stamp + 8, JPT_SAVE_PACKAGE_MAX, "%s", package);
     wr(stamp + 8 + JPT_SAVE_PACKAGE_MAX, content);
-    ok = fwrite(stamp, 1, sizeof stamp, f) == sizeof stamp && append_state(f);
+    ok = fwrite(stamp, 1, sizeof stamp, f) == sizeof stamp && append_state(f) && append_scripts(f);
     return fclose(f) == 0 && ok;
 }
 

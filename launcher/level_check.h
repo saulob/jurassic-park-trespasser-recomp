@@ -40,6 +40,13 @@ enum class LevelClass { kReady, kRejectedOther, kRejectedMissing, kRejectedUnsup
 const char* LevelClassName(LevelClass value);
 LevelClass ClassOf(const std::vector<LevelIssue>& issues);
 
+// A Trespasser CE script class a world names: an object's Script, a trigger's action 99 by ScriptAT.
+struct ScriptUse {
+    std::string class_name, object; // the first object that names it
+    bool action = false;
+    unsigned count = 0;
+};
+
 struct WorldFacts {
     std::string problem; // why it cannot be read
     std::string terrain; // "x.wtd"; empty when it names none
@@ -49,6 +56,7 @@ struct WorldFacts {
     std::vector<std::string> levels;        // the scenes it leads to
     std::vector<std::string> maps;          // the map pictures it shows, below MAPS
     std::vector<std::string> missing;       // the first textures that are nowhere
+    std::vector<ScriptUse> scripts;
     std::string largest_mesh;
     std::vector<LevelIssue> faults; // what of it the engine cannot hold or follow
     unsigned long count(const char* name) const;

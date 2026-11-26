@@ -180,7 +180,7 @@ set_source_files_properties(src/linux/linux_stb_truetype.c ${JPT_LINUX_FONT_C} $
 target_include_directories(jpt_linux_core SYSTEM PUBLIC ${PCRECOMP}/runtime/recomp32)
 target_compile_definitions(jpt_linux_core PUBLIC ${JPT_RECOMP_DEFINES})
 target_compile_options(jpt_linux_core PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
-target_link_libraries(jpt_linux_core PUBLIC jpt_panel_linux jpt_vulkan_linux jpt_host64 jpt_common_linux jpt_profile_linux)
+target_link_libraries(jpt_linux_core PUBLIC jpt_script jpt_panel_linux jpt_vulkan_linux jpt_host64 jpt_common_linux jpt_profile_linux)
 target_link_options(jpt_linux_core PUBLIC -static-libstdc++ -static-libgcc)
 
 add_library(jpt_profile_linux STATIC src/host/active_profile.c src/host/profiles/guest_profile_data.c)
@@ -212,7 +212,10 @@ jpt_linux_test(level_session_tests SOURCES tests/level_session_tests.c LIBS jpt_
 jpt_linux_test(launch_handoff_tests SOURCES tests/launch_handoff_tests.c LIBS jpt_common_linux)
 add_subdirectory(cmake/squirrel ${CMAKE_BINARY_DIR}/squirrel)
 jpt_linux_test(script_vm_tests SOURCES tests/script_vm_tests.cpp LIBS jpt_script)
-set_target_properties(script_vm_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+jpt_linux_test(script_plan_tests SOURCES tests/script_plan_tests.cpp LIBS jpt_script_plan)
+jpt_linux_test(script_session_tests SOURCES tests/script_session_tests.cpp LIBS jpt_script INCLUDES tests)
+jpt_linux_test(script_save_tests SOURCES tests/script_save_tests.cpp LIBS jpt_script INCLUDES tests)
+set_target_properties(script_vm_tests script_plan_tests script_session_tests script_save_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)
 jpt_linux_test(port_tests SOURCES tests/port_tests.c LIBS jpt_common_linux)
 jpt_linux_test(app_identity_tests SOURCES tests/app_identity_tests.c LIBS jpt_common_linux)
@@ -337,7 +340,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
     launcher/json_lite.cpp launcher/log_scrubber.cpp launcher/report_history.cpp launcher/process_probe.cpp
     launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
   target_include_directories(jpt_launcher_core_linux PUBLIC launcher)
-  target_link_libraries(jpt_launcher_core_linux PUBLIC jpt_common_linux jpt_vulkan_linux trg_core_linux)
+  target_link_libraries(jpt_launcher_core_linux PUBLIC jpt_common_linux jpt_script_plan jpt_vulkan_linux trg_core_linux)
   # The Bug Report's HTTPS: OpenSSL linked statically (WinHTTP on Windows), so the executable stays self-contained. Without
   # its development files (libssl-dev) a development build still compiles and the page reports the service as unreachable;
   # the executable then declares transport "none", the capability bug_report_https fails and the Linux gate refuses the
@@ -395,7 +398,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
   jpt_linux_test(custom_level_session_tests SOURCES tests/custom_level_session_tests.cpp src/host/custom_level_guide.c src/host/minimap.c src/host/objective_policy.c src/host/compass_policy.c ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES}
                  launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp launcher/updater/third_party/miniz/miniz.c
-                 LIBS jpt_launcher_core_linux jpt_lzma_linux INCLUDES launcher src/host)
+                 LIBS jpt_launcher_core_linux jpt_script jpt_lzma_linux INCLUDES launcher src/host)
   set_target_properties(custom_level_session_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
   # The Bug Report page and the auto update: the same sources and the same tests as Windows (tests/bug_report_tests.cpp,

@@ -338,15 +338,17 @@ static void TestMissingTerrain() {
     const fs::path user = Fresh("terrain user"), game = Fresh("terrain game");
     const Files level = With(With(Level("", "isle"), "isle.grf", World("Isle-27")), "isle-130.pid", Set("Isle-27"));
     const ImportResult result = Install(user, "Isle", level + Level("", "other"), game);
-    CHECK(!result.ok() && result.status == ImportStatus::kMissingFiles && result.levels == 0 && !fs::exists(CustomLevelsDir(user) / "Isle"));
+    CHECK(result.ok() && result.levels == 1 && Logged(result.log, "MISSING_REQUIRED_TERRAIN") && !Logged(result.log, "PACKAGE_NOT_SUPPORTED"));
+    fs::remove_all(CustomLevelsDir(user) / result.package);
+    CHECK(!Install(user, "Alone", level, game).ok() && !fs::exists(CustomLevelsDir(user) / "Alone"));
     Place(user, "Isle", level + Level("", "other"));
     PlayCheck check = CheckBeforePlay(user, game, "Isle", "isle.scn");
     CHECK(!check.ok && check.reason == ImportStatus::kMissingFiles && Logged(check.log, "package Isle, level isle.scn: REJECTED_MISSING") && Logged(check.log, "MISSING_REQUIRED_TERRAIN Isle-27.wtd") &&
           Logged(check.log, "looked in:") && Logged(check.log, "alternative: none") && Logged(check.log, "not started, This level is missing required files"));
     check = CheckBeforePlay(user, game, "Isle", "other.scn");
-    CHECK(!check.ok && check.reason == ImportStatus::kNotSupported && Logged(check.log, "PACKAGE_NOT_SUPPORTED isle.scn"));
+    CHECK(check.ok && !Logged(check.log, "isle.scn"));
     const std::vector<LevelPackage> listed = ListLevelPackages(user, game);
-    CHECK(listed.size() == 1 && listed[0].rows().size() == 2 && listed[0].levels().empty());
+    CHECK(listed.size() == 1 && listed[0].rows().size() == 2 && listed[0].levels().size() == 1);
 
     // The world's own name for it counts, not the world's name.
     Write(game / "ISLE-27.WTD", "retail");
@@ -806,7 +808,7 @@ static void TestCorpus() {
     CHECK(find("deep/er/loose copy.zip").duplicate_of.empty() != find("loose").duplicate_of.empty() && report.totals.at("duplicates") == 1);
     CHECK(class_of(find("seven.7z"), "seven.scn") == "READY" && find("seven.7z").result.type == "7z" && class_of(find("mission.zip"), "start.scn") == "READY" && find("mission.zip").result.sha256.size() == 64);
     CHECK(find("folder mod/M").result.analysis.start_level.find("begin.scn") != std::string::npos);
-    CHECK(class_of(find("no terrain"), "isle.scn") == "REJECTED_MISSING" && class_of(find("no terrain"), "fine.scn") == "REJECTED_OTHER" && !find("no terrain").result.import.ok());
+    CHECK(class_of(find("no terrain"), "isle.scn") == "REJECTED_MISSING" && class_of(find("no terrain"), "fine.scn") == "READY" && find("no terrain").result.import.ok());
     CHECK(class_of(find("no set"), "bare.scn") == "REJECTED_MISSING" && class_of(find("no world"), "lost.scn") == "REJECTED_MISSING");
     CHECK(class_of(find("reuses"), "mine.scn") == "READY" && report.totals.at("use_game_resources") == 1);
     CHECK(class_of(find("future"), "late.scn") == "REJECTED_UNSUPPORTED" && class_of(find("actions"), "act.scn") == "READY");
@@ -850,14 +852,14 @@ static void TestStates() {
     for (const IssuePolicy policy : {IssuePolicy::kWarning, IssuePolicy::kMissing, IssuePolicy::kUnsupported, IssuePolicy::kMalformed}) CHECK((LevelIssue{"x", "a", "b", policy}.blocks()));
     CHECK(!(LevelIssue{"x", "a", "b", IssuePolicy::kInfo}.blocks()));
 
-    // A world or scene that cannot be read refuses the package; installed by an earlier version, none of it is started.
+    // A world or scene that cannot be read refuses its own level only: the package is installed for the one that is READY.
     const fs::path user = Fresh("states check"), game = Fresh("states check game");
     const Files mixed = With(Level("", "bad"), "bad.grf", World("bad").substr(0, 300)) + Level("", "good") + With(Level("", "cut"), "cut.scn", Scene("cut.grf").substr(0, 1380));
     const ImportResult result = Install(user, "Mixed", mixed, game);
-    CHECK(!result.ok() && result.levels == 0 && !fs::exists(CustomLevelsDir(user) / "Mixed"));
-    Place(user, "Mixed", mixed);
+    CHECK(result.ok() && result.levels == 1 && fs::exists(CustomLevelsDir(user) / "Mixed"));
     const PlayCheck bad = CheckBeforePlay(user, game, "Mixed", "bad.scn");
-    CHECK(!bad.ok && bad.reason == ImportStatus::kUnsupportedFormat && Logged(bad.log, "bad.grf") && !CheckBeforePlay(user, game, "Mixed", "good.scn").ok);
+    CHECK(!bad.ok && bad.reason == ImportStatus::kUnsupportedFormat && Logged(bad.log, "bad.grf") && CheckBeforePlay(user, game, "Mixed", "good.scn").ok);
+    CHECK(!CheckBeforePlay(user, game, "Mixed", "cut.scn").ok);
 
     // Some textures missing: the level plays as in Trespasser CE, with its grey texture for them.
     WorldShape some;
@@ -872,6 +874,39 @@ static void TestStates() {
     const ImportResult pictures = Install(user, "Pictures", With(Level("", "pic"), "pic-130.pid", TextureSet({{1}})), game);
     CHECK(!pictures.ok() && pictures.status == ImportStatus::kMissingFiles && pictures.levels == 0 && Logged(pictures.log, "MISSING_TEXTURES") && Logged(pictures.log, "class: REJECTED_MISSING"));
     CHECK(!fs::exists(CustomLevelsDir(user) / "Pictures") && ImportNotice(pictures.status).title == "Could not import this custom level" && ImportNotice(pictures.status).reason == "This custom level is not fully supported" && ImportNotice(pictures.status).failed);
+}
+
+// Trespasser CE: the script classes a world names, by Script on objects and ScriptAT on a trigger's action 99, and their way
+// through the facts kept for an installed package.
+static void TestScriptReferences() {
+    WorldShape shape;
+    shape.terrain = "w";
+    shape.scripted = {{"Door-00", "Door"}, {"Door-01", "Door"}, {"Lamp-00", "Lamp"}};
+    shape.scripted_actions = {{"Trig-00", "MyAT"}};
+    jpt_groff_report_t report{};
+    CHECK(Describe(MakeWorld(shape), report));
+    CHECK(report.script_count == 3 && !report.scripts_overflow);
+    CHECK(!strcmp(report.scripts[0].class_name, "Door") && !strcmp(report.scripts[0].object, "Door-00") && report.scripts[0].count == 2 && !report.scripts[0].action);
+    CHECK(!strcmp(report.scripts[1].class_name, "Lamp") && report.scripts[1].count == 1);
+    CHECK(!strcmp(report.scripts[2].class_name, "MyAT") && !strcmp(report.scripts[2].object, "Trig-00") && report.scripts[2].action);
+    WorldShape none;
+    none.terrain = "w";
+    none.actions = {99};
+    CHECK(Describe(MakeWorld(none), report) && report.script_count == 0);
+    WorldShape many;
+    many.terrain = "w";
+    for (int i = 0; i < JPT_GROFF_SCRIPTS_MAX + 2; ++i) many.scripted.push_back({"Box-" + std::to_string(i), "Class" + std::to_string(i)});
+    CHECK(Describe(MakeWorld(many), report) && report.script_count == JPT_GROFF_SCRIPTS_MAX && report.scripts_overflow);
+
+    WorldFacts facts, read;
+    facts.scripts = {{"Door", "Door-00", false, 2}, {"MyAT", "Trig 00", true, 1}};
+    CHECK(ReadWorldFacts(WorldFactsText(facts), read) && read.scripts.size() == 2);
+    if (read.scripts.size() == 2) {
+        CHECK(read.scripts[0].class_name == "Door" && read.scripts[0].object == "Door-00" && read.scripts[0].count == 2 && !read.scripts[0].action);
+        CHECK(read.scripts[1].class_name == "MyAT" && read.scripts[1].object == "Trig 00" && read.scripts[1].action);
+    }
+    CHECK(!ReadWorldFacts("flags 100\nscript 2 1 X y\n", read) && !ReadWorldFacts("flags 100\nscript 0 X\n", read));
+    CHECK(ReadWorldFacts("flags 100\nscript 0 1 X\n", read) && read.scripts.size() == 1 && read.scripts[0].class_name == "X" && read.scripts[0].object.empty());
 }
 
 void RunLevelCheckTests(const fs::path& scratch, int& checks, int& failures) {
@@ -889,6 +924,7 @@ void RunLevelCheckTests(const fs::path& scratch, int& checks, int& failures) {
     TestSorting();
     TestStates();
     TestCorpus();
+    TestScriptReferences();
     checks += g_checks;
     failures += g_failures;
 }

@@ -209,6 +209,7 @@ static int g_hardware = 1;
 int d3dr_hardware(void) { return g_hardware; }
 int guest_display_built(void) { return 1; }
 int guest_ui_probe(guest_ui_view_t* out) { return (void)out, 0; }
+int guest_host_path(const char* guest_path, char* out, size_t cap) { return snprintf(out, cap, "%s", guest_path) > 0; }
 jpt_level_source_t level_session_source(const char* scene) { return (void)scene, JPT_SOURCE_RETAIL; }
 void debug_menu_notice(const char* text) { (void)text; }
 int custom_level_file(const char* path, char* out, size_t cap) {

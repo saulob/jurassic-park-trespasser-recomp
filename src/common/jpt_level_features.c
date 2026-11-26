@@ -11,7 +11,7 @@
 #define ACTIONS "src/host/level_actions.c"
 
 static const jpt_level_feature_t k_features[] = {
-    { "ATX_ACTION_99", "Scripted action", NONE, "", "Trespasser CE runs Squirrel scripts; the port has no script engine" },
+    { "ATX_ACTION_99", "Scripted action", NONE, "", "an ActionType script (ScriptAT) needs CE's scripting API, which the port does not have yet" },
     { "ATX_ACTION_100", "Slow motion for a while", FULL, ACTIONS, "the interval is the time between its transitions; kept in saves" },
     { "ATX_ACTION_101", "Set game speed", FULL, ACTIONS, "kept in saves, back to normal at each load" },
     { "ATX_ACTION_102", "Set map picture", FULL, ACTIONS, "Show Objective shows the picture below the title with Anne's place, instead of ATX's MAP cheat; kept in saves" },
@@ -60,7 +60,9 @@ static const jpt_level_feature_t k_features[] = {
     { "CE_ANIM_SCRIPTS", "Animation scripts", FULL, "src/common/jpt_custom_level.c", "" },
     { "CE_SCN_23_25", "Scenes of version 23 to 25", FULL, "src/common/jpt_scene.c", "" },
     { "CE_SCN_26", "Scenes of version 26", FULL, "src/host/scene_scripts.c", "marks of object scripts are read past" },
-    { "CE_SCRIPTS", "Object scripts (Squirrel)", NONE, "", "the port has no script engine" },
+    { "CE_SCRIPTS", "Object scripts (Squirrel)", FULL, "src/common/jpt_script_session.cpp", "a VM for the levels whose scripts act in them: lifecycle, frame and nvram" },
+    { "CE_SCRIPT_API", "Trespasser CE script functions", NONE, "", "the engine functions, classes and handlers of CE's scripting API are not there yet" },
+    { "CE_SCRIPT_FILES", "Object scripts left out", NONE, "", "an earlier version left the package's scripts out when it installed it: import it again" },
     { "CE_FULL_RESTART", "DisableSimpleLevelRestart", FULL, ACTIONS, "Restart Level and loads purge the world first" },
     { "CE_DUAL_STOW", "EnableDualStow", FULL, "src/host/ce_gameplay.c", "" },
     { "CE_ENHANCED_SKY", "EnhancedSky", FULL, "src/host/ce_graphics.c", "" },

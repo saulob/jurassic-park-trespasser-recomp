@@ -286,7 +286,7 @@ Add-Exes $s @(, @('sky_tests', 'custom skies: the file, the layers'' shapes, pro
 Add-Exes $s @(, @('texhw_tests', 'custom level pictures (BMP, TGA, DDS) and their hardware texture overrides', 60))
 Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths; package analysis: fm.ini, tp_mod.ini, trespasser.ini, tpass.ini, readme rules, manifest and migration, added sound files, loading pictures, session settings', 400))
 $s = 'Custom level session'
-Add-Exes $s @(, @('custom_level_session_tests', 'an active custom level session as the game reads it: BMP layouts, ATX map pictures below the package''s MAPS (map actions, README, case, separators, traversal, absent or unreadable pictures, session end); Restart Level as a full level cycle over a fake engine and real packages (loose and fan mission, scenes 22, 25 and 26, own PID and SWP, game SPZ, texhw, MAPS, added TPA, custom to custom and custom to retail transitions, restart after a transition and twice, a save made before, the campaign afterwards); level guides: minimap and objectives made from a level''s world, the campaign''s only over the game''s own world, no information otherwise', 250))
+Add-Exes $s @(, @('custom_level_session_tests', 'an active custom level session as the game reads it: BMP layouts, ATX map pictures below the package''s MAPS (map actions, README, case, separators, traversal, absent or unreadable pictures, session end); Restart Level as a full level cycle over a fake engine and real packages (loose and fan mission, scenes 22, 25 and 26, own PID and SWP, game SPZ, texhw, MAPS, added TPA, custom to custom and custom to retail transitions, restart after a transition and twice, a save made before, the campaign afterwards); level guides: minimap and objectives made from a level''s world, the campaign''s only over the game''s own world, no information otherwise; a fan mission with a Trespasser CE script one level needs: the script installed and listed in the runtime map, read back by the game, a VM only while that level is played; one package of four levels judged apart (no script, a supported script, a refused script API, an unused script): installed for its READY levels, listing, cache, manifest, runtime map, Play preflight and Bug Report per level, a VM only for the level that needs it', 250))
 
 $s = 'Restart lifecycle'
 Add-Exes $s @(, @('level_actions_tests', 'the actions of ATX and Trespasser CE over a fake guest (speed, hint, controls, reload, map, teleport, particles, saves, session end) and the real Restart Level override over a fake engine: the game''s own restart keeps the world, a custom session purges and loads the level whole (new player, objects, triggers, AI, actions, world generation), after transitions and twice; the campaign''s restart unchanged', 600))
@@ -294,8 +294,17 @@ Add-Exes $s @(, @('level_actions_tests', 'the actions of ATX and Trespasser CE o
 $s = 'Session logging'
 Add-Exes $s @(, @('level_session_tests', 'the [session], [level] and [restart] lines: campaign and custom sessions, reasons new_game/initial/transition/restart/load_save, package or retail source, world generations, failed loads and restarts, no line without a lifecycle event', 40))
 
-$s = 'CE scripts'
-Add-Exes $s @(, @('script_vm_tests', 'the interpreter of Trespasser CE scripts (Squirrel): loading and calls, compile and runtime errors with file, line and function, an owner stopped until the level ends, the instruction budget (loops, recursion, callbacks, try and catch cannot keep a script running), only the math, string and blob libraries (no I/O, system, threads, debug hooks or error handler), print() and its cap, no log line forged by a script', 1500))
+$s = 'Script VM'
+Add-Exes $s @(, @('script_vm_tests', 'the interpreter of Trespasser CE scripts (Squirrel): loading and calls, compile and runtime errors with level, script, file, callback and line, a script stopped until the level ends, the instruction budget (loops, recursion, callbacks, try and catch cannot keep a script running) and the memory budget of the VM, instances, methods and their arguments, nvram values and their limits, only the math, string and blob libraries (no I/O, system, threads, debug hooks or error handler), print() and its cap, no log line forged by a script', 1900))
+
+$s = 'Script lifecycle'
+Add-Exes $s @(
+    , @('script_plan_tests', 'which Trespasser CE scripts a level needs: the scan of a script (classes, bases, handlers, static SCN, globals, locals; comments and strings ignored), game, level, action and instance kinds, a level needs a VM only when its scripts act in it (per level, never per package), files and load order with their dependencies, a class the world names that no script declares, the CE functions, classes and handlers the port does not have yet', 100)
+    , @('script_session_tests', 'the scripts of a custom session over a model engine: VM creation and destruction without a leak, CE load steps and callbacks in order (constructor, OnScriptInit, OnGameStart, OnLevelStart, OnSimStep, OnLevelEnd, OnWorldPurge, destructor), a level without scripts and no VM in the same package, transitions with game script nvram, Restart Level from the level start (repeated), missing files, syntax and runtime errors, one script stopped while the others go on, the instruction budget per call, the memory budget of the whole VM, the campaign creating nothing before and after a custom session', 100)
+)
+
+$s = 'Script save'
+Add-Exes $s @(, @('script_save_tests', 'what a custom session''s save keeps of its scripts: the nvram of game and level scripts by class and the level''s start, loading it into new scripts, damaged, truncated and unknown blocks ignored with their reason, scripts changed since the save, the block behind the stamp and the actions'' state of stamped saves only, never in a campaign save', 80))
 
 $s = 'Launch handoff'
 Add-Exes $s @(, @('launch_handoff_tests', 'PLAY to the game window without opening one: campaign and custom, slow and fast starts, a created but not ready window, black frame and first present, failure before the window, no way back after PLAY, D3D11 and Vulkan alike; never a moment without one of our windows, no launcher input after PLAY', 200))
@@ -362,6 +371,7 @@ $helperTestFiles = @{
     'tests\linux_suites.json' = 'classification of the suites for the Linux gate (tools/linux_gate.py)'
     'tests\smk_fixture.h' = 'shared generator of a synthetic Smacker file: smacker_ffmpeg_tests'
     'tests\level_fixtures.h' = 'shared generator of synthetic scenes, worlds and texture sets: custom_level_tests and custom_level_session_tests'
+    'tests\script_fixtures.h' = 'shared fixture of the script session suites: a log, a counting allocator, scripts in memory, packages and saves on disk: script_session_tests and script_save_tests'
     'tests\texhw_fixture.h' = 'shared generator of synthetic texhw pictures: texhw_tests'
 }
 $toolRole = @{

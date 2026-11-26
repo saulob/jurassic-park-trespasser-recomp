@@ -486,6 +486,16 @@ class Compatibility(Base):
         compatibility.add_over(base, self.tree('patch', {'fix/a.grf': 'new', 'fix/more.tpa': 'more'}))
         self.assertEqual((self.text('base', 'Mod', 'Data', 'a.grf'), self.text('base', 'Mod', 'Data', 'a.scn'), self.text('base', 'Mod', 'Data', 'more.tpa')), ('new', 'old', 'more'))
 
+    def test_a_patch_script_goes_to_the_scripts_folder(self):
+        base = self.tree('base', {'FM/data/a.grf': 'old', 'FM/data/a.scn': 'old', 'FM/fm.ini': 'f'})
+        compatibility.add_over(base, self.tree('patch', {'Update/Scripts/Spitter.nut': 'class S {}', 'Update/data/a.grf': 'new', 'Update/notes.nut': 'n'}))
+        self.assertEqual(self.text('base', 'FM', 'scripts', 'Spitter.nut'), 'class S {}')
+        self.assertEqual(self.text('base', 'FM', 'data', 'a.grf'), 'new')
+        self.assertIn('FM/data/notes.nut', compatibility.files_below(base))
+        kept = self.tree('kept', {'FM/data/a.scn': 'a', 'FM/Scripts/old.nut': 'o'})
+        compatibility.add_over(kept, self.tree('patch2', {'U/scripts/new.nut': 'n'}))
+        self.assertEqual(self.text('kept', 'FM', 'Scripts', 'new.nut'), 'n')
+
     def test_a_requirement_adds_only_what_the_level_lacks(self):
         base = self.tree('base', {'data/a.scn': 'a', 'data/a.grf': 'own'})
         compatibility.add_below(base, self.tree('engine', {'E/a.grf': 'other', 'E/t.wtd': 'terrain', 'E/b.scn': 'b', 'E/run.exe': 'x', 'E/Map/t/p.bmp': 'p', 'E/MAPS/LVL/fx.tpa': 'fx'}))
@@ -510,6 +520,17 @@ class Compatibility(Base):
         self.assertTrue(corpus.has_levels(os.path.join(self.root, 'out')))
         Path(path).write_bytes(b'MZ' + b'\0' * 600)
         self.assertIn('installer', corpus.extract(path, os.path.join(self.root, 'none')))
+
+    def test_each_level_keeps_its_own_class(self):
+        ready = {'scn': 'a.scn', 'class': 'READY', 'scene_version': 22, 'issues': []}
+        refused = {'scn': 'g.scn', 'class': 'REJECTED_UNSUPPORTED', 'scene_version': 22,
+                   'issues': [{'code': 'UNSUPPORTED_FEATURE', 'subject': 'CE_SCRIPT_API', 'detail': 'GetPlayer', 'blocks': True, 'policy': 'unsupported'}]}
+        package = compatibility.package_row({'path': 'p/f.zip', 'sha256': '', 'duplicate_of': '', 'unread': '', 'import': '', 'levels': [ready, refused]})
+        rows = [compatibility.level_row(level) for level in (ready, refused)]
+        self.assertEqual([r['class'] for r in rows], ['READY', 'REJECTED_UNSUPPORTED'])
+        self.assertEqual((rows[0]['blockers'], rows[1]['blockers']), ([], ['CE_SCRIPT_API']))
+        self.assertNotIn('inherited', rows[0])
+        self.assertEqual(len(package['levels']), 2)
 
     def test_report_is_readable(self):
         entry = self.entry()

@@ -54,6 +54,13 @@ typedef size_t (*jpt_save_state_fn)(uint8_t* out, size_t cap);
 void jpt_save_set_state(jpt_save_state_fn write);
 /* The bytes kept in a save; 0 when it has none or they do not fit. */
 size_t jpt_save_read_state(const char* path, uint8_t* out, size_t cap);
+/* The state of a custom session's scripts kept after that, a block of its own (from malloc; NULL for none). Only stamped saves
+ * have one, so never a save of the campaign. */
+#define JPT_SAVE_SCRIPTS_MAX (16u << 20)
+typedef uint8_t* (*jpt_save_scripts_fn)(size_t* size);
+void jpt_save_set_scripts(jpt_save_scripts_fn write);
+/* NULL when the save has none; problem says why a block that is there cannot be read. */
+uint8_t* jpt_save_read_scripts(const char* path, size_t* size, char* problem, size_t cap);
 int jpt_save_begin(const char* path, char* temp, size_t cap);
 int jpt_save_finish(const char* path, const char* temp, const char* package, jpt_save_content_fn content, char* problem, size_t cap);
 /* The worlds an expanded scene or save is a state of. */

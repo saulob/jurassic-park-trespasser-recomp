@@ -30,7 +30,7 @@ LevelIssue FaultIssue(const jpt_groff_fault_t& f, const std::string& subject) {
     return {f.code, subject, std::to_string(f.value) + " where the engine takes " + std::to_string(f.limit) + ", in " + std::to_string(f.count) + " place(s)", IssuePolicy::kUnsupported};
 }
 
-constexpr char kCacheHead[] = "level-check 10";
+constexpr char kCacheHead[] = "level-check 11";
 
 struct Closer {
     void operator()(jpt_groff_t* g) const { jpt_groff_close(g); }
@@ -141,6 +141,7 @@ std::string WorldFactsText(const WorldFacts& facts) {
     for (const std::string& level : facts.levels) line("level", level);
     for (const std::string& map : facts.maps) line("map", map);
     for (const std::string& texture : facts.missing) line("missing", texture);
+    for (const ScriptUse& use : facts.scripts) line("script", std::string(use.action ? "1 " : "0 ") + std::to_string(use.count) + " " + use.class_name + " " + use.object);
     for (const LevelIssue& fault : facts.faults) line("fault", fault.code + " " + fault.subject), line("why", fault.detail);
     return text;
 }
@@ -160,6 +161,13 @@ bool ReadWorldFacts(const std::string& text, WorldFacts& facts) {
         else if (key == "level") facts.levels.push_back(value);
         else if (key == "map") facts.maps.push_back(value);
         else if (key == "missing") facts.missing.push_back(value);
+        else if (key == "script" && value.size() > 4 && (value[0] == '0' || value[0] == '1') && value[1] == ' ') {
+            const size_t count_end = value.find(' ', 2), class_end = count_end == std::string::npos ? count_end : value.find(' ', count_end + 1);
+            if (count_end == std::string::npos || count_end + 1 >= value.size()) return false;
+            const std::string object = class_end == std::string::npos ? std::string() : value.substr(class_end + 1);
+            facts.scripts.push_back({value.substr(count_end + 1, class_end == std::string::npos ? std::string::npos : class_end - count_end - 1), object, value[0] == '1',
+                                     unsigned(std::strtoul(value.c_str() + 2, nullptr, 10))});
+        }
         else if (key == "fault") facts.faults.push_back({value.substr(0, value.find(' ')), value.substr(std::min(value.find(' '), value.size() - 1) + 1), "", IssuePolicy::kUnsupported});
         else if (key == "why" && !facts.faults.empty()) facts.faults.back().detail = value;
         else if (key == "count" && !number.empty()) facts.counts[name] = std::strtoul(number.c_str(), nullptr, 10);
@@ -326,9 +334,12 @@ WorldFacts WorldChecker::Read(const WorldRequest& request) {
     for (unsigned i = 0; i < report.action_count; ++i) facts.actions.push_back({report.actions[i].type, report.actions[i].count});
     for (unsigned i = 0; i < report.level_count; ++i) facts.levels.push_back(report.levels[i]);
     for (unsigned i = 0; i < report.map_count; ++i) facts.maps.push_back(report.maps[i]);
+    for (unsigned i = 0; i < report.script_count; ++i)
+        facts.scripts.push_back({report.scripts[i].class_name, report.scripts[i].object, report.scripts[i].action != 0, report.scripts[i].count});
     facts.counts = {{"objects", report.objects},     {"animals", report.animals},   {"triggers", report.triggers}, {"more_dinosaurs", report.more_dinosaurs}, {"meshes", report.meshes},
                     {"points", (unsigned long)report.points}, {"vertices", (unsigned long)report.vertices}, {"faces", (unsigned long)report.faces},      {"largest_mesh", report.largest_mesh},
                     {"terrains", report.terrains},   {"mesh_build", report.mesh_build}, {"mesh_bytes", (unsigned long)std::min<uint64_t>(report.mesh_bytes, 0xFFFFFFFFu)}};
+    if (report.scripts_overflow) facts.counts["script_classes_unread"] = 1;
     for (unsigned i = 0; i < report.fault_count; ++i) {
         const jpt_groff_fault_t& f = report.faults[i];
         facts.faults.push_back(FaultIssue(f, f.subject));

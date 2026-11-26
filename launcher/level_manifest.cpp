@@ -176,6 +176,12 @@ std::string ManifestJson(const PackageManifest& manifest) {
     json.Close();
     json.List("refused_files", manifest.origin.refused);
     json.List("missing_required", manifest.missing);
+    json.Open("level_status", '[');
+    for (const LevelVerdict& v : manifest.verdicts) {
+        json.Open(nullptr, '{').Text("scn", v.scn).Text("status", v.status).Flag("playable", v.playable).Flag("scripted", v.scripted);
+        json.List("script_files", v.script_files).List("script_required", v.script_required).List("blockers", v.blockers).Close();
+    }
+    json.Close();
     json.Close();
     return json.str() + "\n";
 }
@@ -220,6 +226,14 @@ std::string RuntimeMap(const PackageAnalysis& a) {
     for (const SessionOverride& o : a.overrides) line("set", {o.key, o.value});
     for (const SessionLimit& l : a.limits) line("limit", {l.key, std::to_string(l.value)});
     if (a.skip_win_movie) line("skip", {"win"});
+    for (const std::string& path : a.scripts) line("nut", {path});
+    const auto field = [](std::string text) {
+        for (char& c : text)
+            if (static_cast<unsigned char>(c) < ' ' || c == '|') c = ' ';
+        return text;
+    };
+    for (const PackageAnalysis::ScriptReference& r : a.script_references) line("script", {PathName(r.scene), field(r.class_name), field(r.object), r.action ? "1" : "0"});
+    for (const auto& [scene, file] : a.script_uses) line("uses", {PathName(scene), file});
     for (const int type : a.action_types) line("action", {std::to_string(type)});
     for (const auto& [feature, capability] : {std::pair("CE_FULL_RESTART", JPT_LEVEL_CAP_FULL_RESTART), std::pair("CE_SKY", JPT_LEVEL_CAP_SKY)})
         if (std::find(a.required.begin(), a.required.end(), feature) != a.required.end()) line("need", {jpt_custom_level_cap_name(capability)});

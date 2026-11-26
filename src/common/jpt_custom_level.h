@@ -89,6 +89,12 @@ int jpt_custom_level_scene_count(void);
 const char* jpt_custom_level_scene_at(int index);
 /* Its file, relative to the package. */
 const char* jpt_custom_level_scene_file_at(int index);
+/* The package's Trespasser CE scripts in load order, and the script classes its worlds name (runtime.map); NULL or 0 past the
+ * last one. */
+const char* jpt_custom_level_script_file(int index);
+int jpt_custom_level_script_reference(int index, const char** scene, const char** class_name, const char** object, int* action);
+/* The script files a level's VM loads, in load order, as the launcher found them: a level without any reads none. */
+int jpt_custom_level_script_use(int index, const char** scene, const char** file);
 /* The scene being loaded or played, a file of the package; "" for a level of the original game. */
 const char* jpt_custom_level_current_scene(void);
 const char* jpt_custom_level_dir(void);

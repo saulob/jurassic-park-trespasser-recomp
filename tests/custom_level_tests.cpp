@@ -824,7 +824,7 @@ static void TestListingAndRemoval() {
     const Files pair = Level("good") + Files{{"bad.scn", std::string(100, 'x')}};
     CHECK(FromZip(user, lost, "LostJungle_ver00-7_Release.zip").ok());
     CHECK(FromZip(user, part, "part.zip").status == ImportStatus::kMissingFiles && FromZip(user, reuse, "reuse.zip").status == ImportStatus::kMissingFiles);
-    CHECK(FromZip(user, pair, "pair.zip").status == ImportStatus::kUnsupportedFormat && ListLevelPackages(user, game).size() == 1);
+    CHECK(FromZip(user, pair, "pair.zip").ok() && ListLevelPackages(user, game).size() == 2);
     Place(user, "part", part);
     Place(user, "reuse", reuse);
     Place(user, "pair", pair);
@@ -833,7 +833,7 @@ static void TestListingAndRemoval() {
     if (listed.size() != 4) return;
     CHECK(listed[0].id == "LostJungle_ver00-7_Release" && listed[0].readme == "LJreadme.txt" && listed[0].atx == Need::kOptional);
     CHECK(listed[0].scenes.size() == 1 && listed[0].scenes[0].playable() && listed[0].scenes[0].missing.empty());
-    CHECK(listed[1].id == "pair" && !listed[1].scenes[0].valid && listed[1].scenes[1].valid && !listed[1].scenes[1].playable() && listed[1].readme.empty());
+    CHECK(listed[1].id == "pair" && !listed[1].scenes[0].valid && listed[1].scenes[1].valid && listed[1].scenes[1].playable() && listed[1].readme.empty());
     CHECK(listed[2].id == "part" && !listed[2].scenes[0].playable() && listed[2].scenes[0].missing == std::vector<std::string>{"part-130.swp"});
     CHECK(listed[3].id == "reuse" && !listed[3].scenes[0].playable() && listed[3].scenes[0].missing == std::vector<std::string>{"be.grf"});
     Write(game / "be.GRF", "w");

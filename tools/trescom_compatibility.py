@@ -32,9 +32,8 @@ def blocker_of(issue):
 
 
 def level_row(level):
-    blocking = [i for i in level['issues'] if i['blocks'] and i['code'] != 'PACKAGE_NOT_SUPPORTED']
-    inherited = [i['subject'] for i in level['issues'] if i['code'] == 'PACKAGE_NOT_SUPPORTED']
-    return {'scn': level['scn'], 'class': level['class'], 'version': level['scene_version'], 'features': level.get('features', []), 'inherited': inherited,
+    blocking = [i for i in level['issues'] if i['blocks']]
+    return {'scn': level['scn'], 'class': level['class'], 'version': level['scene_version'], 'features': level.get('features', []),
             'blockers': sorted({blocker_of(i) for i in blocking}), 'issues': [{k: i[k] for k in ('code', 'subject', 'detail')} | {'policy': i.get('policy', '')} for i in blocking]}
 
 
@@ -91,12 +90,22 @@ def game_root(files):
 
 
 def below_root(name):
-    """Its path from a folder of the game (data, maps), if it has one."""
+    """Its path from a folder of the game (data, maps, scripts), if it has one."""
     parts = name.split('/')
     for i, part in enumerate(parts[:-1]):
-        if part.lower() in ('data', 'maps'):
+        if part.lower() in ('data', 'maps', 'scripts'):
             return '/'.join(parts[i:])
     return None
+
+
+def script_target(base, files, name):
+    """Trespasser CE reads scripts from the scripts folder of a game path: a patch's script goes there, never beside the levels."""
+    inner = below_root(name)
+    if not inner or inner.split('/')[0].lower() != 'scripts' or not name.lower().endswith('.nut'):
+        return None
+    root = game_root(files)
+    folder = next((f.rpartition('/')[0] for f in files if f.lower().endswith('.nut') and f.rpartition('/')[0].rpartition('/')[2].lower() == 'scripts'), None)
+    return os.path.join(base, folder if folder is not None else (root + '/scripts' if root else 'scripts'), name.rpartition('/')[2])
 
 
 def add_below(base, extra):
@@ -107,7 +116,9 @@ def add_below(base, extra):
     for name in files_below(extra):
         file = name.rpartition('/')[2]
         inner = below_root(name)
-        if inner and inner.split('/')[0].lower() == 'maps':
+        if script_target(base, files, name):
+            target = script_target(base, files, name)
+        elif inner and inner.split('/')[0].lower() == 'maps':
             target = os.path.join(base, root, inner)
         elif '/map/' in '/' + name.lower():
             target = os.path.join(base, home, name[('/' + name.lower()).index('/map/'):])
@@ -134,7 +145,7 @@ def add_over(base, patch):
     home = home if home is not None else level_folder(files)
     for name in files_below(patch):
         if name.rpartition('/')[2].lower() not in places:
-            put(os.path.join(patch, name), os.path.join(base, home, name.rpartition('/')[2]))
+            put(os.path.join(patch, name), script_target(base, files, name) or os.path.join(base, home, name.rpartition('/')[2]))
 
 
 def compose(root, entry, entries, target, notes):
@@ -325,8 +336,6 @@ def markdown(entries, rows, packages, notes, baseline):
                     word = 'Missing' if issue['policy'] == 'missing' else 'Requires' if issue['policy'] == 'unsupported' else 'Problem'
                     label = blocker_of(issue) if issue['policy'] == 'unsupported' else f'{issue["code"]} {issue["subject"]}'
                     lines.append(f'  - {word}: {label}: {report.shorten(issue["detail"], 320)}')
-                if row['inherited'] and not row['issues']:
-                    lines.append(f'  - Another level of the package is refused: {", ".join(row["inherited"])}')
             lines.append('')
     lines += ['## Not analyzed', '']
     for entry in sorted(outside, key=lambda e: e['title'].lower()):

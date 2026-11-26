@@ -23,13 +23,18 @@ package cannot be read, the analysis says so (unreadable, damaged, unsupported) 
 | size | archive 1 GB, file 512 MB, package 2 GB, 8192 entries, 7z block 768 MB when it cannot be streamed, RAR dictionary 256 MB |
 | contents | encrypted or unknown archives, no Trespasser `.scn` |
 
-Level data, texts and pictures are kept; everything else (programs, libraries, scripts, ATX or CE components, shipped saves)
-is left out, counted and named with the reason in the manifest. A package with the same files as an installed one is refused
+Level data, texts, pictures and Trespasser CE scripts (`.nut`, never run unless a level needs them) are kept; everything else
+(programs, libraries, other scripts, ATX or CE components, shipped saves) is left out, counted and named with the reason in the
+manifest. In a package that an earlier version installed without its `.nut` files, a level whose world names a script class is refused as
+`CE_SCRIPT_FILES` until the package is imported again; its other levels are not. A package with the same files as an installed one is refused
 as a duplicate.
 
-The rule is binary: a package is `READY` or it is refused, whole. It is analysed in a staging folder first and installed (one
-rename) only when every level of it is `READY`; otherwise nothing of it is kept and the page says `Could not import this custom
-level` / `This custom level is not fully supported`, with Bug Report and Close. The reasons are in the log alone.
+The rule is binary per level: each scene is `READY` or refused on its own, and a sibling's state never changes it. A package is
+analysed in a staging folder first and installed (one rename) when at least one of its levels is `READY`; its list shows every
+level, with Play for the `READY` ones and Bug Report for the others (the reasons, of that level only, are in the log). A package
+without a `READY` level leaves nothing behind and the page says `Could not import this custom level` / `This custom level is not
+fully supported`, with Bug Report and Close. The listing record and `manifest.json` (`level_status`) keep each level's state,
+blockers and scripts; the preflight of Play judges the level asked for.
 
 | Class | |
 |---|---|
@@ -37,7 +42,7 @@ level` / `This custom level is not fully supported`, with Bug Report and Close. 
 | `REJECTED_MISSING` | a required file, texture set or terrain is nowhere, or none of a world's textures is found (its texture set is not that world's) |
 | `REJECTED_UNSUPPORTED` | something its content requires is not `FULLY_SUPPORTED` or `NOT_REQUIRED` in `src/common/jpt_level_features.c`, a scene format newer than 26, or content beyond the engine's limits |
 | `REJECTED_MALFORMED` | a scene or world that cannot be read |
-| `REJECTED_OTHER` | anything else the port cannot vouch for: settings files in conflict or unreadable, a readme instruction that cannot be followed, two files for one game path, or another level of the package refused |
+| `REJECTED_OTHER` | anything else the port cannot vouch for: settings files in conflict or unreadable, a readme instruction that cannot be followed, two files for one game path |
 
 Information never refuses: a readme, the author's own note (Restart Level does not work), a world without terrain as the level
 was made, a scene 23 to 26 read as the game's own, a dependency only mentioned or recommended, heaps and texture pool sized for the
@@ -330,9 +335,16 @@ a readme requires ATX refuses nothing by itself. A package it says so of is refu
 `JMP/<level>.ini`, `SPT/<level>.ini`, plugins, and rules of the game changed in its own `ATXconfig.ini`.
 
 Menus, menu sounds and videos that no action plays are kept in a package and not used: the launcher and the game's Level Select start every level of a
-package, and a session starts in its level. Object scripts (`.nut`) are not supported yet; the plan for them, custom sessions only, is
-[CE_SCRIPTS](CE_SCRIPTS.md). `tools/custom-level-compatibility.ps1` prints and
+package, and a session starts in its level. `tools/custom-level-compatibility.ps1` prints and
 writes the state of a whole folder of packages.
+
+Trespasser CE scripts ([CE_SCRIPTS](CE_SCRIPTS.md)) are read from the `scripts` folder of each game path of the package (its mod
+paths, the fan mission, its uber mod paths: CE's load order, the lowest priority first), and judged per level, never per package. A
+level needs them when its world names a script class (an object's `Script`, a trigger's action 99 `ScriptAT`) or when a game script, or
+a level script for that scene, acts in it; then the analysis lists its classes (`SCRIPT_CLASS`), each file's required script functions
+(`SCRIPT_REQUIRES`) and refuses it as `CE_SCRIPT_API` while one of them is not in the port yet. A level that needs none is played
+without a VM, beside levels of the same package that need one. The runtime map lists the scripts (`nut`) and what the worlds name
+(`script`); the game decides again with the same code (`src/common/jpt_script_plan.cpp`).
 
 Restart Level in a custom session restarts the current level whole: the world is purged and the level is loaded again through the
 game's own level load, with its loading screen, as when the session entered it. The player, objects, triggers, AI, physics and the actions

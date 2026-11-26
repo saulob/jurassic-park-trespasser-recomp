@@ -10,6 +10,7 @@
 
 #include "guest_abi.h"
 #include "jpt_custom_level.h"
+#include "jpt_level_scripts.h"
 #include "jpt_save.h"
 #include "level_actions.h"
 #include "level_actions_policy.h"
@@ -99,6 +100,17 @@ static guest_ui_view_t g_front;
 int guest_ui_probe(guest_ui_view_t* out) { return *out = g_front, 1; }
 static void (*g_end)(void);
 void jpt_custom_level_on_end(void (*ended)(void)) { g_end = ended; }
+
+/* What the host tells the custom session's scripts (src/common/jpt_level_scripts.cpp, tested in script_session_tests). */
+static struct {
+    int starts, kind, begins, readies, ok, steps;
+    jpt_level_reason_t reason;
+    float seconds;
+} g_scripts;
+void jpt_level_scripts_start(jpt_session_kind_t kind, jpt_level_scripts_log_fn log) { (void)log, g_scripts.starts++, g_scripts.kind = (int)kind; }
+void jpt_level_scripts_begin(jpt_level_reason_t reason, const char* scene, const char* save) { (void)scene, (void)save, g_scripts.begins++, g_scripts.reason = reason; }
+void jpt_level_scripts_ready(int ok) { g_scripts.readies++, g_scripts.ok = ok; }
+void jpt_level_scripts_step(float seconds) { g_scripts.steps++, g_scripts.seconds = seconds; }
 
 static size_t (*g_write_state)(uint8_t*, size_t);
 static uint8_t g_saved[LA_STATE_MAX];
@@ -875,6 +887,18 @@ static void step_game(float seconds) {
     CHECK(g_esp == STACK_TOP);
 }
 
+/* The scripts' OnSimStep follows the game's simulation time, as the speed actions do; nothing while it stands still. */
+static void test_script_step(void) {
+    int steps;
+    fresh(0);
+    step_game(0.1f);
+    steps = g_scripts.steps;
+    step_game(0.25f);
+    CHECK(g_scripts.steps == steps + 1 && fabsf(g_scripts.seconds - 0.25f) < 1e-3f);
+    step_game(0.0f);
+    CHECK(g_scripts.steps == steps + 1);
+}
+
 static void test_fixed_speed(void) {
     uint32_t arrow, aimed, straight, gentle, end, lone;
     la_state_t state;
@@ -1361,7 +1385,9 @@ static void test_restart(void) {
     g_installs = 0;
     CHECK(level_actions_install() && g_installs == 1);
     g_line_count = 0;
+    memset(&g_scripts, 0, sizeof g_scripts);
     level_session_start("en-116", "d3d11", "en");
+    CHECK(g_scripts.starts == 1 && g_scripts.kind == JPT_SESSION_CAMPAIGN);
     g_purges = g_level_loads = g_lifted_restarts = g_restarts_told = 0;
     play("be.scn");
     CHECK(logged("type=campaign") && logged("begin reason=new_game scene=be.scn source=retail session=campaign"));
@@ -1371,6 +1397,7 @@ static void test_restart(void) {
     g_menu_sounds_off = 0;
     restart_level();
     CHECK(g_lifted_restarts == 2 && g_level_loads == 1 && !g_purges && !g_restarts_told && !g_menu_sounds_off && W.player == player && W.crate_taken);
+    CHECK(g_scripts.begins == 2 && g_scripts.reason == JPT_REASON_RESTART && g_scripts.readies == 2 && g_scripts.ok);
     CHECK(logged("requested scene=be.scn session=campaign mode=scene_reload source=retail") && logged("begin reason=restart scene=be.scn"));
     CHECK(logged("result=ready") && g_esp == STACK_TOP);
     play("jr.scn");
@@ -1420,6 +1447,7 @@ int main(void) {
     test_gating();
     test_scene_bytes();
     test_saves();
+    test_script_step();
     test_restart();
     test_session_end();
     printf("level_actions_tests: %lu checks, %lu failures\n", g_checks, g_failures);

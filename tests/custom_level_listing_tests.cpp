@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <mutex>
 #include <set>
 #include <stdexcept>
@@ -17,6 +18,7 @@
 #include <vector>
 
 #include "custom_levels.h"
+#include "jpt_custom_level.h"
 #include "level_fixtures.h"
 #include "level_listing.h"
 #include "../launcher/loading_layout.h"
@@ -318,7 +320,49 @@ void TestReadyRule() {
         CHECK(noted);
     }
     CHECK(refused("Sky", Level("sky") + Files{{"sky.sky", "[LAYER1]\nType=STARS\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SKY_STARS"));
-    CHECK(refused("Script", Level("nut") + Files{{"scripts/x.nut", "class X {}"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPTS"));
+    // Trespasser CE scripts are the level's question: scripts that do nothing in it leave it ready, scripts that ask for CE's
+    // engine functions refuse it, and lifecycle scripts are installed and listed for the game.
+    CHECK(Import(user, "Quiet script", Level("calm") + Files{{"scripts/x.nut", "class X {}\nclass H extends LevelScript { function OnScriptInit(b) {} }\n"}}, game).ok());
+    CHECK(refused("Script", Level("nut") + Files{{"scripts/x.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"}},
+                  ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
+    // A refused level stays out of Play without taking its sibling with it: the package is installed for the level that is READY.
+    {
+        const ImportResult r = Import(user, "Half", Level("open") + Level("shut") +
+                                                        Files{{"scripts/shut.nut", "class Hud extends LevelScript { static SCN = \"shut.scn\"; function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"}},
+                                      game);
+        CHECK(r.ok() && r.levels == 1 && Logged(r.log, "UNSUPPORTED_FEATURE CE_SCRIPT_API") && !Logged(r.log, "PACKAGE_NOT_SUPPORTED"));
+        int ready = 0, refused_levels = 0;
+        for (const LevelPackage& package : ListLevelPackages(user, game))
+            for (const LevelScene& scene : package.scenes)
+                if (package.id == r.package) (scene.playable() ? ready : refused_levels) += 1;
+        CHECK(ready == 1 && refused_levels == 1);
+    }
+    {
+        const ImportResult r = Import(user, "Lifecycle", Level("life") + Files{{"scripts/count.nut", "class Count extends GameScript { nvram = null; function OnLevelStart() {} }\n"}}, game);
+        CHECK(r.ok() && Logged(r.log, "info: SCRIPT_CLASS Count") && Logged(r.log, "class: READY"));
+        std::ifstream in(CustomLevelsDir(user) / r.package / JPT_CUSTOM_LEVEL_RUNTIME_MAP, std::ios::binary);
+        const std::string map((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(map.find("\nnut scripts/count.nut\n") != std::string::npos && fs::exists(CustomLevelsDir(user) / r.package / "scripts" / "count.nut"));
+    }
+    CHECK(refused("Instance script", [] {
+        WorldShape shape;
+        shape.terrain = "door";
+        shape.meshes.push_back({"Crate-00", "Map\\door\\crate.bmp"});
+        shape.scripted = {{"Door-00", "Door"}};
+        Files files = Level("door");
+        files[1].second = MakeWorld(shape);
+        return files + Files{{"scripts/door.nut", "class Door extends CInstance { function OnUse(b) { return true; } }\n"}};
+    }(), ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
+    // A world that names a script class the package has no script for, or only outside a scripts folder, as CE would not load it.
+    CHECK(refused("Scriptless", [] {
+        WorldShape shape;
+        shape.terrain = "bare";
+        shape.meshes.push_back({"Crate-00", "Map\\bare\\crate.bmp"});
+        shape.scripted = {{"Door-00", "Door"}};
+        Files files = Level("bare");
+        files[1].second = MakeWorld(shape);
+        return files + Files{{"door.nut", "class Door extends CInstance {}\n"}};
+    }(), ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPTS"));
     CHECK(refused("Action", [] {
         WorldShape shape;
         shape.terrain = "act";

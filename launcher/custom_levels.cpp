@@ -19,6 +19,7 @@
 #include "jpt_groff.h"
 #include "jpt_hash.h"
 #include "jpt_picture.h"
+#include "jpt_script_plan.h"
 #include "jpt_level_features.h"
 #include "jpt_level_world.h"
 #include "level_guide.h"
@@ -286,18 +287,6 @@ void AddPackageIssues(const PackageAnalysis& a, const fs::path& data_dir, std::v
         if (scene.valid) scene.issues.insert(scene.issues.end(), issues.begin(), issues.end());
 }
 
-bool Inherited(const LevelScene& scene) {
-    return std::any_of(scene.issues.begin(), scene.issues.end(), [](const LevelIssue& i) { return i.code == "PACKAGE_NOT_SUPPORTED"; });
-}
-
-// A package is installed and played whole: one level that is not supported takes the others with it.
-void RejectWhole(std::vector<LevelScene>& scenes) {
-    const auto bad = std::find_if(scenes.begin(), scenes.end(), [](const LevelScene& s) { return s.rejected(); });
-    if (bad == scenes.end()) return;
-    const std::string file = bad->file;
-    for (LevelScene& scene : scenes)
-        if (!scene.rejected()) scene.issues.push_back({"PACKAGE_NOT_SUPPORTED", file, "another level of the package is not supported", IssuePolicy::kWarning});
-}
 
 uint64_t MostOf(const std::vector<LevelScene>& scenes, const char* count) {
     uint64_t most = 0;
@@ -315,15 +304,60 @@ void AtLeast(PackageAnalysis& a, const char* key, long value, const char* source
     a.limits.push_back({key, value, source});
 }
 
-// Scripts are never installed; a package with one is not whole without it.
+// Earlier versions left a package's scripts out when they installed it; it is not whole without them.
 void NoteRefused(PackageAnalysis& a, const std::vector<std::string>& refused) {
     const bool scripts = std::any_of(refused.begin(), refused.end(), [](const std::string& name) {
         const std::string path = name.substr(0, name.find(" - "));
         return PathType(path) == ".nut" && !IsDocumentation(path);
     });
-    if (!scripts || std::find(a.required.begin(), a.required.end(), "CE_SCRIPTS") != a.required.end()) return;
-    a.required.push_back("CE_SCRIPTS");
-    a.features.push_back({"CE_SCRIPTS", "unsupported"});
+    a.scripts_left_out = a.scripts_left_out || scripts;
+}
+
+// Which of the package's scripts each level needs (docs/CE_SCRIPTS.md, phase 0): never the package as a whole.
+void AddScriptIssues(const PackageAnalysis& a, const PackageSource& source, std::vector<LevelScene>& scenes) {
+    std::vector<script::FileInfo> files;
+    for (const std::string& path : a.scripts) {
+        std::string bytes;
+        if (source.read(path, script::kSourceMax, bytes)) {
+            files.push_back(script::ScanFile(path, bytes));
+        } else {
+            files.push_back({});
+            files.back().path = path;
+            files.back().problem = "it cannot be read";
+        }
+    }
+    for (LevelScene& scene : scenes) {
+        if (!scene.valid) continue;
+        std::vector<script::WorldScript> world;
+        bool unread = false;
+        for (const auto& [name, facts] : scene.worlds) {
+            for (const ScriptUse& use : facts.scripts) world.push_back({use.class_name, use.object, use.action});
+            unread = unread || facts.count("script_classes_unread");
+        }
+        const script::LevelPlan plan = script::PlanLevel(files, scene.file, world);
+        if (!plan.needs_scripts() && !unread) continue;
+        scene.scripted = true;
+        scene.script_files = plan.files;
+        scene.script_required = plan.required;
+        for (const std::string& file : plan.files) scene.uses.push_back("script " + file);
+        for (const script::PlannedClass& c : plan.classes)
+            scene.issues.push_back({"SCRIPT_CLASS", c.name, std::string(script::KindName(c.kind)) + " script of " + c.file + (c.objects.empty() ? "" : ", named by " + c.objects.front() + (c.objects.size() > 1 ? " and " + std::to_string(c.objects.size() - 1) + " more" : "")), IssuePolicy::kInfo});
+        for (const std::string& file : plan.files) {
+            const auto info = std::find_if(files.begin(), files.end(), [&file](const script::FileInfo& f) { return f.path == file; });
+            const std::vector<std::string> asks = script::FileRequires(files, *info);
+            std::string list;
+            for (const std::string& name : asks) list += (list.empty() ? "" : ", ") + name;
+            if (!list.empty()) scene.issues.push_back({"SCRIPT_REQUIRES", file, "required script functions: " + list, IssuePolicy::kInfo});
+        }
+        if (!plan.required.empty()) {
+            std::string list;
+            for (const std::string& name : plan.required) list += (list.empty() ? "" : ", ") + name;
+            scene.issues.push_back({"UNSUPPORTED_FEATURE", "CE_SCRIPT_API", "Trespasser CE script functions the port does not have yet: " + list, IssuePolicy::kUnsupported});
+        }
+        for (const std::string& problem : plan.problems)
+            scene.issues.push_back({"UNSUPPORTED_FEATURE", a.scripts_left_out ? "CE_SCRIPT_FILES" : "CE_SCRIPTS", problem, IssuePolicy::kUnsupported});
+        if (unread) scene.issues.push_back({"UNSUPPORTED_FEATURE", "CE_SCRIPTS", "a world names more script classes than are read", IssuePolicy::kUnsupported});
+    }
 }
 
 void NoteActions(PackageAnalysis& a, const std::vector<LevelScene>& scenes) {
@@ -394,6 +428,13 @@ void PlaceMapPictures(PackageAnalysis& a, const PackageSource& source, std::vect
 }
 
 void FinishAnalysis(PackageAnalysis& a, const PackageSource& source, std::vector<LevelScene>& scenes) {
+    a.script_references.clear();
+    a.script_uses.clear();
+    for (const LevelScene& scene : scenes)
+        for (const std::string& file : scene.script_files) a.script_uses.push_back({scene.file, file});
+    for (const LevelScene& scene : scenes)
+        for (const auto& [world, facts] : scene.worlds)
+            for (const ScriptUse& use : facts.scripts) a.script_references.push_back({scene.file, use.class_name, use.object, use.action});
     PlaceMapPictures(a, source, scenes);
     SizeHeaps(a, scenes);
 }
@@ -405,9 +446,21 @@ std::vector<LevelScene> ScenesOf(const PackageAnalysis& a, const PackageSource& 
     for (const LevelInfo& level : a.levels) scenes.push_back(SceneOf(level, a, source.files, data_dir, checker));
     FollowTransitions(data_dir, scenes);
     AddPackageIssues(a, data_dir, scenes);
-    RejectWhole(scenes);
+    AddScriptIssues(a, source, scenes);
     for (size_t i = 0; i < scenes.size(); ++i) JudgeScene(a.levels[i], scenes[i]);
     return scenes;
+}
+
+std::vector<LevelVerdict> VerdictsOf(const std::vector<LevelScene>& scenes) {
+    std::vector<LevelVerdict> verdicts;
+    for (const LevelScene& scene : scenes) {
+        if (!scene.valid) continue;
+        LevelVerdict v{scene.path, LevelClassName(scene.level_class()), scene.playable(), scene.scripted, scene.script_files, scene.script_required, {}};
+        for (const LevelIssue& issue : scene.issues)
+            if (issue.blocks()) v.blockers.push_back(issue.code + " " + issue.subject);
+        verdicts.push_back(std::move(v));
+    }
+    return verdicts;
 }
 
 std::vector<std::string> MissingOf(const std::vector<LevelScene>& scenes) {
@@ -429,7 +482,6 @@ RefusedFile Refused(const std::string& path) {
     if (OneOf(type, kPrograms)) return {path, "a program or library", true};
     if (OneOf(type, kScripts)) return {path, "a script or shortcut", true};
     if (name.rfind("savegame.", 0) == 0) return {path, "a saved game", false};
-    if (type == ".nut") return {path, "a Trespasser CE script", false};
     return {path, "not level data, a text or a picture", false};
 }
 
@@ -728,13 +780,14 @@ ImportStatus RejectionOf(const LevelScene& scene) {
     return scene.level_class() == LevelClass::kRejectedMissing ? ImportStatus::kMissingFiles : ImportStatus::kNotSupported;
 }
 
-// Only a package whose every level is READY is installed.
+// A package with a level that can be played is installed; each of its levels keeps its own state. One with none is refused.
 ImportStatus Judge(const PackageAnalysis& a, const std::vector<LevelScene>& scenes, ImportResult& result) {
     result.levels = Playable(scenes);
     if (!a.playable()) return ImportStatus::kNoLevel;
+    if (result.levels) return ImportStatus::kInstalled;
     const LevelScene* worst = nullptr;
     for (const LevelScene& scene : scenes) {
-        if (!scene.rejected() || Inherited(scene)) continue;
+        if (!scene.rejected()) continue;
         const auto rank = [](const LevelScene& s) { return std::make_pair(FormatProblem(s), s.level_class()); };
         if (!worst || rank(scene) > rank(*worst)) worst = &scene;
     }
@@ -819,6 +872,7 @@ ImportResult Install(const ImportSource& source, const fs::path& user_dir, const
     FinishAnalysis(manifest.analysis, package, record.scenes);
     record.analysis = manifest.analysis;
     if (!data_dir.empty()) manifest.missing = MissingOf(record.scenes);
+    manifest.verdicts = VerdictsOf(record.scenes);
     result.status = Judge(manifest.analysis, record.scenes, result);
     if (result.status != ImportStatus::kInstalled) return result;
     std::string problem;
@@ -1037,7 +1091,7 @@ bool IsLevelPackageFile(const std::string& relative_path) {
     static constexpr const char* kTypes[] = {
         ".scn", ".grf", ".wtd", ".pid", ".swp", ".spz", ".spp", ".asa", ".asb", ".tpa", ".sky", ".ddf", ".smk", ".bmp", ".tga", ".dds",
         ".png", ".jpg", ".jpeg", ".gif", ".pcx", ".wav", ".mp3", ".ogg", ".txt", ".md", ".markdown", ".nfo", ".1st", ".me", ".pdf",
-        ".rtf", ".ini", ".cfg", ".csv"};
+        ".rtf", ".ini", ".cfg", ".csv", ".nut"};
     const std::string type = PathType(relative_path);
     return type.empty() ? LevelReadmeScore(relative_path) > 0 : OneOf(type, kTypes);
 }
@@ -1216,6 +1270,7 @@ LevelPackage AnalysePackage(const fs::path& user_dir, const fs::path& data_dir, 
     package.scenes = ScenesOf(a, source, data_dir, package.dir);
     FinishAnalysis(manifest.analysis, source, package.scenes);
     if (!data_dir.empty()) manifest.missing = MissingOf(package.scenes);
+    manifest.verdicts = VerdictsOf(package.scenes);
     package.recorded = !newer && RuntimeIsSafe(a, files, problem) && WriteRecords(package.dir, manifest);
     if (package.recorded && !data_dir.empty())
         for (std::string& line : WriteGuides(package.dir, data_dir, package.scenes, false)) package.log.push_back(std::move(line));
@@ -1311,6 +1366,15 @@ std::string ElsewhereInGame(const fs::path& data_dir, const std::string& name) {
 
 } // namespace
 
+std::vector<std::string> ReportLines(const LevelPackage& package, const LevelScene* scene, const fs::path& data_dir) {
+    std::vector<std::string> lines;
+    if (!scene) lines.push_back("custom level " + package.id + ": no level of the package can be played");
+    for (const LevelScene& each : package.scenes)
+        if (scene ? &each == scene : each.rejected())
+            for (const std::string& line : LevelProblems(package, each, data_dir)) lines.push_back("custom level: " + line);
+    return lines;
+}
+
 std::vector<std::string> LevelProblems(const LevelPackage& package, const LevelScene& scene, const fs::path& data_dir) {
     std::vector<std::string> lines = {"package " + package.id + ", level " + scene.path + ": " + LevelClassName(scene.level_class())};
     for (const LevelIssue& issue : scene.issues) {
@@ -1387,6 +1451,8 @@ std::vector<std::string> RequiredFeatures(const PackageAnalysis& a, const LevelS
     for (const LoadingImage& image : a.images)
         if (image.state == "ready") names.insert("CE_LOADING_IMAGE");
     if (a.skip_win_movie) names.insert("CE_WIN_MOVIE");
+    if (scene.scripted) names.insert("CE_SCRIPTS");
+    if (!scene.script_required.empty()) names.insert("CE_SCRIPT_API");
     static constexpr std::pair<const char*, const char*> kSettings[] = {
         {"dual_stow", "CE_DUAL_STOW"}, {"enhanced_sky", "CE_ENHANCED_SKY"}, {"water_refraction", "CE_WATER_REFRACTION"}, {"active_ai", "CE_MAX_ACTIVE_AI"}};
     for (const SessionOverride& o : a.overrides)
@@ -1476,6 +1542,7 @@ AnalysisResult AnalyzeLevelSource(const fs::path& path, const fs::path& data_dir
     FinishAnalysis(manifest.analysis, source, record.scenes);
     record.analysis = manifest.analysis;
     if (!data_dir.empty()) manifest.missing = MissingOf(record.scenes);
+    manifest.verdicts = VerdictsOf(record.scenes);
     result.import.status = Judge(manifest.analysis, record.scenes, result.import);
     if (result.import.ok() && !RuntimeIsSafe(manifest.analysis, source.files, problem)) result.import.status = ImportStatus::kUnsafe, result.import.detail = problem;
     record.status = result.import.status;

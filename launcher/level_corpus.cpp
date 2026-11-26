@@ -165,19 +165,16 @@ void CountLevel(const CorpusPackage& package, const LevelScene& scene, CorpusRep
     }
     if (std::any_of(scene.issues.begin(), scene.issues.end(), [](const LevelIssue& i) { return i.code == "MISSING_REQUIRED_TERRAIN"; })) ++report.totals["crash_signature_no_terrain"];
     for (const LevelIssue& issue : scene.issues) {
-        if (!issue.blocks() || issue.code == "PACKAGE_NOT_SUPPORTED") continue;
+        if (!issue.blocks()) continue;
         Count(categories, issue.code, issue.blocks(), package.path, scene.path);
         Count(problems, issue.code + ": " + LowerAscii(issue.subject), issue.blocks(), package.path, scene.path);
     }
 }
 
-// The worst class of its levels, a level that is rejected only because another one is aside.
+// The worst class of its levels.
 LevelClass PackageClass(const AnalysisResult& r) {
     LevelClass worst = LevelClass::kReady;
-    for (const LevelScene& scene : r.scenes) {
-        const bool inherited = std::any_of(scene.issues.begin(), scene.issues.end(), [](const LevelIssue& i) { return i.code == "PACKAGE_NOT_SUPPORTED"; });
-        if (!inherited) worst = std::max(worst, scene.level_class());
-    }
+    for (const LevelScene& scene : r.scenes) worst = std::max(worst, scene.level_class());
     return worst;
 }
 

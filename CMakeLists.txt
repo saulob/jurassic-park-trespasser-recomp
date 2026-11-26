@@ -333,7 +333,7 @@ add_library(jpt_launcher_core STATIC launcher/iso9660.cpp launcher/inflate.cpp l
   launcher/report_history.cpp launcher/process_probe.cpp
   launcher/localization/pt_br_ui_text.cpp ${JPT_PAGE_ICON_SOURCE})
 target_include_directories(jpt_launcher_core PUBLIC launcher)
-target_link_libraries(jpt_launcher_core PUBLIC jpt_common trg_core bcrypt d3d11 dxgi)
+target_link_libraries(jpt_launcher_core PUBLIC jpt_common jpt_script_plan trg_core bcrypt d3d11 dxgi)
 # Vendored third-party code is a target of its own, so the application's /W4 is never combined with a source-level override.
 add_library(jpt_miniz STATIC launcher/updater/third_party/miniz/miniz.c)
 target_include_directories(jpt_miniz PUBLIC launcher)
@@ -539,7 +539,7 @@ endif()
 # Release links without incremental-link thunks: overrides go through stable entries (src/host/guest_override_list.h).
 # No identical-code folding: distinct functions keep distinct addresses, as in the RelWithDebInfo build.
 target_link_options(trespasser_recomp PRIVATE $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:NOICF>)
-target_link_libraries(trespasser_recomp PRIVATE assao jpt_vulkan jpt_launcher jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
+target_link_libraries(trespasser_recomp PRIVATE assao jpt_vulkan jpt_launcher jpt_script jpt_common imgui_dx11 SDL3::SDL3-static kernel32 user32 gdi32 msimg32 advapi32 bcrypt lz32 d3d11
   dxgi dxguid ole32 uuid windowscodecs delayimp)
 # ImGui's D3D11 renderer imports D3DCompile; the renderer loads d3dcompiler_47.dll itself, so start-up does not need it.
 target_link_options(trespasser_recomp PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
@@ -636,7 +636,7 @@ set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD
 # ninja -C <build dir> custom_level_session_tests
 add_executable(custom_level_session_tests EXCLUDE_FROM_ALL tests/custom_level_session_tests.cpp src/host/custom_level_guide.c src/host/minimap.c src/host/objective_policy.c src/host/compass_policy.c ${JPT_ARCHIVE_SOURCES}
   ${JPT_CUSTOM_LEVEL_SOURCES} launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp)
-target_link_libraries(custom_level_session_tests PRIVATE jpt_launcher_core jpt_miniz jpt_lzma)
+target_link_libraries(custom_level_session_tests PRIVATE jpt_launcher_core jpt_script jpt_miniz jpt_lzma)
 target_include_directories(custom_level_session_tests PRIVATE src/host ${CMAKE_BINARY_DIR}/generated)
 target_compile_definitions(custom_level_session_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 target_compile_options(custom_level_session_tests PRIVATE /W3 /utf-8)
@@ -872,7 +872,7 @@ target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP
 target_compile_options(frontend_tests PRIVATE /W3)
 target_compile_definitions(frontend_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
   ${TRESPASSER_X87_MODEL} "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-target_link_libraries(frontend_tests PRIVATE jpt_common gdi32 user32 ole32 uuid windowscodecs)
+target_link_libraries(frontend_tests PRIVATE jpt_script jpt_common gdi32 user32 ole32 uuid windowscodecs)
 # The gamepad's decisions, bindings, glyphs and prompts (headless, no SDL device):
 #   ninja -C <build dir> gamepad_tests && gamepad_tests.exe
 add_executable(gamepad_tests EXCLUDE_FROM_ALL tests/gamepad_tests.c src/host/gamepad_policy.c src/host/pad_glyphs.c
@@ -893,6 +893,20 @@ target_link_libraries(script_vm_tests PRIVATE jpt_script)
 target_compile_options(script_vm_tests PRIVATE /W3 /utf-8)
 target_compile_definitions(script_vm_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 set_target_properties(script_vm_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+# Which scripts a level needs, and the custom session's script lifecycle and saves (headless):
+#   ninja -C <build dir> script_plan_tests script_session_tests script_save_tests
+add_executable(script_plan_tests EXCLUDE_FROM_ALL tests/script_plan_tests.cpp)
+target_link_libraries(script_plan_tests PRIVATE jpt_script_plan)
+foreach(script_test script_session_tests script_save_tests)
+  add_executable(${script_test} EXCLUDE_FROM_ALL tests/${script_test}.cpp)
+  target_link_libraries(${script_test} PRIVATE jpt_script)
+  target_include_directories(${script_test} PRIVATE tests)
+endforeach()
+foreach(script_test script_plan_tests script_session_tests script_save_tests)
+  target_compile_options(${script_test} PRIVATE /W3 /utf-8)
+  target_compile_definitions(${script_test} PRIVATE _CRT_SECURE_NO_WARNINGS)
+  set_target_properties(${script_test} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+endforeach()
 # PLAY to the game window, the launch handoff state machine (headless, no window): ninja -C <build dir> launch_handoff_tests
 add_executable(launch_handoff_tests EXCLUDE_FROM_ALL tests/launch_handoff_tests.c)
 target_link_libraries(launch_handoff_tests PRIVATE jpt_common)

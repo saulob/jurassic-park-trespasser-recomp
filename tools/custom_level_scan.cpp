@@ -52,8 +52,6 @@ std::string Cell(std::string text) {
     return text.empty() ? "-" : text;
 }
 
-bool Inherited(const LevelIssue& issue) { return issue.code == "PACKAGE_NOT_SUPPORTED"; }
-
 std::string Signature(const LevelIssue& issue) {
     if (issue.code == "UNSUPPORTED_ACTION" || issue.code == "UNSUPPORTED_FEATURE") return issue.subject;
     return issue.code;
@@ -64,10 +62,10 @@ Row RowOf(const CorpusPackage& package, const LevelScene& scene) {
     std::vector<std::string> blockers;
     for (const LevelIssue& issue : scene.issues) {
         if (!issue.blocks()) continue;
-        const std::string name = Inherited(issue) ? "PACKAGE (" + issue.subject + ")" : Signature(issue);
+        const std::string name = Signature(issue);
         if (std::find(blockers.begin(), blockers.end(), name) == blockers.end()) blockers.push_back(name);
         if (issue.policy == IssuePolicy::kMissing) row.missing.push_back(issue);
-        else if (!Inherited(issue)) row.refused.push_back(issue);
+        else row.refused.push_back(issue);
     }
     std::vector<std::string> game;
     for (const LevelResource& r : scene.resources)
@@ -177,7 +175,7 @@ size_t CountOf(const Report& r, const char* name) {
 const char* Work(const Row& row) {
     if (row.status == "READY") return "-";
     if (!row.refused.empty()) return row.missing.empty() ? "large" : "large, and its files do not exist";
-    return row.missing.empty() ? "another level of the package" : "none: its files do not exist";
+    return "none: its files do not exist";
 }
 
 std::string Cut(const std::string& text, size_t most) { return text.size() <= most ? text : text.substr(0, most - 3) + "..."; }

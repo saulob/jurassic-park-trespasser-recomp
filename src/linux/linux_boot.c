@@ -12,6 +12,7 @@
 #include "jpt_fs.h"
 #include "jpt_game_version.h"
 #include "jpt_hash.h"
+#include "jpt_level_scripts.h"
 #include "jpt_lift_meta.h"
 #include "jpt_renderer.h"
 #include "jpt_vpath.h"
@@ -127,6 +128,7 @@ const char* lx_boot_status_name(lx_boot_status_t status) {
 
 static lx_boot_status_t finish(lx_boot_result_t* r, lx_boot_status_t status, const char* detail) {
     r->status = status;
+    jpt_level_scripts_end();
     jpt_session_end();
     if (status == LX_BOOT_SETUP_FAILED || status == LX_BOOT_DATA_UNAVAILABLE) jpt_custom_level_deactivate();
     if (detail) snprintf(r->detail, sizeof r->detail, "%.*s", (int)sizeof r->detail - 1, detail);

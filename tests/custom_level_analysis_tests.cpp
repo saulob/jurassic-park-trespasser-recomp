@@ -401,13 +401,22 @@ static void TestFanMissions() {
 static void TestDocumentation() {
     const PackageAnalysis engine = Analyze(Level("Kit/mods/M/data/", "m") + Files{{"Kit/tp_mod.ini", "[FM]\nActiveFM=M\n[Paths]\nFMPath=mods\n"}, {"Kit/doc/tp_mod.ini", "[FM]\nActiveFM=Other\n"},
                                                                          {"Kit/doc/scripting/samples/Spitter.nut", "function f() {}"}, {"Kit/mods/M/fm.ini", "[General]\n"}});
-    CHECK(!Warned(engine, "config_several_tp_mod") && std::find(engine.required.begin(), engine.required.end(), "CE_SCRIPTS") == engine.required.end() && engine.root == "Kit/mods/M");
+    CHECK(!Warned(engine, "config_several_tp_mod") && engine.scripts.empty() && engine.root == "Kit/mods/M");
     const PackageAnalysis inside = Analyze(Level("Mission/data/", "m") + Files{{"Mission/tp_mod.ini", "[Paths]\nFMPath=FMs\n[FM]\nActiveFM=Mission\n"}, {"Mission/fm.ini", "[General]\nStartLevel=m.scn\n"}});
     CHECK(!Warned(inside, "config_active_fm_missing") && inside.root == "Mission" && inside.start_level == "Mission/data/m.scn");
     const PackageAnalysis bare = Analyze(Level("data/", "m") + Files{{"tp_mod.ini", "[FM]\nActiveFM=Mission\n"}, {"fm.ini", "[General]\nStartLevel=m.scn\n"}});
     CHECK(!Warned(bare, "config_active_fm_missing") && bare.start_level == "data/m.scn");
-    const PackageAnalysis scripted = Analyze(Level("M/data/", "m") + Files{{"M/scripts/Spitter.nut", "function f() {}"}});
-    CHECK(std::find(scripted.required.begin(), scripted.required.end(), "CE_SCRIPTS") != scripted.required.end());
+    // The scripts of each game path, the lowest priority first; never the package's other .nut files. A level decides itself
+    // whether it needs them.
+    const PackageAnalysis scripted = Analyze(Level("M/data/", "m") + Files{{"M/Scripts/b.nut", "function f() {}"}, {"M/scripts/A.nut", "function g() {}"}, {"M/data/x.nut", "x"},
+                                                                     {"M/scripts/deep/c.nut", "x"}, {"Other/scripts/d.nut", "x"}});
+    CHECK(scripted.scripts == (std::vector<std::string>{"M/scripts/A.nut", "M/Scripts/b.nut"}));
+    CHECK(std::find(scripted.required.begin(), scripted.required.end(), "CE_SCRIPTS") == scripted.required.end());
+    // ModPaths come after the active fan mission and UberModPaths before it: CE loads the lowest priority first.
+    const PackageAnalysis layered = Analyze(Level("mods/M/data/", "m") + Files{{"tp_mod.ini", "[Paths]\nFMPath=mods\nModPaths=extra\nUberModPaths=first\n[FM]\nActiveFM=M\n"},
+                                                                     {"mods/M/scripts/fm.nut", "x"}, {"extra/scripts/late.nut", "x"}, {"first/scripts/top.nut", "x"},
+                                                                     {"extra/data/x.wtd", "x"}, {"first/data/y.wtd", "x"}});
+    CHECK(layered.root == "mods/M" && layered.scripts == (std::vector<std::string>{"extra/scripts/late.nut", "mods/M/scripts/fm.nut", "first/scripts/top.nut"}));
 }
 
 static void TestConfigProblems() {
@@ -794,21 +803,22 @@ static void TestLevelStates() {
     for (const char* name : {"ij-130.spz", "be.GRF", "be-130.spz"}) Write(game / name, "retail");
     for (const char* name : {"IJ-130.pid", "be-130.pid", "PW-130.pid"}) Write(game / name, Set(""));
     const Files e3 = {{"IJ.scn", Scene("ij.grf")}, {"IJ.GRF", World("")}, {"PV.scn", Scene("pv.grf", 27)}, {"PV.GRF", World("")}, {"Reuse.scn", Scene("be.grf")}};
-    // One level the port cannot read refuses the whole package; nothing of it is left behind.
+    // A level the port cannot read is refused alone: its siblings are installed and played.
     const ImportResult mixed = ImportFiles(user, "E3", e3, game);
-    CHECK(!mixed.ok() && mixed.status == ImportStatus::kUnsupportedFormat && mixed.levels == 0 && !Left(user, "E3") && Logged(mixed.log, "result: rejected"));
+    CHECK(mixed.ok() && mixed.levels == 2 && Left(user, "E3") && !Logged(mixed.log, "PACKAGE_NOT_SUPPORTED"));
     CHECK(Logged(mixed.log, "PV.scn - Unsupported, scene version 27 is newer than 26") && Logged(mixed.log, "  scene version 27") && Logged(mixed.log, "missing required: pv-130.pid") && Logged(mixed.log, "class: REJECTED_UNSUPPORTED"));
-    CHECK(Logged(mixed.log, "IJ.scn - Not supported") && Logged(mixed.log, "PACKAGE_NOT_SUPPORTED PV.scn"));
+    CHECK(Logged(mixed.log, "IJ.scn - Ready") && Logged(mixed.log, "Reuse.scn - Ready"));
+    fs::remove_all(CustomLevelsDir(user) / "E3");
 
-    // The same package installed by an earlier version: listed, never started.
+    // The same package placed by hand: each level listed as it is, only the refused one without Play.
     PlaceFiles(user, "E3", e3);
     std::vector<LevelPackage> listed = ListLevelPackages(user, game);
-    CHECK(listed.size() == 1 && listed[0].scenes.size() == 3 && listed[0].levels().empty() && PlayableLevels(listed) == 0);
-    for (const LevelScene& scene : listed[0].scenes) CHECK(!scene.playable() && scene.rejected() && (scene.file == "PV.scn") == (scene.state == LevelState::kUnsupportedFormat));
-    for (const LevelScene* row : listed[0].rows()) CHECK(!ActionsOf(row, true).play && ActionsOf(row, true).report && !ActionsOf(row, true).readme);
+    CHECK(listed.size() == 1 && listed[0].scenes.size() == 3 && PlayableLevels(listed) == 2);
+    for (const LevelScene& scene : listed[0].scenes) CHECK(scene.playable() == (scene.file != "PV.scn") && (scene.file == "PV.scn") == (scene.state == LevelState::kUnsupportedFormat));
+    for (const LevelScene* row : listed[0].rows()) CHECK(ActionsOf(row, true).play == (row->file != "PV.scn") && ActionsOf(row, true).report == (row->file == "PV.scn"));
     ImportStatus why = ImportStatus::kInstalled;
     std::vector<std::string> log;
-    CHECK(!Plays(user, game, "E3", "IJ.scn", &why, &log) && why == ImportStatus::kNotSupported && Logged(log, "PACKAGE_NOT_SUPPORTED") && !Plays(user, game, "E3", "PV.scn", &why) && why == ImportStatus::kUnsupportedFormat);
+    CHECK(Plays(user, game, "E3", "IJ.scn", &why, &log) && !Plays(user, game, "E3", "PV.scn", &why) && why == ImportStatus::kUnsupportedFormat);
     CHECK(!Plays(user, game, "E3", "gone.scn") && !Plays(user, game, "none", "IJ.scn") && !Plays(user, game, "../E3", "IJ.scn"));
     const std::string manifest = Read(CustomLevelsDir(user) / "E3" / kManifestFile);
     CHECK(manifest.find("PV.scn: pv-130.pid") != std::string::npos);
@@ -863,18 +873,19 @@ static void TestLevelStates() {
     const ImportResult b55 = ImportFiles(user, "B55", level("ij", 25) + level("jr", 25), game);
     CHECK(b55.ok() && b55.levels == 2 && Logged(b55.log, "ij.scn - Ready") && Logged(b55.log, "jr.scn - Ready"));
     const ImportResult test_scene = ImportFiles(user, "B55 test", level("ij", 25) + Files{{"TestScene.scn", Scene("TestScene.grf", 25)}, {"TestScene.grf", World("")}}, game);
-    CHECK(test_scene.status == ImportStatus::kMissingFiles && !Left(user, "B55 test"));
+    CHECK(test_scene.ok() && test_scene.levels == 1 && Left(user, "B55 test") && Logged(test_scene.log, "class: REJECTED_MISSING"));
     const ImportResult part = ImportFiles(user, "Part", level("Good", 22) + level("Late", 27), game);
-    CHECK(!part.ok() && part.status == ImportStatus::kUnsupportedFormat && !Left(user, "Part"));
+    CHECK(part.ok() && part.levels == 1 && Left(user, "Part"));
     PlaceFiles(user, "Part", level("Good", 22) + level("Late", 27));
-    CHECK(!Plays(user, game, "Part", "Late.scn", &why) && why == ImportStatus::kUnsupportedFormat && !Plays(user, game, "Part", "Good.scn", &why) && why == ImportStatus::kNotSupported);
+    CHECK(!Plays(user, game, "Part", "Late.scn", &why) && why == ImportStatus::kUnsupportedFormat && Plays(user, game, "Part", "Good.scn"));
     CHECK(Activate(user, "Part", "Good.scn") && !Activate(user, "Part", "Late.scn"));
     const ImportResult unread = ImportFiles(user, "Unread", Files{{"U.scn", Scene("U.grf", 0)}, {"U.grf", World("")}, {"U-130.pid", "p"}, {"U-130.swp", "s"}}, game);
     CHECK(!unread.ok() && Logged(unread.log, "U.scn - Unknown, its scene version could not be read") && !fs::exists(CustomLevelsDir(user) / "Unread"));
 
     Files states = Level("T/data/", "one") + Files{{"T/fm.ini", "[General]\nStartLevel=one.scn\n"}, {"T/data/one_saved.scn", Scene("one.grf")}, {"T/data/bad.scn", "x"}};
     const ImportResult several = ImportFiles(user, "States", states, game);
-    CHECK(!several.ok() && several.status == ImportStatus::kUnsupportedFormat && Logged(several.log, "bad.scn - Unsupported") && Logged(several.log, "NOT_A_SCENE bad.scn"));
+    CHECK(several.ok() && several.levels == 1 && Logged(several.log, "bad.scn - Unsupported") && Logged(several.log, "NOT_A_SCENE bad.scn"));
+    fs::remove_all(CustomLevelsDir(user) / several.package);
     states.pop_back();
     const ImportResult saved = ImportFiles(user, "States", states, game);
     CHECK(saved.ok() && saved.levels == 1 && Logged(saved.log, "one.scn - Ready") && Logged(saved.log, "scene version 22, StartLevel") && Logged(saved.log, "one_saved.scn - Auxiliary"));
@@ -889,11 +900,11 @@ static void TestImportLog() {
     for (int i = 0; i < 60; ++i) files.push_back({"M/data/texhw/map/t" + std::to_string(i) + ".dds", "dds"});
     const ImportResult result = ImportFiles(user, "Mission", files, game);
     CHECK(result.status == ImportStatus::kNotSupported && !Left(user, "Mission") && std::all_of(result.log.begin(), result.log.end(), [](const std::string& line) { return line.size() < 900 && line.find('\n') == std::string::npos; }));
-    for (const char* line : {"custom level import source: folder \"Mission\"", "source path: ", "package Mission, layout fan_mission, mod folder M", "files found: 80, accepted: 75, ignored: 3, rejected: 2",
+    for (const char* line : {"custom level import source: folder \"Mission\"", "source path: ", "package Mission, layout fan_mission, mod folder M", "files found: 80, accepted: 76, ignored: 2, rejected: 2",
                              "SCN (1):", "GRF (1):", "PID (1):", "SWP (1):", "WTD (1):", "INI (1):", "TPA (1):", "TXT (4):", "MD (1):", "NFO (1):", "ASA (1):", "DDS (60):", "SKY (1):", "  M/data/texhw/map/t59.dds",
-                             "M/run.exe - a program or library", "M/go.bat - a script or shortcut", "M/saves/SAVEGAME.000 - a saved game", "M/script.nut - a Trespasser CE script",
+                             "M/run.exe - a program or library", "M/go.bat - a script or shortcut", "M/saves/SAVEGAME.000 - a saved game",
                              "level M/data/m.scn - Not supported", "  scene version 22, StartLevel", "  class: REJECTED_UNSUPPORTED",
-                             "  UNSUPPORTED_FEATURE CE_SKY_STARS: ", "  UNSUPPORTED_FEATURE CE_SCRIPTS: ", "  GRF m.grf: M/data/m.grf", "  PID m-130.pid: M/data/m-130.pid", "  SWP m-130.swp: M/data/m-130.swp",
+                             "  UNSUPPORTED_FEATURE CE_SKY_STARS: ", "  GRF m.grf: M/data/m.grf", "  PID m-130.pid: M/data/m-130.pid", "  SWP m-130.swp: M/data/m-130.swp",
                              "  WTD m.wtd: M/data/m.wtd", "  config: M/fm.ini", "stream += More.tpa (ready)", "README BEGIN M/Readme.txt (40 bytes, SHA-256 ", "| Put the level in data.", "| === fault caf\xC3\xA9", "README END M/Readme.txt",
                              "README BEGIN M/INSTALL.txt", "| Wide \xC3\xA9", "| caf\xC3\xA9", "| ... truncated: the first 65536 of 70000 bytes", "| not a readable text", "README BEGIN M/manual.txt", "TXT BEGIN M/data/notes.txt (5 bytes, SHA-256 ", "| hello", "TXT END M/data/notes.txt", "README (", "Configs (1):", "result: rejected, This custom level is not fully supported (m.scn)"})
     {
@@ -1079,11 +1090,11 @@ static void TestListedLevels() {
     // A start level that cannot be played does not hide the others.
     Files broken = town;
     broken[0].second = Scene("TLWCITY.grf", 27);
-    CHECK(ImportFiles(user, "Broken", broken, game).status == ImportStatus::kUnsupportedFormat && !fs::exists(CustomLevelsDir(user) / "Broken"));
+    CHECK(ImportFiles(user, "Broken", broken, game).ok() && fs::exists(CustomLevelsDir(user) / "Broken"));
     for (const auto& [path, bytes] : broken) Write(CustomLevelsDir(user) / "Broken" / PathFromUtf8(path), bytes);
     listed = ListLevelPackages(user, game);
     const auto half = std::find_if(listed.begin(), listed.end(), [](const LevelPackage& p) { return p.id == "Broken"; });
-    CHECK(half != listed.end() && half->levels().empty() && half->rows().size() == 2 && PlayableLevels(listed) == 4);
+    CHECK(half != listed.end() && half->levels().size() == 1 && half->rows().size() == 2 && PlayableLevels(listed) == 5);
 }
 
 static void TestActivePackage() {

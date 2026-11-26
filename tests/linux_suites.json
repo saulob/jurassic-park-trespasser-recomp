@@ -30,6 +30,9 @@
     "level_session_tests",
     "launch_handoff_tests",
     "script_vm_tests",
+    "script_plan_tests",
+    "script_session_tests",
+    "script_save_tests",
     "texhw_tests",
     "sky_tests",
     "launcher_startup_tests"

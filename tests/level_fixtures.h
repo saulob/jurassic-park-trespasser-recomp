@@ -74,6 +74,8 @@ struct WorldShape {
     std::vector<std::string> maps;   // the pictures of ATX map actions
     std::vector<PlacedObject> placed;
     std::vector<std::pair<std::string, int>> hints; // a trigger and the hint its Action00 sets
+    std::vector<std::pair<std::string, std::string>> scripted;         // an object and the class its Script names
+    std::vector<std::pair<std::string, std::string>> scripted_actions; // a trigger and the class its Action00 (99) names
     std::vector<std::string> frames; // of an animating mesh
     uint32_t animals = 0;
     int trigger_actions = 0;       // of one trigger
@@ -137,6 +139,9 @@ public:
         for (const PlacedObject& o : shape.placed) Object(o.name, 0, {{"Class", Text(o.type)}}, o.x, o.y, o.z);
         for (const auto& [name, hint] : shape.hints)
             Object(name, 0, {{"Class", Text("CLocationTrigger")}, {"Action00", Group({{"ActionType", Whole(28)}, {"HintID", Whole(hint)}})}});
+        for (const auto& [name, script] : shape.scripted) Object(name, 0, {{"Class", Text("CInstance")}, {"Script", Text(script)}});
+        for (const auto& [name, script] : shape.scripted_actions)
+            Object(name, 0, {{"Class", Text("CLocationTrigger")}, {"Action00", Group({{"ActionType", Whole(99)}, {"ScriptAT", Text(script)}})}});
         if (!shape.frames.empty()) {
             std::vector<std::pair<std::string, Value>> values;
             for (size_t i = 0; i < shape.frames.size(); ++i) values.push_back({Numbered("Anim", int(i)), Text(shape.frames[i])});

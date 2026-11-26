@@ -59,7 +59,7 @@
 #define NO_PALETTE 0xFFFFFFFFu
 
 enum { VALUE_BOOL = 1, VALUE_CHAR, VALUE_INT, VALUE_FLOAT, VALUE_STRING, VALUE_OBJECT };
-enum { NAME_OTHER, NAME_VISIBLE, NAME_JOINTS, NAME_BUMPMAPS, NAME_DIFFUSE, NAME_CLASS, NAME_FILE, NAME_ACTION, NAME_LEVEL, NAME_CURVED, NAME_EXPRESSION, NAME_TRIGGER_ACTION, NAME_LINK, NAME_NORMALS, NAME_PLANTED, NAME_ANIMATED_SURFACE, NAME_MASTER, NAME_SLAVE, NAME_TYPE, NAME_MESH, NAME_PHYSICS, NAME_BOUND, NAME_DINOSAUR, NAME_SAMPLE, NAME_MODEL, NAME_SURFACE = NAME_MODEL + MODEL_NAMES, NAME_SURFACE_LAST = NAME_SURFACE + 99, NAME_FRAME, NAME_FRAME_BUMP = NAME_FRAME + FRAMES_MAX };
+enum { NAME_OTHER, NAME_VISIBLE, NAME_JOINTS, NAME_BUMPMAPS, NAME_DIFFUSE, NAME_CLASS, NAME_FILE, NAME_ACTION, NAME_LEVEL, NAME_CURVED, NAME_EXPRESSION, NAME_TRIGGER_ACTION, NAME_LINK, NAME_NORMALS, NAME_PLANTED, NAME_ANIMATED_SURFACE, NAME_MASTER, NAME_SLAVE, NAME_TYPE, NAME_MESH, NAME_PHYSICS, NAME_BOUND, NAME_DINOSAUR, NAME_SAMPLE, NAME_SCRIPT, NAME_SCRIPT_AT, NAME_MODEL, NAME_SURFACE = NAME_MODEL + MODEL_NAMES, NAME_SURFACE_LAST = NAME_SURFACE + 99, NAME_FRAME, NAME_FRAME_BUMP = NAME_FRAME + FRAMES_MAX };
 
 typedef struct {
     uint32_t key, value;
@@ -233,7 +233,7 @@ static int numbered(const char* text, const char* prefix) {
 
 static uint8_t known_name(const char* text) {
     static const char* const k_names[] = { "", "Visible", "NumJoints", "Bumpmaps", "Diffuse", "Class", "File", "ActionType", "LevelName", "Curved", "FireExpression" };
-    static const char* const k_late[] = { "Normals", "Planted", "AnimSubMaterial", "MasterObject", "SlaveObject", "Type", "Mesh", "Physics", "BoundVol", "Dinosaur", "Sample" };
+    static const char* const k_late[] = { "Normals", "Planted", "AnimSubMaterial", "MasterObject", "SlaveObject", "Type", "Mesh", "Physics", "BoundVol", "Dinosaur", "Sample", "Script", "ScriptAT" };
     const int surface = numbered(text, "SubMaterial"), frame = numbered(text, "Anim"), bump = numbered(text, "AnimB"), model = numbered(text, "Model");
     if (surface >= 0) return (uint8_t)(NAME_SURFACE + surface);
     if (numbered(text, "Action") >= 0) return NAME_TRIGGER_ACTION;
@@ -446,6 +446,34 @@ static void add_map(jpt_groff_report_t* report, const char* sample) {
     for (unsigned i = 0; i < report->map_count; i++)
         if (!_stricmp(report->maps[i], name)) return;
     if (name[0] && report->map_count < JPT_GROFF_LEVELS_MAX) copy(report->maps[report->map_count++], name);
+}
+
+static void add_script(jpt_groff_report_t* report, const char* class_name, const char* object, int action) {
+    if (!class_name[0]) return;
+    for (unsigned i = 0; i < report->script_count; i++)
+        if (report->scripts[i].action == action && !strcmp(report->scripts[i].class_name, class_name)) {
+            report->scripts[i].count++;
+            return;
+        }
+    if (report->script_count == JPT_GROFF_SCRIPTS_MAX) {
+        report->scripts_overflow = 1;
+        return;
+    }
+    copy(report->scripts[report->script_count].class_name, class_name);
+    copy(report->scripts[report->script_count].object, object);
+    report->scripts[report->script_count].action = action;
+    report->scripts[report->script_count++].count = 1;
+}
+
+/* Trespasser CE: Script on any object, ScriptAT on a trigger's action 99. */
+static void describe_scripts(const jpt_groff_t* g, const record_t* values, const char* name, jpt_groff_report_t* report) {
+    add_script(report, text_property(g, values, NAME_SCRIPT), name, 0);
+    if (!values || values->type != VALUE_OBJECT) return;
+    for (uint32_t i = 0; i < values->child_count; i++) {
+        const record_t* child = record_of(g, rd(values->v.children + (size_t)i * 8));
+        if (child && child->type == VALUE_OBJECT && child->name == NAME_TRIGGER_ACTION && whole(g, child, NAME_ACTION) == 99)
+            add_script(report, text_property(g, child, NAME_SCRIPT_AT), name, 1);
+    }
 }
 
 static int by_type(const void* a, const void* b) {
@@ -873,6 +901,7 @@ static int describe_object(const jpt_groff_t* g, const object_t* o, const map_t*
     mesh_t mesh;
     report->animals += !strcmp(type, "CAnimal");
     report->triggers += n > 7 && !strcmp(type + n - 7, "Trigger");
+    describe_scripts(g, o->values, name, report);
     if (!strcmp(type, "TerrainPlacement") && !report->terrains++) copy(report->terrain, text_property(g, o->values, NAME_FILE));
     memset(&sizes, 0, sizeof sizes);
     sizes_of(g, o, &sizes);

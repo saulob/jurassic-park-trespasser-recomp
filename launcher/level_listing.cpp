@@ -170,6 +170,9 @@ std::string ListingRecordText(const std::string& key, const LevelPackage& p) {
         for (const LevelResource& r : s.resources) text += Line("resource", {r.type, r.name, r.place, r.note});
         for (const LevelIssue& i : s.issues) text += Line("issue", {i.code, i.subject, i.detail, Str(int(i.policy))});
         for (const std::string& file : s.led_to_by) text += Line("led", {file});
+        if (s.scripted) text += Line("scripted", {"1"});
+        for (const std::string& file : s.script_files) text += Line("script_file", {file});
+        for (const std::string& name : s.script_required) text += Line("script_required", {name});
         for (const auto& [world, facts] : s.worlds) text += Line("world", {world, WorldFactsText(facts)});
     }
     return text + "end\n";
@@ -222,6 +225,12 @@ bool ParseListingRecord(const std::string& text, const std::string& key, LevelPa
             scene->missing.push_back(f[0]);
         } else if (kind == "use" && f.size() == 1) {
             scene->uses.push_back(f[0]);
+        } else if (kind == "scripted" && f.size() == 1 && f[0] == "1") {
+            scene->scripted = true;
+        } else if (kind == "script_file" && f.size() == 1) {
+            scene->script_files.push_back(f[0]);
+        } else if (kind == "script_required" && f.size() == 1) {
+            scene->script_required.push_back(f[0]);
         } else if (kind == "left" && f.size() == 1) {
             scene->left_out.push_back(f[0]);
         } else if (kind == "resource" && f.size() == 4) {

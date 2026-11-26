@@ -19,6 +19,7 @@
 #include "jpt_fs.h"
 #include "jpt_l10n.h"
 #include "jpt_level_gate.h"
+#include "jpt_level_scripts.h"
 #include "jpt_save.h"
 #include "jpt_tr.h"
 #include "l10n.h"
@@ -525,14 +526,24 @@ static int from_main_menu(void) {
     return guest_ui_probe(&front) && front.kind == GUEST_WND_MAIN_MENU;
 }
 
+/* The game's temporary save, written while its display is rebuilt, is a saved game for the scripts too. */
+static void begin_scripts(jpt_level_reason_t reason, const char* path, const char* scene) {
+    char save[JPT_PATH_MAX];
+    const int saved = path[0] && (jpt_save_is_name(path) || jpt_save_is_temporary(path)) && guest_host_path(path, save, sizeof save);
+    jpt_level_scripts_begin(reason, scene, saved ? save : NULL);
+}
+
 static void begin_level(void) {
     char path[MAX_PATH], scene[MAX_PATH];
     const uint32_t at = MEM32(g_esp + 4), named = MEM32(g_esp + 8);
     const char* name;
+    jpt_level_reason_t reason;
     if (!at || !guest_read_string(at, path, sizeof path)) path[0] = 0;
     if (!named || !guest_read_string(named, scene, sizeof scene)) scene[0] = 0;
     name = scene[0] ? scene : path;
-    jpt_session_level_begin(jpt_session_reason(path[0] && jpt_save_is_name(path), from_main_menu()), name, level_session_source(name));
+    reason = jpt_session_reason(path[0] && jpt_save_is_name(path), from_main_menu());
+    jpt_session_level_begin(reason, name, level_session_source(name));
+    begin_scripts(reason, path, name);
 }
 
 static void level_load(void) {
@@ -564,6 +575,7 @@ static void level_load(void) {
     if (fe_host_layer_available()) load_hold_arm(&L.hold, fe_host_tick());
     else load_hold_release(&L.hold);
     jpt_session_level_end((int32_t)result >= 0, (int)(int32_t)result);
+    jpt_level_scripts_ready((int32_t)result >= 0);
     g_eax = result;
 }
 

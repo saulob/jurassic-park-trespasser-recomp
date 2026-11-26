@@ -103,6 +103,7 @@ public:
         FindConfigs();
         ChooseRoot();
         BuildRuntime();
+        FindScripts();
         FollowReadme();
         PlaceAnimations();
         PlaceTextures();
@@ -434,6 +435,23 @@ private:
         for (const std::string& layer : mods_) {
             AddLayer(layer, false);
             Act("layer", layer, "", Origin::kTpModIni, "ModPaths: after the active fan mission");
+        }
+    }
+
+    // Trespasser CE loads every .nut of each game path's scripts folder, the lowest priority path first; which of them a level
+    // needs is the level's own question (jpt_script_plan.h).
+    void FindScripts() {
+        if (!root_set_) return;
+        std::vector<std::string> roots(mods_.rbegin(), mods_.rend());
+        roots.push_back(a_.root);
+        roots.insert(roots.end(), uber_.rbegin(), uber_.rend());
+        for (const std::string& root : roots) {
+            std::vector<std::string> found;
+            for (const std::string& path : paths_)
+                if (PathType(path) == ".nut" && !IsDocumentation(path) && SameText(PathFolder(path), Join(root, "scripts"))) found.push_back(path);
+            std::sort(found.begin(), found.end(), [](const std::string& x, const std::string& y) { return LowerAscii(x) < LowerAscii(y); });
+            for (const std::string& path : found)
+                if (std::find(a_.scripts.begin(), a_.scripts.end(), path) == a_.scripts.end()) a_.scripts.push_back(path);
         }
     }
 
@@ -876,7 +894,6 @@ private:
         Require(has("menu") && ReplacesMenus(), "CE_MENU_FILES");
         Require(has("maps"), "ATX_MAP");
         Require(any(".smk"), "CE_VIDEOS");
-        Require(std::any_of(paths_.begin(), paths_.end(), [](const std::string& path) { return PathType(path) == ".nut" && !IsDocumentation(path); }), "CE_SCRIPTS");
         RequireAtx();
         RequireSky();
         for (const std::string& name : a_.required) {

@@ -136,6 +136,14 @@ struct PackageAnalysis {
     std::vector<Dependency> dependencies;
     std::vector<Feature> features;
     std::vector<std::string> required; // of the package, by name in jpt_level_features
+    std::vector<std::string> scripts;  // Trespasser CE scripts of its game paths, in CE's load order
+    bool scripts_left_out = false;     // an earlier version installed it without its .nut files
+    struct ScriptReference {
+        std::string scene, class_name, object;
+        bool action = false;
+    };
+    std::vector<ScriptReference> script_references; // what its levels' worlds name
+    std::vector<std::pair<std::string, std::string>> script_uses; // a level and a script file its VM loads, in load order
     std::vector<int> action_types;     // past the game's own, of every level
     std::vector<InstallAction> actions;
     std::vector<RuntimeFile> runtime;

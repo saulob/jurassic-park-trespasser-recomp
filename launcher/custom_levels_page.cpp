@@ -224,10 +224,7 @@ void CustomLevelsPage::Play(const std::string& id, const std::string& scene) {
 
 // The reasons go to this session's log, which Bug Report then offers: never an older run of the level.
 void CustomLevelsPage::ReportLevel(const LevelPackage& package, const LevelScene* scene) {
-    if (!scene) Log("custom level %s: no level of the package can be played", package.id.c_str());
-    for (const LevelScene& each : package.scenes)
-        if (!scene || &each == scene)
-            for (const std::string& line : LevelProblems(package, each, hooks_.data_dir())) Log("custom level: %s", line.c_str());
+    for (const std::string& line : ReportLines(package, scene, hooks_.data_dir())) Log("%s", line.c_str());
     hooks_.open_bug_report("", "");
 }
 

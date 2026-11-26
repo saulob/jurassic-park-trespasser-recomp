@@ -94,7 +94,8 @@ ImportResult RunImport(const ImportRequest& request, const std::function<void(co
 std::filesystem::path CustomLevelsDir(const std::filesystem::path& user_dir);
 
 // Everything is unpacked and checked in a staging folder beside the packages; the package appears whole or not at all.
-// data_dir: the selected game version's data folder. Only a package whose every level is READY is installed.
+// data_dir: the selected game version's data folder. A package with at least one READY level is installed; every level keeps its
+// own state and only READY ones can be played.
 ImportResult ImportLevelArchive(const std::filesystem::path& archive, const std::filesystem::path& user_dir, const ImportHooks& hooks,
                                 const ArchiveLimits& limits = {}, const std::filesystem::path& data_dir = {});
 ImportResult ImportLevelFolder(const std::filesystem::path& folder, const std::filesystem::path& user_dir, const ImportHooks& hooks,
@@ -132,6 +133,9 @@ struct LevelScene {
     std::vector<LevelIssue> issues;
     std::vector<std::string> led_to_by; // the other scenes of the package that load it
     std::vector<std::pair<std::string, WorldFacts>> worlds; // the package's own, read
+    bool scripted = false;                    // its Trespasser CE scripts act in it: it has a VM
+    std::vector<std::string> script_files;    // that VM loads, in order
+    std::vector<std::string> script_required; // what they ask of the port that it does not have yet
     bool playable() const { return state == LevelState::kReady; }
     LevelClass level_class() const { return ClassOf(issues); }
     bool rejected() const { return level_class() != LevelClass::kReady; }
@@ -217,6 +221,8 @@ PlayCheck CheckBeforePlay(const std::filesystem::path& user_dir, const std::file
 
 // A level's problems, for the launcher's log.
 std::vector<std::string> LevelProblems(const LevelPackage& package, const LevelScene& scene, const std::filesystem::path& data_dir);
+// What Bug Report logs for a level: its own problems only, never a sibling's; without one, every level that cannot be played.
+std::vector<std::string> ReportLines(const LevelPackage& package, const LevelScene* scene, const std::filesystem::path& data_dir);
 
 // Removes the package's folder and nothing else; its saves stay.
 bool DeleteLevelPackage(const std::filesystem::path& user_dir, const std::string& id, std::string& error);

@@ -6651,7 +6651,7 @@
   },
   {
    "id": "ce-script-interpreter",
-   "name": "Interpreter of Trespasser CE scripts (Squirrel, custom levels only, not linked into the game yet): language with math, string and blob libraries only, an instruction budget per entry, errors named with file, line and function, the failing owner stopped until the level ends, print() capped and never forging a log line",
+   "name": "Interpreter of Trespasser CE scripts (Squirrel, custom levels only): language with math, string and blob libraries only, an instruction budget per entry, a memory budget per VM, errors named with level, script, file, callback and line, the failing script stopped until the level ends, instances, methods and nvram values, print() capped and never forging a log line",
    "owner": "gameplay",
    "scope": "global",
    "requirement": "none",
@@ -6675,6 +6675,78 @@
      "suite": "script_vm_tests",
      "file": "tests/script_vm_tests.cpp",
      "pattern": "test_print_lines_and_log_text"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_instances"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_nvram"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-lifecycle",
+   "name": "Trespasser CE scripts in custom sessions: a VM only for a level whose scripts act in it (decided per level, never per package; a refused level never refuses its siblings), CE's load steps and callbacks, OnSimStep per frame, transitions, Restart Level, game script nvram across levels, saves and loads with a versioned script block, errors and budgets per script and per VM, the required CE functions per level; the campaign never creates one",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_plan_tests",
+     "file": "tests/script_plan_tests.cpp",
+     "pattern": "test_level_decides"
+    },
+    {
+     "suite": "script_plan_tests",
+     "file": "tests/script_plan_tests.cpp",
+     "pattern": "test_required"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_level_without_scripts"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_restart"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_campaign_and_package"
+    },
+    {
+     "suite": "script_save_tests",
+     "file": "tests/script_save_tests.cpp",
+     "pattern": "test_save_and_load"
+    },
+    {
+     "suite": "script_save_tests",
+     "file": "tests/script_save_tests.cpp",
+     "pattern": "test_save_file_block"
+    },
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestLevelsApart"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_per_level_files"
     }
    ],
    "windows": {

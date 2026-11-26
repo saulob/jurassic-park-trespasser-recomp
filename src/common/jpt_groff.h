@@ -14,6 +14,7 @@ extern "C" {
 #define JPT_GROFF_ACTIONS_MAX 64
 #define JPT_GROFF_LEVELS_MAX 32
 #define JPT_GROFF_FAULTS_MAX 16
+#define JPT_GROFF_SCRIPTS_MAX 32
 /* The engine builds a mesh of 2048 faces at most; a custom level's session gives it four times the room. */
 #define JPT_GROFF_MESH_FACES_MAX 8192u
 /* Of the engine's 128 MB texture pool, which a custom level's session makes larger, with room for textures outside the set. */
@@ -31,6 +32,14 @@ typedef struct {
     int type;
     unsigned count;
 } jpt_groff_action_t;
+
+/* A Trespasser CE script class the world names: an object's Script, or a trigger's action 99 by its ScriptAT. */
+typedef struct {
+    char class_name[JPT_GROFF_TEXT_MAX];
+    char object[JPT_GROFF_TEXT_MAX]; /* the first that names it */
+    int action;
+    unsigned count;
+} jpt_groff_script_t;
 
 /* A premise of the engine's that the world breaks, by kind: the first place, and how many. */
 typedef struct {
@@ -61,6 +70,9 @@ typedef struct {
     char largest_mesh_object[JPT_GROFF_TEXT_MAX];
     jpt_groff_fault_t faults[JPT_GROFF_FAULTS_MAX];
     unsigned fault_count;
+    jpt_groff_script_t scripts[JPT_GROFF_SCRIPTS_MAX];
+    unsigned script_count;
+    int scripts_overflow; /* more classes than it holds */
 } jpt_groff_report_t;
 
 typedef struct {
