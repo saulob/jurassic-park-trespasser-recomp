@@ -887,7 +887,7 @@ target_link_libraries(level_session_tests PRIVATE jpt_common)
 target_compile_options(level_session_tests PRIVATE /W3)
 target_compile_definitions(level_session_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 # The interpreter of Trespasser CE scripts (headless): ninja -C <build dir> script_vm_tests
-include(${CMAKE_SOURCE_DIR}/cmake/JptSquirrel.cmake)
+add_subdirectory(cmake/squirrel ${CMAKE_BINARY_DIR}/squirrel)
 add_executable(script_vm_tests EXCLUDE_FROM_ALL tests/script_vm_tests.cpp)
 target_link_libraries(script_vm_tests PRIVATE jpt_script)
 target_compile_options(script_vm_tests PRIVATE /W3 /utf-8)

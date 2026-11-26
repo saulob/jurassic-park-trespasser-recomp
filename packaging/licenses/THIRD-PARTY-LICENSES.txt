@@ -19,6 +19,31 @@ stb_image / stb_truetype    Public domain (or MIT where marked). No copyright cl
 Droid Sans                  Apache-2.0. Copyright 2008 The Android Open Source Project. external/imgui/misc/fonts/DroidSans.ttf, the embedded text face.
 OpenSSL 3.5.9 (Linux)       Apache-2.0. The OpenSSL Project.           this folder's OpenSSL-LICENSE.txt
 FFmpeg n7.1.1 (Linux)       LGPL-2.1-or-later. The FFmpeg developers.  this folder's FFmpeg-LGPL-2.1.txt and FFMPEG-SOURCE.txt
+Squirrel 3.2                MIT. Copyright (c) 2003-2022 Alberto Demichelis. https://github.com/albertodemichelis/squirrel (the notice is below; built for the scripts of custom levels, not yet linked into the program)
+
+Squirrel 3.2 (https://github.com/albertodemichelis/squirrel, f9267f2f2a9afa1face89d8ea078c686331e30d1, after the v3.2 tag)
+  MIT License. Copyright (c) 2003-2022 Alberto Demichelis. Patched by this port: an instruction budget and a checked
+  vector size (launcher/patches/squirrel).
+
+Copyright (c) 2003-2022 Alberto Demichelis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 Intel ASSAO (https://github.com/GameTechDev/ASSAO, c21d57a95b43c700ee01a2eb18f5589d7becefb2)
   MIT License. Copyright (c) 2016 Intel. Ambient occlusion of the D3D11 renderer.

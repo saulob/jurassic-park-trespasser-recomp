@@ -1,5 +1,7 @@
 #include "jpt_script_vm.h"
 
+#include "jpt_script_heap.h"
+
 #include <squirrel.h>
 #include <sqstdblob.h>
 #include <sqstdmath.h>
@@ -9,12 +11,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <memory>
+#include <new>
 #include <string>
 #include <vector>
 
 struct jpt_script_vm {
     HSQUIRRELVM v = nullptr;
     jpt_script_config config{};
+    std::unique_ptr<ScriptHeap> heap;
+    bool abandoned = false;
     int printed = 0;
     std::vector<std::string> disabled;
     std::string error;
@@ -98,12 +104,41 @@ SQInteger RuntimeError(HSQUIRRELVM v) {
 }
 
 bool Disabled(const jpt_script_vm* vm, const std::string& owner) {
+    if (vm->abandoned) return true;
     for (const std::string& name : vm->disabled)
         if (name == owner) return true;
     return false;
 }
 
-// Runs the closure on top of the stack with the root table as 'this'; the stack is left as it was below it.
+// Nothing of Squirrel runs again: its state may be half updated where the allocation failed.
+void Abandon(jpt_script_vm* vm, const std::string& owner, const ScriptHeapFailure& failure) {
+    if (failure.budget)
+        Log(vm, "[script] disabled: memory budget exceeded (limit %zu bytes) while running %s", vm->heap->Stats().limit,
+            Clean(owner.c_str()).c_str());
+    else
+        Log(vm, "[script] disabled: out of memory (the system refused %zu bytes) while running %s", failure.requested,
+            Clean(owner.c_str()).c_str());
+    Log(vm, "[script] every script of this VM stops");
+    vm->v = nullptr;
+    vm->abandoned = true;
+    vm->heap->ReleaseAll();
+}
+
+template <typename Body>
+jpt_script_result Guarded(jpt_script_vm* vm, const std::string& owner, Body body) {
+    ScriptHeapScope scope(vm->heap.get());
+    try {
+        return body();
+    } catch (const ScriptHeapFailure& failure) {
+        Abandon(vm, owner, failure);
+        return JPT_SCRIPT_FAILED;
+    } catch (const std::bad_alloc&) {
+        Abandon(vm, owner, ScriptHeapFailure{false, 0});
+        return JPT_SCRIPT_FAILED;
+    }
+}
+
+// Runs the closure on top of the stack with the root table as 'this'.
 jpt_script_result Run(jpt_script_vm* vm, const std::string& owner) {
     vm->error.clear();
     vm->where.clear();
@@ -124,18 +159,8 @@ jpt_script_result Run(jpt_script_vm* vm, const std::string& owner) {
     return JPT_SCRIPT_FAILED;
 }
 
-}  // namespace
-
-extern "C" jpt_script_vm* jpt_script_vm_create(const jpt_script_config* config) {
-    jpt_script_vm* vm = new jpt_script_vm;
-    if (config) vm->config = *config;
-    if (vm->config.instructions <= 0) vm->config.instructions = JPT_SCRIPT_DEFAULT_INSTRUCTIONS;
-    if (vm->config.print_lines <= 0) vm->config.print_lines = JPT_SCRIPT_DEFAULT_PRINT_LINES;
+void Open(jpt_script_vm* vm) {
     vm->v = sq_open(1024);
-    if (!vm->v) {
-        delete vm;
-        return nullptr;
-    }
     sq_setforeignptr(vm->v, vm);
     sq_setprintfunc(vm->v, Print, Print);
     sq_setcompilererrorhandler(vm->v, CompileError);
@@ -152,18 +177,46 @@ extern "C" jpt_script_vm* jpt_script_vm_create(const jpt_script_config* config) 
         sq_deleteslot(vm->v, -2, SQFalse);
     }
     sq_pop(vm->v, 1);
+}
+
+}  // namespace
+
+extern "C" jpt_script_vm* jpt_script_vm_create(const jpt_script_config* config) {
+    jpt_script_vm* vm = new jpt_script_vm;
+    if (config) vm->config = *config;
+    if (vm->config.instructions <= 0) vm->config.instructions = JPT_SCRIPT_DEFAULT_INSTRUCTIONS;
+    if (vm->config.print_lines <= 0) vm->config.print_lines = JPT_SCRIPT_DEFAULT_PRINT_LINES;
+    if (!vm->config.memory_limit) vm->config.memory_limit = JPT_SCRIPT_DEFAULT_MEMORY;
+    vm->heap.reset(new ScriptHeap(vm->config.memory_limit, vm->config.allocator));
+    const jpt_script_result opened = Guarded(vm, "the interpreter", [vm] {
+        Open(vm);
+        return JPT_SCRIPT_OK;
+    });
+    if (opened != JPT_SCRIPT_OK) {
+        delete vm;
+        return nullptr;
+    }
     return vm;
 }
 
 extern "C" void jpt_script_vm_destroy(jpt_script_vm* vm) {
     if (!vm) return;
-    sq_close(vm->v);
+    if (vm->v) {
+        Guarded(vm, "the interpreter", [vm] {
+            sq_close(vm->v);
+            vm->v = nullptr;
+            return JPT_SCRIPT_OK;
+        });
+    }
+    if (vm->heap->Stats().current)
+        Log(vm, "[script] %zu bytes were still held when the VM closed", vm->heap->Stats().current);
     delete vm;
 }
 
 extern "C" jpt_script_result jpt_script_vm_load(jpt_script_vm* vm, const char* name, const char* source, size_t size) {
     const std::string owner = name ? name : "script";
     if (!vm || !source) return JPT_SCRIPT_FAILED;
+    if (vm->abandoned) return JPT_SCRIPT_DISABLED;
     if (size > JPT_SCRIPT_MAX_SOURCE) {
         Log(vm, "[script] %s is larger than %u bytes and is not read", Clean(owner.c_str()).c_str(), JPT_SCRIPT_MAX_SOURCE);
         return JPT_SCRIPT_FAILED;
@@ -172,35 +225,39 @@ extern "C" jpt_script_result jpt_script_vm_load(jpt_script_vm* vm, const char* n
         source += 3;
         size -= 3;
     }
-    const SQInteger top = sq_gettop(vm->v);
-    if (SQ_FAILED(sq_compilebuffer(vm->v, source, static_cast<SQInteger>(size), owner.c_str(), SQTrue))) {
+    return Guarded(vm, owner, [&] {
+        const SQInteger top = sq_gettop(vm->v);
+        if (SQ_FAILED(sq_compilebuffer(vm->v, source, static_cast<SQInteger>(size), owner.c_str(), SQTrue))) {
+            sq_settop(vm->v, top);
+            return JPT_SCRIPT_FAILED;
+        }
+        const jpt_script_result result = Run(vm, owner);
         sq_settop(vm->v, top);
-        return JPT_SCRIPT_FAILED;
-    }
-    const jpt_script_result result = Run(vm, owner);
-    sq_settop(vm->v, top);
-    return result;
+        return result;
+    });
 }
 
 extern "C" jpt_script_result jpt_script_vm_call(jpt_script_vm* vm, const char* owner, const char* function) {
     if (!vm || !function) return JPT_SCRIPT_ABSENT;
     const std::string who = owner ? owner : function;
     if (Disabled(vm, who)) return JPT_SCRIPT_DISABLED;
-    const SQInteger top = sq_gettop(vm->v);
-    sq_pushroottable(vm->v);
-    sq_pushstring(vm->v, function, -1);
-    if (SQ_FAILED(sq_rawget(vm->v, -2))) {
+    return Guarded(vm, who, [&] {
+        const SQInteger top = sq_gettop(vm->v);
+        sq_pushroottable(vm->v);
+        sq_pushstring(vm->v, function, -1);
+        if (SQ_FAILED(sq_rawget(vm->v, -2))) {
+            sq_settop(vm->v, top);
+            return JPT_SCRIPT_ABSENT;
+        }
+        const SQObjectType type = sq_gettype(vm->v, -1);
+        if (type != OT_CLOSURE && type != OT_NATIVECLOSURE) {
+            sq_settop(vm->v, top);
+            return JPT_SCRIPT_ABSENT;
+        }
+        const jpt_script_result result = Run(vm, who);
         sq_settop(vm->v, top);
-        return JPT_SCRIPT_ABSENT;
-    }
-    const SQObjectType type = sq_gettype(vm->v, -1);
-    if (type != OT_CLOSURE && type != OT_NATIVECLOSURE) {
-        sq_settop(vm->v, top);
-        return JPT_SCRIPT_ABSENT;
-    }
-    const jpt_script_result result = Run(vm, who);
-    sq_settop(vm->v, top);
-    return result;
+        return result;
+    });
 }
 
 extern "C" int jpt_script_vm_disabled(const jpt_script_vm* vm, const char* owner) {
@@ -211,4 +268,20 @@ extern "C" void jpt_script_vm_end_level(jpt_script_vm* vm) {
     if (!vm) return;
     vm->disabled.clear();
     vm->printed = 0;
+}
+
+extern "C" int jpt_script_vm_memory(const jpt_script_vm* vm, jpt_script_memory* out) {
+    if (!vm || !out) return 0;
+    const ScriptHeapStats& stats = vm->heap->Stats();
+    out->current = stats.current;
+    out->peak = stats.peak;
+    out->limit = stats.limit;
+    out->allocations = stats.allocations;
+    out->reallocations = stats.reallocations;
+    out->frees = stats.frees;
+    out->freed_bytes = stats.freed_bytes;
+    out->budget_failures = stats.budget_failures;
+    out->system_failures = stats.system_failures;
+    out->abandoned = vm->abandoned;
+    return 1;
 }

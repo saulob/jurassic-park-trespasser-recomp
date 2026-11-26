@@ -210,7 +210,7 @@ jpt_linux_test(x64_tests SOURCES tests/x64_tests.c LIBS jpt_host64 INCLUDES test
 jpt_linux_test(vpath_tests SOURCES tests/vpath_tests.c LIBS jpt_common_linux)
 jpt_linux_test(level_session_tests SOURCES tests/level_session_tests.c LIBS jpt_common_linux)
 jpt_linux_test(launch_handoff_tests SOURCES tests/launch_handoff_tests.c LIBS jpt_common_linux)
-include(${CMAKE_SOURCE_DIR}/cmake/JptSquirrel.cmake)
+add_subdirectory(cmake/squirrel ${CMAKE_BINARY_DIR}/squirrel)
 jpt_linux_test(script_vm_tests SOURCES tests/script_vm_tests.cpp LIBS jpt_script)
 set_target_properties(script_vm_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)

@@ -1,0 +1,14 @@
+diff --git a/squirrel/squtils.h b/squirrel/squtils.h
+index f2471e9..7fab3c5 100644
+--- a/squirrel/squtils.h
++++ b/squirrel/squtils.h
+@@ -107,7 +107,8 @@ private:
+     void _realloc(SQUnsignedInteger newsize)
+     {
+         newsize = (newsize > 0)?newsize:4;
+-        _vals = (T*)SQ_REALLOC(_vals, _allocated * sizeof(T), newsize * sizeof(T));
++        const SQUnsignedInteger bytes = newsize > ((SQUnsignedInteger)-1) / sizeof(T) ? (SQUnsignedInteger)-1 : newsize * sizeof(T);
++        _vals = (T*)SQ_REALLOC(_vals, _allocated * sizeof(T), bytes);
+         _allocated = newsize;
+     }
+     SQUnsignedInteger _size;

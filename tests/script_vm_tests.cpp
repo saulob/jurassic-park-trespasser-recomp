@@ -1,12 +1,25 @@
-// The interpreter of Trespasser CE scripts (jpt_script_vm.cpp), headless: loading, calls, errors, the instruction budget,
-// the libraries a script gets and does not get, print() and its cap, the [script] lines.
+// The interpreter of Trespasser CE scripts (jpt_script_vm.cpp, jpt_script_heap.cpp), headless: loading, calls, errors,
+// the instruction and memory budgets, the heap's accounting, the libraries a script gets and does not get, print() and
+// its cap, the [script] lines.
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include <squirrel.h>
+
+#include "jpt_script_heap.h"
 #include "jpt_script_vm.h"
+
+// Squirrel's allocation entry points (squirrel/squtils.h), defined by jpt_script_heap.cpp.
+void* sq_vm_malloc(SQUnsignedInteger size);
+void* sq_vm_realloc(void* p, SQUnsignedInteger oldsize, SQUnsignedInteger size);
+void sq_vm_free(void* p, SQUnsignedInteger size);
 
 static unsigned long g_checks, g_failures;
 #define CHECK(c)                                          \
@@ -41,14 +54,71 @@ static int Count(const std::string& prefix) {
     return n;
 }
 
-static jpt_script_vm* Vm(long instructions = 0, int print_lines = 0) {
+// The system allocator under every heap of these tests: what is still out, and refusals on demand.
+static std::unordered_map<void*, size_t> g_blocks;
+static size_t g_bytes;
+static long g_refuse_after = -1;
+
+static bool Refuse() {
+    if (g_refuse_after < 0) return false;
+    if (g_refuse_after == 0) return true;
+    g_refuse_after--;
+    return false;
+}
+
+static void* FakeAllocate(size_t size) {
+    if (Refuse()) return nullptr;
+    void* block = malloc(size ? size : 1);
+    g_blocks[block] = size;
+    g_bytes += size;
+    return block;
+}
+
+static void* FakeReallocate(void* block, size_t size) {
+    if (Refuse()) return nullptr;
+    const size_t old = g_blocks[block];
+    void* moved = realloc(block, size ? size : 1);
+    if (!moved) return nullptr;
+    g_blocks.erase(block);
+    g_blocks[moved] = size;
+    g_bytes = g_bytes - old + size;
+    return moved;
+}
+
+static void FakeRelease(void* block) {
+    g_bytes -= g_blocks[block];
+    g_blocks.erase(block);
+    free(block);
+}
+
+static const jpt_script_allocator kFake = {FakeAllocate, FakeReallocate, FakeRelease};
+
+static jpt_script_vm* Vm(long instructions = 0, int print_lines = 0, size_t memory = 0) {
     g_lines.clear();
+    g_refuse_after = -1;
     jpt_script_config config;
     memset(&config, 0, sizeof config);
     config.log = Capture;
     config.instructions = instructions;
     config.print_lines = print_lines;
+    config.memory_limit = memory;
+    config.allocator = &kFake;
     return jpt_script_vm_create(&config);
+}
+
+static jpt_script_memory Memory(const jpt_script_vm* vm) {
+    jpt_script_memory memory;
+    memset(&memory, 0, sizeof memory);
+    CHECK(jpt_script_vm_memory(vm, &memory));
+    return memory;
+}
+
+// Every byte the VM held goes back, and nothing says it did not.
+static void Destroy(jpt_script_vm* vm) {
+    if (vm) CHECK(Memory(vm).current == g_bytes);
+    jpt_script_vm_destroy(vm);
+    CHECK(g_bytes == 0 && g_blocks.empty());
+    CHECK(!Contains("still held"));
 }
 
 static jpt_script_result Load(jpt_script_vm* vm, const char* name, const std::string& text) {
@@ -65,7 +135,7 @@ static void test_load_and_call() {
     CHECK(jpt_script_vm_call(vm, "Hello", "Missing") == JPT_SCRIPT_ABSENT);
     CHECK(Load(vm, "value.nut", "NotAFunction <- 3;") == JPT_SCRIPT_OK);
     CHECK(jpt_script_vm_call(vm, "x", "NotAFunction") == JPT_SCRIPT_ABSENT);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_classes_and_state() {
@@ -84,7 +154,7 @@ static void test_classes_and_state() {
     CHECK(Has("[script] print: n=200"));
     CHECK(!Has("[script] print: n=201"));
     CHECK(Has("[script] print: further output of this level is not logged"));
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_compile_error() {
@@ -92,7 +162,7 @@ static void test_compile_error() {
     CHECK(Load(vm, "broken.nut", "function A() {\n  local x = ;\n}\n") == JPT_SCRIPT_FAILED);
     CHECK(Contains("[script] broken.nut line 2 column"));
     CHECK(jpt_script_vm_call(vm, "A", "A") == JPT_SCRIPT_ABSENT);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_runtime_error_stops_owner_for_the_level() {
@@ -122,7 +192,7 @@ static void test_runtime_error_stops_owner_for_the_level() {
     jpt_script_vm_end_level(vm);
     CHECK(!jpt_script_vm_disabled(vm, "Spitter"));
     CHECK(jpt_script_vm_call(vm, "Spitter", "Good") == JPT_SCRIPT_OK);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_top_level_error() {
@@ -131,7 +201,7 @@ static void test_top_level_error() {
     CHECK(Contains("[script] top.nut: "));
     CHECK(Contains("(top.nut line 3, function main)"));
     CHECK(Has("[script] top.nut stops until the level ends"));
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_budget() {
@@ -158,12 +228,12 @@ static void test_budget() {
     CHECK(Has("[script] print: sum 4950"));
     // The budget is per entry: many small calls never add up to it.
     for (int i = 0; i < 500; i++) CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 
     vm = Vm(10000);
     CHECK(Load(vm, "loop.nut", "while (true) {}") == JPT_SCRIPT_FAILED);
     CHECK(Contains("[script] loop.nut: instruction budget exceeded (10000)"));
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_libraries() {
@@ -197,7 +267,7 @@ static void test_libraries() {
     for (size_t i = 6; i < g_lines.size(); i++)
         if (g_lines[i].size() > 5 && !g_lines[i].compare(g_lines[i].size() - 5, 5, " true")) present++;
     CHECK(present == 0);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_print_lines_and_log_text() {
@@ -223,7 +293,7 @@ static void test_print_lines_and_log_text() {
     CHECK(jpt_script_vm_call(vm, "p", "Raw") == JPT_SCRIPT_OK);
     CHECK(Count("[script] print: ") == 4);
     for (const std::string& l : g_lines) CHECK(!l.compare(0, 9, "[script] ") && l.find_first_of("\r\n\t") == std::string::npos);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
 }
 
 static void test_files() {
@@ -236,12 +306,245 @@ static void test_files() {
     CHECK(Contains("[script] large.nut is larger than"));
     CHECK(Load(vm, "empty.nut", "") == JPT_SCRIPT_OK);
     CHECK(jpt_script_vm_load(vm, "null.nut", nullptr, 0) == JPT_SCRIPT_FAILED);
-    jpt_script_vm_destroy(vm);
+    Destroy(vm);
     jpt_script_vm_destroy(nullptr);
     CHECK(jpt_script_vm_call(nullptr, "a", "b") == JPT_SCRIPT_ABSENT);
 }
 
+static bool Refused(ScriptHeap& heap, size_t size, bool budget, void* pointer = nullptr, bool reallocate = false) {
+    try {
+        if (reallocate) heap.Reallocate(pointer, size);
+        else heap.Allocate(size);
+    } catch (const ScriptHeapFailure& failure) {
+        return failure.budget == budget;
+    }
+    return false;
+}
+
+static void test_heap_accounting() {
+    const size_t overhead = ScriptHeap::Overhead();
+    CHECK(overhead >= 2 * sizeof(void*) && overhead % alignof(std::max_align_t) == 0);
+    {
+        ScriptHeap heap(4096, &kFake);
+        ScriptHeapStats s = heap.Stats();
+        CHECK(s.current == 0 && s.peak == 0 && s.limit == 4096 && s.allocations == 0 && s.frees == 0 && s.freed_bytes == 0);
+
+        char* p = static_cast<char*>(heap.Allocate(100));
+        CHECK(p && reinterpret_cast<uintptr_t>(p) % alignof(std::max_align_t) == 0);
+        memset(p, 'a', 100);
+        CHECK(heap.Stats().current == 100 + overhead && heap.Stats().allocations == 1 && g_bytes == heap.Stats().current);
+
+        p = static_cast<char*>(heap.Reallocate(p, 1000));
+        CHECK(p[0] == 'a' && p[99] == 'a');
+        CHECK(heap.Stats().current == 1000 + overhead && heap.Stats().reallocations == 1 && heap.Stats().peak == 1000 + overhead);
+
+        p = static_cast<char*>(heap.Reallocate(p, 10));
+        CHECK(p[9] == 'a');
+        CHECK(heap.Stats().current == 10 + overhead && heap.Stats().freed_bytes == 990 && heap.Stats().peak == 1000 + overhead);
+
+        ScriptHeap::Free(nullptr);
+        CHECK(heap.Stats().current == 10 + overhead && heap.Stats().frees == 0);
+        ScriptHeap::Free(p);
+        s = heap.Stats();
+        CHECK(s.current == 0 && s.frees == 1 && s.freed_bytes == 990 + 10 + overhead && g_bytes == 0);
+    }
+    {
+        ScriptHeap heap(1000, &kFake);
+        void* full = heap.Allocate(1000 - overhead);
+        CHECK(heap.Stats().current == 1000);
+        CHECK(Refused(heap, 0, true));
+        CHECK(Refused(heap, 1, true));
+        CHECK(Refused(heap, 1000 - overhead + 1, true, full, true));
+        CHECK(heap.Stats().current == 1000 && heap.Stats().budget_failures == 3);
+        full = heap.Reallocate(full, 1);
+        CHECK(heap.Stats().current == 1 + overhead);
+        ScriptHeap::Free(full);
+        CHECK(Refused(heap, 1000 - overhead + 1, true));
+        CHECK(heap.Stats().current == 0 && g_bytes == 0);
+    }
+    {
+        ScriptHeap heap(SIZE_MAX, &kFake);
+        CHECK(Refused(heap, SIZE_MAX, true));
+        CHECK(Refused(heap, SIZE_MAX - overhead + 1, true));
+        void* p = heap.Allocate(8);
+        CHECK(Refused(heap, SIZE_MAX, true, p, true));
+        CHECK(heap.Stats().current == 8 + overhead && heap.Stats().budget_failures == 3);
+        ScriptHeap::Free(p);
+    }
+    {
+        ScriptHeap heap(1 << 20, &kFake);
+        void* p = heap.Allocate(64);
+        g_refuse_after = 0;
+        CHECK(Refused(heap, 32, false));
+        CHECK(Refused(heap, 4096, false, p, true));
+        CHECK(heap.Reallocate(p, 16) == p);
+        g_refuse_after = -1;
+        CHECK(heap.Stats().current == 64 + overhead && heap.Stats().system_failures == 2 && heap.Stats().budget_failures == 0);
+        ScriptHeap::Free(p);
+        CHECK(heap.Stats().current == 0);
+    }
+    {
+        ScriptHeap first(1 << 20, &kFake);
+        ScriptHeap second(1 << 20, &kFake);
+        void* a = first.Allocate(10);
+        ScriptHeapScope scope(&second);
+        ScriptHeap::Free(a);
+        CHECK(first.Stats().current == 0 && second.Stats().current == 0);
+        for (int i = 0; i < 100; i++) second.Allocate(static_cast<size_t>(i));
+        second.ReleaseAll();
+        CHECK(second.Stats().current == 0 && second.Stats().frees == 100 && g_bytes == 0);
+        second.Allocate(5);
+    }
+    CHECK(g_bytes == 0 && g_blocks.empty());
+    {
+        CHECK(ScriptHeap::Current() == nullptr);
+        void* p = sq_vm_malloc(24);
+        CHECK(p != nullptr);
+        p = sq_vm_realloc(p, 24, 48);
+        CHECK(p != nullptr);
+        sq_vm_free(p, 48);
+        ScriptHeap heap(1 << 20, &kFake);
+        {
+            ScriptHeapScope scope(&heap);
+            CHECK(ScriptHeap::Current() == &heap);
+            p = sq_vm_malloc(24);
+        }
+        CHECK(ScriptHeap::Current() == nullptr && heap.Stats().current == 24 + overhead);
+        p = sq_vm_realloc(p, 24, 100);
+        CHECK(heap.Stats().current == 100 + overhead);
+        sq_vm_free(p, 100);
+        CHECK(heap.Stats().current == 0);
+    }
+}
+
+static bool MemoryExceeded(const char* owner) {
+    return Contains(std::string("memory budget exceeded (limit ") ) &&
+           Contains(std::string("bytes) while running ") + owner) && Has("[script] every script of this VM stops");
+}
+
+static void CheckAbandoned(jpt_script_vm* vm) {
+    const jpt_script_memory m = Memory(vm);
+    CHECK(m.abandoned && m.current == 0 && g_bytes == 0 && m.budget_failures + m.system_failures == 1);
+    CHECK(jpt_script_vm_call(vm, "Other", "Small") == JPT_SCRIPT_DISABLED);
+    CHECK(Load(vm, "later.nut", "function Later() {}") == JPT_SCRIPT_DISABLED);
+    CHECK(jpt_script_vm_disabled(vm, "anyone"));
+    jpt_script_vm_end_level(vm);
+    CHECK(jpt_script_vm_call(vm, "Other", "Small") == JPT_SCRIPT_DISABLED);
+    for (const std::string& l : g_lines) CHECK(l.find("0x") == std::string::npos && l.size() < 400);
+}
+
+static const char* kMemoryScripts =
+    "function Small() { local s = 0; for (local i = 0; i < 100; i++) s += i; print(\"sum \" + s); }\n"
+    "function Spin() { while (true) {} }\n"
+    "function Bad() { local t = {}; return t.missing; }\n"
+    "function GrowArray() { local a = []; while (true) a.append(a.len()); }\n"
+    "function GrowTable() { local t = {}; for (local i = 0; ; i++) t[i] <- i; }\n"
+    "function GrowString() { local s = \"x\"; while (true) s += s; }\n"
+    "function BigBlob() { local b = blob(64 * 1024 * 1024); }\n"
+    "function GrowBlob() { local b = blob(0); for (local n = 1024; ; n *= 2) b.resize(n); }\n"
+    "function HugeArray() { return array(0x7fffffff); }\n"
+    "function NegativeArray() { return array(-1); }\n"
+    "function Recurse(n) { return Recurse(n + 1) + 1; }\n"
+    "function Deep() { return Recurse(0); }\n"
+    "gKeep <- [];\n"
+    "function ManySmall() { for (local i = 0; i < 2000; i++) gKeep.append({ i = i, s = \"k\" + i }); print(\"kept \" + gKeep.len()); }\n"
+    "function ManySmallForever() { while (true) gKeep.append({ s = \"k\" + gKeep.len() }); }\n";
+
+static jpt_script_vm* MemoryVm(long instructions, size_t memory) {
+    jpt_script_vm* vm = Vm(instructions, 0, memory);
+    CHECK(vm != nullptr);
+    if (vm) CHECK(Load(vm, "memory.nut", kMemoryScripts) == JPT_SCRIPT_OK);
+    return vm;
+}
+
+static void test_memory_budget() {
+    const size_t limit = 2u * 1024 * 1024;
+    const long many = 2000000000L;
+
+    jpt_script_vm* vm = MemoryVm(0, 0);
+    jpt_script_memory m = Memory(vm);
+    CHECK(m.limit == JPT_SCRIPT_DEFAULT_MEMORY && m.current > 0 && m.current == g_bytes && m.peak >= m.current);
+    CHECK(m.allocations > 0 && m.budget_failures == 0 && m.system_failures == 0 && !m.abandoned);
+    CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
+    CHECK(jpt_script_vm_call(vm, "Spin", "Spin") == JPT_SCRIPT_FAILED);
+    CHECK(Contains("[script] Spin: instruction budget exceeded (1000000)"));
+    CHECK(jpt_script_vm_call(vm, "Bad", "Bad") == JPT_SCRIPT_FAILED);
+    CHECK(Contains("[script] Bad: the index 'missing' does not exist"));
+    CHECK(jpt_script_vm_call(vm, "ManySmall", "ManySmall") == JPT_SCRIPT_OK);
+    CHECK(Has("[script] print: kept 2000"));
+    m = Memory(vm);
+    CHECK(!m.abandoned && m.budget_failures == 0 && m.current == g_bytes && m.current < m.limit);
+    CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
+    Destroy(vm);
+
+    vm = MemoryVm(20000, 0);
+    CHECK(jpt_script_vm_call(vm, "Deep", "Deep") == JPT_SCRIPT_FAILED);
+    CHECK(Contains("[script] Deep: instruction budget exceeded (20000)") && !Memory(vm).abandoned);
+    CHECK(jpt_script_vm_call(vm, "Small", "Small") == JPT_SCRIPT_OK);
+    Destroy(vm);
+
+    const char* growers[] = {"GrowArray", "GrowTable", "GrowString", "BigBlob", "GrowBlob", "HugeArray", "NegativeArray", "Deep",
+                             "ManySmallForever"};
+    for (const char* name : growers) {
+        vm = MemoryVm(many, limit);
+        CHECK(jpt_script_vm_call(vm, name, name) == JPT_SCRIPT_FAILED);
+        CHECK(MemoryExceeded(name));
+        if (!MemoryExceeded(name)) printf("  %s: %s\n", name, g_lines.empty() ? "" : g_lines.back().c_str());
+        CHECK(Memory(vm).limit == limit && Memory(vm).peak <= limit && Memory(vm).budget_failures == 1);
+        CheckAbandoned(vm);
+        Destroy(vm);
+    }
+
+    jpt_script_vm* first = MemoryVm(many, limit);
+    jpt_script_vm* second = MemoryVm(0, limit);
+    CHECK(jpt_script_vm_call(first, "GrowArray", "GrowArray") == JPT_SCRIPT_FAILED);
+    CHECK(Memory(first).abandoned && !Memory(second).abandoned);
+    g_lines.clear();
+    CHECK(jpt_script_vm_call(second, "Small", "Small") == JPT_SCRIPT_OK);
+    CHECK(Has("[script] print: sum 4950"));
+    CHECK(jpt_script_vm_call(second, "Spin", "Spin") == JPT_SCRIPT_FAILED);
+    CHECK(Contains("instruction budget exceeded (1000000)") && !Memory(second).abandoned);
+    jpt_script_vm_destroy(first);
+    CHECK(Memory(second).current == g_bytes);
+    Destroy(second);
+}
+
+static void test_memory_failures() {
+    g_lines.clear();
+    jpt_script_config config;
+    memset(&config, 0, sizeof config);
+    config.log = Capture;
+    config.allocator = &kFake;
+    config.memory_limit = 1024;
+    CHECK(jpt_script_vm_create(&config) == nullptr);
+    CHECK(Contains("[script] disabled: memory budget exceeded (limit 1024 bytes) while running the interpreter"));
+    CHECK(g_bytes == 0 && g_blocks.empty());
+
+    jpt_script_vm* vm = MemoryVm(0, 0);
+    const size_t before = Memory(vm).current;
+    g_refuse_after = 50;
+    CHECK(jpt_script_vm_call(vm, "ManySmall", "ManySmall") == JPT_SCRIPT_FAILED);
+    g_refuse_after = -1;
+    CHECK(Contains("[script] disabled: out of memory (the system refused ") && Contains("while running ManySmall"));
+    CHECK(!Contains("memory budget exceeded"));
+    const jpt_script_memory m = Memory(vm);
+    CHECK(m.system_failures == 1 && m.budget_failures == 0 && m.peak >= before);
+    CheckAbandoned(vm);
+    Destroy(vm);
+
+    vm = MemoryVm(0, 0);
+    g_refuse_after = 3;
+    CHECK(Load(vm, "late.nut", "gLate <- [1, 2, 3, \"four\", { five = 5 }]; function Late() {}") == JPT_SCRIPT_FAILED);
+    g_refuse_after = -1;
+    CHECK(Contains("while running late.nut"));
+    CheckAbandoned(vm);
+    Destroy(vm);
+}
+
 int main() {
+    test_heap_accounting();
+    test_memory_budget();
+    test_memory_failures();
     test_load_and_call();
     test_classes_and_state();
     test_compile_error();

@@ -914,7 +914,7 @@ function Test-ReleaseContract {
     $licensesPath = Join-Path $root 'packaging\licenses\THIRD-PARTY-LICENSES.txt'
     if (Test-Path -LiteralPath $licensesPath) {
         $licenses = [IO.File]::ReadAllText($licensesPath)
-        foreach ($name in 'pcrecomp', 'Dear ImGui', 'SDL', 'ASSAO', 'nanosvg', 'OpenSSL', 'FFmpeg', 'Vulkan') { if ($licenses -notmatch [regex]::Escape($name)) { $problems.Add("THIRD-PARTY-LICENSES.txt does not name $name") } }
+        foreach ($name in 'pcrecomp', 'Dear ImGui', 'SDL', 'ASSAO', 'nanosvg', 'OpenSSL', 'FFmpeg', 'Vulkan', 'Squirrel') { if ($licenses -notmatch [regex]::Escape($name)) { $problems.Add("THIRD-PARTY-LICENSES.txt does not name $name") } }
     }
     $deps = [IO.File]::ReadAllText((Join-Path $root 'config\launcher_deps.txt'))
     if ($deps -notmatch 'SDL is release-3\.4\.20' -or $deps -notmatch 'external/SDL\s+\S+\s+[0-9a-f]{40}') { $problems.Add('config\launcher_deps.txt does not pin SDL 3.4.20 to a commit') }
