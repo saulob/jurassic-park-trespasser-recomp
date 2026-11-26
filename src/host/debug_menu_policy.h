@@ -21,7 +21,7 @@ extern "C" {
 #define DM_ROWS_MAX 48
 #define DM_COORD_LIMIT 100000.0f
 #define DM_FEEDBACK_MS 2500u
-#define DM_START_SETTLE_MS 250u
+#define DM_START_HOLD_MS 5000u
 
 typedef enum {
     DM_LEVEL_SELECT,
@@ -150,16 +150,18 @@ typedef struct {
     char value[DM_TEXT_MAX];
 } dm_row_t;
 
-/* A level to load once, as soon as the main menu has been in front long enough to be running. */
+/* A level to load once, on the first turn of the main menu's loop: before the menu draws a frame. */
 typedef struct {
     char scene[DM_SCENE_MAX];
-    int seen;
+    int held;
     uint32_t since;
 } dm_start_t;
 
 int dm_start_request(dm_start_t* s, const char* scene);
-/* 1 on the one frame the level is due; the request is spent. */
-int dm_start_due(dm_start_t* s, dm_place_t place, uint32_t now_ms, char scene[DM_SCENE_MAX]);
+/* 1 on the one turn the level is due; the request is spent. */
+int dm_start_due(dm_start_t* s, dm_place_t place, char scene[DM_SCENE_MAX]);
+/* 1 for a present before the level was due: the player sees the loading screen first, unless the menu never comes. */
+int dm_start_holds_present(dm_start_t* s, uint32_t now_ms);
 
 void dm_init(dm_state_t* s);
 const char* dm_item_label(dm_menu_t menu, dm_item_t item);

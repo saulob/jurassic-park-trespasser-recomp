@@ -67,11 +67,14 @@ bool current() {
     return true;
 }
 
+void release_level_map();
+
 void shut_down() {
     if (!current()) return;
 #ifdef _WIN32
     if (g_panel.device) ImGui_ImplDX11_Shutdown();
 #endif
+    release_level_map();
     ImGui::DestroyContext(g_panel.context);
     g_panel = Panel();
 }
@@ -700,7 +703,7 @@ void compass(const dmp_frame_t* f) {
 }
 
 bool hud_shown(const dmp_frame_t* f) {
-    return f->hud && (f->hud->compass || f->hud->marker || f->hud->objective[0] || f->hud->notice[0] || f->hud->minimap);
+    return f->hud && (f->hud->compass || f->hud->marker || f->hud->objective[0] || f->hud->notice[0] || f->hud->minimap || f->hud->level_map);
 }
 
 void fill_polygon(ImDrawList* dl, const minimap_point_t* pts, int n, ImU32 col) {
@@ -771,6 +774,25 @@ void minimap_creature_markers(ImDrawList* dl, const minimap_frame_t& fr, const c
     }
 }
 
+// A custom level whose world gave no map: the minimap's circle, saying so.
+void unknown_minimap(const dmp_frame_t* f) {
+    const cp_hud_t& h = *f->hud;
+    const dmp_rect_t r = picture(f);
+    const minimap_rect_t pic = { r.x, r.y, r.w, r.h };
+    minimap_frame_t fr;
+    cp_layout_t l;
+    if (!minimap_place_facing(&pic, h.player_pos[0], h.player_pos[1], h.heading, MM_ZOOM, &fr)) return;
+    cp_layout_in(r.x, r.y, r.w, r.h, &l);
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    dl->AddCircleFilled(ImVec2(fr.cx, fr.cy), fr.radius, colour(ImVec4(0.04f, 0.06f, 0.05f, 0.62f), 1.0f), MM_CLIP_SIDES);
+    dl->AddCircle(ImVec2(fr.cx, fr.cy), fr.radius, colour(ImVec4(0.03f, 0.04f, 0.03f, 0.95f), 1.0f), MM_CLIP_SIDES, 3.0f);
+    dl->AddCircle(ImVec2(fr.cx, fr.cy), fr.radius - 1.5f, colour(ImVec4(0.78f, 0.84f, 0.72f, 0.55f), 1.0f), MM_CLIP_SIDES, 1.0f);
+    const char* text = h.minimap_note;
+    const float wide = g_panel.vector->CalcTextSizeA(l.small_px, FLT_MAX, 0.0f, text).x;
+    const float px = wide > fr.radius * 1.7f ? l.small_px * fr.radius * 1.7f / wide : l.small_px;
+    outlined_text(dl, px, fr.cx, fr.cy - px * 0.5f, ImVec4(0.85f, 0.88f, 0.82f, 1.0f), 1.0f, text, l);
+}
+
 void minimap(const dmp_frame_t* f) {
     const cp_hud_t& h = *f->hud;
     const minimap_bounds_t* b;
@@ -778,7 +800,10 @@ void minimap(const dmp_frame_t* f) {
     if (!h.minimap) return;
     b = minimap_bounds(h.minimap_level);
     m = minimap_map(h.minimap_level);
-    if (!b || !m) return;
+    if (!b || !m) {
+        if (h.minimap_note[0]) unknown_minimap(f);
+        return;
+    }
     const dmp_rect_t r = picture(f);
     const minimap_rect_t pic = { r.x, r.y, r.w, r.h };
     minimap_frame_t fr;
@@ -831,10 +856,84 @@ void minimap(const dmp_frame_t* f) {
     dl->AddCircle(ImVec2(cx, cy), radius - 1.5f, colour(ImVec4(0.78f, 0.84f, 0.72f, 0.55f), 1.0f), MM_CLIP_SIDES, 1.0f);
 }
 
+// The level's map picture as a texture of the panel's context: every backend (Direct3D 11, the GPU overlay, the software one)
+// uploads it from its pixels.
+struct LevelMapTexture {
+    ImTextureData tex;
+    ImGuiContext* context = nullptr;
+    uint32_t serial = 0;
+};
+LevelMapTexture g_level_map;
+
+void release_level_map() {
+    if (g_level_map.context && g_level_map.context == ImGui::GetCurrentContext()) ImGui::UnregisterUserTexture(&g_level_map.tex);
+    g_level_map.context = nullptr;
+}
+
+ImTextureRef level_map_texture(const minimap_picture_t& p) {
+    ImTextureData& t = g_level_map.tex;
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    const bool fresh = g_level_map.context != context;
+    if (!t.Pixels) t.Create(ImTextureFormat_RGBA32, MM_PICTURE_SIDE, MM_PICTURE_SIDE);
+    if (fresh) {
+        t.SetTexID(ImTextureID_Invalid);
+        t.BackendUserData = nullptr;
+        t.SetStatus(ImTextureStatus_WantCreate);
+        ImGui::RegisterUserTexture(&t);
+        g_level_map.context = context;
+    }
+    if (fresh || p.serial != g_level_map.serial) {
+        for (int row = 0; row < t.Height; row++)
+            for (int col = 0; col < t.Width; col++) {
+                const uint32_t c = row < p.rows && col < p.cols ? p.cells[row * p.cols + col] : 0u;
+                unsigned char* px = (unsigned char*)t.GetPixelsAt(col, row);
+                px[0] = (unsigned char)(c >> 16), px[1] = (unsigned char)(c >> 8), px[2] = (unsigned char)c, px[3] = (unsigned char)(c >> 24);
+            }
+        g_level_map.serial = p.serial;
+        if (!fresh && t.Status == ImTextureStatus_OK) {
+            const ImTextureRect all = { 0, 0, (unsigned short)t.Width, (unsigned short)t.Height };
+            t.UpdateRect = t.UsedRect = all;
+            t.Updates.resize(0);
+            t.Updates.push_back(all);
+            t.SetStatus(ImTextureStatus_WantUpdates);
+        }
+    }
+    return t.GetTexRef();
+}
+
+// The level's own map picture below the objective's title, as drawn, with a cursor where Anne is (on the edge when she is beyond it).
+void level_map(const dmp_frame_t* f) {
+    const cp_hud_t& h = *f->hud;
+    if (!h.level_map || !h.level_map->cells || h.level_map->cols < 1 || h.level_map->rows < 1) return;
+    const minimap_picture_t& p = *h.level_map;
+    const dmp_rect_t r = picture(f);
+    cp_layout_t l;
+    float x, y, w, ht;
+    cp_layout_in(r.x, r.y, r.w, r.h, &l);
+    cp_map_box(&l, r.h, p.cols, p.rows, &x, &y, &w, &ht);
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    const float a = h.level_map_alpha, edge = cp_outline_px(&l), side = (float)MM_PICTURE_SIDE;
+    dl->AddRectFilled(ImVec2(x - edge * 2.0f, y - edge * 2.0f), ImVec2(x + w + edge * 2.0f, y + ht + edge * 2.0f), colour(ImVec4(0.0f, 0.0f, 0.0f, 0.75f), a));
+    dl->AddImage(level_map_texture(p), ImVec2(x, y), ImVec2(x + w, y + ht), ImVec2(0.0f, 0.0f), ImVec2((float)p.cols / side, (float)p.rows / side),
+                 IM_COL32(255, 255, 255, (int)(a * 255.0f)));
+    dl->AddRect(ImVec2(x - edge, y - edge), ImVec2(x + w + edge, y + ht + edge), colour(ImVec4(0.78f, 0.84f, 0.72f, 0.7f), a), 0.0f, 0, edge);
+    const ImVec2 at(x + h.level_map_cursor[0] * w, y + h.level_map_cursor[1] * ht);
+    const float k = fmaxf(ht * 0.025f, 4.0f);
+    const ImU32 fill = colour(ImVec4(MM_COLOR_PLAYER, 1.0f), a), dark = colour(ImVec4(0.0f, 0.0f, 0.0f, 0.95f), a);
+    if (h.level_map_outside) {
+        dl->AddCircle(at, k, dark, 16, edge * 3.0f);
+        dl->AddCircle(at, k, fill, 16, edge * 1.5f);
+    } else {
+        dl->AddCircleFilled(at, k, fill, 16);
+        dl->AddCircle(at, k, dark, 16, edge * 1.5f);
+    }
+}
+
 // The HUD, then the game's text, then the counter, then the windows (the background list is under every window).
 void draw_ui(const dmp_frame_t* f) {
     if (hud_shown(f)) {
         compass(f);
+        level_map(f);
         minimap(f);
         text_layer(ImGui::GetBackgroundDrawList(), f);
     }

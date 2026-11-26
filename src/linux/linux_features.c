@@ -7,6 +7,7 @@
 #include "cheats.h"
 #include "compass_policy.h"
 #include "debug_menu.h"
+#include "engine_mode.h"
 #include "guest_abi.h"
 #include "guest_features.h"
 #include "guest_memory.h"
@@ -14,6 +15,7 @@
 #include "guest_va.h"
 #include "host_input.h"
 #include "l10n.h"
+#include "level_actions.h"
 #include "linux_d3d.h"
 #include "linux_gamepad.h"
 #include "linux_guest_ui.h"
@@ -177,6 +179,7 @@ int lx_features_start(const jpt_config_t* cfg, const char* game_dir, const char*
     guest_features_install();
     widescreen_install_camera(cfg->aspect);
     terrain_quality_install();
+    engine_heaps_install();
     lx_d3d_guest_install(cfg);
     skip_intro_install();
     l10n_install();
@@ -233,6 +236,7 @@ static void cinput_read(void) {
         return;
     }
     lx_gamepad_read_around(self, s_cinput_lifted);
+    level_actions_input(self + SINPUT_IN_CINPUT);
     if (overlay_blocks_gameplay() || cheats_take_input(self + SINPUT_IN_CINPUT)) clear_result(self + SINPUT_IN_CINPUT);
 }
 

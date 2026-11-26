@@ -41,6 +41,12 @@
    "match": "\\bentry|head|record\\b|\\+ (4|8)",
    "category": "FILE_FORMAT",
    "reason": "the records of a TPA data pack, read in memory as the file stores them"
+  },
+  {
+   "file": "tpa_merge.c",
+   "match": "head|entry|placed|\\be \\+|directory",
+   "category": "FILE_FORMAT",
+   "reason": "the records of a TPA data pack, read in memory as the file stores them"
   }
  ]
 }

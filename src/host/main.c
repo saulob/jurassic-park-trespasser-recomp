@@ -28,6 +28,8 @@
 #include "jpt_renderer.h"
 #include "jpt_user_data.h"
 #include "l10n.h"
+#include "launch_handoff.h"
+#include "level_session.h"
 #include "loading_hd.h"
 #include "platform.h"
 #include "stream_audio.h"
@@ -56,6 +58,9 @@ typedef struct {
     unsigned watchdog_seconds;
     int dry_run;
     int self_check;
+    const char* analyze;
+    const char *analyze_all, *analyze_report;
+    int analyze_json;
     int force_launcher, skip_launcher;
     const char* launcher_renderer;
     int system_ddraw;
@@ -88,6 +93,7 @@ static native32_shim_t s_shims[] = {
     { "GetFileAttributesA", shim_GetFileAttributesA },
     { "GetDiskFreeSpaceA", shim_GetDiskFreeSpaceA },
     { "FindFirstFileA", shim_FindFirstFileA },
+    { "FindNextFileA", shim_FindNextFileA },
     { "LZOpenFileA", shim_LZOpenFileA },
     { "LZRead", shim_LZRead },
     { "LZSeek", shim_LZSeek },
@@ -97,6 +103,7 @@ static native32_shim_t s_shims[] = {
     { "FreeLibrary", shim_FreeLibrary },
     { "fopen", shim_fopen },
     { "_open", shim_open },
+    { "_close", shim_close },
     { "DeleteFileA", shim_DeleteFileA },
     { "_mkdir", shim_mkdir },
     { "remove", shim_remove },
@@ -123,6 +130,12 @@ static native32_shim_t s_shims[] = {
     { "IsIconic", shim_IsIconic },
     { "GetForegroundWindow", shim_GetForegroundWindow },
     { "CreateThread", shim_CreateThread },
+    { "VirtualAlloc", shim_VirtualAlloc },
+    { "??2@YAPAXI@Z", shim_operator_new },
+    { "malloc", shim_malloc },
+    { "?set_new_handler@@YAP6AXXZP6AXXZ@Z", shim_set_new_handler },
+    { "?_set_new_handler@@YAP6AHI@ZP6AHI@Z@Z", shim__set_new_handler },
+    { "?_set_new_mode@@YAHH@Z", shim__set_new_mode },
     { "GetTickCount", shim_GetTickCount },
     { "TextOutA", shim_TextOutA },
     { "LoadStringA", shim_LoadStringA },
@@ -174,7 +187,8 @@ static void usage(void) {
            "                  [--skip-intro on|off] [--ambient-occlusion off|low|medium|high|ultra]\n"
            "                  [--original-engine-limits] [--debug-d3d-output MODE] [--ddraw-cert-dialog]\n"
            "                  [--legacy-safemode-dialog] [--software-water] [--lifted-water] [--perf-log]\n"
-           "                  [-- guest arguments]\n"
+           "                  [--analyze-custom-level PACKAGE [--json]]\n"
+           "                  [--analyze-custom-levels FOLDER [--report FOLDER] [--json]] [-- guest arguments]\n"
            "  settings come from <user_data>\\launcher\\trespasser.ini (the launcher writes it); these options override them\n"
            "    for this run only\n"
            "  --launcher shows the launcher even when it is turned off; --skip-launcher skips it once (unless\n"
@@ -194,6 +208,9 @@ static void usage(void) {
            "  --lifted-water runs the lifted water and occlusion functions instead of their host kernels\n"
            "    (comparison)\n"
            "  --legacy-safemode-dialog keeps the game's \"unstable last time, Safe Mode?\" prompt (off by default)\n"
+           "  --analyze-custom-level prints what the Custom Levels import makes of a ZIP, 7z, RAR or folder; nothing is installed\n"
+           "  --analyze-custom-levels does so for every package below FOLDER, with totals and the most frequent problems;\n"
+           "    --report writes it to a folder as well, as text and JSON\n"
            "  --perf-log adds performance lines every 5 s, renderer summaries every 60 s, the exit and slow-frame\n"
            "    breakdowns and a sampled guest CPU profile to the log (diagnostics)\n");
     recomp_trace_help();
@@ -260,6 +277,14 @@ static int parse_options(int argc, char** argv, options_t* o) {
             o->dry_run = 1;
         } else if (!strcmp(argv[i], "--self-check")) {
             o->self_check = 1;
+        } else if (!strcmp(argv[i], "--analyze-custom-level") && i + 1 < argc) {
+            o->analyze = argv[++i];
+        } else if (!strcmp(argv[i], "--analyze-custom-levels") && i + 1 < argc) {
+            o->analyze_all = argv[++i];
+        } else if (!strcmp(argv[i], "--report") && i + 1 < argc) {
+            o->analyze_report = argv[++i];
+        } else if (!strcmp(argv[i], "--json")) {
+            o->analyze_json = 1;
         } else if (!strcmp(argv[i], "--launcher")) {
             o->force_launcher = 1;
         } else if (!strcmp(argv[i], "--skip-launcher")) {
@@ -398,6 +423,7 @@ static const jpt_game_version_t* select_game_version(const char* game_root, cons
  * and level swap files are told apart only by name. The registry store stays the version's. */
 static int start_custom_level(const jpt_custom_level_request_t* request, jpt_user_data_t* user, jpt_config_t* cfg) {
     char saves[JPT_USER_PATH_CAP], error[512];
+    const char *key, *value;
     if (!request->scene[0]) return 1;
     if (!jpt_custom_level_activate(user->root, request, error, sizeof error)) {
         host_log("custom-level", "%s", error);
@@ -410,8 +436,14 @@ static int start_custom_level(const jpt_custom_level_request_t* request, jpt_use
     }
     strcpy(user->saves_dir, saves);
     cfg->skip_intro = 1;
+    for (int i = 0; jpt_custom_level_setting(i, &key, &value); i++) {
+        jpt_config_apply(cfg, key, value);
+        host_log("custom-level", "%s = %s for this session (the saved setting stays)", key, value);
+    }
     host_log("custom-level", "%s, scene %s loaded as %s; saves in %s", request->package, request->scene,
              jpt_custom_level_scene(), user->saves_dir);
+    for (int cap = 0; cap < JPT_LEVEL_CAPS; cap++)
+        if (jpt_custom_level_requires((jpt_level_cap_t)cap)) host_log("custom-level", "the package needs %s: on for this session only", jpt_custom_level_cap_name((jpt_level_cap_t)cap));
     return 1;
 }
 
@@ -472,7 +504,16 @@ static void renderer_filter(const jpt_config_t* c, int dev_filter, int* filter, 
     else *filter = D3DR_FILTER_ANISOTROPIC;
 }
 
-int main(int argc, char** argv) {
+static int analyze_custom_level(const options_t* o) {
+    char dir[MAX_PATH], data[MAX_PATH + 8];
+    const jpt_game_version_t* version = NULL;
+    int installed = jpt_game_version_resolve(o->game_dir, "", 1, dir, sizeof dir, &version);
+    if (installed) snprintf(data, sizeof data, "%s\\data", dir);
+    if (o->analyze_all) return jpt_analyze_custom_levels(o->analyze_all, installed ? data : NULL, o->analyze_report, o->analyze_json);
+    return jpt_analyze_custom_level(o->analyze, installed ? data : NULL, o->analyze_json);
+}
+
+static int host_main(int argc, char** argv) {
     options_t opt = { 0 };
     char game_root[MAX_PATH], game_dir[MAX_PATH], log_dir[MAX_PATH], log_file[MAX_PATH];
     const jpt_game_version_t* version;
@@ -490,6 +531,7 @@ int main(int argc, char** argv) {
         usage();
         return HOST_EXIT_SETUP;
     }
+    if (opt.analyze || opt.analyze_all) return analyze_custom_level(&opt);
     if (opt.self_check) {
         const jpt_win_backend_ops_t* vk_ops = renderer_backend_resolve_ops(JPT_RENDERER_VULKAN);
         const jpt_win_backend_ops_t* d3d_ops = renderer_backend_resolve_ops(JPT_RENDERER_D3D11);
@@ -587,6 +629,7 @@ int main(int argc, char** argv) {
         launcher.launcher_renderer = opt.launcher_renderer;
         launcher.log = log_line;
         launcher.custom_level = &custom_level;
+        launcher.handoff = launch_handoff_begin;
         switch (jpt_launcher_run(&launcher)) {
         case JPT_LAUNCHER_PLAY: break;
         case JPT_LAUNCHER_FAILED:
@@ -596,6 +639,7 @@ int main(int argc, char** argv) {
             host_log("host", "the launcher was closed without starting the game");
             return 0;
         }
+        launch_handoff_launcher_closed();
     }
 
     jpt_config_load(settings_file, &cfg);
@@ -724,6 +768,7 @@ int main(int argc, char** argv) {
     if (opt.debug_d3d_output && !d3dr_set_debug_output(opt.debug_d3d_output)) return HOST_EXIT_SETUP;
     window_host_set_mouse_sensitivity(cfg.mouse_sensitivity);
     host_log("input", "mouse sensitivity %.2f (both axes)", cfg.mouse_sensitivity);
+    launch_handoff_phase(JPT_HANDOFF_PHASE_RENDERER);
     if (!renderer_backend_startup()) return HOST_EXIT_SETUP;
 
     if (opt.dry_run) {
@@ -763,6 +808,15 @@ int main(int argc, char** argv) {
     if (!guest_overrides_check()) return HOST_EXIT_SETUP;
     debug_menu_start_custom_level();
     engine_limits_log(d3dr_hardware(), filter_label(&cfg), cfg.msaa, cfg.vsync);
+    level_session_start(version->id, renderer_backend_key(), cfg.language);
+    launch_handoff_phase(JPT_HANDOFF_PHASE_WINDOW);
     host_log("guest", "entering the CRT entry point 0x%08X", lift_entry_va);
     return run_guest();
+}
+
+int main(int argc, char** argv) {
+    const int code = host_main(argc, argv);
+    jpt_session_end();
+    launch_handoff_finish(code);
+    return code;
 }

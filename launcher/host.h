@@ -54,6 +54,8 @@ public:
     // Shows the window once its first frame has been drawn. Does nothing when it was opened hidden.
     void Show();
     void Close();
+    // The HWND on Windows while the window is open; nullptr elsewhere.
+    void* NativeWindow() const;
 
     // Handles the window's events (F11 switches the launcher's own fullscreen) and sleeps until the next frame is due, at
     // most 60 per second; a hidden window is not limited. False once the window was closed.

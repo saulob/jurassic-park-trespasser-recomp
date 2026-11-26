@@ -28,6 +28,8 @@ int active_ai_installed(void);
 void active_ai_summary(void);
 /* ai_vocals.c: Dinosaur and Vocal numbers outside the game's vocal table. */
 void ai_vocals_install(void);
+/* Reads past the script mark of a version 26 scene's objects (scene_scripts.c). */
+void scene_scripts_install(void);
 /* The living animals the game's AI holds, awake (engaged) or not, with their world position; read-only. */
 typedef struct {
     float x, y;

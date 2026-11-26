@@ -1903,7 +1903,61 @@ static void TestCustomLevelsPageUi() {
     CHECK(page.find("ResolveReadme(user_dir_, package, file)") != std::string::npos && page.find("hooks_.open_file(file)") != std::string::npos);
     for (const char* text : {"BeginPopupModal(kPopup, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize", "level_readme", "readme_text_"})
         CHECK(page.find(text) == std::string::npos && header.find(text) == std::string::npos);
-    CHECK(page.find("const bool readme = !package.readme.empty();") != std::string::npos);
+    CHECK(page.find("const RowActions actions = ActionsOf(scene, !package.readme.empty());") != std::string::npos);
+    // The outcome of an import stays below the import buttons until it is closed; Bug Report opens its page on this session's log.
+    const size_t import = At(page, "void CustomLevelsPage::DrawImport("), notice = At(page, "void CustomLevelsPage::DrawNotice(");
+    const std::string drawn = page.substr(notice, At(page, "void CustomLevelsPage::DrawSort(") - notice);
+    CHECK(At(page, "Import Folder", import) < At(page, "DrawNotice(ui);", import) && At(page, "DrawNotice(ui);", import) < At(page, "ui.Help(kImportHelp);", import));
+    CHECK(drawn.find("Tr(\"Bug Report\"))) hooks_.open_bug_report(\"\", \"\");") != std::string::npos && drawn.find("Tr(\"Close\"))) notice_ = {};") != std::string::npos);
+    const size_t report = At(made, "hooks.open_bug_report = [this](const std::string& package, const std::string& scene) {");
+    CHECK(At(made, "incident_page_->ChooseRunningLog();", report) < At(made, "launcher_->GoToPage(launcher_->FindPage(PageName(PageId::kBugReport)));", report));
+    CHECK(incident.find("wanted_log_ = places_.running_log;") != std::string::npos && incident.find("SelectLog(DefaultGameLog(logs_))") == std::string::npos);
+    // A refused import or start says one plain sentence; the reasons (actions, texhw, versions, files) stay in the log.
+    CHECK(page.find("notice_ = ImportNotice(outcome->status);") != std::string::npos && page.find("ImportStatusTitle(ImportStatus::kNotSupported)") != std::string::npos);
+    CHECK(page.find("scene_version") == std::string::npos && page.find("scene.version") == std::string::npos && page.find("JPT_SCENE") == std::string::npos && page.find("scene.note") == std::string::npos &&
+          page.find("issue.code") == std::string::npos && page.find("ActionType") == std::string::npos && page.find("texhw") == std::string::npos && page.find("detail") == std::string::npos);
+    CHECK(page.find("for (const std::string& line : outcome->log) Log(") != std::string::npos);
+    // The key that logs a level's class once is that class, never a phrase of its own that the page would have to translate.
+    CHECK(page.find("scene.path + \": \" + LevelClassName(scene.level_class())") != std::string::npos && page.find("\" class\"") == std::string::npos);
+    for (const char* language : {"en", "pt-BR", "fr", "de", "es", "ru", "it"}) {
+        SetLauncherLanguage(language);
+        for (const char* text : {"Installed levels (%d)", "Ready", "Not supported", "Bug Report", "Close", "Loading custom levels..."}) CHECK(Tr(text)[0] != '\0');
+    }
+    SetLauncherLanguage("en");
+    for (const char* text : {"Installed levels (%d)", "Could not import this custom level", "This custom level is not fully supported", "This custom level cannot be played", "This level is missing required files",
+                             "This level cannot be loaded safely", "No playable level was found", "Newest first", "Oldest first", "Name A to Z", "Name Z to A", "Ready", "Not supported", "Unsafe path in archive",
+                             "Custom level installed", "This level is not supported by this port yet", "Bug Report", "Close", "Loading custom levels...", "Reading the package...", "Copying the level files...", "Checking the level files...",
+                             "The custom levels could not be listed"})
+        CHECK(HasRow(text));
+    for (const char* text : {"Ready with warnings", "Missing files", "Unsupported feature", "Damaged file", "Could not install this custom level"}) CHECK(!HasRow(text) && page.find(text) == std::string::npos);
+    CHECK(page.find("TrFormat(\"Installed levels (%d)\", int(PlayableLevels(packages)))") != std::string::npos);
+    // A row that cannot be played has Bug Report on this session's log, where its reasons were just written: never an older run.
+    const std::string reported = page.substr(At(page, "void CustomLevelsPage::ReportLevel("), At(page, "void CustomLevelsPage::DrawRow(") - At(page, "void CustomLevelsPage::ReportLevel("));
+    CHECK(At(reported, "LevelProblems(") < At(reported, "hooks_.open_bug_report(\"\", \"\");") && reported.find("open_bug_report(package.id") == std::string::npos);
+    CHECK(made.find("settings_.Get(kLauncherLevelSortKey)") != std::string::npos && made.find("settings_.SaveNow({{kLauncherLevelSortKey, sort}})") != std::string::npos);
+    for (const char* text : {"Untested level format", "Unsupported level format", "This level uses scene format version %d", "This port currently supports up to version %d"})
+        CHECK(page.find(text) == std::string::npos && !HasRow(text));
+    // A row names the package, the scene and a short status; a level is asked for before it is started.
+    CHECK(page.find("Start level") == std::string::npos && page.find("version()") == std::string::npos && header.find("version;") == std::string::npos && !HasRow("Start level"));
+    const std::string play = page.substr(At(page, "void CustomLevelsPage::Play("), At(page, "void CustomLevelsPage::ReportLevel(") - At(page, "void CustomLevelsPage::Play("));
+    CHECK(At(play, "CheckBeforePlay(") < At(play, "return;") && At(play, "return;") < At(play, "hooks_.play(request)"));
+    CHECK(page.find("if (actions.play) {\n        ImGui::BeginDisabled(!hooks_.game_ready() || import_.running() || pending_play_.has_value());\n        if (ui.AccentButton(Tr(\"Play\")") != std::string::npos);
+    // A Play waits for the listing job, which may be writing the same package's records.
+    CHECK(At(page, "if (pending_play_ && !listing_.busy()) {") < At(page, "void CustomLevelsPage::DrawImporting("));
+    // The list is made off the UI thread: the page draws the loading view, and only adopts what the job made.
+    const std::string draw = page.substr(At(page, "void CustomLevelsPage::Draw("), At(page, "void CustomLevelsPage::DrawImport(") - At(page, "void CustomLevelsPage::Draw("));
+    CHECK(page.find("ListLevelPackages(") == std::string::npos && page.find("AnalyzePackage(") == std::string::npos && page.find("std::thread") == std::string::npos && page.find("detach") == std::string::npos);
+    CHECK(At(draw, "listing_.Advance(") < At(draw, "DrawLoadingView(ui, \"Loading custom levels...\");") && At(draw, "DrawLoadingView(ui, \"Loading custom levels...\");") < At(draw, "DrawImport(ui);"));
+    // An import shows the launcher's own task bar in place of the import buttons: its phase, its percentage and Cancel.
+    const std::string imported = page.substr(At(page, "void CustomLevelsPage::DrawImport("), At(page, "void CustomLevelsPage::DrawNotice(") - At(page, "void CustomLevelsPage::DrawImport("));
+    CHECK(At(imported, "if (ui.TaskProgress(import_)) {") < At(imported, "Import ZIP / 7z / RAR") && draw.find("DrawImporting") == std::string::npos && page.find("Importing custom level") == std::string::npos);
+    CHECK(page.find("import_.Start(kImportPhases[0],") != std::string::npos && page.find("RunImport(request, publish,") != std::string::npos && page.find("task.Progress(done, total);") != std::string::npos);
+    CHECK(At(page, "if (import_.running() && import_shown_done_ && ImGui::GetFrameCount() > last_frame_ + 1)") < At(page, "if (import_.Finish() == trg::Task::State::kIdle) return;"));
+    const std::string trg = ReadSource("external/trg-launcher/src/launcher.cpp");
+    CHECK(trg.find("\"%s %.0f%%\", task_label, double(f) * 100.0") != std::string::npos && trg.find("const float cancel_w = 90 * scale_;") != std::string::npos);
+    const std::string view = ReadSource("launcher/loading_view.h"), job = ReadSource("launcher/background_job.h");
+    CHECK(view.find("angle, angle + 4.2f, 24)") != std::string::npos && view.find("ui.theme().accent") != std::string::npos && view.find("LayOutLoading(ui.scale()") != std::string::npos);
+    CHECK(job.find("detach") == std::string::npos && job.find("worker_.join();") != std::string::npos && job.find("imgui") == std::string::npos && job.find("ImTextureID") == std::string::npos);
     CHECK(HasRow("The readme could not be opened.") && !HasRow("This file could not be read.") &&
           !HasRow("The installed version the levels below are played with. Each version keeps its own saves."));
 }

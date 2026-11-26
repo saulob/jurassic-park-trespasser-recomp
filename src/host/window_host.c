@@ -22,6 +22,8 @@
 #include "perf_sections.h"
 #include "gamepad.h"
 #include "host_policy.h"
+#include "launch_handoff.h"
+#include "level_actions.h"
 #include "loading_hd.h"
 #include "minimap.h"
 #include "overlay_policy.h"
@@ -104,6 +106,7 @@ static struct {
     int virtual_on;
     RECT view;
     jpt_presentation_t pres;
+    jpt_surface_t surf;
     jpt_presentation_t logged;
     int fullscreen, active, focused, size_move, transition;
     input_state_t state;
@@ -336,6 +339,16 @@ static void paint_background(void) {
     ReleaseDC(s.game, dc);
 }
 
+/* The game window clips its children, so the surface is never covered by paint_background. */
+static void paint_surface_black(void) {
+    HDC dc;
+    RECT r;
+    if (!s.surface || !jpt_surface_paints_black(&s.surf) || !(dc = GetDC(s.surface))) return;
+    GetClientRect(s.surface, &r);
+    FillRect(dc, &r, (HBRUSH)GetStockObject(BLACK_BRUSH));
+    ReleaseDC(s.surface, dc);
+}
+
 static void log_presentation(void) {
     const jpt_presentation_t* p = &s.pres;
     if (p->host.width <= 0 || p->guest.width <= 0) return;
@@ -360,6 +373,7 @@ static void layout_surface(void) {
         SetWindowPos(s.surface, NULL, view.left, view.top, view.right - view.left, view.bottom - view.top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
     paint_background();
+    paint_surface_black();
 }
 
 static int64_t qpc_now(void) {
@@ -582,11 +596,21 @@ static void refresh_title(void) {
 
 /* The only frame source: a successful IDXGISwapChain::Present, whatever the renderer. */
 void window_host_frame_presented(void) {
+    jpt_surface_frame_presented(&s.surf);
     if (fps_counter_present(&s.fps, qpc_now())) {
         s.fps_ready = 1;
         refresh_title();
     }
     update_input("frame");
+}
+
+void window_host_presentation_target(int ready) {
+    if (ready) {
+        jpt_surface_target_created(&s.surf);
+        return;
+    }
+    jpt_surface_target_lost(&s.surf);
+    paint_surface_black();
 }
 
 void window_host_set_ui_canvas(int on) { s.ui_canvas = on != 0; }
@@ -1295,13 +1319,26 @@ static LRESULT CALLBACK host_proc(HWND window, UINT msg, WPARAM wparam, LPARAM l
         platform_window_detach();
         s.game = NULL;
         s.surface = NULL;
+        jpt_surface_init(&s.surf);
     }
     return result;
 }
 
 static LRESULT CALLBACK surface_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_NCHITTEST) return HTTRANSPARENT;
-    if (msg == WM_ERASEBKGND) return 1;
+    if (msg == WM_ERASEBKGND) {
+        RECT r;
+        if (jpt_surface_paints_black(&s.surf) && GetClientRect(window, &r))
+            FillRect((HDC)wparam, &r, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        return 1;
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(window, &ps);
+        if (dc && jpt_surface_paints_black(&s.surf)) FillRect(dc, &ps.rcPaint, (HBRUSH)GetStockObject(BLACK_BRUSH));
+        EndPaint(window, &ps);
+        return 0;
+    }
     return DefWindowProcA(window, msg, wparam, lparam);
 }
 
@@ -1312,6 +1349,7 @@ static HWND create_surface(HWND parent) {
     wc.cbSize = sizeof wc;
     wc.lpfnWndProc = surface_proc;
     wc.hInstance = instance;
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName = SURFACE_CLASS;
     if (!RegisterClassExA(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return NULL;
     return CreateWindowExA(0, SURFACE_CLASS, NULL, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 0, 0, 0, 0, parent, NULL,
@@ -1356,6 +1394,7 @@ static void attach(HWND window) {
     hook(window);
     s.focused = GetFocus() == window;
     s.surface = create_surface(window);
+    if (s.surface) jpt_surface_window_created(&s.surf);
     SetTimer(window, POLICY_TIMER_ID, POLICY_INTERVAL_MS, NULL);
     fps_counter_init(&s.fps, s.qpc_frequency.QuadPart, qpc_now());
     layout_surface();
@@ -1459,6 +1498,34 @@ void window_host_begin_cleanup(void) { advance(SHUTDOWN_HOST_CLEANUP, NULL); }
 
 void window_host_exited(void) { shutdown_exited(&s.shutdown); }
 
+#define JPT_DWMWA_CLOAK 13
+
+static int cloak_window(HWND window, BOOL on) {
+    typedef HRESULT(WINAPI * set_attribute_fn)(HWND, DWORD, LPCVOID, DWORD);
+    static set_attribute_fn set_attribute;
+    static int looked;
+    if (!looked) {
+        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        set_attribute = dwm ? (set_attribute_fn)GetProcAddress(dwm, "DwmSetWindowAttribute") : NULL;
+        looked = 1;
+    }
+    return set_attribute && SUCCEEDED(set_attribute(window, JPT_DWMWA_CLOAK, &on, sizeof on));
+}
+
+/* DWM shows a region nobody painted as white, and the game pumps no messages (no WM_PAINT) before its first frames,
+ * so the window is composed only once the host has painted it black. It is uncloaked here, not at the first frame:
+ * DXGI may report a cloaked window occluded, and a renderer that never presents must still leave a visible window. */
+static void show_main_window(HWND window) {
+    int cloaked = cloak_window(window, TRUE);
+    ShowWindow(window, SW_SHOW);
+    attach(window);
+    paint_background();
+    paint_surface_black();
+    GdiFlush();
+    if (cloaked) cloak_window(window, FALSE);
+    host_log("window", "shown black%s until the first frame is presented", cloaked ? " (composed only once painted)" : "");
+}
+
 void shim_CreateWindowExA(void) {
     DWORD exstyle = GUEST_ARG(0), style = GUEST_ARG(3);
     const char* title = (const char*)GUEST_PTR(2);
@@ -1467,13 +1534,17 @@ void shim_CreateWindowExA(void) {
     int main_window = !s.game && !parent && (style & WS_POPUP);
     HWND window;
     if (main_window) {
-        style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VISIBLE;
+        style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
         title = PRODUCT_TITLE;
         initial_placement(w, h, style, exstyle, &x, &y, &w, &h);
     }
     window = CreateWindowExA(exstyle, (LPCSTR)(uintptr_t)GUEST_ARG(1), title, style, x, y, w, h, parent,
                              (HMENU)GUEST_PTR(9), (HINSTANCE)GUEST_PTR(10), GUEST_PTR(11));
-    if (main_window && window) attach(window);
+    if (main_window && window) {
+        launch_handoff_game_window_created();
+        show_main_window(window);
+        launch_handoff_game_window_ready(window);
+    }
     g_eax = (uint32_t)(uintptr_t)window;
     GUEST_RETURN_STDCALL(12);
 }
@@ -1604,6 +1675,7 @@ void shim_GetCursorPos(void) {
             debug_menu_ui_loop();
             widescreen_apply_fov();
             scene_options_step();
+            level_actions_step();
             ce_gameplay_ui_loop();
             update_input("GetCursorPos");
             perf_section_end(PS_UI_LOOP, section);

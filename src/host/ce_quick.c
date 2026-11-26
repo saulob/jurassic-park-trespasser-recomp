@@ -8,6 +8,7 @@ could call them itself. Windows only: the decisions are ce_policy.c's, shared wi
 #include <string.h>
 
 #include "ce_policy.h"
+#include "jpt_level_gate.h"
 #include "jpt_tr.h"
 
 #define APP GVA(0x0066E338)
@@ -82,9 +83,10 @@ static void quick_save(const guest_ui_view_t* v, const char* path, uint32_t scra
         feedback("Quick Save failed");
         return;
     }
+    jpt_gate_save_failed();
     guest_call(APP_SAVE_FILE, APP, args, 2, 0, &written);
     guest_call(GAME_WND_RESUME, v->top, &resume, 1, 0, NULL);
-    if (written) {
+    if (written && !jpt_gate_save_failed()) {
         host_log("quick-save", "saved %s", path);
         feedback("Quick saved");
     } else {

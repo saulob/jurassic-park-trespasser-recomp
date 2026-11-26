@@ -20,6 +20,9 @@ void jpt_sha256_update(jpt_sha256_t* ctx, const void* data, size_t n);
 void jpt_sha256_hex(jpt_sha256_t* ctx, char out[65]);
 void jpt_sha256_buffer_hex(const void* data, size_t n, char out[65]);
 
+/* CRC-32; seed: the one of what comes before, 0 at first. */
+uint32_t jpt_crc32(uint32_t seed, const void* data, size_t n);
+
 /* The game's sample ID: the CRC-32 of the sample name in lower case. */
 uint32_t jpt_sample_id(const char* name);
 

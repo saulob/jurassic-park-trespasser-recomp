@@ -549,6 +549,242 @@ static void test_window_host_follows_only_in_auto(void) {
     free(source);
 }
 
+/* The presentation surface before, between and after swap chains: black or a presented frame, never white. */
+static int surface_ok(const jpt_surface_t* s, int frame_ready, int frame_held) {
+    return jpt_surface_source_allowed(jpt_surface_shown(s, frame_ready, frame_held));
+}
+
+static void test_surface_sources_allowed(void) {
+    CHECK(!jpt_surface_source_allowed(JPT_SURFACE_UNINITIALIZED));
+    CHECK(!jpt_surface_source_allowed(JPT_SURFACE_SYSTEM_DEFAULT));
+    CHECK(jpt_surface_source_allowed(JPT_SURFACE_BLACK));
+    CHECK(jpt_surface_source_allowed(JPT_SURFACE_LAST_FRAME));
+    CHECK(jpt_surface_source_allowed(JPT_SURFACE_NEW_FRAME));
+}
+
+static void test_surface_never_white_in_any_state(void) {
+    for (int window = 0; window < 2; window++)
+        for (int target = 0; target < 2; target++)
+            for (int presented = 0; presented < 2; presented++)
+                for (int ready = 0; ready < 2; ready++)
+                    for (int held = 0; held < 2; held++) {
+                        jpt_surface_t s;
+                        jpt_surface_source_t shown;
+                        s.window = window;
+                        s.target = target;
+                        s.presented = presented;
+                        shown = jpt_surface_shown(&s, ready, held);
+                        CHECK(shown != JPT_SURFACE_UNINITIALIZED && shown != JPT_SURFACE_SYSTEM_DEFAULT);
+                        CHECK(jpt_surface_source_allowed(shown));
+                        if (!presented) CHECK(shown != JPT_SURFACE_LAST_FRAME);
+                    }
+}
+
+static void test_surface_window_not_ready(void) {
+    jpt_surface_t s;
+    jpt_surface_init(&s);
+    CHECK(!jpt_surface_paints_black(&s));
+    jpt_surface_target_created(&s);
+    jpt_surface_frame_presented(&s);
+    CHECK(!s.target && !s.presented);
+    CHECK(jpt_surface_shown(&s, 1, 0) == JPT_SURFACE_BLACK);
+}
+
+static void test_surface_target_not_ready(void) {
+    jpt_surface_t s;
+    jpt_surface_init(&s);
+    jpt_surface_window_created(&s);
+    CHECK(jpt_surface_paints_black(&s));
+    /* The video overlay's present is not a frame of this surface. */
+    jpt_surface_frame_presented(&s);
+    CHECK(jpt_surface_paints_black(&s));
+    CHECK(jpt_surface_shown(&s, 1, 0) == JPT_SURFACE_BLACK);
+    CHECK(jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_BLACK);
+}
+
+static void test_surface_black_until_first_frame(void) {
+    jpt_surface_t s;
+    jpt_surface_window_created(&s);
+    jpt_surface_target_created(&s);
+    CHECK(jpt_surface_paints_black(&s));
+    CHECK(jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_BLACK);
+    /* A blank present held before anything was shown keeps the black, not an unpainted surface. */
+    CHECK(jpt_surface_shown(&s, 1, 1) == JPT_SURFACE_BLACK);
+    CHECK(jpt_surface_shown(&s, 1, 0) == JPT_SURFACE_NEW_FRAME);
+    jpt_surface_frame_presented(&s);
+    CHECK(!jpt_surface_paints_black(&s));
+    CHECK(jpt_surface_shown(&s, 1, 1) == JPT_SURFACE_LAST_FRAME);
+}
+
+static void test_surface_fullscreen_transition(void) {
+    jpt_surface_t s;
+    jpt_presentation_t p;
+    jpt_surface_window_created(&s);
+    jpt_presentation_init(&p, 0);
+    /* Windowed 960x720 at creation, borderless 1920x1080 at once, still before the first frame. */
+    jpt_presentation_set_host(&p, 960, 720);
+    CHECK(jpt_surface_paints_black(&s) && surface_ok(&s, 0, 0));
+    jpt_presentation_set_host(&p, 1920, 1080);
+    CHECK(view_is(&p, 0, 0, 1920, 1080));
+    CHECK(jpt_surface_paints_black(&s) && jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_BLACK);
+    jpt_surface_target_created(&s);
+    jpt_surface_frame_presented(&s);
+    /* F11 later: the compositor stretches the last frame until the next one; GDI stays off the flip surface. */
+    jpt_presentation_set_host(&p, 960, 720);
+    CHECK(!jpt_surface_paints_black(&s));
+    CHECK(jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_LAST_FRAME);
+}
+
+static void test_surface_swapchain_recreation(void) {
+    jpt_surface_t s;
+    jpt_surface_window_created(&s);
+    jpt_surface_target_created(&s);
+    jpt_surface_frame_presented(&s);
+    /* ResizeBuffers or a Vulkan swapchain made with the old one as predecessor keeps the frame on screen. */
+    jpt_surface_target_created(&s);
+    CHECK(s.presented && jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_LAST_FRAME);
+    /* Device lost or the renderer released: the surface's own pixels show again, painted black. */
+    jpt_surface_target_lost(&s);
+    CHECK(jpt_surface_paints_black(&s));
+    CHECK(jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_BLACK);
+    CHECK(jpt_surface_shown(&s, 1, 0) == JPT_SURFACE_BLACK);
+    jpt_surface_target_created(&s);
+    CHECK(jpt_surface_paints_black(&s) && jpt_surface_shown(&s, 1, 0) == JPT_SURFACE_NEW_FRAME);
+    jpt_surface_frame_presented(&s);
+    CHECK(!jpt_surface_paints_black(&s));
+}
+
+static void test_surface_resolution_transition(void) {
+    jpt_surface_t s;
+    jpt_presentation_t p;
+    jpt_surface_window_created(&s);
+    jpt_surface_target_created(&s);
+    jpt_presentation_init(&p, 0);
+    jpt_presentation_set_host(&p, 1920, 1080);
+    jpt_presentation_request_guest(&p, 640, 480, 1);
+    jpt_surface_frame_presented(&s);
+    /* Menu -> level: SetDisplayMode 2560x1440 is pending, held blank presents keep the loading picture. */
+    jpt_presentation_request_guest(&p, 2560, 1440, 2);
+    CHECK(p.has_pending);
+    CHECK(jpt_surface_shown(&s, 1, 1) == JPT_SURFACE_LAST_FRAME);
+    CHECK(jpt_surface_shown(&s, 0, 0) == JPT_SURFACE_LAST_FRAME);
+    CHECK(jpt_presentation_commit(&p, 2));
+    CHECK(jpt_surface_shown(&s, 1, 0) == JPT_SURFACE_NEW_FRAME);
+    CHECK(!jpt_surface_paints_black(&s));
+}
+
+enum { EV_WINDOW, EV_LAYOUT, EV_TARGET, EV_FRAME, EV_HOLD, EV_LOST, EV_RESIZE_TARGET, EV_END };
+
+/* Event order of each presenter: D3D11 makes its swap chain inside the first present, Vulkan when its renderer is made
+ * for the surface; a custom level session differs from the campaign only by the level it loads. */
+static const int k_d3d11_session[] = { EV_WINDOW, EV_LAYOUT, EV_HOLD, EV_TARGET, EV_FRAME, EV_HOLD, EV_FRAME,
+                                       EV_RESIZE_TARGET, EV_HOLD, EV_FRAME, EV_END };
+static const int k_vulkan_session[] = { EV_WINDOW, EV_LAYOUT, EV_HOLD, EV_TARGET, EV_FRAME, EV_HOLD, EV_RESIZE_TARGET,
+                                        EV_FRAME, EV_LOST, EV_LAYOUT, EV_TARGET, EV_HOLD, EV_FRAME, EV_END };
+
+static int run_session(const int* events, int custom_level) {
+    jpt_surface_t s;
+    int bad = 0;
+    (void)custom_level;
+    jpt_surface_init(&s);
+    for (const int* e = events; *e != EV_END; e++) {
+        switch (*e) {
+        case EV_WINDOW: jpt_surface_window_created(&s); break;
+        case EV_TARGET: jpt_surface_target_created(&s); break;
+        case EV_RESIZE_TARGET: jpt_surface_target_created(&s); break;
+        case EV_FRAME:
+            if (jpt_surface_shown(&s, 1, 0) != JPT_SURFACE_NEW_FRAME) bad++;
+            jpt_surface_frame_presented(&s);
+            break;
+        case EV_LOST: jpt_surface_target_lost(&s); break;
+        default: break;
+        }
+        if (!surface_ok(&s, 0, 0) || !surface_ok(&s, 1, 1)) bad++;
+        if (*e != EV_FRAME && !s.presented && !jpt_surface_paints_black(&s)) bad++;
+        if (s.presented && jpt_surface_shown(&s, 1, 1) != JPT_SURFACE_LAST_FRAME) bad++;
+    }
+    return bad;
+}
+
+static void test_surface_sessions_and_presenters(void) {
+    CHECK(run_session(k_d3d11_session, 0) == 0);
+    CHECK(run_session(k_d3d11_session, 1) == 0);
+    CHECK(run_session(k_vulkan_session, 0) == 0);
+    CHECK(run_session(k_vulkan_session, 1) == 0);
+}
+
+static int ordered(const char* body, const char* a, const char* b) {
+    const char* x = strstr(body, a);
+    const char* y = strstr(body, b);
+    return x && y && x < y;
+}
+
+static void test_window_host_surface_is_black(void) {
+    char* source = read_file(JPT_SOURCE_DIR "\\src\\host\\window_host.c");
+    char* body;
+    CHECK(source != NULL);
+    if (!source) return;
+    body = function_body(source, "static HWND create_surface(HWND parent) {");
+    CHECK(body && strstr(body, "wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH)"));
+    body = function_body(source, "static LRESULT CALLBACK surface_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam) {");
+    CHECK(body && strstr(body, "WM_ERASEBKGND") && strstr(body, "WM_PAINT") && strstr(body, "BLACK_BRUSH") &&
+          strstr(body, "jpt_surface_paints_black"));
+    body = function_body(source, "void shim_CreateWindowExA(void) {");
+    CHECK(body && strstr(body, "style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;") && !strstr(body, "WS_VISIBLE") &&
+          strstr(body, "show_main_window(window)"));
+    body = function_body(source, "static void show_main_window(HWND window) {");
+    CHECK(body && ordered(body, "cloak_window(window, TRUE)", "ShowWindow(window, SW_SHOW)") &&
+          ordered(body, "ShowWindow(window, SW_SHOW)", "attach(window)") &&
+          ordered(body, "attach(window)", "paint_surface_black()") &&
+          ordered(body, "paint_surface_black()", "cloak_window(window, FALSE)"));
+    body = function_body(source, "static void layout_surface(void) {");
+    CHECK(body && ordered(body, "SetWindowPos(s.surface", "paint_surface_black()"));
+    body = function_body(source, "void window_host_frame_presented(void) {");
+    CHECK(body && strstr(body, "jpt_surface_frame_presented(&s.surf)"));
+    body = function_body(source, "void window_host_presentation_target(int ready) {");
+    CHECK(body && ordered(body, "jpt_surface_target_lost(&s.surf)", "paint_surface_black()"));
+    free(source);
+}
+
+static void test_presenters_report_targets_and_clear(void) {
+    char* present = read_file(JPT_SOURCE_DIR "\\src\\host\\ddraw\\d3d11_present.c");
+    char* vk_win = read_file(JPT_SOURCE_DIR "\\src\\host\\ddraw\\vk_win_renderer.c");
+    char* vk_swapchain = read_file(JPT_SOURCE_DIR "\\src\\vulkan\\vk_swapchain.c");
+    char* vk_renderer = read_file(JPT_SOURCE_DIR "\\src\\vulkan\\vk_renderer.c");
+    char* body;
+    CHECK(present && vk_win && vk_swapchain && vk_renderer);
+    if (present) {
+        body = function_body(present, "static int create_swapchain(HWND window, UINT width, UINT height) {");
+        CHECK(body && strstr(body, "window_host_presentation_target(1)"));
+        body = function_body(present, "void d3d11_present_release(void) {");
+        CHECK(body && ordered(body, "IDXGISwapChain_Release", "window_host_presentation_target(0)"));
+        body = function_body(present, "ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height) {");
+        CHECK(body && ordered(body, "CreateRenderTargetView", "ClearRenderTargetView(s_p.context, s_p.back_rtv, k_black)"));
+        CHECK(strstr(present, "k_black[4] = { 0.0f, 0.0f, 0.0f, 1.0f }") != NULL);
+    }
+    if (vk_win) {
+        body = function_body(vk_win, "static void release_vk_instance(void) {");
+        CHECK(body && ordered(body, "jpt_vk_renderer_destroy(V.vk)", "window_host_presentation_target(0)"));
+        body = function_body(vk_win, "static int ensure_vk_renderer(HWND game_window, uint32_t legacy_w, uint32_t legacy_h) {");
+        CHECK(body && ordered(body, "jpt_vk_renderer_create", "window_host_presentation_target(1)"));
+    }
+    if (vk_swapchain) {
+        body = function_body(vk_swapchain, "static int ensure_present_render_pass(");
+        CHECK(body && strstr(body, "color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR") &&
+              strstr(body, "color.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED"));
+    }
+    if (vk_renderer) {
+        const char* pass = strstr(vk_renderer, "rpbi.renderPass = r->sc.present_pass;");
+        CHECK(pass && strstr(pass, "rpbi.pClearValues = &clear_black;"));
+        CHECK(strstr(vk_renderer, "memset(&clear_black, 0, sizeof clear_black);\r\n    clear_black.color.float32[3] = 1.0f;") ||
+              strstr(vk_renderer, "memset(&clear_black, 0, sizeof clear_black);\n    clear_black.color.float32[3] = 1.0f;"));
+    }
+    free(present);
+    free(vk_win);
+    free(vk_swapchain);
+    free(vk_renderer);
+}
+
 int main(void) {
     test_four_by_three_in_widescreen_hosts();
     test_other_shapes();
@@ -581,6 +817,17 @@ int main(void) {
     test_old_frame_never_meets_the_new_window();
     test_auto_client_fits_and_scales();
     test_window_host_follows_only_in_auto();
+    test_surface_sources_allowed();
+    test_surface_never_white_in_any_state();
+    test_surface_window_not_ready();
+    test_surface_target_not_ready();
+    test_surface_black_until_first_frame();
+    test_surface_fullscreen_transition();
+    test_surface_swapchain_recreation();
+    test_surface_resolution_transition();
+    test_surface_sessions_and_presenters();
+    test_window_host_surface_is_black();
+    test_presenters_report_targets_and_clear();
     printf("presentation_tests: %d checks, %d failures\n", s_checks, s_failures);
     return s_failures ? 1 : 0;
 }

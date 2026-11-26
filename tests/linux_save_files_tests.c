@@ -14,6 +14,7 @@
 #include "guest_thunks.h"
 #include "jpt_fs.h"
 #include "jpt_game_version.h"
+#include "jpt_level_gate.h"
 #include "jpt_user_data.h"
 #include "jpt_vpath.h"
 #include "linux_hle.h"
@@ -101,6 +102,35 @@ static long host_size(const char* relative) {
     return stat(path, &st) == 0 ? (long)st.st_size : -1;
 }
 
+static void put_word(uint8_t* p, uint32_t v) { memcpy(p, &v, 4); }
+
+/* A save of `total` bytes in the game's own container: a header, two lists of objects and padding. */
+static void make_save(uint8_t* out, uint32_t total) {
+    static const char* const k_names[] = { "Header", "Partitions", "Hierarchy", "Padding" };
+    uint32_t sizes[] = { 4 + 5 * 256, 16, 16, 0 }, symbols = 0, at = 48 + 4 * 32;
+    for (int i = 0; i < 4; i++) symbols += 12 + (uint32_t)strlen(k_names[i]) + 1;
+    sizes[3] = total - at - sizes[0] - sizes[1] - sizes[2] - symbols;
+    memset(out, 0, total);
+    put_word(out, 0x0ACEBABE);
+    put_word(out + 8, 4);
+    put_word(out + 12, 4);
+    put_word(out + 32, 10);
+    put_word(out + at, 22);
+    memcpy(out + at + 4, "w.grf", 5);
+    for (uint32_t i = 0; i < 4; i++) {
+        put_word(out + 48 + i * 32, 0x1000 + i);
+        put_word(out + 48 + i * 32 + 12, sizes[i]);
+        for (uint32_t b = 0; i == 3 && b < sizes[i]; b++) out[at + b] = (uint8_t)(b * 31u + 7u);
+        at += sizes[i];
+    }
+    for (uint32_t i = 0; i < 4; i++) {
+        const uint32_t n = (uint32_t)strlen(k_names[i]) + 1;
+        put_word(out + at, 0x1000 + i);
+        put_word(out + at + 4, n);
+        memcpy(out + at + 12, k_names[i], n);
+        at += 12 + n;
+    }
+}
 
 /* The HD picture of a save: made from the game's frozen gameplay picture when the save is created, read back as the same picture,
  * deleted with the save, and never made for a file that is not a save. */
@@ -109,8 +139,8 @@ static void test_save_pictures(void) {
     const jpt_game_version_t* v = jpt_game_version_by_id("en-116");
     uint32_t frozen = 0x00660100u, bits;
     sp_image_t image;
-    uint8_t payload[100];
-    memset(payload, 7, sizeof payload);
+    uint8_t payload[1700];
+    make_save(payload, sizeof payload);
     lx_spine_init((lx_table_t){ NULL, 0 }, (lx_table_t){ NULL, 0 });
     if (!v || !jpt_profile_activate(v, error, sizeof error)) {
         CHECK(0, "the en-116 profile is active for the save picture test (%s)", error);
@@ -141,14 +171,15 @@ static void test_save_pictures(void) {
 }
 
 int main(void) {
-    uint8_t payload[3000], back[4000];
+    uint8_t payload[3000], shorter[1700], back[4000];
     jpt_vpath_t* vp;
     char path[600];
     int fd;
     snprintf(s_root, sizeof s_root, "%s/jpt_linux_save_%d", getenv("TMPDIR") && *getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
     snprintf(s_saves, sizeof s_saves, "%s/saves", s_root);
     jpt_make_dirs(s_saves);
-    for (unsigned i = 0; i < sizeof payload; i++) payload[i] = (uint8_t)(i * 31u + 7u);
+    make_save(payload, sizeof payload);
+    make_save(shorter, sizeof shorter);
 
     if (!gm_init(0, 0) || !ht_init()) {
         printf("cannot reserve the guest window\n");
@@ -168,20 +199,26 @@ int main(void) {
     CHECK(read_save("d:\\savegame.000", back, sizeof back) == (int)sizeof payload, "the name is found in any case");
     CHECK(read_save("D:\\SaveGame.000", back, sizeof back) == (int)sizeof payload, "mixed case too");
 
-    CHECK(write_save("D:\\SAVEGAME.000", payload, 1200) == 1200 && host_size("SAVEGAME.000") == 1200, "an overwrite truncates: the new, shorter save replaces the old (%ld)", host_size("SAVEGAME.000"));
-    CHECK(read_save("D:\\SAVEGAME.000", back, sizeof back) == 1200 && !memcmp(back, payload, 1200), "and reads back as written");
-    CHECK(read_save("D:\\SAVEGAME.000", back, 2000) == 1200, "a read of more than the file holds returns what is there (a truncated save)");
+    CHECK(write_save("D:\\SAVEGAME.000", shorter, 1700) == 1700 && host_size("SAVEGAME.000") == 1700, "an overwrite truncates: the new, shorter save replaces the old (%ld)", host_size("SAVEGAME.000"));
+    CHECK(read_save("D:\\SAVEGAME.000", back, sizeof back) == 1700 && !memcmp(back, shorter, 1700), "and reads back as written");
+    CHECK(read_save("D:\\SAVEGAME.000", back, 2000) == 1700, "a read of more than the file holds returns what is there");
+    for (uint32_t n = 0; n < sizeof payload; n += 500) {
+        write_save("D:\\SAVEGAME.000", payload, n);
+        CHECK(read_save("D:\\SAVEGAME.000", back, sizeof back) == 1700 && !memcmp(back, shorter, 1700), "a save cut short at %u keeps the previous one", n);
+    }
+    CHECK(jpt_gate_save_failed() && host_size("~save.tmp") < 0, "and nothing of it stays");
+    CHECK(write_save("D:\\SAVEGAME.000", payload, sizeof payload) == (int)sizeof payload && write_save("D:\\SAVEGAME.000", shorter, 1700) == 1700 && host_size("SAVEGAME.000") == 1700, "the next ones are written");
 
     fd = open_save("D:\\SAVEGAME.000", O_BINARY_G | O_RDONLY_G);
     CHECK(fd >= 3, "a descriptor");
-    CHECK((int)CRT(_lseek, 3, (uint32_t)fd, 1000u, 0u) == 1000 && (int)CRT(_read, 3, (uint32_t)fd, s_scratch + 0x4000, 500u) == 200, "a read near the end returns the rest");
-    CHECK((int)CRT(_lseek, 3, (uint32_t)fd, 0u, 2u) == 1200, "_lseek to the end gives the size");
+    CHECK((int)CRT(_lseek, 3, (uint32_t)fd, 1500u, 0u) == 1500 && (int)CRT(_read, 3, (uint32_t)fd, s_scratch + 0x4000, 500u) == 200, "a read near the end returns the rest");
+    CHECK((int)CRT(_lseek, 3, (uint32_t)fd, 0u, 2u) == 1700, "_lseek to the end gives the size");
     CRT(_close, 1, (uint32_t)fd);
 
     CHECK(open_save("D:\\SAVEGAME.999", O_BINARY_G | O_RDONLY_G) < 0, "a save that does not exist: -1");
     CHECK(CRT(_open, 3, put_string(s_scratch, "D:\\..\\..\\etc\\passwd"), O_BINARY_G, 0u) == 0xFFFFFFFFu, "a name that climbs out of the saves folder is refused");
 
-    CHECK(CRT(rename, 2, put_string(s_scratch, "D:\\SAVEGAME.000"), put_string(s_scratch + 0x200, "D:\\SAVEGAME.001")) == 0 && host_size("SAVEGAME.001") == 1200 && host_size("SAVEGAME.000") < 0,
+    CHECK(CRT(rename, 2, put_string(s_scratch, "D:\\SAVEGAME.000"), put_string(s_scratch + 0x200, "D:\\SAVEGAME.001")) == 0 && host_size("SAVEGAME.001") == 1700 && host_size("SAVEGAME.000") < 0,
           "rename moves a save");
     CHECK(CRT(remove, 1, put_string(s_scratch, "d:\\savegame.001")) == 0 && host_size("SAVEGAME.001") < 0, "remove deletes it, whatever the case of the name");
     CHECK(CRT(remove, 1, put_string(s_scratch, "D:\\SAVEGAME.001")) == 0xFFFFFFFFu, "removing it again fails");

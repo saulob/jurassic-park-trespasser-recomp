@@ -319,6 +319,13 @@
    "via": "hash",
    "where": "src/host/active_ai.c:58"
   },
+  "0041AD50": {
+   "class": "identical",
+   "to": "004233A0",
+   "function": "0041AD50",
+   "via": "hash",
+   "where": "src/host/level_actions.c:27"
+  },
   "0041ADF0": {
    "class": "identical",
    "to": "0060F270",
@@ -430,6 +437,13 @@
    "function": "0043D7E0",
    "via": "hash",
    "where": "src/host/menu_audio.c:9"
+  },
+  "0043DA80": {
+   "class": "identical",
+   "to": "00421AE0",
+   "function": "0043DA80",
+   "via": "hash",
+   "where": "src/host/level_actions.c:32"
   },
   "00441D1D": {
    "class": "identical",
@@ -607,6 +621,34 @@
    "via": "hash",
    "where": "src/host/lift_hook_list.h:23"
   },
+  "00466900": {
+   "class": "identical",
+   "to": "0044BFC0",
+   "function": "00466900",
+   "via": "hash",
+   "where": "src/host/level_actions.c:37"
+  },
+  "00467BB0": {
+   "class": "identical",
+   "to": "0044D270",
+   "function": "00467BB0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:40"
+  },
+  "00467BC0": {
+   "class": "identical",
+   "to": "0044D280",
+   "function": "00467BC0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:41"
+  },
+  "00467BE0": {
+   "class": "identical",
+   "to": "0044D2A0",
+   "function": "00467BE0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:42"
+  },
   "00468710": {
    "class": "identical",
    "to": "0044DDD0",
@@ -620,6 +662,27 @@
    "function": "00468980",
    "via": "hash",
    "where": "src/host/tutorial_prompts.c:24"
+  },
+  "0046BE90": {
+   "class": "identical",
+   "to": "00451510",
+   "function": "0046BE90",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:43"
+  },
+  "0046C6D0": {
+   "class": "identical",
+   "to": "00451D50",
+   "function": "0046C6D0",
+   "via": "hash",
+   "where": "src/host/level_actions.c:16"
+  },
+  "00470A70": {
+   "class": "identical",
+   "to": "004560D0",
+   "function": "00470A70",
+   "via": "hash",
+   "where": "src/host/level_actions.c:30"
   },
   "00472B60": {
    "class": "identical",
@@ -959,6 +1022,13 @@
    "via": "hash",
    "where": "src/host/ce_graphics.c:11"
   },
+  "0053E350": {
+   "class": "identical",
+   "to": "005242E0",
+   "function": "0053E350",
+   "via": "hash",
+   "where": "src/host/level_actions.c:34"
+  },
   "00543830": {
    "class": "identical",
    "to": "00529810",
@@ -1085,6 +1155,20 @@
    "via": "hash",
    "where": "src/host/engine_heaps.c:12"
   },
+  "00604DD0": {
+   "class": "identical",
+   "to": "005EAF30",
+   "function": "00604DD0",
+   "via": "hash",
+   "where": "src/host/level_actions.c:22"
+  },
+  "00606630": {
+   "class": "identical",
+   "to": "005EC660",
+   "function": "00606630",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:81"
+  },
   "00607C10": {
    "class": "identical",
    "to": "005EDC40",
@@ -1134,6 +1218,13 @@
    "via": "hash",
    "where": "src/host/guest_override_list.h:76"
   },
+  "00611D50": {
+   "class": "identical",
+   "to": "005F82D0",
+   "function": "00611D50",
+   "via": "hash",
+   "where": "src/host/level_actions.c:38"
+  },
   "00614A60": {
    "class": "identical",
    "to": "005FAFE0",
@@ -1148,12 +1239,26 @@
    "via": "hash",
    "where": "src/host/cheats.c:48"
   },
+  "00614F50": {
+   "class": "identical",
+   "to": "005FB4D0",
+   "function": "00614F50",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:78"
+  },
   "00617F20": {
    "class": "identical",
    "to": "005FE4E0",
    "function": "00617F20",
    "via": "hash",
    "where": "src/host/cheats.c:47"
+  },
+  "006230F0": {
+   "class": "identical",
+   "to": "006096C0",
+   "function": "006230F0",
+   "via": "hash",
+   "where": "src/host/level_actions.c:33"
   },
   "006264D0": {
    "class": "identical",
@@ -1414,6 +1519,24 @@
    "votes": 41,
    "where": "src/host/physics_fixes.c:46"
   },
+  "0064A274": {
+   "class": "data",
+   "to": "0064B2CC",
+   "votes": 35003,
+   "where": "src/host/level_actions.c:35"
+  },
+  "0064ADF4": {
+   "class": "data",
+   "to": "0064C028",
+   "votes": 35001,
+   "where": "src/host/level_actions.c:39"
+  },
+  "0064AF64": {
+   "class": "data",
+   "to": "0064C1C4",
+   "votes": 1,
+   "where": "src/host/level_actions.c:20"
+  },
   "0064B22C": {
    "class": "data",
    "to": "0064C490",
@@ -1425,6 +1548,12 @@
    "to": "0064C62C",
    "votes": 35002,
    "where": "src/host/host_policy.h:449"
+  },
+  "0064B990": {
+   "class": "data",
+   "to": "0064CBFC",
+   "votes": 1,
+   "where": "src/host/level_actions.c:31"
   },
   "0064B9B0": {
    "class": "data",
@@ -1510,6 +1639,18 @@
    "votes": 66,
    "where": "src/host/polygon_submit.c:27"
   },
+  "0064EB60": {
+   "class": "data",
+   "to": "0064FE70",
+   "votes": 35003,
+   "where": "src/host/texhw_guest.c:61"
+  },
+  "0064EBA8": {
+   "class": "data",
+   "to": "0064FEB8",
+   "votes": 35002,
+   "where": "src/host/texhw_guest.c:60"
+  },
   "00651C20": {
    "class": "data",
    "to": "00653C50",
@@ -1588,6 +1729,12 @@
    "votes": 5,
    "where": "src/host/engine_limits.c:46"
   },
+  "00664D50": {
+   "class": "data",
+   "to": "00665EE8",
+   "votes": 1,
+   "where": "src/host/engine_heaps.c:36"
+  },
   "00665130": {
    "class": "data",
    "to": "00666324",
@@ -1617,6 +1764,12 @@
    "to": "0066C0D0",
    "votes": 8,
    "where": "src/host/tutorial_prompts.c:31"
+  },
+  "0066B6FC": {
+   "class": "data",
+   "to": "0066C954",
+   "votes": 2,
+   "where": "src/host/level_actions.c:41"
   },
   "0066C4E8": {
    "class": "data",
@@ -2024,6 +2177,12 @@
    "votes": 14,
    "where": "src/host/terrain_quality.c:27"
   },
+  "006D1680": {
+   "class": "data",
+   "to": "006D3FF0",
+   "votes": 23,
+   "where": "src/host/texhw_guest.c:48"
+  },
   "006D1E94": {
    "class": "data",
    "to": "006D4804",
@@ -2083,6 +2242,12 @@
    "to": "007351E8",
    "votes": 172,
    "where": "src/host/polygon_submit.c:18"
+  },
+  "007328E0": {
+   "class": "data",
+   "to": "00735250",
+   "votes": 20,
+   "where": "src/host/sky_layers.c:17"
   },
   "00732978": {
    "class": "data",
@@ -2192,6 +2357,20 @@
    "votes": 242,
    "where": "src/host/game_text.c:19"
   },
+  "0073F278": {
+   "class": "data",
+   "to": "00741BE8",
+   "votes": 12,
+   "where": "src/host/level_actions.c:40"
+  },
+  "0073F280": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the count of the CMessageUse receivers, 8 bytes past their list: CPlayer's use builds the message with the list 0x00741BE8 and adds one to 0x00741BF0 (0x00431180, 0x00431194, 0x0043119D), as 116 does with 0x0073F278 and 0x0073F280 (0x0044CD10, 0x0044CD24)",
+   "was": "unresolved",
+   "to": "00741BF0",
+   "where": "src/host/level_actions.c:41"
+  },
   "0073F34C": {
    "class": "data",
    "to": "00741CBC",
@@ -2239,6 +2418,12 @@
    "to": "00742070",
    "votes": 4,
    "where": "src/host/water_kernels.c:14"
+  },
+  "00740718": {
+   "class": "data",
+   "to": "00743018",
+   "votes": 22,
+   "where": "src/host/texhw_guest.c:52"
   },
   "007410F8": {
    "class": "data",

@@ -50,6 +50,9 @@ void d3d_objects_counts(unsigned long* render_states, unsigned long* stage_state
 void d3d_objects_load_counts(unsigned long long* loads, unsigned long long* unchanged, unsigned long long* texels,
                              unsigned long long* changed_texels);
 
+/* The next draw is this instead; NULL for none. */
+void d3dr_replace_next_draw(void (*instead)(d3d_device_t* dev, const void* vertices, DWORD count));
+
 /* d3d11_renderer.c */
 enum {
     D3DR_FILTER_ORIGINAL = D3DT_FILTER_ORIGINAL,
@@ -91,6 +94,8 @@ void d3dr_frame_presented(double present_ms);
 void d3dr_surface_freed(dd_surface_t* s);
 /* IDirect3DTexture::Load, before it copies src into dst. */
 void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src);
+/* A custom level's picture stands for the texture until it is written again; 0: none does. */
+void d3dr_texture_override(uint32_t iface, int id);
 /* The game's UI canvas (RGB565, TSYNC_UNWRITTEN texels transparent) drawn over every presented frame; NULL ends it. */
 void d3dr_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h);
 void d3dr_present_dib(HWND window, const BYTE* bits, LONG pitch, const RECT* source, const DDPIXELFORMAT* format,

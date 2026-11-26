@@ -126,6 +126,15 @@ typedef struct {
     uint16_t vehicle_count;
 } minimap_level_map_t;
 
+/* A map picture a level brings with it: its first and last corner in world metres and its colours (0xAARRGGBB), rows from the first. */
+#define MM_PICTURE_SIDE 256
+typedef struct {
+    float x0, y0, x1, y1;
+    int cols, rows;
+    const uint32_t* cells;
+    uint32_t serial; /* changes with the cells */
+} minimap_picture_t;
+
 typedef enum { MM_CREATURE_NONE, MM_CREATURE_PASSIVE, MM_CREATURE_THREAT } minimap_creature_kind_t;
 
 typedef struct {
@@ -164,6 +173,12 @@ typedef struct {
 const minimap_bounds_t* minimap_bounds(const char* level_id);
 /* The level's prepared map runs, or NULL for a level with no map data. */
 const minimap_level_map_t* minimap_map(const char* level_id);
+/* The campaign's own tables, whatever source is set. */
+const minimap_bounds_t* minimap_retail_bounds(const char* level_id);
+const minimap_level_map_t* minimap_retail_map(const char* level_id);
+/* A source that decides a level's data first (1, either may be NULL), or leaves it to the campaign's tables (0). */
+typedef int (*minimap_source_fn)(const char* level_id, const minimap_bounds_t** bounds, const minimap_level_map_t** map);
+void minimap_set_source(minimap_source_fn source);
 
 /* The frame for a gameplay picture and the live player position; 0 when the picture is too small. */
 int minimap_place(const minimap_rect_t* picture, float player_x, float player_y, float zoom, minimap_frame_t* out);
@@ -178,6 +193,8 @@ void minimap_to_screen(const minimap_frame_t* f, float x, float y, float* sx, fl
 /* The world rect of one map run (min_x < max_x, south_y < north_y); 0 with bad input. */
 int minimap_run_world(const minimap_bounds_t* b, const minimap_level_map_t* m, const minimap_run_t* run, float* min_x,
                       float* south_y, float* max_x, float* north_y);
+/* One cell run of a map picture as a screen polygon clipped to the circle; the point count, 0 when nothing is visible. */
+int minimap_picture_run(const minimap_frame_t* f, const minimap_picture_t* p, int row, int from, int to, minimap_point_t out[MM_CLIP_MAX]);
 typedef void (*minimap_poly_fn)(void* user, const minimap_point_t* points, int count);
 /* The layer's smoothed shape (a blurred field contoured at its iso level), as convex polygons clipped to the circle. */
 void minimap_layer_visit(const minimap_frame_t* f, const minimap_bounds_t* b, const minimap_level_map_t* m, int kind,

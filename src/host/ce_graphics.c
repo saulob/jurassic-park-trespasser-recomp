@@ -7,6 +7,7 @@
 
 #include "ce_effects.h"
 #include "ddraw/d3d_legacy.h"
+#include "ddraw/sky_draw.h"
 #include "scene_options.h"
 #include "water_kernels.h"
 
@@ -36,6 +37,14 @@ static void sky_draw(void) {
         s_sky_lifted();
         return;
     }
+    if (sky_layers_ready()) {
+        sky_layers_begin(sky);
+        d3dr_replace_next_draw(sky_draw_layers);
+        s_sky_lifted();
+        d3dr_replace_next_draw(NULL);
+        sky_layers_end(sky);
+        return;
+    }
     p[0] = rdf(CAMERA_POSITION) * FX_SKY_UV_PER_METRE + FX_SKY_U_OFFSET + rdf(sky + SKY_SCROLL_U);
     p[1] = rdf(CAMERA_POSITION + 4) * FX_SKY_UV_PER_METRE + rdf(sky + SKY_SCROLL_V);
     p[2] = (rdf(sky + SKY_HEIGHT) - rdf(CAMERA_POSITION + 8)) * FX_SKY_UV_PER_METRE;
@@ -50,6 +59,7 @@ void ce_graphics_install(int hardware) {
     if (!hardware) return;
     d3d_set_fog_sync(sync_fog_color);
     water_rows_observer = fx_water_store;
+    sky_layers_install(sky_draw_free);
     if (!guest_override_install(SKY_DRAW_D3D, sky_draw, &s_sky_lifted))
         host_log("host", "warning: the sky's Direct3D draw could not be hooked: Enhanced sky is not available");
 }

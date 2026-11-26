@@ -333,6 +333,7 @@ intro_video_t intro_video_of(const char* guest_name);
 const char* intro_video_name(intro_video_t video);
 /* Skip Intro answers the game's own "NoVideo" for an opening it plays itself; the Video Test's requests still play. */
 int skip_intro_applies(int enabled, intro_video_t video, int video_test_request);
+int is_ending_video(const char* guest_name);
 
 /* The human pelvis's crouch height (Pel[me][MOUTH]) after Pelvic_IDOF's clamps (0x004F441D, 0x004F4442) and its ceiling
  * check (0x004F46F2), as the x87 computes them at the 24-bit precision CPhysicsSystem::Integrate (0x004CF8A0) selects:
@@ -637,6 +638,24 @@ typedef struct {
 } engine_heap_t;
 /* The heap a reservation of this size is, scale 1 when it is none of them. */
 engine_heap_t engine_heap_for(uint32_t bytes);
+/* A custom level's session: the mesh builder's arrays (0x0048A3D0, 2048 polygons a mesh), the loaded meshes' heap and the
+ * terrain's nodes, as the package asks for them. */
+#define ENGINE_MESH_FACES 2048u
+#define ENGINE_MESH_HEAP_BYTES 0x2000000u
+#define ENGINE_TEXTURE_POOL_BYTES 0x8000000u
+typedef struct {
+    int custom_level;
+    unsigned mesh_heap_mb;        /* 0: the engine's own */
+    unsigned extra_terrain_nodes; /* in thousands */
+    unsigned texture_pool_mb;     /* 0: the engine's own */
+    unsigned mesh_step;           /* how far into the builder's reservations the last one was */
+    unsigned mesh_faces;          /* 0: the engine's own */
+} engine_session_t;
+/* What the heap of this size is, for the log. */
+const char* engine_heap_name(uint32_t bytes);
+uint32_t engine_session_heap_bytes(engine_session_t* session, uint32_t bytes, unsigned scale);
+/* Bytes of a request at pv that do not fit the reservation [base, end). */
+uint32_t engine_heap_overflow(uint32_t pv, uint32_t bytes, uint32_t end);
 /* What pvCommitMem may commit of a request at pv: whole pages that stay inside the reservation ending at end. */
 uint32_t engine_heap_commit_bytes(uint32_t pv, uint32_t bytes, uint32_t reservation_end, uint32_t page);
 typedef struct {

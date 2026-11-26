@@ -3387,6 +3387,537 @@
    }
   },
   {
+   "file": "src/host/level_actions.c",
+   "name": "SYMBOLS",
+   "value": "0x2A8",
+   "struct": "ScriptSymbols",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "ScriptSymbols: 1 functions, 0 without a counterpart; +0x2a8 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "ScriptSymbols: 1 functions, 0 without a counterpart; +0x2a8 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VALUE_DATA",
+   "value": "0x28",
+   "struct": "ScriptValue",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "ScriptValue: 3 functions, 0 without a counterpart; +0x28 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "ScriptValue: 3 functions, 0 without a counterpart; +0x28 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "ACTION_BYTES",
+   "value": "0xC",
+   "struct": "ActionFactory",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "ActionFactory: 1 functions, 0 without a counterpart; constant0xc used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "ActionFactory: 1 functions, 0 without a counterpart; constant0xc used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "TRIGGER_ACTION_COUNT",
+   "value": "0x9C",
+   "struct": "TriggerActions",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "TriggerActions: 1 functions, 0 without a counterpart; +0x9c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "TriggerActions: 1 functions, 0 without a counterpart; +0x9c used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "APP_SCENE",
+   "value": "0xA",
+   "struct": "AppScene",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "AppScene: 1 functions, 0 without a counterpart; +0xa used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "AppScene: 1 functions, 0 without a counterpart; +0xa used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INSTANCE_POSITION",
+   "value": "0x30",
+   "struct": "CInstance",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x30 used by 18 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x30 used by 16 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INSTANCE_ROTATION",
+   "value": "0x3C",
+   "struct": "CInstance",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x3c used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x3c used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INSTANCE_INFO",
+   "value": "0x28",
+   "struct": "CInstance",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x28 used by 13 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInstance+CPartition+CFetchable: 141 functions, 0 without a counterpart; +0x28 used by 13 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INFO_FLAGS",
+   "value": "0x4",
+   "struct": "CInfo",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0x4 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0x4 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INFO_SHAPE",
+   "value": "0x8",
+   "struct": "CInfo",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0x8 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0x8 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INFO_PHYSICS",
+   "value": "0xC",
+   "struct": "CInfo",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0xc used by 4 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0xc used by 4 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "INFO_AI",
+   "value": "0x10",
+   "struct": "CInfo",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0x10 used by 4 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CInfo: 4 functions, 0 without a counterpart; +0x10 used by 4 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "AI_INFO_TYPE",
+   "value": "0x8",
+   "struct": "CAIInfo",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAIInfo+CRefObj: 65 functions, 1 without a counterpart; +0x8 used by 43 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAIInfo+CRefObj: 65 functions, 0 without a counterpart; +0x8 used by 44 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VF_DELETE",
+   "value": "0x4",
+   "struct": "CRefObj",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CRefObj vtable: slot 1 holds a function matched by its code in both builds"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CRefObj vtable: slot 1 holds a function matched by its code in both builds"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VF_SEND",
+   "value": "0xC",
+   "struct": "CMessageUse",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CMessageUse vtable: slot 3 holds a function matched by its code in both builds"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CMessageUse vtable: slot 3 holds a function matched by its code in both builds"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VF_AS_TRIGGER",
+   "value": "0x44",
+   "struct": "CTrigger",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger vtable: slot 17 holds a function matched by its code in both builds"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger vtable: slot 17 holds a function matched by its code in both builds"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VF_AS_ANIMAL",
+   "value": "0x64",
+   "struct": "CAnimal",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAnimal vtable: slot 25 holds a function matched by its code in both builds"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAnimal vtable: slot 25 holds a function matched by its code in both builds"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VF_ANIMATES",
+   "value": "0x58",
+   "struct": "CAnimateTextureAction",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAnimateTextureAction+CAction+CRefObj: 87 functions, 3 without a counterpart; +0x58 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAnimateTextureAction+CAction+CRefObj: 87 functions, 0 without a counterpart; +0x58 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VF_USE",
+   "value": "0x170",
+   "struct": "CGun",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CGun vtable: slot 92 holds a function matched by its code in both builds"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CGun vtable: slot 92 holds a function matched by its code in both builds"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "ANIMATE_HP",
+   "value": "0x50",
+   "struct": "CAnimate",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0x50 used by 33 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0x50 used by 33 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "ANIMATE_HP_MAX",
+   "value": "0x54",
+   "struct": "CAnimate",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0x54 used by 14 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0x54 used by 14 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "ANIMATE_PARTS",
+   "value": "0xAC",
+   "struct": "CAnimate",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0xac used by 18 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CAnimate+CEntity+CInstance: 318 functions, 0 without a counterpart; +0xac used by 14 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "TRIGGER_FIRE_COUNT",
+   "value": "0xA8",
+   "struct": "CTrigger",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xa8 used by 8 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xa8 used by 8 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "TRIGGER_PROBABILITY",
+   "value": "0xAC",
+   "struct": "CTrigger",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xac used by 19 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xac used by 15 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "TRIGGER_FIRES_AT_ZERO",
+   "value": "0xB8",
+   "struct": "CTrigger",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xb8 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xb8 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "TRIGGER_RESET_COUNT",
+   "value": "0xBC",
+   "struct": "CTrigger",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xbc used by 37 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CTrigger+CEntity+CInstance: 311 functions, 0 without a counterpart; +0xbc used by 33 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "MESH_MATERIALS",
+   "value": "0x38",
+   "struct": "CMeshAnimating",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 2 without a counterpart; +0x38 used by 26 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 0 without a counterpart; +0x38 used by 22 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "MESH_TEXTURES",
+   "value": "0x3C",
+   "struct": "CMeshAnimating",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 2 without a counterpart; +0x3c used by 25 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 0 without a counterpart; +0x3c used by 21 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "MESH_FRAMES",
+   "value": "0xA8",
+   "struct": "CMeshAnimating",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 2 without a counterpart; +0xa8 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 0 without a counterpart; +0xa8 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "MESH_FRAME_TEXTURES",
+   "value": "0xAC",
+   "struct": "CMeshAnimating",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 2 without a counterpart; +0xac used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CMeshAnimating+CMesh+CShape: 150 functions, 0 without a counterpart; +0xac used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "PARTICLES_COLOUR",
+   "value": "0x4",
+   "struct": "Particles",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "Particles: 1 functions, 0 without a counterpart; +0x4 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "Particles: 1 functions, 0 without a counterpart; +0x4 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "WND_OWNER",
+   "value": "0x4",
+   "struct": "CUIWnd",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CUIWnd+CUICtrlCallback: 53 functions, 0 without a counterpart; +0x4 used by 16 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CUIWnd+CUICtrlCallback: 53 functions, 0 without a counterpart; +0x4 used by 16 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "VIDEO_WND_STACK",
+   "value": "0x200",
+   "es-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
+   },
+   "ptbr-117": {
+    "status": "not_guest",
+    "evidence": "HOST_CONSTANT: a key code, a Win32 message, a control-word mask, a host render-state bit or a host buffer size: not a guest structure offset"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "GUN_MAX_AMMO",
+   "value": "0x68",
+   "struct": "CGun",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CGun+CEntity+CInstance: 310 functions, 0 without a counterpart; +0x68 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CGun+CEntity+CInstance: 310 functions, 0 without a counterpart; +0x68 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "GUN_AMMO",
+   "value": "0x6C",
+   "struct": "CGun",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CGun+CEntity+CInstance: 310 functions, 0 without a counterpart; +0x6c used by 19 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CGun+CEntity+CInstance: 310 functions, 0 without a counterpart; +0x6c used by 19 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "PLAYER_HAND_OBJECT",
+   "value": "0xE34",
+   "struct": "CPlayer",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe34 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe34 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "PLAYER_BELT",
+   "value": "0xE38",
+   "struct": "CPlayer",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe38 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe38 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/level_actions.c",
+   "name": "PLAYER_BACK",
+   "value": "0xE3C",
+   "struct": "CPlayer",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe3c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CPlayer+CAnimate+CEntity: 411 functions, 0 without a counterpart; +0xe3c used by 1 identical functions"
+   }
+  },
+  {
    "file": "src/host/loading_hd.c",
    "name": "ART_ROW",
    "value": "0x28",
@@ -4871,6 +5402,90 @@
    }
   },
   {
+   "file": "src/host/sky_layers.c",
+   "name": "SKY_TEXTURE_SCALE",
+   "value": "0x24",
+   "struct": "CSky",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x24 used by 5 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x24 used by 5 identical functions"
+   }
+  },
+  {
+   "file": "src/host/sky_layers.c",
+   "name": "SKY_FOG_FAR",
+   "value": "0x2C",
+   "struct": "CSky",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x2c used by 4 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x2c used by 4 identical functions"
+   }
+  },
+  {
+   "file": "src/host/sky_layers.c",
+   "name": "SKY_FOG_NEAR",
+   "value": "0x30",
+   "struct": "CSky",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x30 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x30 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/sky_layers.c",
+   "name": "SKY_HEIGHT",
+   "value": "0x44",
+   "struct": "CSky",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x44 used by 4 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x44 used by 4 identical functions"
+   }
+  },
+  {
+   "file": "src/host/sky_layers.c",
+   "name": "SKY_WIND_U",
+   "value": "0x50",
+   "struct": "CSky",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x50 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x50 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/sky_layers.c",
+   "name": "SKY_WIND_V",
+   "value": "0x54",
+   "struct": "CSky",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x54 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "CSky: 5 functions, 0 without a counterpart; +0x54 used by 2 identical functions"
+   }
+  },
+  {
    "file": "src/host/stream_pack.c",
    "name": "TPA_DESCRIPTOR_FIELD",
    "value": "0x14",
@@ -5033,6 +5648,468 @@
     "status": "unmoved",
     "value": "0x22C",
     "evidence": "ShadowLighting (0x00516E00) passes [ebp-0x22C] to the camera constructor at 0x00516FB3 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "POLYGON_VERTICES",
+   "value": "0x4",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x4 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x4 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "POLYGON_FEATURES",
+   "value": "0x8",
+   "struct": "PolygonDraw",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonDraw: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonDraw: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "POLYGON_TEXTURE",
+   "value": "0xC",
+   "struct": "PolygonUpload",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0xc used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0xc used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "POLYGON_VALUE",
+   "value": "0x10",
+   "struct": "PolygonDraw",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonDraw: 1 functions, 0 without a counterpart; +0x10 used by 0 identical and 1 aligned functions, none moved"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonDraw: 1 functions, 0 without a counterpart; +0x10 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "POLYGON_MIP",
+   "value": "0x30",
+   "struct": "PolygonUpload",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x30 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x30 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "POLYGON_DRAW",
+   "value": "0x74",
+   "struct": "PolygonUpload",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x74 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x74 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TEXTURE_MIPS",
+   "value": "0x8",
+   "struct": "PolygonUpload",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TEXTURE_MIP_COUNT",
+   "value": "0x20",
+   "struct": "PolygonUpload",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x20 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x20 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TEXTURE_COLORS",
+   "value": "0x2C",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x2c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x2c used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TEXTURE_HASH",
+   "value": "0x38",
+   "struct": "SetTexture",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SetTexture: 1 functions, 0 without a counterpart; +0x38 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SetTexture: 1 functions, 0 without a counterpart; +0x38 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "RASTER_WIDTH",
+   "value": "0x8",
+   "struct": "RasterD3D",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "RasterD3D: 4 functions, 0 without a counterpart; +0x8 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "RasterD3D: 4 functions, 0 without a counterpart; +0x8 used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "RASTER_HEIGHT",
+   "value": "0xC",
+   "struct": "RasterD3D",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "RasterD3D: 4 functions, 0 without a counterpart; +0xc used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "RasterD3D: 4 functions, 0 without a counterpart; +0xc used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "RASTER_LINKED",
+   "value": "0x48",
+   "struct": "PolygonUpload",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x48 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonUpload: 1 functions, 0 without a counterpart; +0x48 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "RASTER_D3D_TEXTURE",
+   "value": "0x5C",
+   "struct": "RasterD3D",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "RasterD3D: 4 functions, 0 without a counterpart; +0x5c used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "RasterD3D: 4 functions, 0 without a counterpart; +0x5c used by 3 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "VERTEX_VALUE",
+   "value": "0x18",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x18 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x18 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "VERTEX_U",
+   "value": "0x1C",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x1c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x1c used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "COLORS_TABLE",
+   "value": "0x8",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TABLE_DARK",
+   "value": "0x4",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x4 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x4 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TABLE_FULL",
+   "value": "0x8",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x8 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TABLE_SHADED",
+   "value": "0x2C",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x2c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x2c used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "TABLE_LEAST",
+   "value": "0x30",
+   "struct": "PolygonSubmit",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x30 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "PolygonSubmit: 1 functions, 0 without a counterpart; +0x30 used by 0 identical and 1 aligned functions, none moved"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "MATERIAL_SPECULAR",
+   "value": "0x4",
+   "struct": "SurfaceLight",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0x4 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0x4 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "MATERIAL_HIGHLIGHT",
+   "value": "0x8",
+   "struct": "SurfaceLight",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0x8 used by 3 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0x8 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "MATERIAL_FLAGS",
+   "value": "0xC",
+   "struct": "SurfaceLight",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0xc used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0xc used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "MATERIAL_EMISSIVE",
+   "value": "0x14",
+   "struct": "SurfaceLight",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0x14 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "SurfaceLight: 3 functions, 0 without a counterpart; +0x14 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "GAMMA_EXPONENT",
+   "value": "0x808",
+   "struct": "Gamma",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "Gamma: 1 functions, 0 without a counterpart; +0x808 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "Gamma: 1 functions, 0 without a counterpart; +0x808 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "GAMMA_SCALE",
+   "value": "0x80C",
+   "struct": "Gamma",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "Gamma: 1 functions, 0 without a counterpart; +0x80c used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "Gamma: 1 functions, 0 without a counterpart; +0x80c used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "NODE_VALUE",
+   "value": "0x8",
+   "struct": "LightList",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x8 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x8 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "INSTANCE_RENDER",
+   "value": "0x28",
+   "struct": "LightList",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x28 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x28 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "RENDER_LIGHT",
+   "value": "0x8",
+   "struct": "LightList",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x8 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x8 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "LIGHT_PRESENCE",
+   "value": "0x8",
+   "struct": "LightDirection",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "LightDirection: 1 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "LightDirection: 1 functions, 0 without a counterpart; +0x8 used by 1 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "LIGHT_INTENSITY",
+   "value": "0x10",
+   "struct": "LightList",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x10 used by 2 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "LightList: 4 functions, 0 without a counterpart; +0x10 used by 2 identical functions"
+   }
+  },
+  {
+   "file": "src/host/texhw_guest.c",
+   "name": "PRESENCE_TURN",
+   "value": "0xC",
+   "struct": "LightDirection",
+   "es-117": {
+    "status": "unmoved",
+    "evidence": "LightDirection: 1 functions, 0 without a counterpart; +0xc used by 1 identical functions"
+   },
+   "ptbr-117": {
+    "status": "unmoved",
+    "evidence": "LightDirection: 1 functions, 0 without a counterpart; +0xc used by 1 identical functions"
    }
   },
   {
@@ -6132,8 +7209,8 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    34,
-    40
+    35,
+    49
    ],
    "es-117": {
     "status": "unmoved",
@@ -6152,7 +7229,7 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    41
+    50
    ],
    "es-117": {
     "status": "unmoved",
@@ -6245,10 +7322,10 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    384,
-    389,
-    394,
-    407
+    385,
+    390,
+    395,
+    408
    ],
    "es-117": {
     "status": "unmoved",
@@ -6267,8 +7344,8 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    390,
-    412
+    391,
+    413
    ],
    "es-117": {
     "status": "unmoved",
@@ -6287,9 +7364,9 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    391,
-    413,
-    478
+    392,
+    414,
+    479
    ],
    "struct": "RasterVertex",
    "es-117": {
@@ -6307,9 +7384,9 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    392,
-    408,
-    479
+    393,
+    409,
+    480
    ],
    "struct": "RasterVertex",
    "es-117": {
@@ -6327,7 +7404,7 @@
    "value": "0x14",
    "literal": true,
    "lines": [
-    409
+    410
    ],
    "es-117": {
     "status": "unmoved",
@@ -6346,7 +7423,7 @@
    "value": "0x18",
    "literal": true,
    "lines": [
-    410
+    411
    ],
    "es-117": {
     "status": "unmoved",
@@ -6444,7 +7521,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    320
+    321
    ],
    "es-117": {
     "status": "unmoved",
@@ -6463,11 +7540,11 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    602,
     605,
-    632,
-    638,
-    640
+    608,
+    635,
+    641,
+    643
    ],
    "es-117": {
     "status": "unmoved",
@@ -7329,7 +8406,7 @@
    "value": "0x4",
    "literal": true,
    "lines": [
-    191
+    193
    ],
    "es-117": {
     "status": "unmoved",
@@ -7348,7 +8425,7 @@
    "value": "0x8",
    "literal": true,
    "lines": [
-    192
+    194
    ],
    "es-117": {
     "status": "unmoved",
@@ -7367,7 +8444,7 @@
    "value": "0xC",
    "literal": true,
    "lines": [
-    192
+    194
    ],
    "es-117": {
     "status": "unmoved",
@@ -7386,7 +8463,7 @@
    "value": "0x10",
    "literal": true,
    "lines": [
-    212
+    214
    ],
    "es-117": {
     "status": "unmoved",

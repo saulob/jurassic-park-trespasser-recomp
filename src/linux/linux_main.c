@@ -69,7 +69,9 @@ typedef struct {
     const char* graphics_card;
     int dry_run;
     int bootstrap;
-    int build_info, self_check;
+    int build_info, self_check, analyze_json;
+    const char* analyze;
+    const char *analyze_all, *analyze_report;
     int dry_run_asked, run_direct, force_launcher, skip_launcher, version_given;
     const char* launcher_renderer;
     const char* override_key[MAX_OVERRIDES];
@@ -114,6 +116,9 @@ static void usage(void) {
            "  --skip-intro, --video-subtitles, --ambient-occlusion VALUE   override that setting for this run\n"
            "  --build-info           print what this binary was built from (JSON), nothing else\n"
            "  --self-check           prove which features this binary holds (JSON); no window, no audio, no log, no guest code\n"
+           "  --analyze-custom-level PACKAGE [--json]  print what the Custom Levels import makes of a ZIP, 7z, RAR or folder; nothing\n"
+           "                         is installed\n"
+           "  --analyze-custom-levels FOLDER [--report FOLDER] [--json]  the same for every package below a folder, with totals\n"
            "  --help\n");
 }
 
@@ -153,6 +158,10 @@ static int parse(int argc, char** argv, options_t* o, int* run) {
         else if (!strcmp(argv[i], "--bootstrap-headless")) o->bootstrap = 1;
         else if (!strcmp(argv[i], "--build-info")) o->build_info = 1;
         else if (!strcmp(argv[i], "--self-check")) o->self_check = 1;
+        else if (!strcmp(argv[i], "--json")) o->analyze_json = 1;
+        else if ((v = argument_of(&i, argc, argv, "--analyze-custom-level")) != NULL) o->analyze = v;
+        else if ((v = argument_of(&i, argc, argv, "--analyze-custom-levels")) != NULL) o->analyze_all = v;
+        else if ((v = argument_of(&i, argc, argv, "--report")) != NULL) o->analyze_report = v;
         else if ((v = argument_of(&i, argc, argv, "--game")) != NULL) o->game = v;
         else if ((v = argument_of(&i, argc, argv, "--version")) != NULL) o->version = v, o->version_given = 1;
         else if ((v = argument_of(&i, argc, argv, "--user_data_root")) != NULL) o->user_root = v;
@@ -338,6 +347,17 @@ static int play(options_t* o, lx_paths_t* paths) {
 }
 #endif
 
+#ifdef JPT_LINUX_LAUNCHER
+static int analyze_custom_levels(const options_t* o, const lx_paths_t* paths) {
+    char dir[JPT_PATH_MAX], data[JPT_PATH_MAX + 8];
+    const jpt_game_version_t* version = NULL;
+    const int installed = jpt_game_version_resolve(paths->game_dir, "", 1, dir, sizeof dir, &version);
+    if (installed) snprintf(data, sizeof data, "%s/data", dir);
+    if (o->analyze_all) return jpt_analyze_custom_levels(o->analyze_all, installed ? data : NULL, o->analyze_report, o->analyze_json);
+    return jpt_analyze_custom_level(o->analyze, installed ? data : NULL, o->analyze_json);
+}
+#endif
+
 int main(int argc, char** argv) {
     options_t o;
     lx_paths_t paths;
@@ -353,6 +373,9 @@ int main(int argc, char** argv) {
     if (parsed) return parsed == 2 ? 0 : parsed;
     if (o.build_info) return lx_build_info_print();
     if (o.self_check) return lx_selfcheck_run();
+#ifndef JPT_LINUX_LAUNCHER
+    if (o.analyze || o.analyze_all) return fprintf(stderr, "trespasser_recomp: this build has no launcher to analyze a custom level\n"), EXIT_SETUP;
+#endif
     jpt_app_identity_apply(JPT_BUILD_VERSION);
     n = readlink("/proc/self/exe", exe, sizeof exe - 1);
     exe[n > 0 ? n : 0] = 0;
@@ -360,6 +383,9 @@ int main(int argc, char** argv) {
         fprintf(stderr, "trespasser_recomp: %s\n", err);
         return EXIT_SETUP;
     }
+#ifdef JPT_LINUX_LAUNCHER
+    if (o.analyze || o.analyze_all) return analyze_custom_levels(&o, &paths);
+#endif
     if (!lx_log_open(paths.logs_dir, o.log_file)) {
         fprintf(stderr, "trespasser_recomp: cannot create a log in %s\n", paths.logs_dir);
         return EXIT_SETUP;

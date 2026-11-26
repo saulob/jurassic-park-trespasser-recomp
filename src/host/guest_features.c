@@ -2,6 +2,8 @@
 
 #include "ce_gameplay.h"
 #include "guest_abi.h"
+#include "level_actions.h"
+#include "custom_level_guide.h"
 #include "scene_options.h"
 
 void guest_features_configure(const jpt_config_t* cfg) {
@@ -18,6 +20,9 @@ void guest_features_configure(const jpt_config_t* cfg) {
 void guest_features_install(void) {
     physics_fixes_install();
     ai_vocals_install();
+    scene_scripts_install();
+    level_actions_install();
+    level_guide_install();
     ce_gameplay_install();
     active_ai_install();
     patch117_install();
@@ -34,6 +39,7 @@ void guest_features_stop(void) {
 
 void guest_features_step(void) {
     ce_gameplay_step();
+    level_actions_step();
     widescreen_apply_fov();
     scene_options_step();
 }

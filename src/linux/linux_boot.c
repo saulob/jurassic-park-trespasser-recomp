@@ -13,6 +13,7 @@
 #include "jpt_game_version.h"
 #include "jpt_hash.h"
 #include "jpt_lift_meta.h"
+#include "jpt_renderer.h"
 #include "jpt_vpath.h"
 #include "linux_advapi32.h"
 #include "linux_dsound.h"
@@ -24,6 +25,7 @@
 #include "linux_shutdown.h"
 #include "linux_hle.h"
 #include "jpt_user_data.h"
+#include "level_session.h"
 #include "linux_features.h"
 #include "linux_lift.h"
 #include "linux_overrides.h"
@@ -61,6 +63,18 @@ static void prepare_saves(jpt_vpath_t* vp, const lx_boot_options_t* o, const jpt
     hle_advapi32_init(store, "C:\\", "D:\\");
 }
 
+static jpt_vpath_t* s_game_paths;
+
+static int game_file(const char* relative, char* out, size_t cap) {
+    static const char* const k_roots[] = { "C:\\", "C:\\data\\" };
+    char guest[JPT_PATH_MAX];
+    for (size_t i = 0; s_game_paths && i < sizeof k_roots / sizeof k_roots[0]; i++) {
+        int n = snprintf(guest, sizeof guest, "%s%s", k_roots[i], relative);
+        if (n > 0 && n < (int)sizeof guest && jpt_vpath_resolve(s_game_paths, guest, 0, out, cap) == JPT_VP_OK && !jpt_fs_is_dir(out)) return 1;
+    }
+    return 0;
+}
+
 /* The chosen package answers for C:\data and plays with its own Installed Directory (its saves name its files, and level
  * swap files are told apart only by name); the registry store stays the version's. */
 static int start_custom_level(jpt_vpath_t* vp, const lx_boot_options_t* o, char* error, size_t cap) {
@@ -69,7 +83,12 @@ static int start_custom_level(jpt_vpath_t* vp, const lx_boot_options_t* o, char*
     if (!o->custom_level || !o->custom_level->scene[0]) return 1;
     if (!jpt_custom_level_activate(user_root, o->custom_level, error, cap)) return 0;
     jpt_vpath_set_overlay(vp, 'C', "data", jpt_custom_level_find);
+    s_game_paths = vp;
+    jpt_custom_level_set_game(game_file);
+    jpt_vpath_set_drive_overlay(vp, jpt_custom_level_find_in_game, jpt_custom_level_find_relative);
     lx_log("custom-level", "%s, scene %s loaded as %s", o->custom_level->package, o->custom_level->scene, jpt_custom_level_scene());
+    for (int c = 0; c < JPT_LEVEL_CAPS; c++)
+        if (jpt_custom_level_requires((jpt_level_cap_t)c)) lx_log("custom-level", "the package needs %s: on for this session only", jpt_custom_level_cap_name((jpt_level_cap_t)c));
     return 1;
 }
 
@@ -108,7 +127,9 @@ const char* lx_boot_status_name(lx_boot_status_t status) {
 
 static lx_boot_status_t finish(lx_boot_result_t* r, lx_boot_status_t status, const char* detail) {
     r->status = status;
-    if (detail) snprintf(r->detail, sizeof r->detail, "%s", detail);
+    jpt_session_end();
+    if (status == LX_BOOT_SETUP_FAILED || status == LX_BOOT_DATA_UNAVAILABLE) jpt_custom_level_deactivate();
+    if (detail) snprintf(r->detail, sizeof r->detail, "%.*s", (int)sizeof r->detail - 1, detail);
     return status;
 }
 
@@ -307,6 +328,7 @@ lx_boot_status_t lx_boot_headless(const lx_boot_options_t* o, lx_boot_result_t* 
     gm_pe_bind(&img, bind_import, &counts, NULL);
     r->imports_total = counts.total;
     r->imports_implemented = counts.implemented;
+    level_session_start(o->version ? o->version : "en-116", jpt_renderer_key((jpt_renderer_t)settings.renderer), settings.language);
     lx_log("Linux guest", "entry %08X, SelfMod lifted entries %u", r->entry, r->selfmod_entries);
     if (o->use_features)
         lx_log("Linux features", "%u/%u overrides installed (%u required), %u lift hooks active", r->overrides_installed,

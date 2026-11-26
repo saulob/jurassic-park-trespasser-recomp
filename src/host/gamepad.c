@@ -7,6 +7,7 @@
  */
 #include "guest_va.h"
 #include "host.h"
+#include "level_actions.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -381,6 +382,7 @@ static void cinput_read(void) {
     mouse = (MEM32(sinput + SINPUT_STATE) & JPT_CMD_HAND) != 0;
     gameplay_after_read(sinput);
     gameplay_mask(sinput, blocked, resumed);
+    level_actions_input(sinput);
     if (blocked || cheats_take_input(sinput)) clear_result(sinput);
     note_hand(mouse, sinput, blocked);
     watch(sinput, mouse, blocked);

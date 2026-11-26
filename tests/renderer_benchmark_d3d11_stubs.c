@@ -30,6 +30,7 @@ HWND window_host_surface(HWND window) { return window; }
 int window_host_frames_allowed(void) { return g_stub_frames_allowed; }
 void window_host_frame_commit(unsigned generation) { (void)generation; }
 void window_host_frame_presented(void) {}
+void window_host_presentation_target(int ready) { (void)ready; }
 void window_host_view_size(int* width, int* height) { if (width) *width = 0; if (height) *height = 0; }
 float widescreen_view_tan_half_height(void) { return 0.57735f; }
 

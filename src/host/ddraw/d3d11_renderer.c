@@ -19,6 +19,8 @@
 #include "jpt_config.h"
 #include "jpt_display.h"
 #include "jpt_present_policy.h"
+#include "jpt_lit.h"
+#include "jpt_texhw.h"
 #include "loading_hd.h"
 #include "page_arena.h"
 #include "page_guard.h"
@@ -97,6 +99,12 @@ typedef struct {
     float u, v;
     uint32_t layer; /* the texture's slice in its array */
 } tl_vertex_t;
+
+/* Beside each tl_vertex_t of an EFFECT_LIT batch. */
+typedef struct {
+    jpt_lit_vertex_t lit;
+    uint32_t normal; /* the normal map's layer */
+} lit_vertex_t;
 
 typedef struct {
     float rect[4], uv[4], color[4];
@@ -265,6 +273,13 @@ static struct {
     int batch_has_texture;
     int batch_effect;            /* EFFECT_* */
     dd_surface_t* batch_water;   /* the water texture of an EFFECT_WATER batch */
+    struct {
+        ID3D11VertexShader* vs;
+        ID3D11InputLayout* layout;
+        ID3D11Buffer* vb;
+        UINT vb_size, vb_pos, cap;
+        lit_vertex_t* verts; /* parallel to verts in an EFFECT_LIT batch */
+    } lit;
     /* What flush() last bound; any other binding clears valid. */
     struct {
         int valid;
@@ -393,7 +408,7 @@ static struct {
     } ao;
 } R;
 
-enum { EFFECT_NONE, EFFECT_WATER, EFFECT_SKY };
+enum { EFFECT_NONE, EFFECT_WATER, EFFECT_SKY, EFFECT_LIT };
 
 static void flush(void);
 static void flush_for(int cause);
@@ -635,12 +650,33 @@ static int create_static_objects(void) {
         hr = ID3D11Device_CreateVertexShader(R.dev, ID3D10Blob_GetBufferPointer(R.code[D3D11_SHADER_VS_POLY]),
                                              ID3D10Blob_GetBufferSize(R.code[D3D11_SHADER_VS_POLY]), NULL, &R.vs_poly);
     for (int i = D3D11_SHADER_PS_FIXED; i < D3D11_SHADER_COUNT && SUCCEEDED(hr); i++)
-        if (i != D3D11_SHADER_VS_QUAD && i != D3D11_SHADER_VS_POLY)
+        if (i != D3D11_SHADER_VS_QUAD && i != D3D11_SHADER_VS_POLY && i != D3D11_SHADER_VS_LIT)
             hr = ID3D11Device_CreatePixelShader(R.dev, ID3D10Blob_GetBufferPointer(R.code[i]),
                                                 ID3D10Blob_GetBufferSize(R.code[i]), NULL, &R.ps[i]);
     if (SUCCEEDED(hr))
         hr = ID3D11Device_CreateInputLayout(R.dev, elements, 5, ID3D10Blob_GetBufferPointer(R.code[D3D11_SHADER_VS_TL]),
                                             ID3D10Blob_GetBufferSize(R.code[D3D11_SHADER_VS_TL]), &R.layout);
+    if (SUCCEEDED(hr))
+        hr = ID3D11Device_CreateVertexShader(R.dev, ID3D10Blob_GetBufferPointer(R.code[D3D11_SHADER_VS_LIT]),
+                                             ID3D10Blob_GetBufferSize(R.code[D3D11_SHADER_VS_LIT]), NULL, &R.lit.vs);
+    if (SUCCEEDED(hr)) {
+        D3D11_INPUT_ELEMENT_DESC lit[9];
+        static const struct {
+            UINT index;
+            DXGI_FORMAT format;
+            UINT at;
+        } k_lit[4] = { { 2, DXGI_FORMAT_R32G32B32A32_FLOAT, offsetof(lit_vertex_t, lit.light) },
+                       { 3, DXGI_FORMAT_R32G32B32A32_FLOAT, offsetof(lit_vertex_t, lit.material) },
+                       { 4, DXGI_FORMAT_R32G32_FLOAT, offsetof(lit_vertex_t, lit.shade) },
+                       { 5, DXGI_FORMAT_R32_UINT, offsetof(lit_vertex_t, normal) } };
+        memcpy(lit, elements, 5 * sizeof lit[0]);
+        for (int i = 0; i < 4; i++) {
+            const D3D11_INPUT_ELEMENT_DESC e = { "TEXCOORD", k_lit[i].index, k_lit[i].format, 1, k_lit[i].at, D3D11_INPUT_PER_VERTEX_DATA, 0 };
+            lit[5 + i] = e;
+        }
+        hr = ID3D11Device_CreateInputLayout(R.dev, lit, 9, ID3D10Blob_GetBufferPointer(R.code[D3D11_SHADER_VS_LIT]),
+                                            ID3D10Blob_GetBufferSize(R.code[D3D11_SHADER_VS_LIT]), &R.lit.layout);
+    }
     if (FAILED(hr)) {
         log_hr("shader object creation", hr);
         return 0;
@@ -713,6 +749,10 @@ static void release_static_objects(void) {
     release_poly_resources();
     for (int i = 0; i < D3D11_SHADER_COUNT; i++) SAFE_RELEASE(R.ps[i]);
     SAFE_RELEASE(R.layout);
+    SAFE_RELEASE(R.lit.layout);
+    SAFE_RELEASE(R.lit.vs);
+    SAFE_RELEASE(R.lit.vb);
+    R.lit.vb_size = R.lit.vb_pos = 0;
     SAFE_RELEASE(R.vb);
     SAFE_RELEASE(R.ib);
     SAFE_RELEASE(R.cb_frame);
@@ -1045,6 +1085,8 @@ static void destroy_texture(d3dr_texture_t* t) {
     R.textures_released_window++;
     free(t);
 }
+
+static void drop_overrides(void);
 
 static void release_texture(dd_surface_t* s) {
     d3dr_texture_t* t = (d3dr_texture_t*)s->gpu_texture;
@@ -1474,6 +1516,7 @@ static void d3d11_be_device_lost(void) {
     R.batch_arrays = 0;
     R.bound.valid = 0;
     flush_parked();
+    drop_overrides();
     drop_deferred(NULL);
     end_polygon_run(NULL);
     R.batch_dev = NULL;
@@ -2200,6 +2243,82 @@ static void note_first_upload(const dd_surface_t* s) {
     }
 }
 
+/* ---- pictures of a custom level that stand for textures ---- */
+
+#define OVERRIDE_POOL_SIDE 256u
+static d3dr_texture_t* s_overrides[JPT_TEXHW_FILES_MAX][JPT_TEXHW_CLASSES];
+static unsigned s_override_generation;
+static int s_override_count;
+
+static void drop_overrides(void) {
+    for (int i = 0; s_override_count && i < JPT_TEXHW_FILES_MAX; i++)
+        for (int k = 0; k < JPT_TEXHW_CLASSES; k++)
+            if (s_overrides[i][k]) {
+                destroy_texture(s_overrides[i][k]);
+                s_overrides[i][k] = NULL;
+                s_override_count--;
+            }
+}
+
+static jpt_texhw_class_t override_class(int format) {
+    if (!d3dt_format_has_alpha(format)) return JPT_TEXHW_OPAQUE;
+    return format == D3DT_FMT_ARGB1555 ? JPT_TEXHW_CUTOUT : JPT_TEXHW_BLENDED;
+}
+
+static d3dr_texture_t* make_override(const jpt_picture_t* p, int format) {
+    const UINT levels = d3dt_filter_uses_mips(R.filter) ? (UINT)p->levels : 1;
+    d3dr_texture_t* t = (d3dr_texture_t*)calloc(1, sizeof *t);
+    if (!t) return NULL;
+    if (p->width > OVERRIDE_POOL_SIDE || p->height > OVERRIDE_POOL_SIDE || !pool_take(t, p->width, p->height, levels)) {
+        t->tex = make_texture(p->width, p->height, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, levels, 0);
+        if (!t->tex || !(t->srv = array_view(t->tex, levels, 1))) {
+            SAFE_RELEASE(t->tex);
+            free(t);
+            return NULL;
+        }
+    }
+    t->width = p->width;
+    t->height = p->height;
+    t->levels = levels;
+    t->format = format;
+    t->generation = R.generation;
+    t->bytes = d3dt_mip_chain_texels(p->width, p->height, levels) * 4;
+    R.texture_memory += t->bytes;
+    R.textures_alive++;
+    for (UINT i = 0; i < levels; i++) {
+        uint32_t w, h;
+        const uint8_t* level = jpt_picture_level(p, (int)i, &w, &h);
+        ID3D11DeviceContext_UpdateSubresource(R.ctx, texture_resource(t), texture_subresource(t, i), NULL, level, w * 4, 0);
+    }
+    return t;
+}
+
+static d3dr_texture_t* override_picture(int id, jpt_texhw_class_t as, int format) {
+    d3dr_texture_t** at;
+    jpt_picture_t picture;
+    if (s_override_generation != jpt_texhw_generation()) {
+        drop_overrides();
+        s_override_generation = jpt_texhw_generation();
+    }
+    if (!format || id < 1 || id > JPT_TEXHW_FILES_MAX) return NULL;
+    at = &s_overrides[id - 1][as];
+    if (*at && (*at)->generation != R.generation) {
+        destroy_texture(*at);
+        *at = NULL;
+        s_override_count--;
+    }
+    if (*at || jpt_texhw_picture(id, as, &picture) <= 0) return *at;
+    *at = make_override(&picture, format);
+    s_override_count += *at != NULL;
+    jpt_picture_free(&picture);
+    return *at;
+}
+
+static d3dr_texture_t* override_for(const dd_surface_t* s) {
+    const int format = pixelformat_texture_format(&s->format);
+    return override_picture(s->override_id, override_class(format), format);
+}
+
 static d3dr_texture_t* texture_for(dd_surface_t* s) {
     d3dr_texture_t* t = (d3dr_texture_t*)s->gpu_texture;
     int format = pixelformat_texture_format(&s->format);
@@ -2209,6 +2328,10 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
     uint32_t palette[256], palette_sum = 0;
     int64_t upload_start;
     int uploaded = 0;
+    if (s->override_id) {
+        d3dr_texture_t* picture = override_for(s);
+        if (picture) return picture;
+    }
     if (!format) {
         log_unknown_format(s);
         return NULL;
@@ -2229,7 +2352,7 @@ static d3dr_texture_t* texture_for(dd_surface_t* s) {
         }
         t = (d3dr_texture_t*)calloc(1, sizeof *t);
         if (!t) return NULL;
-        if (!pool_take(t, s->width, s->height, levels)) {
+        if (!s->device || !pool_take(t, s->width, s->height, levels)) {
             t->tex = make_texture(s->width, s->height, DXGI_FORMAT_B8G8R8A8_UNORM, 1, D3D11_USAGE_DEFAULT,
                                   D3D11_BIND_SHADER_RESOURCE, 0, levels, 0);
             if (!t->tex || !(t->srv = array_view(t->tex, levels, 1))) {
@@ -2424,6 +2547,7 @@ static ID3D11PixelShader* fixed_shader(void) {
 
 static ID3D11PixelShader* effect_shader(int effect) {
     if (effect == EFFECT_WATER) return R.ps[R.ao.marking ? D3D11_SHADER_PS_WATER_AO : D3D11_SHADER_PS_WATER];
+    if (effect == EFFECT_LIT) return R.ps[R.ao.marking ? D3D11_SHADER_PS_LIT_AO : D3D11_SHADER_PS_LIT];
     return R.ps[R.ao.marking ? D3D11_SHADER_PS_SKY_AO : D3D11_SHADER_PS_SKY];
 }
 
@@ -2712,6 +2836,7 @@ static int sky_ready(void) {
 
 static void effect_bind(int effect, ID3D11ShaderResourceView* const* views) {
     ID3D11DeviceContext_PSSetShader(R.ctx, effect_shader(effect), NULL, 0);
+    if (effect == EFFECT_LIT) return;
     ID3D11DeviceContext_PSSetConstantBuffers(R.ctx, 3, 1, &R.fx.cb);
     if (effect != EFFECT_WATER) return;
     ID3D11DeviceContext_PSSetShaderResources(R.ctx, 18, 2, views);
@@ -2722,6 +2847,35 @@ static void effect_unbind(int effect) {
     ID3D11ShaderResourceView* none[2] = { NULL, NULL };
     ID3D11DeviceContext_PSSetShader(R.ctx, R.bound.ps, NULL, 0);
     if (effect == EFFECT_WATER) ID3D11DeviceContext_PSSetShaderResources(R.ctx, 18, 2, none);
+}
+
+static int lit_capacity(UINT verts) {
+    lit_vertex_t* grown;
+    if (R.nverts + verts <= R.lit.cap) return 1;
+    grown = (lit_vertex_t*)realloc(R.lit.verts, (size_t)R.cap_verts * sizeof *grown);
+    if (!grown) return 0;
+    R.lit.verts = grown;
+    R.lit.cap = R.cap_verts;
+    return 1;
+}
+
+static int stream_lit(UINT* offset) {
+    if (!R.lit.vb && (R.lit.vb = make_buffer(VB_INITIAL, D3D11_BIND_VERTEX_BUFFER)) == NULL) return 0;
+    if (!R.lit.vb_size) R.lit.vb_size = VB_INITIAL;
+    return stream(&R.lit.vb, &R.lit.vb_size, &R.lit.vb_pos, D3D11_BIND_VERTEX_BUFFER, R.lit.verts, R.nverts * (UINT)sizeof(lit_vertex_t), offset);
+}
+
+/* A batch of lit polygons: both vertex streams start at their own offsets. */
+static void draw_lit(UINT vb_offset, UINT lit_offset, UINT ib_offset) {
+    ID3D11Buffer* buffers[2] = { R.vb, R.lit.vb };
+    UINT strides[2] = { sizeof(tl_vertex_t), sizeof(lit_vertex_t) }, offsets[2] = { vb_offset, lit_offset };
+    ID3D11DeviceContext_IASetInputLayout(R.ctx, R.lit.layout);
+    ID3D11DeviceContext_VSSetShader(R.ctx, R.lit.vs, NULL, 0);
+    ID3D11DeviceContext_IASetVertexBuffers(R.ctx, 0, 2, buffers, strides, offsets);
+    ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, 0);
+    ID3D11DeviceContext_IASetInputLayout(R.ctx, R.layout);
+    ID3D11DeviceContext_VSSetShader(R.ctx, R.vs_tl, NULL, 0);
+    R.bound.vb = NULL;
 }
 
 static void end_batch(void) {
@@ -2738,7 +2892,7 @@ static void flush(void) {
     d3dr_target_t* t = dev ? dev->backend : NULL;
     d3dt_draw_constants_t dc;
     d3dr_texture_t* tex = R.batch_tex;
-    UINT vb_offset = 0, ib_offset = 0, stride = sizeof(tl_vertex_t);
+    UINT vb_offset = 0, ib_offset = 0, lit_offset = 0, stride = sizeof(tl_vertex_t);
     D3D11_VIEWPORT vp;
     D3D11_RECT scissor;
     ID3D11SamplerState* samplers[D3D11_DEVICE_SAMPLER + 1];
@@ -2771,7 +2925,8 @@ static void flush(void) {
         R.frame_cb_valid = 1;
     }
     if (!stream(&R.vb, &R.vb_size, &R.vb_pos, D3D11_BIND_VERTEX_BUFFER, R.verts, R.nverts * stride, &vb_offset) ||
-        !stream(&R.ib, &R.ib_size, &R.ib_pos, D3D11_BIND_INDEX_BUFFER, R.indices, R.nindices * 4, &ib_offset)) {
+        !stream(&R.ib, &R.ib_size, &R.ib_pos, D3D11_BIND_INDEX_BUFFER, R.indices, R.nindices * 4, &ib_offset) ||
+        (effect == EFFECT_LIT && !stream_lit(&lit_offset))) {
         host_log("d3d11", "vertex or index buffer upload failed; %u vertices dropped", R.nverts);
         end_batch();
         return;
@@ -2796,7 +2951,8 @@ static void flush(void) {
     if (effect == EFFECT_SKY && !sky_ready()) effect = EFFECT_NONE;
     bind_draw_states(dev, t, has_depth, sampled ? samplers : NULL, &vp, &scissor);
     if (effect) effect_bind(effect, effect_views);
-    ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, (INT)(vb_offset / stride));
+    if (effect == EFFECT_LIT) draw_lit(vb_offset, lit_offset, ib_offset);
+    else ID3D11DeviceContext_DrawIndexed(R.ctx, R.nindices, ib_offset / 4u, (INT)(vb_offset / stride));
     if (effect) effect_unbind(effect);
     if (writes_depth) {
         t->ao_scene = 1;
@@ -2833,7 +2989,7 @@ static uint32_t texture_flags(const d3d_device_t* dev, const d3dr_texture_t* tex
     if (!tex) return 0;
     flags = D3D11_PS_TEXTURED;
     if (d3dt_format_has_alpha(tex->format)) flags |= D3D11_PS_TEX_ALPHA;
-    if (dev->render[D3DRENDERSTATE_COLORKEYENABLE] && dev->texture->has_src_key) flags |= D3D11_PS_KEY_TEST;
+    if (dev->render[D3DRENDERSTATE_COLORKEYENABLE] && dev->texture->has_src_key && tex == dev->texture->gpu_texture) flags |= D3D11_PS_KEY_TEST;
     return flags;
 }
 
@@ -2879,9 +3035,11 @@ static HRESULT draw_translate(d3d_device_t* dev, int type, DWORD fvf, const void
     d3dr_texture_t* tex;
     ID3D11ShaderResourceView* srv;
     uint32_t tex_flags;
-    int slot = 0, effect;
+    int slot = 0, normal_slot = 0, effect;
     dd_surface_t* water;
     const BYTE* src = (const BYTE*)vertices;
+    const jpt_lit_draw_t* lit;
+    d3dr_texture_t* normal = NULL;
     if (s_draw_timed) s_draw_stage[0] = ticks();
     if (!d3dt_fvf_layout(fvf, &stride, &diffuse, &specular, &uv)) {
         log_once(&R.fvf_logged, "DrawPrimitive vertex format 0x%lX (type %lu) from sub_%08X: only pre-transformed "
@@ -2914,6 +3072,8 @@ static HRESULT draw_translate(d3d_device_t* dev, int type, DWORD fvf, const void
     tex_flags = texture_flags(dev, tex);
     effect = draw_effect(dev);
     water = effect == EFFECT_WATER ? dev->texture : NULL;
+    lit = effect == EFFECT_NONE && srv && !indices && !R.debug_output && tex != dev->texture->gpu_texture ? jpt_lit_draw(count) : NULL;
+    if (lit && (normal = override_picture(lit->normal, JPT_TEXHW_NORMAL, D3DT_FMT_ARGB8888)) != NULL && texture_view(normal)) effect = EFFECT_LIT;
     if (s_draw_timed) s_draw_stage[1] = ticks();
     R.detail.draw_primitive_calls++;
     if (R.batch_dev != dev || R.batch_topology != topology ||
@@ -2930,6 +3090,12 @@ static HRESULT draw_translate(d3d_device_t* dev, int type, DWORD fvf, const void
         flush();
         slot = array_slot(srv);
     }
+    if (effect == EFFECT_LIT && (normal_slot = array_slot(texture_view(normal))) < 0) {
+        count_flush(FLUSH_ARRAYS_FULL);
+        flush();
+        slot = array_slot(srv);
+        normal_slot = array_slot(texture_view(normal));
+    }
     if (s_draw_timed) s_draw_stage[2] = ticks();
     if (R.nindices && tex != R.batch_tex) {
         R.perf.texture_joins++;
@@ -2943,7 +3109,7 @@ static HRESULT draw_translate(d3d_device_t* dev, int type, DWORD fvf, const void
     if (tex) tex->batch = R.batch_serial;
     layer = d3dt_world_layer(tex && tex->pool ? tex->slice : 0, (uint32_t)slot, srv ? tex_flags : 0,
                              d3dt_vertex_sampler(dev->stage[0][D3DTSS_ADDRESSU], dev->stage[0][D3DTSS_ADDRESSV]));
-    if (!ensure_capacity(count, (indices ? index_count : count) * 3)) return DDERR_OUTOFMEMORY;
+    if (!ensure_capacity(count, (indices ? index_count : count) * 3) || (effect == EFFECT_LIT && !lit_capacity(count))) return DDERR_OUTOFMEMORY;
     base = R.nverts;
     for (DWORD i = 0; i < count; i++, src += stride) {
         tl_vertex_t* v = &R.verts[base + i];
@@ -2954,6 +3120,15 @@ static HRESULT draw_translate(d3d_device_t* dev, int type, DWORD fvf, const void
         else v->u = v->v = 0.0f;
         v->layer = layer;
     }
+    for (DWORD i = 0; effect == EFFECT_LIT && i < count; i++) {
+        tl_vertex_t* v = &R.verts[base + i];
+        v->diffuse = (v->diffuse & 0xFF000000u) | lit->dark;
+        v->specular = (v->specular & 0xFF000000u) | lit->full;
+        R.lit.verts[base + i].lit = lit->vertices[i];
+        R.lit.verts[base + i].normal = d3dt_world_layer(normal->pool ? normal->slice : 0, (uint32_t)normal_slot, D3D11_PS_TEXTURED,
+                                                        d3dt_vertex_sampler(dev->stage[0][D3DTSS_ADDRESSU], dev->stage[0][D3DTSS_ADDRESSV]));
+    }
+    if (normal && effect == EFFECT_LIT) normal->batch = R.batch_serial;
     if (t->gpu_box_known) {
         d3dt_rect_t drawn = d3dt_vertex_box(&R.verts[base].x, sizeof(tl_vertex_t), count, t->legacy_w, t->legacy_h);
         gpu_box_add(t, &drawn);

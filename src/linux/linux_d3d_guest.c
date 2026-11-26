@@ -5,9 +5,12 @@
 #include "ce_effects.h"
 #include "guest_abi.h"
 #include "guest_features.h"
+#include "jpt_custom_level.h"
 #include "linux_d3d.h"
 #include "linux_features.h"
 #include "scene_options.h"
+#include "sky_layers.h"
+#include "texhw_guest.h"
 #include "water_kernels.h"
 
 #define SKY_DRAW_D3D GVA(0x005242C0)
@@ -18,6 +21,7 @@
 #define SKY_SCROLL_V 0x4Cu
 #define CAMERA_POSITION GVA(0x00732978)
 
+#define UPLOAD_POLYGONS_VA GVA(0x0055A4E0)
 #define DRAW_POLYGON_VA GVA(0x0055F540)
 #define RASTER_LOCK_VA GVA(0x00503400)
 #define RASTER_WIN_LOCK_VA GVA(0x00504D20)
@@ -46,6 +50,14 @@ static void sky_draw(void) {
     if (g_alias_entry || !sky || !guest_readable(sky + SKY_FOG_HIGH, SKY_SCROLL_V + 4 - SKY_FOG_HIGH) ||
         !guest_readable(CAMERA_POSITION, 12)) {
         s_sky_lifted();
+        return;
+    }
+    if (sky_layers_ready()) {
+        sky_layers_begin(sky);
+        lx_d3d_sky_layers(1);
+        s_sky_lifted();
+        lx_d3d_sky_layers(0);
+        sky_layers_end(sky);
         return;
     }
     p[0] = rdf(CAMERA_POSITION) * FX_SKY_UV_PER_METRE + FX_SKY_U_OFFSET + rdf(sky + SKY_SCROLL_U);
@@ -88,7 +100,9 @@ static void draw_polygon(void) {
         return;
     }
     s_drawing++;
+    texhw_lit_begin(MEM32(g_esp + 4));
     s_draw_lifted();
+    texhw_lit_end();
     s_drawing--;
 }
 
@@ -133,6 +147,14 @@ static int scene_shown(void) {
     return guest_ui_probe(&v) && v.ui == GUEST_UI_GAMEPLAY;
 }
 
+static recomp_func_t s_upload_lifted;
+
+static void upload_polygons(void) {
+    const uint32_t count = g_alias_entry ? 0 : GUEST_ARG(0), polygons = g_alias_entry ? 0 : GUEST_ARG(1);
+    s_upload_lifted();
+    texhw_tag_polygons(count, polygons, lx_d3d_texture_override);
+}
+
 static void install_polygons(void) {
     static const recomp_func_t entries[STORE_ONLY_COUNT] = { store_only_0, store_only_1, store_only_2, store_only_3, store_only_4 };
     if (!guest_override_install(DRAW_POLYGON_VA, draw_polygon, &s_draw_lifted) ||
@@ -151,11 +173,13 @@ void lx_d3d_guest_install(const jpt_config_t* cfg) {
     lx_d3d_set_view(scene_shown, widescreen_view_tan_half_height);
     lx_d3d_set_lock_caller(lock_caller);
     water_rows_observer = water_texel;
+    sky_layers_install(lx_d3d_sky_free);
     if (!guest_override_install(WATER_ROWS_VA, water_rows, &water_rows_lifted))
         host_log("host", "warning: the water's rows could not be hooked: water refraction is not available");
     if (!guest_override_install(SKY_DRAW_D3D, sky_draw, &s_sky_lifted))
         host_log("host", "warning: the sky's Direct3D draw could not be hooked: Enhanced sky is not available");
     install_polygons();
+    if (jpt_custom_level_requires(JPT_LEVEL_CAP_TEXHW)) guest_override_install(UPLOAD_POLYGONS_VA, upload_polygons, &s_upload_lifted);
 }
 
 void lx_d3d_guest_remove(void) {

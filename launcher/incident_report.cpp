@@ -33,6 +33,7 @@ constexpr size_t kFewestLogDigits = 3, kMostLogDigits = 10;
 constexpr size_t kLogsLookedAt = 200;
 constexpr size_t kSessionHeadBytes = 128 * 1024;
 constexpr size_t kLogTailBytes = 256 * 1024;
+constexpr size_t kLevelLogBytes = 2 * 1024 * 1024;
 
 constexpr std::string_view kGameStartMarks[] = {"[launcher] closed, starting the game", "[loader  ] image mapped at", "[Linux guest] entry"};
 constexpr std::string_view kLauncherClosedMark = "[launcher] closed";
@@ -194,14 +195,15 @@ std::string LinuxDistributionText() {
 
 } // namespace
 
-std::vector<GameLog> FindGameLogs(const fs::path& folder, const fs::path& running_log, size_t most) {
+std::vector<GameLog> FindGameLogs(const fs::path& folder, const fs::path& running_log, size_t most, const fs::path& wanted) {
     std::vector<GameLog> logs;
     std::vector<Candidate> candidates = LogCandidates(folder, running_log);
     if (candidates.size() > kLogsLookedAt) candidates.resize(kLogsLookedAt);
     for (const Candidate& candidate : candidates) {
-        if (logs.size() == most) break;
+        const bool asked = !wanted.empty() && candidate.path.lexically_normal() == wanted.lexically_normal();
+        if (logs.size() >= most && !asked) continue;
         const Session session = ReadSession(candidate.path);
-        if (session.closed_in_launcher && !candidate.running) continue;
+        if (session.closed_in_launcher && !candidate.running && !asked) continue;
         LogRole role = LogRole::kNone;
         if (candidate.running) {
             role = session.activity == LogActivity::kGameplay ? LogRole::kCurrentGameplay : LogRole::kCurrentLauncher;
@@ -213,6 +215,15 @@ std::vector<GameLog> FindGameLogs(const fs::path& folder, const fs::path& runnin
     }
     MarkLastGameplay(logs);
     return logs;
+}
+
+fs::path FindLevelLog(const fs::path& folder, const fs::path& running_log, const std::string& package, const std::string& scene) {
+    const std::string mark = "[custom-level] " + package + ", scene " + scene + " loaded as ";
+    std::vector<Candidate> candidates = LogCandidates(folder, running_log);
+    if (candidates.size() > kLogsLookedAt) candidates.resize(kLogsLookedAt);
+    for (const Candidate& candidate : candidates)
+        if (ReadPart(candidate.path, 0, kLevelLogBytes).find(mark) != std::string::npos) return candidate.path;
+    return {};
 }
 
 std::string DumpNameOf(std::string_view log_name) {
@@ -247,6 +258,11 @@ size_t DefaultGameLog(const std::vector<GameLog>& logs) {
         return log.role != LogRole::kCurrentLauncher && log.role != LogRole::kCurrentGameplay;
     });
     return earlier == logs.end() ? 0 : size_t(earlier - logs.begin());
+}
+
+size_t ChooseGameLog(const std::vector<GameLog>& logs, const fs::path& wanted) {
+    const auto named = std::find_if(logs.begin(), logs.end(), [&wanted](const GameLog& log) { return !wanted.empty() && log.path.lexically_normal() == wanted.lexically_normal(); });
+    return named == logs.end() ? DefaultGameLog(logs) : size_t(named - logs.begin());
 }
 
 const char* LogRoleText(LogRole role) {

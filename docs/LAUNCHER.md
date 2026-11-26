@@ -120,7 +120,7 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 | Page | Rows |
 |---|---|
 | Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
-| Custom Levels | Import ZIP / 7z, Import Folder, one row per level: name, scene, the version selected on Play, status; Play, Readme (only with instructions; opens the original file in the system's application), Open Folder, Delete ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)) |
+| Custom Levels | Import ZIP / 7z / RAR, Import Folder and their outcome (reason, Bug Report, Close), Installed levels (N) and their order (newest, oldest, name), listed off the UI thread behind `Loading custom levels...` (imports show their phase, percentage and Cancel in place of the import buttons), one row per level, the start level first: name, scene, status (Ready, Not supported); Play and Readme only when Ready, Bug Report only when not (this session's log), Readme (only with instructions; opens the original file in the system's application), Open Folder, Delete ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)) |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Fog, Shadows, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Enable Minimap, Enable Compass, Enable Waypoints, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
@@ -151,7 +151,9 @@ The card shows **Ready to play · English · Build 116** with the game's languag
 yet, why (see [GAME_VERSIONS](GAME_VERSIONS.md)). With more than one version installed, **Game version** chooses which
 one Play starts (setting `game_version`; empty: the first ready one the port runs). A selected version that is removed
 or broken is replaced by another ready one. The launcher's own language stays the one chosen in Gameplay. PLAY saves the pending settings once ("Settings saved. Starting game..."),
-closes the launcher and the game starts. It is refused, with the reason, while the files are not ready or an install
+closes the launcher and the game starts. On Windows a handoff window in the launcher's place and colours ("Starting game...",
+"Loading <package>..." and the real start-up phases, with a spinner) shows until the game window is shown; a start that fails before it
+says so there until it is closed, and the log has `[launch] failed stage=... reason=...`. It is refused, with the reason, while the files are not ready or an install
 runs; a failed save keeps the launcher open. **Save** writes without starting; **Quit** (Alt+F4) closes without saving.
 
 ## Import game

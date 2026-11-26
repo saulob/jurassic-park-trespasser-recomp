@@ -47,6 +47,7 @@ typedef struct {
 } presenter_t;
 
 static presenter_t s_p;
+static const FLOAT k_black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 static int s_vsync = 1;
 static char s_graphics_card[JPT_GPU_LABEL_MAX];
 static dd_adapter_t s_adapter;
@@ -147,6 +148,7 @@ static void release_text_layer(void) {
 }
 
 void d3d11_present_release(void) {
+    int had_swapchain = s_p.swapchain != NULL;
     release_text_layer();
     video_hd_release();
     video_test_release();
@@ -162,6 +164,7 @@ void d3d11_present_release(void) {
     s_p.device = NULL;
     s_p.window = NULL;
     s_p.width = s_p.height = 0;
+    if (had_swapchain) window_host_presentation_target(0);
 }
 
 static HRESULT create_on(IDXGIAdapter* adapter, D3D_DRIVER_TYPE type, D3D_FEATURE_LEVEL* level) {
@@ -274,6 +277,7 @@ static int create_swapchain(HWND window, UINT width, UINT height) {
     if (!s_p.swapchain) return 0;
     host_log("d3d11", "windowed swap chain on window 0x%08X: %ux%u B8G8R8A8, %s, no exclusive full screen",
              (uint32_t)(uintptr_t)window, width, height, effect);
+    window_host_presentation_target(1);
     return 1;
 }
 
@@ -528,6 +532,8 @@ ID3D11RenderTargetView* present_target(HWND window, UINT width, UINT height) {
         log_hr("swap chain render target view", hr);
         return NULL;
     }
+    /* New or resized buffers hold undefined pixels; the frame covers them all, the clear makes that independent of it. */
+    ID3D11DeviceContext_ClearRenderTargetView(s_p.context, s_p.back_rtv, k_black);
     return s_p.back_rtv;
 }
 

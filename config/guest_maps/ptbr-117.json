@@ -319,6 +319,13 @@
    "via": "hash",
    "where": "src/host/active_ai.c:58"
   },
+  "0041AD50": {
+   "class": "identical",
+   "to": "00423580",
+   "function": "0041AD50",
+   "via": "hash",
+   "where": "src/host/level_actions.c:27"
+  },
   "0041ADF0": {
    "class": "identical",
    "to": "00611780",
@@ -430,6 +437,13 @@
    "function": "0043D7E0",
    "via": "hash",
    "where": "src/host/menu_audio.c:9"
+  },
+  "0043DA80": {
+   "class": "identical",
+   "to": "00421CC0",
+   "function": "0043DA80",
+   "via": "hash",
+   "where": "src/host/level_actions.c:32"
   },
   "00441D1D": {
    "class": "identical",
@@ -608,6 +622,34 @@
    "via": "hash",
    "where": "src/host/lift_hook_list.h:23"
   },
+  "00466900": {
+   "class": "identical",
+   "to": "0044C180",
+   "function": "00466900",
+   "via": "hash",
+   "where": "src/host/level_actions.c:37"
+  },
+  "00467BB0": {
+   "class": "identical",
+   "to": "0044D430",
+   "function": "00467BB0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:40"
+  },
+  "00467BC0": {
+   "class": "identical",
+   "to": "0044D440",
+   "function": "00467BC0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:41"
+  },
+  "00467BE0": {
+   "class": "identical",
+   "to": "0044D460",
+   "function": "00467BE0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:42"
+  },
   "00468710": {
    "class": "identical",
    "to": "0044DF90",
@@ -621,6 +663,27 @@
    "function": "00468980",
    "via": "hash",
    "where": "src/host/tutorial_prompts.c:24"
+  },
+  "0046BE90": {
+   "class": "identical",
+   "to": "004516D0",
+   "function": "0046BE90",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:43"
+  },
+  "0046C6D0": {
+   "class": "identical",
+   "to": "00451F10",
+   "function": "0046C6D0",
+   "via": "hash",
+   "where": "src/host/level_actions.c:16"
+  },
+  "00470A70": {
+   "class": "identical",
+   "to": "004562B0",
+   "function": "00470A70",
+   "via": "hash",
+   "where": "src/host/level_actions.c:30"
   },
   "00472B60": {
    "class": "identical",
@@ -961,6 +1024,13 @@
    "via": "hash",
    "where": "src/host/ce_graphics.c:11"
   },
+  "0053E350": {
+   "class": "identical",
+   "to": "005261E0",
+   "function": "0053E350",
+   "via": "hash",
+   "where": "src/host/level_actions.c:34"
+  },
   "00543830": {
    "class": "identical",
    "to": "0052B740",
@@ -1088,6 +1158,20 @@
    "via": "hash",
    "where": "src/host/engine_heaps.c:12"
   },
+  "00604DD0": {
+   "class": "identical",
+   "to": "005ECD10",
+   "function": "00604DD0",
+   "via": "hash",
+   "where": "src/host/level_actions.c:22"
+  },
+  "00606630": {
+   "class": "identical",
+   "to": "005EECA0",
+   "function": "00606630",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:81"
+  },
   "00607C10": {
    "class": "identical",
    "to": "005F02A0",
@@ -1137,6 +1221,13 @@
    "via": "hash",
    "where": "src/host/guest_override_list.h:76"
   },
+  "00611D50": {
+   "class": "identical",
+   "to": "005FA890",
+   "function": "00611D50",
+   "via": "hash",
+   "where": "src/host/level_actions.c:38"
+  },
   "00614A60": {
    "class": "identical",
    "to": "005FD5A0",
@@ -1151,12 +1242,26 @@
    "via": "hash",
    "where": "src/host/cheats.c:48"
   },
+  "00614F50": {
+   "class": "identical",
+   "to": "005FDAA0",
+   "function": "00614F50",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:78"
+  },
   "00617F20": {
    "class": "identical",
    "to": "00600AE0",
    "function": "00617F20",
    "via": "hash",
    "where": "src/host/cheats.c:47"
+  },
+  "006230F0": {
+   "class": "identical",
+   "to": "0060BC30",
+   "function": "006230F0",
+   "via": "hash",
+   "where": "src/host/level_actions.c:33"
   },
   "006264D0": {
    "class": "identical",
@@ -1417,6 +1522,24 @@
    "votes": 41,
    "where": "src/host/physics_fixes.c:46"
   },
+  "0064A274": {
+   "class": "data",
+   "to": "0064D2CC",
+   "votes": 35003,
+   "where": "src/host/level_actions.c:35"
+  },
+  "0064ADF4": {
+   "class": "data",
+   "to": "0064E028",
+   "votes": 35001,
+   "where": "src/host/level_actions.c:39"
+  },
+  "0064AF64": {
+   "class": "data",
+   "to": "0064E1C4",
+   "votes": 35001,
+   "where": "src/host/level_actions.c:20"
+  },
   "0064B22C": {
    "class": "data",
    "to": "0064E490",
@@ -1428,6 +1551,12 @@
    "to": "0064E62C",
    "votes": 35002,
    "where": "src/host/host_policy.h:449"
+  },
+  "0064B990": {
+   "class": "data",
+   "to": "0064EBFC",
+   "votes": 35001,
+   "where": "src/host/level_actions.c:31"
   },
   "0064B9B0": {
    "class": "data",
@@ -1513,6 +1642,18 @@
    "votes": 66,
    "where": "src/host/polygon_submit.c:27"
   },
+  "0064EB60": {
+   "class": "data",
+   "to": "00651E70",
+   "votes": 35003,
+   "where": "src/host/texhw_guest.c:61"
+  },
+  "0064EBA8": {
+   "class": "data",
+   "to": "00651EB8",
+   "votes": 35002,
+   "where": "src/host/texhw_guest.c:60"
+  },
   "00651C20": {
    "class": "data",
    "to": "00655C50",
@@ -1591,6 +1732,12 @@
    "votes": 5,
    "where": "src/host/engine_limits.c:46"
   },
+  "00664D50": {
+   "class": "data",
+   "to": "00667F18",
+   "votes": 1,
+   "where": "src/host/engine_heaps.c:36"
+  },
   "00665130": {
    "class": "data",
    "to": "00668354",
@@ -1620,6 +1767,12 @@
    "to": "0066E108",
    "votes": 8,
    "where": "src/host/tutorial_prompts.c:31"
+  },
+  "0066B6FC": {
+   "class": "data",
+   "to": "0066E98C",
+   "votes": 2,
+   "where": "src/host/level_actions.c:41"
   },
   "0066C4E8": {
    "class": "data",
@@ -2027,6 +2180,12 @@
    "votes": 14,
    "where": "src/host/terrain_quality.c:27"
   },
+  "006D1680": {
+   "class": "data",
+   "to": "006D57A0",
+   "votes": 14,
+   "where": "src/host/texhw_guest.c:48"
+  },
   "006D1E94": {
    "class": "data",
    "to": "006D5FB4",
@@ -2086,6 +2245,12 @@
    "to": "00736998",
    "votes": 172,
    "where": "src/host/polygon_submit.c:18"
+  },
+  "007328E0": {
+   "class": "data",
+   "to": "00736A00",
+   "votes": 20,
+   "where": "src/host/sky_layers.c:17"
   },
   "00732978": {
    "class": "data",
@@ -2197,6 +2362,18 @@
    "votes": 240,
    "where": "src/host/game_text.c:19"
   },
+  "0073F278": {
+   "class": "data",
+   "to": "00743398",
+   "votes": 13,
+   "where": "src/host/level_actions.c:40"
+  },
+  "0073F280": {
+   "class": "data",
+   "to": "007433A0",
+   "votes": 4,
+   "where": "src/host/level_actions.c:41"
+  },
   "0073F34C": {
    "class": "data",
    "to": "0074346C",
@@ -2244,6 +2421,12 @@
    "to": "007437C8",
    "votes": 4,
    "where": "src/host/water_kernels.c:14"
+  },
+  "00740718": {
+   "class": "data",
+   "to": "007447C8",
+   "votes": 22,
+   "where": "src/host/texhw_guest.c:52"
   },
   "007410F8": {
    "class": "data",

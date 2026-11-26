@@ -6346,6 +6346,16 @@
    "requirement": "none",
    "shared": [
     {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestMapPictures"
+    },
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestRestart"
+    },
+    {
      "suite": "custom_level_tests",
      "file": "tests/custom_level_tests.cpp",
      "pattern": "TestImportKinds"
@@ -6359,6 +6369,186 @@
      "suite": "custom_level_tests",
      "file": "tests/custom_level_tests.cpp",
      "pattern": "TestGuestPaths"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestFanMissions"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestTpaMerge"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestManifest"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestActivePackage"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestTextureRoots"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSessionLimits"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestLevelStates"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestImportLog"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSceneFormats"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestMissingTexture"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestListedLevels"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCampaignHasNoCapability"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestOnlyRequiredCapabilities"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestNoInheritanceBetweenPackages"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCampaignAfterCustomLevel"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestTexhwStaysInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSoundsStayInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSettingsStayInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestLimitsReturn"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSavesStayInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCampaignPaths"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCustomToRetail"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestFeaturesOfUnknownPackages"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestNamesDecideNothing"
+    },
+    {
+     "suite": "texhw_tests",
+     "file": "tests/texhw_tests.c",
+     "pattern": "main"
+    },
+    {
+     "suite": "sky_tests",
+     "file": "tests/sky_tests.c",
+     "pattern": "main"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestFaults"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestMissingTerrain"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestCurvedMaps"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestSaves"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestGate"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestOutOfMemory"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestSorting"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestCorpus"
+    },
+    {
+     "suite": "bug_report_tests",
+     "file": "tests/bug_report_tests.cpp",
+     "pattern": "ChooseGameLog"
+    },
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestRestartLifecycle"
     }
    ],
    "windows": {
@@ -6373,8 +6563,158 @@
       "suite": "debug_menu_tests",
       "file": "tests/debug_menu_tests.c",
       "pattern": "test_start_level"
+     },
+     {
+      "suite": "engine_heaps_tests",
+      "file": "tests/engine_heaps_tests.c",
+      "pattern": "test_mesh_halfway"
+     },
+     {
+      "suite": "engine_heaps_tests",
+      "file": "tests/engine_heaps_tests.c",
+      "pattern": "test_session_end"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_hint"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_teleport"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_saves"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_retail_session"
+     },
+     {
+      "suite": "tests\\test_trescom_levels.py",
+      "file": "tests/test_trescom_levels.py",
+      "pattern": "test_only_documented_files_are_put_together"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_restart"
      }
     ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_level_abort_tests",
+      "file": "tests/linux_level_abort_tests.c",
+      "pattern": "test_regions"
+     }
+    ]
+   }
+  },
+  {
+   "id": "level-session-log",
+   "name": "Session and level log: one [session] block per run (campaign or custom, package, layout, start level, build, renderer, capabilities) and [level] and [restart] lines at each load with its reason and source",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "level_session_tests",
+     "file": "tests/level_session_tests.c",
+     "pattern": "test_custom_session"
+    },
+    {
+     "suite": "level_session_tests",
+     "file": "tests/level_session_tests.c",
+     "pattern": "test_campaign_session"
+    },
+    {
+     "suite": "level_session_tests",
+     "file": "tests/level_session_tests.c",
+     "pattern": "test_campaign_after_custom"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-level-full-restart",
+   "name": "Restart Level of a custom session is a full level cycle: the world purged and the current level loaded whole again through the game's level load, the session kept; the campaign keeps the game's own restart",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "CheckRestart"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_restart"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-level-guide",
+   "name": "Custom level minimap and objectives: a guide made from each level's world by the campaign's rules; the campaign's own only where the world is the game's, else \"No map information\" / \"No objective information\"",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestLevelGuides"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "launch-handoff",
+   "name": "Launch handoff: from PLAY until the game window is ready one of our windows is always shown (launcher, then a handoff window with a spinner, then the game window); a failure before the window is shown there",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "launch_handoff_tests",
+     "file": "tests/launch_handoff_tests.c",
+     "pattern": "invariant"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
    },
    "linux": {
     "status": "PASS",
@@ -6390,6 +6730,10 @@
   {
    "suite": "linux feature coverage",
    "reason": "the Linux half of that check"
+  },
+  {
+   "suite": "tests\\link_recovery_tests.ps1",
+   "reason": "the build script's recovery from a corrupt PDB link: build tooling, no player feature"
   }
  ]
 }

@@ -10,6 +10,7 @@
 #include "jpt_display.h"
 #include "jpt_present_policy.h"
 #include "jpt_renderer.h"
+#include "jpt_texhw.h"
 #include "renderer_backend.h"
 #include "target_sync.h"
 #include "texture_gpu_policy.h"
@@ -456,6 +457,8 @@ static void choose_internal_size(uint32_t legacy_w, uint32_t legacy_h, uint32_t*
     *out_h = h ? h : (legacy_h ? legacy_h : 480u);
 }
 
+static void drop_overrides(void);
+
 static void drop_all_textures(void) {
     for (int i = 0; i < V.tex_count; i++) {
         vk_win_tex_t* e = V.tex_entries[i];
@@ -479,8 +482,10 @@ static void release_vk_instance(void) {
         if (V.active_target) tsync_gpu_gone(&V.active_target->sync);
         bank_vk_stats();
         drop_all_textures();
+        drop_overrides();
         jpt_vk_renderer_destroy(V.vk);
         V.vk = NULL;
+        if (!V.test_headless) window_host_presentation_target(0);
     }
     V.frame_open = 0;
     V.drew_3d = 0;
@@ -560,6 +565,7 @@ static int ensure_vk_renderer(HWND game_window, uint32_t legacy_w, uint32_t lega
         V.surface_hwnd = surf;
         V.rt_w = iw;
         V.rt_h = ih;
+        if (!V.test_headless) window_host_presentation_target(1);
         if (V.debug_flags) jpt_vk_renderer_set_debug_output(V.vk, V.debug_flags);
         jpt_vk_renderer_set_present_options(V.vk, V.vsync, V.fullscreen, effective_stretch(game_window, surf));
 
@@ -753,6 +759,50 @@ static int upload_surface_pixels(dd_surface_t* s, int fmt, const jpt_render_rect
     return jpt_vk_renderer_update_texture(V.vk, e->vk_tex_id, &desc, rows, rect);
 }
 
+#define OVERRIDE_POOL_SIDE 256u
+static uint64_t s_overrides[JPT_TEXHW_FILES_MAX][JPT_TEXHW_CLASSES];
+static unsigned s_override_generation;
+
+static void drop_overrides(void) {
+    for (int i = 0; i < JPT_TEXHW_FILES_MAX; i++)
+        for (int k = 0; k < JPT_TEXHW_CLASSES; k++) {
+            if (s_overrides[i][k] && V.vk && jpt_vk_renderer_texture_alive(V.vk, s_overrides[i][k])) jpt_vk_renderer_destroy_texture(V.vk, s_overrides[i][k]);
+            s_overrides[i][k] = 0;
+        }
+}
+
+/* A custom level's picture that stands for the texture. */
+static uint64_t override_picture(int id, jpt_texhw_class_t as, int alpha) {
+    jpt_render_tex_desc_t desc;
+    jpt_picture_t picture;
+    uint64_t* at;
+    if (s_override_generation != jpt_texhw_generation()) {
+        drop_overrides();
+        s_override_generation = jpt_texhw_generation();
+    }
+    if (!V.vk || id < 1 || id > JPT_TEXHW_FILES_MAX) return 0;
+    at = &s_overrides[id - 1][as];
+    if (*at && !jpt_vk_renderer_texture_alive(V.vk, *at)) *at = 0;
+    if (*at || jpt_texhw_picture(id, as, &picture) <= 0) return *at;
+    memset(&desc, 0, sizeof desc);
+    desc.width = picture.width;
+    desc.height = picture.height;
+    desc.pitch = picture.width * 4u;
+    desc.format = JPT_TEXFMT_BGRA8888_PREPARED;
+    desc.has_alpha = alpha;
+    desc.mip_levels = d3dt_filter_uses_mips(V.filter_d3dr) && picture.levels > 1 ? (uint32_t)picture.levels : 0;
+    desc.standalone = picture.width > OVERRIDE_POOL_SIDE || picture.height > OVERRIDE_POOL_SIDE;
+    *at = jpt_vk_renderer_create_texture(V.vk, &desc, picture.bgra);
+    jpt_picture_free(&picture);
+    return *at;
+}
+
+static uint64_t override_for(const dd_surface_t* s) {
+    const int fmt = pixelformat_to_d3dt(&s->format), alpha = d3dt_format_has_alpha(fmt);
+    if (fmt == D3DT_FMT_UNKNOWN) return 0;
+    return override_picture(s->override_id, !alpha ? JPT_TEXHW_OPAQUE : fmt == D3DT_FMT_ARGB1555 ? JPT_TEXHW_CUTOUT : JPT_TEXHW_BLENDED, alpha);
+}
+
 static uint64_t ensure_surface_vk_texture_untimed(dd_surface_t* s, const char** why);
 static uint64_t ensure_surface_vk_texture(dd_surface_t* s, const char** why) {
     uint64_t result_;
@@ -774,6 +824,10 @@ static uint64_t ensure_surface_vk_texture_untimed(dd_surface_t* s, const char** 
     if (!V.vk || !s) {
         *why = "no Vulkan renderer";
         return 0;
+    }
+    if (s->override_id) {
+        const uint64_t picture = override_for(s);
+        if (picture) return picture;
     }
     fmt = pixelformat_to_d3dt(&s->format);
     if (fmt == D3DT_FMT_UNKNOWN) {
@@ -2745,6 +2799,10 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
             V.blended_not_water++;
         }
     }
+
+    if (!indices && st.has_texture && dev->texture->override_id && st.texture_id == override_for(dev->texture) && (st.lit = jpt_lit_draw(count)) != NULL &&
+        (st.normal_id = override_picture(st.lit->normal, JPT_TEXHW_NORMAL, 1)) == 0)
+        st.lit = NULL;
 
     if ((size_t)count > V.vtx_cap) {
         jpt_render_vertex_t* grown = (jpt_render_vertex_t*)realloc(V.vtx_buf, (size_t)count * sizeof *grown);

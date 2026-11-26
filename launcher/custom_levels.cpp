@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <set>
 #include <string_view>
@@ -13,7 +15,17 @@
 #include <thread>
 
 #include "jpt_custom_level.h"
-#include "jpt_szdd.h"
+#include "jpt_fs.h"
+#include "jpt_groff.h"
+#include "jpt_hash.h"
+#include "jpt_picture.h"
+#include "jpt_level_features.h"
+#include "jpt_level_world.h"
+#include "level_guide.h"
+#include "level_import_log.h"
+#include "level_listing.h"
+#include "level_manifest.h"
+#include "level_picture.h"
 #include "updater/update_paths.h"
 #include "utf8.h"
 
@@ -26,66 +38,19 @@ constexpr char kStagingPrefix[] = ".import-";
 constexpr char kRemovingPrefix[] = ".removing-";
 constexpr uint64_t kSpareBytes = 64ull << 20;
 constexpr uint64_t kTextLimit = 8ull << 20;
-constexpr uint64_t kSceneLimit = 64ull << 20;
+constexpr uint64_t kRecordLimit = 16ull << 20;
+constexpr uint64_t kMapPictureLimit = 64ull << 20;
 // The game opens files by ANSI paths of at most 259 characters.
 constexpr size_t kHostPathLimit = 250;
+constexpr size_t kRefusedMax = 512;
+// "-99" after a package's name that is taken.
+[[maybe_unused]] constexpr size_t kSuffixRoom = 3;
 
-std::string Lower(std::string_view text) {
-    std::string lower(text);
-    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-    return lower;
-}
-
-std::string BaseName(const std::string& path) {
-    const size_t slash = path.rfind('/');
-    return slash == std::string::npos ? path : path.substr(slash + 1);
-}
-
-std::string FolderOf(const std::string& path) {
-    const size_t slash = path.rfind('/');
-    return slash == std::string::npos ? std::string() : path.substr(0, slash + 1);
-}
-
-std::string Extension(const std::string& path) {
-    const std::string name = BaseName(path);
-    const size_t dot = name.rfind('.');
-    return dot == std::string::npos ? std::string() : Lower(name.substr(dot));
-}
-
-std::string Stem(const std::string& name) {
-    const size_t dot = name.rfind('.');
-    return dot == std::string::npos ? name : name.substr(0, dot);
-}
+std::string Lower(std::string_view text) { return LowerAscii(text); }
 
 template <size_t N>
 bool OneOf(const std::string& text, const char* const (&list)[N]) {
     return std::any_of(std::begin(list), std::end(list), [&text](const char* item) { return text == item; });
-}
-
-bool IsScene(const std::string& path) { return Extension(path) == ".scn"; }
-
-// 0: not instructions.
-int ReadmeScore(const std::string& path) {
-    static constexpr const char* kTypes[] = {"", ".txt", ".md", ".markdown", ".nfo", ".1st", ".me"};
-    static constexpr const char* kReadme[] = {"readme", "read me", "read_me", "read-me", "leiame", "leia-me", "leia_me", "leia me", "lisezmoi", "lisez-moi", "liesmich", "leeme"};
-    static constexpr const char* kGuides[] = {"install", "instruc", "instalac", "how to", "howto", "how_to", "how-to", "walkthrough", "manual", "guide"};
-    const std::string name = Lower(BaseName(path)), type = Extension(path);
-    const std::string stem = type.empty() ? name : Stem(name);
-    int score = 0;
-    if (!OneOf(type, kTypes)) return 0;
-    for (const char* word : kReadme) {
-        if (stem == word) score = std::max(score, 100);
-        else if (stem.find(word) != std::string::npos) score = std::max(score, 90);
-    }
-    if (type == ".me" && stem == "read") score = 100;
-    if (type == ".1st") score = std::max(score, 80);
-    if (type.empty()) return score;
-    for (const char* word : kGuides)
-        if (stem.find(word) != std::string::npos) score = std::max(score, stem.find("install") != std::string::npos ? 70 : 60);
-    static constexpr const char* kOther[] = {"change", "license", "licence", "copying", "credits", "history", "todo", "version", "log"};
-    for (const char* word : kOther)
-        if (!score && stem.find(word) != std::string::npos) return 0;
-    return score ? score : 20;
 }
 
 bool ReadBytes(const fs::path& file, uint64_t limit, std::string& bytes) {
@@ -98,103 +63,378 @@ bool ReadBytes(const fs::path& file, uint64_t limit, std::string& bytes) {
     return bool(in);
 }
 
-bool IsTrespasserFile(const std::string& bytes) {
-    static constexpr unsigned char kMagic[] = {0xBE, 0xBA, 0xCE, 0x0A};
-    return bytes.size() >= 64 && !std::memcmp(bytes.data(), kMagic, sizeof kMagic);
-}
-
-// The names of the world files a scene loads: up to five 256-byte fields, each a path of the author's machine.
-std::vector<std::string> WorldFiles(const std::string& scene) {
-    constexpr size_t kField = 256, kFields = 5;
-    std::vector<std::string> names;
-    const std::string lower = Lower(scene);
-    const size_t end = lower.find(".grf");
-    if (end == std::string::npos) return names;
-    size_t start = end;
-    while (start > 0 && end - start < kField && scene[start - 1] >= ' ' && scene[start - 1] < 127) --start;
-    for (size_t i = 0; i < kFields && start + i * kField < scene.size(); ++i) {
-        const std::string field = scene.substr(start + i * kField, kField);
-        const std::string path = field.substr(0, field.find('\0'));
-        const size_t slash = path.find_last_of("\\/");
-        const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
-        if (Extension(name) != ".grf") break;
-        names.push_back(name);
-    }
-    return names;
-}
-
-std::vector<std::string> PackageFiles(const fs::path& dir) {
+std::vector<PackageFile> PackageFiles(const fs::path& dir) {
     ArchiveError error;
-    std::vector<std::string> files;
+    std::vector<PackageFile> files;
     if (const auto reader = OpenFolder(dir, {}, error))
         for (const ArchiveEntry& entry : reader->entries())
-            if (!entry.directory && !entry.link) files.push_back(entry.name);
-    std::sort(files.begin(), files.end(), [](const std::string& a, const std::string& b) { return Lower(a) < Lower(b); });
+            if (!entry.directory && !entry.link && !IsGeneratedPath(entry.name)) files.push_back({entry.name, entry.size});
+    std::sort(files.begin(), files.end(), [](const PackageFile& a, const PackageFile& b) { return Lower(a.path) < Lower(b.path); });
     return files;
 }
 
-bool HasFile(const std::vector<std::string>& files, const std::string& folder, const std::string& name) {
+bool ReadHead(const fs::path& file, size_t count, std::string& bytes) {
+    std::ifstream in(file, std::ios::binary);
+    bytes.resize(count);
+    in.read(bytes.data(), std::streamsize(count));
+    bytes.resize(size_t(std::max<std::streamsize>(in.gcount(), 0)));
+    return !bytes.empty();
+}
+
+PackageSource FolderSource(const fs::path& dir, const std::vector<PackageFile>& files) {
+    PackageSource source;
+    source.files = files;
+    source.read = [dir](const std::string& path, uint64_t limit, std::string& bytes) { return ReadBytes(dir / PathFromUtf8(path), limit, bytes); };
+    source.head = [dir](const std::string& path, size_t count, std::string& bytes) { return ReadHead(dir / PathFromUtf8(path), count, bytes); };
+    return source;
+}
+
+// Beside the scene, else the only file of that name in the package.
+std::string FindFile(const std::vector<PackageFile>& files, const std::string& folder, const std::string& name) {
     const std::string beside = Lower(folder + name), wanted = Lower(name);
+    std::string found;
     size_t named = 0;
-    for (const std::string& file : files) {
-        const std::string lower = Lower(file);
-        if (lower == beside) return true;
-        named += BaseName(lower) == wanted;
+    for (const PackageFile& file : files) {
+        const std::string lower = Lower(file.path);
+        if (lower == beside) return file.path;
+        if (PathName(lower) != wanted) continue;
+        found = file.path;
+        ++named;
     }
-    return named == 1;
+    return named == 1 ? found : std::string();
 }
 
-bool InGame(const fs::path& data_dir, const std::string& name) {
-    std::error_code ec;
-    if (data_dir.empty()) return false;
-    for (fs::directory_iterator it(data_dir, ec), end; !ec && it != end; it.increment(ec))
-        if (Lower(Utf8(it->path().filename())) == Lower(name)) return true;
-    return false;
+bool InGame(const fs::path& data_dir, const std::string& name) { return !GameFile(data_dir, name).empty(); }
+
+// Loose pictures of a level, which the engine takes when it has no texture set.
+bool HasLooseTextures(const PackageAnalysis& a, const std::string& world) {
+    const std::string folder = "map/" + Lower(PathStem(world)) + "/";
+    return std::any_of(a.runtime.begin(), a.runtime.end(), [&folder](const RuntimeFile& file) {
+        const std::string lower = Lower(file.target);
+        return file.active && (lower.rfind(folder, 0) == 0 || lower.rfind("data/" + folder, 0) == 0);
+    });
 }
 
-LevelScene InspectScene(const fs::path& dir, const std::string& path, const std::vector<std::string>& files, const fs::path& data_dir) {
+// Its place in the package, or the installed game; "" when it is nowhere.
+std::string PlaceOf(const std::vector<PackageFile>& files, const std::string& folder, const fs::path& data_dir, const std::string& name) {
+    const std::string own = FindFile(files, folder, name);
+    if (!own.empty()) return own;
+    return InGame(data_dir, name) ? kInstalledGame : "";
+}
+
+void Lacks(LevelScene& scene, const char* code, const std::string& name, const std::string& why) {
+    scene.missing.push_back(name);
+    scene.issues.push_back({code, name, why, IssuePolicy::kMissing});
+}
+
+void Uses(LevelScene& scene, const char* type, const std::string& name, const std::string& place, const std::string& note = {}) {
+    scene.resources.push_back({type, name, place, note});
+    scene.uses.push_back(std::string(type) + " " + name + ": " + (!place.empty() ? place : !note.empty() ? note : "missing"));
+}
+
+// Where the engine finds the world's textures: the place of its .pid.
+std::string FindTextures(const PackageAnalysis& a, const std::vector<PackageFile>& files, const std::string& folder, const fs::path& data_dir,
+                         const std::string& world, const WorldChecker& checker, LevelScene& scene) {
+    static constexpr const char* kSwaps[] = {".spz", ".spp", ".swp"};
+    const std::string set = PathStem(world) + "-130";
+    std::string pid = FindFile(files, folder, set + ".pid"), swap, swap_name = set + ".swp";
+    const auto find_swap = [&](const auto& place) {
+        for (const char* type : kSwaps)
+            if (swap.empty() && !(swap = place(set + type)).empty()) swap_name = set + type;
+    };
+    find_swap([&](const std::string& name) { return FindFile(files, folder, name); });
+    if (pid.empty() && swap.empty()) {
+        if (InGame(data_dir, set + ".pid")) pid = kInstalledGame;
+        find_swap([&](const std::string& name) { return std::string(InGame(data_dir, name) ? kInstalledGame : ""); });
+        if (!pid.empty() && !swap.empty()) scene.note = "textures of the installed game (" + set + ")";
+    }
+    if (!pid.empty() && swap.empty()) {
+        std::string own;
+        for (const char* type : kSwaps)
+            if (own.empty() && InGame(data_dir, set + type)) own = set + type;
+        if (!own.empty() && checker.GameSwapHolds(pid, own)) swap = kInstalledGame, swap_name = own;
+    }
+    const bool loose = (pid.empty() || swap.empty()) && HasLooseTextures(a, world);
+    const std::string none = loose ? "none, loose pictures" : "";
+    Uses(scene, "PID", set + ".pid", pid, none);
+    Uses(scene, PathType(swap_name) == ".swp" ? "SWP" : "SPZ", swap_name, swap, none);
+    const char* why = "without it the level has no texture set, and it has no loose pictures for its textures either";
+    if (pid.empty() && !loose) Lacks(scene, "MISSING_REQUIRED_TEXTURE_SET", set + ".pid", why);
+    if (swap.empty() && !loose) Lacks(scene, "MISSING_REQUIRED_TEXTURE_SET", set + ".swp", why);
+    return pid.empty() || swap.empty() ? std::string() : pid;
+}
+
+// The engine builds the world from this file and goes on with none when it is not there.
+void FindTerrain(const std::vector<PackageFile>& files, const std::string& folder, const fs::path& data_dir, const WorldFacts& facts, LevelScene& scene) {
+    if (facts.terrain.empty()) return;
+    const std::string place = PlaceOf(files, folder, data_dir, facts.terrain);
+    Uses(scene, "WTD", facts.terrain, place);
+    if (place.empty()) Lacks(scene, "MISSING_REQUIRED_TERRAIN", facts.terrain, "the world names it as its terrain data and cannot be built without it");
+}
+
+void FindWorld(const std::string& world, const PackageAnalysis& a, const std::vector<PackageFile>& files, const std::string& folder, const fs::path& data_dir,
+               WorldChecker& checker, LevelScene& scene) {
+    const std::string place = PlaceOf(files, folder, data_dir, world);
+    Uses(scene, "GRF", world, place);
+    if (place.empty()) return Lacks(scene, "MISSING_REQUIRED_WORLD", world, "the scene is a state of this world");
+    if (place == kInstalledGame) return;
+    const std::string set = FindTextures(a, files, folder, data_dir, world, checker, scene);
+    const WorldFacts facts = checker.Check({world, place, set});
+    FindTerrain(files, folder, data_dir, facts, scene);
+    AddWorldIssues(world, facts, scene.issues);
+    scene.worlds.push_back({world, facts});
+}
+
+void AddSceneIssues(const LevelInfo& level, LevelScene& scene) {
+    const bool newer = level.version > JPT_SCENE_VERSION_MAX;
+    if (!level.problem.empty()) scene.issues.push_back({newer ? "UNSUPPORTED_SCENE_FORMAT" : "MALFORMED_SCENE", scene.file, level.problem, newer ? IssuePolicy::kUnsupported : IssuePolicy::kMalformed});
+    else if (!level.version) scene.issues.push_back({"MALFORMED_SCENE", scene.file, "its scene version could not be read", IssuePolicy::kMalformed});
+    for (const std::string& part : level.left_out) scene.issues.push_back({"SCENE_PART_LEFT_OUT", scene.file, part, IssuePolicy::kInfo});
+    if (!level.problem.empty()) scene.note = level.problem;
+    else if (!level.version) scene.note = "its scene version could not be read";
+}
+
+void JudgeScene(const LevelInfo& level, LevelScene& scene) {
+    if (!scene.valid) return;
+    const LevelClass value = scene.level_class();
+    if (!level.problem.empty()) scene.state = LevelState::kUnsupportedFormat;
+    else if (!level.version) scene.state = LevelState::kUnknown;
+    else if (value == LevelClass::kRejectedMalformed) scene.state = LevelState::kDamaged;
+    else if (value == LevelClass::kRejectedMissing) scene.state = LevelState::kIncomplete;
+    else if (value != LevelClass::kReady) scene.state = LevelState::kNotSupported;
+    else scene.state = scene.auxiliary ? LevelState::kAuxiliary : LevelState::kReady;
+}
+
+LevelScene SceneOf(const LevelInfo& level, const PackageAnalysis& a, const std::vector<PackageFile>& files, const fs::path& data_dir, WorldChecker& checker) {
     LevelScene scene;
-    scene.path = path;
-    scene.file = BaseName(path);
-    std::string bytes;
-    if (!ReadBytes(dir / PathFromUtf8(path), kSceneLimit, bytes)) return scene;
-    const auto* raw = reinterpret_cast<const uint8_t*>(bytes.data());
-    if (jpt_szdd_is(raw, bytes.size())) {
-        size_t size = 0;
-        uint8_t* expanded = jpt_szdd_expand(raw, bytes.size(), &size);
-        bytes.assign(reinterpret_cast<const char*>(expanded), expanded ? size : 0);
-        std::free(expanded);
+    scene.path = level.path;
+    scene.file = level.file;
+    scene.valid = level.valid;
+    scene.start = level.start;
+    scene.auxiliary = level.auxiliary;
+    scene.version = level.version;
+    scene.note = level.valid ? level.auxiliary_reason : level.problem.empty() ? "not a Trespasser scene" : level.problem;
+    scene.left_out = level.left_out;
+    if (!scene.valid) {
+        scene.issues.push_back({level.problem.empty() ? "NOT_A_SCENE" : "UNREAD_SCENE", scene.file, scene.note, IssuePolicy::kMalformed});
+        return scene;
     }
-    scene.valid = IsTrespasserFile(bytes);
-    if (!scene.valid) return scene;
-    const std::string folder = FolderOf(path);
-    const std::vector<std::string> worlds = WorldFiles(bytes);
-    scene.loadable = !worlds.empty();
-    if (worlds.empty()) scene.missing.push_back(Stem(scene.file) + ".grf");
-    for (const std::string& world : worlds) {
-        const bool own = HasFile(files, folder, world), original = !own && InGame(data_dir, world);
-        if (!own && !original) {
-            scene.missing.push_back(world);
-            scene.loadable = false;
-            continue;
-        }
-        if (original) continue;
-        const std::string textures = Stem(world) + "-130";
-        if (!HasFile(files, folder, textures + ".pid")) scene.missing.push_back(textures + ".pid");
-        if (!HasFile(files, folder, textures + ".swp") && !HasFile(files, folder, textures + ".spz") &&
-            !HasFile(files, folder, textures + ".spp"))
-            scene.missing.push_back(textures + ".swp");
-    }
+    const std::string parent = PathFolder(level.path), folder = parent.empty() ? parent : parent + "/";
+    if (level.worlds.empty()) Lacks(scene, "MISSING_REQUIRED_WORLD", PathStem(scene.file) + ".grf", "the scene names no world");
+    for (const std::string& world : level.worlds) FindWorld(world, a, files, folder, data_dir, checker, scene);
+    AddSceneIssues(level, scene);
     return scene;
 }
 
-bool MentionsWord(const std::string& lower_text, const std::string& word) {
-    const auto letter = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; };
-    for (size_t at = lower_text.find(word); at != std::string::npos; at = lower_text.find(word, at + 1)) {
-        const size_t after = at + word.size();
-        if ((at == 0 || !letter(lower_text[at - 1])) && (after == lower_text.size() || !letter(lower_text[after]))) return true;
+// The scenes a level loads: the package's, the installed game's, or nowhere.
+void FollowTransitions(const fs::path& data_dir, std::vector<LevelScene>& scenes) {
+    for (LevelScene& scene : scenes) {
+        std::set<std::string> seen;
+        for (const auto& [world, facts] : scene.worlds) {
+            for (const std::string& name : facts.levels) {
+                if (!seen.insert(Lower(name)).second || SameText(name, scene.file)) continue;
+                const auto target = std::find_if(scenes.begin(), scenes.end(), [&name](const LevelScene& s) { return SameText(s.file, name); });
+                const std::string place = target != scenes.end() ? target->path : InGame(data_dir, name) ? kInstalledGame : "";
+                scene.resources.push_back({"SCN", name, place, "loaded by a trigger"});
+                if (target != scenes.end()) target->led_to_by.push_back(scene.file);
+                else if (place.empty() && !data_dir.empty()) scene.issues.push_back({"MISSING_TRANSITION_LEVEL", name, "a trigger of " + world + " loads it", IssuePolicy::kMissing});
+            }
+        }
     }
-    return false;
+}
+
+IssuePolicy WarningPolicy(const std::string& code) {
+    if (code == "no_restart") return IssuePolicy::kInfo; // the author's own note on the original game
+    if (code == "config_level_absent") return IssuePolicy::kInfo; // a section for another level, which that level reads
+    if (code == "config_malformed_lines") return IssuePolicy::kInfo; // lines that set nothing
+    if (code == "config_start_level_missing") return IssuePolicy::kInfo; // each level the package does have is started by itself
+    if (code == "readme_file_absent") return IssuePolicy::kMissing;
+    if (code == "texture_unusable") return IssuePolicy::kUnsupported;
+    return IssuePolicy::kWarning;
+}
+
+std::string UpperAscii(std::string text) {
+    for (char& c : text) c = char(std::toupper(static_cast<unsigned char>(c)));
+    return text;
+}
+
+// The original game's own file; of a texture's pixels its packed form.
+bool GameHas(const fs::path& data_dir, const std::string& name) {
+    return InGame(data_dir, name) || (PathType(name) == ".swp" && InGame(data_dir, PathStem(name) + ".spz"));
+}
+
+void AddPackageIssues(const PackageAnalysis& a, const fs::path& data_dir, std::vector<LevelScene>& scenes) {
+    std::vector<LevelIssue> issues;
+    for (const Dependency& d : a.dependencies) {
+        const std::string code = d.name == "ATX" ? "DEPENDENCY_ATX" : "DEPENDENCY_CE";
+        issues.push_back({code, d.name, std::string(NeedName(d.need)) + (d.need == Need::kRequired ? " (" + d.evidence + ")" : "") + "; what of it the package uses is checked on its own", IssuePolicy::kInfo});
+    }
+    for (const Feature& feature : a.features) {
+        const jpt_level_feature_t* known = jpt_level_feature(feature.name.c_str());
+        const std::string detail = known ? std::string(known->title) + (known->note[0] ? std::string(": ") + known->note : "") : "the package uses it and this port does not have it";
+        if (feature.state == "unsupported") issues.push_back({"UNSUPPORTED_FEATURE", feature.name, detail, IssuePolicy::kUnsupported});
+        if (feature.state == "not_required") issues.push_back({"NOT_REQUIRED", feature.name, detail, IssuePolicy::kInfo});
+    }
+    for (const Warning& warning : a.warnings) {
+        if (warning.code == "not_a_scene" || warning.code == "unread_scene" || warning.code == "unreadable_scene") continue;
+        if (warning.code.rfind("config_", 0) == 0) issues.push_back({"CONFIG_WARNING", warning.code, warning.detail, WarningPolicy(warning.code)});
+        else issues.push_back({UpperAscii(warning.code), "package", warning.detail, warning.code == "readme_file_absent" && GameHas(data_dir, warning.detail) ? IssuePolicy::kInfo : WarningPolicy(warning.code)});
+    }
+    for (LevelScene& scene : scenes)
+        if (scene.valid) scene.issues.insert(scene.issues.end(), issues.begin(), issues.end());
+}
+
+bool Inherited(const LevelScene& scene) {
+    return std::any_of(scene.issues.begin(), scene.issues.end(), [](const LevelIssue& i) { return i.code == "PACKAGE_NOT_SUPPORTED"; });
+}
+
+// A package is installed and played whole: one level that is not supported takes the others with it.
+void RejectWhole(std::vector<LevelScene>& scenes) {
+    const auto bad = std::find_if(scenes.begin(), scenes.end(), [](const LevelScene& s) { return s.rejected(); });
+    if (bad == scenes.end()) return;
+    const std::string file = bad->file;
+    for (LevelScene& scene : scenes)
+        if (!scene.rejected()) scene.issues.push_back({"PACKAGE_NOT_SUPPORTED", file, "another level of the package is not supported", IssuePolicy::kWarning});
+}
+
+uint64_t MostOf(const std::vector<LevelScene>& scenes, const char* count) {
+    uint64_t most = 0;
+    for (const LevelScene& scene : scenes)
+        for (const auto& [world, facts] : scene.worlds) most = std::max<uint64_t>(most, facts.count(count));
+    return most;
+}
+
+void AtLeast(PackageAnalysis& a, const char* key, long value, const char* source) {
+    for (SessionLimit& limit : a.limits) {
+        if (limit.key != key) continue;
+        if (limit.value < value) limit = {key, value, source};
+        return;
+    }
+    a.limits.push_back({key, value, source});
+}
+
+// Scripts are never installed; a package with one is not whole without it.
+void NoteRefused(PackageAnalysis& a, const std::vector<std::string>& refused) {
+    const bool scripts = std::any_of(refused.begin(), refused.end(), [](const std::string& name) {
+        const std::string path = name.substr(0, name.find(" - "));
+        return PathType(path) == ".nut" && !IsDocumentation(path);
+    });
+    if (!scripts || std::find(a.required.begin(), a.required.end(), "CE_SCRIPTS") != a.required.end()) return;
+    a.required.push_back("CE_SCRIPTS");
+    a.features.push_back({"CE_SCRIPTS", "unsupported"});
+}
+
+void NoteActions(PackageAnalysis& a, const std::vector<LevelScene>& scenes) {
+    std::set<int> types;
+    for (const LevelScene& scene : scenes)
+        for (const auto& [world, facts] : scene.worlds)
+            for (const auto& [type, count] : facts.actions)
+                if (const jpt_level_feature_t* f = type > JPT_GROFF_ACTION_OWN_LAST ? jpt_level_action_feature(type) : nullptr)
+                    if (f->status != JPT_FEATURE_NOT_REQUIRED) types.insert(type);
+    a.action_types.assign(types.begin(), types.end());
+}
+
+// What a level's meshes need at most, with a tenth to spare, when that is more than the engine's own or its settings ask for;
+// and its textures, when the engine's pool does not hold them and some of other files. A level that fits asks for nothing.
+void SizeHeaps(PackageAnalysis& a, const std::vector<LevelScene>& scenes) {
+    constexpr long kOwnFaces = 2048, kOwnMegabytes = 32;
+    NoteActions(a, scenes);
+    const uint64_t bytes = MostOf(scenes, "mesh_bytes"), faces = MostOf(scenes, "mesh_build"), textures = MostOf(scenes, "set_bytes") + JPT_GROFF_POOL_ROOM;
+    const long wanted = std::min<long>(long((bytes + bytes / 10 + (1u << 20) - 1) >> 20), kMeshHeapMegabytesMax);
+    if (wanted > kOwnMegabytes) AtLeast(a, "mesh_heap_mb", wanted, "the size of its meshes");
+    if (faces > uint64_t(kOwnFaces)) AtLeast(a, "mesh_faces", std::min<long>(long(faces + faces / 10), JPT_GROFF_MESH_FACES_MAX), "the largest of its meshes");
+    if (textures > JPT_GROFF_POOL_BYTES + JPT_GROFF_POOL_ROOM)
+        a.limits.push_back({"texture_pool_mb", std::min<long>(long((textures + (1u << 20) - 1) >> 20), long(JPT_GROFF_POOL_BYTES_MAX >> 20)), "the size of its textures"});
+}
+
+// ATX reads the picture a map action names as MAPS\<name>. The package's own file of that path below MAPS, or else its only file of
+// that path anywhere, is put there; a picture that is nowhere leaves the map as it was, as in ATX.
+void PlaceMapPictures(PackageAnalysis& a, const PackageSource& source, std::vector<LevelScene>& scenes) {
+    const auto placed = [&a](const std::string& target) {
+        return std::any_of(a.runtime.begin(), a.runtime.end(), [&target](const RuntimeFile& f) { return f.active && SameText(f.target, target); });
+    };
+    const auto only_file = [&source](const std::string& relative) {
+        std::string found;
+        const std::string tail = "/" + Lower(relative);
+        for (const PackageFile& file : source.files) {
+            const std::string lower = "/" + Lower(file.path);
+            if (lower.size() < tail.size() || lower.compare(lower.size() - tail.size(), tail.size(), tail)) continue;
+            if (!found.empty()) return std::string();
+            found = file.path;
+        }
+        return found;
+    };
+    for (LevelScene& scene : scenes)
+        for (const auto& [world, facts] : scene.worlds)
+            for (const std::string& name : facts.maps) {
+                char target[JPT_CUSTOM_LEVEL_PATH_MAX];
+                if (!jpt_custom_level_map_path(name.c_str(), target, sizeof target) || !IsGamePath(target)) {
+                    scene.issues.push_back({"UNSAFE_MAP_PICTURE", name, "a map action of " + world + " names a picture outside the MAPS folder; it is not read", IssuePolicy::kInfo});
+                    continue;
+                }
+                if (placed(target)) continue;
+                const std::string file = only_file(std::string(target).substr(5));
+                std::string bytes;
+                jpt_picture_t picture{};
+                if (file.empty()) {
+                    scene.issues.push_back({"MAP_PICTURE_ABSENT", name, "a map action of " + world + " names it; the map stays as it was", IssuePolicy::kInfo});
+                } else if (!source.read(file, kMapPictureLimit, bytes) || !jpt_picture_decode(bytes.data(), bytes.size(), &picture)) {
+                    scene.issues.push_back({"MAP_PICTURE_UNREADABLE", file, "a map action of " + world + " names it and it is no picture the map can show", IssuePolicy::kInfo});
+                } else {
+                    a.runtime.push_back({target, file, Origin::kHeuristic, true});
+                    a.actions.push_back({"move", file, target, Origin::kHeuristic, "a map action of " + world + " shows it from MAPS"});
+                }
+                jpt_picture_free(&picture);
+            }
+    const bool maps = std::any_of(a.runtime.begin(), a.runtime.end(), [](const RuntimeFile& f) { return f.active && Lower(f.target).rfind("maps/", 0) == 0; });
+    if (maps && std::find(a.directories.begin(), a.directories.end(), "maps") == a.directories.end()) a.directories.push_back("maps");
+    if (maps && std::find(a.required.begin(), a.required.end(), "ATX_MAP") == a.required.end()) a.required.push_back("ATX_MAP");
+}
+
+void FinishAnalysis(PackageAnalysis& a, const PackageSource& source, std::vector<LevelScene>& scenes) {
+    PlaceMapPictures(a, source, scenes);
+    SizeHeaps(a, scenes);
+}
+
+// package_dir: of an installed package, so that its worlds are not read again each time.
+std::vector<LevelScene> ScenesOf(const PackageAnalysis& a, const PackageSource& source, const fs::path& data_dir, const fs::path& package_dir = {}) {
+    WorldChecker checker({&source, &a, data_dir, package_dir});
+    std::vector<LevelScene> scenes;
+    for (const LevelInfo& level : a.levels) scenes.push_back(SceneOf(level, a, source.files, data_dir, checker));
+    FollowTransitions(data_dir, scenes);
+    AddPackageIssues(a, data_dir, scenes);
+    RejectWhole(scenes);
+    for (size_t i = 0; i < scenes.size(); ++i) JudgeScene(a.levels[i], scenes[i]);
+    return scenes;
+}
+
+std::vector<std::string> MissingOf(const std::vector<LevelScene>& scenes) {
+    std::vector<std::string> missing;
+    for (const LevelScene& scene : scenes)
+        for (const std::string& name : scene.missing) missing.push_back(scene.file + ": " + name);
+    return missing;
+}
+
+size_t Playable(const std::vector<LevelScene>& scenes) {
+    return size_t(std::count_if(scenes.begin(), scenes.end(), [](const LevelScene& scene) { return scene.playable(); }));
+}
+
+RefusedFile Refused(const std::string& path) {
+    static constexpr const char* kPrograms[] = {".exe", ".dll", ".com", ".scr", ".msi", ".asi", ".so", ".sys", ".ocx", ".cpl", ".pif"};
+    static constexpr const char* kScripts[] = {".bat", ".cmd", ".ps1", ".vbs", ".js", ".wsf", ".hta", ".sh", ".lnk", ".reg", ".url", ".jar", ".py"};
+    const std::string type = PathType(path), name = Lower(PathName(path));
+    if (IsGeneratedPath(path)) return {path, "a name this launcher generates", false};
+    if (OneOf(type, kPrograms)) return {path, "a program or library", true};
+    if (OneOf(type, kScripts)) return {path, "a script or shortcut", true};
+    if (name.rfind("savegame.", 0) == 0) return {path, "a saved game", false};
+    if (type == ".nut") return {path, "a Trespasser CE script", false};
+    return {path, "not level data, a text or a picture", false};
+}
+
+std::vector<std::string> RefusedNames(const std::vector<RefusedFile>& refused) {
+    std::vector<std::string> names;
+    for (const RefusedFile& file : refused) names.push_back(file.path + " - " + file.reason);
+    return names;
 }
 
 std::string PackageId(const std::string& wanted) {
@@ -252,8 +492,9 @@ bool PlanFiles(const ArchiveReader& reader, const ArchiveLimits& limits, std::ve
             continue;
         }
         if (!files.insert(key).second) return refuse(ImportStatus::kUnsafe, path);
-        if (!IsLevelPackageFile(path)) {
+        if (!IsLevelPackageFile(path) || IsGeneratedPath(path)) {
             ++result.skipped;
+            if (result.refused.size() < kRefusedMax) result.refused.push_back(Refused(path));
             continue;
         }
         if (entry.encrypted) return refuse(ImportStatus::kUnsupported, path);
@@ -264,7 +505,7 @@ bool PlanFiles(const ArchiveReader& reader, const ArchiveLimits& limits, std::ve
     }
     for (const std::string& file : files)
         if (folders.count(file)) return refuse(ImportStatus::kUnsafe, file);
-    if (std::none_of(plan.begin(), plan.end(), [](const PlannedFile& f) { return IsScene(f.path); }))
+    if (std::none_of(plan.begin(), plan.end(), [](const PlannedFile& f) { return IsScenePath(f.path); }))
         return refuse(ImportStatus::kNoLevel, "");
     return true;
 }
@@ -273,13 +514,13 @@ bool PlanFiles(const ArchiveReader& reader, const ArchiveLimits& limits, std::ve
 bool HoldsSeveralPackages(const std::vector<PlannedFile>& plan, const ArchiveReader& reader) {
     std::set<std::string> tops;
     for (const PlannedFile& f : plan) {
-        if (!IsScene(f.path)) continue;
+        if (!IsScenePath(f.path)) continue;
         const size_t slash = f.path.find('/');
         if (slash == std::string::npos) return false;
         tops.insert(Lower(f.path.substr(0, slash)));
     }
     const bool archives = std::any_of(reader.entries().begin(), reader.entries().end(), [](const ArchiveEntry& e) {
-        const std::string type = Extension(e.name);
+        const std::string type = PathType(e.name);
         return !e.directory && e.name.find('/') == std::string::npos && (type == ".zip" || type == ".7z" || type == ".rar");
     });
     return tops.size() > 1 || (archives && !tops.empty());
@@ -297,7 +538,7 @@ FileSizes SizesOf(const fs::path& dir) {
     FileSizes sizes;
     if (const auto reader = OpenFolder(dir, {}, error))
         for (const ArchiveEntry& entry : reader->entries())
-            if (!entry.directory) sizes[Lower(entry.name)] = {entry.name, entry.size};
+            if (!entry.directory && !IsGeneratedPath(entry.name)) sizes[Lower(entry.name)] = {entry.name, entry.size};
     return sizes;
 }
 
@@ -367,15 +608,81 @@ private:
     fs::path dir_;
 };
 
+using FileHashes = std::map<std::string, std::string>; // SHA-256 by path
+
+// Names and contents of the files, whatever order they came in.
+std::string HashOf(const FileHashes& hashes) {
+    std::map<std::string, std::string> sorted;
+    for (const auto& [path, hash] : hashes) sorted[Lower(path) + '\n' + path] = hash;
+    std::string list;
+    for (const auto& [path, hash] : sorted) list += path + '\n' + hash + '\n';
+    char hex[65];
+    jpt_sha256_buffer_hex(list.data(), list.size(), hex);
+    return hex;
+}
+
+std::string HashFolder(const fs::path& dir, const std::vector<PackageFile>& files) {
+    FileHashes hashes;
+    std::vector<char> buffer(1 << 18);
+    for (const PackageFile& file : files) {
+        jpt_sha256_t sha;
+        char hex[65];
+        jpt_sha256_init(&sha);
+        std::ifstream in(dir / PathFromUtf8(file.path), std::ios::binary);
+        while (in) {
+            in.read(buffer.data(), std::streamsize(buffer.size()));
+            jpt_sha256_update(&sha, buffer.data(), size_t(in.gcount()));
+        }
+        if (!in.eof()) return {};
+        jpt_sha256_hex(&sha, hex);
+        hashes[file.path] = hex;
+    }
+    return HashOf(hashes);
+}
+
+// Whole or not at all; a file that already says so is left alone.
+bool WriteRecord(const fs::path& file, const std::string& text) {
+    std::string current;
+    std::error_code ec;
+    if (ReadBytes(file, kRecordLimit, current) && current == text) return true;
+    fs::create_directories(file.parent_path(), ec);
+    fs::path temporary = file;
+    temporary += ".new";
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        out.write(text.data(), std::streamsize(text.size()));
+        if (!out) return false;
+    }
+    fs::rename(temporary, file, ec);
+    if (ec) fs::remove(temporary, ec);
+    return !ec;
+}
+
+bool WriteRecords(const fs::path& dir, const PackageManifest& manifest) {
+    const PackageAnalysis& a = manifest.analysis;
+    if (trg::update::HasReparseAncestor(dir / PathFromUtf8(LoadingPictureFile(0)), dir)) return false;
+    for (size_t i = 0; i < a.images.size(); ++i) {
+        std::string bytes;
+        if (a.images[i].state != "ready") continue;
+        if (!ReadBytes(dir / PathFromUtf8(a.images[i].path), kPictureLimit, bytes) || !WriteRecord(dir / PathFromUtf8(LoadingPictureFile(i)), MakeLoadingPicture(bytes)))
+            return false;
+    }
+    return WriteRecord(dir / JPT_CUSTOM_LEVEL_RUNTIME_MAP, RuntimeMap(a)) && WriteRecord(dir / kManifestFile, ManifestJson(manifest));
+}
+
 ArchiveError Unpack(ArchiveReader& reader, const PlannedFile& file, const fs::path& target, const ImportHooks& hooks,
-                    uint64_t& done, uint64_t total, bool& write_failed) {
+                    uint64_t& done, uint64_t total, bool& write_failed, std::string& hash) {
     std::error_code ec;
     fs::create_directories(target.parent_path(), ec);
     std::ofstream out(target, std::ios::binary | std::ios::trunc);
     uint64_t written = 0;
     bool cancelled = false;
+    jpt_sha256_t sha;
+    char hex[65];
+    jpt_sha256_init(&sha);
     const ArchiveError error = reader.Extract(file.index, [&](const uint8_t* data, size_t size) {
         if (written + size > file.size) return false;
+        jpt_sha256_update(&sha, data, size);
         out.write(reinterpret_cast<const char*>(data), std::streamsize(size));
         written += size;
         done += size;
@@ -384,6 +691,8 @@ ArchiveError Unpack(ArchiveReader& reader, const PlannedFile& file, const fs::pa
         return !cancelled && !write_failed;
     });
     out.close();
+    jpt_sha256_hex(&sha, hex);
+    hash = hex;
     if (cancelled) return ArchiveError::kCancelled;
     if (write_failed || !out) {
         write_failed = true;
@@ -393,8 +702,66 @@ ArchiveError Unpack(ArchiveReader& reader, const PlannedFile& file, const fs::pa
     return error;
 }
 
-ImportResult Import(ArchiveReader& reader, const std::string& wanted_id, bool folder, const fs::path& user_dir, const ImportHooks& hooks,
-                    const ArchiveLimits& limits) {
+std::string RecordedHash(const fs::path& dir) {
+    std::string text;
+    PackageOrigin origin;
+    return ReadBytes(dir / kManifestFile, kRecordLimit, text) && ReadManifestOrigin(text, origin) ? origin.source_hash : std::string();
+}
+
+struct ImportSource {
+    ArchiveReader& reader;
+    std::string wanted_id;
+    std::string type; // "zip", "7z", "rar", "folder"
+    std::string name;
+    fs::path path;
+    bool folder() const { return type == "folder"; }
+};
+
+bool FormatProblem(const LevelScene& scene) {
+    return scene.state == LevelState::kUnsupportedFormat || scene.state == LevelState::kDamaged || scene.state == LevelState::kUnknown || scene.state == LevelState::kUnsupported;
+}
+
+ImportStatus RejectionOf(const LevelScene& scene) {
+    if (FormatProblem(scene) || scene.level_class() == LevelClass::kRejectedMalformed) return ImportStatus::kUnsupportedFormat;
+    return scene.level_class() == LevelClass::kRejectedMissing ? ImportStatus::kMissingFiles : ImportStatus::kNotSupported;
+}
+
+// Only a package whose every level is READY is installed.
+ImportStatus Judge(const PackageAnalysis& a, const std::vector<LevelScene>& scenes, ImportResult& result) {
+    result.levels = Playable(scenes);
+    if (!a.playable()) return ImportStatus::kNoLevel;
+    const LevelScene* worst = nullptr;
+    for (const LevelScene& scene : scenes) {
+        if (!scene.rejected() || Inherited(scene)) continue;
+        const auto rank = [](const LevelScene& s) { return std::make_pair(FormatProblem(s), s.level_class()); };
+        if (!worst || rank(scene) > rank(*worst)) worst = &scene;
+    }
+    if (worst) {
+        result.detail = worst->file;
+        return RejectionOf(*worst);
+    }
+    return result.levels ? ImportStatus::kInstalled : ImportStatus::kNoLevel;
+}
+
+int64_t Now() { return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+
+// Of a package an earlier version installed: when its oldest file was written.
+int64_t OldestFile(const fs::path& dir, const std::vector<PackageFile>& files) {
+    int64_t oldest = 0;
+    for (const PackageFile& file : files) {
+        std::error_code ec;
+        const auto written = fs::last_write_time(dir / PathFromUtf8(file.path), ec);
+        if (ec) continue;
+        const auto system = std::chrono::system_clock::now() + std::chrono::duration_cast<std::chrono::system_clock::duration>(written - fs::file_time_type::clock::now());
+        const int64_t seconds = std::chrono::round<std::chrono::seconds>(system.time_since_epoch()).count();
+        if (!oldest || seconds < oldest) oldest = seconds;
+    }
+    return oldest;
+}
+
+ImportResult Install(const ImportSource& source, const fs::path& user_dir, const ImportHooks& hooks, const ArchiveLimits& limits, const fs::path& data_dir,
+                     ImportRecord& record) {
+    ArchiveReader& reader = source.reader;
     ImportResult result;
     std::vector<PlannedFile> plan;
     const auto fail = [&result](ImportStatus status, const std::string& detail) {
@@ -402,14 +769,17 @@ ImportResult Import(ArchiveReader& reader, const std::string& wanted_id, bool fo
         result.detail = detail;
         return result;
     };
-    if (!PlanFiles(reader, limits, plan, result)) return result;
-    if (folder && HoldsSeveralPackages(plan, reader)) return fail(ImportStatus::kSeveralPackages, "");
+    const bool planned = PlanFiles(reader, limits, plan, result);
+    for (const PlannedFile& file : plan) record.accepted.push_back(file.path);
+    if (!planned) return result;
+    if (source.folder() && HoldsSeveralPackages(plan, reader)) return fail(ImportStatus::kSeveralPackages, "");
     const fs::path levels = CustomLevelsDir(user_dir);
     uint64_t total = 0, done = 0;
     for (const PlannedFile& file : plan) {
         total += file.size;
 #ifdef _WIN32
-        if (levels.native().size() + JPT_CUSTOM_LEVEL_ID_MAX + PathFromUtf8(file.path).native().size() + 2 > kHostPathLimit)
+        if (levels.native().size() + std::max(PackageId(source.wanted_id).size() + kSuffixRoom, sizeof kStagingPrefix + 1) +
+                PathFromUtf8(file.path).native().size() + 2 > kHostPathLimit)
             return fail(ImportStatus::kUnsafe, file.path);
 #endif
     }
@@ -418,29 +788,44 @@ ImportResult Import(ArchiveReader& reader, const std::string& wanted_id, bool fo
     std::error_code ec;
     const fs::space_info space = fs::space(levels, ec);
     if (!ec && space.available < total + kSpareBytes) return fail(ImportStatus::kNoSpace, "");
-    if (hooks.phase) hooks.phase("Copying the level files...");
+    if (hooks.phase) hooks.phase(kImportPhases[1]);
+    FileHashes hashes;
     for (const PlannedFile& file : plan) {
         const fs::path target = staging.dir() / PathFromUtf8(file.path);
         bool write_failed = false;
         if (!trg::update::PathIsWithin(target, staging.dir())) return fail(ImportStatus::kUnsafe, file.path);
-        const ArchiveError error = Unpack(reader, file, target, hooks, done, total, write_failed);
+        const ArchiveError error = Unpack(reader, file, target, hooks, done, total, write_failed, hashes[file.path]);
         if (write_failed) return fail(ImportStatus::kWriteFailed, file.path);
         if (error != ArchiveError::kNone) return fail(FromArchive(error), error == ArchiveError::kCancelled ? std::string() : file.path);
     }
-    if (hooks.phase) hooks.phase("Checking the level files...");
+    if (hooks.phase) hooks.phase(kImportPhases[2]);
     const FileSizes sizes = SizesOf(staging.dir());
     if (sizes.size() != plan.size()) return fail(ImportStatus::kWriteFailed, Utf8(levels));
     for (const PlannedFile& file : plan) {
         const auto found = sizes.find(Lower(file.path));
         if (found == sizes.end() || found->second.size != file.size) return fail(ImportStatus::kWriteFailed, file.path);
     }
-    bool any_scene = false;
-    for (const PlannedFile& file : plan)
-        any_scene = any_scene || (IsScene(file.path) && InspectScene(staging.dir(), file.path, {}, {}).valid);
-    if (!any_scene) return fail(ImportStatus::kNoLevel, "");
+    PackageManifest manifest;
+    const std::vector<PackageFile> files = PackageFiles(staging.dir());
+    const PackageSource package = FolderSource(staging.dir(), files);
+    manifest.analysis = AnalyzePackage(package);
+    manifest.origin = {source.type, source.name, HashOf(hashes), RefusedNames(result.refused), Now()};
+    NoteRefused(manifest.analysis, manifest.origin.refused);
+    record.package = PackageId(source.wanted_id);
+    record.analysis = manifest.analysis;
+    record.scenes = ScenesOf(manifest.analysis, package, data_dir, staging.dir());
+    FinishAnalysis(manifest.analysis, package, record.scenes);
+    record.analysis = manifest.analysis;
+    if (!data_dir.empty()) manifest.missing = MissingOf(record.scenes);
+    result.status = Judge(manifest.analysis, record.scenes, result);
+    if (result.status != ImportStatus::kInstalled) return result;
+    std::string problem;
+    if (!RuntimeIsSafe(manifest.analysis, files, problem)) return fail(ImportStatus::kUnsafe, problem);
     const std::vector<std::string> installed = InstalledIds(levels);
     for (const std::string& id : installed) {
-        if (!SameFiles(staging.dir(), sizes, levels / id, SizesOf(levels / id))) continue;
+        const std::string recorded = RecordedHash(levels / id);
+        const bool may_match = recorded.empty() || recorded == manifest.origin.source_hash;
+        if (!may_match || !SameFiles(staging.dir(), sizes, levels / id, SizesOf(levels / id))) continue;
         result.package = id;
         return fail(ImportStatus::kAlreadyInstalled, id);
     }
@@ -448,14 +833,114 @@ ImportResult Import(ArchiveReader& reader, const std::string& wanted_id, bool fo
         std::error_code exists_ec;
         return fs::exists(fs::symlink_status(levels / id, exists_ec));
     };
-    std::string id = PackageId(wanted_id);
-    for (int n = 2; taken(id) && n < 100; ++n) id = PackageId(wanted_id) + "-" + std::to_string(n);
-    if (!jpt_custom_level_id_valid(id.c_str()) || taken(id) || !staging.Publish(levels / id))
+    std::string id = PackageId(source.wanted_id);
+    for (int n = 2; taken(id) && n < 100; ++n) id = PackageId(source.wanted_id) + "-" + std::to_string(n);
+    manifest.package_id = id;
+    if (!jpt_custom_level_id_valid(id.c_str()) || taken(id) || !WriteRecords(staging.dir(), manifest) || !staging.Publish(levels / id))
         return fail(ImportStatus::kWriteFailed, id);
     result.status = ImportStatus::kInstalled;
     result.package = id;
     result.files = plan.size();
     return result;
+}
+
+std::string HashFile(const fs::path& file) {
+    std::vector<char> buffer(1 << 18);
+    jpt_sha256_t sha;
+    char hex[65];
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return {};
+    jpt_sha256_init(&sha);
+    while (in) {
+        in.read(buffer.data(), std::streamsize(buffer.size()));
+        jpt_sha256_update(&sha, buffer.data(), size_t(in.gcount()));
+    }
+    jpt_sha256_hex(&sha, hex);
+    return hex;
+}
+
+LogDocument DocumentOf(ArchiveReader& reader, size_t index) {
+    const ArchiveEntry& entry = reader.entries()[index];
+    LogDocument document;
+    std::string bytes;
+    char hex[65];
+    document.path = entry.name;
+    document.bytes = entry.size;
+    if (entry.size > kTextLimit) return document;
+    const ArchiveError error = reader.Extract(index, [&bytes](const uint8_t* data, size_t size) {
+        bytes.append(reinterpret_cast<const char*>(data), size);
+        return bytes.size() <= kTextLimit;
+    });
+    if (error != ArchiveError::kNone) return document;
+    jpt_sha256_buffer_hex(bytes.data(), bytes.size(), hex);
+    document.sha256 = hex;
+    document.text = DecodeText(bytes.substr(0, kLogDocumentBytes));
+    document.truncated = bytes.size() > kLogDocumentBytes;
+    document.readable = IsText(bytes);
+    document.readme = LevelReadmeScore(entry.name) >= kInstructionsScore;
+    return document;
+}
+
+bool IsTextDocument(const std::string& path) {
+    static constexpr const char* kTypes[] = {".txt", ".md", ".markdown", ".nfo", ".1st", ".me"};
+    const std::string type = PathType(path);
+    return LevelReadmeScore(path) > 0 || OneOf(type, kTypes);
+}
+
+void Describe(ArchiveReader& reader, ImportRecord& record) {
+    size_t total = 0;
+    for (size_t i = 0; i < reader.entries().size(); ++i) {
+        const ArchiveEntry& entry = reader.entries()[i];
+        if (entry.directory) continue;
+        ++record.found;
+        if (entry.link || entry.encrypted || !IsTextDocument(entry.name)) continue;
+        if (record.documents.size() >= kLogDocuments || total >= kLogDocumentsBytes) {
+            ++record.documents_skipped;
+            continue;
+        }
+        record.documents.push_back(DocumentOf(reader, i));
+        total += record.documents.back().text.size();
+    }
+}
+
+void DescribeArchive(const fs::path& path, bool folder, ImportRecord& record) {
+    std::error_code ec;
+    record.path = Utf8(path);
+    if (folder || !fs::is_regular_file(path, ec)) return;
+    record.bytes = fs::file_size(path, ec);
+    record.sha256 = HashFile(path);
+}
+
+ImportResult Import(const ImportSource& source, const fs::path& user_dir, const ImportHooks& hooks, const ArchiveLimits& limits, const fs::path& data_dir) {
+    ImportRecord record;
+    record.type = source.type;
+    record.name = source.name;
+    DescribeArchive(source.path, source.folder(), record);
+    Describe(source.reader, record);
+    ImportResult result = Install(source, user_dir, hooks, limits, data_dir, record);
+    if (!result.package.empty()) record.package = result.package;
+    record.refused = result.refused;
+    record.status = result.status;
+    record.detail = result.detail;
+    result.log = ImportLog(record);
+    return result;
+}
+
+ImportResult Unopened(ImportStatus status, const std::string& type, const std::string& name, const fs::path& path) {
+    ImportRecord record;
+    ImportResult result;
+    record.type = type;
+    record.name = name;
+    DescribeArchive(path, type == "folder", record);
+    record.status = result.status = status;
+    result.log = ImportLog(record);
+    return result;
+}
+
+std::string ArchiveType(const fs::path& archive) {
+    std::string head;
+    if (!ReadHead(archive, 2, head)) return "zip";
+    return head == "7z" ? "7z" : head == "Ra" ? "rar" : "zip";
 }
 
 std::string FolderName(const fs::path& folder) {
@@ -476,16 +961,72 @@ const char* ImportStatusTitle(ImportStatus status) {
     case ImportStatus::kAlreadyInstalled: return "This level is already installed";
     case ImportStatus::kCancelled: return "Import cancelled. Nothing was changed.";
     case ImportStatus::kUnreadable: return "The files could not be read";
-    case ImportStatus::kUnsupported: return "This archive is not supported. Extract it and use Import Folder";
+    case ImportStatus::kUnsupported: return "Unsupported archive. Extract it and use Import Folder";
     case ImportStatus::kDamaged: return "The archive is damaged";
-    case ImportStatus::kUnsafe: return "The package holds an unsafe path or file";
+    case ImportStatus::kUnsafe: return "Unsafe path in archive";
     case ImportStatus::kTooLarge: return "The package is too large";
-    case ImportStatus::kNoLevel: return "No Trespasser level (.scn) was found";
+    case ImportStatus::kNoLevel: return "No playable level was found";
+    case ImportStatus::kUnsupportedFormat: return "This level is not supported by this port yet";
+    case ImportStatus::kMissingFiles: return "This level is missing required files";
+    case ImportStatus::kNotSupported: return "This custom level is not fully supported";
+    case ImportStatus::kUnsafeToLoad: return "This level cannot be loaded safely";
     case ImportStatus::kSeveralPackages: return "This folder holds several levels. Choose the folder of one of them";
     case ImportStatus::kNoSpace: return "There is not enough free disk space";
     case ImportStatus::kWriteFailed: return "The level could not be written";
     }
     return "";
+}
+
+void ImportProgress::Raise(long long value) { done_ = std::max(done_, std::min(value, kTotal - 1)); }
+
+void ImportProgress::Phase(const std::string& label) {
+    static constexpr long long kStart[] = {0, 50, 900};
+    for (size_t i = 0; i < std::size(kImportPhases); ++i)
+        if (label == kImportPhases[i]) Raise(kStart[i]);
+}
+
+void ImportProgress::Bytes(uint64_t done, uint64_t total) {
+    if (total) Raise(50 + (long long)(double(std::min(done, total)) / double(total) * 850.0));
+}
+
+ImportResult RunImport(const ImportRequest& request, const std::function<void(const std::string&, long long, long long)>& publish,
+                       const std::function<bool()>& cancelled) {
+    ImportProgress progress;
+    std::string phase = kImportPhases[0];
+    const auto tell = [&] { publish(phase, progress.done(), ImportProgress::kTotal); };
+    tell();
+    ImportHooks hooks;
+    hooks.phase = [&](const char* text) {
+        phase = text;
+        progress.Phase(text);
+        tell();
+    };
+    hooks.progress = [&](uint64_t done, uint64_t total) {
+        progress.Bytes(done, total);
+        tell();
+        return !cancelled();
+    };
+    ImportResult result = request.folder ? ImportLevelFolder(request.source, request.user_dir, hooks, {}, request.data_dir)
+                                         : ImportLevelArchive(request.source, request.user_dir, hooks, {}, request.data_dir);
+    if (result.ok()) {
+        progress.Complete();
+        tell();
+    }
+    return result;
+}
+
+LevelNotice ImportNotice(ImportStatus status) {
+    constexpr char kCouldNotImport[] = "Could not import this custom level";
+    switch (status) {
+    case ImportStatus::kInstalled:
+    case ImportStatus::kCancelled: return {ImportStatusTitle(status), "", false};
+    case ImportStatus::kMissingFiles:
+    case ImportStatus::kNotSupported:
+    case ImportStatus::kUnsupportedFormat:
+    case ImportStatus::kUnsafeToLoad: return {kCouldNotImport, ImportStatusTitle(ImportStatus::kNotSupported), true};
+    default: break;
+    }
+    return {kCouldNotImport, ImportStatusTitle(status), true};
 }
 
 fs::path CustomLevelsDir(const fs::path& user_dir) { return user_dir / JPT_CUSTOM_LEVELS_DIR; }
@@ -495,39 +1036,30 @@ bool IsLevelPackageFile(const std::string& relative_path) {
         ".scn", ".grf", ".wtd", ".pid", ".swp", ".spz", ".spp", ".asa", ".asb", ".tpa", ".sky", ".ddf", ".smk", ".bmp", ".tga", ".dds",
         ".png", ".jpg", ".jpeg", ".gif", ".pcx", ".wav", ".mp3", ".ogg", ".txt", ".md", ".markdown", ".nfo", ".1st", ".me", ".pdf",
         ".rtf", ".ini", ".cfg", ".csv"};
-    const std::string type = Extension(relative_path);
-    return type.empty() ? ReadmeScore(relative_path) > 0 : OneOf(type, kTypes);
+    const std::string type = PathType(relative_path);
+    return type.empty() ? LevelReadmeScore(relative_path) > 0 : OneOf(type, kTypes);
 }
 
-ImportResult ImportLevelArchive(const fs::path& archive, const fs::path& user_dir, const ImportHooks& hooks, const ArchiveLimits& limits) {
+ImportResult ImportLevelArchive(const fs::path& archive, const fs::path& user_dir, const ImportHooks& hooks, const ArchiveLimits& limits,
+                                const fs::path& data_dir) {
     ArchiveError error = ArchiveError::kNone;
-    if (hooks.phase) hooks.phase("Reading the package...");
+    if (hooks.phase) hooks.phase(kImportPhases[0]);
     const std::unique_ptr<ArchiveReader> reader = OpenArchive(archive, limits, error);
-    if (!reader) {
-        ImportResult result;
-        result.status = FromArchive(error);
-        return result;
-    }
-    return Import(*reader, Utf8(archive.stem()), false, user_dir, hooks, limits);
+    if (!reader) return Unopened(FromArchive(error), "archive", Utf8(archive.filename()), archive);
+    return Import({*reader, Utf8(archive.stem()), ArchiveType(archive), Utf8(archive.filename()), archive}, user_dir, hooks, limits, data_dir);
 }
 
-ImportResult ImportLevelFolder(const fs::path& folder, const fs::path& user_dir, const ImportHooks& hooks, const ArchiveLimits& limits) {
-    ImportResult result;
+ImportResult ImportLevelFolder(const fs::path& folder, const fs::path& user_dir, const ImportHooks& hooks, const ArchiveLimits& limits,
+                               const fs::path& data_dir) {
     ArchiveError error = ArchiveError::kNone;
-    if (hooks.phase) hooks.phase("Reading the package...");
+    if (hooks.phase) hooks.phase(kImportPhases[0]);
     std::error_code ec;
     const bool overlaps = trg::update::PathIsWithin(folder, CustomLevelsDir(user_dir)) ||
                           trg::update::PathIsWithin(CustomLevelsDir(user_dir), folder);
-    if (!fs::is_directory(folder, ec) || overlaps) {
-        result.status = overlaps ? ImportStatus::kUnsafe : ImportStatus::kUnreadable;
-        return result;
-    }
+    if (!fs::is_directory(folder, ec) || overlaps) return Unopened(overlaps ? ImportStatus::kUnsafe : ImportStatus::kUnreadable, "folder", FolderName(folder), folder);
     const std::unique_ptr<ArchiveReader> reader = OpenFolder(folder, limits, error);
-    if (!reader) {
-        result.status = FromArchive(error);
-        return result;
-    }
-    return Import(*reader, FolderName(folder), true, user_dir, hooks, limits);
+    if (!reader) return Unopened(FromArchive(error), "folder", FolderName(folder), folder);
+    return Import({*reader, FolderName(folder), "folder", FolderName(folder), folder}, user_dir, hooks, limits, data_dir);
 }
 
 void CleanLevelStaging(const fs::path& user_dir) {
@@ -540,26 +1072,411 @@ void CleanLevelStaging(const fs::path& user_dir) {
     for (const fs::path& path : leftovers) fs::remove_all(path, ec);
 }
 
-std::vector<LevelPackage> ListLevelPackages(const fs::path& user_dir, const fs::path& data_dir) {
+std::vector<const LevelScene*> LevelPackage::levels() const {
+    std::vector<const LevelScene*> list;
+    for (const LevelScene& scene : scenes) {
+        if (!scene.playable()) continue;
+        if (scene.start) return {&scene};
+        list.push_back(&scene);
+    }
+    return list;
+}
+
+std::vector<const LevelScene*> LevelPackage::rows() const {
+    const std::vector<const LevelScene*> playable = levels();
+    if (!playable.empty() && playable[0]->start) return playable;
+    const bool mission = layout != "loose" && layout != "data_folder";
+    std::vector<const LevelScene*> list;
+    for (const LevelScene& scene : scenes) {
+        if (scene.auxiliary || scene.state == LevelState::kAuxiliary) continue;
+        list.push_back(&scene);
+    }
+    // Without a StartLevel, the scenes of a mission that another one leads to are parts of it.
+    const auto root = [](const LevelScene* s) { return s->playable() && s->led_to_by.empty(); };
+    if (mission && std::count_if(list.begin(), list.end(), root) == 1)
+        list.erase(std::remove_if(list.begin(), list.end(), [](const LevelScene* s) { return s->playable() && !s->led_to_by.empty(); }), list.end());
+    return list;
+}
+
+const char* LevelStatusText(const LevelScene& scene) { return scene.playable() ? "Ready" : "Not supported"; }
+
+RowActions ActionsOf(const LevelScene* scene, bool has_readme) {
+    RowActions actions;
+    actions.play = scene && scene->playable();
+    actions.readme = actions.play && has_readme;
+    actions.report = !actions.play;
+    return actions;
+}
+
+const char* LevelSortKey(LevelSort sort) {
+    switch (sort) {
+    case LevelSort::kOldest: return "oldest";
+    case LevelSort::kNameUp: return "name";
+    case LevelSort::kNameDown: return "name_down";
+    case LevelSort::kNewest: break;
+    }
+    return "newest";
+}
+
+LevelSort LevelSortOf(const std::string& key) {
+    for (const LevelSort sort : {LevelSort::kOldest, LevelSort::kNameUp, LevelSort::kNameDown})
+        if (key == LevelSortKey(sort)) return sort;
+    return LevelSort::kNewest;
+}
+
+std::vector<LevelRow> SortedRows(const std::vector<LevelPackage>& packages, LevelSort sort) {
+    std::vector<LevelRow> rows;
+    for (const LevelPackage& package : packages) {
+        const std::vector<const LevelScene*> scenes = package.rows();
+        if (scenes.empty()) rows.push_back({&package, nullptr});
+        for (const LevelScene* scene : scenes) rows.push_back({&package, scene});
+    }
+    const auto name = [](const LevelRow& r) { return std::make_pair(Lower(r.package->id), r.scene ? Lower(r.scene->file) : std::string()); };
+    const auto start = [](const LevelRow& r) { return r.scene && r.scene->start ? 0 : 1; };
+    std::stable_sort(rows.begin(), rows.end(), [&](const LevelRow& a, const LevelRow& b) {
+        if (sort == LevelSort::kNameUp) return name(a) < name(b);
+        if (sort == LevelSort::kNameDown) return name(b) < name(a);
+        if (a.package->imported_at != b.package->imported_at)
+            return sort == LevelSort::kNewest ? a.package->imported_at > b.package->imported_at : a.package->imported_at < b.package->imported_at;
+        return std::make_pair(start(a), name(a)) < std::make_pair(start(b), name(b));
+    });
+    return rows;
+}
+
+size_t PlayableLevels(const std::vector<LevelPackage>& packages) {
+    size_t count = 0;
+    for (const LevelPackage& package : packages) count += package.levels().size();
+    return count;
+}
+
+namespace {
+
+// The guide of each level the game can start (launcher/level_guide.h): rewritten after an analysis, else written when it is missing.
+std::vector<std::string> WriteGuides(const fs::path& package_dir, const fs::path& data_dir, const std::vector<LevelScene>& scenes, bool missing_only) {
+    std::vector<std::string> log;
+    for (const LevelScene& scene : scenes) {
+        if (!scene.playable()) continue;
+        std::error_code ec;
+        const fs::path out = package_dir / PathFromUtf8(kLevelGuideFolder) / PathFromUtf8(LevelGuideName(scene.file));
+        if (missing_only && fs::is_regular_file(out, ec)) continue;
+        const auto grf = std::find_if(scene.resources.begin(), scene.resources.end(), [](const LevelResource& r) { return r.type == "GRF" && !r.place.empty(); });
+        if (grf == scene.resources.end()) continue;
+        const bool in_game = grf->place == kInstalledGame;
+        const fs::path world = in_game ? GameFile(data_dir, grf->name) : package_dir / PathFromUtf8(grf->place);
+        size_t size = 0;
+        char problem[256] = "";
+        uint8_t* bytes = world.empty() ? nullptr : jpt_level_world_load(Utf8(world).c_str(), &size);
+        jpt_groff_t* g = bytes ? jpt_groff_open(grf->name.c_str(), bytes, size, problem, sizeof problem) : nullptr;
+        if (g) {
+            const LevelGuide guide = BuildLevelGuide(g);
+            const fs::path temp = fs::path(out).concat(".tmp");
+            fs::create_directories(out.parent_path(), ec);
+            {
+                std::ofstream file(temp, std::ios::binary | std::ios::trunc);
+                file << LevelGuideText(guide, grf->name, in_game);
+            }
+            fs::rename(temp, out, ec);
+            log.push_back("guide of " + scene.file + (ec ? ": could not be written" : ": " + LevelGuideSummary(guide)));
+            jpt_groff_close(g);
+        } else {
+            log.push_back("guide of " + scene.file + ": " + grf->name + " could not be read" + (problem[0] ? std::string(", ") + problem : std::string()));
+        }
+        std::free(bytes);
+    }
+    return log;
+}
+
+LevelPackage AnalysePackage(const fs::path& user_dir, const fs::path& data_dir, const std::string& id) {
+    LevelPackage package;
+    PackageManifest manifest;
+    package.id = manifest.package_id = id;
+    package.dir = CustomLevelsDir(user_dir) / id;
+    const std::vector<PackageFile> files = PackageFiles(package.dir);
+    const PackageSource source = FolderSource(package.dir, files);
+    manifest.analysis = AnalyzePackage(source);
+    const PackageAnalysis& a = manifest.analysis;
+    std::string record, problem;
+    const bool found = ReadBytes(package.dir / kManifestFile, kRecordLimit, record), newer = found && ManifestIsNewer(record);
+    if (!newer && (!found || !ReadManifestOrigin(record, manifest.origin)))
+        manifest.origin = {"migrated", id, HashFolder(package.dir, files), {}, 0};
+    if (!manifest.origin.imported_at) manifest.origin.imported_at = OldestFile(package.dir, files);
+    NoteRefused(manifest.analysis, manifest.origin.refused);
+    package.imported_at = manifest.origin.imported_at;
+    package.layout = a.layout;
+    package.scenes = ScenesOf(a, source, data_dir, package.dir);
+    FinishAnalysis(manifest.analysis, source, package.scenes);
+    if (!data_dir.empty()) manifest.missing = MissingOf(package.scenes);
+    package.recorded = !newer && RuntimeIsSafe(a, files, problem) && WriteRecords(package.dir, manifest);
+    if (package.recorded && !data_dir.empty())
+        for (std::string& line : WriteGuides(package.dir, data_dir, package.scenes, false)) package.log.push_back(std::move(line));
+    package.readme = a.readme;
+    package.ce = a.need("Trespasser CE");
+    package.atx = a.need("ATX");
+    package.config_warnings = a.config_warnings();
+    package.log.push_back("layout " + a.layout + (a.root.empty() ? "" : ", mod folder " + a.root) + ", start level " + (a.start_level.empty() ? "none" : a.start_level));
+    for (const Warning& w : a.warnings) package.log.push_back(w.code + ": " + w.detail);
+    for (const std::string& name : manifest.missing) package.log.push_back("missing required: " + name);
+    if (!package.recorded) package.log.push_back("its manifest could not be written: the package is read by its folders alone");
+    return package;
+}
+
+LevelPackage ReadPackage(const fs::path& user_dir, const fs::path& data_dir, const std::string& id, const std::string& game_key) {
+    const fs::path dir = CustomLevelsDir(user_dir) / id;
+    LevelPackage package;
+    if (ReadListingRecord(dir, PackageListingKey(dir, game_key), package)) {
+        package.id = id;
+        package.dir = dir;
+        package.cached = true;
+        return package;
+    }
+    package = AnalysePackage(user_dir, data_dir, id);
+    if (package.recorded) WriteListingRecord(dir, PackageListingKey(dir, game_key), package);
+    return package;
+}
+
+LevelPackage ReadPackage(const fs::path& user_dir, const fs::path& data_dir, const std::string& id) {
+    return ReadPackage(user_dir, data_dir, id, GameListingKey(data_dir));
+}
+
+} // namespace
+
+namespace {
+
+fs::path s_game_data;
+
+int FindGameFile(const char* relative, char* out, size_t cap) {
+    const std::string name = PathName(relative), folder = PathFolder(relative);
+    for (const fs::path& root : {s_game_data.parent_path(), s_game_data}) {
+        const fs::path file = GameFile(folder.empty() ? root : root / PathFromUtf8(folder), name);
+        if (file.empty()) continue;
+        const int n = std::snprintf(out, cap, "%s", file.string().c_str());
+        return n > 0 && size_t(n) < cap;
+    }
+    return 0;
+}
+
+// The runtime's own lookup, with the package active as it is while the level plays.
+class RuntimeLookup {
+public:
+    RuntimeLookup(const fs::path& user_dir, const fs::path& data_dir, const std::string& id, const std::string& scene) {
+        jpt_custom_level_request_t request{};
+        char error[256] = "";
+        std::snprintf(request.package, sizeof request.package, "%s", id.c_str());
+        std::snprintf(request.scene, sizeof request.scene, "%s", scene.c_str());
+        s_game_data = data_dir;
+        active_ = jpt_custom_level_activate(user_dir.string().c_str(), &request, error, sizeof error) != 0;
+        if (active_) jpt_custom_level_set_game(FindGameFile);
+        error_ = error;
+    }
+    ~RuntimeLookup() { jpt_custom_level_deactivate(); }
+    RuntimeLookup(const RuntimeLookup&) = delete;
+    RuntimeLookup& operator=(const RuntimeLookup&) = delete;
+
+    bool active() const { return active_; }
+    const std::string& error() const { return error_; }
+    bool Finds(const std::string& name) const {
+        char file[JPT_PATH_MAX];
+        std::error_code ec;
+        if (jpt_custom_level_find(name.c_str(), file, sizeof file)) return fs::is_regular_file(file, ec);
+        return jpt_custom_level_game_file(name.c_str(), file, sizeof file) != 0;
+    }
+
+private:
+    bool active_ = false;
+    std::string error_;
+};
+
+// Other installed versions' copies: named in the log, never used.
+std::string ElsewhereInGame(const fs::path& data_dir, const std::string& name) {
+    std::string found;
+    std::error_code ec;
+    if (data_dir.empty()) return found;
+    const fs::path versions = data_dir.parent_path().parent_path();
+    for (fs::directory_iterator it(versions, ec), end; !ec && it != end; it.increment(ec)) {
+        const fs::path other = it->path() / data_dir.filename();
+        if (other != data_dir && InGame(other, name)) found += (found.empty() ? "" : ", ") + Utf8(it->path().filename());
+    }
+    return found;
+}
+
+} // namespace
+
+std::vector<std::string> LevelProblems(const LevelPackage& package, const LevelScene& scene, const fs::path& data_dir) {
+    std::vector<std::string> lines = {"package " + package.id + ", level " + scene.path + ": " + LevelClassName(scene.level_class())};
+    for (const LevelIssue& issue : scene.issues) {
+        lines.push_back("  " + issue.code + " " + issue.subject + ": " + issue.detail);
+        if (issue.policy != IssuePolicy::kMissing) continue;
+        const std::string folder = PathFolder(scene.path), other = ElsewhereInGame(data_dir, issue.subject);
+        lines.push_back("    looked in: the package's " + (folder.empty() ? std::string("own folder") : folder) + ", its other folders, " + (data_dir.empty() ? std::string("no installed game") : Utf8(data_dir)));
+        lines.push_back("    alternative: " + (other.empty() ? std::string("none") : "in another installed version, which a level of this one cannot use: " + other));
+    }
+    for (const LevelResource& r : scene.resources) lines.push_back("  " + r.type + " " + r.name + ": " + (!r.place.empty() ? r.place : !r.note.empty() ? r.note : "missing"));
+    return lines;
+}
+
+PlayCheck CheckBeforePlay(const fs::path& user_dir, const fs::path& data_dir, const std::string& id, const std::string& scene) {
+    PlayCheck check;
+    const LevelPackage package = jpt_custom_level_id_valid(id.c_str()) ? ReadPackage(user_dir, data_dir, id) : LevelPackage();
+    const auto level = std::find_if(package.scenes.begin(), package.scenes.end(), [&scene](const LevelScene& s) { return s.path == scene; });
+    if (level == package.scenes.end()) {
+        check.log.push_back("package " + id + " has no level " + scene);
+        return check;
+    }
+    check.layout = package.layout;
+    check.log = LevelProblems(package, *level, data_dir);
+    check.reason = RejectionOf(*level);
+    check.ok = level->playable();
+    if (check.ok) {
+        const RuntimeLookup runtime(user_dir, data_dir, id, scene);
+        if (!runtime.active()) check.ok = false, check.reason = ImportStatus::kUnsafeToLoad, check.log.push_back("  " + runtime.error());
+        for (const LevelResource& r : level->resources) {
+            if (!check.ok || r.place.empty() || r.type == "SCN" || runtime.Finds(r.name)) continue;
+            check.ok = false;
+            check.reason = ImportStatus::kMissingFiles;
+            check.log.push_back("  " + r.type + " " + r.name + " was found in " + r.place + ", but the runtime does not find it");
+        }
+    }
+    if (check.ok)
+        for (const std::string& line : WriteGuides(package.dir, data_dir, package.scenes, true)) check.log.push_back("  " + line);
+    check.log.push_back(std::string("  result: ") + (check.ok ? "started" : std::string("BLOCKED_PRECHECK, not started, ") + ImportStatusTitle(check.reason)));
+    return check;
+}
+
+std::vector<LevelPackage> ListLevelPackages(const fs::path& user_dir, const fs::path& data_dir, ListingStats* stats, const std::atomic<bool>* cancel) {
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point since) { return std::chrono::duration<double, std::milli>(Clock::now() - since).count(); };
+    ListingStats local;
+    ListingStats& s = stats ? *stats : local;
+    Clock::time_point start = Clock::now();
+    const std::string game_key = GameListingKey(data_dir);
+    s.game_ms = ms(start);
     std::vector<LevelPackage> packages;
     for (const std::string& id : InstalledIds(CustomLevelsDir(user_dir))) {
-        LevelPackage package;
-        package.id = id;
-        package.dir = CustomLevelsDir(user_dir) / id;
-        const std::vector<std::string> files = PackageFiles(package.dir);
-        for (const std::string& file : files)
-            if (IsScene(file) && package.scenes.size() < JPT_CUSTOM_LEVEL_SCENES_MAX)
-                package.scenes.push_back(InspectScene(package.dir, file, files, data_dir));
-        package.readme = ChooseReadme(files);
-        std::string text;
-        if (!package.readme.empty() && ReadLevelText(package.dir / PathFromUtf8(package.readme), text)) {
-            text = Lower(text);
-            package.mentions_atx = MentionsWord(text, "atx");
-            package.mentions_ce = MentionsWord(text, "trespasser ce") || MentionsWord(text, "tresce") || MentionsWord(text, "ce patch");
+        if (cancel && cancel->load(std::memory_order_relaxed)) {
+            s.cancelled = true;
+            break;
         }
-        packages.push_back(std::move(package));
+        start = Clock::now();
+        packages.push_back(ReadPackage(user_dir, data_dir, id, game_key));
+        const bool cached = packages.back().cached;
+        (cached ? s.cached_ms : s.analysed_ms) += ms(start);
+        ++(cached ? s.cached : s.analysed);
     }
     return packages;
+}
+
+std::string ArchiveSha256(const fs::path& archive) { return HashFile(archive); }
+
+std::vector<std::string> RequiredFeatures(const PackageAnalysis& a, const LevelScene& scene) {
+    std::set<std::string> names(a.required.begin(), a.required.end());
+    for (const auto& [world, facts] : scene.worlds)
+        for (const std::string& name : RequiredByWorld(facts)) names.insert(name);
+    if (scene.version > JPT_SCENE_VERSION_OWN) names.insert(scene.version >= JPT_SCENE_VERSION_SCRIPTS ? "CE_SCN_26" : "CE_SCN_23_25");
+    for (const AudioPack& pack : a.audio)
+        if (pack.state == "ready") names.insert(pack.additive ? "CE_TPA_ADDED" : "CE_TPA_REPLACED");
+    for (const LoadingImage& image : a.images)
+        if (image.state == "ready") names.insert("CE_LOADING_IMAGE");
+    if (a.skip_win_movie) names.insert("CE_WIN_MOVIE");
+    static constexpr std::pair<const char*, const char*> kSettings[] = {
+        {"dual_stow", "CE_DUAL_STOW"}, {"enhanced_sky", "CE_ENHANCED_SKY"}, {"water_refraction", "CE_WATER_REFRACTION"}, {"active_ai", "CE_MAX_ACTIVE_AI"}};
+    for (const SessionOverride& o : a.overrides)
+        for (const auto& [key, name] : kSettings)
+            if (o.key == key) names.insert(name);
+    for (const SessionLimit& l : a.limits)
+        if (l.key == "terrain_nodes") names.insert("CE_TERRAIN_NODES");
+        else if (l.key == "terrain_cull_mm") names.insert("CE_TERRAIN_CULL_BIAS");
+    return {names.begin(), names.end()};
+}
+
+AnalysisResult AnalyzeLevelSource(const fs::path& path, const fs::path& data_dir, const ArchiveLimits& limits) {
+    AnalysisResult result;
+    ArchiveError error = ArchiveError::kNone;
+    std::error_code ec;
+    const bool folder = fs::is_directory(path, ec);
+    const std::unique_ptr<ArchiveReader> reader = folder ? OpenFolder(path, limits, error) : OpenArchive(path, limits, error);
+    if (!reader) {
+        result.import.status = FromArchive(error);
+        return result;
+    }
+    ImportRecord record;
+    record.type = folder ? "folder" : ArchiveType(path);
+    record.name = Utf8(path.filename());
+    DescribeArchive(path, folder, record);
+    result.type = record.type;
+    result.sha256 = record.sha256;
+    result.bytes = record.bytes;
+    Describe(*reader, record);
+    std::vector<PlannedFile> plan;
+    const bool planned = PlanFiles(*reader, limits, plan, result.import), several = planned && folder && HoldsSeveralPackages(plan, *reader);
+    if (several) result.import.status = ImportStatus::kSeveralPackages;
+    if (!planned || several) {
+        for (const PlannedFile& file : plan) record.accepted.push_back(file.path);
+        record.refused = result.import.refused;
+        record.status = result.import.status;
+        record.detail = result.import.detail;
+        result.import.log = ImportLog(record);
+        return result;
+    }
+    PackageSource source;
+    std::map<std::string, PlannedFile> by_path;
+    for (const PlannedFile& file : plan) {
+        source.files.push_back({file.path, file.size});
+        by_path.emplace(file.path, file);
+    }
+    ArchiveError unread = ArchiveError::kNone; // the first file that could not be read
+    std::string unread_file;
+    const auto extract = [&](const std::string& name, uint64_t most, bool whole, std::string& bytes) {
+        const auto it = by_path.find(name);
+        bytes.clear();
+        if (it == by_path.end() || (whole && it->second.size > most)) return false;
+        const ArchiveError done = reader->Extract(it->second.index, [&](const uint8_t* data, size_t size) {
+            bytes.append(reinterpret_cast<const char*>(data), size_t(std::min<uint64_t>(size, most - bytes.size())));
+            return bytes.size() < most;
+        });
+        const bool got = done == ArchiveError::kNone || done == ArchiveError::kCancelled, ok = got && (!whole || bytes.size() == it->second.size);
+        if (!ok && unread == ArchiveError::kNone) {
+            unread = got ? ArchiveError::kDamaged : done;
+            unread_file = name;
+        }
+        return ok;
+    };
+    source.read = [&](const std::string& name, uint64_t limit, std::string& bytes) { return extract(name, limit, true, bytes); };
+    source.head = [&](const std::string& name, size_t count, std::string& bytes) { return extract(name, count, false, bytes); };
+    PackageManifest manifest;
+    manifest.package_id = PackageId(folder ? FolderName(path) : Utf8(path.stem()));
+    manifest.origin = {record.type, record.name, "", RefusedNames(result.import.refused)};
+    manifest.analysis = AnalyzePackage(source);
+    NoteRefused(manifest.analysis, manifest.origin.refused);
+    std::string problem;
+    result.import.files = plan.size();
+    result.import.package = manifest.package_id;
+    record.package = manifest.package_id;
+    for (const PackageFile& file : source.files) record.accepted.push_back(file.path);
+    record.refused = result.import.refused;
+    record.analysis = manifest.analysis;
+    record.scenes = ScenesOf(manifest.analysis, source, data_dir);
+    if (unread != ArchiveError::kNone) {
+        record.analysis = {};
+        record.scenes.clear();
+        record.status = result.import.status = FromArchive(unread);
+        record.detail = result.import.detail = unread_file;
+        result.import.log = ImportLog(record);
+        return result;
+    }
+    FinishAnalysis(manifest.analysis, source, record.scenes);
+    record.analysis = manifest.analysis;
+    if (!data_dir.empty()) manifest.missing = MissingOf(record.scenes);
+    result.import.status = Judge(manifest.analysis, record.scenes, result.import);
+    if (result.import.ok() && !RuntimeIsSafe(manifest.analysis, source.files, problem)) result.import.status = ImportStatus::kUnsafe, result.import.detail = problem;
+    record.status = result.import.status;
+    record.detail = result.import.detail;
+    result.import.log = ImportLog(record);
+    result.report = AnalysisReport(manifest);
+    result.json = ManifestJson(manifest);
+    result.analysis = std::move(manifest.analysis);
+    result.scenes = std::move(record.scenes);
+    result.files = std::move(source.files);
+    return result;
 }
 
 bool DeleteLevelPackage(const fs::path& user_dir, const std::string& id, std::string& error) {
@@ -580,61 +1497,17 @@ bool DeleteLevelPackage(const fs::path& user_dir, const std::string& id, std::st
     return true;
 }
 
-std::string ChooseReadme(const std::vector<std::string>& relative_paths) {
-    std::string best;
-    int best_score = 0;
-    const auto depth = [](const std::string& path) { return std::count(path.begin(), path.end(), '/'); };
-    for (const std::string& path : relative_paths) {
-        const int score = ReadmeScore(path);
-        if (!score || score < best_score) continue;
-        const bool better = score > best_score || depth(path) < depth(best) ||
-                            (depth(path) == depth(best) && (path.size() < best.size() || (path.size() == best.size() && path < best)));
-        if (!better) continue;
-        best = path;
-        best_score = score;
-    }
-    return best;
-}
-
 bool ResolveReadme(const fs::path& user_dir, const LevelPackage& package, fs::path& file) {
     const fs::path home = CustomLevelsDir(user_dir) / package.id;
     const fs::path candidate = package.dir / PathFromUtf8(package.readme);
     std::error_code ec;
-    if (package.readme.empty() || !ReadmeScore(package.readme) || !jpt_custom_level_id_valid(package.id.c_str()) ||
+    if (package.readme.empty() || !LevelReadmeScore(package.readme) || !jpt_custom_level_id_valid(package.id.c_str()) ||
         package.dir.lexically_normal() != home.lexically_normal() || !trg::update::PathIsWithin(candidate, home) ||
         !fs::is_regular_file(fs::symlink_status(candidate, ec))) {
         return false;
     }
     file = candidate;
     return true;
-}
-
-std::string DecodeText(const std::string& bytes) {
-    const auto at = [&bytes](size_t i) { return static_cast<unsigned char>(bytes[i]); };
-    std::string text;
-    const bool little = bytes.size() >= 2 && at(0) == 0xFF && at(1) == 0xFE, big = bytes.size() >= 2 && at(0) == 0xFE && at(1) == 0xFF;
-    if (little || big) {
-        std::u16string wide;
-        for (size_t i = 2; i + 1 < bytes.size(); i += 2) wide += char16_t(little ? at(i) | at(i + 1) << 8 : at(i) << 8 | at(i + 1));
-        for (char16_t& c : wide)
-            if (c >= 0xD800 && c < 0xE000) c = 0xFFFD;
-        text = Utf8(fs::path(wide));
-    } else if (bytes.size() >= 3 && at(0) == 0xEF && at(1) == 0xBB && at(2) == 0xBF) {
-        text = IsUtf8(bytes) ? bytes.substr(3) : FromWindows1252(bytes.substr(3));
-    } else {
-        text = IsUtf8(bytes) ? bytes : FromWindows1252(bytes);
-    }
-    std::string clean;
-    clean.reserve(text.size());
-    for (size_t i = 0; i < text.size(); ++i) {
-        const unsigned char c = static_cast<unsigned char>(text[i]);
-        if (c == '\r') {
-            if (i + 1 == text.size() || text[i + 1] != '\n') clean += '\n';
-        } else if (c >= 0x20 || c == '\n' || c == '\t') {
-            if (c != 0x7F) clean += char(c);
-        }
-    }
-    return clean;
 }
 
 bool ReadLevelText(const fs::path& file, std::string& text) {

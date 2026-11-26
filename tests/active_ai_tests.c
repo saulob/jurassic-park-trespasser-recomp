@@ -348,6 +348,8 @@ static void test_retail_lint(const char* root) {
 
 static void test_vocal_slots(void) {
     CHECK(ai_vocal_slot_valid(0, 0) && ai_vocal_slot_valid(6, 13) && ai_vocal_slot_valid(0, 13) && ai_vocal_slot_valid(6, 0));
+    CHECK(ai_vocal_more_slot(6, 0) == -1 && ai_vocal_more_slot(7, 0) == 0 && ai_vocal_more_slot(29, 13) == AI_VOCAL_MORE_SLOTS - 1 && ai_vocal_more_slot(30, 0) == -1);
+    CHECK(ai_vocal_more_slot(7, 14) == -1 && ai_vocal_more_slot(7, -1) == -1 && ai_vocal_more_slot(-1, 0) == -1);
     CHECK(!ai_vocal_slot_valid(7, 0) && !ai_vocal_slot_valid(6, 14) && !ai_vocal_slot_valid(-1, 0) && !ai_vocal_slot_valid(0, -1));
     CHECK(!ai_vocal_slot_valid(-1, -1) && !ai_vocal_slot_valid(INT32_MAX, 0) && !ai_vocal_slot_valid(INT32_MIN, INT32_MIN));
     /* The table ends where CAISystem's clock starts; slot 98 reaches the next object's vtable (+0x31D8). */

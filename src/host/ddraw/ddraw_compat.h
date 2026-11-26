@@ -80,6 +80,7 @@ struct dd_surface {
     /* Only a Lock hands the guest a pointer into the pixels, so only then can they change unannounced. */
     int exposed;
     unsigned long long watch_frame;
+    int override_id; /* jpt_texhw.h */
     int guard_alias;  /* page_guard.c alias of section; moves with it at Flip */
     int lock_alias;   /* this Lock handed out the alias */
 };

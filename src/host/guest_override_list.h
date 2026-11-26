@@ -14,6 +14,7 @@ GUEST_OVERRIDE(00411EA0, REQUIRED) /* window centring (ui_canvas.c) */
 GUEST_OVERRIDE(004128A0, REQUIRED) /* RasterBlt (ui_canvas.c) */
 GUEST_OVERRIDE(00413040, OPTIONAL) /* screen message (loading_hd.c) */
 GUEST_OVERRIDE(004142C0, OPTIONAL) /* level load (loading_hd.c) */
+GUEST_OVERRIDE(00414480, OPTIONAL) /* Restart Level (level_actions.c) */
 GUEST_OVERRIDE(00414D50, OPTIONAL) /* menu selection sound loader, menu-only volume (menu_audio.c) */
 GUEST_OVERRIDE(00415AD0, OPTIONAL) /* CLoaderWnd draw and present (loading_hd.c) */
 GUEST_OVERRIDE(00417300, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
@@ -36,6 +37,10 @@ GUEST_OVERRIDE(004213F0, REQUIRED) /* brain influences, Active AI (active_ai.c) 
 GUEST_OVERRIDE(004218C0, REQUIRED) /* brain influences tail, Active AI (active_ai.c) */
 GUEST_OVERRIDE(004395A0, OPTIONAL) /* voice captions to the text overlay (l10n.c) */
 GUEST_OVERRIDE(004610D0, OPTIONAL) /* CPlayer stow handler, Dual stow (ce_gameplay.c) */
+GUEST_OVERRIDE(00467BB0, OPTIONAL) /* CSetHintAction, actions of ATX and Trespasser CE (level_actions.c) */
+GUEST_OVERRIDE(00467BC0, OPTIONAL) /* CSetHintAction load (level_actions.c) */
+GUEST_OVERRIDE(00467BE0, OPTIONAL) /* CSetHintAction save (level_actions.c) */
+GUEST_OVERRIDE(0046BE90, OPTIONAL) /* trigger action factory (level_actions.c) */
 GUEST_OVERRIDE(00472B60, OPTIONAL) /* level TEXT action (l10n.c) */
 GUEST_OVERRIDE(00475F60, REQUIRED) /* CPartition::bAddChild, official Patch 1.1 fix (patch117.c) */
 GUEST_OVERRIDE(00477A40, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
@@ -73,7 +78,9 @@ GUEST_OVERRIDE(0057DB50, REQUIRED) /* bump primitive, perspective (cpu_polygons.
 GUEST_OVERRIDE(005F80B0, OPTIONAL) /* CInput::tinReadDefaultControls (gamepad.c) */
 GUEST_OVERRIDE(005F8A20, REQUIRED) /* pHeapAlloc (engine_heaps.c) */
 GUEST_OVERRIDE(005F8B10, REQUIRED) /* pvCommitMem (engine_heaps.c) */
+GUEST_OVERRIDE(00606630, OPTIONAL) /* CWorld::bLoadScene (level_actions.c) */
 GUEST_OVERRIDE(0060E3F0, OPTIONAL) /* water texture rows (water_kernels.c) */
 GUEST_OVERRIDE(0060FC10, REQUIRED) /* CEntityWater::CPriv::Integrate (physics_fixes.c) */
+GUEST_OVERRIDE(00614F50, REQUIRED) /* CInstance::pcLoad, scenes of Trespasser CE (scene_scripts.c) */
 GUEST_OVERRIDE(00630D90, OPTIONAL) /* object occlusion test (occlusion_kernel.c) */
 GUEST_OVERRIDE(00638670, OPTIONAL) /* CSimWaveVar2D step (water_kernels.c) */

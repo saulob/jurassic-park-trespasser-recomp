@@ -3396,6 +3396,24 @@ static void test_scene_heap_overflow(void) {
         /* Depth sort's alloca arrays (8 bytes per polygon) stay far below the 4 MB guest stack. */
         CHECK(polys.capacity * polys.scale * 8u < (4u << 20) / 4u);
     }
+    /* A custom level's session: the mesh builder's arrays as one run, loaded meshes and terrain as its package asks. */
+    {
+        static const uint32_t k_mesh[] = { 2048u * 40u, 32768u * 4u, 8192u * 32u, 8192u * 12u, 8192u * 12u, 2048u * 4u };
+        engine_session_t original = { 0, 64u, 100u, 0 }, level = { 1, 64u, 100u, 0 }, plain = { 1, 0u, 0u, 0 };
+        original.mesh_faces = level.mesh_faces = 8192u;
+        for (size_t i = 0; i < 6; i++) CHECK(engine_session_heap_bytes(&plain, k_mesh[i], 1u) == k_mesh[i]);
+        for (size_t i = 0; i < 6; i++) CHECK(engine_session_heap_bytes(&original, k_mesh[i], 1u) == k_mesh[i]);
+        for (size_t i = 0; i < 6; i++) CHECK(engine_session_heap_bytes(&level, k_mesh[i], 1u) == k_mesh[i] * 4u);
+        CHECK(engine_session_heap_bytes(&level, 12345u, 1u) == 12345u && engine_session_heap_bytes(&level, k_mesh[3], 1u) == k_mesh[3]);
+        CHECK(engine_session_heap_bytes(&level, k_mesh[0], 1u) == k_mesh[0] * 4u && engine_session_heap_bytes(&level, 12345u, 2u) == 24690u);
+        CHECK(2368u * 40u > k_mesh[0] && 3934u * 40u < k_mesh[0] * 4u && 11802u * 32u < k_mesh[2] * 4u);
+        level.mesh_faces = 2604u;
+        CHECK(engine_session_heap_bytes(&level, k_mesh[0], 1u) == k_mesh[0] * 2u);
+        CHECK(engine_session_heap_bytes(&level, ENGINE_MESH_HEAP_BYTES, 1u) == 64u << 20 && engine_session_heap_bytes(&original, ENGINE_MESH_HEAP_BYTES, 1u) == ENGINE_MESH_HEAP_BYTES);
+        CHECK(engine_session_heap_bytes(&plain, ENGINE_MESH_HEAP_BYTES, 1u) == ENGINE_MESH_HEAP_BYTES && engine_session_heap_bytes(&original, 1758600u, TERRAIN_HEAP_SCALE) == 1758600u * TERRAIN_HEAP_SCALE);
+        CHECK(engine_session_heap_bytes(&level, 1758600u, 1u) == 1758600u * 8u && engine_session_heap_bytes(&level, 996520u, 1u) == 996520u * 9u && engine_session_heap_bytes(&level, 543400u, 1u) == 543400u * 8u && engine_session_heap_bytes(&plain, 1758600u, TERRAIN_HEAP_SCALE) == 1758600u * TERRAIN_HEAP_SCALE);
+        CHECK(engine_session_heap_bytes(&plain, 996520u, 1u) == 996520u && engine_session_heap_bytes(&original, 996520u, 1u) == 996520u);
+    }
 }
 
 static void test_cache_refusals(void) {

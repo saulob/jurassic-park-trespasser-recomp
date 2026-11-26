@@ -7,6 +7,7 @@
 #include "guest_memory.h"
 #include "guest_ptr.h"
 #include "guest_va.h"
+#include "jpt_level_gate.h"
 #include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "jpt_vpath.h"
@@ -84,9 +85,10 @@ static void quick_save(const lx_quick_ops_t* ops, const guest_ui_view_t* v, cons
     ops->put_text(ops->scratch + MAX_PATH_BYTES, name);
     args[0] = ops->scratch, args[1] = ops->scratch + MAX_PATH_BYTES;
     ops->call(GAME_WND_PAUSE, LX_THISCALL, 0, NULL, v->top);
+    jpt_gate_save_failed();
     written = ops->call(APP_SAVE_FILE, LX_THISCALL, 2, args, APP);
     ops->call(GAME_WND_RESUME, LX_THISCALL, 1, &resume, v->top);
-    if (written) {
+    if (written && !jpt_gate_save_failed()) {
         lx_log("quick-save", "saved %s", path);
         say(ops, "Quick saved");
     } else {

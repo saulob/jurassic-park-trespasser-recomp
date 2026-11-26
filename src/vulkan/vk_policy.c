@@ -395,7 +395,8 @@ void jpt_vk_pipeline_key_from_state(const jpt_render_state_t* st, jpt_render_pri
     memset(out, 0, sizeof *out);
     if (!st) return;
     out->shader_kind = (uint8_t)(st->water_mode ? JPT_VK_SHADER_WATER
-                                                : st->sky_mode ? JPT_VK_SHADER_SKY : JPT_VK_SHADER_FIXED);
+                                                : st->sky_mode ? JPT_VK_SHADER_SKY
+                                                : st->lit ? JPT_VK_SHADER_LIT : JPT_VK_SHADER_FIXED);
     out->topology = topology_class(prim);
     out->cull_mode = (uint8_t)(st->cull_mode <= 3u ? st->cull_mode : 1u);
     out->fill_mode = (uint8_t)jpt_vk_resolve_fill_mode(st->fill_mode, supports_non_solid);

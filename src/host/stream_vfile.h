@@ -1,5 +1,6 @@
-/* Stream.tpa as the game reads it, independent of the platform: one virtual file object per handle the game opens (its own
- * position and lifetime), all of them over the same catalog of corrected captions and restored audio (stream_pack.h).
+/* The game's sound files as it reads them, independent of the platform: one virtual file object per handle the game opens
+ * (its own position and lifetime). Stream.tpa has the corrected captions and the restored audio (stream_pack.h); the sound
+ * files of the active custom level follow the samples of Stream, Effects and Ambient.tpa (tpa_merge.h).
  * The platform keeps the handle table and the lock; this layer has none. */
 #ifndef STREAM_VFILE_H
 #define STREAM_VFILE_H
@@ -20,6 +21,12 @@ void stream_catalog_init(stream_log_fn log);
 
 /* NULL when the file is not a TPA or STREAM_PACK_MAX_VIEWS views are open. `real_size` is the real file's size; `read` reads the real file. */
 stream_vfile_t* stream_vfile_open(stream_read_fn read, void* context, uint64_t real_size);
+/* The sound file an open of this kind is for, or -1: one the active custom level adds to, or Stream.tpa. `package_file`: the
+ * custom level answers the path with a file of its own. */
+int stream_vfile_kind(const char* path, uint32_t access, uint32_t flags, int package_file);
+stream_vfile_t* stream_vfile_open_kind(int kind, int package_file, stream_read_fn read, void* context, uint64_t real_size);
+/* A file that is only in memory; takes over `bytes` (from malloc), freed when NULL is returned too. */
+stream_vfile_t* stream_vfile_open_memory(uint8_t* bytes, size_t size);
 void stream_vfile_close(stream_vfile_t* file);
 
 /* 1 and the byte count (0 at the end); 0 when the real file cannot be read. The position advances by the count. */

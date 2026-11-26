@@ -19,6 +19,7 @@ inline constexpr char kLauncherYKey[] = "launcher_y";
 inline constexpr char kLauncherWidthKey[] = "launcher_width";
 inline constexpr char kLauncherHeightKey[] = "launcher_height";
 inline constexpr char kLauncherMaximizedKey[] = "launcher_maximized";
+inline constexpr char kLauncherLevelSortKey[] = "launcher_level_sort";
 inline constexpr char kLauncherFullscreenKey[] = "launcher_fullscreen";
 
 // The launcher opens when the game files are not ready, or when the setting is On or Shift is held (--launcher acts

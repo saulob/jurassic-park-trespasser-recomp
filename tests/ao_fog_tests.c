@@ -15,8 +15,12 @@
 #include "ddraw/d3d_legacy.h"
 #include "ddraw/d3d_translate.h"
 #include "ddraw/renderer_backend.h"
+#include "ddraw/sky_draw.h"
 #include "guest_ui_model.h"
 #include "jpt_config.h"
+#include "jpt_lit.h"
+#include "jpt_texhw.h"
+#include "texhw_fixture.h"
 
 #define W 320
 #define H 240
@@ -479,6 +483,150 @@ static void test_translucent(void) {
     CHECK(anywhere() == 0, "and none in full fog (%d)", anywhere());
 }
 
+/* A custom level's picture in place of a texture: told for the surface, gone when it is written, and kept to its format's alpha. */
+static dd_surface_t s_crate;
+static uint16_t s_crate_texels[16 * 16];
+
+static void scene_crate(unsigned alpha) {
+    set(D3DRENDERSTATE_ALPHATESTENABLE, alpha);
+    set(D3DRENDERSTATE_ALPHAFUNC, 5);
+    set(D3DRENDERSTATE_ALPHAREF, 0);
+    G.dev.texture = &s_crate;
+    quad(0, 0, W, H, WALL_Z, WALL_Z, 0xFFFFFFFFu, 255, 255);
+}
+
+static uint32_t centre(void) { return g_picture[0][(size_t)(P.h / 2) * P.w + P.w / 2] & 0xFFFFFFu; }
+static int near_colour(uint32_t colour) {
+    for (int c = 0; c < 24; c += 8)
+        if (abs(channel(centre(), c) - channel(colour, c)) > 8) return 0;
+    return 1;
+}
+
+/* Upright, so u goes right and v down; the light's direction differs from corner to corner. */
+static jpt_lit_vertex_t s_lit[4];
+static jpt_lit_draw_t s_lit_draw = { 0, 4, 0x00101820u, 0x00F0E0D0u, s_lit };
+static int s_lit_on;
+
+static void scene_lit(unsigned fog) {
+    const float s = 0.1f / WALL_Z;
+    const vertex_t v[4] = { { 0, 0, s, s, 0xFF808080u, fog << 24, 0, 0 }, { W, 0, s, s, 0xFF808080u, fog << 24, 8, 0 }, { W, H, s, s, 0xFF808080u, fog << 24, 8, 8 }, { 0, H, s, s, 0xFF808080u, fog << 24, 0, 8 } };
+    set(D3DRENDERSTATE_ALPHATESTENABLE, 0);
+    G.dev.texture = &s_crate;
+    jpt_lit_set_draw(s_lit_on ? &s_lit_draw : NULL);
+    ops->draw(&G.dev, D3DT_PT_TRIANGLEFAN, FVF, v, 4, NULL, 0);
+    jpt_lit_set_draw(NULL);
+}
+
+static int lit_like(const float texture[4], const float normal[4], unsigned fog) {
+    const uint32_t seen = centre();
+    float want[3], dark[3], full[3];
+    for (int k = 0; k < 3; k++) dark[k] = (float)channel(s_lit_draw.dark, 16 - 8 * k) / 255.0f, full[k] = (float)channel(s_lit_draw.full, 16 - 8 * k) / 255.0f;
+    jpt_lit_pixel(&s_lit[0], dark, full, texture, normal, want);
+    for (int k = 0; k < 3; k++) {
+        const float at = want[k] < 1.0f ? want[k] : 1.0f, there = (float)fog / 255.0f;
+        const float shown = at * 255.0f * there + (float)channel(FOG_COLOR, 16 - 8 * k) * (1.0f - there);
+        if (fabsf(shown - (float)channel(seen, 16 - 8 * k)) > 4.0f) return 0;
+    }
+    return 1;
+}
+
+/* crate has the normal map (1, 0, 0) with half the highlight, large one straight out. */
+static void test_lit(int crate, int large) {
+    static const float k_lights[4][4] = { { 0, 0, 1, 0.7f }, { 0.8f, 0, 0.6f, 0.9f }, { -0.8f, 0, 0.6f, 0.9f }, { 0.6f, 0.8f, 0, 0.5f } };
+    static const float k_materials[2][4] = { { 0.9f, 0, 0, 0.2f }, { 0.8f, 1.6f, 0.5f, 0.3f } };
+    const float blue[4] = { 0, 0, 1, 1 }, green[4] = { 32 / 255.0f, 192 / 255.0f, 64 / 255.0f, 1 }, right[4] = { 1, 128 / 255.0f, 128 / 255.0f, 128 / 255.0f }, out[4] = { 128 / 255.0f, 128 / 255.0f, 1, 1 };
+    s_lit_on = 1;
+    for (int m = 0; m < 2; m++)
+        for (int l = 0; l < 4; l++) {
+            for (int i = 0; i < 4; i++) {
+                memcpy(s_lit[i].light, k_lights[l], sizeof s_lit[i].light);
+                memcpy(s_lit[i].material, k_materials[m], sizeof s_lit[i].material);
+                s_lit[i].shade[0] = 0.7f, s_lit[i].shade[1] = 0.15f;
+            }
+            s_crate.override_id = crate, s_lit_draw.normal = jpt_texhw_normal(1);
+            CHECK(render(0, JPT_AO_OFF, scene_lit, 255) && lit_like(blue, right, 255), "light %d, material %d: %06X", l, m, centre());
+            s_crate.override_id = large, s_lit_draw.normal = jpt_texhw_normal(3);
+            CHECK(render(0, JPT_AO_OFF, scene_lit, 100) && lit_like(green, out, 100), "in fog, light %d, material %d: %06X", l, m, centre());
+            CHECK(render(0, JPT_AO_HIGH, scene_lit, 255) && lit_like(green, out, 255), "with Ambient Occlusion, light %d, material %d: %06X", l, m, centre());
+        }
+    s_lit_draw.normal = 0;
+    CHECK(render(0, JPT_AO_OFF, scene_lit, 255) && near_colour(0x106020), "no normal map: the vertices' colours: %06X", centre());
+    s_lit_draw.normal = jpt_texhw_normal(3), s_crate.override_id = 0;
+    CHECK(render(0, JPT_AO_OFF, scene_lit, 255) && near_colour(0x800000), "the game's own texture: %06X", centre());
+    s_lit_on = 0, s_crate.override_id = large;
+    CHECK(render(0, JPT_AO_OFF, scene_lit, 255) && near_colour(0x106020), "lit by the engine: %06X", centre());
+}
+
+static void test_override(void) {
+    static const char* const k_files[] = { "data/texhw/Map/w/crate.dds", "data/texhw/Map/leaf.tga", "data/texhw/Map/large.tga", "data/texhw/Map/w/crate.norm.tga", "data/texhw/Map/large.norm.tga" };
+    static uint8_t file[4 * 512 * 512 + 64];
+    char user[512], dir[600];
+    const char* temp = getenv("TEMP");
+    size_t size;
+    int crate, leaf, large;
+    snprintf(user, sizeof user, "%s/jpt_texhw_warp", temp ? temp : ".");
+    snprintf(dir, sizeof dir, "%s/custom_levels/Tex", user);
+    size = fx_dds_head(file, 8, 8, 0, "DXT1");
+    for (int i = 0; i < 4; i++, size += 8) memset(file + size, 0, 8), fx_put(file + size, 0x001F, 2);
+    CHECK(fx_file(dir, "texhw/Map/w/crate.dds", file, size), "a DXT1 picture");
+    size = fx_tga(file, 32, 32, 0x2000FF00u);
+    CHECK(fx_file(dir, "texhw/Map/leaf.tga", file, size), "a picture that is mostly clear");
+    size = fx_tga(file, 512, 512, 0xFF20C040u);
+    CHECK(fx_file(dir, "texhw/Map/large.tga", file, size), "a large picture");
+    size = fx_tga(file, 16, 16, 0x80FF8080u);
+    CHECK(fx_file(dir, "texhw/Map/w/crate.norm.tga", file, size), "a normal map");
+    size = fx_tga(file, 512, 512, 0xFF8080FFu);
+    CHECK(fx_file(dir, "texhw/Map/large.norm.tga", file, size), "a large one");
+    CHECK(fx_activate(user, k_files, 5), "the package");
+    jpt_texhw_name(1, "Map\\w\\crate.bmp");
+    jpt_texhw_name(2, "Map\\w\\leaf.bmp");
+    jpt_texhw_name(3, "Map\\w\\large.bmp");
+    crate = jpt_texhw_find(1), leaf = jpt_texhw_find(2), large = jpt_texhw_find(3);
+    CHECK(crate && leaf && large, "each has its override");
+    jpt_texhw_frame();
+
+    s_crate = G.leaf;
+    s_crate.gpu_texture = NULL;
+    s_crate.format.dwFlags = DDPF_RGB;
+    s_crate.format.dwRBitMask = 0xF800;
+    s_crate.format.dwGBitMask = 0x07E0;
+    s_crate.format.dwBBitMask = 0x001F;
+    s_crate.format.dwRGBAlphaBitMask = 0;
+    s_crate.bits = (BYTE*)s_crate_texels;
+    for (int i = 0; i < 16 * 16; i++) s_crate_texels[i] = 0xF800;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 0) && near_colour(0xFF0000), "the game's own texture: %06X", centre());
+    s_crate.override_id = crate;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 0) && near_colour(0x0000FF), "the picture in its place: %06X", centre());
+    s_crate.override_id = large;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 0) && near_colour(0x20C040), "one larger than the shared arrays take: %06X", centre());
+    s_crate.override_id = leaf;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 1) && near_colour(0x00FF00), "alpha is nothing to an opaque texture: %06X", centre());
+    test_lit(crate, large);
+    ops->texture_loaded(&s_crate, &s_crate);
+    s_crate.override_id = 0;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 0) && near_colour(0xFF0000), "the game's own again: %06X", centre());
+
+    s_crate.override_id = 0;
+    ops->surface_freed(&s_crate);
+    s_crate = G.leaf;
+    s_crate.gpu_texture = NULL;
+    s_crate.override_id = leaf;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 1) && near_colour(FOG_COLOR & 0xFFFFFF), "below half, a cutout is not there: %06X", centre());
+    s_crate.override_id = crate;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 1) && near_colour(0x0000FF), "a picture without alpha is solid: %06X", centre());
+
+    close_game();
+    ops->device_lost();
+    release_device();
+    CHECK(make_device() && ops->startup() && open_game(), "another device");
+    s_crate.gpu_texture = NULL;
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 1) && near_colour(0x0000FF), "the picture on the new device: %06X", centre());
+    jpt_custom_level_deactivate();
+    CHECK(render(0, JPT_AO_OFF, scene_crate, 0) && !near_colour(0x0000FF), "nothing of it after the session: %06X", centre());
+    G.dev.texture = NULL;
+    ops->surface_freed(&s_crate);
+}
+
 static void test_never_darkened(void) {
     pair(JPT_AO_ULTRA, scene_closed, 0);
     CHECK(anywhere() == 0, "the sky (no depth writes) is identical with AO on: %d", anywhere());
@@ -563,6 +711,81 @@ static void test_resize_and_device(void) {
     CHECK(anywhere() == 0, "full fog is left as it is on the new device");
 }
 
+/* The layers of a custom sky, as sky_draw.c gives them to the renderer. */
+HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices, DWORD index_count) {
+    return ops->draw(dev, type, fvf, vertices, count, indices, index_count);
+}
+void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD value) { ops->state_will_change(dev, change, state, value); }
+void d3dr_surface_freed(dd_surface_t* s) { ops->surface_freed(s); }
+int sky_layers_rect(const void* vertices, unsigned count, float rect[4]) {
+    (void)vertices;
+    rect[0] = rect[1] = 0.0f, rect[2] = W, rect[3] = H;
+    return count == 4;
+}
+
+static void* g_sky_gpu;
+
+static void sky_quad(sky_emit_fn emit, void* user, jpt_sky_blend_t blend, int fog, const jpt_picture_t* picture, float x0, float x1, uint32_t diffuse, uint32_t clear) {
+    const int twice = blend == JPT_SKY_ALPHA_2X;
+    const jpt_sky_pass_t pass = { twice ? JPT_SKY_ALPHA : blend, fog, 0, 0, twice };
+    const float x[6] = { x0, x1, x1, x0, x1, x0 }, y[6] = { 0, 0, H, 0, H, H };
+    jpt_sky_screen_vertex_t v[6];
+    sky_draw_t draw;
+    for (int i = 0; i < 6; i++) {
+        const jpt_sky_screen_vertex_t at = { x[i], y[i], 0.5f, 0.001f, diffuse, clear << 24, 0.5f, 0.5f };
+        v[i] = at;
+    }
+    draw.pass = &pass;
+    draw.picture = picture;
+    draw.gpu = &g_sky_gpu;
+    draw.vertices = v;
+    draw.count = 6;
+    emit(user, &draw);
+}
+
+void sky_layers_emit(const float rect[4], sky_emit_fn emit, void* user) {
+    static uint8_t texels[4] = { 0, 128, 0, 128 }; /* half green, half there */
+    const jpt_picture_t picture = { 1, 1, 1, 1, texels, sizeof texels };
+    (void)rect;
+    sky_quad(emit, user, JPT_SKY_OPAQUE, 0, NULL, 0, W, 0xFF404040u, 255);
+    sky_quad(emit, user, JPT_SKY_ALPHA, 0, &picture, 0, W / 8, 0xFFFFFFFFu, 255);
+    sky_quad(emit, user, JPT_SKY_ALPHA_2X, 0, &picture, W / 8, W / 4, 0xFFFFC0FFu, 255);
+    sky_quad(emit, user, JPT_SKY_BURN, 0, &picture, W / 4, W / 2, 0xFFFFFFFFu, 255);
+    sky_quad(emit, user, JPT_SKY_OPAQUE, 1, NULL, W / 2, W * 3 / 4, 0xFFFFFFFFu, 0);
+}
+
+static int s_sky_kept;
+
+static void scene_sky(unsigned vertices) {
+    DWORD render[D3D_RENDER_STATES];
+    G.dev.texture = &G.leaf;
+    memcpy(render, G.dev.render, sizeof render);
+    sky_draw_layers(&G.dev, NULL, vertices);
+    s_sky_kept = !memcmp(render, G.dev.render, sizeof render) && G.dev.texture == &G.leaf && G.dev.stage[0][D3DTSS_ADDRESSU] == 1 && G.dev.stage[0][D3DTSS_ADDRESSV] == 1;
+}
+
+static uint32_t sky_pixel(int eighth) { return g_picture[0][(size_t)(P.h / 2) * P.w + (size_t)P.w * (unsigned)(2 * eighth + 1) / 16u]; }
+
+static int like(uint32_t pixel, int r, int g, int b) { return abs(channel(pixel, 16) - r) <= 9 && abs(channel(pixel, 8) - g) <= 9 && abs(channel(pixel, 0) - b) <= 9; }
+
+static void test_sky_layers(void) {
+    const int f[3] = { (FOG_COLOR >> 16) & 255, (FOG_COLOR >> 8) & 255, FOG_COLOR & 255 };
+    CHECK(render(0, JPT_AO_OFF, scene_sky, 4) && s_sky_kept, "the sky's layers leave the device as it was");
+    CHECK(like(sky_pixel(0), 0x20, 0x60, 0x20), "alpha: %06X", sky_pixel(0) & 0xFFFFFF);
+    CHECK(like(sky_pixel(1), 0x20, 0x80, 0x20), "twice the colour: %06X", sky_pixel(1) & 0xFFFFFF);
+    CHECK(like(sky_pixel(3), 0x40, 0x80, 0x40), "burn: %06X", sky_pixel(3) & 0xFFFFFF);
+    CHECK(like(sky_pixel(5), f[0], f[1], f[2]), "fog: %06X", sky_pixel(5) & 0xFFFFFF);
+    CHECK(like(sky_pixel(7), 0x40, 0x40, 0x40), "opaque: %06X", sky_pixel(7) & 0xFFFFFF);
+    CHECK(render(0, JPT_AO_HIGH, scene_sky, 4) && like(sky_pixel(0), 0x20, 0x60, 0x20) && like(sky_pixel(7), 0x40, 0x40, 0x40), "the same with Ambient Occlusion");
+    CHECK(render(0, JPT_AO_OFF, scene_sky, 3) && like(sky_pixel(7), f[0], f[1], f[2]), "nothing without the view's corners");
+    CHECK(g_sky_gpu != NULL, "the layer's texture is kept");
+    sky_draw_free(g_sky_gpu);
+    g_sky_gpu = NULL;
+    CHECK(render(0, JPT_AO_OFF, scene_sky, 4) && like(sky_pixel(0), 0x20, 0x60, 0x20), "and made again");
+    sky_draw_free(g_sky_gpu);
+    g_sky_gpu = NULL;
+}
+
 int main(void) {
     g_stub_frames_allowed = 1;
     g_stub_ui = GUEST_UI_GAMEPLAY;
@@ -589,6 +812,8 @@ int main(void) {
     test_gamma();
     test_msaa();
     test_resize_and_device();
+    test_override();
+    test_sky_layers();
     CHECK(P.submits > 0, "frames were presented");
     close_game();
     ops->device_lost();

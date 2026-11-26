@@ -473,6 +473,7 @@ vec4 fixed_color(float fog) {
         else if (blend_mode == 5u) c = vec4(lsb ? t.rgb : d.rgb, d.a);
         else if (blend_mode == 6u) c = vec4(lsb ? t.rgb * d.rgb : d.rgb, d.a);
         else if (blend_mode == 8u) c = vec4(clamp(t.rgb + d.rgb, 0.0, 1.0), d.a);
+        else if (blend_mode == 16u) c = vec4(clamp(2.0 * t.rgb * d.rgb, 0.0, 1.0), t.a * d.a);
         else c = vec4(t.rgb * d.rgb, ((tf & F_TEX_ALPHA) != 0u) ? t.a : d.a);
     }
 

@@ -88,7 +88,7 @@ add_library(jpt_common_linux STATIC
   src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c
   src/common/jpt_gamepad.c src/common/jpt_prompt_text.c src/common/jpt_l10n.c src/common/jpt_tr.c
   src/common/jpt_video_subtitles.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_gpu.c src/common/jpt_monitors_sdl.c src/common/jpt_app_identity.c ${JPT_APP_ICON_C} src/common/jpt_fs_posix.c src/common/jpt_vpath.c
-  src/common/jpt_custom_level.c src/common/jpt_szdd.c
+  src/common/jpt_custom_level.c src/common/jpt_sky.c src/common/jpt_picture.c src/common/jpt_lit.c src/common/jpt_texhw.c src/common/jpt_szdd.c src/common/jpt_scene.c src/common/jpt_level_features.c src/common/jpt_alloc.c src/common/jpt_groff.c src/common/jpt_level_world.c src/common/jpt_save.c src/common/jpt_level_gate.c src/common/jpt_level_session.c src/common/jpt_launch_handoff.c
   src/common/jpt_reg_store.c src/common/jpt_sync.c src/common/jpt_renderer.c src/common/jpt_present_policy.c)
 target_include_directories(jpt_common_linux PUBLIC src/common)
 target_compile_options(jpt_common_linux PRIVATE ${JPT_LINUX_WARNINGS} ${JPT_LINUX_COMPAT})
@@ -131,17 +131,17 @@ jpt_embed_directory("${CMAKE_SOURCE_DIR}/assets/translations/*.txt" ${CMAKE_BINA
                     ${JPT_LINUX_TRANSLATIONS_C} lx_translation_files)
 jpt_embed_directory("${CMAKE_SOURCE_DIR}/assets/restored_audio/*" ${CMAKE_BINARY_DIR}/generated/lx_restored_audio.txt
                     ${JPT_LINUX_RESTORED_C} lx_restored_audio_files)
-set(JPT_STREAM_SOURCES src/host/stream_pack.c src/host/stream_vfile.c src/linux/linux_assets.c
+set(JPT_STREAM_SOURCES src/host/stream_pack.c src/host/stream_vfile.c src/host/tpa_merge.c src/linux/linux_assets.c
                        ${JPT_LINUX_TRANSLATIONS_C} ${JPT_LINUX_RESTORED_C})
 # The host features written against guest_abi.h (src/host/guest_abi.h): the same sources the Windows host builds, over the Linux
 # implementation of that interface (src/linux/linux_host.c, linux_overrides.c).
 set(JPT_GUEST_FEATURE_SOURCES
-  src/host/guest_features.c src/host/scene_options.c src/host/terrain_shadows.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c
+  src/host/guest_features.c src/host/scene_options.c src/host/terrain_shadows.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c src/host/scene_scripts.c src/host/sky_layers.c src/host/texhw_guest.c src/host/level_actions.c src/host/level_actions_policy.c src/host/level_session.c
   src/host/patch117.c src/host/patch117_objects.c src/host/patch117_physics.c src/host/patch117_player.c
   src/host/patch117_rules.c src/host/patch117_policy.c src/host/physics_fixes.c src/host/physics_watch.c
-  src/host/physics_watch_policy.c src/host/terrain_quality.c src/host/widescreen.c src/host/fov_policy.c
+  src/host/physics_watch_policy.c src/host/terrain_quality.c src/host/engine_heaps.c src/host/level_abort.c src/host/missing_textures.c src/host/widescreen.c src/host/fov_policy.c
   src/host/perf_sections.c src/host/override_registry.c src/host/cheats.c src/host/cheats_policy.c src/host/skip_intro.c
-  src/host/debug_menu.c src/host/debug_menu_policy.c src/host/objectives.c
+  src/host/debug_menu.c src/host/debug_menu_policy.c src/host/objectives.c src/host/custom_level_guide.c
   src/host/objective_policy.c src/host/overlay.c src/host/overlay_policy.c
   src/host/overlay_text.c src/host/guest_ui_actions.c src/host/water_kernels.c
   src/linux/linux_host.c src/linux/linux_overrides.c src/linux/linux_engine.c src/linux/linux_features.c src/linux/linux_panel.c src/host/l10n.c)
@@ -208,6 +208,8 @@ endfunction()
 
 jpt_linux_test(x64_tests SOURCES tests/x64_tests.c LIBS jpt_host64 INCLUDES tests)
 jpt_linux_test(vpath_tests SOURCES tests/vpath_tests.c LIBS jpt_common_linux)
+jpt_linux_test(level_session_tests SOURCES tests/level_session_tests.c LIBS jpt_common_linux)
+jpt_linux_test(launch_handoff_tests SOURCES tests/launch_handoff_tests.c LIBS jpt_common_linux)
 jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)
 jpt_linux_test(port_tests SOURCES tests/port_tests.c LIBS jpt_common_linux)
 jpt_linux_test(app_identity_tests SOURCES tests/app_identity_tests.c LIBS jpt_common_linux)
@@ -249,11 +251,14 @@ jpt_linux_test(linux_mouse_tests SOURCES tests/linux_mouse_tests.c tests/linux_f
 jpt_linux_test(linux_cs_tests SOURCES tests/linux_cs_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_stream_tests SOURCES tests/linux_stream_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_save_files_tests SOURCES tests/linux_save_files_tests.c LIBS jpt_linux_core)
+jpt_linux_test(texhw_tests SOURCES tests/texhw_tests.c LIBS jpt_common_linux)
+jpt_linux_test(linux_level_abort_tests SOURCES tests/linux_level_abort_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_guest_ptr_tests SOURCES tests/linux_guest_ptr_tests.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_call_spine_tests SOURCES tests/linux_call_spine_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core)
 jpt_linux_test(linux_user32_tests SOURCES tests/linux_user32_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_gdi_tests SOURCES tests/linux_gdi_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_ddraw_tests SOURCES tests/linux_ddraw_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
+jpt_linux_test(sky_tests SOURCES tests/sky_tests.c LIBS jpt_common_linux INCLUDES src/host)
 jpt_linux_test(linux_d3d_tests SOURCES tests/linux_d3d_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
 jpt_linux_test(linux_present_tests SOURCES tests/linux_present_tests.c LIBS jpt_linux_core)
 jpt_linux_test(linux_crash_tests SOURCES tests/linux_crash_tests.c tests/linux_fake_guest.c LIBS jpt_linux_core INCLUDES tests)
@@ -355,7 +360,10 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   list(TRANSFORM JPT_LZMA_SOURCES PREPEND launcher/third_party/lzma/)
   add_library(jpt_lzma_linux STATIC ${JPT_LZMA_SOURCES})
   target_compile_options(jpt_lzma_linux PRIVATE -w)
-  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp launcher/custom_levels_page.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+  set(JPT_ARCHIVE_SOURCES launcher/archive_reader.cpp launcher/archive_spool.cpp launcher/rar_blake2.cpp launcher/rar_ppm.cpp launcher/rar_reader.cpp launcher/rar_stream.cpp launcher/rar_unpack.cpp launcher/seven_zip_block.cpp)
+  set(JPT_CUSTOM_LEVEL_SOURCES launcher/custom_levels.cpp launcher/level_analysis.cpp launcher/level_check.cpp launcher/level_corpus.cpp launcher/level_import_log.cpp launcher/level_ini.cpp launcher/level_limits.cpp launcher/level_listing.cpp launcher/level_manifest.cpp
+    launcher/level_picture.cpp launcher/level_readme.cpp launcher/level_settings.cpp launcher/level_guide.cpp)
+  add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/disc_browser.cpp ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES} launcher/custom_levels_page.cpp launcher/level_analyze_cli.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
     launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
     launcher/updater/third_party/miniz/miniz.c launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
     launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
@@ -378,10 +386,14 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   jpt_linux_test(launcher_startup_tests SOURCES tests/launcher_startup_tests.cpp LIBS jpt_common_linux INCLUDES launcher)
   set_target_properties(launcher_startup_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
-  jpt_linux_test(custom_level_tests SOURCES tests/custom_level_tests.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp
-                 launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp launcher/updater/third_party/miniz/miniz.c
-                 LIBS jpt_launcher_core_linux jpt_lzma_linux INCLUDES launcher)
+  jpt_linux_test(custom_level_tests SOURCES tests/custom_level_tests.cpp tests/custom_level_analysis_tests.cpp tests/level_check_tests.cpp tests/custom_level_listing_tests.cpp ${JPT_ARCHIVE_SOURCES}
+                 ${JPT_CUSTOM_LEVEL_SOURCES} src/host/tpa_merge.c launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp launcher/updater/third_party/miniz/miniz.c
+                 LIBS jpt_launcher_core_linux jpt_lzma_linux INCLUDES launcher src/host)
   set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+  jpt_linux_test(custom_level_session_tests SOURCES tests/custom_level_session_tests.cpp src/host/custom_level_guide.c src/host/minimap.c src/host/objective_policy.c src/host/compass_policy.c ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES}
+                 launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp launcher/updater/third_party/miniz/miniz.c
+                 LIBS jpt_launcher_core_linux jpt_lzma_linux INCLUDES launcher src/host)
+  set_target_properties(custom_level_session_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
   # The Bug Report page and the auto update: the same sources and the same tests as Windows (tests/bug_report_tests.cpp,
   # tests/update_tests.cpp, tests/update_network_tests.cpp); the update helper process is Windows only.

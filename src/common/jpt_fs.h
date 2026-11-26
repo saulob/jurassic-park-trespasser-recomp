@@ -3,6 +3,9 @@
 #ifndef JPT_FS_H
 #define JPT_FS_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,6 +24,12 @@ int jpt_fs_remove(const char* path);
 int jpt_fs_remove_dir(const char* path);
 /* Copies src to dst only when dst does not exist. */
 int jpt_fs_copy_new(const char* src, const char* dst);
+
+/* A file read by offset, by any thread; NULL when it cannot be opened. jpt_fs_read_at is 1 when all n bytes were read. */
+typedef struct jpt_fs_file jpt_fs_file_t;
+jpt_fs_file_t* jpt_fs_open_read(const char* path, uint64_t* size);
+int jpt_fs_read_at(void* file, uint64_t offset, void* buf, size_t n);
+void jpt_fs_close(jpt_fs_file_t* file);
 
 typedef void (*jpt_fs_visit_fn)(const char* name, int is_dir, void* user);
 /* Calls visit for each entry of dir, without "." and "..". Returns 0 when dir cannot be listed. */

@@ -111,11 +111,13 @@ set(HOST_SOURCES
   src/host/registry.c
   src/host/io_trace.c
   src/host/custom_level_files.c
+  src/host/missing_textures.c
   src/host/menu_audio_policy.c
   src/host/menu_audio.c
   ${JPT_AUDIO_PORTABLE_SOURCES}
   ${JPT_AUDIO_PLATFORM_SOURCES}
   src/host/window_host.c
+  src/host/launch_handoff.c
   src/host/platform.c
   src/host/window_title.c
   src/host/text_layer.c
@@ -146,6 +148,7 @@ set(HOST_SOURCES
   src/host/stream_pack.c
   src/host/stream_audio.c
   src/host/stream_vfile.c
+  src/host/tpa_merge.c
   src/host/tutorial_prompts.c
   src/host/overlay_text.c
   src/host/ui_canvas.c
@@ -178,6 +181,7 @@ set(HOST_SOURCES
   src/host/minimap.c
   src/host/objective_policy.c
   src/host/objectives.c
+  src/host/custom_level_guide.c
   src/host/overlay_policy.c
   src/host/overlay.c
   src/host/physics_watch_policy.c
@@ -188,12 +192,15 @@ set(HOST_SOURCES
   src/host/save_preview.c
   src/host/engine_limits.c
   src/host/engine_heaps.c
+  src/host/level_abort.c
+  src/host/alloc_shims.c
   src/host/guest_profile.c
   src/host/active_profile.c
   src/host/lift_registry.c
   src/host/profiles/guest_profile_data.c
   src/host/profiles/guest_gsub_tables.c
   src/host/texture_streaming.c
+  src/host/texhw_guest.c
   src/host/terrain_quality.c
   src/host/cpu_polygons.c
   src/host/texture_gpu_policy.c
@@ -206,6 +213,12 @@ set(HOST_SOURCES
   src/host/active_ai_policy.c
   src/host/active_ai.c
   src/host/ai_vocals.c
+  src/host/scene_scripts.c
+  src/host/sky_layers.c
+  src/host/ddraw/sky_draw.c
+  src/host/level_actions.c
+  src/host/level_actions_policy.c
+  src/host/level_session.c
   src/host/patch117_policy.c
   src/host/patch117_objects.c
   src/host/patch117.c
@@ -248,7 +261,7 @@ set(PCRECOMP_SOURCES
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c src/common/jpt_renderer.c src/common/jpt_present_policy.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
-  src/common/jpt_custom_level.c src/common/jpt_szdd.c src/common/jpt_video_subtitles.c)
+  src/common/jpt_custom_level.c src/common/jpt_sky.c src/common/jpt_picture.c src/common/jpt_lit.c src/common/jpt_texhw.c src/common/jpt_szdd.c src/common/jpt_scene.c src/common/jpt_level_features.c src/common/jpt_alloc.c src/common/jpt_groff.c src/common/jpt_level_world.c src/common/jpt_save.c src/common/jpt_level_gate.c src/common/jpt_video_subtitles.c src/common/jpt_level_session.c src/common/jpt_launch_handoff.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
 target_compile_options(jpt_common PRIVATE /W4)
@@ -330,7 +343,10 @@ set(JPT_LZMA_SOURCES 7zArcIn.c 7zBuf.c 7zCrc.c 7zCrcOpt.c 7zDec.c 7zStream.c Bcj
 list(TRANSFORM JPT_LZMA_SOURCES PREPEND launcher/third_party/lzma/)
 add_library(jpt_lzma STATIC ${JPT_LZMA_SOURCES})
 target_compile_options(jpt_lzma PRIVATE /W3)
-add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/disc_browser.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp launcher/custom_levels_page.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
+set(JPT_ARCHIVE_SOURCES launcher/archive_reader.cpp launcher/archive_spool.cpp launcher/rar_blake2.cpp launcher/rar_ppm.cpp launcher/rar_reader.cpp launcher/rar_stream.cpp launcher/rar_unpack.cpp launcher/seven_zip_block.cpp)
+set(JPT_CUSTOM_LEVEL_SOURCES launcher/custom_levels.cpp launcher/level_analysis.cpp launcher/level_check.cpp launcher/level_corpus.cpp launcher/level_import_log.cpp launcher/level_ini.cpp launcher/level_limits.cpp launcher/level_listing.cpp launcher/level_manifest.cpp
+  launcher/level_picture.cpp launcher/level_readme.cpp launcher/level_settings.cpp launcher/level_guide.cpp)
+add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/disc_browser.cpp ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES} launcher/custom_levels_page.cpp launcher/level_analyze_cli.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
   launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
   launcher/updater/update_controller.cpp launcher/updater/update_job.cpp
   launcher/updater/update_paths.cpp launcher/updater/update_platform.cpp launcher/updater/update_ui.cpp
@@ -603,10 +619,11 @@ target_compile_definitions(launcher_startup_tests PRIVATE _CRT_SECURE_NO_WARNING
 target_compile_options(launcher_startup_tests PRIVATE /W4 /utf-8)
 set_target_properties(launcher_startup_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
-# Custom levels: the package import (ZIP, 7z, folder), its limits and rollback, the listing and README, and the file overlay the
+# Custom levels: the package import (ZIP, 7z, RAR, folder), its limits and rollback, the listing and README, and the file overlay the
 # game reads an active package through, on scratch folders (headless): ninja -C <build dir> custom_level_tests
-add_executable(custom_level_tests EXCLUDE_FROM_ALL tests/custom_level_tests.cpp launcher/archive_reader.cpp launcher/custom_levels.cpp
-  launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp src/common/jpt_vpath.c src/host/custom_level_files.c
+add_executable(custom_level_tests EXCLUDE_FROM_ALL tests/custom_level_tests.cpp tests/custom_level_analysis_tests.cpp tests/level_check_tests.cpp tests/custom_level_listing_tests.cpp ${JPT_ARCHIVE_SOURCES}
+  ${JPT_CUSTOM_LEVEL_SOURCES} launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp
+  src/common/jpt_vpath.c src/host/custom_level_files.c src/host/tpa_merge.c
   src/host/audio/audio_policy.c src/host/audio/platform/windows_dsound_imports.c)
 target_link_libraries(custom_level_tests PRIVATE jpt_launcher_core jpt_miniz jpt_lzma lz32)
 target_include_directories(custom_level_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32
@@ -614,6 +631,31 @@ target_include_directories(custom_level_tests PRIVATE src/host ${PCRECOMP}/runti
 target_compile_definitions(custom_level_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX JPT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_options(custom_level_tests PRIVATE /W3 /utf-8)
 set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# An active custom level session as the game reads it: ATX map pictures below MAPS and Restart Level (headless):
+# ninja -C <build dir> custom_level_session_tests
+add_executable(custom_level_session_tests EXCLUDE_FROM_ALL tests/custom_level_session_tests.cpp src/host/custom_level_guide.c src/host/minimap.c src/host/objective_policy.c src/host/compass_policy.c ${JPT_ARCHIVE_SOURCES}
+  ${JPT_CUSTOM_LEVEL_SOURCES} launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp)
+target_link_libraries(custom_level_session_tests PRIVATE jpt_launcher_core jpt_miniz jpt_lzma)
+target_include_directories(custom_level_session_tests PRIVATE src/host ${CMAKE_BINARY_DIR}/generated)
+target_compile_definitions(custom_level_session_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_compile_options(custom_level_session_tests PRIVATE /W3 /utf-8)
+set_target_properties(custom_level_session_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# The compatibility report of a folder of packages (headless): ninja -C <build dir> custom_level_scan
+add_executable(custom_level_scan EXCLUDE_FROM_ALL tools/custom_level_scan.cpp launcher/level_analyze_cli.cpp ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES}
+  launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp)
+target_link_libraries(custom_level_scan PRIVATE jpt_launcher_core jpt_miniz jpt_lzma)
+target_compile_definitions(custom_level_scan PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_compile_options(custom_level_scan PRIVATE /W3 /utf-8)
+set_target_properties(custom_level_scan PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+# The pictures of custom levels and their hardware texture overrides (headless): ninja -C <build dir> texhw_tests
+add_executable(texhw_tests EXCLUDE_FROM_ALL tests/texhw_tests.c src/host/texhw_guest.c)
+target_include_directories(texhw_tests PRIVATE src/host tests ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_link_libraries(texhw_tests PRIVATE jpt_common jpt_profile)
+target_compile_definitions(texhw_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS ${TRESPASSER_X87_MODEL})
+target_compile_options(texhw_tests PRIVATE /W3)
 
 # Text translations: the language choice, GameStrings, code pages, captions, DDF labels, the overlay's word wrap and the
 # embedded text itself (headless): ninja -C <build dir> l10n_tests && l10n_tests.exe
@@ -626,7 +668,7 @@ target_compile_definitions(l10n_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURC
 set_target_properties(l10n_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 # The restored audio and the corrected English captions: the embedded records, the virtual Stream.tpa, the captions' timings in
 # every language and the lint that keeps development paths out (headless): ninja -C <build dir> stream_tests && stream_tests.exe
-add_executable(stream_tests EXCLUDE_FROM_ALL tests/stream_tests.c src/host/stream_pack.c src/host/stream_vfile.c src/host/l10n_assets.cpp
+add_executable(stream_tests EXCLUDE_FROM_ALL tests/stream_tests.c src/host/stream_pack.c src/host/stream_vfile.c src/host/tpa_merge.c src/host/l10n_assets.cpp
   ${JPT_TRANSLATION_SOURCE} ${JPT_RESTORED_AUDIO_SOURCE})
 target_include_directories(stream_tests PRIVATE src/host launcher)
 target_link_libraries(stream_tests PRIVATE jpt_common)
@@ -824,14 +866,13 @@ jpt_smacker_use_ffmpeg(smacker_ffmpeg_tests)
 add_executable(frontend_tests EXCLUDE_FROM_ALL tests/frontend_tests.c tests/frontend_bridge_tests.c
   tests/save_preview_tests.c tests/frontend_art_tests.c tests/frontend_retail_tests.c tests/frontend_l10n_tests.c tests/loading_tests.c src/host/frontend_art.c src/host/frontend_plaque.c src/host/frontend_hd.c src/host/frontend_layout.c
   src/host/frontend_assets.c src/host/loading_hd.c src/host/loading_layout.c src/host/save_preview.c
-  src/host/host_policy.c src/host/pad_glyphs.c src/common/jpt_display.c src/common/jpt_gamepad.c
-  src/common/jpt_prompt_text.c src/common/jpt_l10n.c src/common/jpt_tr.c)
+  src/host/host_policy.c src/host/pad_glyphs.c)
 target_include_directories(frontend_tests PRIVATE src/host src/common ${PCRECOMP}/runtime/native32
   ${PCRECOMP}/runtime/recomp32)
 target_compile_options(frontend_tests PRIVATE /W3)
 target_compile_definitions(frontend_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS
   ${TRESPASSER_X87_MODEL} "JPT_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
-target_link_libraries(frontend_tests PRIVATE gdi32 user32 ole32 uuid windowscodecs)
+target_link_libraries(frontend_tests PRIVATE jpt_common gdi32 user32 ole32 uuid windowscodecs)
 # The gamepad's decisions, bindings, glyphs and prompts (headless, no SDL device):
 #   ninja -C <build dir> gamepad_tests && gamepad_tests.exe
 add_executable(gamepad_tests EXCLUDE_FROM_ALL tests/gamepad_tests.c src/host/gamepad_policy.c src/host/pad_glyphs.c
@@ -840,6 +881,23 @@ target_include_directories(gamepad_tests PRIVATE src/host)
 target_link_libraries(gamepad_tests PRIVATE jpt_common)
 target_compile_options(gamepad_tests PRIVATE /W3)
 target_compile_definitions(gamepad_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# The [session], [level] and [restart] lines and the restart mode (headless): ninja -C <build dir> level_session_tests
+add_executable(level_session_tests EXCLUDE_FROM_ALL tests/level_session_tests.c)
+target_link_libraries(level_session_tests PRIVATE jpt_common)
+target_compile_options(level_session_tests PRIVATE /W3)
+target_compile_definitions(level_session_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# PLAY to the game window, the launch handoff state machine (headless, no window): ninja -C <build dir> launch_handoff_tests
+add_executable(launch_handoff_tests EXCLUDE_FROM_ALL tests/launch_handoff_tests.c)
+target_link_libraries(launch_handoff_tests PRIVATE jpt_common)
+target_compile_options(launch_handoff_tests PRIVATE /W3)
+target_compile_definitions(launch_handoff_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+# Custom skies (headless): ninja -C <build dir> sky_tests
+add_executable(sky_tests EXCLUDE_FROM_ALL tests/sky_tests.c)
+target_include_directories(sky_tests PRIVATE src/host)
+target_link_libraries(sky_tests PRIVATE jpt_common)
+target_compile_options(sky_tests PRIVATE /W3)
+target_compile_definitions(sky_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+
 # Quick Save / Quick Load, Dual stow, Water refraction and Enhanced sky's arithmetic and switches, their settings and
 # keys (headless): ninja -C <build dir> ce_tests && ce_tests.exe
 add_executable(ce_tests EXCLUDE_FROM_ALL tests/ce_tests.c src/host/ce_policy.c src/host/ce_effects.c src/host/host_policy.c)
@@ -926,7 +984,7 @@ target_compile_definitions(ao_tests PRIVATE _CRT_SECURE_NO_WARNINGS "JPT_SOURCE_
 target_link_libraries(ao_tests PRIVATE assao jpt_common d3d11 dxguid)
 # Ambient occlusion and fog through the real Direct3D 11 renderer on a WARP device, into an offscreen back buffer
 # (headless): ninja -C <build dir> ao_fog_tests && ao_fog_tests.exe
-add_executable(ao_fog_tests EXCLUDE_FROM_ALL tests/ao_fog_tests.c tests/renderer_benchmark_d3d11_stubs.c
+add_executable(ao_fog_tests EXCLUDE_FROM_ALL tests/ao_fog_tests.c tests/renderer_benchmark_d3d11_stubs.c src/host/ddraw/sky_draw.c
   src/host/ddraw/d3d11_renderer.c src/host/ddraw/d3d11_shaders.c
   src/host/ddraw/assao_host.cpp src/host/ddraw/assao_shader.cpp ${JPT_ASSAO_SHADER_SOURCE} src/host/ao_policy.c src/host/ce_effects.c
   src/host/texture_gpu_policy.c src/host/ddraw/d3d_translate.c src/host/ddraw/target_sync.c
@@ -1017,7 +1075,39 @@ set_source_files_properties(tests/input_tests.c PROPERTIES COMPILE_OPTIONS "/W3"
 set_source_files_properties(${INPUT_LIFTED} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
 target_link_options(input_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
 
-foreach(host_test host_tests platform_tests ce_tests fov_mouse_tests input_tests frontend_tests gamepad_tests debug_menu_tests
+# The engine's own arrays and heaps over the host's allocation checks (headless):
+#   ninja -C <build dir> engine_heaps_tests && engine_heaps_tests.exe
+set(HEAPS_LIFTED "${CMAKE_BINARY_DIR}/heaps_lifted.c")
+set(HEAPS_USERS "${CMAKE_BINARY_DIR}/heaps_users.c")
+add_custom_command(OUTPUT ${HEAPS_LIFTED}
+  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DLIFT_PREFIX=lift116_" "-DFUNCS=sub_005F8A20;sub_005F8B10"
+    "-DPREFIX=lifted_" "-DOUT=${HEAPS_LIFTED}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
+  DEPENDS ${GEN_SOURCES_116} tools/extract_lifted.cmake
+  COMMENT "Copying the lifted heap functions for engine_heaps_tests")
+add_custom_command(OUTPUT ${HEAPS_USERS}
+  COMMAND ${CMAKE_COMMAND} "-DGEN_DIR=${CMAKE_SOURCE_DIR}/src/recomp/gen" "-DLIFT_PREFIX=lift116_"
+    "-DFUNCS=sub_004B7390;sub_004B73E0;sub_004D6820;sub_004912D0;sub_0051D820;sub_0047E470;sub_004A3320;sub_00490FF0;sub_0048A3D0;sub_005FA870"
+    "-DPREFIX=" "-DOUT=${HEAPS_USERS}" -P "${CMAKE_SOURCE_DIR}/tools/extract_lifted.cmake"
+  DEPENDS ${GEN_SOURCES_116} tools/extract_lifted.cmake
+  COMMENT "Copying the lifted arrays for engine_heaps_tests")
+add_executable(engine_heaps_tests EXCLUDE_FROM_ALL tests/engine_heaps_tests.c src/host/engine_heaps.c src/host/level_abort.c
+  src/host/alloc_shims.c src/host/host_policy.c ${HEAPS_LIFTED} ${HEAPS_USERS})
+target_include_directories(engine_heaps_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_compile_definitions(engine_heaps_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS ${TRESPASSER_X87_MODEL})
+set_source_files_properties(tests/engine_heaps_tests.c PROPERTIES COMPILE_OPTIONS "/W3")
+set_source_files_properties(${HEAPS_LIFTED} ${HEAPS_USERS} PROPERTIES COMPILE_OPTIONS "/w;${TRESPASSER_GEN_OPT}")
+target_link_options(engine_heaps_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
+
+# The actions of ATX and Trespasser CE over a fake guest (headless): ninja -C <build dir> level_actions_tests
+add_executable(level_actions_tests EXCLUDE_FROM_ALL tests/level_actions_tests.c src/host/level_actions.c src/host/level_actions_policy.c src/host/minimap.c
+  src/host/level_session.c src/common/jpt_level_session.c src/common/jpt_picture.c src/common/jpt_fs_win.c)
+target_include_directories(level_actions_tests PRIVATE src/common)
+target_include_directories(level_actions_tests PRIVATE src/host ${PCRECOMP}/runtime/native32 ${PCRECOMP}/runtime/recomp32)
+target_compile_definitions(level_actions_tests PRIVATE _CRT_SECURE_NO_WARNINGS RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS ${TRESPASSER_X87_MODEL})
+target_compile_options(level_actions_tests PRIVATE /W3)
+target_link_options(level_actions_tests PRIVATE /BASE:0x00400000 /DYNAMICBASE:NO /FIXED)
+
+foreach(host_test level_actions_tests engine_heaps_tests host_tests platform_tests ce_tests fov_mouse_tests input_tests frontend_tests gamepad_tests debug_menu_tests
         video_tests active_ai_tests patch117_tests water_tests com_tests ao_tests video_subtitle_tests)
   target_link_libraries(${host_test} PRIVATE jpt_profile)
   target_include_directories(${host_test} PRIVATE tests)

@@ -32,6 +32,11 @@ int ai_vocal_slot_valid(int32_t dinosaur, int32_t vocal) {
     return dinosaur >= 0 && dinosaur < AI_VOCAL_DINOSAURS && vocal >= 0 && vocal < AI_VOCAL_KINDS;
 }
 
+int ai_vocal_more_slot(int32_t dinosaur, int32_t vocal) {
+    const int more = dinosaur >= AI_VOCAL_DINOSAURS && dinosaur < AI_VOCAL_DINOSAURS + AI_VOCAL_MORE_DINOSAURS && vocal >= 0 && vocal < AI_VOCAL_KINDS;
+    return more ? (dinosaur - AI_VOCAL_DINOSAURS) * AI_VOCAL_KINDS + vocal : -1;
+}
+
 int active_ai_limit(int enhanced) { return enhanced ? ACTIVE_AI_ENHANCED_LIMIT : ACTIVE_AI_ORIGINAL_LIMIT; }
 
 int active_ai_descending(int limit, int out[ACTIVE_AI_MAX_LIMIT]) {

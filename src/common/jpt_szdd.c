@@ -1,9 +1,12 @@
 #include "jpt_szdd.h"
 
+#include "jpt_alloc.h"
+
 #include <stdlib.h>
 #include <string.h>
 
 #define WINDOW 4096
+#define MOST_EXPANDED 9 /* 16 matches of 18 bytes from 2 each, and their control bytes */
 
 int jpt_szdd_is(const uint8_t* in, size_t in_size) {
     static const uint8_t magic[8] = { 'S', 'Z', 'D', 'D', 0x88, 0xF0, 0x27, 0x33 };
@@ -19,7 +22,8 @@ uint8_t* jpt_szdd_expand(const uint8_t* in, size_t in_size, size_t* out_size) {
     int w = WINDOW - 16;
     if (!jpt_szdd_is(in, in_size)) return NULL;
     want = (size_t)in[10] | (size_t)in[11] << 8 | (size_t)in[12] << 16 | (size_t)in[13] << 24;
-    out = (uint8_t*)malloc(want ? want : 1);
+    if (want / MOST_EXPANDED > in_size) return NULL;
+    out = (uint8_t*)jpt_alloc(want, 1);
     if (!out) return NULL;
     memset(window, ' ', sizeof window);
     while (o < want && i < in_size) {

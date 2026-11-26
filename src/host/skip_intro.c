@@ -1,5 +1,6 @@
 #include "guest_abi.h"
 #include "guest_features.h"
+#include "jpt_custom_level.h"
 
 #define VIDEO_PLAY_VA GVA(0x00418AE0) /* CVideoWnd::Play(name, ...), thiscall */
 #define NAME_MAX_BYTES 64
@@ -12,10 +13,15 @@ void skip_intro_configure(int enabled) { s_enabled = enabled != 0; }
 /* The game's own NoVideo branch: one message pumped, Play returns 1 and the caller goes on as after the video. */
 int skip_intro_try(const char* guest_name, int video_test_request, recomp_func_t lifted) {
     intro_video_t video = intro_video_of(guest_name);
-    if (!skip_intro_applies(s_enabled, video, video_test_request)) return 0;
+    const int ending = !video_test_request && is_ending_video(guest_name) && jpt_custom_level_skips_ending();
+    if (!ending && !skip_intro_applies(s_enabled, video, video_test_request)) return 0;
     guest_skip_video(1);
     lifted();
     guest_skip_video(0);
+    if (ending) {
+        host_log("video", "win.smk skipped: the custom level turns it off");
+        return 1;
+    }
     host_log("video", "%s skipped (Skip Intro): the game's own no-video path, %s", intro_video_name(video),
              video == INTRO_STARTUP ? "the main menu follows" : "the level loads next");
     if (g_eax != 1) host_log("video", "warning: Play returned %u for the skipped %s", g_eax, intro_video_name(video));

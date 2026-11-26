@@ -19,6 +19,7 @@
 #include "jpt_tr.h"
 #include "jpt_user_data.h"
 #include "l10n_assets.h"
+#include "level_actions.h"
 #ifdef _WIN32
 #include "stream_audio.h"
 #else
@@ -525,7 +526,8 @@ static const char* checked_text(unsigned id) {
 
 /* LoadStringA's answer when the language has the string: its length, or -1 to leave the game's own. */
 int l10n_load_string(unsigned id, char* buffer, int cap) {
-    const char* text = buffer && cap > 0 ? checked_text(id) : NULL;
+    char level[512];
+    const char* text = buffer && cap > 0 ? level_actions_hint(id, level, sizeof level) ? level : checked_text(id) : NULL;
     size_t n;
     if (!text) return -1;
     n = strlen(text);
@@ -545,7 +547,8 @@ void shim_LoadStringA(void) {
     UINT id = GUEST_ARG(1);
     char* buffer = (char*)GUEST_PTR(2);
     int cap = (int)GUEST_ARG(3);
-    const char* text = buffer && cap > 0 ? checked_text(instance, id) : NULL;
+    char level[512];
+    const char* text = buffer && cap > 0 ? level_actions_hint(id, level, sizeof level) ? level : checked_text(instance, id) : NULL;
     if (text) {
         size_t n = strlen(text);
         if (n >= (size_t)cap) {

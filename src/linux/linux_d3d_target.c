@@ -7,15 +7,26 @@
 #include "ddraw/target_sync.h"
 #include "guest_memory.h"
 #include "jpt_render_seam.h"
+#include "jpt_texhw.h"
 #include "linux_d3d_internal.h"
 #include "linux_ddraw.h"
 #include "linux_log.h"
+#include "sky_layers.h"
 
 #define TARGETS 4
 #define DDSCAPS_TEXTURE 0x1000u
 #define BLEND_SRCALPHA 5u
 #define BLEND_INVSRCALPHA 6u
 #define PALETTE_ENTRIES 256u
+#define BLEND_ZERO 1u
+#define BLEND_ONE 2u
+#define COMPARE_GREATER 5u
+#define MODULATE_ALPHA 4u
+#define SHADE_GOURAUD 2u
+#define FILL_SOLID 3u
+#define CULL_NONE 1u
+#define ADDRESS_WRAP 1u
+#define ADDRESS_CLAMP 3u
 
 typedef struct {
     lx_device_t* device;
@@ -35,15 +46,17 @@ typedef struct {
     unsigned levels;
     d3dt_upload_history_t history;
     d3dt_rect_t dirty;
+    int override_id;
 } texture_t;
 
 static target_t s_targets[TARGETS];
 static texture_t s_textures[LX_DDRAW_OBJECTS];
+static uint64_t s_overrides[JPT_TEXHW_FILES_MAX][JPT_TEXHW_CLASSES];
 static lx_d3d_stats_t s_stats;
 static unsigned s_generation;
 static int s_front_from_gpu = -1;
 static int s_water_on, s_sky_on, s_ao_level;
-static int s_sky_drawing, s_sky_usable, s_water_lock;
+static int s_sky_drawing, s_sky_usable, s_sky_layers, s_water_lock;
 static float s_sky[5];
 static int (*s_scene_shown)(void);
 static float (*s_tan_half_height)(void);
@@ -101,7 +114,7 @@ void lx_target_reset(void) {
     memset(&s_polys, 0, sizeof s_polys);
     forget_waves();
     s_front_from_gpu = -1;
-    s_sky_drawing = s_water_lock = 0;
+    s_sky_drawing = s_sky_layers = s_water_lock = 0;
     s_generation = lx_d3d_gpu() ? lx_d3d_gpu()->generation() : 0;
     fx_water_reset();
 }
@@ -140,6 +153,7 @@ static void follow_generation(const lx_gpu_ops_t* gpu) {
     unsigned now = gpu->generation();
     if (now == s_generation) return;
     s_generation = now;
+    memset(s_overrides, 0, sizeof s_overrides);
     for (int i = 0; i < LX_DDRAW_OBJECTS; i++) {
         s_textures[i].id = 0;
         s_textures[i].stale = 1;
@@ -433,6 +447,7 @@ void lx_d3d_cpu_written(int slot, const int32_t* rect) {
     target_t* t;
     lx_surface_view_t v;
     d3dt_rect_t r;
+    s_textures[slot].override_id = 0;
     if (!lx_d3d_gpu() || !lx_ddraw_surface_view(slot, &v)) return;
     r.left = rect ? rect[0] : 0;
     r.top = rect ? rect[1] : 0;
@@ -577,6 +592,63 @@ static unsigned levels_for(const lx_gpu_ops_t* gpu, const texture_t* e, const lx
     return !e->dynamic && gpu->uses_mips() ? d3dt_mip_count(v->width, v->height) : 1;
 }
 
+#define OVERRIDE_POOL_SIDE 256u
+static unsigned s_override_generation;
+
+static void drop_overrides(const lx_gpu_ops_t* gpu) {
+    for (int i = 0; i < JPT_TEXHW_FILES_MAX; i++)
+        for (int k = 0; k < JPT_TEXHW_CLASSES; k++) {
+            if (gpu && s_overrides[i][k] && gpu->texture_alive(s_overrides[i][k])) gpu->texture_destroy(s_overrides[i][k]);
+            s_overrides[i][k] = 0;
+        }
+}
+
+/* A custom level's picture that stands for the texture. */
+static uint64_t override_picture(const lx_gpu_ops_t* gpu, int id, jpt_texhw_class_t as, int alpha) {
+    jpt_render_tex_desc_t desc;
+    jpt_picture_t picture;
+    uint64_t* at;
+    if (s_override_generation != jpt_texhw_generation()) {
+        drop_overrides(gpu);
+        s_override_generation = jpt_texhw_generation();
+    }
+    if (id < 1 || id > JPT_TEXHW_FILES_MAX) return 0;
+    at = &s_overrides[id - 1][as];
+    if (*at && !gpu->texture_alive(*at)) *at = 0;
+    if (*at || jpt_texhw_picture(id, as, &picture) <= 0) return *at;
+    memset(&desc, 0, sizeof desc);
+    desc.width = picture.width;
+    desc.height = picture.height;
+    desc.pitch = picture.width * 4u;
+    desc.format = JPT_TEXFMT_BGRA8888_PREPARED;
+    desc.has_alpha = alpha;
+    desc.mip_levels = gpu->uses_mips() && picture.levels > 1 ? (uint32_t)picture.levels : 0;
+    desc.standalone = picture.width > OVERRIDE_POOL_SIDE || picture.height > OVERRIDE_POOL_SIDE;
+    *at = gpu->texture_create(&desc, picture.bgra);
+    jpt_picture_free(&picture);
+    return *at;
+}
+
+static uint64_t override_for(const lx_gpu_ops_t* gpu, int id, int fmt) {
+    const int alpha = d3dt_format_has_alpha(fmt);
+    return override_picture(gpu, id, !alpha ? JPT_TEXHW_OPAQUE : fmt == D3DT_FMT_ARGB1555 ? JPT_TEXHW_CUTOUT : JPT_TEXHW_BLENDED, alpha);
+}
+
+/* The normal map of the polygon being drawn, when its picture stands for the texture. */
+static void light(const lx_gpu_ops_t* gpu, int slot, uint32_t count, jpt_render_state_t* st) {
+    const texture_t* e = &s_textures[slot];
+    lx_surface_view_t v;
+    if (!e->override_id || (st->lit = jpt_lit_draw(count)) == NULL) return;
+    if (lx_ddraw_surface_view(slot, &v) && st->texture_id == override_for(gpu, e->override_id, format_of(&v)))
+        st->normal_id = override_picture(gpu, st->lit->normal, JPT_TEXHW_NORMAL, 1);
+    if (!st->normal_id) st->lit = NULL;
+}
+
+void lx_d3d_texture_override(uint32_t iface, int id) {
+    const int slot = lx_ddraw_texture_from(iface);
+    if (slot >= 0) s_textures[slot].override_id = id;
+}
+
 /* The surface's texture on the GPU, brought up to date; 0 when it cannot be drawn. */
 static uint64_t texture_for(const lx_gpu_ops_t* gpu, int slot) {
     texture_t* e = &s_textures[slot];
@@ -587,6 +659,10 @@ static uint64_t texture_for(const lx_gpu_ops_t* gpu, int slot) {
     if (!lx_ddraw_surface_view(slot, &v) || !v.bits) return 0;
     fmt = format_of(&v);
     if (fmt == D3DT_FMT_UNKNOWN) return 0;
+    if (e->override_id) {
+        const uint64_t picture = override_for(gpu, e->override_id, fmt);
+        if (picture) return picture;
+    }
     if (fmt == D3DT_FMT_PAL8) sum = palette_bgra(&v, palette);
     if (!e->id) e->levels = levels_for(gpu, e, &v);
     full = e->stale || !e->id || e->format != fmt || e->keyed != v.has_src_key || e->palette_sum != sum ||
@@ -626,6 +702,7 @@ static uint64_t texture_for(const lx_gpu_ops_t* gpu, int slot) {
 
 void lx_target_texture_loaded(int dst, int src) {
     lx_surface_view_t v;
+    s_textures[dst].override_id = 0;
     if (!lx_ddraw_surface_view(src, &v) || !v.bits) return;
     lx_d3d_cpu_access(src, CPU_ACCESS_BLT_SOURCE);
     lx_d3d_cpu_access(dst, CPU_ACCESS_BLT_DEST);
@@ -721,6 +798,87 @@ static void viewport_box(const lx_device_t* dev, const target_t* t, uint32_t rt_
     }
 }
 
+typedef struct {
+    uint64_t id;
+    unsigned generation;
+} sky_texture_t;
+
+typedef struct {
+    const lx_gpu_ops_t* gpu;
+    const lx_device_t* dev;
+    float scale_x, scale_y;
+} sky_target_t;
+
+void lx_d3d_sky_layers(int on) { s_sky_layers = on; }
+
+void lx_d3d_sky_free(void* gpu) {
+    sky_texture_t* t = (sky_texture_t*)gpu;
+    const lx_gpu_ops_t* ops = lx_d3d_gpu();
+    if (ops && t->id && t->generation == ops->generation()) ops->texture_destroy(t->id);
+    free(t);
+}
+
+static uint64_t sky_texture(const lx_gpu_ops_t* gpu, const sky_draw_t* draw) {
+    sky_texture_t* t = (sky_texture_t*)*draw->gpu;
+    jpt_render_tex_desc_t desc;
+    if (!t && (*draw->gpu = t = (sky_texture_t*)calloc(1, sizeof *t)) == NULL) return 0;
+    if (t->id && t->generation == gpu->generation() && gpu->texture_alive(t->id)) return t->id;
+    memset(&desc, 0, sizeof desc);
+    desc.width = draw->picture->width;
+    desc.height = draw->picture->height;
+    desc.pitch = desc.width * 4u;
+    desc.format = JPT_TEXFMT_BGRA8888_PREPARED;
+    desc.has_alpha = 1;
+    desc.mip_levels = gpu->uses_mips() && draw->picture->levels > 1 ? (uint32_t)draw->picture->levels : 0;
+    t->id = gpu->texture_create(&desc, draw->picture->bgra);
+    t->generation = gpu->generation();
+    return t->id;
+}
+
+static void sky_layer(void* user, const sky_draw_t* draw) {
+    const sky_target_t* s = (const sky_target_t*)user;
+    const int blended = draw->pass->blend != JPT_SKY_OPAQUE;
+    jpt_render_state_t st;
+    jpt_render_vertex_t* out = (jpt_render_vertex_t*)grow(&s_vertex_buf, (size_t)draw->count * sizeof *out);
+    if (!out) return;
+    memset(&st, 0, sizeof st);
+    st.alpha_blend = st.alpha_test = (uint32_t)blended;
+    st.src_blend = blended ? BLEND_SRCALPHA : BLEND_ONE;
+    st.dst_blend = !blended ? BLEND_ZERO : draw->pass->blend == JPT_SKY_BURN ? BLEND_ONE : BLEND_INVSRCALPHA;
+    st.alpha_func = COMPARE_GREATER;
+    st.fog_enable = (uint32_t)draw->pass->fog;
+    st.fog_color = s->dev->render[LX_RS_FOGCOLOR];
+    st.shade_mode = SHADE_GOURAUD;
+    st.cull_mode = CULL_NONE;
+    st.fill_mode = FILL_SOLID;
+    st.tex_map_blend = draw->pass->twice ? D3DT_TBLEND_MODULATEALPHA_2X : MODULATE_ALPHA;
+    st.tex_addr_u = draw->pass->wrap_u ? ADDRESS_WRAP : ADDRESS_CLAMP;
+    st.tex_addr_v = draw->pass->wrap_v ? ADDRESS_WRAP : ADDRESS_CLAMP;
+    st.tex_mag_filter = s->dev->stage[0][LX_TSS_MAGFILTER];
+    st.tex_min_filter = s->dev->stage[0][LX_TSS_MINFILTER];
+    st.tex_mip_filter = s->dev->stage[0][LX_TSS_MIPFILTER];
+    if (draw->picture) {
+        if ((st.texture_id = sky_texture(s->gpu, draw)) == 0) return;
+        st.has_texture = 1;
+    }
+    for (int i = 0; i < draw->count; i++) {
+        const jpt_sky_screen_vertex_t* v = &draw->vertices[i];
+        const jpt_render_vertex_t to = { v->x * s->scale_x, v->y * s->scale_y, v->z, v->rhw, v->diffuse, v->specular, v->u, v->v };
+        out[i] = to;
+    }
+    s->gpu->draw(&st, D3DT_PT_TRIANGLELIST, out, (uint32_t)draw->count, NULL, 0);
+}
+
+static void draw_sky_layers(const lx_device_t* dev, target_t* t, const lx_gpu_ops_t* gpu, uint32_t rt_w, uint32_t rt_h, const void* vertices, uint32_t count) {
+    const sky_target_t to = { gpu, dev, (float)rt_w / (float)t->w, (float)rt_h / (float)t->h };
+    sky_target_t user = to;
+    float rect[4];
+    if (!sky_layers_rect(vertices, count, rect)) return;
+    gpu_write(t);
+    s_stats.sky_draws++;
+    sky_layers_emit(rect, sky_layer, &user);
+}
+
 uint32_t lx_target_draw(lx_device_t* dev, uint32_t type, uint32_t fvf, uint32_t vertices_va, uint32_t count, const uint16_t* indices,
                         uint32_t index_count) {
     target_t* t = target_of(dev->target);
@@ -749,11 +907,17 @@ uint32_t lx_target_draw(lx_device_t* dev, uint32_t type, uint32_t fvf, uint32_t 
     scale_y = (float)rt_h / (float)t->h;
     viewport_box(dev, t, rt_w, rt_h, vp);
     gpu->scissor(1, vp[0], vp[1], (uint32_t)(vp[2] - vp[0]), (uint32_t)(vp[3] - vp[1]));
+    if (s_sky_layers) {
+        s_sky_layers = 0;
+        draw_sky_layers(dev, t, gpu, rt_w, rt_h, in, count);
+        return LX_D3D_OK;
+    }
     state_of(dev, &st);
     if (dev->texture[0] >= 0) {
         st.texture_id = texture_for(gpu, dev->texture[0]);
         if (!st.texture_id) return skipped(LX_D3D_OK);
         st.has_texture = 1;
+        if (!indices) light(gpu, dev->texture[0], count, &st);
     }
     if (s_sky_drawing && s_sky_on && s_sky_usable) {
         gpu->sky_params(s_sky);

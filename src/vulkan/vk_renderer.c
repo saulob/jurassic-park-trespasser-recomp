@@ -39,6 +39,12 @@ typedef struct {
 } vk_gpu_vertex_t;
 
 typedef struct {
+    vk_gpu_vertex_t v;
+    jpt_lit_vertex_t lit;
+    uint32_t normal; /* the normal map's layer */
+} vk_lit_vertex_t;
+
+typedef struct {
     float target[4];
     uint32_t draw_u[4];
     float fog_color[4];
@@ -1575,10 +1581,12 @@ static VkPipeline get_or_create_world_pipeline(jpt_vk_renderer_t* r, const jpt_v
 
     jpt_vk_shader_id_t frag = (key->shader_kind == JPT_VK_SHADER_WATER) ? JPT_VK_SH_WATER_FRAG
                             : (key->shader_kind == JPT_VK_SHADER_SKY)   ? JPT_VK_SH_SKY_FRAG
+                            : (key->shader_kind == JPT_VK_SHADER_LIT)   ? JPT_VK_SH_LIT_FRAG
                                                                         : JPT_VK_SH_FIXED_FRAG;
     VkPipelineShaderStageCreateInfo stages[2];
-    VkVertexInputBindingDescription vbind = { 0, sizeof(vk_gpu_vertex_t), VK_VERTEX_INPUT_RATE_VERTEX };
-    VkVertexInputAttributeDescription vattr[5];
+    const int lit = key->shader_kind == JPT_VK_SHADER_LIT;
+    VkVertexInputBindingDescription vbind = { 0, lit ? sizeof(vk_lit_vertex_t) : sizeof(vk_gpu_vertex_t), VK_VERTEX_INPUT_RATE_VERTEX };
+    VkVertexInputAttributeDescription vattr[9];
     VkPipelineVertexInputStateCreateInfo vi;
     VkPipelineInputAssemblyStateCreateInfo ia;
     VkPipelineViewportStateCreateInfo vp;
@@ -1595,7 +1603,7 @@ static VkPipeline get_or_create_world_pipeline(jpt_vk_renderer_t* r, const jpt_v
     memset(stages, 0, sizeof stages);
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = r->shaders[JPT_VK_SH_TL_VERT];
+    stages[0].module = r->shaders[lit ? JPT_VK_SH_LIT_VERT : JPT_VK_SH_TL_VERT];
     stages[0].pName = "main";
     stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -1618,12 +1626,20 @@ static VkPipeline get_or_create_world_pipeline(jpt_vk_renderer_t* r, const jpt_v
     vattr[4].location = 4;
     vattr[4].format = VK_FORMAT_R32_UINT;
     vattr[4].offset = (uint32_t)offsetof(vk_gpu_vertex_t, layer);
+    for (uint32_t i = 5; i < 9; i++) vattr[i].location = i;
+    vattr[5].format = vattr[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    vattr[5].offset = (uint32_t)offsetof(vk_lit_vertex_t, lit.light);
+    vattr[6].offset = (uint32_t)offsetof(vk_lit_vertex_t, lit.material);
+    vattr[7].format = VK_FORMAT_R32G32_SFLOAT;
+    vattr[7].offset = (uint32_t)offsetof(vk_lit_vertex_t, lit.shade);
+    vattr[8].format = VK_FORMAT_R32_UINT;
+    vattr[8].offset = (uint32_t)offsetof(vk_lit_vertex_t, normal);
 
     memset(&vi, 0, sizeof vi);
     vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vi.vertexBindingDescriptionCount = 1;
     vi.pVertexBindingDescriptions = &vbind;
-    vi.vertexAttributeDescriptionCount = 5;
+    vi.vertexAttributeDescriptionCount = lit ? 9 : 5;
     vi.pVertexAttributeDescriptions = vattr;
 
     memset(&ia, 0, sizeof ia);
@@ -2732,7 +2748,7 @@ uint64_t jpt_vk_renderer_create_texture(jpt_vk_renderer_t* r, const jpt_render_t
     if (was_open) end_scene_pass_for(r, JPT_VK_BREAK_TEXTURE_UPLOAD);
 
     memset(&tmp, 0, sizeof tmp);
-    if (rgba_bytes > JPT_VK_POOL_BUDGET / 2u || !find_or_create_pool(r, desc->width, desc->height, levels, &slot, &slice)) {
+    if (desc->standalone || rgba_bytes > JPT_VK_POOL_BUDGET / 2u || !find_or_create_pool(r, desc->width, desc->height, levels, &slot, &slice)) {
         if (!create_standalone_texture(r, desc->width, desc->height, levels, &tmp)) {
             if (was_open) ensure_scene_pass(r, 0, NULL, 0.0f, 0);
             free(rgba);
@@ -3367,6 +3383,35 @@ static int batch_matches(const vk_batch_t* b, VkPipeline pipe, const vk_world_pu
            !memcmp(&b->vp, vp, sizeof *vp) && !memcmp(&b->sc, sc, sizeof *sc);
 }
 
+static const vk_tex_slot_t* normal_slot_of(const jpt_vk_renderer_t* r, const jpt_render_state_t* state, uint32_t vert_count) {
+    jpt_render_state_t normal;
+    if (!state->lit || !state->normal_id || state->lit->count != vert_count || state->water_mode || state->sky_mode || r->debug_flags) return NULL;
+    normal = *state;
+    normal.texture_id = state->normal_id;
+    return lookup_tex_slot(r, &normal);
+}
+
+static VkImageView view_of(const jpt_vk_renderer_t* r, const vk_tex_slot_t* slot) {
+    return !slot ? VK_NULL_HANDLE : slot->standalone ? slot->view : r->pools[slot->pool_slot].view;
+}
+
+/* The batch's slot of a view it has room for. */
+static uint32_t batch_view(vk_batch_t* b, VkImageView view) {
+    const int found = batch_find_view(b, view);
+    if (found >= 0) return (uint32_t)found;
+    b->views[b->view_count] = view;
+    return b->view_count++;
+}
+
+static uint32_t batch_views_missing(const vk_batch_t* b, VkImageView first, VkImageView second) {
+    return (first != VK_NULL_HANDLE && batch_find_view(b, first) < 0) + (second != VK_NULL_HANDLE && second != first && batch_find_view(b, second) < 0);
+}
+
+static vk_gpu_vertex_t gpu_vertex(const jpt_render_vertex_t* v, uint32_t layer) {
+    const vk_gpu_vertex_t out = { v->sx, v->sy, v->sz, v->rhw, v->diffuse, v->specular, v->tu, v->tv, layer };
+    return out;
+}
+
 jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render_state_t* state, jpt_render_prim_t prim,
                                           const jpt_render_vertex_t* verts, uint32_t vert_count,
                                           const uint16_t* indices16, const uint32_t* indices32, uint32_t index_count) {
@@ -3377,9 +3422,9 @@ jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render
     vk_world_push_t push;
     VkViewport vp;
     VkRect2D sc;
-    const vk_tex_slot_t* tex_slot;
-    VkImageView tex_view = VK_NULL_HANDLE;
-    uint32_t batch_slot = 0, layer_word, src_n, max_idx, added;
+    const vk_tex_slot_t *tex_slot, *normal_slot;
+    VkImageView tex_view, normal_view;
+    uint32_t layer_word, src_n, max_idx, added, stride;
     VkDeviceSize vb_bytes;
     double t0 = 0.0;
     float bias;
@@ -3403,13 +3448,17 @@ jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render
                                    r->ctx.gpu.has_fill_non_solid, &key);
     if (!r->cfg.water_refraction && key.shader_kind == JPT_VK_SHADER_WATER) key.shader_kind = JPT_VK_SHADER_FIXED;
     if (!r->cfg.enhanced_sky && key.shader_kind == JPT_VK_SHADER_SKY) key.shader_kind = JPT_VK_SHADER_FIXED;
+    tex_slot = lookup_tex_slot(r, state);
+    normal_slot = tex_slot ? normal_slot_of(r, state, vert_count) : NULL;
+    if (key.shader_kind == JPT_VK_SHADER_LIT && !normal_slot) key.shader_kind = JPT_VK_SHADER_FIXED;
+    stride = normal_slot ? (uint32_t)sizeof(vk_lit_vertex_t) : (uint32_t)sizeof(vk_gpu_vertex_t);
 
     pipe = get_or_create_world_pipeline(r, &key);
     if (pipe == VK_NULL_HANDLE) return skip_draw(r, JPT_VK_SKIP_NO_PIPELINE);
 
     ring = &r->rings[r->sc.frame_index];
     b = &r->batch;
-    vb_bytes = (VkDeviceSize)vert_count * sizeof(vk_gpu_vertex_t);
+    vb_bytes = (VkDeviceSize)vert_count * stride;
     src_n = index_count ? index_count : vert_count;
 
     memset(&push, 0, sizeof push);
@@ -3472,11 +3521,11 @@ jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render
     }
     bias = depth_bias_for(state);
 
-    tex_slot = lookup_tex_slot(r, state);
-    if (tex_slot) tex_view = tex_slot->standalone ? tex_slot->view : r->pools[tex_slot->pool_slot].view;
+    tex_view = view_of(r, tex_slot);
+    normal_view = view_of(r, normal_slot);
 
     if (b->active && !batch_matches(b, pipe, &push, &vp, &sc, bias)) flush_batch(r);
-    if (b->active && tex_view != VK_NULL_HANDLE && batch_find_view(b, tex_view) < 0 && b->view_count >= 16u) {
+    if (b->active && b->view_count + batch_views_missing(b, tex_view, normal_view) > 16u) {
         r->stats.batch_flushes_texture_full++;
         flush_batch(r);
     }
@@ -3487,7 +3536,7 @@ jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render
         b->indices = 0;
         b->view_count = 0;
     }
-    if (b->vb_off + (VkDeviceSize)b->verts * sizeof(vk_gpu_vertex_t) + vb_bytes > JPT_VK_VB_SIZE ||
+    if (b->vb_off + (VkDeviceSize)b->verts * stride + vb_bytes > JPT_VK_VB_SIZE ||
         !ring->vb_alloc.mapped)
         return skip_draw(r, JPT_VK_SKIP_VERTEX_RING);
     if (b->ib_off + (VkDeviceSize)b->indices * sizeof(uint32_t) >= JPT_VK_IB_SIZE || !ring->ib_alloc.mapped)
@@ -3498,30 +3547,20 @@ jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render
                            prim, src_n, indices16, indices32);
     if (!added) return skip_draw(r, max_idx < src_n ? JPT_VK_SKIP_INDEX_RING : JPT_VK_SKIP_NO_INDICES);
 
-    if (tex_view != VK_NULL_HANDLE) {
-        int found = batch_find_view(b, tex_view);
-        if (found >= 0) {
-            batch_slot = (uint32_t)found;
-        } else {
-            batch_slot = b->view_count++;
-            b->views[batch_slot] = tex_view;
-        }
-    }
-
-    layer_word = encode_layer_word(r, state, tex_slot, batch_slot);
-    {
-        vk_gpu_vertex_t* dst = (vk_gpu_vertex_t*)((uint8_t*)ring->vb_alloc.mapped + b->vb_off) + b->verts;
+    layer_word = encode_layer_word(r, state, tex_slot, tex_view != VK_NULL_HANDLE ? batch_view(b, tex_view) : 0);
+    if (normal_slot) {
+        vk_lit_vertex_t* dst = (vk_lit_vertex_t*)((uint8_t*)ring->vb_alloc.mapped + b->vb_off) + b->verts;
+        const uint32_t normal_word = encode_layer_word(r, state, normal_slot, batch_view(b, normal_view));
         for (uint32_t i = 0; i < vert_count; i++) {
-            dst[i].sx = verts[i].sx;
-            dst[i].sy = verts[i].sy;
-            dst[i].sz = verts[i].sz;
-            dst[i].rhw = verts[i].rhw;
-            dst[i].diffuse = verts[i].diffuse;
-            dst[i].specular = verts[i].specular;
-            dst[i].tu = verts[i].tu;
-            dst[i].tv = verts[i].tv;
-            dst[i].layer = layer_word;
+            dst[i].v = gpu_vertex(&verts[i], layer_word);
+            dst[i].v.diffuse = (verts[i].diffuse & 0xFF000000u) | state->lit->dark;
+            dst[i].v.specular = (verts[i].specular & 0xFF000000u) | state->lit->full;
+            dst[i].lit = state->lit->vertices[i];
+            dst[i].normal = normal_word;
         }
+    } else {
+        vk_gpu_vertex_t* dst = (vk_gpu_vertex_t*)((uint8_t*)ring->vb_alloc.mapped + b->vb_off) + b->verts;
+        for (uint32_t i = 0; i < vert_count; i++) dst[i] = gpu_vertex(&verts[i], layer_word);
     }
 
     if (b->active) {
@@ -3536,7 +3575,7 @@ jpt_vk_draw_result_t jpt_vk_renderer_draw(jpt_vk_renderer_t* r, const jpt_render
     }
     b->verts += vert_count;
     b->indices += added;
-    ring->vb_used = b->vb_off + (VkDeviceSize)b->verts * sizeof(vk_gpu_vertex_t);
+    ring->vb_used = b->vb_off + (VkDeviceSize)b->verts * stride;
     ring->ib_used = b->ib_off + (VkDeviceSize)b->indices * sizeof(uint32_t);
 
     r->scene_has_draws = 1;

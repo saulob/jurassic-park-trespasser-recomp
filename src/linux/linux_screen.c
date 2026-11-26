@@ -1,4 +1,5 @@
 #include "linux_screen.h"
+#include "debug_menu.h"
 
 #include <string.h>
 
@@ -127,7 +128,7 @@ static void frame_presented(int width, int height, const char* kind) {
 void lx_screen_present_scene(int width, int height) {
     lx_scene_frame_t f = { width, height, NULL, 0, 0 };
     int window_w = 0, window_h = 0;
-    if (!s_open || !lx_window_backend()->present_scene) return;
+    if (!s_open || !lx_window_backend()->present_scene || debug_menu_start_holds_present()) return;
     ensure_presentation();
     lx_screen_window_client(&window_w, &window_h);
     lx_frontend_frame(width, height, window_w, window_h);
@@ -144,7 +145,7 @@ void lx_screen_present_scene(int width, int height) {
 
 void lx_screen_present(const lx_frame_t* frame) {
     lx_frame_t f = *frame, composed;
-    if (!s_open) return;
+    if (!s_open || debug_menu_start_holds_present()) return;
     ensure_presentation();
     if (lx_vsub_compose(&f, &composed)) f = composed;
     {

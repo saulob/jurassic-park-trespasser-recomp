@@ -14,7 +14,7 @@ namespace jpt {
 
 const BrowsePurpose kBrowseDisc = {"Select your Trespasser disc image (.iso)", ".iso", "No .iso files or folders here.",
                                    "Choose the .iso file. Controller: D-pad to move, A to choose, B to cancel."};
-const BrowsePurpose kBrowseLevelArchive = {"Select a custom level (.zip or .7z)", ".zip;.7z", "No .zip or .7z files or folders here.",
+const BrowsePurpose kBrowseLevelArchive = {"Select a custom level (.zip, .7z or .rar)", ".zip;.7z;.rar", "No .zip, .7z or .rar files or folders here.",
                                            "Choose the archive. Controller: D-pad to move, A to choose, B to cancel."};
 const BrowsePurpose kBrowseLevelFolder = {"Select the folder of a custom level", "/", "No folders here.",
                                           "Open the level's folder, then choose it. Controller: D-pad to move, A to choose, B to cancel.",

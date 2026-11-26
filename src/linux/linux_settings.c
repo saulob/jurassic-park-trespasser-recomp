@@ -1,5 +1,6 @@
 #include "linux_settings.h"
 
+#include "jpt_custom_level.h"
 #include "linux_hostkeys.h"
 #include "linux_log.h"
 #include "linux_mouse.h"
@@ -14,6 +15,9 @@ static const char* s_override_value[MAX_SETTING_OVERRIDES];
 static int s_override_count;
 static jpt_config_t s_current;
 static int s_current_set;
+static jpt_config_t s_players;
+
+static void session_ended(void) { s_current = s_players; }
 
 void lx_settings_set_overrides(const char* const* keys, const char* const* values, int count) {
     s_override_count = 0;
@@ -29,6 +33,7 @@ const jpt_config_t* lx_settings_current(void) {
 }
 
 void lx_settings_load(const char* settings_file, jpt_config_t* out) {
+    const char *key, *value;
     int read = 0;
     jpt_config_defaults(out);
     if (settings_file) read = jpt_config_load(settings_file, out);
@@ -38,6 +43,10 @@ void lx_settings_load(const char* settings_file, jpt_config_t* out) {
         else
             lx_log("Linux settings", "%s = %s (command line) is not a valid value and is ignored", s_override_key[i], s_override_value[i]);
     }
+    s_players = *out;
+    jpt_custom_level_on_end(session_ended);
+    for (int i = 0; jpt_custom_level_setting(i, &key, &value); i++)
+        if (jpt_config_apply(out, key, value)) lx_log("custom-level", "%s = %s for this session (the saved setting stays)", key, value);
     s_current = *out;
     s_current_set = 1;
     lx_overlay_reset();

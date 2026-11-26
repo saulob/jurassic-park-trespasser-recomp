@@ -374,6 +374,7 @@ public:
             outcome = Frame();
             host_.EndFrame(LauncherTheme().bg);
         }
+        if (outcome == Outcome::kPlay) StartHandoff();
         if (install_.running()) {
             install_.Cancel();
             install_.Finish();
@@ -391,6 +392,26 @@ public:
     }
 
 private:
+    static unsigned Rgb(const ImVec4& c) {
+        const auto byte = [](float v) { return unsigned(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        return byte(c.x) << 16 | byte(c.y) << 8 | byte(c.z);
+    }
+
+    // The handoff window shows below this one before it closes, so the desktop never shows between them.
+    void StartHandoff() {
+        if (!config_.handoff) return;
+        const trg::Theme theme = LauncherTheme();
+        jpt_launch_handoff_request_t request{};
+        request.window = host_.NativeWindow();
+        request.custom = level_.scene[0] != 0;
+        request.level = level_.package;
+        request.background = Rgb(theme.bg);
+        request.text = Rgb(theme.text);
+        request.dim = Rgb(theme.dim);
+        request.accent = Rgb(theme.accent);
+        config_.handoff(&request);
+    }
+
     void StopUpdater() {
         updater_->Cancel();
         // Do not join a network call on the UI thread when the launcher leaves.
@@ -770,10 +791,6 @@ private:
         CustomLevelsHooks hooks;
         hooks.choose = [this](bool folder) { BrowseForLevel(folder); };
         hooks.game_ready = [this] { return Ready(); };
-        hooks.version = [this] {
-            const InstalledVersion* selected = Selected();
-            return selected && selected->profile ? VersionName(*selected) : std::string(Tr(GameStateTitle(check_.state)));
-        };
         hooks.data_dir = [this] {
             const InstalledVersion* selected = Selected();
             return selected ? selected->dir / "data" : std::filesystem::path();
@@ -781,6 +798,15 @@ private:
         hooks.play = [this](const jpt_custom_level_request_t& level) { RequestPlay(level); };
         hooks.open_folder = [](const std::filesystem::path& folder) { trg::OpenInFileManager(Utf8(folder)); };
         hooks.open_file = [](const std::filesystem::path& file) { trg::OpenUrl(Utf8(file)); };
+        hooks.sort = [this] { return settings_.Get(kLauncherLevelSortKey); };
+        hooks.set_sort = [this](const std::string& sort) {
+            if (!settings_.SaveNow({{kLauncherLevelSortKey, sort}})) Log("the order of the custom levels could not be saved");
+        };
+        hooks.open_bug_report = [this](const std::string& package, const std::string& scene) {
+            if (package.empty()) incident_page_->ChooseRunningLog();
+            else incident_page_->ChooseLevelLog(package, scene);
+            launcher_->GoToPage(launcher_->FindPage(PageName(PageId::kBugReport)));
+        };
         return hooks;
     }
 
@@ -796,7 +822,7 @@ private:
             return;
         }
         custom_levels_->Picked(folder ? trg::BrowseForFolder(Tr("Select the folder of a custom level"))
-                                      : trg::BrowseForFile(Tr("Select a custom level (.zip or .7z)"), {{Tr("Level packages (*.zip, *.7z)"), "*.zip;*.7z"}}),
+                                      : trg::BrowseForFile(Tr("Select a custom level (.zip, .7z or .rar)"), {{Tr("Level packages (*.zip, *.7z, *.rar)"), "*.zip;*.7z;*.rar"}}),
                                folder);
     }
 
@@ -1640,6 +1666,8 @@ jpt_launcher_result_t ReportLauncherFailure(const jpt_launcher_config_t& config,
 
 } // namespace
 } // namespace jpt
+
+extern "C" const char* jpt_launcher_text(const char* english) { return jpt::Tr(english); }
 
 extern "C" jpt_launcher_result_t jpt_launcher_run(const jpt_launcher_config_t* config) {
     using namespace jpt;

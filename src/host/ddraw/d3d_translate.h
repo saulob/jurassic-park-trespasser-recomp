@@ -210,6 +210,8 @@ void d3dt_matrix_multiply(const float* a, const float* b, float* out);
 
 /* A world vertex's layer field (D3D11_LAYER_* in d3d11_shaders.h): slice, the batch's array slot, texture flags and
  * sampler. */
+/* A texture map blend of the host's own: MODULATEALPHA with the colour times two. */
+#define D3DT_TBLEND_MODULATEALPHA_2X 16
 uint32_t d3dt_world_layer(uint32_t slice, uint32_t slot, uint32_t flags, uint32_t sampler);
 /* The sampler for stage 0's address modes: wrap or clamp per axis travel in the vertex, anything else is the device's. */
 uint32_t d3dt_vertex_sampler(uint32_t address_u, uint32_t address_v);

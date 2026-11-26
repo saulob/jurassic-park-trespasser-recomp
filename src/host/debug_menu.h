@@ -23,8 +23,10 @@ int debug_menu_visible(void);
 int debug_menu_blocks_gameplay(void);
 /* The game's modal UI loop, after the gamepad: requested actions run here. */
 void debug_menu_ui_loop(void);
-/* Loads the active custom level when the main menu first comes up. */
+/* Loads the active custom level on the main menu's first turn, before the menu draws. */
 void debug_menu_start_custom_level(void);
+/* 1 while that level is still to load: a present now would show the main menu. */
+int debug_menu_start_holds_present(void);
 
 /* 1 when the game must not see this key; vk is a Windows virtual-key code. */
 int debug_menu_key_event(unsigned vk, int down, int repeat, int shift, int control);

@@ -4,6 +4,7 @@
 #include "gamepad.h"
 #include "host.h"
 #include "l10n.h"
+#include "level_session.h"
 #include "loading_hd.h"
 #include "save_preview.h"
 
@@ -197,7 +198,7 @@ int window_host_pointer(int* x, int* y) {
 }
 
 /* loading_hd.c's hooks are never entered here: only its reader runs. */
-uint32_t g_ecx, g_esp;
+uint32_t g_eax, g_ecx, g_esp;
 int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t* lifted) {
     (void)va;
     (void)replacement;
@@ -207,6 +208,15 @@ int guest_override_install(uint32_t va, recomp_func_t replacement, recomp_func_t
 static int g_hardware = 1;
 int d3dr_hardware(void) { return g_hardware; }
 int guest_display_built(void) { return 1; }
+int guest_ui_probe(guest_ui_view_t* out) { return (void)out, 0; }
+jpt_level_source_t level_session_source(const char* scene) { return (void)scene, JPT_SOURCE_RETAIL; }
+void debug_menu_notice(const char* text) { (void)text; }
+int custom_level_file(const char* path, char* out, size_t cap) {
+    (void)path;
+    (void)out;
+    (void)cap;
+    return 0;
+}
 int guest_load_string(unsigned id, char* out, int cap) {
     (void)id;
     (void)out;

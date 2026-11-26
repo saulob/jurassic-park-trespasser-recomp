@@ -4,9 +4,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <system_error>
 
+#include "archive_spool.h"
 #include "os_file.h"
+#include "rar_reader.h"
+#include "seven_zip_block.h"
 #include "third_party/lzma/7z.h"
 #include "third_party/lzma/7zCrc.h"
 #include "updater/third_party/miniz/miniz.h"
@@ -42,11 +46,6 @@ void AppendUtf8(std::string& out, uint32_t code) {
         out += char(0x80 | ((code >> 6) & 0x3F));
         out += char(0x80 | (code & 0x3F));
     }
-}
-
-std::string ForwardSlashes(std::string name) {
-    std::replace(name.begin(), name.end(), '\\', '/');
-    return name;
 }
 
 // ---- ZIP
@@ -167,7 +166,7 @@ public:
         static const bool crc_ready = (CrcGenerateTable(), true);
         constexpr size_t kBuffer = 1 << 18;
         (void)crc_ready;
-        max_block_ = limits.max_block_bytes;
+        limits_ = limits;
         stream_ = {{SevenZipRead, SevenZipSeek}, &file_, 0, 0};
         if (!file_.Open(archive) || !file_.Size(stream_.size)) return ArchiveError::kUnreadable;
         LookToRead2_CreateVTable(&look_, False);
@@ -185,7 +184,7 @@ public:
             std::vector<UInt16> raw(length);
             SzArEx_GetFileNameUtf16(&db_, i, raw.data());
             ArchiveEntry entry;
-            entry.name = ForwardSlashes(Name(raw));
+            entry.name = ForwardSlashes(FromUtf16(raw.data(), length - 1));
             entry.size = SzArEx_GetFileSize(&db_, i);
             entry.directory = SzArEx_IsDir(&db_, i) != 0;
             if (SzBitWithVals_Check(&db_.Attribs, i)) {
@@ -200,8 +199,10 @@ public:
     }
 
     ArchiveError Extract(size_t index, const Sink& sink) override {
-        const UInt32 folder = db_.FileToFolder[index];
-        if (folder != UInt32(-1) && SzAr_GetFolderUnpackSize(&db_.db, folder) > max_block_) return ArchiveError::kTooLarge;
+        const UInt32 block = db_.FileToFolder[index];
+        const uint64_t expanded = block == UInt32(-1) ? 0 : SzAr_GetFolderUnpackSize(&db_.db, block);
+        if (expanded > limits_.max_memory_bytes && IsStreamableBlock(db_, block)) return FromSpool(block, index, sink);
+        if (expanded > limits_.max_block_bytes) return ArchiveError::kTooLarge;
         size_t offset = 0, size = 0;
         const SRes result = SzArEx_Extract(&db_, &look_.vt, UInt32(index), &block_, &out_, &out_size_, &offset, &size,
                                            &kAlloc, &kAlloc);
@@ -213,24 +214,68 @@ public:
     }
 
 private:
-    static std::string Name(const std::vector<UInt16>& raw) {
-        std::string name;
-        for (size_t i = 0; i + 1 < raw.size(); ++i) {
-            uint32_t code = raw[i];
-            if (code >= 0xD800 && code < 0xDC00 && i + 2 < raw.size() && raw[i + 1] >= 0xDC00 && raw[i + 1] < 0xE000)
-                code = 0x10000 + ((code - 0xD800) << 10) + (raw[++i] - 0xDC00u);
-            else if (code >= 0xD800 && code < 0xE000)
-                code = 0xFFFD;
-            AppendUtf8(name, code);
-        }
-        return name;
+    // The whole block is decoded for the first of its files.
+    ArchiveError FromSpool(UInt32 block, size_t index, const Sink& sink) {
+        if (!spool_.created() && !spool_.Create()) return ArchiveError::kUnreadable;
+        const auto [at, first] = spooled_.try_emplace(block, ArchiveError::kNone);
+        if (first) at->second = Spool(block);
+        return at->second == ArchiveError::kNone ? spool_.Read(index, entries_[index].size, sink) : at->second;
+    }
+
+    ArchiveError Spool(UInt32 block) {
+        const uint64_t size = SzAr_GetFolderUnpackSize(&db_.db, block);
+        if (size > limits_.max_total_bytes - std::min(spooled_bytes_, limits_.max_total_bytes)) return ArchiveError::kTooLarge;
+        spooled_bytes_ += size;
+        const UInt32 end = db_.FolderToFile[size_t(block) + 1];
+        UInt32 file = db_.FolderToFile[block], crc = CRC_INIT_VAL;
+        bool written = true, intact = true;
+        std::ofstream out;
+        uint64_t left = 0;
+        // The next file with contents in this block.
+        const auto next = [&] {
+            for (; file < end; ++file) {
+                if (db_.FileToFolder[file] != block) continue;
+                out = spool_.Write(file);
+                crc = CRC_INIT_VAL;
+                left = SzArEx_GetFileSize(&db_, file);
+                if (left) return;
+                out.close();
+            }
+        };
+        const auto store = [&](const uint8_t* data, size_t count) {
+            while (count && file < end) {
+                const size_t take = size_t(std::min<uint64_t>(count, left));
+                crc = CrcUpdate(crc, data, take);
+                out.write(reinterpret_cast<const char*>(data), std::streamsize(take));
+                data += take;
+                count -= take;
+                left -= take;
+                if (!out) return written = false;
+                if (left) continue;
+                out.close();
+                written = bool(out);
+                intact = !SzBitWithVals_Check(&db_.CRCs, file) || db_.CRCs.Vals[file] == CRC_GET_DIGEST(crc);
+                if (!written || !intact) return false;
+                ++file;
+                next();
+            }
+            return true;
+        };
+        next();
+        const ArchiveError error = StreamBlock(db_, block, file_, store);
+        if (!written) return ArchiveError::kUnreadable;
+        if (!intact) return ArchiveError::kDamaged;
+        return error == ArchiveError::kNone && file < end ? ArchiveError::kDamaged : error;
     }
 
     FileReader file_;
     SevenZipStream stream_{};
     CLookToRead2 look_{};
     CSzArEx db_{};
-    uint64_t max_block_ = 0;
+    ArchiveLimits limits_;
+    ArchiveSpool spool_;
+    std::map<UInt32, ArchiveError> spooled_;
+    uint64_t spooled_bytes_ = 0;
     UInt32 block_ = UInt32(-1);
     Byte* out_ = nullptr;
     size_t out_size_ = 0;
@@ -299,24 +344,41 @@ std::unique_ptr<ArchiveReader> OpenWith(const fs::path& path, const ArchiveLimit
     return reader;
 }
 
+struct Magic {
+    uint64_t size = 0;
+    uint8_t bytes[6] = {};
+    bool Read(const fs::path& archive) {
+        FileReader file;
+        const bool ok = file.Open(archive) && file.Size(size) && size >= sizeof bytes && file.ReadAt(0, bytes, sizeof bytes);
+        file.Close();
+        return ok;
+    }
+    bool SevenZip() const { return !std::memcmp(bytes, "7z\xBC\xAF\x27\x1C", sizeof bytes); }
+    bool Rar() const { return !std::memcmp(bytes, "Rar!\x1A\x07", sizeof bytes); }
+    bool Zip() const { return bytes[0] == 'P' && bytes[1] == 'K' && (bytes[2] == 3 || bytes[2] == 5); }
+};
+
 } // namespace
 
+bool IsArchiveKnown(const fs::path& archive) {
+    Magic magic;
+    return magic.Read(archive) && (magic.SevenZip() || magic.Zip() || magic.Rar());
+}
+
 std::unique_ptr<ArchiveReader> OpenArchive(const fs::path& archive, const ArchiveLimits& limits, ArchiveError& error) {
-    FileReader file;
-    uint64_t size = 0;
-    uint8_t magic[6] = {};
-    if (!file.Open(archive) || !file.Size(size) || size < sizeof magic || !file.ReadAt(0, magic, sizeof magic)) {
+    Magic magic;
+    if (!magic.Read(archive)) {
         error = ArchiveError::kUnreadable;
         return nullptr;
     }
-    file.Close();
+    const uint64_t size = magic.size;
     if (size > limits.max_archive_bytes) {
         error = ArchiveError::kTooLarge;
         return nullptr;
     }
-    static constexpr uint8_t kSevenZip[6] = {'7', 'z', 0xBC, 0xAF, 0x27, 0x1C};
-    if (!std::memcmp(magic, kSevenZip, sizeof kSevenZip)) return OpenWith<SevenZipReader>(archive, limits, error);
-    if (magic[0] == 'P' && magic[1] == 'K' && (magic[2] == 3 || magic[2] == 5)) return OpenWith<ZipReader>(archive, limits, error);
+    if (magic.SevenZip()) return OpenWith<SevenZipReader>(archive, limits, error);
+    if (magic.Zip()) return OpenWith<ZipReader>(archive, limits, error);
+    if (magic.Rar()) return OpenRar(archive, limits, error);
     error = ArchiveError::kUnsupported;
     return nullptr;
 }
@@ -335,6 +397,24 @@ bool IsUtf8(const std::string& text) {
         i += length;
     }
     return true;
+}
+
+std::string FromUtf16(const uint16_t* text, size_t length) {
+    std::string out;
+    for (size_t i = 0; i < length; ++i) {
+        uint32_t code = text[i];
+        if (code >= 0xD800 && code < 0xDC00 && i + 1 < length && text[i + 1] >= 0xDC00 && text[i + 1] < 0xE000)
+            code = 0x10000 + ((code - 0xD800) << 10) + (text[++i] - 0xDC00u);
+        else if (code >= 0xD800 && code < 0xE000)
+            code = 0xFFFD;
+        AppendUtf8(out, code);
+    }
+    return out;
+}
+
+std::string ForwardSlashes(std::string name) {
+    std::replace(name.begin(), name.end(), '\\', '/');
+    return name;
 }
 
 std::string FromWindows1252(const std::string& text) {

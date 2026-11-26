@@ -14,6 +14,7 @@
 #include "jpt_vpath.h"
 
 #define HLE_EXIT_MISSING 5
+#define HLE_EXIT_LEVEL 6
 
 typedef struct {
     const char* dll;  /* lower case, with .dll */

@@ -16,7 +16,8 @@ JurassicParkTrespasser\
                                   SAVEGAME.NNN, previews\ (HD save pictures),
                                   recomp-registry.txt (the game's own options),
                                   level swap files (*-130.swp, temp.scx) and the game's screenshots (TPassNNN.BMP)
-        custom_levels\<package>\  the imported levels, as their packages hold them (CUSTOM_LEVELS.md)
+        custom_levels\<package>\  the imported levels, as their packages hold them, with manifest.json, runtime.map
+                                  and .runtime, which the launcher makes again when needed (CUSTOM_LEVELS.md)
         saves\custom_levels\<package>\  the saves and swap files of each one, also under versions\<id>\saves
         cache\                  caches the port may keep: menu-text\<language>\ holds the game's menu files with
                                   their labels translated, rebuilt at each start

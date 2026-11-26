@@ -175,6 +175,7 @@ Add-Python $s @(
     , @('test_layout.py', 'host structure offsets per profile; an unknown access fails')
     , @('test_lifts.py', 'the lifts as project artifacts, a clean checkout without any original executable')
     , @('test_lift_hooks.py', 'lift hook list and placement')
+    , @('test_trescom_levels.py', 'the custom level catalog tool against a local server: downloads, resume, retries, refusals, relations, reports')
     , @('test_lift_staging.py', 'lift staging, publishing changed files only, cleanup')
     , @('test_stable_entries.py', 'stable-entry renaming and check')
     , @('test_guest_module_lift.py', 'lifted guest DLL (MSVCIRT): config and manifest facts, sorted prefixed table, every jump target a lifted entry, no symbol collision, every code export and every code address held in its data lifted, no TLS, no forwarders')
@@ -187,6 +188,7 @@ Add-Python $s @(
     , @('test_compile_commands.py', 'ninja -t commands of every test target: no contradicting flags, no warning suppression in project code, /W3 or higher, whether or not anything recompiles')
 )
 Add-Suite $s 'script' 'tests\build_script_tests.ps1' 'tools\build.ps1 statically: parameters, configurations, -Run arguments, user_data, SDL pin, test targets outside the default build' @{}
+Add-Suite $s 'script' 'tests\link_recovery_tests.ps1' 'tools\_link_recovery.ps1 on fake builds: LNK1207 removes the target PDB/ILK and retries once, nothing else' @{}
 
 $s = 'Platform'
 Add-Exes $s @(
@@ -196,6 +198,7 @@ Add-Exes $s @(
     , @('hotkey_tests', 'the port hotkey table both hosts read: F2 to F11, Alt+F4, repeats, modifiers and the Quick keys winning over the table', 40)
     , @('input_context_tests', 'the input context read from the game window stack (video, menu, loader, level, pause), input state, relative mouse and pointer decisions', 40)
     , @('host_tests', 'input and capture state machine, hotkeys, shutdown, Safe Mode, filesystem mapping, readbacks, D3D6 to D3D11 translation, shaders, hand and physics', 400000)
+    , @('engine_heaps_tests', 'the lifted arrays and heaps full, past full and out of memory: the load ends before anything is written, the guard is never reached', 160)
     , @('x87_tests', 'the patched runtime: x87 ring, inline rounding, per-site call cache', 50)
     , @('x64_tests', 'x64 groundwork: guest address space, pointer marshalling, leak detection, COM handles', 0, @{ Arch = 'x64' })
 )
@@ -279,7 +282,22 @@ Add-Suite $s 'check' 'linux audio probe' 'the portable audio and Smacker layers 
 $s = 'Launcher'
 Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
 Add-Exes $s @(, @('launcher_startup_tests', 'launcher start without graphics support: renderer order and fallback, --launcher-renderer, graphics card list failures, a failed launcher never starts the game', 120))
-Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths', 200))
+Add-Exes $s @(, @('sky_tests', 'custom skies: the file, the layers'' shapes, projection and clipping, package lookup, session', 1000))
+Add-Exes $s @(, @('texhw_tests', 'custom level pictures (BMP, TGA, DDS) and their hardware texture overrides', 60))
+Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths; package analysis: fm.ini, tp_mod.ini, trespasser.ini, tpass.ini, readme rules, manifest and migration, added sound files, loading pictures, session settings', 400))
+$s = 'Custom level session'
+Add-Exes $s @(, @('custom_level_session_tests', 'an active custom level session as the game reads it: BMP layouts, ATX map pictures below the package''s MAPS (map actions, README, case, separators, traversal, absent or unreadable pictures, session end); Restart Level as a full level cycle over a fake engine and real packages (loose and fan mission, scenes 22, 25 and 26, own PID and SWP, game SPZ, texhw, MAPS, added TPA, custom to custom and custom to retail transitions, restart after a transition and twice, a save made before, the campaign afterwards); level guides: minimap and objectives made from a level''s world, the campaign''s only over the game''s own world, no information otherwise', 250))
+
+$s = 'Restart lifecycle'
+Add-Exes $s @(, @('level_actions_tests', 'the actions of ATX and Trespasser CE over a fake guest (speed, hint, controls, reload, map, teleport, particles, saves, session end) and the real Restart Level override over a fake engine: the game''s own restart keeps the world, a custom session purges and loads the level whole (new player, objects, triggers, AI, actions, world generation), after transitions and twice; the campaign''s restart unchanged', 600))
+
+$s = 'Session logging'
+Add-Exes $s @(, @('level_session_tests', 'the [session], [level] and [restart] lines: campaign and custom sessions, reasons new_game/initial/transition/restart/load_save, package or retail source, world generations, failed loads and restarts, no line without a lifecycle event', 40))
+
+$s = 'Launch handoff'
+Add-Exes $s @(, @('launch_handoff_tests', 'PLAY to the game window without opening one: campaign and custom, slow and fast starts, a created but not ready window, black frame and first present, failure before the window, no way back after PLAY, D3D11 and Vulkan alike; never a moment without one of our windows, no launcher input after PLAY', 200))
+
+$s = 'Launcher'
 Add-Python $s @(, @('test_setting_parity.py', 'launcher rows and runtime settings agree: parsers, defaults, ranges, lists, readers'))
 Add-Python $s @(, @('test_player_polish.py', 'gamepad icon in the executable and both windows, numbered Level Select, Bug Report page and Worker, auto update wiring and release contract, Windows and Linux'))
 Add-Exes $s @(
@@ -340,9 +358,12 @@ $helperTestFiles = @{
     'tests\fault_guard.h' = 'shared helper of x64_tests: access-violation probes on Windows and POSIX'
     'tests\linux_suites.json' = 'classification of the suites for the Linux gate (tools/linux_gate.py)'
     'tests\smk_fixture.h' = 'shared generator of a synthetic Smacker file: smacker_ffmpeg_tests'
+    'tests\level_fixtures.h' = 'shared generator of synthetic scenes, worlds and texture sets: custom_level_tests and custom_level_session_tests'
+    'tests\texhw_fixture.h' = 'shared generator of synthetic texhw pictures: texhw_tests'
 }
 $toolRole = @{
     'tools\_common.ps1' = 'helper dot-sourced by the tool scripts'
+    'tools\_link_recovery.ps1' = 'dot-sourced by tools\build.ps1; exercised by tests\link_recovery_tests.ps1'
     'tools\_gate_linux.ps1' = 'the Linux half of this script: WSL discovery, the Linux gate run, progress and the feature parity; dot-sourced'
     'tools\linux_gate.py' = 'the Linux gate runner: run in WSL by tools/test-linux.sh'
     'tools\linux_probe.sh' = 'what a WSL distribution offers the Linux gate: run in WSL by this script'
@@ -400,6 +421,17 @@ $toolRole = @{
     'tools\openssl-bootstrap.sh' = 'a pinned static OpenSSL for the Bug Report HTTPS, built once into the cache: run by tools/build-linux.sh when the machine has no development files'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
+    'tools\custom_level_scan.cpp' = 'developer tool target (custom_level_scan): the headless report of a folder of custom level packages, not a test'
+    'tools\analyze-custom-level.ps1' = 'maintainer: prints what the import makes of one package; never run by the gate'
+    'tools\custom-level-compatibility.ps1' = 'maintainer: runs custom_level_scan over a folder of packages; never run by the gate'
+    'tools\download-trescom-levels.ps1' = 'maintainer: starts tools\download-trescom-levels.py (network); never run by the gate'
+    'tools\download-trescom-levels.py' = 'maintainer: catalogs and downloads a TresCom category (network); its modules are tested by tests\test_trescom_levels.py against a local server'
+    'tools\trescom_site.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_fetch.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_catalog.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_report.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_corpus.py' = 'library of trescom_compatibility.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_compatibility.py' = 'maintainer: the compatibility report of a downloaded corpus through custom_level_scan; its rules are tested by tests\test_trescom_levels.py'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
     'tools\linux_lifted_link_report.py' = 'maintainer: what the lifted guest needs from a Linux host, run by tools/test-linux.sh'
     'tools\import-appimage-runtime.sh' = 'packaging helper: copies the pinned AppImage runtime from a WSL packaging cache; run by tools\package-release.ps1 in WSL, checked by tests\test_linux_packaging.py, never by this gate'

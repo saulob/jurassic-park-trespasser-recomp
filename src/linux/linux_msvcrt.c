@@ -9,6 +9,8 @@
 
 #include "guest_memory.h"
 #include "guest_ptr.h"
+#include "jpt_custom_level.h"
+#include "level_abort.h"
 #include "linux_log.h"
 #include "linux_spine.h"
 #include "recomp_types.h"
@@ -168,7 +170,13 @@ static uint64_t m__EH_prolog(const uint32_t* a, void* u) {
     return 0;
 }
 
-static uint64_t m_malloc(const uint32_t* a, void* u) { (void)u; return gm_heap_alloc(a[0] ? a[0] : 1, 0); }
+static uint32_t allocate(const char* what, uint32_t bytes) {
+    const uint32_t p = gm_heap_alloc(bytes ? bytes : 1, 0);
+    if (!p && jpt_custom_level_active()) level_allocation_failed(what, 0, bytes);
+    return p;
+}
+
+static uint64_t m_malloc(const uint32_t* a, void* u) { (void)u; return allocate("malloc", a[0]); }
 static uint64_t m_free(const uint32_t* a, void* u) { (void)u; gm_heap_free(a[0]); return 0; }
 static uint64_t m__msize(const uint32_t* a, void* u) { (void)u; return gm_heap_size(a[0]); }
 
@@ -266,7 +274,7 @@ static uint64_t m___RTDynamicCast(const uint32_t* a, void* u) {
     return 0;
 }
 
-static uint64_t m_operator_new(const uint32_t* a, void* u) { return m_malloc(a, u); }
+static uint64_t m_operator_new(const uint32_t* a, void* u) { (void)u; return allocate("operator new", a[0]); }
 static uint64_t m_set_new_handler(const uint32_t* a, void* u) { (void)a; (void)u; return 0; }
 static uint64_t m__set_new_mode(const uint32_t* a, void* u) { (void)a; (void)u; return 0; }
 

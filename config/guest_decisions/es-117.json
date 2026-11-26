@@ -136,6 +136,12 @@
    "va": "0066EF20",
    "category": "NO_EQUIVALENT",
    "evidence": "tuning field read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B98"
+  },
+  {
+   "va": "0073F280",
+   "to": "00741BF0",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the count of the CMessageUse receivers, 8 bytes past their list: CPlayer's use builds the message with the list 0x00741BE8 and adds one to 0x00741BF0 (0x00431180, 0x00431194, 0x0043119D), as 116 does with 0x0073F278 and 0x0073F280 (0x0044CD10, 0x0044CD24)"
   }
  ]
 }

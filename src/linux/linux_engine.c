@@ -6,5 +6,3 @@ void engine_limits_keep_original(void) {}
 int engine_limits_original(void) { return 1; }
 
 int engine_limits_modern(void) { return 0; }
-
-int engine_heaps_enlarged(void) { return 0; }

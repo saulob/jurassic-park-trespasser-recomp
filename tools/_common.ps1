@@ -98,7 +98,7 @@ function Show-LogTail([int]$Lines = 40) {
 }
 
 # Runs a native tool: every output line goes to the log, and only the lines $Show accepts reach the terminal.
-function Invoke-Logged([string]$Exe, [string[]]$Arguments, [scriptblock]$Show = { $true }) {
+function Invoke-Logged([string]$Exe, [string[]]$Arguments, [scriptblock]$Show = { $true }, [System.Collections.Generic.List[string]]$Output = $null) {
     Add-RunLog "> $Exe $($Arguments -join ' ')"
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -106,6 +106,7 @@ function Invoke-Logged([string]$Exe, [string[]]$Arguments, [scriptblock]$Show = 
         & $Exe @Arguments 2>&1 | ForEach-Object {
             $line = "$_"
             Add-RunLog $line
+            if ($null -ne $Output) { $Output.Add($line) }
             if (& $Show $line) { Write-Host $line }
         }
         $code = $LASTEXITCODE

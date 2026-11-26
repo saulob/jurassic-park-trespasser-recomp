@@ -27,6 +27,10 @@ extern "C" {
 #define AI_VOCAL_SLOT_BYTES 120u
 
 int ai_vocal_slot_valid(int32_t dinosaur, int32_t vocal);
+/* Of the kinds past the game's, as many as ATX adds: the slot's number, or -1. */
+#define AI_VOCAL_MORE_DINOSAURS 23
+#define AI_VOCAL_MORE_SLOTS (AI_VOCAL_MORE_DINOSAURS * AI_VOCAL_KINDS)
+int ai_vocal_more_slot(int32_t dinosaur, int32_t vocal);
 
 int active_ai_limit(int enhanced);
 

@@ -140,7 +140,7 @@ static void run_on_guest(body_fn fn) {
 
 static void test_tables(void) {
     CHECK(override_registry_valid(&lift116_registry), "the override list is sorted, unique and every stable entry points at its lifted body");
-    CHECK(lx_lift116_override_count() == 71, "71 overrides are listed (%u)", lx_lift116_override_count());
+    CHECK(lx_lift116_override_count() == 78, "78 overrides are listed (%u)", lx_lift116_override_count());
     CHECK(lx_lift116_hook_count() == 27, "27 lift hooks are listed (%u)", lx_lift116_hook_count());
     CHECK(lift116_registry.count == lx_lift116_override_count(), "the registry holds the whole list");
 }
@@ -150,7 +150,7 @@ static void test_tables(void) {
 static const uint32_t k_shared[] = {
     0x0040DA00, 0x00410540, 0x00411EA0, 0x00413040, 0x004142C0, 0x00415AD0, 0x004610D0, 0x00419330, 0x004195A0, 0x00419800, 0x004199D0, 0x00419C60, 0x00419CE0, 0x00419DB0, 0x00419E30,
     0x0041A200, 0x0041ADF0, 0x0041AE50, 0x0041AF00, 0x004213F0, 0x004218C0, 0x00418AE0, 0x00475F60, 0x0049E530, 0x004EDFA0, 0x004F0960, 0x004F3FB0,
-    0x0051FD90, 0x0060FC10, 0x005F80B0,
+    0x0051FD90, 0x0060FC10, 0x005F80B0, 0x005F8A20, 0x005F8B10, 0x00614F50,
 };
 
 

@@ -16,8 +16,11 @@
 #include "ddraw/vk_win_test.h"
 #include "host.h"
 #include "jpt_display.h"
+#include "jpt_lit.h"
+#include "jpt_texhw.h"
 #include "text_layer.h"
 #include "texture_gpu_policy.h"
+#include "texhw_fixture.h"
 #include "vk_context.h"
 
 static int g_checks = 0;
@@ -42,6 +45,7 @@ HWND window_host_surface(HWND window) { return window; }
 int window_host_frames_allowed(void) { return 0; }
 void window_host_frame_commit(unsigned generation) { (void)generation; }
 void window_host_frame_presented(void) {}
+void window_host_presentation_target(int ready) { (void)ready; }
 void video_hd_main_presented(void) {}
 int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565, const uint16_t* gamma) {
     (void)window; (void)bits; (void)pitch; (void)source; (void)rgb565; (void)gamma;
@@ -1369,6 +1373,132 @@ static void test_gpu_texture_polygons(rig_t* g) {
 
 /* A 1-texel checker of black and white drawn 8 times smaller than itself: with the mipmap chain the Direct3D 11 backend
  * builds (d3dt_build_mips) it averages to grey; the chain is uploaded whole and reused until the texture changes. */
+/* crate's normal map is (1, 0, 0) with half the highlight, large's straight out. */
+static void test_lit(rig_t* g, dd_surface_t* s) {
+    static const float k_lights[4][4] = { { 0, 0, 1, 0.7f }, { 0.8f, 0, 0.6f, 0.9f }, { -0.8f, 0, 0.6f, 0.9f }, { 0.6f, 0.8f, 0, 0.5f } };
+    static const float k_materials[2][4] = { { 0.9f, 0, 0, 0.2f }, { 0.8f, 1.6f, 0.5f, 0.3f } };
+    static const float k_texture[2][4] = { { 0, 0, 1, 1 }, { 32 / 255.0f, 192 / 255.0f, 64 / 255.0f, 1 } };
+    static const float k_normal[2][4] = { { 1, 128 / 255.0f, 128 / 255.0f, 128 / 255.0f }, { 128 / 255.0f, 128 / 255.0f, 1, 1 } };
+    const float dark[3] = { 16 / 255.0f, 24 / 255.0f, 32 / 255.0f }, full[3] = { 240 / 255.0f, 224 / 255.0f, 208 / 255.0f };
+    jpt_lit_vertex_t v[4];
+    jpt_lit_draw_t d = { 0, 4, 0x00101820u, 0x00F0E0D0u, v };
+    g->dev.texture = s;
+    for (int round = 0; round < 16; round++) {
+        const int which = round & 1, l = round >> 1 & 3, m = round >> 3;
+        float want[3];
+        for (int i = 0; i < 4; i++) {
+            memcpy(v[i].light, k_lights[l], sizeof v[i].light);
+            memcpy(v[i].material, k_materials[m], sizeof v[i].material);
+            v[i].shade[0] = 0.7f, v[i].shade[1] = 0.15f;
+        }
+        s->override_id = jpt_texhw_find(which ? 3 : 1);
+        d.normal = jpt_texhw_normal(which ? 3 : 1);
+        begin_frame(g, 0xFF000000u);
+        draw_quad(g, 0, 0, W, 16, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        jpt_lit_set_draw(&d);
+        draw_quad(g, 0, 16, W, 40, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        draw_quad(g, 0, 40, W, 48, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        jpt_lit_set_draw(NULL);
+        draw_quad(g, 0, 48, W, H, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        jpt_lit_pixel(&v[0], dark, full, k_texture[which], k_normal[which], want);
+        for (int k = 0; k < 3; k++) want[k] = want[k] < 1.0f ? want[k] * 255.0f : 255.0f;
+        CHECK(end_frame(g) && near_rgb(px(g, 32, 28), (int)want[0], (int)want[1], (int)want[2], 4) && near_rgb(px(g, 20, 44), (int)want[0], (int)want[1], (int)want[2], 4), "round %d is lit (%u,%u,%u for %.0f,%.0f,%.0f)",
+              round, px(g, 32, 28)[0], px(g, 32, 28)[1], px(g, 32, 28)[2], want[0], want[1], want[2]);
+        for (int y = 8; y < H; y += 48)
+            CHECK(near_rgb(px(g, 32, y), (int)(k_texture[which][0] * 255), (int)(k_texture[which][1] * 255), (int)(k_texture[which][2] * 255), 6), "what is drawn around it is not (%u,%u,%u)", px(g, 32, y)[0],
+                  px(g, 32, y)[1], px(g, 32, y)[2]);
+    }
+    /* In fog, and with the direction from corner to corner. */
+    g->dev.render[D3DRENDERSTATE_FOGENABLE] = 1;
+    g->dev.render[D3DRENDERSTATE_FOGCOLOR] = 0xFFFFFFu;
+    for (int i = 0; i < 4; i++) v[i].light[0] = i == 1 || i == 2 ? 1.0f : -1.0f, v[i].light[1] = 0, v[i].light[2] = 0, v[i].light[3] = 1, v[i].material[0] = 1, v[i].material[1] = 0, v[i].material[3] = 0, v[i].shade[1] = 0;
+    s->override_id = jpt_texhw_find(1), d.normal = jpt_texhw_normal(1), d.dark = 0, d.full = 0xFFFFFF;
+    begin_frame(g, 0xFF000000u);
+    jpt_lit_set_draw(&d);
+    draw_quad(g, 0, 0, W, H, 0.5f, 0xFFFFFFFFu, 0x80000000u);
+    jpt_lit_set_draw(NULL);
+    CHECK(end_frame(g) && near_rgb(px(g, 8, 32), 127, 127, 127, 4) && near_rgb(px(g, 56, 32), 127, 127, 254, 4), "away from the light it is dark and towards it lit, in fog (%u,%u,%u) (%u,%u,%u)", px(g, 8, 32)[0], px(g, 8, 32)[1],
+          px(g, 8, 32)[2], px(g, 56, 32)[0], px(g, 56, 32)[1], px(g, 56, 32)[2]);
+    g->dev.render[D3DRENDERSTATE_FOGENABLE] = 0;
+    g->dev.texture = NULL;
+}
+
+/* A sky layer of twice the colour. */
+static void test_twice(rig_t* g, dd_surface_t* s) {
+    s->override_id = jpt_texhw_find(3);
+    g->dev.texture = s;
+    g->dev.render[D3DRENDERSTATE_TEXTUREMAPBLEND] = D3DT_TBLEND_MODULATEALPHA_2X;
+    begin_frame(g, 0xFF000000u);
+    draw_quad(g, 0, 0, W, H, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+    CHECK(end_frame(g) && near_rgb(px(g, 32, 32), 0x40, 0xFF, 0x80, 4), "twice the colour, saturated (%u,%u,%u)", px(g, 32, 32)[0], px(g, 32, 32)[1], px(g, 32, 32)[2]);
+    g->dev.render[D3DRENDERSTATE_TEXTUREMAPBLEND] = 2;
+    g->dev.texture = NULL;
+}
+
+/* A custom level's picture in place of a texture. */
+static void test_override(rig_t* g) {
+    static const char* const k_files[] = { "data/texhw/Map/w/crate.dds", "data/texhw/Map/leaf.tga", "data/texhw/Map/large.tga", "data/texhw/Map/w/crate.norm.tga", "data/texhw/Map/large.norm.tga" };
+    static uint8_t file[4 * 512 * 512 + 64];
+    uint16_t red[4] = { 0xF800, 0xF800, 0xF800, 0xF800 }, clear[4] = { 0, 0, 0, 0 };
+    char user[512], dir[600];
+    const char* temp = getenv("TEMP");
+    size_t size;
+    tex_t crate, leaf;
+    snprintf(user, sizeof user, "%s/jpt_texhw_vulkan", temp ? temp : ".");
+    snprintf(dir, sizeof dir, "%s/custom_levels/Tex", user);
+    size = fx_dds_head(file, 8, 8, 0, "DXT1");
+    for (int i = 0; i < 4; i++, size += 8) memset(file + size, 0, 8), fx_put(file + size, 0x001F, 2);
+    CHECK(fx_file(dir, "texhw/Map/w/crate.dds", file, size), "a DXT1 picture");
+    size = fx_tga(file, 32, 32, 0x2000FF00u);
+    CHECK(fx_file(dir, "texhw/Map/leaf.tga", file, size), "a picture that is mostly clear");
+    size = fx_tga(file, 512, 512, 0xFF20C040u);
+    CHECK(fx_file(dir, "texhw/Map/large.tga", file, size), "a large one");
+    size = fx_tga(file, 16, 16, 0x80FF8080u);
+    CHECK(fx_file(dir, "texhw/Map/w/crate.norm.tga", file, size), "a normal map");
+    size = fx_tga(file, 512, 512, 0xFF8080FFu);
+    CHECK(fx_file(dir, "texhw/Map/large.norm.tga", file, size) && fx_activate(user, k_files, 5), "the package");
+    jpt_texhw_name(1, "Map\\w\\crate.bmp");
+    jpt_texhw_name(2, "Map\\w\\leaf.bmp");
+    jpt_texhw_name(3, "Map\\w\\large.bmp");
+    jpt_texhw_frame();
+    tex_init(&crate, 2, 2, DDPF_RGB, 16, 0xF800, 0x07E0, 0x001F, 0);
+    tex_fill16(&crate, red);
+    tex_init(&leaf, 2, 2, DDPF_RGB | DDPF_ALPHAPIXELS, 16, 0x7C00, 0x03E0, 0x001F, 0x8000);
+    tex_fill16(&leaf, clear);
+    for (int round = 0; round < 6; round++) {
+        static const int k_rgb[6][3] = { { 255, 0, 0 }, { 0, 0, 255 }, { 0x20, 0xC0, 0x40 }, { 0, 255, 0 }, { 255, 0, 0 }, { 0, 0, 255 } };
+        const int ids[6] = { 0, jpt_texhw_find(1), jpt_texhw_find(3), jpt_texhw_find(2), 0, jpt_texhw_find(1) };
+        crate.s.override_id = ids[round];
+        g->dev.texture = &crate.s;
+        begin_frame(g, 0xFF000000u);
+        draw_quad(g, 0, 0, W, H, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        CHECK(end_frame(g) && near_rgb(px(g, 32, 32), k_rgb[round][0], k_rgb[round][1], k_rgb[round][2], 6), "round %d shows its picture (%u,%u,%u)", round, px(g, 32, 32)[0],
+              px(g, 32, 32)[1], px(g, 32, 32)[2]);
+    }
+    test_lit(g, &crate.s);
+    test_twice(g, &crate.s);
+    g->dev.render[D3DRENDERSTATE_ALPHATESTENABLE] = 1;
+    g->dev.render[D3DRENDERSTATE_ALPHAFUNC] = 5;
+    g->dev.render[D3DRENDERSTATE_ALPHAREF] = 0;
+    g->dev.texture = &leaf.s;
+    for (int round = 0; round < 2; round++) {
+        leaf.s.override_id = jpt_texhw_find(round ? 1 : 2);
+        begin_frame(g, 0xFFFF0000u);
+        draw_quad(g, 0, 0, W, H, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+        CHECK(end_frame(g) && near_rgb(px(g, 32, 32), round ? 0 : 255, 0, round ? 255 : 0, 6), "a cutout takes alpha as on or off (%u,%u,%u)", px(g, 32, 32)[0], px(g, 32, 32)[1],
+              px(g, 32, 32)[2]);
+    }
+    g->dev.render[D3DRENDERSTATE_ALPHATESTENABLE] = 0;
+    jpt_custom_level_deactivate();
+    g->dev.texture = &crate.s;
+    begin_frame(g, 0xFF000000u);
+    draw_quad(g, 0, 0, W, H, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+    CHECK(end_frame(g) && near_rgb(px(g, 32, 32), 255, 0, 0, 6), "nothing of it after the session (%u,%u,%u)", px(g, 32, 32)[0], px(g, 32, 32)[1], px(g, 32, 32)[2]);
+    g->dev.texture = NULL;
+    tex_free(&crate);
+    tex_free(&leaf);
+}
+
 static void test_mipmaps(rig_t* g) {
     struct {
         const char* name;
@@ -1524,6 +1654,7 @@ int main(int argc, char** argv) {
         test_pause_snapshot(g);
         test_gpu_texture_polygons(g);
         test_mipmaps(g);
+        test_override(g);
         test_sampler_policy(g);
         test_backend_overhead(g, verbose);
         test_cpu_accounting_model();

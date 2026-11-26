@@ -16,6 +16,8 @@
   The development default compiles the lifted C with /Od (several times faster); Release uses /O2.
   Each run writes one log, build\logs\trespasser_recomp_NNN.log (the next free number): the build and, with -Run, the
   game's own output after it and its exit code. The terminal shows progress and problems only.
+  A link that fails with LNK1207 on the host's own PDB (left corrupted by an interrupted link) has that PDB and its ILK
+  removed and is built once more; the objects and the configuration are kept.
 .PARAMETER Run
   After a successful build, starts trespasser_recomp.exe --run and stays attached until it exits. Not started when the
   build fails or when an instance is already running. Saves, settings, downloads and mods of development runs are
@@ -74,6 +76,7 @@ param(
 )
 
 . (Join-Path $PSScriptRoot '_common.ps1')
+. (Join-Path $PSScriptRoot '_link_recovery.ps1')
 $root = $script:RepoRoot
 $target = Get-Content -LiteralPath (Join-Path $root 'config\target.json') -Raw | ConvertFrom-Json
 $pcrecomp = Join-Path $root 'external\pcrecomp'
@@ -302,7 +305,12 @@ Write-Step 'Building incrementally (the first build compiles about 1.5 million l
 $ninjaArgs = @('-C', $buildDir)
 if ($Jobs -gt 0) { $ninjaArgs += @('-j', $Jobs) }
 $ninjaArgs += $hostTargets
-$buildCode = Invoke-Logged 'ninja' $ninjaArgs { param($l) Show-Progress $l }
+$ninja = {
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $code = Invoke-Logged 'ninja' $ninjaArgs { param($l) Show-Progress $l } $lines
+    @{ Code = $code; Lines = $lines.ToArray() }
+}
+$buildCode = Invoke-BuildWithLinkRecovery $ninja $buildDir $hostTargets
 if ($buildCode -ne 0) {
     Show-LogTail
     Stop-Tool 'Build failed' $buildCode

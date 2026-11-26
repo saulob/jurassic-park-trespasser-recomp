@@ -14,6 +14,7 @@ GUEST_OVERRIDE(00411FC0, REQUIRED) /* window centring (ui_canvas.c) */
 GUEST_OVERRIDE(004129C0, REQUIRED) /* RasterBlt (ui_canvas.c) */
 GUEST_OVERRIDE(00413160, OPTIONAL) /* screen message (loading_hd.c) */
 GUEST_OVERRIDE(004143B0, OPTIONAL) /* level load (loading_hd.c) */
+GUEST_OVERRIDE(00414580, OPTIONAL) /* Restart Level (level_actions.c) */
 GUEST_OVERRIDE(00414E50, OPTIONAL) /* menu selection sound loader, menu-only volume (menu_audio.c) */
 GUEST_OVERRIDE(00415BD0, OPTIONAL) /* CLoaderWnd draw and present (loading_hd.c) */
 GUEST_OVERRIDE(00417420, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
@@ -22,6 +23,10 @@ GUEST_OVERRIDE(00417530, REQUIRED) /* UI cursor (ui_canvas.c) */
 GUEST_OVERRIDE(00418B40, OPTIONAL) /* CVideoWnd::Play (video_hd.c) */
 GUEST_OVERRIDE(0041D4A0, OPTIONAL) /* voice captions to the text overlay (l10n.c) */
 GUEST_OVERRIDE(00445B20, OPTIONAL) /* CPlayer stow handler, Dual stow (ce_gameplay.c) */
+GUEST_OVERRIDE(0044D270, OPTIONAL) /* CSetHintAction, actions of ATX and Trespasser CE (level_actions.c) */
+GUEST_OVERRIDE(0044D280, OPTIONAL) /* CSetHintAction load (level_actions.c) */
+GUEST_OVERRIDE(0044D2A0, OPTIONAL) /* CSetHintAction save (level_actions.c) */
+GUEST_OVERRIDE(00451510, OPTIONAL) /* trigger action factory (level_actions.c) */
 GUEST_OVERRIDE(004581A0, OPTIONAL) /* level TEXT action (l10n.c) */
 GUEST_OVERRIDE(0045B6F0, REQUIRED) /* CPartition::bAddChild, official Patch 1.1 fix (patch117.c) */
 GUEST_OVERRIDE(0045D1A0, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
@@ -58,8 +63,10 @@ GUEST_OVERRIDE(00563C20, REQUIRED) /* bump primitive, perspective (cpu_polygons.
 GUEST_OVERRIDE(005DE210, OPTIONAL) /* CInput::tinReadDefaultControls (gamepad.c) */
 GUEST_OVERRIDE(005DEFA0, REQUIRED) /* pHeapAlloc (engine_heaps.c) */
 GUEST_OVERRIDE(005DF090, REQUIRED) /* pvCommitMem (engine_heaps.c) */
+GUEST_OVERRIDE(005EC660, OPTIONAL) /* CWorld::bLoadScene (level_actions.c) */
 GUEST_OVERRIDE(005F4970, OPTIONAL) /* water texture rows (water_kernels.c) */
 GUEST_OVERRIDE(005F6190, REQUIRED) /* CEntityWater::CPriv::Integrate (physics_fixes.c) */
+GUEST_OVERRIDE(005FB4D0, REQUIRED) /* CInstance::pcLoad, scenes of Trespasser CE (scene_scripts.c) */
 GUEST_OVERRIDE(0060D880, REQUIRED) /* CAISystem constructor, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060DAC0, REQUIRED) /* CAISystem destructor, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060DD20, REQUIRED) /* CAISystem::Activate, Active AI (active_ai.c) */

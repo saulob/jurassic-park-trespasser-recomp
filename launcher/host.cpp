@@ -309,6 +309,13 @@ void LauncherHost::ConfigureVsync() {
     Log("%s", PacingLine(renderer_name_, state).c_str());
 }
 
+void* LauncherHost::NativeWindow() const {
+#ifdef _WIN32
+    if (window_) return SDL_GetPointerProperty(SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#endif
+    return nullptr;
+}
+
 void LauncherHost::Show() {
     if (!window_ || hidden_) {
         return;

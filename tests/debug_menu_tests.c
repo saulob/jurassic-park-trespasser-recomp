@@ -210,17 +210,26 @@ static void test_levels(void) {
 static void test_start_level(void) {
     dm_start_t s;
     char scene[DM_SCENE_MAX] = "";
+    int presents = 0, loading = 0;
     CHECK(!dm_start_request(&s, "") && !dm_start_request(&s, "..\\x.scn") && !dm_start_request(&s, "a name.scn"), "only a scene the game can load");
-    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 5000, scene), "nothing was asked for");
+    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, scene) && !dm_start_holds_present(&s, 0), "nothing was asked for, nothing is held");
     CHECK(dm_start_request(&s, "LostJungle.scn"), "a scene is asked for");
-    CHECK(!dm_start_due(&s, DM_PLACE_NONE, 1000, scene), "not during a video");
-    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 2000, scene), "not on the menu's first frame");
-    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 2000 + DM_START_SETTLE_MS - 1, scene), "not before the menu settled");
-    CHECK(!dm_start_due(&s, DM_PLACE_NONE, 2100, scene) && !dm_start_due(&s, DM_PLACE_MAIN_MENU, 3000, scene), "the menu settles again after a window");
-    CHECK(dm_start_due(&s, DM_PLACE_MAIN_MENU, 3000 + DM_START_SETTLE_MS, scene) && !strcmp(scene, "LostJungle.scn"), "then the scene is due");
-    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, 9000, scene), "once");
+    for (uint32_t turn = 0; turn < 20; turn++) {
+        const dm_place_t place = turn < 8 ? DM_PLACE_NONE : DM_PLACE_MAIN_MENU;
+        loading |= dm_start_due(&s, place, scene);
+        CHECK(loading == (turn >= 8), "turn %u: the level loads on the main menu's first turn, not before the engine is ready", turn);
+        if (dm_start_holds_present(&s, 1000 + turn * 100)) continue;
+        CHECK(loading, "turn %u: no frame is seen before the level loads", turn);
+        presents++;
+    }
+    CHECK(presents == 12 && !strcmp(scene, "LostJungle.scn"), "the first frame seen follows the load (%d, %s)", presents, scene);
+    CHECK(!dm_start_due(&s, DM_PLACE_MAIN_MENU, scene), "once");
     dm_start_request(&s, "nemlevl.scn");
-    CHECK(!dm_start_due(&s, DM_PLACE_LEVEL, 100, scene) && !dm_start_due(&s, DM_PLACE_MAIN_MENU, 9000, scene), "a level that is already running drops the request");
+    CHECK(!dm_start_due(&s, DM_PLACE_LEVEL, scene) && !dm_start_due(&s, DM_PLACE_MAIN_MENU, scene), "a level that is already running drops the request");
+    CHECK(!dm_start_holds_present(&s, 1), "and holds nothing");
+    dm_start_request(&s, "nemlevl.scn");
+    CHECK(dm_start_holds_present(&s, 0xFFFFFF00u) && dm_start_holds_present(&s, 0xFFFFFF00u + DM_START_HOLD_MS - 1u) && !dm_start_holds_present(&s, 0xFFFFFF00u + DM_START_HOLD_MS),
+          "a menu that never comes does not leave the window without a picture");
 }
 
 static void test_level_names(void) {

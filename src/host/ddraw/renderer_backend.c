@@ -275,8 +275,18 @@ void d3dr_state_will_change(d3d_device_t* dev, int change, DWORD state, DWORD va
 void d3dr_state_kept_batch(d3d_device_t* dev) {
     if (current_ops()->state_kept_batch) current_ops()->state_kept_batch(dev);
 }
+static void (*s_instead)(d3d_device_t*, const void*, DWORD);
+
+void d3dr_replace_next_draw(void (*instead)(d3d_device_t*, const void*, DWORD)) { s_instead = instead; }
+
 HRESULT d3dr_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                   DWORD index_count) {
+    if (s_instead) {
+        void (*instead)(d3d_device_t*, const void*, DWORD) = s_instead;
+        s_instead = NULL;
+        instead(dev, vertices, count);
+        return DD_OK;
+    }
     return current_ops()->draw ? current_ops()->draw(dev, type, fvf, vertices, count, indices, index_count)
                                : DDERR_UNSUPPORTED;
 }
@@ -291,6 +301,7 @@ void d3dr_surface_cpu_access(dd_surface_t* s, int will_write, cpu_access_t acces
     if (current_ops()->surface_cpu_access) current_ops()->surface_cpu_access(s, will_write, access);
 }
 void d3dr_surface_cpu_written(dd_surface_t* s, const RECT* r) {
+    s->override_id = 0;
     if (current_ops()->surface_cpu_written) current_ops()->surface_cpu_written(s, r);
 }
 int d3dr_surface_unlocked(dd_surface_t* s) {
@@ -309,6 +320,7 @@ void d3dr_surface_freed(dd_surface_t* s) {
     if (current_ops()->surface_freed) current_ops()->surface_freed(s);
 }
 void d3dr_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
+    dst->override_id = 0;
     if (current_ops()->texture_loaded) current_ops()->texture_loaded(dst, src);
 }
 

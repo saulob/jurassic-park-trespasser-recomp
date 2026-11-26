@@ -44,7 +44,7 @@ static int g_checks, g_failures;
 static const uint32_t k_shared[] = {
     0x0040DA00, 0x00410540, 0x004610D0, 0x00419330, 0x004195A0, 0x00419800, 0x004199D0, 0x00419C60, 0x00419CE0, 0x00419DB0, 0x00419E30,
     0x0041A200, 0x0041ADF0, 0x0041AE50, 0x0041AF00, 0x004213F0, 0x004218C0, 0x00475F60, 0x0049E530, 0x004EDFA0, 0x004F0960, 0x004F3FB0, 0x0051FD90,
-    0x0060FC10, 0x005F80B0,
+    0x0060FC10, 0x005F80B0, 0x005F8A20, 0x005F8B10, 0x00614F50,
 };
 
 static void queue_mouse(lx_event_kind_t kind, int down) {
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
            r.overrides_installed, r.overrides_listed, r.lift_hooks);
     CHECK(r.status == LX_BOOT_FRAME_PRESENTED && s.evaluated, "the guest plays New Game into the first level with the features on: %s (%s)",
           lx_boot_status_name(r.status), r.detail);
-    CHECK(r.overrides_listed == 71 && r.lift_hooks == 27, "lift116 carries 71 override sites and 27 lift hook sites (%u, %u)", r.overrides_listed, r.lift_hooks);
+    CHECK(r.overrides_listed == 78 && r.lift_hooks == 27, "lift116 carries 78 override sites and 27 lift hook sites (%u, %u)", r.overrides_listed, r.lift_hooks);
     CHECK(s.shared_installed == s.shared_total && s.shared_total == sizeof k_shared / sizeof k_shared[0],
           "every shared override is installed on the lifted game (%u of %u)", s.shared_installed, s.shared_total);
     CHECK(r.overrides_installed >= s.shared_installed, "the boot reports the installed count (%u)", r.overrides_installed);

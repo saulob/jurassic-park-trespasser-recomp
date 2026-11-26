@@ -37,6 +37,8 @@ int jpt_vpath_resolve(jpt_vpath_t* v, const char* guest_path, int create, char* 
  * place of the mounted one. Nothing is created, changed or removed there while an overlay is set. */
 typedef int (*jpt_vpath_overlay_fn)(const char* relative, char* host_path, size_t cap);
 void jpt_vpath_set_overlay(jpt_vpath_t* v, char drive, const char* folder, jpt_vpath_overlay_fn find);
+/* Once an overlay is set: find answers the other paths of its drive, relative paths without a drive on any. */
+void jpt_vpath_set_drive_overlay(jpt_vpath_t* v, jpt_vpath_overlay_fn find, jpt_vpath_overlay_fn relative);
 /* jpt_vpath_resolve without create, for a read: the overlay first. *overlaid (may be NULL) tells which one answered. */
 int jpt_vpath_resolve_read(jpt_vpath_t* v, const char* guest_path, char* host_path, size_t cap, int* overlaid);
 int jpt_vpath_write_refused(jpt_vpath_t* v, const char* guest_path);

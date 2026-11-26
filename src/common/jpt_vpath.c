@@ -28,7 +28,7 @@ struct jpt_vpath {
     unsigned listings, hits;
     char overlay_drive;
     char overlay_folder[MAX_NAME + 1];
-    jpt_vpath_overlay_fn overlay;
+    jpt_vpath_overlay_fn overlay, drive_find, relative_find;
 };
 
 static int fold(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
@@ -261,6 +261,22 @@ static int below_overlay(const jpt_vpath_t* v, const char* guest_path, char name
     return drive == v->overlay_drive && n > 0 && same_name(names[0], v->overlay_folder) ? n - 1 : -1;
 }
 
+void jpt_vpath_set_drive_overlay(jpt_vpath_t* v, jpt_vpath_overlay_fn find, jpt_vpath_overlay_fn relative) {
+    v->drive_find = find;
+    v->relative_find = relative;
+}
+
+static int found_on_drive(jpt_vpath_t* v, const char* guest_path, char* host_path, size_t cap) {
+    char names[MAX_ELEMENTS][MAX_NAME + 1], relative[JPT_PATH_MAX], drive;
+    int n = 0;
+    size_t len = 0;
+    if (!v->drive_find || normalise(v, guest_path, &drive, names, &n) != JPT_VP_OK || drive != v->overlay_drive || n < 1) return 0;
+    relative[0] = 0;
+    for (int i = 0; i < n && len < sizeof relative; i++)
+        len += (size_t)snprintf(relative + len, sizeof relative - len, "%s%s", i ? "/" : "", names[i]);
+    return len < sizeof relative && v->drive_find(relative, host_path, cap);
+}
+
 int jpt_vpath_resolve_read(jpt_vpath_t* v, const char* guest_path, char* host_path, size_t cap, int* overlaid) {
     char names[MAX_ELEMENTS][MAX_NAME + 1], relative[JPT_PATH_MAX];
     int n = guest_path ? below_overlay(v, guest_path, names) : -1;
@@ -270,6 +286,11 @@ int jpt_vpath_resolve_read(jpt_vpath_t* v, const char* guest_path, char* host_pa
     for (int i = 1; i <= n && len < sizeof relative; i++)
         len += (size_t)snprintf(relative + len, sizeof relative - len, "%s%s", i > 1 ? "/" : "", names[i]);
     if (n > 0 && len < sizeof relative && v->overlay(relative, host_path, cap)) {
+        if (overlaid) *overlaid = 1;
+        return JPT_VP_OK;
+    }
+    if (n < 0 && v->overlay && guest_path &&
+        (found_on_drive(v, guest_path, host_path, cap) || (v->relative_find && v->relative_find(guest_path, host_path, cap)))) {
         if (overlaid) *overlaid = 1;
         return JPT_VP_OK;
     }

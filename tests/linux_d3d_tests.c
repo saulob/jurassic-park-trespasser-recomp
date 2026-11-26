@@ -4,10 +4,13 @@
 #include <stdlib.h>
 
 #include "ce_effects.h"
+#include "jpt_lit.h"
+#include "jpt_texhw.h"
 #include "linux_d3d.h"
 #include "linux_ddraw.h"
 #include "linux_user32.h"
 #include "linux_win32_harness.h"
+#include "texhw_fixture.h"
 
 #define W 640u
 #define H 480u
@@ -527,6 +530,49 @@ static void test_textures(void) {
     com(sys_t, TX_RELEASE, 1), com(sys, S_RELEASE, 1), com(other_t, TX_RELEASE, 1), com(other, S_RELEASE, 1);
 }
 
+/* A custom level's picture in place of a texture. */
+static void test_override(void) {
+    static const char* const k_files[] = { "data/texhw/Map/w/crate.bmp", "data/texhw/Map/w/crate.norm.bmp" };
+    const jpt_lit_vertex_t lit[4] = { { { 0, 0, 1, 1 }, { 1, 0, 0, 0 }, { 1, 0 } } };
+    jpt_lit_draw_t lit_draw = { 0, 4, 0, 0xFFFFFF, lit };
+    static uint8_t file[4096];
+    const uint32_t vid = texture(TEXTURE_VIDEO, 64, 32), sys = texture(TEXTURE_SYSTEM, 64, 32), vid_t = texture_face(vid), sys_t = texture_face(sys);
+    uint32_t creates;
+    char dir[600];
+    size_t size = fx_bmp(file, 8, 8, 24, 0x00AABBCCu);
+    snprintf(dir, sizeof dir, "/tmp/jpt_texhw_linux/custom_levels/Tex");
+    CHECK(fx_file(dir, "texhw/Map/w/crate.bmp", file, size), "a picture");
+    size = fx_bmp(file, 4, 4, 24, 0x008080FFu);
+    CHECK(fx_file(dir, "texhw/Map/w/crate.norm.bmp", file, size) && fx_activate("/tmp/jpt_texhw_linux", k_files, 2), "the package");
+    jpt_texhw_name(1, "Map\\w\\crate.bmp");
+    jpt_texhw_frame();
+    CHECK(com(s_dev, DV_SETTEXTURE, 3, 0u, vid_t) == OK && com(vid_t, TX_LOAD, 2, sys_t) == OK, "a texture");
+    creates = G.creates;
+    lx_d3d_texture_override(vid_t, jpt_texhw_find(1));
+    draw();
+    CHECK(G.creates == creates + 1 && G.desc_w == 8 && G.texel0[G.creates] == 0xFFAABBCCu && G.state.texture_id == G.creates, "the picture is drawn in its place (0x%08X)", G.texel0[G.creates]);
+    draw();
+    CHECK(G.creates == creates + 1 && !G.state.lit, "and uploaded once");
+    lit_draw.normal = jpt_texhw_normal(1);
+    jpt_lit_set_draw(&lit_draw);
+    draw();
+    CHECK(G.creates == creates + 2 && G.desc_w == 4 && G.state.lit == &lit_draw && G.state.normal_id == G.creates && G.state.texture_id == creates + 1, "a normal map lights it");
+    jpt_lit_set_draw(NULL);
+    draw();
+    CHECK(G.creates == creates + 2 && !G.state.lit, "only the polygon it is for");
+    creates++;
+    write_texel(sys, 0, 0, 0xF00F);
+    com(vid_t, TX_LOAD, 2, sys_t);
+    draw();
+    CHECK(G.creates == creates + 2 && G.desc_w == 64, "another texture in the surface is its own again");
+    lx_d3d_texture_override(vid_t, jpt_texhw_find(1));
+    jpt_custom_level_deactivate();
+    draw();
+    CHECK(G.creates == creates + 2 && G.desc_w == 64, "and so it is after the session");
+    com(s_dev, DV_SETTEXTURE, 3, 0u, 0u);
+    com(vid_t, TX_RELEASE, 1), com(vid, S_RELEASE, 1), com(sys_t, TX_RELEASE, 1), com(sys, S_RELEASE, 1);
+}
+
 static void test_many_textures(void) {
     static uint32_t many[1200];
     unsigned before = lx_ddraw_surface_count(), made = 0;
@@ -763,6 +809,7 @@ int main(void) {
     test_scene_and_draws();
     s_at = g_scratch + 0x20000;
     test_textures();
+    test_override();
     s_at = g_scratch + 0x40000;
     test_many_textures();
     s_at = g_scratch + 0x20000;

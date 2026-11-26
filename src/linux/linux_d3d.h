@@ -77,6 +77,8 @@ int lx_d3d_unlocked(int slot);
 /* A colour fill of a render target; 0 when the caller fills the pixels. */
 int lx_d3d_fill(int slot, const int32_t rect[4], uint32_t color);
 void lx_d3d_surface_freed(int slot);
+/* A custom level's picture stands for the texture until it is written again; 0: none does. */
+void lx_d3d_texture_override(uint32_t iface, int id);
 /* Before the buffers of the chain are exchanged: 1 when the GPU's scene is the picture. The CPU copy is complete otherwise. */
 int lx_d3d_flip(const int* chain, unsigned count);
 void lx_d3d_flipped(int front, const int* chain, unsigned count);
@@ -85,6 +87,9 @@ void lx_d3d_flipped(int front, const int* chain, unsigned count);
 void lx_d3d_configure_effects(int water_refraction, int enhanced_sky, int ao_level);
 void lx_d3d_sky_begin(const float sky[5]);
 void lx_d3d_sky_end(void);
+/* The next draw is the layers of the custom sky instead. */
+void lx_d3d_sky_layers(int on);
+void lx_d3d_sky_free(void* gpu);
 /* A row of a water texture was written: the main screen Lock that follows it touches no pixel. */
 void lx_d3d_water_row(void);
 /* Called at BeginScene; gives the level's fog colour, 0 when there is none. */

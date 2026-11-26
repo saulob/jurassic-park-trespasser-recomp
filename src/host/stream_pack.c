@@ -40,8 +40,7 @@ typedef struct {
 #define OPEN_GENERIC_READ 0x80000000u
 #define OPEN_FLAG_OVERLAPPED 0x40000000u
 
-static int is_stream_tpa(const char* path) {
-    static const char k_name[] = "stream.tpa";
+static int names_file(const char* path, const char* wanted) {
     const char *name = path, *at;
     size_t i;
     if (!path) return 0;
@@ -49,13 +48,17 @@ static int is_stream_tpa(const char* path) {
         if (*at == '\\' || *at == '/') name = at + 1;
     for (i = 0; name[i]; i++) {
         char c = name[i] >= 'A' && name[i] <= 'Z' ? (char)(name[i] - 'A' + 'a') : name[i];
-        if (i >= sizeof k_name - 1 || c != k_name[i]) return 0;
+        if (c != wanted[i]) return 0;
     }
-    return i == sizeof k_name - 1;
+    return !wanted[i];
+}
+
+int stream_pack_serves_named(const char* path, const char* wanted, uint32_t access, uint32_t flags) {
+    return names_file(path, wanted) && (access & OPEN_GENERIC_READ) && !(flags & OPEN_FLAG_OVERLAPPED);
 }
 
 int stream_pack_serves_open(const char* path, uint32_t access, uint32_t flags) {
-    return is_stream_tpa(path) && (access & OPEN_GENERIC_READ) && !(flags & OPEN_FLAG_OVERLAPPED);
+    return stream_pack_serves_named(path, "stream.tpa", access, flags);
 }
 
 static uint32_t rd32(const uint8_t* p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
