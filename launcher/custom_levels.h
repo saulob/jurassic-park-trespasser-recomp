@@ -159,6 +159,8 @@ std::string ArchiveSha256(const std::filesystem::path& archive);
 AnalysisResult AnalyzeLevelSource(const std::filesystem::path& source, const std::filesystem::path& data_dir = {}, const ArchiveLimits& limits = {});
 
 const char* LevelStatusText(const LevelScene& scene);
+// The levels a ready level leads to that its package does not include: the game stays in it when one is asked for.
+std::vector<std::string> LevelNotes(const LevelScene& scene);
 
 enum class LevelSort { kNewest, kOldest, kNameUp, kNameDown };
 const char* LevelSortKey(LevelSort sort); // as the settings file spells it

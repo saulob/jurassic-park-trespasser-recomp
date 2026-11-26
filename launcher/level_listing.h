@@ -15,7 +15,7 @@
 namespace jpt {
 
 // Raise whenever the analysis or the READY rule changes: every record made before is then read as stale.
-inline constexpr int kListingVersion = 6;
+inline constexpr int kListingVersion = 7;
 
 // What the analysis reads of the installed game: its version folder, every file by name, size and time.
 std::string GameListingKey(const std::filesystem::path& data_dir);

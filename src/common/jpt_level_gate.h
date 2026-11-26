@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-typedef enum { JPT_GATE_OPEN, JPT_GATE_DAMAGED, JPT_GATE_INCOMPATIBLE, JPT_GATE_MISSING, JPT_GATE_UNSAFE } jpt_gate_t;
+typedef enum { JPT_GATE_OPEN, JPT_GATE_DAMAGED, JPT_GATE_INCOMPATIBLE, JPT_GATE_MISSING, JPT_GATE_UNSAFE, JPT_GATE_NOT_INCLUDED } jpt_gate_t;
 
 /* For the player; NULL when it is open. */
 const char* jpt_gate_message(jpt_gate_t gate);

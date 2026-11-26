@@ -28,6 +28,7 @@ const char* jpt_gate_message(jpt_gate_t gate) {
     case JPT_GATE_INCOMPATIBLE: return "This save is not compatible with the current level";
     case JPT_GATE_MISSING: return "This level is missing required files";
     case JPT_GATE_UNSAFE: return "This level cannot be loaded safely";
+    case JPT_GATE_NOT_INCLUDED: return "The next level is not included in this package";
     }
     return NULL;
 }
@@ -117,7 +118,11 @@ jpt_gate_t jpt_gate_load(const char* file, const char* asked, char* why, size_t 
         snprintf(why, cap, "the game keeps a level's name of %d characters at most", JPT_SAVE_LEVEL_NAME_MAX);
         return JPT_GATE_UNSAFE;
     }
-    if (!jpt_custom_level_find(name, own, sizeof own)) return JPT_GATE_OPEN;
+    if (!jpt_custom_level_find(name, own, sizeof own)) {
+        if (!jpt_custom_level_has_game() || jpt_custom_level_game_file(name, own, sizeof own)) return JPT_GATE_OPEN;
+        snprintf(why, cap, "neither the package nor the installed game has %s: the game stays in the current level", name);
+        return JPT_GATE_NOT_INCLUDED;
+    }
     return scene_gate(own, asked, why, cap);
 }
 

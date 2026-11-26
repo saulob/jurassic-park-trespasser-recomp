@@ -240,6 +240,8 @@ void CustomLevelsPage::DrawRow(trg::Ui& ui, const LevelPackage& package, const L
     ImGui::PopFont();
     if (scene) Colored(ui.theme().dim, scene->file);
     Colored(actions.play ? ui.theme().accent : ui.theme().warn_dot, Tr(scene ? LevelStatusText(*scene) : "Not supported"));
+    if (scene)
+        for (const std::string& next : LevelNotes(*scene)) Colored(ui.theme().dim, TrFormat("Leads to %s, which is not included: the level ends there", next.c_str()));
 
     const int buttons = 2 + (actions.play ? 1 : 0) + (actions.readme ? 1 : 0) + (actions.report ? 1 : 0);
     const float available = ImGui::GetContentRegionAvail().x;

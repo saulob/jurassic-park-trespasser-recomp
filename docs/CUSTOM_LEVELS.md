@@ -33,8 +33,8 @@ level` / `This custom level is not fully supported`, with Bug Report and Close. 
 
 | Class | |
 |---|---|
-| `READY` | its worlds (`.grf`) are in the package or the game; each world of the package has its texture set (`<world>-130.pid` and `.swp`/`.spz`/`.spp`), or the installed game has the set of that name, or loose pictures are in `Map\<world>`; the terrain data its world names (`.wtd`) is there; its textures are found, or only some are not (see below); every level a trigger loads exists; no feature, setting or ActionType the port does not have |
-| `REJECTED_MISSING` | a required file, texture set, terrain or transition target is nowhere, or none of a world's textures is found (its texture set is not that world's) |
+| `READY` | its worlds (`.grf`) are in the package or the game; each world of the package has its texture set (`<world>-130.pid` and `.swp`/`.spz`/`.spp`), or the installed game has the set of that name, or loose pictures are in `Map\<world>`; the terrain data its world names (`.wtd`) is there; its textures are found, or only some are not (see below); no feature, setting or ActionType the port does not have |
+| `REJECTED_MISSING` | a required file, texture set or terrain is nowhere, or none of a world's textures is found (its texture set is not that world's) |
 | `REJECTED_UNSUPPORTED` | something its content requires is not `FULLY_SUPPORTED` or `NOT_REQUIRED` in `src/common/jpt_level_features.c`, a scene format newer than 26, or content beyond the engine's limits |
 | `REJECTED_MALFORMED` | a scene or world that cannot be read |
 | `REJECTED_OTHER` | anything else the port cannot vouch for: settings files in conflict or unreadable, a readme instruction that cannot be followed, two files for one game path, or another level of the package refused |
@@ -42,7 +42,9 @@ level` / `This custom level is not fully supported`, with Bug Report and Close. 
 Information never refuses: a readme, the author's own note (Restart Level does not work), a world without terrain as the level
 was made, a scene 23 to 26 read as the game's own, a dependency only mentioned or recommended, heaps and texture pool sized for the
 level, and some textures of a world that are nowhere (`MISSING_TEXTURES`): the level plays as in Trespasser CE, which draws its grey
-texture for each of them. Such lines are logged with `info:`.
+texture for each of them; and a level a trigger loads that neither the package nor the game has (`MISSING_TRANSITION_LEVEL`):
+the launcher's row says where the level leads, and when the trigger fires the game stays in the current level with the notice
+"The next level is not included in this package". Such lines are logged with `info:`.
 
 A package installed by an earlier version is analysed with today's rule: refused, it shows `Not supported` with Bug Report, Open
 Folder and Delete, and no Play. Nothing of it is removed. The list is ordered by the date of import (newest or oldest first) or by
@@ -328,7 +330,8 @@ a readme requires ATX refuses nothing by itself. A package it says so of is refu
 `JMP/<level>.ini`, `SPT/<level>.ini`, plugins, and rules of the game changed in its own `ATXconfig.ini`.
 
 Menus, menu sounds and videos that no action plays are kept in a package and not used: the launcher and the game's Level Select start every level of a
-package, and a session starts in its level. Object scripts (`.nut`) are not supported. `tools/custom-level-compatibility.ps1` prints and
+package, and a session starts in its level. Object scripts (`.nut`) are not supported yet; the plan for them, custom sessions only, is
+[CE_SCRIPTS](CE_SCRIPTS.md). `tools/custom-level-compatibility.ps1` prints and
 writes the state of a whole folder of packages.
 
 Restart Level in a custom session restarts the current level whole: the world is purged and the level is loaded again through the

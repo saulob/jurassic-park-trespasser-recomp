@@ -237,7 +237,9 @@ void FollowTransitions(const fs::path& data_dir, std::vector<LevelScene>& scenes
                 const std::string place = target != scenes.end() ? target->path : InGame(data_dir, name) ? kInstalledGame : "";
                 scene.resources.push_back({"SCN", name, place, "loaded by a trigger"});
                 if (target != scenes.end()) target->led_to_by.push_back(scene.file);
-                else if (place.empty() && !data_dir.empty()) scene.issues.push_back({"MISSING_TRANSITION_LEVEL", name, "a trigger of " + world + " loads it", IssuePolicy::kMissing});
+                else if (place.empty() && !data_dir.empty())
+                    scene.issues.push_back({"MISSING_TRANSITION_LEVEL", name, "a trigger of " + world + " loads it; the package does not include it, so the game stays in this level",
+                                            IssuePolicy::kInfo});
             }
         }
     }
@@ -1099,6 +1101,14 @@ std::vector<const LevelScene*> LevelPackage::rows() const {
 }
 
 const char* LevelStatusText(const LevelScene& scene) { return scene.playable() ? "Ready" : "Not supported"; }
+
+std::vector<std::string> LevelNotes(const LevelScene& scene) {
+    std::vector<std::string> notes;
+    if (!scene.playable()) return notes;
+    for (const LevelIssue& i : scene.issues)
+        if (i.code == "MISSING_TRANSITION_LEVEL") notes.push_back(i.subject);
+    return notes;
+}
 
 RowActions ActionsOf(const LevelScene* scene, bool has_readme) {
     RowActions actions;

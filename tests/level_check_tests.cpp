@@ -357,7 +357,13 @@ static void TestMissingTerrain() {
 
     g_game = game;
     char why[256];
-    CHECK(Activate(user, "Isle", "isle.scn") && jpt_gate_load("", "C:\\data\\isle.scn", why, sizeof why) == JPT_GATE_MISSING && std::strstr(why, "Isle-27.wtd") && jpt_gate_load("", "other.scn", why, sizeof why) == JPT_GATE_OPEN);
+    CHECK(Activate(user, "Isle", "isle.scn") && jpt_gate_load("", "C:\\data\\isle.scn", why, sizeof why) == JPT_GATE_MISSING && std::strstr(why, "Isle-27.wtd"));
+    // A level neither the package nor the game has is refused before the game changes anything: it stays in the current one.
+    CHECK(jpt_gate_load("", "C:\\data\\gone.scn", why, sizeof why) == JPT_GATE_NOT_INCLUDED && std::strstr(why, "gone.scn") && std::strstr(jpt_gate_message(JPT_GATE_NOT_INCLUDED), "not included"));
+    CHECK(jpt_gate_load("", "other.scn", why, sizeof why) == JPT_GATE_OPEN);
+    Write(game / "gone.scn", "the game's own");
+    CHECK(jpt_gate_load("", "gone.scn", why, sizeof why) == JPT_GATE_OPEN);
+    fs::remove(game / "gone.scn");
     std::string bytes = World("Isle-27");
     jpt_level_world_t prepared;
     jpt_level_world_prepare("isle.grf", reinterpret_cast<uint8_t*>(bytes.data()), bytes.size(), &prepared);
@@ -803,8 +809,8 @@ static void TestCorpus() {
     CHECK(class_of(find("no terrain"), "isle.scn") == "REJECTED_MISSING" && class_of(find("no terrain"), "fine.scn") == "REJECTED_OTHER" && !find("no terrain").result.import.ok());
     CHECK(class_of(find("no set"), "bare.scn") == "REJECTED_MISSING" && class_of(find("no world"), "lost.scn") == "REJECTED_MISSING");
     CHECK(class_of(find("reuses"), "mine.scn") == "READY" && report.totals.at("use_game_resources") == 1);
-    CHECK(class_of(find("future"), "late.scn") == "REJECTED_UNSUPPORTED" && class_of(find("actions"), "act.scn") == "REJECTED_MISSING");
-    CHECK(report.totals.at("package READY") >= 1 && report.totals.at("package REJECTED_MISSING") == 4 && !report.totals.count("READY_WITH_WARNINGS"));
+    CHECK(class_of(find("future"), "late.scn") == "REJECTED_UNSUPPORTED" && class_of(find("actions"), "act.scn") == "READY");
+    CHECK(report.totals.at("package READY") >= 1 && report.totals.at("package REJECTED_MISSING") == 3 && !report.totals.count("READY_WITH_WARNINGS"));
     CHECK(report.actions.at(112) == 1 && report.actions.at(1000) == 1 && !report.actions.count(0) && report.totals.at("with_texhw") == 1 && report.totals.at("with_dds") == 1 && report.totals.at("with_tga") == 1);
     CHECK(find("programs.zip").result.import.refused.size() == 4 && class_of(find("programs.zip"), "prog.scn") == "READY" && find("escape.zip").result.import.status == ImportStatus::kUnsafe && find("escape.zip").result.scenes.empty());
     CHECK(!find("cut.zip").result.import.ok() && !find("other.rar").unread.empty() && report.totals.at("crash_signature_no_terrain") == 1 && report.totals.at("missing_resources") == 3);

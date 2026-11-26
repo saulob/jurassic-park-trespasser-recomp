@@ -616,6 +616,7 @@ const UiTextRow kPtBrUiText[] = {
     {"Open the level's folder, then choose it. Controller: D-pad to move, A to choose, B to cancel.", "Abra a pasta do nível e escolha-a. Controle: direcional para mover, A para escolher, B para cancelar."},
     {"Choose this folder", "Escolher esta pasta"},
     {"Close", "Fechar"},
+    {"Leads to %s, which is not included: the level ends there", "Leva a %s, que não está incluído: o nível termina ali"},
     {"Starting game...", "Iniciando o jogo..."},
     {"Starting custom level...", "Iniciando o nível personalizado..."},
     {"Loading %s...", "Carregando %s..."},

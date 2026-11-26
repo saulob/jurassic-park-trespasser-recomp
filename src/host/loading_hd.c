@@ -506,7 +506,11 @@ static int refused(void) {
     char asked[MAX_PATH], file[JPT_PATH_MAX], why[256];
     uint32_t at = MEM32(g_esp + 4);
     jpt_gate_t gate;
-    if (!at || !guest_read_string(at, asked, sizeof asked) || !fe_host_level_file(asked, file, sizeof file)) return 0;
+    if (!at || !guest_read_string(at, asked, sizeof asked)) return 0;
+    if (!fe_host_level_file(asked, file, sizeof file)) {
+        if (jpt_save_is_name(asked) || jpt_save_is_temporary(asked)) return 0;
+        file[0] = 0;
+    }
     gate = jpt_gate_load(file, asked, why, sizeof why);
     if (gate == JPT_GATE_OPEN) return 0;
     host_log("loading", "BLOCKED_PRECHECK: %s was not loaded%s%s: %s", asked, jpt_custom_level_active() ? ", custom level " : "", jpt_custom_level_active() ? jpt_custom_level_package() : "", why);

@@ -301,15 +301,22 @@ void TestReadyRule() {
     CHECK(refused("Missing", {{"lack.scn", Scene("lack.grf")}, {"lack.grf", World("lack")}, {"lack.wtd", "t"}}, ImportStatus::kMissingFiles, "MISSING_REQUIRED_TEXTURE_SET"));
     CHECK(refused("Textures", {{"pic.scn", Scene("pic.grf")}, {"pic.grf", World("pic")}, {"pic-130.pid", TextureSet({{1}})}, {"pic-130.swp", "s"}, {"pic.wtd", "t"}}, ImportStatus::kMissingFiles,
                   "MISSING_TEXTURES pic.grf"));
-    CHECK(refused("Transition", [] {
+    // A level that leads to a scene nowhere is ready: the game stays in it when that scene is asked for.
+    {
         WorldShape shape;
         shape.terrain = "go";
         shape.meshes.push_back({"Crate-00", "Map\\go\\crate.bmp"});
         shape.levels = {"nowhere.scn"};
         Files files = Level("go");
         files[1].second = MakeWorld(shape);
-        return files;
-    }(), ImportStatus::kMissingFiles, "MISSING_TRANSITION_LEVEL nowhere.scn"));
+        const ImportResult r = Import(user, "Transition", files, game);
+        CHECK(r.ok() && Logged(r.log, "info: MISSING_TRANSITION_LEVEL nowhere.scn") && Logged(r.log, "class: READY"));
+        bool noted = false;
+        for (const LevelPackage& package : ListLevelPackages(user, game))
+            for (const LevelScene& scene : package.scenes)
+                if (package.id == r.package) noted = scene.playable() && LevelNotes(scene) == std::vector<std::string>{"nowhere.scn"};
+        CHECK(noted);
+    }
     CHECK(refused("Sky", Level("sky") + Files{{"sky.sky", "[LAYER1]\nType=STARS\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SKY_STARS"));
     CHECK(refused("Script", Level("nut") + Files{{"scripts/x.nut", "class X {}"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPTS"));
     CHECK(refused("Action", [] {

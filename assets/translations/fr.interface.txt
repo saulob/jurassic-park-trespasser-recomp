@@ -104,6 +104,7 @@ This save is damaged and was not loaded	Cette sauvegarde est endommagée et n'a 
 This save is not compatible with the current level	Cette sauvegarde n'est pas compatible avec le niveau actuel
 This level is missing required files	Il manque à ce niveau des fichiers nécessaires
 This level cannot be loaded safely	Ce niveau ne peut pas être chargé en toute sécurité
+The next level is not included in this package	Le niveau suivant n'est pas inclus dans ce paquet
 The game could not be saved. The previous save was kept.	La partie n'a pas pu être sauvegardée. La sauvegarde précédente a été conservée.
 No Quick Save yet	Aucune sauvegarde rapide
 Quick Save works in a level	La sauvegarde rapide fonctionne dans un niveau

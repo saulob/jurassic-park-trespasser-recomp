@@ -806,6 +806,7 @@ int jpt_custom_level_find_relative(const char* path, char* out, size_t cap) {
 
 void jpt_custom_level_set_game(jpt_custom_level_game_fn find) { s_game = find; }
 int jpt_custom_level_game_file(const char* relative, char* out, size_t cap) { return s_game && s_game(relative, out, cap); }
+int jpt_custom_level_has_game(void) { return s_game != NULL; }
 
 static int texture_request(const char* path, char* name, size_t cap) {
     const char* relative = C.active ? driveless(path) : NULL;

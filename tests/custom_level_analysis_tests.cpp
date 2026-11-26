@@ -642,10 +642,18 @@ static std::string Texture(const char* path) {
 
 static fs::path g_texture_game;
 
+// As the hosts find the game's files: in any case.
 static int GameFile(const char* relative, char* out, size_t cap) {
     for (const fs::path& root : {g_texture_game, g_texture_game / "data"}) {
-        const std::string host = (root / relative).string();
-        if (!fs::is_regular_file(host) || host.size() >= cap) continue;
+        std::string host = (root / relative).string();
+        if (!fs::is_regular_file(host)) {
+            const fs::path wanted = root / PathFromUtf8(relative);
+            std::error_code ec;
+            host.clear();
+            for (const auto& entry : fs::directory_iterator(wanted.parent_path(), ec))
+                if (LowerAscii(Utf8(entry.path().filename())) == LowerAscii(Utf8(wanted.filename())) && entry.is_regular_file(ec)) host = entry.path().string();
+        }
+        if (host.empty() || host.size() >= cap) continue;
         std::snprintf(out, cap, "%s", host.c_str());
         return 1;
     }

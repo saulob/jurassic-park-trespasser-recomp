@@ -135,6 +135,8 @@ int jpt_custom_level_find_relative(const char* path, char* out, size_t cap);
 typedef int (*jpt_custom_level_game_fn)(const char* relative, char* out, size_t cap);
 void jpt_custom_level_set_game(jpt_custom_level_game_fn find);
 int jpt_custom_level_game_file(const char* relative, char* out, size_t cap);
+/* Whether the installed game's files can be told: a finder was set. */
+int jpt_custom_level_has_game(void);
 
 /* A picture asked for without a drive, whatever comes of it. */
 int jpt_custom_level_is_texture_request(const char* path);
