@@ -99,6 +99,7 @@ static void test_save_state_damaged() {
     const char* no_table = "class Campaign extends GameScript { nvram = 3; function OnLevelStart() {} }\n";
     s = Session({{"scripts/game.nut", no_table}});
     Begin(s, "alpha.scn", JPT_SCRIPT_BEGIN_SAVE, &saved);
+    jpt_script_level_ready(s, 1);
     CHECK(Has("[script] level=alpha.scn script=Campaign nvram not restored: the script has no nvram table"));
     Close(s);
 }

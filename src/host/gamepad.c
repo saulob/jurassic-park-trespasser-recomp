@@ -18,6 +18,7 @@
 #include "cheats.h"
 #include "gamepad.h"
 #include "gamepad_ui.h"
+#include "guest_features.h"
 #include "minimap.h"
 #include "overlay_policy.h"
 #include "pad_sdl.h"
@@ -383,6 +384,7 @@ static void cinput_read(void) {
     gameplay_after_read(sinput);
     gameplay_mask(sinput, blocked, resumed);
     level_actions_input(sinput);
+    if (!blocked) script_engine_input(sinput);
     if (blocked || cheats_take_input(sinput)) clear_result(sinput);
     note_hand(mouse, sinput, blocked);
     watch(sinput, mouse, blocked);

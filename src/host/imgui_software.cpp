@@ -2,6 +2,13 @@
 
 #include <math.h>
 
+void (*imgui_blend_additive_hook)(void);
+unsigned imgui_software_rgba_additive;
+
+void imgui_blend_additive(const ImDrawList*, const ImDrawCmd*) {
+    if (imgui_blend_additive_hook) imgui_blend_additive_hook();
+}
+
 namespace {
 
 struct Vertex {
@@ -48,7 +55,7 @@ void sample(const ImTextureData* tex, float u, float v, float out[4]) {
 }
 
 void triangle(const Vertex& a, const Vertex& b, const Vertex& c, const ImVec4& clip, const ImTextureData* tex, uint32_t* pixels,
-              int width, int height, int pitch) {
+              int width, int height, int pitch, bool additive) {
     const float area = edge(a.x, a.y, b.x, b.y, c.x, c.y);
     if (area == 0.0f) return;
     float min_x = fminf(a.x, fminf(b.x, c.x)), max_x = fmaxf(a.x, fmaxf(b.x, c.x));
@@ -77,8 +84,9 @@ void triangle(const Vertex& a, const Vertex& b, const Vertex& c, const ImVec4& c
             if (al > 1.0f) al = 1.0f;
             const uint32_t d = row[x];
             const float dr = (float)((d >> 16) & 0xFF), dg = (float)((d >> 8) & 0xFF), db = (float)(d & 0xFF);
-            const unsigned or_ = (unsigned)(r * al + dr * (1.0f - al) + 0.5f), og = (unsigned)(g * al + dg * (1.0f - al) + 0.5f),
-                           ob = (unsigned)(bl * al + db * (1.0f - al) + 0.5f);
+            const float keep = additive ? 1.0f : 1.0f - al;
+            const unsigned or_ = (unsigned)(r * al + dr * keep + 0.5f), og = (unsigned)(g * al + dg * keep + 0.5f),
+                           ob = (unsigned)(bl * al + db * keep + 0.5f);
             row[x] = (or_ > 255 ? 255u : or_) << 16 | (og > 255 ? 255u : og) << 8 | (ob > 255 ? 255u : ob);
         }
     }
@@ -163,9 +171,14 @@ void imgui_software_render(ImDrawData* data, uint32_t* pixels, int width, int he
         const ImDrawList* list = data->CmdLists[n];
         const ImDrawVert* vertices = list->VtxBuffer.Data;
         const ImDrawIdx* indices = list->IdxBuffer.Data;
+        bool additive = false;
         for (int c = 0; c < list->CmdBuffer.Size; c++) {
             const ImDrawCmd* cmd = &list->CmdBuffer[c];
-            if (cmd->UserCallback) continue;
+            if (cmd->UserCallback) {
+                if (cmd->UserCallback == imgui_blend_additive) additive = true;
+                else if (cmd->UserCallback == ImDrawCallback_ResetRenderState) additive = false;
+                continue;
+            }
             const ImVec4 clip((cmd->ClipRect.x - origin.x) * scale.x, (cmd->ClipRect.y - origin.y) * scale.y,
                               (cmd->ClipRect.z - origin.x) * scale.x, (cmd->ClipRect.w - origin.y) * scale.y);
             if (clip.z <= clip.x || clip.w <= clip.y) continue;
@@ -175,7 +188,7 @@ void imgui_software_render(ImDrawData* data, uint32_t* pixels, int width, int he
             const ImDrawVert* base = vertices + cmd->VtxOffset;
             for (unsigned i = 0; i + 2 < cmd->ElemCount; i += 3)
                 triangle(load(base[idx[i]], origin, scale), load(base[idx[i + 1]], origin, scale), load(base[idx[i + 2]], origin, scale),
-                         clip, tex, pixels, width, height, pitch_pixels);
+                         clip, tex, pixels, width, height, pitch_pixels, additive);
         }
     }
 }
@@ -191,7 +204,10 @@ void imgui_software_render_rgba(ImDrawData* data, uint8_t* rgba, int width, int 
         const ImDrawIdx* indices = list->IdxBuffer.Data;
         for (int c = 0; c < list->CmdBuffer.Size; c++) {
             const ImDrawCmd* cmd = &list->CmdBuffer[c];
-            if (cmd->UserCallback) continue;
+            if (cmd->UserCallback) {
+                if (cmd->UserCallback == imgui_blend_additive) imgui_software_rgba_additive++;
+                continue;
+            }
             const ImVec4 clip((cmd->ClipRect.x - origin.x) * scale.x, (cmd->ClipRect.y - origin.y) * scale.y,
                               (cmd->ClipRect.z - origin.x) * scale.x, (cmd->ClipRect.w - origin.y) * scale.y);
             if (clip.z <= clip.x || clip.w <= clip.y) continue;

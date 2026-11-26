@@ -13,9 +13,6 @@ const char* const kCeNames[] = {
 #include "jpt_script_api.inc"
 };
 
-// What the port gives every VM: the two base classes of game and level scripts.
-const char* const kProvided[] = {"GameScript", "LevelScript"};
-
 const char* const kKeywords[] = {"while", "do", "if", "else", "break", "continue", "return", "null", "function", "local", "for",
                                  "foreach", "in", "typeof", "base", "delete", "try", "catch", "throw", "clone", "yield",
                                  "resume", "switch", "case", "default", "this", "class", "extends", "constructor", "instanceof",
@@ -44,9 +41,6 @@ const char* const kInstanceHandlers[] = {
     "OnPickedUp", "OnDropped", "OnStowed", "OnRetrieved", "OnDoUse", "fGetJumpFactor", "fGetSpeedFactor", "OnJump",
     "CanFireTrigger", "OnTriggerFired", "OnProcessDeath", "OnProcessMove", "OnProcessDamage", "OnProcessCollision",
     "OnProcessPickUp", "OnProcessUse", "OnProcessTrigger", "OnProcessMoveTriggerTo", "bEvaluateNow"};
-// What the port calls on game and level scripts. OnMessage only answers SendLGMessage, which a script cannot reach yet.
-const char* const kDriven[] = {"constructor", "destructor", "OnWorldPurge", "OnScriptInit", "OnGameStart", "OnLevelStart",
-                               "OnLevelEnd", "OnPrepareSave", "OnSimStep", "OnMessage"};
 // Handlers that only keep a script's own state: a game or level script with no other changes nothing in a level.
 const char* const kStateOnly[] = {"constructor", "destructor", "OnScriptInit", "OnPrepareSave", "OnWorldPurge"};
 
@@ -326,7 +320,7 @@ struct Index {
     }
 
     bool Missing(const std::string& name, const FileInfo& file) const {
-        return IsCeName(name) && !In(kProvided, name) && !defined.count(name) && !file.locals.count(name);
+        return IsCeName(name) && !IsImplemented(name) && !defined.count(name) && !file.locals.count(name);
     }
 
     std::map<std::string, Where> classes;
@@ -389,8 +383,27 @@ bool IsCeName(const std::string& name) {
                               [](const char* a, const char* b) { return std::strcmp(a, b) < 0; });
 }
 
+const std::vector<ApiEntry>& Api() {
+    constexpr unsigned G = kScopeGame, L = kScopeLevel, I = kScopeInstance;
+    static const std::vector<ApiEntry> entries = {
+#define JPT_API(owner, name, kind, capability) {owner, name, ApiKind::kind, 0, capability},
+#define JPT_HANDLER(scopes, name, capability) {"", name, ApiKind::kHandler, scopes, capability},
+#include "jpt_script_registry.inc"
+#undef JPT_API
+#undef JPT_HANDLER
+    };
+    return entries;
+}
+
+bool IsImplemented(const std::string& name) {
+    const std::vector<ApiEntry>& api = Api();
+    return std::any_of(api.begin(), api.end(), [&name](const ApiEntry& e) { return e.kind != ApiKind::kHandler && name == e.name; });
+}
+
 bool IsDrivenHandler(Kind kind, const std::string& name) {
-    return (kind == Kind::kGame || kind == Kind::kLevel) && In(kDriven, name) && (kind == Kind::kGame || name != "OnGameStart");
+    const unsigned scope = kind == Kind::kGame ? kScopeGame : kind == Kind::kLevel ? kScopeLevel : kind == Kind::kInstance ? kScopeInstance : 0;
+    const std::vector<ApiEntry>& api = Api();
+    return scope && std::any_of(api.begin(), api.end(), [&](const ApiEntry& e) { return e.kind == ApiKind::kHandler && (e.scopes & scope) && name == e.name; });
 }
 
 FileInfo ScanFile(const std::string& path, std::string_view source) {
@@ -419,12 +432,19 @@ LevelPlan PlanLevel(const std::vector<FileInfo>& files, const std::string& scene
         plan.classes.push_back(p);
         for (const ClassInfo* c : index.Chain(name)) needed.insert(index.classes.at(c->name).file);
     };
+    // A level needs a VM when one of its game or level scripts acts, or its world names a class; then CE makes every one of them.
+    const auto applies = [&](const ClassInfo& c, Kind kind) {
+        return index.Find(c.name) == &c && index.KindOf(c.name) == kind && (kind == Kind::kGame || Applies(c, scene));
+    };
+    bool acts = !world.empty();
     for (const Kind kind : {Kind::kGame, Kind::kLevel})
         for (const FileInfo& file : files)
             for (const ClassInfo& c : file.classes)
-                if (index.Find(c.name) == &c && index.KindOf(c.name) == kind && Active(index, c.name, kind) &&
-                    (kind == Kind::kGame || Applies(c, scene)))
-                    add(c.name, kind, {});
+                acts = acts || (applies(c, kind) && Active(index, c.name, kind));
+    for (const Kind kind : {Kind::kGame, Kind::kLevel})
+        for (const FileInfo& file : files)
+            for (const ClassInfo& c : file.classes)
+                if (acts && applies(c, kind)) add(c.name, kind, {});
 
     std::vector<std::pair<std::string, std::vector<std::string>>> named;
     for (const WorldScript& ref : world) {
@@ -482,6 +502,12 @@ LevelPlan PlanLevel(const std::vector<FileInfo>& files, const std::string& scene
     for (const size_t f : needed)
         if (!files[f].problem.empty()) plan.problems.push_back(files[f].path + ": " + files[f].problem);
     plan.required.assign(required.begin(), required.end());
+    for (const size_t f : needed) {
+        std::set<std::string> uses = files[f].top_uses;
+        for (const ClassInfo& c : files[f].classes) uses.insert(c.uses.begin(), c.uses.end());
+        for (unsigned n = 0; n < 8; ++n)
+            if (uses.count("uCMD_USER" + std::to_string(n + 1))) plan.user_commands |= 1u << n;
+    }
     return plan;
 }
 

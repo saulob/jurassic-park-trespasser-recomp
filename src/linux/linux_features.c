@@ -237,6 +237,7 @@ static void cinput_read(void) {
     }
     lx_gamepad_read_around(self, s_cinput_lifted);
     level_actions_input(self + SINPUT_IN_CINPUT);
+    if (!overlay_blocks_gameplay()) script_engine_input(self + SINPUT_IN_CINPUT);
     if (overlay_blocks_gameplay() || cheats_take_input(self + SINPUT_IN_CINPUT)) clear_result(self + SINPUT_IN_CINPUT);
 }
 

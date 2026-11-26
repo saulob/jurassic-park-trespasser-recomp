@@ -15,14 +15,14 @@
    "evidence": "49 instructions identical; only the object's two fields move: [obj+0xC] -> [obj+0x80], [obj+8] -> [obj+0x7C]",
    "was": "candidate",
    "to": "0040BDE0",
-   "where": "src/host/ce_gameplay.c:20"
+   "where": "src/host/ce_quick.c:19"
   },
   "0040BD70": {
    "class": "identical",
    "to": "0040BEA0",
    "function": "0040BD70",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:21"
+   "where": "src/host/ce_quick.c:20"
   },
   "0040C780": {
    "class": "identical",
@@ -36,42 +36,42 @@
    "to": "0040DB20",
    "function": "0040DA00",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:32"
+   "where": "src/host/ce_gameplay.c:15"
   },
   "0040E4D0": {
    "class": "identical",
    "to": "0040E5F0",
    "function": "0040E4D0",
    "via": "hash",
-   "where": "src/host/host_policy.h:318"
+   "where": "src/host/host_policy.h:319"
   },
   "0040FD80": {
    "class": "identical",
    "to": "0040FE80",
    "function": "0040FD80",
    "via": "hash",
-   "where": "src/host/ui_canvas.c:29"
+   "where": "src/host/ui_canvas.c:30"
   },
   "00410420": {
    "class": "identical",
    "to": "00410530",
    "function": "00410420",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:25"
+   "where": "src/host/ce_quick.c:24"
   },
   "00410540": {
    "class": "identical",
    "to": "00410650",
    "function": "00410540",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:31"
+   "where": "src/host/ce_gameplay.c:14"
   },
   "00411B30": {
    "class": "identical",
    "to": "00411C60",
    "function": "00411B30",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:22"
+   "where": "src/host/ce_quick.c:21"
   },
   "00411EA0": {
    "class": "identical",
@@ -85,7 +85,7 @@
    "to": "004122D0",
    "function": "004121B0",
    "via": "hash",
-   "where": "src/host/host_policy.h:277"
+   "where": "src/host/host_policy.h:278"
   },
   "004128A0": {
    "class": "identical",
@@ -106,7 +106,7 @@
    "to": "00413280",
    "function": "00413160",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:28"
+   "where": "src/host/ce_quick.c:27"
   },
   "00414100": {
    "class": "decided",
@@ -114,42 +114,42 @@
    "evidence": "thiscall(this, level), ret 4 in both; builds the level path from the data folder helper (116: registry 'Data Drive' + 'data\\'; ES: helper 0x411C60) and calls the load function with it",
    "was": "candidate",
    "to": "00414220",
-   "where": "src/host/debug_menu.c:39"
+   "where": "src/host/debug_menu.c:45"
   },
   "004142C0": {
    "class": "aligned",
    "to": "004143B0",
    "function": "004142C0",
    "via": "call",
-   "where": "src/host/ce_gameplay.c:27"
+   "where": "src/host/ce_quick.c:26"
   },
   "00414480": {
    "class": "identical",
    "to": "00414580",
    "function": "00414480",
    "via": "hash",
-   "where": "src/host/debug_menu.c:40"
+   "where": "src/host/guest_override_list.h:17"
   },
   "00414570": {
    "class": "identical",
    "to": "00414670",
    "function": "00414570",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:24"
+   "where": "src/host/ce_quick.c:23"
   },
   "00414D50": {
    "class": "identical",
    "to": "00414E50",
    "function": "00414D50",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:17"
+   "where": "src/host/guest_override_list.h:18"
   },
   "00414D80": {
    "class": "identical",
    "to": "00414E80",
    "function": "00414D80",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:26"
+   "where": "src/host/ce_quick.c:25"
   },
   "00414E80": {
    "class": "identical",
@@ -184,252 +184,266 @@
    "to": "00415BD0",
    "function": "00415AD0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:18"
+   "where": "src/host/guest_override_list.h:19"
   },
   "00417300": {
    "class": "identical",
    "to": "00417420",
    "function": "00417300",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:19"
+   "where": "src/host/guest_override_list.h:20"
   },
   "00417380": {
    "class": "identical",
    "to": "004174A0",
    "function": "00417380",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:20"
+   "where": "src/host/guest_override_list.h:21"
   },
   "00417410": {
    "class": "identical",
    "to": "00417530",
    "function": "00417410",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:21"
+   "where": "src/host/guest_override_list.h:22"
   },
   "004176F0": {
    "class": "identical",
    "to": "00417810",
    "function": "004176F0",
    "via": "hash",
-   "where": "src/host/guest_ui.c:25"
+   "where": "src/host/guest_ui_actions.c:9"
   },
   "00417760": {
    "class": "identical",
    "to": "00417880",
    "function": "00417760",
    "via": "hash",
-   "where": "src/host/window_host.c:73"
+   "where": "src/host/window_host.c:78"
   },
   "00417840": {
    "class": "identical",
    "to": "00417960",
    "function": "00417840",
    "via": "hash",
-   "where": "src/host/window_host.c:76"
+   "where": "src/host/window_host.c:81"
   },
   "00418700": {
    "class": "identical",
    "to": "00418760",
    "function": "00418700",
    "via": "hash",
-   "where": "src/host/video_test.c:21"
+   "where": "src/host/level_actions.c:48"
   },
   "00418760": {
    "class": "identical",
    "to": "004187C0",
    "function": "00418760",
    "via": "hash",
-   "where": "src/host/video_test.c:23"
+   "where": "src/host/level_actions.c:50"
   },
   "00418AE0": {
    "class": "identical",
    "to": "00418B40",
    "function": "00418AE0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:22"
+   "where": "src/host/guest_override_list.h:23"
   },
   "00419330": {
    "class": "identical",
    "to": "0060D880",
    "function": "00419330",
    "via": "hash",
-   "where": "src/host/active_ai.c:33"
+   "where": "src/host/active_ai.c:34"
   },
   "004195A0": {
    "class": "identical",
    "to": "0060DAC0",
    "function": "004195A0",
    "via": "hash",
-   "where": "src/host/active_ai.c:34"
+   "where": "src/host/active_ai.c:35"
   },
   "00419800": {
    "class": "identical",
    "to": "0060DD20",
    "function": "00419800",
    "via": "hash",
-   "where": "src/host/active_ai.c:35"
+   "where": "src/host/active_ai.c:36"
   },
   "004199D0": {
    "class": "identical",
    "to": "0060DEF0",
    "function": "004199D0",
    "via": "hash",
-   "where": "src/host/active_ai.c:36"
+   "where": "src/host/active_ai.c:37"
   },
   "00419C60": {
    "class": "identical",
    "to": "0060E180",
    "function": "00419C60",
    "via": "hash",
-   "where": "src/host/active_ai.c:37"
+   "where": "src/host/active_ai.c:38"
   },
   "00419CE0": {
    "class": "identical",
    "to": "0060E200",
    "function": "00419CE0",
    "via": "hash",
-   "where": "src/host/active_ai.c:38"
+   "where": "src/host/active_ai.c:39"
   },
   "00419DB0": {
    "class": "identical",
    "to": "0060E2D0",
    "function": "00419DB0",
    "via": "hash",
-   "where": "src/host/active_ai.c:39"
+   "where": "src/host/active_ai.c:40"
   },
   "00419E30": {
    "class": "identical",
    "to": "0060E350",
    "function": "00419E30",
    "via": "hash",
-   "where": "src/host/active_ai.c:40"
+   "where": "src/host/active_ai.c:41"
   },
   "0041A200": {
    "class": "identical",
    "to": "0060E720",
    "function": "0041A200",
    "via": "hash",
-   "where": "src/host/active_ai.c:41"
+   "where": "src/host/active_ai.c:42"
   },
   "0041A520": {
    "class": "identical",
    "to": "0060EA40",
    "function": "0041A520",
    "via": "hash",
-   "where": "src/host/active_ai.c:58"
+   "where": "src/host/active_ai.c:59"
   },
   "0041AD50": {
    "class": "identical",
    "to": "004233A0",
    "function": "0041AD50",
    "via": "hash",
-   "where": "src/host/level_actions.c:27"
+   "where": "src/host/level_actions.c:31"
   },
   "0041ADF0": {
    "class": "identical",
    "to": "0060F270",
    "function": "0041ADF0",
    "via": "hash",
-   "where": "src/host/ai_vocals.c:10"
+   "where": "src/host/ai_vocals.c:12"
   },
   "0041AE50": {
    "class": "identical",
    "to": "0060F2D0",
    "function": "0041AE50",
    "via": "hash",
-   "where": "src/host/active_ai.c:42"
+   "where": "src/host/active_ai.c:43"
   },
   "0041AF00": {
    "class": "identical",
    "to": "0060F380",
    "function": "0041AF00",
    "via": "hash",
-   "where": "src/host/active_ai.c:43"
+   "where": "src/host/active_ai.c:44"
   },
   "0041BC00": {
    "class": "aligned",
    "to": "00610070",
    "function": "0041BC00",
    "via": "call",
-   "where": "src/host/active_ai.c:51"
+   "where": "src/host/active_ai.c:52"
   },
   "0041CE10": {
    "class": "identical",
    "to": "00615300",
    "function": "0041CE10",
    "via": "hash",
-   "where": "src/host/active_ai.c:48"
+   "where": "src/host/active_ai.c:49"
   },
   "0041E1D0": {
    "class": "identical",
    "to": "00426FE0",
    "function": "0041E1D0",
    "via": "hash",
-   "where": "src/host/patch117_player.c:66"
+   "where": "src/host/patch117_player.c:68"
   },
   "00421080": {
    "class": "identical",
    "to": "00612C60",
    "function": "00421080",
    "via": "hash",
-   "where": "src/host/active_ai.c:52"
+   "where": "src/host/active_ai.c:53"
   },
   "004211B0": {
    "class": "identical",
    "to": "00612D90",
    "function": "004211B0",
    "via": "hash",
-   "where": "src/host/active_ai.c:53"
+   "where": "src/host/active_ai.c:54"
   },
   "00421220": {
    "class": "identical",
    "to": "00612E00",
    "function": "00421220",
    "via": "hash",
-   "where": "src/host/active_ai.c:55"
+   "where": "src/host/active_ai.c:56"
   },
   "004213F0": {
    "class": "identical",
    "to": "00612FB0",
    "function": "004213F0",
    "via": "hash",
-   "where": "src/host/active_ai.c:44"
+   "where": "src/host/active_ai.c:45"
   },
   "004218C0": {
    "class": "identical",
    "to": "00613400",
    "function": "004218C0",
    "via": "hash",
-   "where": "src/host/active_ai.c:45"
+   "where": "src/host/active_ai.c:46"
   },
   "00422650": {
    "class": "identical",
    "to": "00613DD0",
    "function": "00422650",
    "via": "hash",
-   "where": "src/host/active_ai.c:57"
+   "where": "src/host/active_ai.c:58"
   },
   "004233D0": {
    "class": "identical",
    "to": "00614A60",
    "function": "004233D0",
    "via": "hash",
-   "where": "src/host/active_ai.c:54"
+   "where": "src/host/active_ai.c:55"
   },
   "00424AB0": {
    "class": "identical",
    "to": "00617C90",
    "function": "00424AB0",
    "via": "hash",
-   "where": "src/host/active_ai.c:56"
+   "where": "src/host/active_ai.c:57"
+  },
+  "004329A0": {
+   "class": "identical",
+   "to": "0061F660",
+   "function": "004329A0",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:38"
+  },
+  "00432B10": {
+   "class": "identical",
+   "to": "0061F7D0",
+   "function": "00432B10",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:39"
   },
   "004395A0": {
    "class": "identical",
    "to": "0041D4A0",
    "function": "004395A0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:36"
+   "where": "src/host/guest_override_list.h:40"
   },
   "0043D7E0": {
    "class": "identical",
@@ -443,7 +457,7 @@
    "to": "00421AE0",
    "function": "0043DA80",
    "via": "hash",
-   "where": "src/host/level_actions.c:32"
+   "where": "src/host/level_actions.c:36"
   },
   "00441D1D": {
    "class": "identical",
@@ -457,21 +471,21 @@
    "to": "00425FF0",
    "function": "00441D50",
    "via": "hash",
-   "where": "src/host/patch117_player.c:64"
+   "where": "src/host/patch117_player.c:66"
   },
   "00441DA0": {
    "class": "identical",
    "to": "00426040",
    "function": "00441DA0",
    "via": "hash",
-   "where": "src/host/patch117_player.c:63"
+   "where": "src/host/patch117_player.c:65"
   },
   "00442380": {
    "class": "identical",
    "to": "00426620",
    "function": "00442380",
    "via": "hash",
-   "where": "src/host/patch117_player.c:65"
+   "where": "src/host/patch117_player.c:67"
   },
   "0044C1B2": {
    "class": "absent",
@@ -550,12 +564,20 @@
    "was": "unresolved",
    "where": "src/host/lift_hook_list.h:18"
   },
+  "00455C9E": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CPlayer::Process sends its movement request: 116 'lea ecx,[ebp-0x118]; push ecx; ...; call [eax+0x1dc]' (0x00455C9E..0x00455CB3), es-117 'lea eax,[ebp-0x118]; push eax; ...; call [edx+0x1dc]' (0x004394E2..0x004394F7); the same request local (speed +0x14, jump amount +0x84, scale +0x88), only the player local moves ([ebp-0x1e68] -> [ebp-0x1c00]), which the hook does not read",
+   "was": "unresolved",
+   "to": "004394E2",
+   "where": "src/host/lift_hook_list.h:19"
+  },
   "004569C8": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site 'player impulse jump lifetime': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
    "was": "candidate",
-   "where": "src/host/lift_hook_list.h:19"
+   "where": "src/host/lift_hook_list.h:20"
   },
   "0045B470": {
    "class": "decided",
@@ -563,140 +585,147 @@
    "evidence": "hand reach (thiscall, st0): byte-identical (masked) to the official 1.1 function; same role",
    "was": "candidate",
    "to": "0043ED60",
-   "where": "src/host/patch117_player.c:76"
+   "where": "src/host/patch117_player.c:78"
   },
   "0045B916": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site 'hand reach empty hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
    "was": "candidate",
-   "where": "src/host/lift_hook_list.h:20"
+   "where": "src/host/lift_hook_list.h:21"
   },
   "0045B91C": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site 'hand reach empty hand': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
    "was": "candidate",
-   "where": "src/host/lift_hook_list.h:21"
+   "where": "src/host/lift_hook_list.h:22"
   },
   "0045ED80": {
    "class": "identical",
    "to": "00442680",
    "function": "0045ED80",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:40"
+   "where": "src/host/ce_gameplay.c:20"
   },
   "0045F660": {
    "class": "identical",
    "to": "00442F60",
    "function": "0045F660",
    "via": "hash",
-   "where": "src/host/patch117_player.c:74"
+   "where": "src/host/patch117_player.c:76"
   },
   "0045FC10": {
    "class": "identical",
    "to": "00443510",
    "function": "0045FC10",
    "via": "hash",
-   "where": "src/host/patch117_player.c:75"
+   "where": "src/host/patch117_player.c:77"
   },
   "00460CF5": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site 'player impulse jump lifetime': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
    "was": "candidate",
-   "where": "src/host/lift_hook_list.h:22"
+   "where": "src/host/lift_hook_list.h:23"
   },
   "004610D0": {
    "class": "identical",
    "to": "00445B20",
    "function": "004610D0",
    "via": "hash",
-   "where": "src/host/ce_gameplay.c:39"
+   "where": "src/host/ce_gameplay.c:19"
   },
   "00461491": {
    "class": "identical",
    "to": "00445EE1",
    "function": "004610D0",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:23"
+   "where": "src/host/lift_hook_list.h:24"
+  },
+  "00464010": {
+   "class": "identical",
+   "to": "00448A60",
+   "function": "00464010",
+   "via": "hash",
+   "where": "src/host/script_engine.c:33"
   },
   "00466900": {
    "class": "identical",
    "to": "0044BFC0",
    "function": "00466900",
    "via": "hash",
-   "where": "src/host/level_actions.c:37"
+   "where": "src/host/level_actions.c:40"
   },
   "00467BB0": {
    "class": "identical",
    "to": "0044D270",
    "function": "00467BB0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:40"
+   "where": "src/host/guest_override_list.h:42"
   },
   "00467BC0": {
    "class": "identical",
    "to": "0044D280",
    "function": "00467BC0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:41"
+   "where": "src/host/guest_override_list.h:43"
   },
   "00467BE0": {
    "class": "identical",
    "to": "0044D2A0",
    "function": "00467BE0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:42"
+   "where": "src/host/guest_override_list.h:44"
   },
   "00468710": {
    "class": "identical",
    "to": "0044DDD0",
    "function": "00468710",
    "via": "hash",
-   "where": "src/host/tutorial_prompts.c:23"
+   "where": "src/host/script_engine.c:30"
   },
   "00468980": {
    "class": "identical",
    "to": "0044E040",
    "function": "00468980",
    "via": "hash",
-   "where": "src/host/tutorial_prompts.c:24"
+   "where": "src/host/script_engine.c:31"
   },
   "0046BE90": {
    "class": "identical",
    "to": "00451510",
    "function": "0046BE90",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:43"
+   "where": "src/host/guest_override_list.h:45"
   },
   "0046C6D0": {
    "class": "identical",
    "to": "00451D50",
    "function": "0046C6D0",
    "via": "hash",
-   "where": "src/host/level_actions.c:16"
+   "where": "src/host/level_actions.c:19"
   },
   "00470A70": {
    "class": "identical",
    "to": "004560D0",
    "function": "00470A70",
    "via": "hash",
-   "where": "src/host/level_actions.c:30"
+   "where": "src/host/level_actions.c:34"
   },
   "00472B60": {
    "class": "identical",
    "to": "004581A0",
    "function": "00472B60",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:38"
+   "where": "src/host/guest_override_list.h:46"
   },
   "00475F60": {
    "class": "identical",
    "to": "0045B6F0",
    "function": "00475F60",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:39"
+   "where": "src/host/guest_override_list.h:47"
   },
   "00477A40": {
    "class": "identical",
@@ -724,21 +753,21 @@
    "to": "00461810",
    "function": "00487300",
    "via": "hash",
-   "where": "src/host/patch117_player.c:71"
+   "where": "src/host/patch117_player.c:73"
   },
   "004877F0": {
    "class": "identical",
    "to": "00461D00",
    "function": "004877F0",
    "via": "hash",
-   "where": "src/host/patch117_player.c:73"
+   "where": "src/host/patch117_player.c:75"
   },
   "00487900": {
    "class": "identical",
    "to": "00461E10",
    "function": "00487900",
    "via": "hash",
-   "where": "src/host/patch117_player.c:72"
+   "where": "src/host/patch117_player.c:74"
   },
   "00492200": {
    "class": "identical",
@@ -752,7 +781,7 @@
    "to": "0047D180",
    "function": "0049E530",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:44"
+   "where": "src/host/guest_override_list.h:52"
   },
   "004A24B0": {
    "class": "identical",
@@ -766,154 +795,169 @@
    "to": "004B2850",
    "function": "004CCCE0",
    "via": "hash",
-   "where": "src/host/patch117_player.c:69"
+   "where": "src/host/patch117_player.c:71"
   },
   "004CD090": {
    "class": "identical",
    "to": "004B2C00",
    "function": "004CD090",
    "via": "hash",
-   "where": "src/host/patch117_player.c:68"
+   "where": "src/host/patch117_player.c:70"
   },
   "004DDEFD": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site 'broad phase pair wake': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
    "was": "unresolved",
-   "where": "src/host/lift_hook_list.h:24"
+   "where": "src/host/lift_hook_list.h:25"
   },
   "004E78D2": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site 'Foot_IDOF failed jump check': the 116 instruction window around it does not occur in es-117 (hooks are written for the 116 code); the build has its own code here and the 116-to-1.1 port is not applied to it",
    "was": "candidate",
-   "where": "src/host/lift_hook_list.h:25"
+   "where": "src/host/lift_hook_list.h:26"
   },
   "004E85A0": {
    "class": "identical",
    "to": "004B75D0",
    "function": "004E85A0",
    "via": "hash",
-   "where": "src/host/patch117_physics.c:15"
+   "where": "src/host/patch117_physics.c:16"
   },
   "004E86B0": {
    "class": "identical",
    "to": "004B76E0",
    "function": "004E86B0",
    "via": "hash",
-   "where": "src/host/patch117_physics.c:16"
+   "where": "src/host/patch117_physics.c:17"
   },
   "004EB46B": {
    "class": "identical",
    "to": "004BA49B",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:26"
+   "where": "src/host/lift_hook_list.h:27"
   },
   "004EB781": {
    "class": "identical",
    "to": "004BA7B1",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:27"
+   "where": "src/host/lift_hook_list.h:28"
   },
   "004EBA7B": {
    "class": "identical",
    "to": "004BAAAB",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:28"
+   "where": "src/host/lift_hook_list.h:29"
   },
   "004EBD85": {
    "class": "identical",
    "to": "004BADB5",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:29"
+   "where": "src/host/lift_hook_list.h:30"
   },
   "004EC07C": {
    "class": "identical",
    "to": "004BB0AC",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:30"
+   "where": "src/host/lift_hook_list.h:31"
   },
   "004EC386": {
    "class": "identical",
    "to": "004BB3B6",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:31"
+   "where": "src/host/lift_hook_list.h:32"
   },
   "004EC586": {
    "class": "identical",
    "to": "004BB5B6",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:32"
+   "where": "src/host/lift_hook_list.h:33"
   },
   "004EC5A2": {
    "class": "identical",
    "to": "004BB5D2",
    "function": "004EACCB",
    "via": "hash",
-   "where": "src/host/lift_hook_list.h:33"
+   "where": "src/host/lift_hook_list.h:34"
   },
   "004EDFA0": {
    "class": "identical",
    "to": "004BCFD0",
    "function": "004EDFA0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:45"
+   "where": "src/host/guest_override_list.h:53"
   },
   "004F0960": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "jump hand-off: es-117 0x004D6650 is byte-identical (masked) to the official 1.1 function, so the 117 behaviour is native and the override that ports it to 116 is not installed",
    "was": "candidate",
-   "where": "src/host/guest_override_list.h:46"
+   "where": "src/host/guest_override_list.h:54"
+  },
+  "004F0C00": {
+   "class": "decided",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the instruction after the jump hand-off arms the impulse with z = 1.0: 116 'mov [0x0067AFA8], 0x3f800000' at 0x004F0BF6, es-117 'mov [0x006D02B4], 0x3f800000' at 0x004D6914; 1.1 arms on a new press or with nothing pending, the hook only replaces the z just stored",
+   "was": "unresolved",
+   "to": "004D691E",
+   "where": "src/host/lift_hook_list.h:35"
   },
   "004F3FB0": {
    "class": "identical",
    "to": "004D9CF0",
    "function": "004F3FB0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:47"
+   "where": "src/host/guest_override_list.h:55"
+  },
+  "004F8F00": {
+   "class": "identical",
+   "to": "004DCEB0",
+   "function": "004F8F00",
+   "via": "hash",
+   "where": "src/host/guest_override_list.h:56"
   },
   "00502970": {
    "class": "identical",
    "to": "004E8820",
    "function": "00502970",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:48"
+   "where": "src/host/guest_override_list.h:57"
   },
   "00503400": {
    "class": "identical",
    "to": "004E92B0",
    "function": "00503400",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:14"
+   "where": "src/host/cpu_polygons.c:15"
   },
   "005035B0": {
    "class": "identical",
    "to": "004E9460",
    "function": "005035B0",
    "via": "hash",
-   "where": "src/host/host_policy.h:279"
+   "where": "src/host/host_policy.h:280"
   },
   "00504D20": {
    "class": "identical",
    "to": "004EABD0",
    "function": "00504D20",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:18"
+   "where": "src/host/cpu_polygons.c:19"
   },
   "00504D40": {
    "class": "identical",
    "to": "004EABF0",
    "function": "00504D40",
    "via": "hash",
-   "where": "src/host/ddraw/d3d11_renderer.c:47"
+   "where": "src/host/ddraw/d3d11_renderer.c:52"
   },
   "00506270": {
    "class": "identical",
@@ -985,21 +1029,21 @@
    "to": "004F9620",
    "function": "00513660",
    "via": "hash",
-   "where": "src/host/host_policy.c:397"
+   "where": "src/host/host_policy.c:398"
   },
   "00514070": {
    "class": "identical",
    "to": "004FA030",
    "function": "00514070",
    "via": "hash",
-   "where": "src/host/host_policy.c:397"
+   "where": "src/host/host_policy.c:398"
   },
   "00514150": {
    "class": "identical",
    "to": "004FA110",
    "function": "00514150",
    "via": "hash",
-   "where": "src/host/host_policy.c:397"
+   "where": "src/host/host_policy.c:398"
   },
   "00514FE0": {
    "class": "identical",
@@ -1013,21 +1057,21 @@
    "to": "00505D60",
    "function": "0051FD90",
    "via": "call",
-   "where": "src/host/guest_override_list.h:59"
+   "where": "src/host/guest_override_list.h:68"
   },
   "005242C0": {
    "class": "identical",
    "to": "0050A2B0",
    "function": "005242C0",
    "via": "hash",
-   "where": "src/host/ce_graphics.c:11"
+   "where": "src/host/ce_graphics.c:14"
   },
   "0053E350": {
    "class": "identical",
    "to": "005242E0",
    "function": "0053E350",
    "via": "hash",
-   "where": "src/host/level_actions.c:34"
+   "where": "src/host/level_actions.c:38"
   },
   "00543830": {
    "class": "identical",
@@ -1055,224 +1099,224 @@
    "to": "0052E130",
    "function": "00548150",
    "via": "hash",
-   "where": "src/host/debug_menu.c:34"
+   "where": "src/host/debug_menu.c:40"
   },
   "00555AB0": {
    "class": "identical",
    "to": "0053BB70",
    "function": "00555AB0",
    "via": "hash",
-   "where": "src/host/host_policy.h:267"
+   "where": "src/host/host_policy.h:268"
   },
   "00559240": {
    "class": "identical",
    "to": "0053F300",
    "function": "00559240",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:64"
+   "where": "src/host/guest_override_list.h:73"
   },
   "0055A4E0": {
    "class": "identical",
    "to": "005405A0",
    "function": "0055A4E0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:65"
+   "where": "src/host/guest_override_list.h:74"
   },
   "0055F1D0": {
    "class": "identical",
    "to": "00545290",
    "function": "0055F1D0",
    "via": "hash",
-   "where": "src/host/host_policy.h:266"
+   "where": "src/host/host_policy.h:267"
   },
   "0055F540": {
    "class": "aligned",
    "to": "00545610",
    "function": "0055F540",
    "via": "vtable",
-   "where": "src/host/cpu_polygons.c:13"
+   "where": "src/host/cpu_polygons.c:14"
   },
   "00563890": {
    "class": "identical",
    "to": "00549960",
    "function": "00563890",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:39"
+   "where": "src/host/cpu_polygons.c:40"
   },
   "005668C0": {
    "class": "identical",
    "to": "0054C990",
    "function": "005668C0",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:37"
+   "where": "src/host/cpu_polygons.c:38"
   },
   "00568EF0": {
    "class": "identical",
    "to": "0054EFC0",
    "function": "00568EF0",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:38"
+   "where": "src/host/cpu_polygons.c:39"
   },
   "0057B7B0": {
    "class": "identical",
    "to": "00561880",
    "function": "0057B7B0",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:35"
+   "where": "src/host/cpu_polygons.c:36"
   },
   "0057DB50": {
    "class": "identical",
    "to": "00563C20",
    "function": "0057DB50",
    "via": "hash",
-   "where": "src/host/cpu_polygons.c:36"
+   "where": "src/host/cpu_polygons.c:37"
   },
   "005F6100": {
    "class": "identical",
    "to": "005DC040",
    "function": "005F6100",
    "via": "hash",
-   "where": "src/host/objectives.c:21"
+   "where": "src/host/level_actions.c:32"
   },
   "005F80B0": {
    "class": "identical",
    "to": "005DE210",
    "function": "005F80B0",
    "via": "hash",
-   "where": "src/host/gamepad.c:25"
+   "where": "src/host/gamepad.c:29"
   },
   "005F8A20": {
    "class": "identical",
    "to": "005DEFA0",
    "function": "005F8A20",
    "via": "hash",
-   "where": "src/host/engine_heaps.c:11"
+   "where": "src/host/engine_heaps.c:17"
   },
   "005F8B10": {
    "class": "identical",
    "to": "005DF090",
    "function": "005F8B10",
    "via": "hash",
-   "where": "src/host/engine_heaps.c:12"
+   "where": "src/host/engine_heaps.c:18"
   },
   "00604DD0": {
    "class": "identical",
    "to": "005EAF30",
    "function": "00604DD0",
    "via": "hash",
-   "where": "src/host/level_actions.c:22"
+   "where": "src/host/level_actions.c:25"
   },
   "00606630": {
    "class": "identical",
    "to": "005EC660",
    "function": "00606630",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:81"
+   "where": "src/host/guest_override_list.h:84"
   },
   "00607C10": {
    "class": "identical",
    "to": "005EDC40",
    "function": "00607C10",
    "via": "hash",
-   "where": "src/host/objectives.c:22"
+   "where": "src/host/level_actions.c:33"
   },
   "00607E90": {
    "class": "identical",
    "to": "005EDEC0",
    "function": "00607E90",
    "via": "hash",
-   "where": "src/host/debug_menu.c:41"
+   "where": "src/host/debug_menu.c:47"
   },
   "00608150": {
    "class": "identical",
    "to": "005EE180",
    "function": "00608150",
    "via": "hash",
-   "where": "src/host/active_ai.c:60"
+   "where": "src/host/active_ai.c:61"
   },
   "00608170": {
    "class": "identical",
    "to": "005EE1A0",
    "function": "00608170",
    "via": "hash",
-   "where": "src/host/active_ai.c:61"
-  },
-  "0060CB70": {
-   "class": "identical",
-   "to": "005F3040",
-   "function": "0060CB70",
-   "via": "hash",
-   "where": "src/host/debug_menu.c:35"
+   "where": "src/host/active_ai.c:62"
   },
   "0060E3F0": {
    "class": "identical",
    "to": "005F4970",
    "function": "0060E3F0",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:75"
+   "where": "src/host/guest_override_list.h:85"
   },
   "0060FC10": {
    "class": "identical",
    "to": "005F6190",
    "function": "0060FC10",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:76"
+   "where": "src/host/guest_override_list.h:86"
   },
   "00611D50": {
    "class": "identical",
    "to": "005F82D0",
    "function": "00611D50",
    "via": "hash",
-   "where": "src/host/level_actions.c:38"
+   "where": "src/host/level_actions.c:41"
   },
   "00614A60": {
    "class": "identical",
    "to": "005FAFE0",
    "function": "00614A60",
    "via": "hash",
-   "where": "src/host/active_ai.c:59"
+   "where": "src/host/active_ai.c:60"
   },
   "00614B10": {
    "class": "identical",
    "to": "005FB090",
    "function": "00614B10",
    "via": "hash",
-   "where": "src/host/cheats.c:48"
+   "where": "src/host/cheats.c:47"
   },
   "00614F50": {
    "class": "identical",
    "to": "005FB4D0",
    "function": "00614F50",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:78"
+   "where": "src/host/guest_override_list.h:87"
   },
   "00617F20": {
    "class": "identical",
    "to": "005FE4E0",
    "function": "00617F20",
    "via": "hash",
-   "where": "src/host/cheats.c:47"
+   "where": "src/host/cheats.c:46"
+  },
+  "006187A0": {
+   "class": "identical",
+   "to": "00603370",
+   "function": "006187A0",
+   "via": "hash",
+   "where": "src/host/script_engine.c:22"
   },
   "006230F0": {
    "class": "identical",
    "to": "006096C0",
    "function": "006230F0",
    "via": "hash",
-   "where": "src/host/level_actions.c:33"
+   "where": "src/host/level_actions.c:37"
   },
   "006264D0": {
    "class": "identical",
    "to": "0060CBF0",
    "function": "006264D0",
    "via": "hash",
-   "where": "src/host/debug_menu.c:35"
+   "where": "src/host/debug_menu.c:41"
   },
   "00626B8C": {
    "class": "identical",
    "to": "0060D2AC",
    "function": "00626B8C",
    "via": "hash",
-   "where": "src/host/active_ai.c:47"
+   "where": "src/host/active_ai.c:48"
   },
   "00626BA0": {
    "class": "identical",
@@ -1286,14 +1330,14 @@
    "to": "00631FA0",
    "function": "00630D90",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:77"
+   "where": "src/host/guest_override_list.h:88"
   },
   "00638670": {
    "class": "identical",
    "to": "00639970",
    "function": "00638670",
    "via": "hash",
-   "where": "src/host/guest_override_list.h:78"
+   "where": "src/host/guest_override_list.h:89"
   },
   "0063DC60": {
    "class": "identical",
@@ -1373,7 +1417,7 @@
    "class": "data",
    "to": "00647B4C",
    "votes": 35002,
-   "where": "src/host/guest_ui.c:53"
+   "where": "src/host/guest_ui_model.c:35"
   },
   "00645C34": {
    "class": "data",
@@ -1421,7 +1465,7 @@
    "class": "data",
    "to": "006482A8",
    "votes": 35002,
-   "where": "src/host/ce_gameplay.c:33"
+   "where": "src/host/ce_gameplay.c:16"
   },
   "00646390": {
    "class": "data",
@@ -1451,7 +1495,7 @@
    "class": "data",
    "to": "006487A0",
    "votes": 35002,
-   "where": "src/host/guest_ui.c:47"
+   "where": "src/host/guest_ui_model.c:29"
   },
   "00646888": {
    "class": "data",
@@ -1493,7 +1537,7 @@
    "class": "data",
    "to": "00648FC8",
    "votes": 35002,
-   "where": "src/host/guest_ui.c:48"
+   "where": "src/host/guest_ui_model.c:30"
   },
   "006474D0": {
    "class": "data",
@@ -1517,49 +1561,67 @@
    "class": "data",
    "to": "0064EB70",
    "votes": 41,
-   "where": "src/host/physics_fixes.c:46"
+   "where": "src/host/physics_fixes.c:47"
   },
   "0064A274": {
    "class": "data",
    "to": "0064B2CC",
    "votes": 35003,
-   "where": "src/host/level_actions.c:35"
+   "where": "src/host/level_actions.c:39"
+  },
+  "0064A46C": {
+   "class": "data",
+   "to": "0064B4C4",
+   "votes": 35006,
+   "where": "src/host/script_engine.c:75"
+  },
+  "0064A8F4": {
+   "class": "data",
+   "to": "0064B984",
+   "votes": 35003,
+   "where": "src/host/script_engine.c:77"
+  },
+  "0064AB48": {
+   "class": "data",
+   "to": "0064BBD8",
+   "votes": 35002,
+   "where": "src/host/script_engine.c:76"
   },
   "0064ADF4": {
    "class": "data",
    "to": "0064C028",
    "votes": 35001,
-   "where": "src/host/level_actions.c:39"
+   "where": "src/host/level_actions.c:42"
   },
   "0064AF64": {
    "class": "data",
    "to": "0064C1C4",
    "votes": 1,
-   "where": "src/host/level_actions.c:20"
+   "where": "src/host/level_actions.c:23"
   },
   "0064B22C": {
    "class": "data",
    "to": "0064C490",
    "votes": 35006,
-   "where": "src/host/host_policy.h:452"
+   "where": "src/host/host_policy.h:454"
   },
   "0064B3C8": {
    "class": "data",
    "to": "0064C62C",
    "votes": 35002,
-   "where": "src/host/host_policy.h:449"
+   "where": "src/host/host_policy.h:451"
   },
   "0064B990": {
    "class": "data",
    "to": "0064CBFC",
    "votes": 1,
-   "where": "src/host/level_actions.c:31"
+   "where": "src/host/level_actions.c:35"
   },
   "0064B9B0": {
    "class": "data",
    "to": "0064CC18",
    "votes": 4,
-   "where": "src/host/physics_fixes.c:48"
+   "where": "src/host/physics_fixes.c:49"
   },
   "0064C49C": {
    "class": "data",
@@ -1571,43 +1633,43 @@
    "class": "data",
    "to": "0064DDA8",
    "votes": 35003,
-   "where": "src/host/host_policy.h:450"
+   "where": "src/host/host_policy.h:452"
   },
   "0064CC54": {
    "class": "data",
    "to": "0064DF10",
    "votes": 35002,
-   "where": "src/host/host_policy.h:451"
+   "where": "src/host/host_policy.h:453"
   },
   "0064CEA8": {
    "class": "data",
    "to": "0064E164",
    "votes": 35002,
-   "where": "src/host/host_policy.h:453"
+   "where": "src/host/host_policy.h:455"
   },
   "0064D644": {
    "class": "data",
    "to": "0064E7A0",
    "votes": 35001,
-   "where": "src/host/cheats.c:36"
+   "where": "src/host/cheats.c:35"
   },
   "0064D86C": {
    "class": "data",
    "to": "0064E650",
    "votes": 5,
-   "where": "src/host/patch117_physics.c:34"
+   "where": "src/host/patch117_physics.c:35"
   },
   "0064D970": {
    "class": "data",
    "to": "0064EC68",
    "votes": 1,
-   "where": "src/host/physics_fixes.c:47"
+   "where": "src/host/physics_fixes.c:48"
   },
   "0064DB54": {
    "class": "data",
    "to": "0064EE54",
    "votes": 35002,
-   "where": "src/host/cpu_polygons.c:19"
+   "where": "src/host/cpu_polygons.c:20"
   },
   "0064DBCC": {
    "class": "data",
@@ -1643,13 +1705,31 @@
    "class": "data",
    "to": "0064FE70",
    "votes": 35003,
-   "where": "src/host/texhw_guest.c:61"
+   "where": "src/host/texhw_guest.c:62"
   },
   "0064EBA8": {
    "class": "data",
    "to": "0064FEB8",
    "votes": 35002,
-   "where": "src/host/texhw_guest.c:60"
+   "where": "src/host/texhw_guest.c:61"
+  },
+  "0064ED18": {
+   "class": "data",
+   "to": "00650028",
+   "votes": 35003,
+   "where": "src/host/script_engine.c:76"
+  },
+  "0064EF88": {
+   "class": "data",
+   "to": "00650298",
+   "votes": 35002,
+   "where": "src/host/script_engine.c:75"
+  },
+  "0064F9A8": {
+   "class": "data",
+   "to": "00650D30",
+   "votes": 35002,
+   "where": "src/host/script_engine.c:76"
   },
   "00651C20": {
    "class": "data",
@@ -1667,7 +1747,7 @@
    "class": "data",
    "to": "006622C0",
    "votes": 4,
-   "where": "src/host/gamepad.c:34"
+   "where": "src/host/gamepad.c:38"
   },
   "00660B88": {
    "class": "data",
@@ -1691,7 +1771,7 @@
    "class": "data",
    "to": "00662F00",
    "votes": 1,
-   "where": "src/host/loading_hd.c:29"
+   "where": "src/host/loading_hd.c:36"
   },
   "00661298": {
    "class": "data",
@@ -1703,13 +1783,13 @@
    "class": "data",
    "to": "0066DAD4",
    "votes": 4,
-   "where": "src/host/active_ai.c:21"
+   "where": "src/host/active_ai.c:22"
   },
   "00661758": {
    "class": "data",
    "to": "0066DB30",
    "votes": 1,
-   "where": "src/host/active_ai.c:25"
+   "where": "src/host/active_ai.c:26"
   },
   "006634EC": {
    "class": "data",
@@ -1733,19 +1813,19 @@
    "class": "data",
    "to": "00665EE8",
    "votes": 1,
-   "where": "src/host/engine_heaps.c:36"
+   "where": "src/host/engine_heaps.c:37"
   },
   "00665130": {
    "class": "data",
    "to": "00666324",
    "votes": 18,
-   "where": "src/host/active_ai.c:23"
+   "where": "src/host/active_ai.c:24"
   },
   "00668500": {
    "class": "data",
    "to": "00669530",
    "votes": 69,
-   "where": "src/host/patch117_physics.c:45"
+   "where": "src/host/patch117_physics.c:46"
   },
   "006699F8": {
    "class": "data",
@@ -1757,25 +1837,25 @@
    "class": "data",
    "to": "0066ADE8",
    "votes": 3490,
-   "where": "src/host/guest_ui.c:22"
+   "where": "src/host/guest_ui.c:13"
   },
   "0066AE78": {
    "class": "data",
    "to": "0066C0D0",
    "votes": 8,
-   "where": "src/host/tutorial_prompts.c:31"
+   "where": "src/host/tutorial_prompts.c:32"
   },
   "0066B6FC": {
    "class": "data",
    "to": "0066C954",
    "votes": 2,
-   "where": "src/host/level_actions.c:41"
+   "where": "src/host/level_actions.c:56"
   },
   "0066C4E8": {
    "class": "data",
    "to": "0066D740",
    "votes": 1,
-   "where": "src/host/terrain_quality.c:18"
+   "where": "src/host/scene_options.c:19"
   },
   "0066CC98": {
    "class": "data",
@@ -1787,7 +1867,7 @@
    "class": "data",
    "to": "0066FC94",
    "votes": 2,
-   "where": "src/host/guest_ui.c:29"
+   "where": "src/host/guest_ui_actions.c:13"
   },
   "0066E010": {
    "class": "data",
@@ -1805,135 +1885,135 @@
    "class": "data",
    "to": "00670180",
    "votes": 62,
-   "where": "src/host/ce_gameplay.c:15"
+   "where": "src/host/ce_quick.c:14"
   },
   "0066E342": {
    "class": "data",
    "to": "0067018A",
    "votes": 1,
-   "where": "src/host/debug_menu.c:37"
+   "where": "src/host/debug_menu.c:43"
   },
   "0066E77C": {
    "class": "data",
    "to": "00743534",
    "votes": 306,
-   "where": "src/host/active_ai.c:19"
+   "where": "src/host/active_ai.c:20"
   },
   "0066E78C": {
    "class": "data",
    "to": "00743538",
    "votes": 9,
-   "where": "src/host/active_ai.c:28"
+   "where": "src/host/active_ai.c:29"
   },
   "0066E790": {
    "class": "data",
    "to": "0074353C",
    "votes": 16,
-   "where": "src/host/active_ai.c:27"
+   "where": "src/host/active_ai.c:28"
   },
   "0066E794": {
    "class": "data",
    "to": "00743540",
    "votes": 22,
-   "where": "src/host/active_ai.c:26"
+   "where": "src/host/active_ai.c:27"
   },
   "0066E9F0": {
    "class": "data",
    "to": "00670568",
    "votes": 29,
-   "where": "src/host/ce_gameplay.c:59"
+   "where": "src/host/ce_gameplay.c:39"
   },
   "0066EB00": {
    "class": "data",
    "to": "00670688",
    "votes": 107,
-   "where": "src/host/ce_gameplay.c:62"
+   "where": "src/host/ce_gameplay.c:42"
   },
   "0066ECC0": {
    "class": "data",
    "to": "00670848",
    "votes": 1,
-   "where": "src/host/cheats.c:40"
+   "where": "src/host/cheats.c:39"
   },
   "0066ED28": {
    "class": "data",
    "to": "006708B4",
    "votes": 20,
-   "where": "src/host/patch117_player.c:47"
+   "where": "src/host/patch117_player.c:49"
   },
   "0066ED50": {
    "class": "data",
    "to": "006708DC",
    "votes": 29,
-   "where": "src/host/patch117_player.c:48"
+   "where": "src/host/patch117_player.c:50"
   },
   "0066ED67": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "tuning byte read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B8C",
    "was": "unresolved",
-   "where": "src/host/patch117_player.c:46"
+   "where": "src/host/patch117_player.c:48"
   },
   "0066ED8C": {
    "class": "data",
    "to": "00670918",
    "votes": 50,
-   "where": "src/host/patch117_player.c:42"
+   "where": "src/host/patch117_player.c:44"
   },
   "0066ED90": {
    "class": "data",
    "to": "0067091C",
    "votes": 50,
-   "where": "src/host/patch117_player.c:43"
+   "where": "src/host/patch117_player.c:45"
   },
   "0066ED94": {
    "class": "data",
    "to": "00670920",
    "votes": 50,
-   "where": "src/host/patch117_player.c:44"
+   "where": "src/host/patch117_player.c:46"
   },
   "0066ED98": {
    "class": "data",
    "to": "00670924",
    "votes": 50,
-   "where": "src/host/patch117_player.c:45"
+   "where": "src/host/patch117_player.c:47"
   },
   "0066EF00": {
    "class": "data",
    "to": "00670A8C",
    "votes": 30,
-   "where": "src/host/patch117_player.c:49"
+   "where": "src/host/patch117_player.c:51"
   },
   "0066EF10": {
    "class": "data",
    "to": "00670AA8",
    "votes": 14,
-   "where": "src/host/patch117_player.c:50"
+   "where": "src/host/patch117_player.c:52"
   },
   "0066EF20": {
    "class": "absent",
    "category": "NO_EQUIVALENT",
    "evidence": "tuning field read only by the 116-to-1.1 hand port, not applied to this build; the table around it moves by +0x1B98",
    "was": "unresolved",
-   "where": "src/host/patch117_player.c:51"
+   "where": "src/host/patch117_player.c:53"
   },
   "0066EF64": {
    "class": "data",
    "to": "00670B04",
    "votes": 48,
-   "where": "src/host/active_ai.c:20"
+   "where": "src/host/active_ai.c:21"
   },
   "0066F01C": {
    "class": "data",
    "to": "00670BCC",
    "votes": 4,
-   "where": "src/host/objectives.c:18"
+   "where": "src/host/level_actions.c:54"
   },
   "0066F03C": {
    "class": "data",
    "to": "00670BEC",
    "votes": 10,
-   "where": "src/host/tutorial_prompts.c:22"
+   "where": "src/host/overlay_text.c:6"
   },
   "0066F510": {
    "class": "data",
@@ -1945,49 +2025,49 @@
    "class": "data",
    "to": "00671408",
    "votes": 1,
-   "where": "src/host/terrain_quality.c:29"
+   "where": "src/host/terrain_quality.c:31"
   },
   "0066F9C4": {
    "class": "data",
    "to": "0067141C",
    "votes": 18,
-   "where": "src/host/terrain_quality.c:28"
+   "where": "src/host/terrain_quality.c:30"
   },
   "0066FAD8": {
    "class": "data",
    "to": "00671530",
    "votes": 12,
-   "where": "src/host/terrain_quality.c:16"
+   "where": "src/host/terrain_quality.c:18"
   },
   "0066FB68": {
    "class": "data",
    "to": "006715C0",
    "votes": 10,
-   "where": "src/host/terrain_quality.c:17"
+   "where": "src/host/terrain_quality.c:19"
   },
   "0066FB78": {
    "class": "data",
    "to": "006715D0",
    "votes": 10,
-   "where": "src/host/terrain_quality.c:15"
+   "where": "src/host/terrain_quality.c:17"
   },
   "006715A4": {
    "class": "data",
    "to": "0067314C",
    "votes": 112,
-   "where": "src/host/patch117_player.c:67"
+   "where": "src/host/patch117_player.c:69"
   },
   "00675A40": {
    "class": "data",
    "to": "006775E8",
    "votes": 256,
-   "where": "src/host/patch117_player.c:70"
+   "where": "src/host/patch117_player.c:72"
   },
   "0067A088": {
    "class": "data",
    "to": "006D00F8",
    "votes": 9,
-   "where": "src/host/active_ai.c:24"
+   "where": "src/host/active_ai.c:25"
   },
   "0067AE68": {
    "class": "data",
@@ -2007,133 +2087,133 @@
    "evidence": "the dword holding the voluntary-jump byte: the byte 0x0067AF5D pairs with 0x006D0261 in 27 aligned references",
    "was": "unresolved",
    "to": "006D0260",
-   "where": "src/host/cheats.c:50"
+   "where": "src/host/cheats.c:49"
   },
   "0067AF5D": {
    "class": "data",
    "to": "006D0261",
    "votes": 27,
-   "where": "src/host/patch117_player.c:17"
+   "where": "src/host/patch117_player.c:18"
   },
   "0067AFA0": {
    "class": "data",
    "to": "006D02AC",
    "votes": 50,
-   "where": "src/host/patch117_player.c:14"
+   "where": "src/host/patch117_player.c:15"
   },
   "0067AFA4": {
    "class": "data",
    "to": "006D02B0",
    "votes": 50,
-   "where": "src/host/patch117_player.c:15"
+   "where": "src/host/patch117_player.c:16"
   },
   "0067AFA8": {
    "class": "data",
    "to": "006D02B4",
    "votes": 73,
-   "where": "src/host/cheats.c:49"
+   "where": "src/host/cheats.c:48"
   },
   "0067B0C0": {
    "class": "data",
    "to": "0067BCA8",
    "votes": 9,
-   "where": "src/host/physics_fixes.c:41"
+   "where": "src/host/physics_fixes.c:42"
   },
   "00699D40": {
    "class": "data",
    "to": "0069A928",
    "votes": 169,
-   "where": "src/host/patch117_physics.c:17"
+   "where": "src/host/patch117_physics.c:18"
   },
   "0069A138": {
    "class": "data",
    "to": "0069AD20",
    "votes": 7,
-   "where": "src/host/active_ai.c:30"
+   "where": "src/host/active_ai.c:31"
   },
   "006CD960": {
    "class": "data",
    "to": "006CE548",
    "votes": 82,
-   "where": "src/host/patch117_physics.c:35"
+   "where": "src/host/patch117_physics.c:36"
   },
   "006CD964": {
    "class": "data",
    "to": "006CE54C",
    "votes": 54,
-   "where": "src/host/patch117_physics.c:36"
+   "where": "src/host/patch117_physics.c:37"
   },
   "006CD968": {
    "class": "data",
    "to": "006CE550",
    "votes": 54,
-   "where": "src/host/patch117_physics.c:37"
+   "where": "src/host/patch117_physics.c:38"
   },
   "006CD96C": {
    "class": "data",
    "to": "006CE554",
    "votes": 55,
-   "where": "src/host/patch117_physics.c:38"
+   "where": "src/host/patch117_physics.c:39"
   },
   "006CD974": {
    "class": "data",
    "to": "006CE55C",
    "votes": 75,
-   "where": "src/host/patch117_physics.c:39"
+   "where": "src/host/patch117_physics.c:40"
   },
   "006CD978": {
    "class": "data",
    "to": "006CE560",
    "votes": 69,
-   "where": "src/host/patch117_physics.c:40"
+   "where": "src/host/patch117_physics.c:41"
   },
   "006CD97C": {
    "class": "data",
    "to": "006CE564",
    "votes": 146,
-   "where": "src/host/patch117_physics.c:41"
+   "where": "src/host/patch117_physics.c:42"
   },
   "006CD984": {
    "class": "data",
    "to": "006CE56C",
    "votes": 79,
-   "where": "src/host/patch117_physics.c:42"
+   "where": "src/host/patch117_physics.c:43"
   },
   "006CD988": {
    "class": "data",
    "to": "006CE570",
    "votes": 79,
-   "where": "src/host/patch117_physics.c:43"
+   "where": "src/host/patch117_physics.c:44"
   },
   "006CD98C": {
    "class": "data",
    "to": "006CE574",
    "votes": 222,
-   "where": "src/host/patch117_physics.c:44"
+   "where": "src/host/patch117_physics.c:45"
   },
   "006CE290": {
    "class": "data",
    "to": "006D0BD8",
    "votes": 53,
-   "where": "src/host/physics_fixes.c:21"
+   "where": "src/host/physics_fixes.c:22"
   },
   "006CEAB8": {
    "class": "data",
    "to": "006D1400",
    "votes": 1,
-   "where": "src/host/physics_fixes.c:30"
+   "where": "src/host/physics_fixes.c:31"
   },
   "006CF198": {
    "class": "data",
    "to": "006D1AE0",
    "votes": 220,
-   "where": "src/host/physics_fixes.c:23"
+   "where": "src/host/physics_fixes.c:24"
   },
   "006D0A80": {
    "class": "data",
    "to": "006D33E8",
    "votes": 5,
-   "where": "src/host/physics_fixes.c:36"
+   "where": "src/host/physics_fixes.c:37"
   },
   "006D0A84": {
    "class": "data",
@@ -2151,7 +2231,7 @@
    "class": "data",
    "to": "006D3809",
    "votes": 94,
-   "where": "src/host/active_ai.c:22"
+   "where": "src/host/active_ai.c:23"
   },
   "006D0E9C": {
    "class": "data",
@@ -2162,8 +2242,8 @@
   "006D0F14": {
    "class": "data",
    "to": "006D3884",
-   "votes": 4,
-   "where": "src/host/ce_graphics.c:21"
+   "votes": 1,
+   "where": "src/host/scene_options.c:18"
   },
   "006D0F1C": {
    "class": "data",
@@ -2175,19 +2255,19 @@
    "class": "data",
    "to": "006D3DD1",
    "votes": 14,
-   "where": "src/host/terrain_quality.c:27"
+   "where": "src/host/terrain_quality.c:29"
   },
   "006D1680": {
    "class": "data",
    "to": "006D3FF0",
    "votes": 23,
-   "where": "src/host/texhw_guest.c:48"
+   "where": "src/host/texhw_guest.c:49"
   },
   "006D1E94": {
    "class": "data",
    "to": "006D4804",
-   "votes": 48,
-   "where": "src/host/ce_graphics.c:21"
+   "votes": 16,
+   "where": "src/host/scene_options.c:16"
   },
   "006D2040": {
    "class": "data",
@@ -2229,7 +2309,7 @@
    "class": "data",
    "to": "006D4B94",
    "votes": 27,
-   "where": "src/host/ce_gameplay.c:55"
+   "where": "src/host/ce_gameplay.c:35"
   },
   "00732874": {
    "class": "data",
@@ -2253,31 +2333,31 @@
    "class": "data",
    "to": "007352E8",
    "votes": 26,
-   "where": "src/host/ce_graphics.c:17"
+   "where": "src/host/ce_graphics.c:20"
   },
   "00732EFC": {
    "class": "data",
    "to": "0073586C",
    "votes": 3,
-   "where": "src/host/host_policy.c:521"
+   "where": "src/host/host_policy.c:522"
   },
   "00732F1C": {
    "class": "data",
    "to": "0073588C",
    "votes": 6,
-   "where": "src/host/host_policy.c:524"
+   "where": "src/host/host_policy.c:525"
   },
   "00732F34": {
    "class": "data",
    "to": "007358A4",
    "votes": 7,
-   "where": "src/host/host_policy.c:523"
+   "where": "src/host/host_policy.c:524"
   },
   "00732F4C": {
    "class": "data",
    "to": "007358BC",
    "votes": 3,
-   "where": "src/host/host_policy.c:522"
+   "where": "src/host/host_policy.c:523"
   },
   "00737190": {
    "class": "data",
@@ -2295,7 +2375,7 @@
    "class": "data",
    "to": "00739DA8",
    "votes": 11249,
-   "where": "src/host/cpu_polygons.c:22"
+   "where": "src/host/cpu_polygons.c:23"
   },
   "00737E40": {
    "class": "data",
@@ -2325,7 +2405,7 @@
    "class": "data",
    "to": "0073A85C",
    "votes": 2459,
-   "where": "src/host/cpu_polygons.c:23"
+   "where": "src/host/cpu_polygons.c:24"
   },
   "00737F34": {
    "class": "data",
@@ -2361,7 +2441,7 @@
    "class": "data",
    "to": "00741BE8",
    "votes": 12,
-   "where": "src/host/level_actions.c:40"
+   "where": "src/host/level_actions.c:43"
   },
   "0073F280": {
    "class": "decided",
@@ -2369,37 +2449,25 @@
    "evidence": "the count of the CMessageUse receivers, 8 bytes past their list: CPlayer's use builds the message with the list 0x00741BE8 and adds one to 0x00741BF0 (0x00431180, 0x00431194, 0x0043119D), as 116 does with 0x0073F278 and 0x0073F280 (0x0044CD10, 0x0044CD24)",
    "was": "unresolved",
    "to": "00741BF0",
-   "where": "src/host/level_actions.c:41"
+   "where": "src/host/level_actions.c:44"
   },
   "0073F34C": {
    "class": "data",
    "to": "00741CBC",
    "votes": 147,
-   "where": "src/host/ce_gameplay.c:58"
+   "where": "src/host/ce_gameplay.c:38"
   },
   "0073F350": {
    "class": "data",
    "to": "00741CC0",
    "votes": 29,
-   "where": "src/host/tutorial_prompts.c:25"
+   "where": "src/host/tutorial_prompts.c:26"
   },
   "0073F444": {
    "class": "data",
    "to": "00741DB4",
    "votes": 250,
-   "where": "src/host/ce_gameplay.c:16"
-  },
-  "0073F600": {
-   "class": "data",
-   "to": "00741F70",
-   "votes": 17,
-   "where": "src/host/debug_menu.c:36"
-  },
-  "0073F614": {
-   "class": "data",
-   "to": "00741F84",
-   "votes": 8,
-   "where": "src/host/debug_menu.c:37"
+   "where": "src/host/ce_quick.c:15"
   },
   "0073F708": {
    "class": "data",
@@ -2423,7 +2491,7 @@
    "class": "data",
    "to": "00743018",
    "votes": 22,
-   "where": "src/host/texhw_guest.c:52"
+   "where": "src/host/texhw_guest.c:53"
   },
   "007410F8": {
    "class": "data",

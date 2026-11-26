@@ -94,9 +94,11 @@ static void test_names() {
         CHECK(IsCeName(n));
     for (const char* n : {"print", "array", "len", "nvram", "OnSimStep", "x", "foreach"}) CHECK(!IsCeName(n));
     CHECK(IsDrivenHandler(Kind::kGame, "OnSimStep") && IsDrivenHandler(Kind::kLevel, "OnLevelEnd") && IsDrivenHandler(Kind::kGame, "OnGameStart"));
-    CHECK(!IsDrivenHandler(Kind::kLevel, "OnGameStart") && !IsDrivenHandler(Kind::kGame, "OnPaintHW3D"));
+    CHECK(!IsDrivenHandler(Kind::kLevel, "OnGameStart") && !IsDrivenHandler(Kind::kGame, "OnPaint"));
+    CHECK(IsDrivenHandler(Kind::kGame, "OnPaintHW3D") && !IsDrivenHandler(Kind::kLevel, "OnPaintHW3D"));
     CHECK(!IsDrivenHandler(Kind::kGame, "OnLevelTransitionRequested") && !IsDrivenHandler(Kind::kGame, "OnGameCompleted"));
-    CHECK(!IsDrivenHandler(Kind::kInstance, "OnScriptInit") && !IsDrivenHandler(Kind::kAction, "Run"));
+    CHECK(IsDrivenHandler(Kind::kInstance, "OnScriptInit") && IsDrivenHandler(Kind::kInstance, "OnActBite"));
+    CHECK(!IsDrivenHandler(Kind::kInstance, "OnUse") && !IsDrivenHandler(Kind::kAction, "Run") && !IsDrivenHandler(Kind::kGame, "OnActBite"));
 }
 
 // The package of the brief: alpha uses a script, beta does not, both beside shared.nut.
@@ -118,7 +120,8 @@ static std::vector<FileInfo> SharedPackage() {
 static void test_level_decides() {
     const std::vector<FileInfo> files = SharedPackage();
     const LevelPlan alpha = PlanLevel(files, "alpha.scn", {});
-    CHECK(alpha.needs_scripts() && alpha.supported() && Names(alpha) == std::vector<std::string>{"AlphaRules"});
+    // alpha needs a VM for AlphaRules; then Quiet, which only keeps its state, is made as well.
+    CHECK(alpha.needs_scripts() && alpha.supported() && Names(alpha) == (std::vector<std::string>{"AlphaRules", "Quiet"}));
     CHECK(alpha.files == std::vector<std::string>{"scripts/shared.nut"});
     CHECK(PlanLevel(files, "ALPHA.SCN", {}).needs_scripts());
     CHECK(PlanLevel(files, "data\\alpha.scn", {}).needs_scripts());
@@ -145,7 +148,8 @@ static void test_kinds_and_world() {
     CHECK(x.classes[2].kind == Kind::kInstance && x.classes[2].objects == (std::vector<std::string>{"Door-00", "Door-01"}));
     CHECK(x.classes[3].kind == Kind::kInstance && x.classes[4].kind == Kind::kAction && x.classes[4].objects[0] == "Trig-00");
     CHECK(x.files == (std::vector<std::string>{"scripts/a.nut", "scripts/b.nut"}));
-    for (const char* r : {"CInstance", "CAnimal", "ActionType", "Teleport", "OnUse", "OnActBite", "Run"}) CHECK(HasText(x.required, r));
+    for (const char* r : {"ActionType", "OnUse", "Run"}) CHECK(HasText(x.required, r));
+    for (const char* r : {"CInstance", "CAnimal", "Teleport", "OnActBite"}) CHECK(!HasText(x.required, r));
     CHECK(!HasText(x.required, "OnSimStep") && !HasText(x.required, "OnLevelEnd") && !x.supported());
     CHECK(std::is_sorted(x.required.begin(), x.required.end()));
 
@@ -168,9 +172,9 @@ static void test_files_and_order() {
         ScanFile("scripts/3_unused.nut", "gNobody <- 1;\nclass Lonely extends LevelScript { static SCN = \"other.scn\"; function OnLevelStart() {} }\n"),
         ScanFile("scripts/4_hud.nut", "class Hud extends HudBase { function OnLevelStart() { Shade(); } }\n"),
     };
-    // HudBase declares no handler: an instance of it would do nothing, so only Hud is made, with its base's file.
+    // CE makes an instance of each class derived from GameScript, HudBase as well as Hud.
     const LevelPlan p = PlanLevel(files, "main.scn", {});
-    CHECK(Names(p) == std::vector<std::string>{"Hud"});
+    CHECK(Names(p) == (std::vector<std::string>{"HudBase", "Hud"}));
     CHECK(p.files == (std::vector<std::string>{"scripts/1_base.nut", "scripts/2_colour.nut", "scripts/4_hud.nut"}));
     CHECK(p.supported());
     // Deterministic: the same package plans the same way.
@@ -190,19 +194,23 @@ static void test_required() {
     const std::vector<FileInfo> files = {
         ScanFile("scripts/hud.nut",
                  "class Gauge {\n"
-                 "  function Draw() { TP_Engine.DrawTexture(tex, 0, 0); }\n"
+                 "  function Draw() { TP_Engine.DrawBitmap(bmp, 0, 0); }\n"
                  "}\n"
                  "class Hud extends GameScript {\n"
                  "  gauge = null;\n"
                  "  constructor() { gauge = Gauge(); }\n"
-                 "  function OnPaintHW3D() { gauge.Draw(); }\n"
+                 "  function OnPaint() { gauge.Draw(); }\n"
+                 "  function OnModalChar(c) {}\n"
                  "  function OnHandleInput() { if (bKeyHit(uCMD_USER1)) {} }\n"
                  "  function OnLevelStart() { local GetPlayer = 1; Teleport <- 2; }\n"
                  "}\n"),
     };
     const LevelPlan p = PlanLevel(files, "l.scn", {});
     CHECK(Names(p) == std::vector<std::string>{"Hud"});
-    for (const char* r : {"TP_Engine", "DrawTexture", "OnPaintHW3D", "OnHandleInput", "bKeyHit", "uCMD_USER1"}) CHECK(HasText(p.required, r));
+    for (const char* r : {"DrawBitmap", "OnPaint", "OnModalChar"}) CHECK(HasText(p.required, r));
+    for (const char* r : {"TP_Engine", "OnHandleInput", "bKeyHit", "uCMD_USER1"}) CHECK(!HasText(p.required, r));
+    // The uCMD_USER commands a level's code names: only those are bound for it.
+    CHECK(p.user_commands == 1u);
     CHECK(!HasText(p.required, "GetPlayer") && !HasText(p.required, "GameScript") && !HasText(p.required, "OnLevelStart"));
     CHECK(FileRequires(files, files[0]) == p.required);
 
@@ -220,7 +228,7 @@ static void test_required() {
     const LevelPlan q = PlanLevel(plain, "any.scn", {});
     CHECK(q.supported() && q.needs_scripts() && q.required.empty());
     // Handlers CE has that the port does not call yet.
-    for (const char* h : {"OnLevelTransitionRequested", "OnGameCompleted", "OnConsoleCommand", "OnPaint", "OnModalKey"}) {
+    for (const char* h : {"OnLevelTransitionRequested", "OnGameCompleted", "OnPaint", "OnModalChar"}) {
         const std::vector<FileInfo> one = {ScanFile("s.nut", std::string("class G extends GameScript { function ") + h + "() {} }\n")};
         CHECK(HasText(PlanLevel(one, "l.scn", {}).required, h));
     }
@@ -250,25 +258,22 @@ static void test_corpus_shapes() {
     const LevelPlan none = PlanLevel(files, "prequel.scn", {});
     CHECK(!none.needs_scripts());
     const LevelPlan with = PlanLevel(files, "ops.scn", {{"Spitter", "Dilo-00", false}, {"Projectile", "Spit-00", false}});
-    CHECK(Names(with) == (std::vector<std::string>{"Spitter", "Projectile"}) && !with.supported());
-    for (const char* r : {"CAnimal", "CInstance", "OnActBite", "TP_Engine", "GetElapsedSimTime", "pbbBoundaryBox", "EBoundaryBoxes",
-                          "ebbHEAD", "Teleport", "MoveWithFixedVelocity"})
-        CHECK(HasText(with.required, r));
-    CHECK(!HasText(with.required, "Launch") && !HasText(with.required, "Helper"));
+    // Once the level has a VM, its state-only helper is made too, as CE makes every level script.
+    CHECK(Names(with) == (std::vector<std::string>{"Helper", "Spitter", "Projectile"}) && with.supported() && with.required.empty());
 }
 
 // One package, four levels: each plan is its own, whatever its siblings need.
 static void test_four_levels() {
     const std::vector<FileInfo> files = {
         ScanFile("scripts/beta.nut", "class BetaRules extends LevelScript { static SCN = \"beta.scn\"; nvram = null; function OnLevelStart() { print(\"b\"); } }\n"),
-        ScanFile("scripts/gamma.nut", "class GammaHud extends LevelScript { static SCN = \"gamma.scn\"; function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"),
+        ScanFile("scripts/gamma.nut", "class GammaHud extends LevelScript { static SCN = \"gamma.scn\"; function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"),
         ScanFile("scripts/delta_unused.nut", "class Spare extends LevelScript { static SCN = \"elsewhere.scn\"; function OnLevelStart() {} }\nclass Helper {}\n"),
     };
     const LevelPlan alpha = PlanLevel(files, "alpha.scn", {}), beta = PlanLevel(files, "beta.scn", {});
     const LevelPlan gamma = PlanLevel(files, "gamma.scn", {}), delta = PlanLevel(files, "delta.scn", {});
     CHECK(!alpha.needs_scripts() && alpha.files.empty() && alpha.required.empty());
     CHECK(beta.needs_scripts() && beta.supported() && beta.files == std::vector<std::string>{"scripts/beta.nut"});
-    CHECK(gamma.needs_scripts() && !gamma.supported() && gamma.files == std::vector<std::string>{"scripts/gamma.nut"} && HasText(gamma.required, "GetPlayer"));
+    CHECK(gamma.needs_scripts() && !gamma.supported() && gamma.files == std::vector<std::string>{"scripts/gamma.nut"} && HasText(gamma.required, "ReplayVoiceover"));
     CHECK(!delta.needs_scripts() && delta.files.empty() && delta.required.empty());
 }
 

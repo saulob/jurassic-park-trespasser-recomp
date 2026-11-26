@@ -1084,8 +1084,8 @@ static void run_ui_overlay_fixture(void) {
     ui_quad(verts, idx, 0, 8.0f, 8.0f, 40.0f, 40.0f, 0x800000FFu);
     ui_quad(verts + 4, idx + 6, 4, 48.0f, 8.0f, 60.0f, 20.0f, 0xFFFF0000u);
     memset(cmds, 0, sizeof cmds);
-    cmds[0] = (jpt_vk_ui_cmd_t){ { 0, 0, 64, 64 }, 0, 6, 0, 0 };
-    cmds[1] = (jpt_vk_ui_cmd_t){ { 0, 0, 54, 64 }, 6, 6, 0, 0 };
+    cmds[0] = (jpt_vk_ui_cmd_t){ { 0, 0, 64, 64 }, 0, 6, 0, 0, 0 };
+    cmds[1] = (jpt_vk_ui_cmd_t){ { 0, 0, 54, 64 }, 6, 6, 0, 0, 0 };
     tex = (jpt_vk_ui_texture_t){ 1, 1, 1, 4, white, 1 };
     memset(&d, 0, sizeof d);
     d.display_size[0] = d.display_size[1] = 64.0f;
@@ -1116,6 +1116,45 @@ static void run_ui_overlay_fixture(void) {
           px_at(rgba, 64, 57, 12)[0]);
     jpt_vk_renderer_get_stats(r, &after);
     CHECK(after.ui_draws >= 2 && after.ui_vertices >= 8 && after.ui_texture_binds >= 1, "the overlay counters report the draw");
+    jpt_vk_renderer_destroy(r);
+}
+
+/* A script's DrawTexture mode 2: two half-red rectangles added over black reach full red where they overlap (alpha would give 192). */
+static void run_ui_additive_fixture(void) {
+    uint8_t rgba[64 * 64 * 4];
+    const uint8_t white[4] = { 255, 255, 255, 255 };
+    ui_vertex_t verts[8];
+    uint16_t idx[12];
+    jpt_vk_ui_cmd_t cmds[2];
+    jpt_vk_ui_texture_t tex;
+    jpt_vk_ui_draw_t d;
+    uint32_t rw, rh;
+    jpt_vk_renderer_t* r = open_renderer(64, 64, 1);
+    if (!r) return;
+    ui_quad(verts, idx, 0, 8.0f, 8.0f, 40.0f, 40.0f, 0x800000FFu);
+    ui_quad(verts + 4, idx + 6, 4, 24.0f, 8.0f, 56.0f, 40.0f, 0x800000FFu);
+    cmds[0] = (jpt_vk_ui_cmd_t){ { 0, 0, 64, 64 }, 0, 6, 0, 0, 1 };
+    cmds[1] = (jpt_vk_ui_cmd_t){ { 0, 0, 64, 64 }, 6, 6, 0, 0, 1 };
+    tex = (jpt_vk_ui_texture_t){ 1, 1, 1, 4, white, 1 };
+    memset(&d, 0, sizeof d);
+    d.display_size[0] = d.display_size[1] = 64.0f;
+    d.target_w = d.target_h = 64;
+    d.vertices = verts;
+    d.vertex_count = 8;
+    d.indices = idx;
+    d.index_count = 12;
+    d.cmds = cmds;
+    d.cmd_count = 2;
+    d.textures = &tex;
+    d.texture_count = 1;
+    CHECK(jpt_vk_renderer_begin_frame(r), "additive ui frame");
+    jpt_vk_renderer_clear(r, 1, 0xFF000000u, 0, 0.0f, 0, 0);
+    CHECK(jpt_vk_renderer_submit_ui(r, &d), "the additive draw data is accepted");
+    CHECK(jpt_vk_renderer_end_and_present(r), "additive ui frame presented");
+    CHECK(jpt_vk_renderer_readback_rgba(r, rgba, &rw, &rh, sizeof rgba), "additive ui readback");
+    CHECK(abs((int)px_at(rgba, 64, 12, 20)[0] - 128) <= 3 && px_at(rgba, 64, 12, 20)[1] <= 2,
+          "half red added to black is half red (%u)", px_at(rgba, 64, 12, 20)[0]);
+    CHECK(px_at(rgba, 64, 30, 20)[0] >= 253, "where both add, full red (%u)", px_at(rgba, 64, 30, 20)[0]);
     jpt_vk_renderer_destroy(r);
 }
 
@@ -1194,6 +1233,7 @@ int main(void) {
     test_overlay_lifetime_zero_stale_pixels();
     test_frontend_colour_gamma_premul_parity();
     run_ui_overlay_fixture();
+    run_ui_additive_fixture();
     run_overlay_batch_fixture();
     if (g_failures) {
         fprintf(stderr, "vulkan_render_tests: %d failure(s)\n", g_failures);

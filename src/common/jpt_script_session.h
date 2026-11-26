@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "jpt_script_draw.h"
 #include "jpt_script_vm.h"
 
 #ifdef __cplusplus
@@ -27,6 +28,8 @@ typedef struct {
     size_t memory_limit;
     const struct jpt_script_allocator* allocator;
     int per_level_files; /* a level reads only the files given for it (jpt_script_session_add_level_file) */
+    const struct jpt_script_engine* engine; /* the game's world; NULL: CE's API raises script errors */
+    unsigned random_seed;
 } jpt_script_session_config;
 
 typedef enum {
@@ -53,6 +56,42 @@ void jpt_script_level_begin(jpt_script_session* s, const char* scene, jpt_script
 void jpt_script_level_ready(jpt_script_session* s, int ok);
 /* The simulation moved on by seconds. */
 void jpt_script_level_step(jpt_script_session* s, float seconds);
+/* The AI of the animal of that unique handle executes a Bite (feint 0) or Feint action at its target: OnActBite of its instance
+ * script, when it has one. */
+void jpt_script_level_act_bite(jpt_script_session* s, unsigned animal, unsigned target, const float location[3], float distance, int feint);
+/* The CPlayer instance script of the player (its unique handle), as CE calls it from the player's own code:
+ * fGetSpeedFactor(speed) for the walk speed of every movement request (speed unchanged without it, when it fails or returns no
+ * finite number; never below 0); fGetJumpFactor() for a request that asks to jump (1 likewise); OnJump when the player's own
+ * jump left the ground. drives_player: the level has such a script with either factor. */
+int jpt_script_level_drives_player(const jpt_script_session* s);
+float jpt_script_level_speed_factor(jpt_script_session* s, unsigned player, float speed);
+float jpt_script_level_jump_factor(jpt_script_session* s, unsigned player);
+void jpt_script_level_jump(jpt_script_session* s, unsigned player);
+/* A console command the game does not know: OnConsoleCommand(command, args) of the game scripts in their order until one returns
+ * true (a bool); 1 when one did. An empty command reaches none; NULL args are "". */
+int jpt_script_level_console(jpt_script_session* s, const char* command, const char* args);
+/* A frame of gameplay: OnPaintHW3D of the game scripts that declare it; the commands they drew, valid until the next paint or level. */
+const jpt_draw_frame_t* jpt_script_level_paint(jpt_script_session* s);
+/* The frame of the last paint; empty once its VM is gone. */
+const jpt_draw_frame_t* jpt_script_level_paint_frame(const jpt_script_session* s);
+
+/* The game read its controls: the level's uCMD_USER keys (bit n for USER n+1), those pressed since the last frame, and the movement
+ * input before any speed factor. */
+typedef struct {
+    uint32_t user_held, user_hit;
+    float move_x, move_y;
+} jpt_script_input;
+typedef struct {
+    int modal; /* a game script is modal: the player's controls do nothing */
+    int look;  /* ... but the mouse still looks around (OnHandleModalInput returned true) */
+} jpt_script_input_result;
+void jpt_script_level_input(jpt_script_session* s, const jpt_script_input* in, jpt_script_input_result* out);
+/* A key of the keyboard (a virtual key code) while a game script is modal: 1 when the script took it. Escape ends modal mode. */
+int jpt_script_level_key(jpt_script_session* s, unsigned vk, int down, int shift, int ctrl, int alt);
+int jpt_script_level_modal(const jpt_script_session* s);
+/* The uCMD_USER commands the current level's scripts use (bit n for USER n+1); 0 without a VM. */
+unsigned jpt_script_session_user_commands(const jpt_script_session* s);
+
 /* The script block of a save being written (from malloc), or NULL when there is nothing to keep. */
 uint8_t* jpt_script_session_save(jpt_script_session* s, size_t* size);
 

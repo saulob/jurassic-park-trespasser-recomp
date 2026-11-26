@@ -172,7 +172,7 @@ static inline std::vector<uint8_t> SaveOf(jpt_script_session* s) {
     return out;
 }
 
-static const char* kGame =
+[[maybe_unused]] static const char* kGame =
     "class Campaign extends GameScript {\n"
     "  nvram = null;\n"
     "  constructor() { nvram = { levels = 0, started = false, steps = 0 }; print(\"game made\"); }\n"
@@ -186,7 +186,7 @@ static const char* kGame =
     "  function destructor() { print(\"game gone\"); }\n"
     "}\n";
 
-static const char* kShared =
+[[maybe_unused]] static const char* kShared =
     "class AlphaRules extends LevelScript {\n"
     "  static SCN = \"alpha.scn\";\n"
     "  nvram = null;\n"

@@ -15,6 +15,7 @@
 #include "jpt_hash.h"
 #include "jpt_level_features.h"
 #include "jpt_scene.h"
+#include "jpt_script_plan.h"
 #include "level_ini.h"
 #include "level_manifest.h"
 #include "utf8.h"
@@ -151,6 +152,8 @@ std::string PackageListingKey(const fs::path& package_dir, const std::string& ga
     std::string text = std::string(kRecordHead) + " " + Str(kListingVersion) + "|scene " + Str(JPT_SCENE_VERSION_MAX) + "|actions " + Str(JPT_GROFF_ACTION_OWN_LAST) +
                        "|runtime " + Str(JPT_CUSTOM_LEVEL_RUNTIME_VERSION) + "|manifest " + Str(kManifestSchema) + "|guide " + Str(kLevelGuideVersion) + "|game " + game_key + "|features ";
     for (int i = 0; const jpt_level_feature_t* feature = jpt_level_feature_at(i); ++i) text += Str(int(feature->status));
+    text += "|script api";
+    for (const jpt::script::ApiEntry& e : jpt::script::Api()) text += std::string(" ") + e.owner + "." + e.name + ":" + Str(int(e.scopes));
     text += "\n";
     std::error_code ec;
     if (!fs::is_directory(fs::symlink_status(package_dir, ec))) return {};

@@ -3,6 +3,7 @@
 #include <squirrel.h>
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <cstddef>
 
@@ -73,6 +74,8 @@ void* ScriptHeap::Allocate(size_t size) {
     stats_.current += charge;
     if (stats_.current > stats_.peak) stats_.peak = stats_.current;
     Add(&stats_.allocations, 1);
+    // Squirrel leaves an instance's user data as allocated: an entity a script makes must hold no handle.
+    memset(block + 1, 0, size);
     return block + 1;
 }
 

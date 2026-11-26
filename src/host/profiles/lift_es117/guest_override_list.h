@@ -36,6 +36,7 @@ GUEST_OVERRIDE(00470B70, REQUIRED) /* CTextureNode::SetTextureMemSize (engine_li
 GUEST_OVERRIDE(0047D180, REQUIRED) /* CQuadRootTIN::Update (terrain_quality.c) */
 GUEST_OVERRIDE(004BCFD0, REQUIRED) /* physics box set-up, official Patch 1.1 fix (patch117_physics.c) */
 GUEST_OVERRIDE(004D9CF0, REQUIRED) /* Pelvic_IDOF (physics_fixes.c) */
+GUEST_OVERRIDE(004DCEB0, OPTIONAL) /* the player's jump vocal, OnJump of CE scripts (script_engine.c) */
 GUEST_OVERRIDE(004E8820, REQUIRED) /* mode table (widescreen.c) */
 GUEST_OVERRIDE(004E92B0, REQUIRED) /* CRasterVid::Lock (cpu_polygons.c) */
 GUEST_OVERRIDE(004EC150, OPTIONAL) /* CDirect3D::AllocateTextureMemory, logged (engine_limits.c) */
@@ -81,5 +82,7 @@ GUEST_OVERRIDE(0060F2D0, REQUIRED) /* CAISystem save, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060F380, REQUIRED) /* CAISystem load, Active AI (active_ai.c) */
 GUEST_OVERRIDE(00612FB0, REQUIRED) /* brain influences, Active AI (active_ai.c) */
 GUEST_OVERRIDE(00613400, REQUIRED) /* brain influences tail, Active AI (active_ai.c) */
+GUEST_OVERRIDE(0061F660, OPTIONAL) /* CActivityBite::Act, OnActBite of CE scripts (script_engine.c) */
+GUEST_OVERRIDE(0061F7D0, OPTIONAL) /* CActivityFeint::Act, OnActBite of CE scripts (script_engine.c) */
 GUEST_OVERRIDE(00631FA0, OPTIONAL) /* object occlusion test (occlusion_kernel.c) */
 GUEST_OVERRIDE(00639970, OPTIONAL) /* CSimWaveVar2D step (water_kernels.c) */

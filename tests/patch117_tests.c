@@ -304,6 +304,17 @@ static void test_jump(void) {
         patch117_jump_frame(0, &j, patch117_jump_request(0, 0, 0));
         CHECK(j.z == 0.0f && j.voluntary, "Off: a frame without a press clears it, voluntary kept");
     }
+    {
+        patch117_jump_t j = { 0 };
+        r = patch117_jump_request(1, 1, 1);
+        CHECK(r.scale == 1.0f, "the game asks for the standard jump");
+        r.scale = 1.5f;
+        patch117_jump_frame(1, &j, r);
+        CHECK(j.z == 1.5f && j.voluntary, "a request's scale is the armed impulse's z");
+        r.scale = 0.0f;
+        patch117_jump_frame(0, &j, r);
+        CHECK(j.z == 0.0f && patch117_jump_step(0, &j, 1, 1) == 0, "a scale of 0 arms nothing to jump with");
+    }
 }
 
 /* The retail face tests of one corner (0x004EB2B9..0x004EC586): each face applies only to a corner within the skin,
@@ -780,26 +791,30 @@ static void test_wiring(void) {
     free(overrides);
 }
 
-/* Every lift hook the list names is defined once by the gameplay glue, and starts by checking the setting. */
+/* Every lift hook the list names is defined once by the gameplay glue (the official patch's, or the CE scripts' player hooks),
+ * and starts by checking its setting. */
 static void test_hook_wiring(void) {
     char* list = read_source("src/host/lift_hook_list.h");
     char* player = read_source("src/host/patch117_player.c");
     char* physics = read_source("src/host/patch117_physics.c");
+    char* scripts = read_source("src/host/script_engine.c");
     char* main_c = read_source("src/host/guest_features.c");
     char* overrides = read_source("src/host/guest_override_list.h");
-    int hooks = 0;
-    CHECK(list && player && physics && main_c && overrides, "sources readable");
-    if (!list || !player || !physics || !main_c || !overrides) return;
+    int hooks = 0, patch = 0;
+    CHECK(list && player && physics && scripts && main_c && overrides, "sources readable");
+    if (!list || !player || !physics || !scripts || !main_c || !overrides) return;
     for (const char* p = strstr(list, "\nLIFT_HOOK("); p; p = strstr(p + 1, "\nLIFT_HOOK(")) {
         char name[64];
-        const char *a, *b;
+        const char *a, *b, *c;
         snprintf(name, sizeof name, "void GHOOK(0x%.8s)(void)", p + 11);
         a = strstr(player, name);
         b = strstr(physics, name);
-        CHECK((a != NULL) != (b != NULL), "%s defined once", name);
+        c = strstr(scripts, name);
+        CHECK((a != NULL) + (b != NULL) + (c != NULL) == 1, "%s defined once", name);
+        patch += a || b;
         hooks++;
     }
-    CHECK(hooks == 27, "27 lift hooks (%d)", hooks);
+    CHECK(patch == 27 && hooks == 29, "27 lift hooks of the official patch (%d), 29 in all (%d)", patch, hooks);
     CHECK(strstr(overrides, "GUEST_OVERRIDE(004EDFA0, REQUIRED)") && strstr(overrides, "GUEST_OVERRIDE(004F0960, REQUIRED)"),
           "box set-up and jump hand-off overrides listed");
     CHECK(strstr(main_c, "patch117_player_configure(cfg->official_patch_117);") &&
@@ -812,6 +827,7 @@ static void test_hook_wiring(void) {
     free(list);
     free(player);
     free(physics);
+    free(scripts);
     free(main_c);
     free(overrides);
 }

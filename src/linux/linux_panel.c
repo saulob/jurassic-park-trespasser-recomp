@@ -29,7 +29,7 @@ int lx_panel_draw(uint32_t* pixels, int width, int height, int pitch, const char
     f.dpi_scale = dpi_scale(height);
     debug_menu_fill_frame(&f);
     if (counter && counter[0]) f.counter = counter;
-    if (!f.menu && !f.hud && !f.counter) return 0;
+    if (!f.menu && !f.hud && !f.counter && !f.script) return 0;
     if (!s_font_set) dmp_set_fallback_font_memory(lx_font_data, (size_t)lx_font_data_size), s_font_set = 1;
     dmp_draw_software(pixels, width, height, pitch, &f);
     return 1;

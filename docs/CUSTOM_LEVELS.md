@@ -342,9 +342,11 @@ Trespasser CE scripts ([CE_SCRIPTS](CE_SCRIPTS.md)) are read from the `scripts` 
 paths, the fan mission, its uber mod paths: CE's load order, the lowest priority first), and judged per level, never per package. A
 level needs them when its world names a script class (an object's `Script`, a trigger's action 99 `ScriptAT`) or when a game script, or
 a level script for that scene, acts in it; then the analysis lists its classes (`SCRIPT_CLASS`), each file's required script functions
-(`SCRIPT_REQUIRES`) and refuses it as `CE_SCRIPT_API` while one of them is not in the port yet. A level that needs none is played
+(`SCRIPT_REQUIRES`) and refuses it as `CE_SCRIPT_API` while one of them is not in the port yet: the names the port has are the
+registry `src/common/jpt_script_registry.inc`, the same table the VM is checked against. A level that needs none is played
 without a VM, beside levels of the same package that need one. The runtime map lists the scripts (`nut`) and what the worlds name
-(`script`); the game decides again with the same code (`src/common/jpt_script_plan.cpp`).
+(`script`); the game decides again with the same code (`src/common/jpt_script_plan.cpp`). A listing made before a name was added
+is judged again: the registry is part of the listing's key.
 
 Restart Level in a custom session restarts the current level whole: the world is purged and the level is loaded again through the
 game's own level load, with its loading screen, as when the session entered it. The player, objects, triggers, AI, physics and the actions

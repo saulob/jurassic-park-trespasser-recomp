@@ -21,6 +21,7 @@
 #include "level_actions.h"
 #include "jpt_fs.h"
 #include "jpt_gamepad.h"
+#include "jpt_level_scripts.h"
 #include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "objectives.h"
@@ -368,8 +369,16 @@ void debug_menu_ui_loop(void) {
         perf_section_end(PS_CHEATS, section);
     }
     navigate(scratch, now);
+    if (jpt_custom_level_active() && place_of(&v) == DM_PLACE_LEVEL) jpt_level_scripts_paint();
     g_esp = esp;
     note_changes();
+}
+
+/* Scripts draw only over gameplay: never over a load, a menu of the game or a world being torn down. */
+static const jpt_draw_frame_t* script_frame(void) {
+    guest_ui_view_t v;
+    const jpt_draw_frame_t* frame = jpt_custom_level_active() ? jpt_level_scripts_frame() : NULL;
+    return frame && guest_ui_probe(&v) && place_of(&v) == DM_PLACE_LEVEL ? frame : NULL;
 }
 
 static void add_level(const char* name, int is_dir, void* user) {
@@ -486,7 +495,7 @@ static int hud_wanted(void) {
     return D.hud.compass || D.hud.marker || D.hud.objective[0] || D.hud.notice[0] || D.hud.minimap;
 }
 
-int debug_menu_overlay_wanted(int frame_counter_on) { return D.state.open || hud_wanted() || frame_counter_on; }
+int debug_menu_overlay_wanted(int frame_counter_on) { return D.state.open || hud_wanted() || frame_counter_on || script_frame(); }
 
 /* The UI loop that refreshes the HUD does not run under videos or loads: the picture is checked as it is shown. */
 int debug_menu_hud_on_screen(void) {
@@ -498,6 +507,7 @@ void debug_menu_fill_frame(dmp_frame_t* f) {
     f->menu = D.state.open;
     f->objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
     if (debug_menu_hud_on_screen()) f->hud = &D.hud;
+    f->script = script_frame();
     if (f->menu) {
         f->rows = D.rows;
         f->row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);

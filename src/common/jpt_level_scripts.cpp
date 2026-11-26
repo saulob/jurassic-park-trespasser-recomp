@@ -12,6 +12,7 @@ namespace {
 
 jpt_script_session* g_session;
 jpt_level_scripts_log_fn g_log;
+const jpt_script_engine* g_engine;
 
 void Log(void*, const char* line) {
     if (g_log) g_log(line);
@@ -63,6 +64,7 @@ extern "C" void jpt_level_scripts_start(jpt_session_kind_t kind, jpt_level_scrip
     config.log = Log;
     config.read = Read;
     config.per_level_files = 1;
+    config.engine = g_engine;
     g_session = jpt_script_session_create(&config);
     for (int i = 0; jpt_custom_level_script_file(i); ++i) jpt_script_session_add_file(g_session, jpt_custom_level_script_file(i));
     const char *scene, *class_name, *object;
@@ -100,6 +102,49 @@ extern "C" void jpt_level_scripts_ready(int ok) {
 
 extern "C" void jpt_level_scripts_step(float seconds) {
     if (g_session) jpt_script_level_step(g_session, seconds);
+}
+
+extern "C" void jpt_level_scripts_act_bite(unsigned animal, unsigned target, const float location[3], float distance, int feint) {
+    if (g_session) jpt_script_level_act_bite(g_session, animal, target, location, distance, feint);
+}
+
+extern "C" void jpt_level_scripts_set_engine(const jpt_script_engine* engine) { g_engine = engine; }
+
+extern "C" void jpt_level_scripts_paint(void) {
+    if (g_session) jpt_script_level_paint(g_session);
+}
+
+extern "C" const jpt_draw_frame_t* jpt_level_scripts_frame(void) {
+    if (!g_session) return nullptr;
+    const jpt_draw_frame_t* frame = jpt_script_level_paint_frame(g_session);
+    return frame && frame->count > 0 ? frame : nullptr;
+}
+
+extern "C" void jpt_level_scripts_input(const jpt_script_input* in, jpt_script_input_result* out) {
+    if (out) *out = jpt_script_input_result{};
+    if (g_session) jpt_script_level_input(g_session, in, out);
+}
+
+extern "C" int jpt_level_scripts_key(unsigned vk, int down, int shift, int ctrl, int alt) {
+    return g_session ? jpt_script_level_key(g_session, vk, down, shift, ctrl, alt) : 0;
+}
+
+extern "C" unsigned jpt_level_scripts_user_commands(void) { return g_session ? jpt_script_session_user_commands(g_session) : 0u; }
+
+extern "C" int jpt_level_scripts_drives_player(void) { return g_session && jpt_script_level_drives_player(g_session); }
+
+extern "C" float jpt_level_scripts_speed_factor(unsigned player, float speed) {
+    return g_session ? jpt_script_level_speed_factor(g_session, player, speed) : speed;
+}
+
+extern "C" float jpt_level_scripts_jump_factor(unsigned player) { return g_session ? jpt_script_level_jump_factor(g_session, player) : 1.0f; }
+
+extern "C" void jpt_level_scripts_jump(unsigned player) {
+    if (g_session) jpt_script_level_jump(g_session, player);
+}
+
+extern "C" int jpt_level_scripts_console(const char* command, const char* args) {
+    return g_session ? jpt_script_level_console(g_session, command, args) : 0;
 }
 
 extern "C" void jpt_level_scripts_end(void) {

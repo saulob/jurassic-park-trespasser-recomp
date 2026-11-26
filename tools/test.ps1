@@ -303,6 +303,24 @@ Add-Exes $s @(
     , @('script_session_tests', 'the scripts of a custom session over a model engine: VM creation and destruction without a leak, CE load steps and callbacks in order (constructor, OnScriptInit, OnGameStart, OnLevelStart, OnSimStep, OnLevelEnd, OnWorldPurge, destructor), a level without scripts and no VM in the same package, transitions with game script nvram, Restart Level from the level start (repeated), missing files, syntax and runtime errors, one script stopped while the others go on, the instruction budget per call, the memory budget of the whole VM, the campaign creating nothing before and after a custom session', 100)
 )
 
+$s = 'Script bindings'
+Add-Exes $s @(, @('script_bindings_tests', 'CE''s script API in a VM: every name of the registry the launcher accepts exists on its owner, Vector3 and Rotate3 (constructors, components, operators, rotation as the engine''s quaternions, inverse, scaled rotation, Dot, Cross, Length, LengthSqr, Normalise without NaN, division by zero refused), TP_Engine''s simulation time and seeded random numbers in their ranges, the world''s objects as handles looked up at every call (a gone object, a world being loaded, an older world generation and a script-made object refused with a script error), engine classes of script classes, nvram with Vector3, Rotate3 and objects saved by unique handle', 150))
+
+$s = 'Script instances'
+Add-Exes $s @(, @('script_instance_tests', 'instance scripts of a custom level over a model world: the objects the world names get their scripts, the engine class checked, a missing object named, OnScriptInit, OnActBite from the AI with the target, a spitting animal launching projectiles with Teleport and MoveWithFixedVelocity from its head, a projectile gone from the world stopping only that script, the instruction budget per instance, Restart with a new world generation, saves and loads of nvram by object with OnPostLoad, transitions destroying them', 30))
+
+$s = 'Script drawing'
+Add-Exes $s @(, @('script_draw_tests', 'what game scripts draw: GetTexture (one texture per name, null when missing, its width and height, gone with its VM at Restart), GetScreenWidth and GetScreenHeight, IsSoftwareMode, DrawTexture from OnPaintHW3D only with its rectangles, ARGB and blend modes 0, 1 and 2, a script that fails or runs out of its budget while painting drawing nothing, the VM out of memory drawing nothing, no paint over a load; the same commands through every overlay backend without a window: software pixels for alpha, additive and opaque, off-screen clipping, the GPU list Vulkan draws with its additive commands and texture slots freed by a new level, the RGBA layer, Direct3D 11 on WARP', 40))
+
+$s = 'Script input'
+Add-Exes $s @(, @('script_input_tests', 'game scripts'' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only when the level''s scripts name them (none for other levels and the campaign), bKeyHit, bKeyPressed and the movement input in OnHandleInput only, a budget inside it, modal mode entered from OnHandleInput, its keys (VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR, VK_NEXT) to OnModalKey, F keys left to the port, OnHandleModalInput with mouse look, one modal script at a time, Escape and the player''s death aborting it, its script stopped by an error or its budget releasing it, Restart and transitions ending it', 40))
+
+$s = 'Script player'
+Add-Exes $s @(, @('script_player_tests', 'the player''s CPlayer script as CE calls it: fGetSpeedFactor on every movement request (walk, strafe, run, the sprint speed, slower when tired), fGetJumpFactor on one that asks to jump (0 when tired), negative factors as 0, a failing, non-number, wrong-arity or endless factor keeping the game''s own, OnJump only for the player''s handle, Say by sample name through the game''s voice (case and path separator aside, a missing sample ignored, a name required), r3HeadRotRel composing with r3Rot into the game''s view, handles refused after Restart, a load, a transition and when the player leaves the world, Restart clearing the script''s state, a save keeping its nvram only, the HUD, modal map and sprint of the Cloning Facility fixture alongside, the campaign with none of it', 40))
+
+$s = 'Script console'
+Add-Exes $s @(, @('script_console_tests', 'OnConsoleCommand dispatched headless as CE does for a console command the game does not know (the port has no console): game scripts in order until one returns true, a number or string not counting, level scripts never asked, an empty command reaching none, an error or a budget stopping only that script, nothing while a level loads, Restart, a level without a VM, the campaign without it', 25))
+
 $s = 'Script save'
 Add-Exes $s @(, @('script_save_tests', 'what a custom session''s save keeps of its scripts: the nvram of game and level scripts by class and the level''s start, loading it into new scripts, damaged, truncated and unknown blocks ignored with their reason, scripts changed since the save, the block behind the stamp and the actions'' state of stamped saves only, never in a campaign save', 80))
 
@@ -371,7 +389,9 @@ $helperTestFiles = @{
     'tests\linux_suites.json' = 'classification of the suites for the Linux gate (tools/linux_gate.py)'
     'tests\smk_fixture.h' = 'shared generator of a synthetic Smacker file: smacker_ffmpeg_tests'
     'tests\level_fixtures.h' = 'shared generator of synthetic scenes, worlds and texture sets: custom_level_tests and custom_level_session_tests'
-    'tests\script_fixtures.h' = 'shared fixture of the script session suites: a log, a counting allocator, scripts in memory, packages and saves on disk: script_session_tests and script_save_tests'
+    'tests\script_fixtures.h' = 'shared fixture of the script session suites: a log, a counting allocator, scripts in memory, packages and saves on disk: script_session_tests, script_save_tests and script_instance_tests'
+    'tests\script_hud_fixture.h' = 'shared fixture of a level shaped as the Cloning Facility''s scripts (HUD, map, sprint, modal map, MAP console command, the player''s stamina script): script_draw_tests, script_input_tests and script_player_tests'
+    'tests\script_world.h' = 'shared model world of the script API suites (the engine side of jpt_script_engine.h): script_bindings_tests and script_instance_tests'
     'tests\texhw_fixture.h' = 'shared generator of synthetic texhw pictures: texhw_tests'
 }
 $toolRole = @{

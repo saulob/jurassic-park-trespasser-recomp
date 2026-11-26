@@ -142,6 +142,18 @@
    "to": "00741BF0",
    "category": "PROVED_CHANGED_EQUIVALENT",
    "evidence": "the count of the CMessageUse receivers, 8 bytes past their list: CPlayer's use builds the message with the list 0x00741BE8 and adds one to 0x00741BF0 (0x00431180, 0x00431194, 0x0043119D), as 116 does with 0x0073F278 and 0x0073F280 (0x0044CD10, 0x0044CD24)"
+  },
+  {
+   "va": "00455C9E",
+   "to": "004394E2",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CPlayer::Process sends its movement request: 116 'lea ecx,[ebp-0x118]; push ecx; ...; call [eax+0x1dc]' (0x00455C9E..0x00455CB3), es-117 'lea eax,[ebp-0x118]; push eax; ...; call [edx+0x1dc]' (0x004394E2..0x004394F7); the same request local (speed +0x14, jump amount +0x84, scale +0x88), only the player local moves ([ebp-0x1e68] -> [ebp-0x1c00]), which the hook does not read"
+  },
+  {
+   "va": "004F0C00",
+   "to": "004D691E",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the instruction after the jump hand-off arms the impulse with z = 1.0: 116 'mov [0x0067AFA8], 0x3f800000' at 0x004F0BF6, es-117 'mov [0x006D02B4], 0x3f800000' at 0x004D6914; 1.1 arms on a new press or with nothing pending, the hook only replaces the z just stored"
   }
  ]
 }

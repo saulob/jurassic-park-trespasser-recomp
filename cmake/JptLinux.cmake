@@ -136,7 +136,7 @@ set(JPT_STREAM_SOURCES src/host/stream_pack.c src/host/stream_vfile.c src/host/t
 # The host features written against guest_abi.h (src/host/guest_abi.h): the same sources the Windows host builds, over the Linux
 # implementation of that interface (src/linux/linux_host.c, linux_overrides.c).
 set(JPT_GUEST_FEATURE_SOURCES
-  src/host/guest_features.c src/host/scene_options.c src/host/terrain_shadows.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c src/host/scene_scripts.c src/host/sky_layers.c src/host/texhw_guest.c src/host/level_actions.c src/host/level_actions_policy.c src/host/level_session.c
+  src/host/guest_features.c src/host/scene_options.c src/host/terrain_shadows.c src/host/ce_gameplay.c src/host/active_ai.c src/host/active_ai_policy.c src/host/ai_vocals.c src/host/scene_scripts.c src/host/sky_layers.c src/host/texhw_guest.c src/host/level_actions.c src/host/level_actions_policy.c src/host/level_session.c src/host/script_engine.c
   src/host/patch117.c src/host/patch117_objects.c src/host/patch117_physics.c src/host/patch117_player.c
   src/host/patch117_rules.c src/host/patch117_policy.c src/host/physics_fixes.c src/host/physics_watch.c
   src/host/physics_watch_policy.c src/host/terrain_quality.c src/host/engine_heaps.c src/host/level_abort.c src/host/missing_textures.c src/host/widescreen.c src/host/fov_policy.c
@@ -215,7 +215,14 @@ jpt_linux_test(script_vm_tests SOURCES tests/script_vm_tests.cpp LIBS jpt_script
 jpt_linux_test(script_plan_tests SOURCES tests/script_plan_tests.cpp LIBS jpt_script_plan)
 jpt_linux_test(script_session_tests SOURCES tests/script_session_tests.cpp LIBS jpt_script INCLUDES tests)
 jpt_linux_test(script_save_tests SOURCES tests/script_save_tests.cpp LIBS jpt_script INCLUDES tests)
-set_target_properties(script_vm_tests script_plan_tests script_session_tests script_save_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+jpt_linux_test(script_bindings_tests SOURCES tests/script_bindings_tests.cpp LIBS jpt_script INCLUDES tests)
+jpt_linux_test(script_instance_tests SOURCES tests/script_instance_tests.cpp LIBS jpt_script INCLUDES tests)
+jpt_linux_test(script_input_tests SOURCES tests/script_input_tests.cpp LIBS jpt_script INCLUDES tests)
+jpt_linux_test(script_draw_tests SOURCES tests/script_draw_tests.cpp LIBS jpt_script jpt_panel_linux INCLUDES tests src/host)
+jpt_linux_test(script_player_tests SOURCES tests/script_player_tests.cpp LIBS jpt_script INCLUDES tests)
+jpt_linux_test(script_console_tests SOURCES tests/script_console_tests.cpp LIBS jpt_script INCLUDES tests)
+set_target_properties(script_vm_tests script_plan_tests script_session_tests script_save_tests script_bindings_tests script_instance_tests
+                      script_input_tests script_draw_tests script_player_tests script_console_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 jpt_linux_test(sync_tests SOURCES tests/sync_tests.c LIBS jpt_common_linux)
 jpt_linux_test(port_tests SOURCES tests/port_tests.c LIBS jpt_common_linux)
 jpt_linux_test(app_identity_tests SOURCES tests/app_identity_tests.c LIBS jpt_common_linux)

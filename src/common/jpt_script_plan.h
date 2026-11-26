@@ -55,6 +55,7 @@ struct LevelPlan {
     std::vector<PlannedClass> classes;  // game scripts, then level scripts, then those the world names
     std::vector<std::string> required;  // CE functions, classes and handlers the port does not have yet, sorted
     std::vector<std::string> problems;  // a class the world names that no script declares, ...
+    unsigned user_commands = 0;         // uCMD_USER1..8 its code names, as bits 0..7
     bool needs_scripts() const { return !classes.empty() || !problems.empty(); }
     bool supported() const { return required.empty() && problems.empty(); }
 };
@@ -68,5 +69,19 @@ std::vector<std::string> FileRequires(const std::vector<FileInfo>& files, const 
 // The handlers the port calls (CE names), and whether a name is one of CE's API.
 bool IsDrivenHandler(Kind kind, const std::string& name);
 bool IsCeName(const std::string& name);
+
+// The CE API the port implements (jpt_script_registry.inc).
+enum class ApiKind { kClass, kNamespace, kEnum, kMethod, kField, kFunction, kConstant, kHandler };
+struct ApiEntry {
+    const char* owner; // "" for the root table; for a handler, empty
+    const char* name;
+    ApiKind kind;
+    unsigned scopes;   // handlers: kScope* of the script kinds the port calls it on
+    const char* capability;
+};
+inline constexpr unsigned kScopeGame = 1, kScopeLevel = 2, kScopeInstance = 4;
+const std::vector<ApiEntry>& Api();
+// A CE name some entry of the registry implements (handlers excluded).
+bool IsImplemented(const std::string& name);
 
 } // namespace jpt::script

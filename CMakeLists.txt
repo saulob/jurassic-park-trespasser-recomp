@@ -219,6 +219,7 @@ set(HOST_SOURCES
   src/host/level_actions.c
   src/host/level_actions_policy.c
   src/host/level_session.c
+  src/host/script_engine.c
   src/host/patch117_policy.c
   src/host/patch117_objects.c
   src/host/patch117.c
@@ -893,16 +894,24 @@ target_link_libraries(script_vm_tests PRIVATE jpt_script)
 target_compile_options(script_vm_tests PRIVATE /W3 /utf-8)
 target_compile_definitions(script_vm_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 set_target_properties(script_vm_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
-# Which scripts a level needs, and the custom session's script lifecycle and saves (headless):
-#   ninja -C <build dir> script_plan_tests script_session_tests script_save_tests
+# Which scripts a level needs, the custom session's script lifecycle and saves, CE's API and instance scripts (headless):
+#   ninja -C <build dir> script_plan_tests script_session_tests script_save_tests script_bindings_tests script_instance_tests
 add_executable(script_plan_tests EXCLUDE_FROM_ALL tests/script_plan_tests.cpp)
 target_link_libraries(script_plan_tests PRIVATE jpt_script_plan)
-foreach(script_test script_session_tests script_save_tests)
+foreach(script_test script_session_tests script_save_tests script_bindings_tests script_instance_tests script_input_tests
+        script_player_tests script_console_tests)
   add_executable(${script_test} EXCLUDE_FROM_ALL tests/${script_test}.cpp)
   target_link_libraries(${script_test} PRIVATE jpt_script)
   target_include_directories(${script_test} PRIVATE tests)
 endforeach()
-foreach(script_test script_plan_tests script_session_tests script_save_tests)
+# What game scripts draw through the overlay's backends (software, the GPU list, RGBA, Direct3D 11 on WARP; headless):
+#   ninja -C <build dir> script_draw_tests
+add_executable(script_draw_tests EXCLUDE_FROM_ALL tests/script_draw_tests.cpp src/host/debug_menu_panel.cpp src/host/imgui_software.cpp
+  src/host/debug_menu_layout.c src/host/compass_policy.c src/host/minimap.c)
+target_include_directories(script_draw_tests PRIVATE tests src/host src/common)
+target_link_libraries(script_draw_tests PRIVATE jpt_script jpt_common imgui_dx11 d3d11 dxguid)
+foreach(script_test script_plan_tests script_session_tests script_save_tests script_bindings_tests script_instance_tests script_input_tests
+        script_draw_tests script_player_tests script_console_tests)
   target_compile_options(${script_test} PRIVATE /W3 /utf-8)
   target_compile_definitions(${script_test} PRIVATE _CRT_SECURE_NO_WARNINGS)
   set_target_properties(${script_test} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)

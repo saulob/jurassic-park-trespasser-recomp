@@ -1,8 +1,8 @@
 # Trespasser CE scripts (Squirrel)
 
-Status: phase 0 (a level needs scripts only when they act in it), phase 1 (the interpreter) and phase 2 (the lifecycle of a custom
-level's VM, its saves and loads) are done. Phase 3, CE's engine API, is pending: a level whose scripts call any of it is refused as
-`CE_SCRIPT_API`, with the names it needs ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)).
+Status: phases 0 to 2 (which levels need scripts, the interpreter, the lifecycle, saves) are done. Phase 3, CE's engine API, is done
+for what the Spitter animals and the Cloning Facility of the corpus use. A level whose scripts use a name the port does not have is
+refused as `CE_SCRIPT_API`, with the names ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)).
 
 ## Scope
 
@@ -33,8 +33,8 @@ The names `API-reference.txt` declares (classes, namespaces, functions, members,
 |---|---|---|
 | GameScript | one per class found, for every level of the session; `nvram` crosses level transitions | made in every level whose VM exists; its `nvram` travels between levels, VM or not |
 | LevelScript | one per class, limited by an optional `static SCN` | made in the levels it applies to |
-| ActionType | per action 99 of a trigger, class named by `ScriptAT` | needs CE's API (the `ActionType` class): the level is refused |
-| Instance script | per object whose `Script` property names a class derived from its engine class | needs CE's API (the engine classes): the level is refused |
+| ActionType | per action 99 of a trigger, class named by `ScriptAT` | not yet (the `ActionType` class): the level is refused |
+| Instance script | per object whose `Script` property names a class derived from its engine class | made when the level's load returned, for each object the world names (phase 3) |
 
 ## Phase 0: which scripts a level needs (done)
 
@@ -51,8 +51,10 @@ out, locals and parameters never taken for engine names).
   script that only keeps its own state changes nothing in a level.
 * The files a level loads: those that declare its classes and their bases, and every file whose globals that code reads, in load
   order. Never the package's other scripts.
-* Required script functions: the names of CE's API the loaded code uses, and the handlers its classes declare that the port does not
-  call yet, per level and per file. A class the world names that no script declares, or one of the wrong kind, is a problem of the
+* Once a level needs a VM, every game script and every level script that applies to it is made, those that only keep their state
+  too (CE makes them all; a helper such as the Spitter's resets the globals its animals share).
+* Required script functions: the names of CE's API the loaded code uses that `src/common/jpt_script_registry.inc` does not list,
+  and the handlers its classes declare that the port does not call, per level and per file. A class the world names that no script declares, or one of the wrong kind, is a problem of the
   level. The launcher refuses a level with either (`CE_SCRIPT_API`, `CE_SCRIPTS`) and lists them (`SCRIPT_CLASS`, `SCRIPT_REQUIRES`).
 
 ## Phase 1: the interpreter (done)
@@ -126,8 +128,10 @@ Where the port differs from CE, and why:
 * `OnScriptInit` and `OnLevelStart` run after the game's level load returned, so after the start triggers (CE calls
   `OnScriptInit` before them). Without CE's API a script cannot see the difference.
 * `OnLevelEnd` is called at transitions only. `OnLevelTransitionRequested`, `OnGameCompleted`, the paint, input, console and modal
-  handlers, and every handler of instance and action scripts are not called yet: a level whose scripts declare one is refused, with
-  its name.
+  handlers, the player's handlers and every handler of action scripts are not called yet: a level whose scripts declare one is
+  refused, with its name.
+* The nvram of game and level scripts is put back when the level's load returned, before `OnScriptInit` (CE: when the save's state
+  is read, step 3), not before the load.
 
 ### Errors and budgets
 
@@ -157,7 +161,8 @@ not at all (`jpt_save_finish`). A save of the game's display rebuild (`temp.scx`
 
 Loading reads the block before the level loads: one that is truncated, of an unknown version, too large or with bytes after its last
 script is ignored with its reason (`save state ignored:`), and the scripts start from their constructors. A script the save names that
-the level no longer has is skipped with a line; a script without an `nvram` table now is named. The save's package and the content of
+the level no longer has is skipped with a line; a script without an `nvram` member now is named. A declared `nvram` that is still
+`null` (a script that makes its table only when not loading a save) gets a new table of the saved slots, as in CE. The save's package and the content of
 its worlds are checked as before (`jpt_save_belongs`).
 
 ## What the corpus uses
@@ -166,24 +171,146 @@ Of 262 levels of the TresCom corpus, 5 were refused for `CE_SCRIPTS` alone befor
 
 | Package | Level | Scripts | What they ask that the port does not have |
 |---|---|---|---|
-| Cloning Facility | `TI~ClnFcty.scn` | `CPlayerTI` (player), GameScripts `GameTI` with its HUD and inventory | `CPlayer`, `TP_Engine`, `GetPlayer`, `DrawTexture`, `GetTexture`, `u4DisplayFormattedString`, `bKeyHit`, `uCMD_USER1/2`, `fGetSpeedFactor`, `fGetJumpFactor`, `OnJump`, `OnPaintHW3D`, `OnHandleInput`, `OnModalKey`, `Say`, `SendLGMessage`, ... |
-| TresCom Ops Anthology | `trescom.scn`, `tc_isle.scn` (2022 updates) | `Spitter` animals, `SpitterProjectile` objects | `CAnimal`, `CInstance`, `OnActBite`, `TP_Engine`, `GetElapsedSimTime`, `GetRandFloatRanged`, `pbbBoundaryBox`, `ebbHEAD`, `v3GetHeadPos`, `r3Rot`, `Teleport`, `MoveWithFixedVelocity`, `Vector3`, ... |
+| Cloning Facility | `TI~ClnFcty.scn` | `CPlayerTI` (player), GameScripts `GameTI` with its HUD and inventory | nothing since phase 3: `READY` |
+| TresCom Ops Anthology | `trescom.scn`, `tc_isle.scn` (2022 updates) | `Spitter` animals, `SpitterProjectile` objects | nothing since phase 3: `READY` |
 | TresCom Ops Anthology | `tc_prequel.scn`, `tc_rescue.scn` | none act: no object names a class, `SpitterHelper` only keeps its state | nothing: no VM; `READY` |
 
-Each level is judged alone, so a sibling refused for CE's API does not refuse them: the corpus has 250 of 262 levels `READY`.
+Each level is judged alone, so a sibling refused for CE's API does not refuse them: the corpus has 253 of 262 levels `READY`. The
+Cloning Facility's `fm.ini` sets `EnableAiActivityEx=-1`, which the analysis reports as ineffective: the level does not need CE's
+extended AI.
 
 `custom_level_scan --analyze-custom-level` and the compatibility report list them per level.
 
-## Phase 3: CE's engine API, corpus first (pending)
+## Phase 3: CE's engine API (Spitter and Cloning Facility done)
 
-* Vector3, Rotate3 and their operators as native classes; the entity classes as handles that become invalid when the object is
-  gone (a call on a gone object is a script error, never a dangling pointer). Instance and action scripts made from the world file's
-  `Script` and `ScriptAT`, with `OnReset`, `OnPostLoad` and their own `nvram` by object.
-* Spitter: `OnActBite` from the AI's bite and feint, head box and position, `Teleport`, `MoveWithFixedVelocity` over the fixed speed
-  of actions 110 and 111, `TP_Engine.GetElapsedSimTime`, CE's random numbers.
-* Cloning Facility: player speed and jump factors, `OnJump`, `Say`, pick-up and messages, `DrawTexture`/`DrawSolidRect`/`DrawBitmap`
-  into the host overlay, `u4DisplayFormattedString`, `uCMD_USER1` to `uCMD_USER8` binds, modal mode (Escape and Start leave it).
-* `OnLevelTransitionRequested`, `OnGameCompleted` and `OnLevelEnd(false)` at the end of the game.
+One registry, `src/common/jpt_script_registry.inc`, lists every name of CE's API the port implements and every handler it calls, by
+script kind. The launcher's analysis (`jpt::script::IsImplemented`, `IsDrivenHandler`) refuses a level whose scripts use a CE name
+that is not in it, and `script_bindings_tests` proves that each entry exists in a VM on its owner. A name enters it only with its
+binding, its arguments checked, its effect done by the engine and a test of it. The registry is part of the launcher listing's key,
+so a level refused before is judged again when names are added.
+
+### Values
+
+`Vector3` and `Rotate3` (`src/common/jpt_script_math.h`, `jpt_script_api.cpp`): constructors, components, the operators of
+API-reference.txt, `Scale`, `Normalise`, `Dot`, `Cross`, `Length`, `LengthSqr`, `XAxis`/`YAxis`/`ZAxis`. Rotate3 is the engine's quaternion
+(w, then x y z) rotating row vectors: `v * (a * b) == (v * a) * b`, `-r` its inverse, `r * f` the same axis with the angle scaled. A zero
+vector stays zero when normalised and a zero quaternion becomes the identity; a division by zero, an argument of the wrong type and a
+position or velocity that is not finite are script errors, never values handed to the engine.
+
+### The world's objects
+
+`src/common/jpt_script_engine.h` is what scripts reach of the game: the host implements it over the guest
+(`src/host/script_engine.c`), the tests over a world of their own. An object is named by its unique handle (`u4GetUniqueHandle`, the
+engine's hash of its name, `[instance+0x2C]`) and found again through the world's `pinsFindInstance` at every call; an entity instance
+keeps the handle, the box it stands for and its world generation, never a pointer. A call is a script error naming the method when
+the object is gone, when the world is being loaded or purged (between a level's begin and its ready), when the instance belongs to an
+earlier world (the VM's generation), or when a script made the instance itself. Nothing in a script keeps a game object alive.
+
+Bound: `CPartition` (`v3Pos`, `r3Rot`), `CInstance` (`GetInstanceName`, `u4GetUniqueHandle`, `Teleport`, `MoveWithFixedVelocity`,
+`ActivateSimStep`, `bIsSimStepActive`), `CBoundaryBox`, `CEntity`, `CAnimate` (`pbbBoundaryBox`, `GetHealth`: its hit points, `bDead`: the
+engine's own test), `CAnimal` (`v3GetHeadPos`, the engine's), `CPlayer` (`pinsHeldObject`), `CGun` (`iAmmo`, `iMaxAmmo`, kept
+`0 <= iAmmo <= iMaxAmmo`), `EBoundaryBoxes` (the 8 boxes of an animate, the aliases sharing theirs), `TP_Engine` (`GetElapsedSimTime`: the
+game's simulation time; `GetRandInt`, `GetRandIntRanged`, `GetRandFloatRanged`: a generator seeded per VM; `GetPlayer`; `rgb`, `rgba`,
+`frgb`, `frgba`; `u4DisplayFormattedString`, `u4FindSequenceEnd`, `TEXT_FORMAT_*`, `ETextType`), `SendLGMessage`, `SendMessage`.
+
+* `Teleport` places the object through the engine's teleport action (that of ActionType 114), physics included. `MoveWithFixedVelocity`
+  is the fixed velocity of ATX's action 110: the velocity is applied every step for the time given (a negative time: until action 111),
+  kept in saves with the actions' state; `false` when the object has no physics or, asked to fail then, already moves at one.
+* Text goes to the game's own text overlay (`CTextOverlay`, as the level TEXT action and the voice captions): formats `CENTER` 1,
+  `LEFT` 2, `RIGHT` 4, `TOP` 8, `BOTTOM` 0x10, `SOLID` 0x200 (the overlay's own bits, the captions use `CENTER|BOTTOM` of type 2);
+  `ettALL` 0, `ettUNKNOWN` 1, `ettSUBTITLE` 2, `ettTUTORIAL` 3. `rgb` is 0x00RRGGBB as the overlay keeps it. A text is at most 1023
+  bytes and its bytes reach the game as written. The overlay follows `handle_prev` as a pointer: only a handle of an entry it holds is
+  passed on, any other value shows the text now.
+* `SendLGMessage` calls `OnMessage` of every game and level script but the sender, at once, in their order; `SendMessage` calls the
+  target's instance script and returns its reply (null when the target has no script or is the sender). A message spends what is left
+  of its sender's instruction budget, and messages nested deeper than 16 are a script error.
+
+### Instance scripts
+
+For each object of the world whose `Script` names a class (the runtime map's `script` lines), when the level's load returned: the
+object found by its name, its engine class (by vtable: `CInstance`, `CBoundaryBox`, `CEntity`, `CAnimate`, `CAnimal`, `CPlayer`, `CGun`)
+compared with the engine class the script class derives from (a mismatch or a missing object is logged, the others go on), an
+instance of the class bound to it, its constructor. Then, in CE's order: nvram from the save, `OnPostLoad` (a save only),
+`OnScriptInit(bSaveGame)` on instance scripts, then on game and level scripts. Each runs as its own script (`Class:object` in the log): an
+error or a budget stops that object's script only. `OnSimStep` runs after `ActivateSimStep(true)`, which saves keep. Saves keep each
+instance script's nvram under its object (block version 2, which also holds Vector3, Rotate3 and objects by unique handle; version 1
+is still read). Restart, a transition or a save loaded destroy them with their VM (`destructor`) and the new world gets new ones.
+`OnReset` is never called: a custom level always loads whole, as CE with `DisableSimpleLevelRestart`.
+
+`OnActBite(pinsTarget, v3TargetLoc, fTargetDist, bFeint)`: the host overrides the `Act` of the AI's Bite and Feint activities
+(`0x004329A0`, `0x00432B10`); after the game's own, the animal the AI is thinking with gets the call with the influence's target,
+location and distance.
+
+### Drawing
+
+`OnPaintHW3D` runs once per frame of gameplay, on the game's thread, from the host's interface loop (`src/host/debug_menu.c`):
+never over a load, a menu of the game or a world being purged, never on a script that does not declare it. Only there may
+`TP_Engine.DrawTexture` be called; it records a command (`src/common/jpt_script_draw.h`): a texture of the level's VM by id, a source
+rectangle in texels, a rectangle on the game's screen, the ARGB modulation and CE's blend mode (0 opaque, the texture's alpha
+ignored; 1 alpha; 2 additive). Nothing of a renderer reaches a script. At most 4096 commands a frame; past it, and for a blend mode
+that is not 0 to 2 or an argument that is not a texture, a script error. A script that fails or runs out of its budget while
+painting draws nothing that frame; a VM out of memory draws nothing.
+
+`TP_Engine.GetTexture(name)` loads a picture of the package (TGA, DDS, BMP; without an extension the first of `.tga`, `.dds`, `.bmp`
+that exists, as the Cloning Facility's `scripts/maps/map_GPS`) by a path relative to its game paths, once per name in a level; a
+missing picture is `null`, as in CE. The texture is the VM's: 256 at most, 64 MB of pixels; `GetWidth` and `GetHeight` read its size, and
+it is gone with its VM at Restart, a transition or a load. `GetScreenWidth` and `GetScreenHeight` are the game's main rendering surface
+(its raster), the space the commands are in. `IsSoftwareMode` is `false`: the port draws these textures with every renderer.
+
+The overlay every renderer composes (`src/host/debug_menu_panel.cpp`) turns the commands into its draw lists, under the port's HUD and
+menus, scaled from the game's screen to the picture; mode 2 is bracketed by a marker each backend honours: Direct3D 11 sets an
+additive blend state, the Vulkan overlay pipeline has an additive twin, the software rasteriser adds. The RGBA layer that Vulkan
+composites in straight alpha when its GPU list cannot be used (`JPT_VULKAN_CPU_OVERLAY`, or a failed submission) cannot add to the
+picture under it: there additive commands are drawn as alpha and counted. The Vulkan overlay holds 33 textures a frame; a level's
+textures are released when the next level's are drawn.
+
+### Input and modal mode
+
+* After the game read its controls (`CInput`, Windows and Linux alike), `OnHandleInput` on the game scripts that declare it, where
+  `bKeyHit`, `bKeyPressed` (of `uCMD_USER1` to `uCMD_USER8`) and `fGetInputMoveAmountY` (the movement input before any speed factor) may be
+  read; elsewhere they are a script error. A USER key is bound only in a level whose scripts name that command
+  (`LevelPlan::user_commands`); the keys are `script_user1_key` to `script_user8_key` of `trespasser.ini` (Shift and M for the first two;
+  the others unbound; letters, digits, Shift, Control, Alt, Tab, Space, Enter, Backspace, the arrows, Insert, Delete, Home, End,
+  PageUp, PageDown or None). They still reach the game. No USER command exists in the campaign.
+* `bSetModalMode(true)` succeeds unless another game script is modal; then the player's controls do nothing, keys of the keyboard go
+  to `OnModalKey(vk, pressed, shift, control, alt)` (virtual key codes, `VK_LEFT`, `VK_RIGHT`, `VK_HOME`, `VK_END`, `VK_PRIOR`, `VK_NEXT`
+  among them; F1 to F24 stay the port's), `OnHandleModalInput` runs instead of `OnHandleInput` and its `true` keeps mouse look. Escape and
+  the player's death end it with `OnModalAborted`. It ends with its script stopped by an error or a budget, and with the VM (Restart,
+  transitions, loads, the session's end); it is never saved.
+
+### The player
+
+The instance script of the player's object (a class that extends `CPlayer`) is called where CE calls it, in the game's own player
+code (`src/host/script_engine.c`; CE's `tpassp6.exe` 1.0.7e read for each):
+
+* `fGetSpeedFactor(fSpeedFactor)`: for every movement request `CPlayer::Process` sends (its walk speed, 0.5 walking, about 0.78
+  walking and strafing, 1.0 running), just before it sends it; the result is the request's speed. `fGetJumpFactor()`: for a request
+  that asks to jump (the key's hit frame, and while it is held when the official Patch 1.1 fix applies); the result is the jump
+  impulse's scale, which the hand-off arms instead of 1. A negative factor is 0; a call that fails, runs out of its budget or returns
+  no finite number keeps the game's value (the speed unchanged, 1).
+* `OnJump()`: when the pelvis jumps for the player's own request, after its velocity is set and before the jump vocal (the game's
+  0x004F8F00, called only for a voluntary jump that leaves the ground): never for a jump that cannot happen, a dead player, a
+  modal script holding the controls, or each frame a key is held.
+* `Say(strSample)`: the player's own voice (the game's `CPlayer` speech, as its pain and ammunition lines): the sample by its name,
+  case and path separator aside (its ID the CRC-32 of the name in lower case). A sample the game does not have, or a player who
+  cannot speak, says nothing; a value that is not a string is a script error.
+* `r3HeadRotRel()`: the rotation the player looks with relative to its body (the game's own view, body rotation then this one), so
+  `Vector3.YAxis() * (r3HeadRotRel() * r3Rot())` is where the player looks.
+
+Nothing of this is state of the port: the factors are asked again for every request, so a Restart, a load or a transition starts
+from the script's own state (`nvram`, saved as CE saves it), and the campaign has no script session. On the 1.1 builds the two
+places in `CPlayer::Process` and the hand-off are found in their own code (`config/guest_decisions`).
+
+### Console commands
+
+`OnConsoleCommand(strCmd, strArgs)` is CE's handler of a console command the game does not know: game scripts in their order until
+one returns `true` (a bool; another value does not handle it). The retail game has no console and the port adds none, so the
+dispatcher (`jpt_script_level_console`) exists for the headless tests only and no command reaches it in play; a level that defines
+the handler is not refused for it. The Cloning Facility's one command, `MAP`, does what its map key does.
+
+### Still missing
+
+* `OnLevelTransitionRequested`, `OnGameCompleted`, `OnLevelEnd(false)`.
 
 ## Phase 4: the rest of the documented API (pending)
 
@@ -198,6 +325,12 @@ keeps refusing a level whose scripts call one the port does not have, with its n
 | Script lifecycle | `script_plan_tests` | the scan, kinds, the per-level rule, files and order, required functions |
 | Script lifecycle | `script_session_tests` | creation and destruction without a leak, callback order, frame step, transitions, restarts (repeated), levels without scripts in the same package, retail levels, errors and budgets per script and per VM, the campaign before and after |
 | Script save | `script_save_tests` | the block's contents, loads, restart after a load, damaged, truncated and unknown blocks, scripts changed since, the block in stamped saves only |
+| Script bindings | `script_bindings_tests` | the registry against a VM, Vector3 and Rotate3, time and random numbers, handles of the world (gone, older world, world loading), player, guns, health, colours, text, nvram values |
+| Script drawing | `script_draw_tests` | textures, commands, the screen, errors and budgets while painting, Restart; software, GPU list, RGBA and Direct3D 11 (WARP) backends |
+| Script input | `script_input_tests` | USER commands per level, the input handlers, modal mode, its keys and its end |
+| Script player | `script_player_tests` | the speed and jump factors, their defaults and failures, OnJump, Say, r3HeadRotRel, handles after Restart, loads and transitions, the campaign |
+| Script console | `script_console_tests` | OnConsoleCommand's order, results, errors and budgets, Restart, the campaign |
+| Script instances | `script_instance_tests` | instance scripts over a model world: a spitting animal, OnActBite, Teleport and MoveWithFixedVelocity, a gone projectile, budgets, Restart, saves, messages, ActivateSimStep |
 | Custom level session | `custom_level_session_tests` | a scripted fan mission imported, listed in the runtime map, read back by the game, a VM only in its level |
 | Restart lifecycle | `level_actions_tests` | the host's Restart and step hooks tell the scripts |
 

@@ -8,6 +8,7 @@
 #include "host_input.h"
 #include "jpt_config.h"
 #include "jpt_tr.h"
+#include "guest_features.h"
 #include "minimap.h"
 #include "overlay_policy.h"
 #include "tutorial_prompts.h"
@@ -114,6 +115,7 @@ int overlay_blocks_gameplay(void) { return debug_menu_blocks_gameplay() || O.car
 
 int overlay_key_event(unsigned vk, int down, int repeat) {
     vk &= 0xFFu;
+    if (!overlay_blocks_gameplay() && script_engine_key(vk, down, repeat)) return 1;
     if (ov_keys_filter(&O.keys, vk, down)) return 1;
     if (!down || repeat) return 0;
     if (vk == HOST_VK_F1 && (O.active != OV_NONE || debug_menu_visible())) {

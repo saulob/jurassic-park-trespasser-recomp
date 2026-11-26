@@ -22,6 +22,7 @@ endforeach()
 set(plan_sources ${CMAKE_SOURCE_DIR}/src/common/jpt_script_plan.cpp)
 set(script_sources ${CMAKE_SOURCE_DIR}/src/common/jpt_script_heap.cpp ${CMAKE_SOURCE_DIR}/src/common/jpt_script_vm.cpp
   ${CMAKE_SOURCE_DIR}/src/common/jpt_script_state.cpp ${CMAKE_SOURCE_DIR}/src/common/jpt_script_session.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/jpt_script_api.cpp
   ${CMAKE_SOURCE_DIR}/src/common/jpt_level_scripts.cpp)
 if(TARGET jpt_common_linux)
   set(script_common jpt_common_linux)

@@ -215,6 +215,86 @@
    "status": "unmoved",
    "value": "0x22C",
    "evidence": "ShadowLighting (0x00516E00) passes [ebp-0x22C] to the camera constructor at 0x00516FB3 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PLAYER_HEAD",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0xD88",
+   "evidence": "CPlayer::Process builds the view from the body rotation [player+0x3C] and the head rotation [player+0xD88] (1.0.116 0x004554FD: add edx,0x3c / add eax,0xd88, then the w = 1 test); es-117 0x00438D08 does the same with its player local [ebp-0x1c00]"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PROCESS_REQUEST",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x118",
+   "evidence": "CPlayer::Process sends its movement request [ebp-0x118] through the player's vtable +0x1DC (1.0.116 0x00455C9E, es-117 0x004394E2: lea reg,[ebp-0x118]; push reg)"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_SPEED",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x14",
+   "evidence": "the request's walk speed: the jump hand-off reads [request+0x10] and [request+0x14] (1.0.116 0x004F097D/0x004F09D3, es-117 0x004D66C3: fld [esi+0x14]) and multiplies the walk velocity by +0x14"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_AMOUNT",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x84",
+   "evidence": "the jump sub-request at [ebp-0x94] = request+0x84 (amount, scale, new press) is built by the same constructor on the hit frame (1.0.116 0x00455B60, es-117 0x00439362: lea ecx,[ebp-0x94]); the hand-off tests [request+0x84] before it arms"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_SCALE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x88",
+   "evidence": "the second field of that jump sub-request ([ebp-0x90] = request+0x88), set to 1.0 by the constructor's argument in both builds (1.0.116 0x00455B57 call 0x0042FC70 with 1, es-117 0x00439362 with 0x00439520 with 1)"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PLAYER_HEAD",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0xD88",
+   "evidence": "CPlayer::Process builds the view from the body rotation [player+0x3C] and the head rotation [player+0xD88] (1.0.116 0x004554FD: add edx,0x3c / add eax,0xd88, then the w = 1 test); ptbr-117 0x00438ED8 does the same with its player local [ebp-0x1c00]"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PROCESS_REQUEST",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x118",
+   "evidence": "CPlayer::Process sends its movement request [ebp-0x118] through the player's vtable +0x1DC (1.0.116 0x00455C9E, ptbr-117 0x004396B2: lea reg,[ebp-0x118]; push reg)"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_SPEED",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x14",
+   "evidence": "the request's walk speed: the jump hand-off reads [request+0x10] and [request+0x14] (1.0.116 0x004F097D/0x004F09D3, ptbr-117 0x004D7A73: fld [esi+0x14]) and multiplies the walk velocity by +0x14"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_AMOUNT",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x84",
+   "evidence": "the jump sub-request at [ebp-0x94] = request+0x84 (amount, scale, new press) is built by the same constructor on the hit frame (1.0.116 0x00455B60, ptbr-117 0x00439532: lea ecx,[ebp-0x94]); the hand-off tests [request+0x84] before it arms"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_SCALE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x88",
+   "evidence": "the second field of that jump sub-request ([ebp-0x90] = request+0x88), set to 1.0 by the constructor's argument in both builds (1.0.116 0x00455B57 call 0x0042FC70 with 1, ptbr-117 0x00439532 with 0x00439700 with 1)"
   }
  ]
 }

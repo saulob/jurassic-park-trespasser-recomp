@@ -173,15 +173,15 @@ static void test_load_errors() {
     Close(s);
 
     // What the port does not have yet: no VM, and the names in the log.
-    s = Session({{"scripts/hud.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"}});
+    s = Session({{"scripts/hud.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.PlayInGameMovie(\"a\", false); } }\n"}});
     Begin(s, "x.scn", JPT_SCRIPT_BEGIN_NEW_GAME);
-    CHECK(!jpt_script_session_has_vm(s) && Has("[script] level=x.scn vm=none result=refused error=its scripts need what the port does not have: GetPlayer,TP_Engine"));
+    CHECK(!jpt_script_session_has_vm(s) && Has("[script] level=x.scn vm=none result=refused error=its scripts need what the port does not have: PlayInGameMovie"));
     Close(s);
     s = Session({{"scripts/door.nut", "class Door extends CInstance { function OnUse(b) { return true; } }\n"}});
     jpt_script_session_add_reference(s, "levels/X.SCN", "Door", "Door-00", 0);
     jpt_script_session_add_reference(s, "x.scn", "Ghost", "Box-00", 0);
     Begin(s, "x.scn", JPT_SCRIPT_BEGIN_NEW_GAME);
-    CHECK(!jpt_script_session_has_vm(s) && Contains("CInstance,OnUse,Box-00 names the script class Ghost"));
+    CHECK(!jpt_script_session_has_vm(s) && Contains("does not have: OnUse,Box-00 names the script class Ghost"));
     Begin(s, "y.scn", JPT_SCRIPT_BEGIN_NEW_GAME);
     CHECK(!Contains("level=y.scn"));
     Close(s);

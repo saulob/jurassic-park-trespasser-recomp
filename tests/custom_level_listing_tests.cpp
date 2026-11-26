@@ -323,12 +323,12 @@ void TestReadyRule() {
     // Trespasser CE scripts are the level's question: scripts that do nothing in it leave it ready, scripts that ask for CE's
     // engine functions refuse it, and lifecycle scripts are installed and listed for the game.
     CHECK(Import(user, "Quiet script", Level("calm") + Files{{"scripts/x.nut", "class X {}\nclass H extends LevelScript { function OnScriptInit(b) {} }\n"}}, game).ok());
-    CHECK(refused("Script", Level("nut") + Files{{"scripts/x.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"}},
+    CHECK(refused("Script", Level("nut") + Files{{"scripts/x.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"}},
                   ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
     // A refused level stays out of Play without taking its sibling with it: the package is installed for the level that is READY.
     {
         const ImportResult r = Import(user, "Half", Level("open") + Level("shut") +
-                                                        Files{{"scripts/shut.nut", "class Hud extends LevelScript { static SCN = \"shut.scn\"; function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"}},
+                                                        Files{{"scripts/shut.nut", "class Hud extends LevelScript { static SCN = \"shut.scn\"; function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"}},
                                       game);
         CHECK(r.ok() && r.levels == 1 && Logged(r.log, "UNSUPPORTED_FEATURE CE_SCRIPT_API") && !Logged(r.log, "PACKAGE_NOT_SUPPORTED"));
         int ready = 0, refused_levels = 0;

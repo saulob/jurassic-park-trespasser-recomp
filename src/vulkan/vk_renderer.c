@@ -181,7 +181,7 @@ typedef struct {
 
 #define JPT_VK_WORLD_DS_CACHE 48u
 
-#define JPT_VK_UI_TEXTURES 8u
+#define JPT_VK_UI_TEXTURES 33u
 
 typedef struct {
     uint32_t id, w, h, revision;
@@ -215,7 +215,7 @@ struct jpt_vk_renderer_s {
     vk_world_ds_entry_t world_ds_cache[JPT_VK_WORLD_DS_CACHE];
     VkDescriptorSetLayout ui_dsl;
     VkPipelineLayout ui_pl;
-    VkPipeline ui_pipe;
+    VkPipeline ui_pipe, ui_pipe_add; /* alpha; additive (a script's DrawTexture mode 2) */
     VkRenderPass ui_pipe_pass;
     VkDescriptorPool ui_dpool[JPT_VK_FRAMES_IN_FLIGHT];
     vk_ui_tex_t ui_tex[JPT_VK_UI_TEXTURES];
@@ -5092,6 +5092,7 @@ void jpt_vk_ui_projection(const float display_pos[2], const float display_size[2
 
 static void destroy_ui_pipeline(jpt_vk_renderer_t* r) {
     destroy_pipe(r, &r->ui_pipe);
+    destroy_pipe(r, &r->ui_pipe_add);
     r->ui_pipe_pass = VK_NULL_HANDLE;
 }
 
@@ -5231,14 +5232,22 @@ static int create_ui_pipeline(jpt_vk_renderer_t* r) {
         return 0;
     r->ctx.lifetime.pipelines++;
     r->stats.pipelines_created++;
+    cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    if (r->ctx.vk.vkCreateGraphicsPipelines(r->ctx.device, r->ctx.pipeline_cache, 1, &pci, NULL, &r->ui_pipe_add) !=
+        VK_SUCCESS)
+        return 0;
+    r->ctx.lifetime.pipelines++;
+    r->stats.pipelines_created++;
     r->ui_pipe_pass = r->sc.present_pass;
     return 1;
 }
 
 static int ensure_ui_resources(jpt_vk_renderer_t* r) {
     const jpt_vk_loader_t* vk = &r->ctx.vk;
-    if (r->ui_pipe != VK_NULL_HANDLE && r->ui_pipe_pass == r->sc.present_pass) return 1;
-    if (r->ui_pipe != VK_NULL_HANDLE) destroy_ui_pipeline(r);
+    if (r->ui_pipe != VK_NULL_HANDLE && r->ui_pipe_add != VK_NULL_HANDLE && r->ui_pipe_pass == r->sc.present_pass) return 1;
+    if (r->ui_pipe != VK_NULL_HANDLE || r->ui_pipe_add != VK_NULL_HANDLE) destroy_ui_pipeline(r);
     if (r->ui_dsl == VK_NULL_HANDLE) {
         VkDescriptorSetLayoutBinding b;
         VkDescriptorSetLayoutCreateInfo dci;
@@ -5441,7 +5450,8 @@ static void record_ui(jpt_vk_renderer_t* r, const jpt_render_rect_t* area) {
     VkDeviceSize zero = 0;
     double t0 = r->collect_timings ? now_ms() : 0.0;
     float push[4];
-    if (!r->ui_active || r->ui_pipe == VK_NULL_HANDLE) return;
+    uint32_t bound = 0;
+    if (!r->ui_active || r->ui_pipe == VK_NULL_HANDLE || r->ui_pipe_add == VK_NULL_HANDLE) return;
     r->ui_active = 0;
     vp.x = (float)area->x;
     vp.y = (float)area->y;
@@ -5470,6 +5480,10 @@ static void record_ui(jpt_vk_renderer_t* r, const jpt_render_rect_t* area) {
         rect.offset.y = sc[1];
         rect.extent.width = (uint32_t)sc[2];
         rect.extent.height = (uint32_t)sc[3];
+        if ((c->blend != 0) != (bound != 0)) {
+            bound = c->blend != 0;
+            vk->vkCmdBindPipeline(r->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound ? r->ui_pipe_add : r->ui_pipe);
+        }
         vk->vkCmdSetScissor(r->cmd, 0, 1, &rect);
         vk->vkCmdBindDescriptorSets(r->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->ui_pl, 0, 1, &r->ui_cmd_sets[i], 0, NULL);
         vk->vkCmdDrawIndexed(r->cmd, c->idx_count, 1, c->idx_offset, c->vtx_offset, 0);

@@ -1615,6 +1615,122 @@
     "texhw_guest.c"
    ],
    "set": "LightDirection"
+  },
+  {
+   "names": [
+    "INSTANCE_HANDLE",
+    "INSTANCE_POSITION",
+    "INSTANCE_ROTATION"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CInstance"
+  },
+  {
+   "names": [
+    "ANIMATE_BOXES",
+    "ANIMATE_HIT_POINTS"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAnimate"
+  },
+  {
+   "names": [
+    "ANIMAL_BRAIN"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAnimal"
+  },
+  {
+   "names": [
+    "VF_DEAD"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAnimal",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "SYSTEM_BRAIN"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAISystem"
+  },
+  {
+   "names": [
+    "BRAIN_ANIMAL"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "set": "AIBrain"
+  },
+  {
+   "names": [
+    "INFLUENCE_*"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CInfluence"
+  },
+  {
+   "names": [
+    "PLAYER_HAND_OBJECT",
+    "PLAYER_HEAD"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CPlayer"
+  },
+  {
+   "names": [
+    "GUN_MAX_AMMO",
+    "GUN_AMMO"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CGun"
+  },
+  {
+   "names": [
+    "OVERLAY_LIST",
+    "NODE_HANDLE"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CTextOverlay"
+  },
+  {
+   "names": [
+    "SINPUT_*"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "set": "SInput"
+  },
+  {
+   "names": [
+    "RASTER_WIDTH",
+    "RASTER_HEIGHT"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CRaster"
   }
  ],
  "sets": {

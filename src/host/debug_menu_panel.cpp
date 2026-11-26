@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include <chrono>
+#include <memory>
 #include <vector>
 
 #ifdef _WIN32
@@ -68,6 +69,7 @@ bool current() {
 }
 
 void release_level_map();
+void release_script_textures();
 
 void shut_down() {
     if (!current()) return;
@@ -75,6 +77,7 @@ void shut_down() {
     if (g_panel.device) ImGui_ImplDX11_Shutdown();
 #endif
     release_level_map();
+    release_script_textures();
     ImGui::DestroyContext(g_panel.context);
     g_panel = Panel();
 }
@@ -929,8 +932,80 @@ void level_map(const dmp_frame_t* f) {
     }
 }
 
-// The HUD, then the game's text, then the counter, then the windows (the background list is under every window).
+// A script texture as a texture of the panel's context, uploaded once from its pixels; opaque: its alpha set to 1 (blend mode 0).
+struct ScriptTexture {
+    uint32_t generation = 0, id = 0;
+    bool opaque = false;
+    ImTextureData tex;
+    ImGuiContext* context = nullptr;
+};
+std::vector<std::unique_ptr<ScriptTexture>> g_script_textures;
+
+void gpu_forget(const ImTextureData* tex);
+
+void release_script_textures() {
+    for (auto& t : g_script_textures) {
+        if (t->context && t->context == ImGui::GetCurrentContext()) ImGui::UnregisterUserTexture(&t->tex);
+        gpu_forget(&t->tex);
+    }
+    g_script_textures.clear();
+}
+
+ImTextureRef script_texture(uint32_t generation, const jpt_draw_texture_t& src, bool opaque) {
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    if (!g_script_textures.empty() && (g_script_textures.front()->generation != generation || g_script_textures.front()->context != context))
+        release_script_textures();
+    for (auto& t : g_script_textures)
+        if (t->id == src.id && t->opaque == opaque) return t->tex.GetTexRef();
+    auto t = std::make_unique<ScriptTexture>();
+    t->generation = generation;
+    t->id = src.id;
+    t->opaque = opaque;
+    t->context = context;
+    t->tex.Create(ImTextureFormat_RGBA32, src.width, src.height);
+    memcpy(t->tex.GetPixels(), src.rgba, (size_t)src.width * (size_t)src.height * 4u);
+    if (opaque)
+        for (size_t i = 0; i < (size_t)src.width * (size_t)src.height; i++) static_cast<unsigned char*>(t->tex.GetPixels())[4 * i + 3] = 255;
+    t->tex.SetTexID(ImTextureID_Invalid);
+    t->tex.SetStatus(ImTextureStatus_WantCreate);
+    ImGui::RegisterUserTexture(&t->tex);
+    g_script_textures.push_back(std::move(t));
+    return g_script_textures.back()->tex.GetTexRef();
+}
+
+bool script_shown(const dmp_frame_t* f) { return f->script && f->script->count > 0 && f->script->screen_w > 0 && f->script->screen_h > 0; }
+
+// What game scripts drew (OnPaintHW3D), from the game's screen pixels to the view, in their order; blend mode 2 between the
+// additive marker and a reset, which every backend honours.
+void script_layer(ImDrawList* dl, const dmp_frame_t* f) {
+    if (!script_shown(f)) return;
+    const jpt_draw_frame_t& fr = *f->script;
+    const float sx = f->view_w / (float)fr.screen_w, sy = f->view_h / (float)fr.screen_h;
+    bool additive = false;
+    for (int i = 0; i < fr.count; i++) {
+        const jpt_draw_cmd_t& c = fr.cmds[i];
+        const jpt_draw_texture_t* src = nullptr;
+        for (int k = 0; k < fr.texture_count && !src; k++)
+            if (fr.textures[k].id == c.texture) src = &fr.textures[k];
+        if (!src || src->width <= 0 || src->height <= 0 || !src->rgba) continue;
+        const bool add = c.blend == JPT_DRAW_ADD;
+        if (add != additive) dl->AddCallback(add ? imgui_blend_additive : ImDrawCallback_ResetRenderState, nullptr);
+        additive = add;
+        const unsigned a = c.blend == JPT_DRAW_OPAQUE ? 255u : (c.argb >> 24) & 0xFFu;
+        const ImU32 colour = IM_COL32((c.argb >> 16) & 0xFFu, (c.argb >> 8) & 0xFFu, c.argb & 0xFFu, a);
+        const float w = (float)src->width, h = (float)src->height;
+        dl->AddImage(script_texture(fr.generation, *src, c.blend == JPT_DRAW_OPAQUE), ImVec2(c.x * sx, c.y * sy),
+                     ImVec2((c.x + c.w) * sx, (c.y + c.h) * sy), ImVec2(c.src_x / w, c.src_y / h),
+                     ImVec2((c.src_x + c.src_w) / w, (c.src_y + c.src_h) / h), colour);
+    }
+    if (additive) dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
+
+bool shown(const dmp_frame_t* f) { return f->menu || hud_shown(f) || (f->counter && f->counter[0]) || script_shown(f); }
+
+// The scripts' drawing, the HUD, then the game's text, then the counter, then the windows (the background list is under every window).
 void draw_ui(const dmp_frame_t* f) {
+    script_layer(ImGui::GetBackgroundDrawList(), f);
     if (hud_shown(f)) {
         compass(f);
         level_map(f);
@@ -944,6 +1019,38 @@ void draw_ui(const dmp_frame_t* f) {
 }  // namespace
 
 #ifdef _WIN32
+namespace {
+
+ID3D11DeviceContext* g_additive_context;
+ID3D11BlendState* g_additive_state;
+const void* g_additive_device;
+
+void set_additive_blend() {
+    static const float factor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    if (g_additive_context && g_additive_state) g_additive_context->OMSetBlendState(g_additive_state, factor, 0xFFFFFFFFu);
+}
+
+// Source colour times its alpha added to the target, the target's alpha kept.
+bool additive_state(ID3D11Device* device) {
+    if (g_additive_state && g_additive_device == device) return true;
+    if (g_additive_state) g_additive_state->Release();
+    g_additive_state = nullptr;
+    D3D11_BLEND_DESC desc;
+    memset(&desc, 0, sizeof desc);
+    desc.RenderTarget[0].BlendEnable = TRUE;
+    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+    desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+    desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    g_additive_device = device;
+    return SUCCEEDED(device->CreateBlendState(&desc, &g_additive_state));
+}
+
+}  // namespace
+
 extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11RenderTargetView* target, int bb_w,
                          int bb_h, const dmp_frame_t* f) {
     ID3D11RenderTargetView* previous = nullptr;
@@ -951,7 +1058,8 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
     if (!device || !context || !target || bb_w <= 0 || bb_h <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return;
-    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return;
+    if (!shown(f)) return;
+    if (script_shown(f) && !additive_state(device)) return;
     if (!start(device, context)) return;
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(f->view_w, f->view_h);
@@ -965,7 +1073,11 @@ extern "C" void dmp_draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3
     ImGui::Render();
     context->OMGetRenderTargets(1, &previous, &previous_depth);
     context->OMSetRenderTargets(1, &target, nullptr);
+    g_additive_context = context;
+    imgui_blend_additive_hook = set_additive_blend;
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    imgui_blend_additive_hook = nullptr;
+    g_additive_context = nullptr;
     context->OMSetRenderTargets(1, &previous, previous_depth);
     if (previous) previous->Release();
     if (previous_depth) previous_depth->Release();
@@ -976,7 +1088,7 @@ extern "C" void dmp_draw_software(uint32_t* pixels, int width, int height, int p
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
     if (!pixels || width <= 0 || height <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return;
-    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return;
+    if (!shown(f)) return;
     if (!start_software()) return;
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(f->view_w, f->view_h);
@@ -997,25 +1109,35 @@ struct GpuTextureSlot {
     uint32_t revision;
 };
 
-GpuTextureSlot g_gpu_slots[8];
+constexpr uint32_t kGpuSlots = DMP_GPU_TEXTURES - 1; // the last one is the white texel
+GpuTextureSlot g_gpu_slots[kGpuSlots];
 std::vector<ImDrawVert> g_gpu_vertices;
 std::vector<ImDrawIdx> g_gpu_indices;
 std::vector<dmp_gpu_cmd_t> g_gpu_cmds;
-dmp_gpu_texture_t g_gpu_textures[9];
+dmp_gpu_texture_t g_gpu_textures[DMP_GPU_TEXTURES];
 const uint8_t g_white_texel[4] = { 255, 255, 255, 255 };
 static_assert(sizeof(ImDrawIdx) == 2, "the GPU overlay draws 16-bit indices");
 static_assert(sizeof(ImDrawVert) == 20, "the GPU overlay reads ImDrawVert as 20 bytes");
 
 uint32_t gpu_slot_of(const ImTextureData* tex) {
-    for (uint32_t i = 0; i < 8; i++)
+    for (uint32_t i = 0; i < kGpuSlots; i++)
         if (g_gpu_slots[i].tex == tex) return i;
-    for (uint32_t i = 0; i < 8; i++)
+    for (uint32_t i = 0; i < kGpuSlots; i++)
         if (!g_gpu_slots[i].tex) {
             g_gpu_slots[i].tex = tex;
             g_gpu_slots[i].revision = 1;
             return i;
         }
-    return 8;
+    return kGpuSlots;
+}
+
+// A texture gone (a script's of an earlier level): its slot is free; the next texture in it is uploaded anew.
+void gpu_forget(const ImTextureData* tex) {
+    for (uint32_t i = 0; i < kGpuSlots; i++)
+        if (g_gpu_slots[i].tex == tex) {
+            g_gpu_slots[i].tex = nullptr;
+            g_gpu_slots[i].revision++;
+        }
 }
 
 }  // namespace
@@ -1024,7 +1146,7 @@ extern "C" int dmp_build_gpu(dmp_gpu_draw_t* out, int width, int height, const d
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
     if (!out || width <= 0 || height <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return 0;
-    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return 0;
+    if (!shown(f)) return 0;
     if (!start_software()) return 0;
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(f->view_w, f->view_h);
@@ -1041,31 +1163,37 @@ extern "C" int dmp_build_gpu(dmp_gpu_draw_t* out, int width, int height, const d
         for (ImTextureData* t : *data->Textures)
             if (t->Status == ImTextureStatus_WantCreate || t->Status == ImTextureStatus_WantUpdates) {
                 const uint32_t slot = gpu_slot_of(t);
-                if (slot < 8) g_gpu_slots[slot].revision++;
+                if (slot < kGpuSlots) g_gpu_slots[slot].revision++;
             }
     imgui_software_update_textures(data);
     g_gpu_vertices.clear();
     g_gpu_indices.clear();
     g_gpu_cmds.clear();
     uint32_t texture_count = 0;
-    uint32_t cmd_texture_of[9];
-    for (uint32_t i = 0; i < 9; i++) cmd_texture_of[i] = 0xFFFFFFFFu;
+    uint32_t cmd_texture_of[DMP_GPU_TEXTURES];
+    for (uint32_t i = 0; i < DMP_GPU_TEXTURES; i++) cmd_texture_of[i] = 0xFFFFFFFFu;
     const ImVec2 origin = data->DisplayPos, scale = data->FramebufferScale;
     for (int n = 0; n < data->CmdListsCount; n++) {
         const ImDrawList* list = data->CmdLists[n];
         const uint32_t base_vertex = (uint32_t)g_gpu_vertices.size(), base_index = (uint32_t)g_gpu_indices.size();
         g_gpu_vertices.insert(g_gpu_vertices.end(), list->VtxBuffer.Data, list->VtxBuffer.Data + list->VtxBuffer.Size);
         g_gpu_indices.insert(g_gpu_indices.end(), list->IdxBuffer.Data, list->IdxBuffer.Data + list->IdxBuffer.Size);
+        bool additive = false;
         for (int c = 0; c < list->CmdBuffer.Size; c++) {
             const ImDrawCmd* cmd = &list->CmdBuffer[c];
-            if (cmd->UserCallback || cmd->ElemCount == 0) continue;
+            if (cmd->UserCallback) {
+                if (cmd->UserCallback == imgui_blend_additive) additive = true;
+                else if (cmd->UserCallback == ImDrawCallback_ResetRenderState) additive = false;
+                continue;
+            }
+            if (cmd->ElemCount == 0) continue;
             const ImTextureData* tex = (const ImTextureData*)(uintptr_t)cmd->GetTexID();
-            uint32_t slot = 8;
+            uint32_t slot = kGpuSlots;
             if (tex && tex->Pixels) slot = gpu_slot_of(tex);
-            if (slot > 8) slot = 8;
+            if (tex && tex->Pixels && slot >= kGpuSlots) return 0;
             if (cmd_texture_of[slot] == 0xFFFFFFFFu) {
                 dmp_gpu_texture_t& t = g_gpu_textures[texture_count];
-                if (slot == 8) {
+                if (slot == kGpuSlots) {
                     t.id = 100;
                     t.width = t.height = 1;
                     t.bytes_per_pixel = 4;
@@ -1091,6 +1219,7 @@ extern "C" int dmp_build_gpu(dmp_gpu_draw_t* out, int width, int height, const d
             g.idx_count = cmd->ElemCount;
             g.vtx_offset = (int32_t)(base_vertex + cmd->VtxOffset);
             g.texture = cmd_texture_of[slot];
+            g.blend = additive ? 1u : 0u;
             g_gpu_cmds.push_back(g);
         }
     }
@@ -1116,7 +1245,7 @@ extern "C" int dmp_draw_rgba(uint8_t* rgba, int width, int height, const dmp_fra
     g_hits.valid = 0;
     if (!f->menu || f->objectives) g_stable.open = false;
     if (!rgba || width <= 0 || height <= 0 || f->view_w < 1.0f || f->view_h < 1.0f) return 0;
-    if (!f->menu && !hud_shown(f) && !(f->counter && f->counter[0])) return 0;
+    if (!shown(f)) return 0;
     if (!start_software()) return 0;
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(f->view_w, f->view_h);

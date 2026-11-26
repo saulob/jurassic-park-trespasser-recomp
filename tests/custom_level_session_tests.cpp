@@ -243,7 +243,7 @@ static void TestLevelsApart() {
     const Files files = Level("Four/data/", "alpha") + Level("Four/data/", "beta") + Level("Four/data/", "gamma") + Level("Four/data/", "delta") +
                         Files{{"Four/fm.ini", "[General]\nStartLevel=alpha.scn\n"},
                               {"Four/scripts/beta.nut", "class BetaRules extends LevelScript { static SCN = \"beta.scn\"; function OnLevelStart() { print(\"beta start\"); } }\n"},
-                              {"Four/scripts/gamma.nut", "class GammaHud extends LevelScript { static SCN = \"gamma.scn\"; function OnLevelStart() { TP_Engine.GetPlayer(); } }\n"},
+                              {"Four/scripts/gamma.nut", "class GammaHud extends LevelScript { static SCN = \"gamma.scn\"; function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"},
                               {"Four/scripts/spare.nut", "class Spare extends LevelScript { static SCN = \"elsewhere.scn\"; function OnLevelStart() {} }\n"}};
     const fs::path source = Fresh("apart source");
     for (const auto& [path, bytes] : files) Write(source / PathFromUtf8(path), bytes);
@@ -258,7 +258,7 @@ static void TestLevelsApart() {
     for (const LevelScene* s : {&alpha, &beta, &delta}) CHECK(s->level_class() == LevelClass::kReady && !HasIssue(s, "PACKAGE_NOT_SUPPORTED") && !HasIssue(s, "UNSUPPORTED_FEATURE"));
     CHECK(!alpha.scripted && !delta.scripted && alpha.script_files.empty() && delta.script_files.empty());
     CHECK(beta.scripted && beta.script_files == std::vector<std::string>{"Four/scripts/beta.nut"} && beta.script_required.empty());
-    CHECK(gamma.scripted && std::find(gamma.script_required.begin(), gamma.script_required.end(), "GetPlayer") != gamma.script_required.end());
+    CHECK(gamma.scripted && std::find(gamma.script_required.begin(), gamma.script_required.end(), "ReplayVoiceover") != gamma.script_required.end());
     for (const LevelScene* s : {&alpha, &delta})
         for (const LevelIssue& i : s->issues) CHECK(i.subject != "CE_SCRIPT_API" && i.subject != "CE_SCRIPT_FILES" && i.subject != "CE_SCRIPTS" && i.code != "SCRIPT_CLASS");
     CHECK(ActionsOf(&alpha, false).play && ActionsOf(&beta, false).play && ActionsOf(&delta, false).play);
@@ -275,7 +275,7 @@ static void TestLevelsApart() {
     const std::string manifest = Text(dir / "manifest.json"), map = Text(dir / JPT_CUSTOM_LEVEL_RUNTIME_MAP);
     const size_t status = manifest.find("\"level_status\"");
     CHECK(status != std::string::npos && manifest.find("REJECTED_UNSUPPORTED", status) != std::string::npos && manifest.find("Four/data/alpha.scn", status) != std::string::npos);
-    CHECK(manifest.find("GetPlayer", status) != std::string::npos && manifest.find("Four/scripts/beta.nut", status) != std::string::npos);
+    CHECK(manifest.find("ReplayVoiceover", status) != std::string::npos && manifest.find("Four/scripts/beta.nut", status) != std::string::npos);
     CHECK(map.find("\nuses beta.scn|Four/scripts/beta.nut\n") != std::string::npos && map.find("uses alpha.scn") == std::string::npos && map.find("uses delta.scn") == std::string::npos);
 
     // Play and its preflight: the level that is asked, never the package.
@@ -316,6 +316,31 @@ static void TestLevelsApart() {
     ListingStats changed;
     ListLevelPackages(user, game, &changed);
     CHECK(changed.analysed >= 1 && Listed(user, game, id, "gamma.scn").playable() && Listed(user, game, id, "alpha.scn").playable());
+}
+
+// A custom session's scripts end with it: the campaign started after has no console command, player factor or jump of theirs.
+static void TestCampaignAfterCustom() {
+    const fs::path user = Fresh("campaign after custom");
+    const Files files = Level("Cc/data/", "solo") +
+                        Files{{"Cc/scripts/console.nut",
+                               "class Console extends GameScript { function OnConsoleCommand(c, a) { print(\"console \" + c + \" \" + a); return c == \"ping\"; } }\n"}};
+    const ImportResult result = Install(user, "Consoled", files);
+    CHECK(result.ok());
+    CHECK(Activate(user, result.package, "Cc/data/solo.scn"));
+    g_script_lines.clear();
+    jpt_level_scripts_start(JPT_SESSION_CUSTOM, ScriptLine);
+    jpt_level_scripts_begin(JPT_REASON_INITIAL, "solo.scn", nullptr);
+    jpt_level_scripts_ready(1);
+    CHECK(jpt_level_scripts_console("ping", nullptr) == 1 && Has(g_script_lines, "[script] print: console ping "));
+    CHECK(jpt_level_scripts_console("pong", "x") == 0 && Has(g_script_lines, "[script] print: console pong x"));
+    jpt_custom_level_deactivate();
+    CHECK(jpt_level_scripts_session() == nullptr);
+    jpt_level_scripts_start(JPT_SESSION_CAMPAIGN, ScriptLine);
+    g_script_lines.clear();
+    CHECK(jpt_level_scripts_session() == nullptr && jpt_level_scripts_console("ping", nullptr) == 0);
+    CHECK(jpt_level_scripts_speed_factor(1u, 0.5f) == 0.5f && jpt_level_scripts_jump_factor(1u) == 1.0f && !jpt_level_scripts_drives_player());
+    jpt_level_scripts_jump(1u);
+    CHECK(g_script_lines.empty());
 }
 
 static void TestBitmaps() {
@@ -792,6 +817,7 @@ int main() {
     g_game = Fresh("game");
     TestScripts();
     TestLevelsApart();
+    TestCampaignAfterCustom();
     TestBitmaps();
     TestMapPaths();
     TestMapPictures();

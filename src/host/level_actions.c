@@ -558,6 +558,17 @@ static void teleport(uint32_t name, const place_t* p) {
     guest_call(TELEPORT, object, NULL, 0, 0, NULL);
 }
 
+int level_actions_teleport(uint32_t handle, const float position[3], const float rotation[4]) {
+    place_t place;
+    memset(&place, 0, sizeof place);
+    memcpy(place.position, position, sizeof place.position);
+    memcpy(place.rotation, rotation, sizeof place.rotation);
+    place.valid = place.set_position = place.set_orientation = 1;
+    if (!instance_of(handle)) return 0;
+    teleport(handle, &place);
+    return 1;
+}
+
 static void start_teleport(const action_t* a) {
     const teleport_t* t = &a->teleport;
     const int group = la_pick_group(t->weights, t->groups, la_random(&A.seed));
@@ -628,6 +639,12 @@ static void start_fixed_speed(const action_t* a) {
         for (int i = 0; i < 3; i++) velocity[i] *= a->floats[3];
     }
     la_fixed_set(&A.state, a->hash, velocity, la_fixed_seconds(a->numbers[0]), a->numbers[1]);
+}
+
+int level_actions_fixed_velocity(uint32_t handle, const float velocity[3], int milliseconds, int fail_if_moving) {
+    const uint32_t instance = instance_of(handle);
+    if (!jpt_custom_level_active() || !instance || !MEM32(info_of(instance) + INFO_PHYSICS)) return 0;
+    return la_fixed_set(&A.state, handle, velocity, la_fixed_seconds(milliseconds), !fail_if_moving);
 }
 
 static void set_physics(const physics_action_t* action) {

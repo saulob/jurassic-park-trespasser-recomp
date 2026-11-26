@@ -16,6 +16,7 @@ LIFT_HOOK(004546E2) /* CPlayer::Process, mouse look body turn (patch117_player.c
 LIFT_HOOK(0045472E) /* CPlayer::Process, mouse look body turn (patch117_player.c) */
 LIFT_HOOK(00454734) /* CPlayer::Process, mouse look body turn (patch117_player.c) */
 LIFT_HOOK(00455B6B) /* CPlayer::Process, held jump key (patch117_player.c) */
+LIFT_HOOK(00455C9E) /* CPlayer::Process, movement request sent, CE speed and jump factors (script_engine.c) */
 LIFT_HOOK(004569C8) /* player impulse, jump lifetime (patch117_player.c) */
 LIFT_HOOK(0045B916) /* hand reach, empty hand (patch117_player.c) */
 LIFT_HOOK(0045B91C) /* hand reach, empty hand (patch117_player.c) */
@@ -31,3 +32,4 @@ LIFT_HOOK(004EC07C) /* box-box +y velocity kill normal (patch117_physics.c) */
 LIFT_HOOK(004EC386) /* box-box -y velocity kill normal (patch117_physics.c) */
 LIFT_HOOK(004EC586) /* box-box, a corner already inside (patch117_physics.c) */
 LIFT_HOOK(004EC5A2) /* box-box edge-edge gate (patch117_physics.c) */
+LIFT_HOOK(004F0C00) /* jump hand-off, impulse armed, CE jump factor (script_engine.c) */

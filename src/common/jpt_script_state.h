@@ -8,7 +8,8 @@
 
 namespace jpt::script {
 
-inline constexpr uint32_t kStateVersion = 1;
+// 2 adds Vector3, Rotate3 and CInstance values; 1 is still read.
+inline constexpr uint32_t kStateVersion = 2;
 // ScriptingReadme.txt: arrays keep 65536 elements and blobs 256 kB in a save; the rest is not saved.
 inline constexpr size_t kArrayMax = 65536;
 inline constexpr size_t kBlobMax = 256 * 1024;
@@ -17,10 +18,11 @@ inline constexpr size_t kEntriesMax = 4096;
 inline constexpr size_t kNameMax = 1024;
 
 struct Value {
-    enum Type : uint8_t { kNull, kInt, kFloat, kBool, kString, kBlob, kArray };
+    enum Type : uint8_t { kNull, kInt, kFloat, kBool, kString, kBlob, kArray, kVector3, kRotate3, kInstance };
     Type type = kNull;
-    int64_t i = 0;
+    int64_t i = 0;             // int; an instance's unique handle
     float f = 0.0f;
+    float v[4] = {0, 0, 0, 0}; // Vector3 x y z; Rotate3 w x y z
     bool b = false;
     std::string bytes;         // string or blob
     std::vector<Value> items;  // array: no blob, no array
@@ -33,13 +35,17 @@ struct Slot {
 
 enum class Role : uint8_t { kCurrent = 1, kLevelStart = 2 };
 
+inline constexpr uint8_t kEntrySimStep = 1; // an instance script's ActivateSimStep(true)
+
 struct Entry {
     Role role = Role::kCurrent;
     uint8_t kind = 0; // jpt::script::Kind
     std::string class_name, object;
     std::vector<Slot> slots;
+    uint8_t flags = 0; // kEntry*; version 2
 };
 
+// Entries of kind instance carry the object's name, the key they are restored by.
 std::vector<uint8_t> EncodeState(const std::vector<Entry>& entries);
 // 0 with the reason when the bytes are not a state this version reads whole.
 bool DecodeState(const uint8_t* bytes, size_t size, std::vector<Entry>& entries, std::string& problem);

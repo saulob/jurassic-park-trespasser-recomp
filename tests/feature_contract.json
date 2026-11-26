@@ -6759,6 +6759,253 @@
    }
   },
   {
+   "id": "ce-script-api",
+   "name": "Trespasser CE's script API for custom levels: one registry the launcher and the VM share (a level is refused while its scripts use a name it lacks), Vector3 and Rotate3, the world's objects as handles looked up at every call (a gone object, an older world or a world being loaded is a script error), TP_Engine's time, random numbers, player, colours and the game's text overlay, guns and health, SendLGMessage and SendMessage, nvram values of those types",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_registry_in_runtime"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_rotate3"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_entity_handles"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_text"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_player_and_guns"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-instance-scripts",
+   "name": "Trespasser CE instance scripts: the objects the world names get their class (its engine class checked), OnScriptInit, OnPostLoad, OnActBite from the AI's bite and feint, OnSimStep after ActivateSimStep, OnMessage, nvram saved by object, errors and budgets per object, Restart and transitions destroying them; Spitter-style animals launching projectiles with Teleport and MoveWithFixedVelocity",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_spitter"
+    },
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_lifecycle"
+    },
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_messages_and_steps"
+    },
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_budgets"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-drawing",
+   "name": "Trespasser CE scripts' drawing: GetTexture as a logical texture of the level's VM (null when missing, gone at Restart), its size, the game's screen size, OnPaintHW3D over gameplay only, DrawTexture's commands with CE's blend modes (opaque, alpha, additive) drawn alike by the software overlay, the GPU list of Vulkan and Direct3D 11; a failing or exhausted paint draws nothing",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_draw_tests",
+     "file": "tests/script_draw_tests.cpp",
+     "pattern": "test_textures_and_commands"
+    },
+    {
+     "suite": "script_draw_tests",
+     "file": "tests/script_draw_tests.cpp",
+     "pattern": "test_paint_errors"
+    },
+    {
+     "suite": "script_draw_tests",
+     "file": "tests/script_draw_tests.cpp",
+     "pattern": "test_backends"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-input",
+   "name": "Trespasser CE scripts' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only for a level whose scripts name them, bKeyHit, bKeyPressed and the movement input in OnHandleInput, modal mode with OnModalKey, OnHandleModalInput and OnModalAborted, released when its script stops, at Restart, transitions and the player's death; never in the campaign",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_user_commands"
+    },
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_input"
+    },
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_modal"
+    },
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_modal_owner_dies"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-player",
+   "name": "Trespasser CE's CPlayer script hooks: fGetSpeedFactor and fGetJumpFactor where CE asks them (the movement request of CPlayer::Process), OnJump when the player's own jump leaves the ground, Say through the game's voice, r3HeadRotRel as the view relative to the body; defaults, clamping, handles refused after Restart, loads and transitions; never in the campaign",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_speed"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_factor_failures"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_jump"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_say"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_head"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_handles"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_stale_world"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_restart_clears"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_level_together"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_campaign"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-console",
+   "name": "Trespasser CE's OnConsoleCommand: the internal dispatcher of a console command the game does not know, to the game scripts in order until one handles it; the port has no console, so no game command reaches it; never in the campaign",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_console_tests",
+     "file": "tests/script_console_tests.cpp",
+     "pattern": "test_order"
+    },
+    {
+     "suite": "script_console_tests",
+     "file": "tests/script_console_tests.cpp",
+     "pattern": "test_failures"
+    },
+    {
+     "suite": "script_console_tests",
+     "file": "tests/script_console_tests.cpp",
+     "pattern": "test_lifecycle"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
    "id": "custom-level-full-restart",
    "name": "Restart Level of a custom session is a full level cycle: the world purged and the current level loaded whole again through the game's level load, the session kept; the campaign keeps the game's own restart",
    "owner": "lifecycle",

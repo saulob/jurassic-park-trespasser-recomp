@@ -61,7 +61,7 @@ static const jpt_level_feature_t k_features[] = {
     { "CE_SCN_23_25", "Scenes of version 23 to 25", FULL, "src/common/jpt_scene.c", "" },
     { "CE_SCN_26", "Scenes of version 26", FULL, "src/host/scene_scripts.c", "marks of object scripts are read past" },
     { "CE_SCRIPTS", "Object scripts (Squirrel)", FULL, "src/common/jpt_script_session.cpp", "a VM for the levels whose scripts act in them: lifecycle, frame and nvram" },
-    { "CE_SCRIPT_API", "Trespasser CE script functions", NONE, "", "the engine functions, classes and handlers of CE's scripting API are not there yet" },
+    { "CE_SCRIPT_API", "Trespasser CE script functions", NONE, "", "a function, class or handler of CE's scripting API the port does not have yet (src/common/jpt_script_registry.inc lists those it has)" },
     { "CE_SCRIPT_FILES", "Object scripts left out", NONE, "", "an earlier version left the package's scripts out when it installed it: import it again" },
     { "CE_FULL_RESTART", "DisableSimpleLevelRestart", FULL, ACTIONS, "Restart Level and loads purge the world first" },
     { "CE_DUAL_STOW", "EnableDualStow", FULL, "src/host/ce_gameplay.c", "" },

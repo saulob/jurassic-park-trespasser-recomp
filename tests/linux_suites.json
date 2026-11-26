@@ -33,6 +33,12 @@
     "script_plan_tests",
     "script_session_tests",
     "script_save_tests",
+    "script_bindings_tests",
+    "script_instance_tests",
+    "script_input_tests",
+    "script_draw_tests",
+    "script_player_tests",
+    "script_console_tests",
     "texhw_tests",
     "sky_tests",
     "launcher_startup_tests"

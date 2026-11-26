@@ -101,6 +101,10 @@ extern const char* const jpt_ao_names[JPT_AO_COUNT];
 /* The port's rebindable hotkeys. They never reach the game, so they are limited to keys the game itself leaves unused
  * and that never type text. */
 enum { JPT_HOTKEY_QUICK_SAVE, JPT_HOTKEY_QUICK_LOAD, JPT_HOTKEY_COUNT };
+
+/* The keys of Trespasser CE's uCMD_USER1 to uCMD_USER8, bound only in a custom level whose scripts use them. */
+#define JPT_SCRIPT_USER_KEYS 8
+uint32_t jpt_script_user_key_vk(const char* name);
 typedef struct {
     const char* setting;
     const char* name;
@@ -159,6 +163,7 @@ typedef struct {
     int language_forced;                                                /* --language: every version plays in it */
     char game_version[JPT_GAME_VERSION_ID_MAX];
     uint32_t hotkey_vk[JPT_HOTKEY_COUNT];
+    uint32_t script_user_vk[JPT_SCRIPT_USER_KEYS]; /* script_user1_key ... script_user8_key; 0: unbound */
     jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
 

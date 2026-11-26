@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-188 features. 137 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
+194 features. 143 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -198,6 +198,12 @@ feature may have one.
 | `level-session-log` | global | PASS | PASS | `level_session_tests` | `level_session_tests` | - |
 | `ce-script-interpreter` | global | PASS | PASS | `script_vm_tests` | `script_vm_tests` | - |
 | `ce-script-lifecycle` | global | PASS | PASS | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | - |
+| `ce-script-api` | global | PASS | PASS | `script_bindings_tests` | `script_bindings_tests` | - |
+| `ce-instance-scripts` | global | PASS | PASS | `script_instance_tests` | `script_instance_tests` | - |
+| `ce-script-drawing` | global | PASS | PASS | `script_draw_tests` | `script_draw_tests` | - |
+| `ce-script-input` | global | PASS | PASS | `script_input_tests` | `script_input_tests` | - |
+| `ce-script-player` | global | PASS | PASS | `script_player_tests` | `script_player_tests` | - |
+| `ce-script-console` | global | PASS | PASS | `script_console_tests` | `script_console_tests` | - |
 | `custom-level-full-restart` | global | PASS | PASS | `custom_level_session_tests`, `level_actions_tests` | `custom_level_session_tests` | - |
 | `custom-level-guide` | global | PASS | PASS | `custom_level_session_tests` | `custom_level_session_tests` | - |
 | `launch-handoff` | global | PASS | PASS | `launch_handoff_tests` | `launch_handoff_tests` | - |

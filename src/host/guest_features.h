@@ -30,6 +30,13 @@ void active_ai_summary(void);
 void ai_vocals_install(void);
 /* Reads past the script mark of a version 26 scene's objects (scene_scripts.c). */
 void scene_scripts_install(void);
+/* The world CE's script API reaches, and the AI's bite and feint for OnActBite (script_engine.c); custom sessions only. */
+void script_engine_install(void);
+void script_engine_configure(const uint32_t user_vk[8]);
+/* A key of the keyboard: the level's uCMD_USER keys, and a modal script's keys (1: it took it). */
+int script_engine_key(unsigned vk, int down, int repeat);
+/* The game read its controls into its SInput: the scripts' input, and a modal script holds the player still. */
+void script_engine_input(uint32_t sinput);
 /* The living animals the game's AI holds, awake (engaged) or not, with their world position; read-only. */
 typedef struct {
     float x, y;

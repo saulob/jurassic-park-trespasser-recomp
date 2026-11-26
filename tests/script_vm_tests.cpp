@@ -563,9 +563,9 @@ static void test_instances() {
     CHECK(hud > 0 && Has("[script] print: hud made"));
     CHECK(jpt_script_vm_has_method(vm, hud, "OnSimStep") && jpt_script_vm_has_method(vm, hud, "OnLevelStart"));
     CHECK(!jpt_script_vm_has_method(vm, hud, "OnPaint") && !jpt_script_vm_has_method(vm, hud, "n"));
-    const jpt_script_arg dt{JPT_SCRIPT_ARG_FLOAT, 0, 0.25f, nullptr};
-    const jpt_script_arg yes{JPT_SCRIPT_ARG_BOOL, 1, 0.0f, nullptr};
-    const jpt_script_arg text_arg{JPT_SCRIPT_ARG_STRING, 0, 0.0f, "hi"};
+    const jpt_script_arg dt{JPT_SCRIPT_ARG_FLOAT, 0, 0.25f, nullptr, 0, {0, 0, 0}, 0};
+    const jpt_script_arg yes{JPT_SCRIPT_ARG_BOOL, 1, 0.0f, nullptr, 0, {0, 0, 0}, 0};
+    const jpt_script_arg text_arg{JPT_SCRIPT_ARG_STRING, 0, 0.0f, "hi", 0, {0, 0, 0}, 0};
     CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_OK && Has("[script] print: step 0.25 1"));
     CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnSimStep", &dt, 1) == JPT_SCRIPT_OK && Has("[script] print: step 0.25 2"));
     CHECK(jpt_script_vm_invoke(vm, hud, "Hud", "OnLevelEnd", &yes, 1) == JPT_SCRIPT_OK && Has("[script] print: end true"));
@@ -629,6 +629,7 @@ static void test_nvram() {
         "  function Show() { print(nvram.i + \" \" + nvram.f + \" \" + nvram.b + \" \" + nvram.s + \" \" + nvram.list.len() + \" \" + nvram.extra + \" \" + nvram.bin.len()); }\n"
         "}\n"
         "class NoTable { nvram = 3; }\n"
+        "class Later { nvram = null; function Show() { print(\"later \" + nvram.i); } }\n"
         "class NoNvram {}\n";
     CHECK(Load(vm, "nvram.nut", text) == JPT_SCRIPT_OK);
     const int keeper = jpt_script_vm_instantiate(vm, "Keeper", "Keeper");
@@ -671,6 +672,11 @@ static void test_nvram() {
     CHECK(!jpt_script_vm_get_nvram(vm, no_table, slots, notes) && slots.empty() && !jpt_script_vm_set_nvram(vm, no_table, saved));
     CHECK(!jpt_script_vm_get_nvram(vm, no_nvram, slots, notes) && !jpt_script_vm_set_nvram(vm, no_nvram, saved));
     CHECK(!jpt_script_vm_get_nvram(vm, 0, slots, notes) && !jpt_script_vm_set_nvram(vm, 77, saved));
+    // A declared nvram still null (made only when not loading a save): the save's slots become its table, as in CE.
+    const int later = jpt_script_vm_instantiate(vm, "Later", "Later");
+    CHECK(!jpt_script_vm_get_nvram(vm, later, slots, notes) && jpt_script_vm_set_nvram(vm, later, saved));
+    g_lines.clear();
+    CHECK(jpt_script_vm_invoke(vm, later, "Later", "Show", nullptr, 0) == JPT_SCRIPT_OK && Has("[script] print: later 42"));
     Destroy(vm);
 }
 

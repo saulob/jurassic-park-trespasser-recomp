@@ -230,6 +230,7 @@ typedef struct {
     uint32_t idx_offset, idx_count;
     int32_t vtx_offset;
     uint32_t texture;
+    uint32_t blend; /* 0 alpha, 1 additive */
 } jpt_vk_ui_cmd_t;
 
 typedef struct {
