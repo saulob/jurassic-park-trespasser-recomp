@@ -51,7 +51,7 @@ not copied. The records are the voice lines of the game's own English cast. `too
 the download and the retail file; the download is not needed to build or run the port. The translations of the restored
 lines were written for the port (PC port completion).
 
-## Third-party code## Third-party code
+## Third-party code
 
 | Project | Licence | How it is used |
 |---|---|---|
@@ -100,6 +100,23 @@ installer or text) is included, required or read by the port, and nothing is dow
 are the level values it reproduces (two terrain tolerances per level and the transforms of 178 objects, each stored
 with the retail bytes it replaces) and the retail files' sizes and SHA-256 fingerprints that guard them; the executable
 fixes are the port's own code.
+
+## Community levels
+
+No community level, fan mission or mod is included in this repository or in the release downloads. Players import levels
+from their own files into `user_data/custom_levels`, which Git ignores. Each level remains its author's work.
+
+During development, the levels of the TresCom download catalog were downloaded and analysed locally with the port's
+automated compatibility scanner. The project is developed with AI coding assistance, and some of that catalog's files
+were processed in AI-assisted sessions, including parts of the scripts of one community level whose author does not
+permit the use of their work with generative AI tools.
+
+v0.1.3 shipped script tests modelled on that level's behaviour. They have been replaced by independent synthetic tests
+written from Trespasser CE's scripting documentation and the port's own interfaces. The earlier tests, and the earlier
+documentation that described the level, remain in this repository's Git history and in the v0.1.3 source archives. The
+default keys of the first two script commands (Shift and M) were chosen during that work and will be reviewed for v0.1.4.
+None of the release programs contains any of that level's files or names. Work on custom levels follows the
+[provenance policy](PROVENANCE.md).
 
 ## This repository's own code
 

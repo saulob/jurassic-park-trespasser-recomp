@@ -2,32 +2,51 @@
 // uCMD_USER8 bound only for a level whose scripts name them, modal mode entered, fed keys, aborted by Escape or the player's death,
 // released when its script stops, at Restart and at a transition; budgets inside the handlers; the campaign gets none of it.
 #include "jpt_level_scripts.h"
-#include "script_hud_fixture.h"
+#include "script_api_fixture.h"
 
-static int Additive(const jpt_draw_frame_t* f) {
-    int n = 0;
-    for (int i = 0; f && i < f->count; i++) n += f->cmds[i].blend == JPT_DRAW_ADD;
-    return n;
-}
+static const char* kReader =
+    "class Reader extends GameScript {\n"
+    "  function OnHandleInput() {\n"
+    "    print(\"input hit=\" + bKeyHit(uCMD_USER1) + \" held=\" + bKeyPressed(uCMD_USER1) + \" move=\" + fGetInputMoveAmountY());\n"
+    "  }\n"
+    "}\n";
+
+static const char* kDialog =
+    "gLook <- true;\n"
+    "class Dialog extends GameScript {\n"
+    "  tex = null;\n"
+    "  function OnScriptInit(b) { tex = TP_Engine.GetTexture(\"textures/white.tga\"); }\n"
+    "  function OnHandleInput() { if (bKeyHit(uCMD_USER2)) print(\"open \" + bSetModalMode(true)); }\n"
+    "  function OnHandleModalInput() { if (bKeyHit(uCMD_USER2)) { bSetModalMode(false); print(\"closed\"); } return gLook; }\n"
+    "  function OnModalKey(vk, pressed, shift, ctrl, alt) { print(\"key \" + Name(vk) + \" \" + pressed + \" \" + shift + \" \" + ctrl + \" \" + alt); }\n"
+    "  function OnModalAborted() { print(\"aborted\"); }\n"
+    "  function OnPaintHW3D() { if (bIsModalMode()) TP_Engine.DrawTexture(tex, 0, 0, 8, 4, 0, 0, 8, 4, 0xFFFFFFFF, 1); }\n"
+    "  function Name(vk) {\n"
+    "    if (vk == VK_LEFT) return \"left\"; if (vk == VK_RIGHT) return \"right\"; if (vk == VK_HOME) return \"home\";\n"
+    "    if (vk == VK_END) return \"end\"; if (vk == VK_PRIOR) return \"prior\"; if (vk == VK_NEXT) return \"next\";\n"
+    "    return vk.tostring();\n"
+    "  }\n"
+    "}\n";
 
 static void test_user_commands() {
-    jpt_script_session* s = HudSession({{"scripts/hud.nut", kHudScript}});
-    Ready(s, "ti.scn");
-    // The level's code names USER1 and USER2: only those reach it.
-    CHECK(jpt_script_session_user_commands(s) == 3u);
+    jpt_script_session* s = ApiSession({{"scripts/keys.nut",
+                                         "class Keys extends GameScript { function OnHandleInput() { bKeyHit(uCMD_USER1); bKeyPressed(uCMD_USER3); } }\n"}});
+    Ready(s, "keys.scn");
+    // Only the commands the level's code names reach it.
+    CHECK(jpt_script_session_user_commands(s) == 0x5u);
     Close(s);
-    s = HudSession({{"scripts/all.nut",
+    s = ApiSession({{"scripts/all.nut",
                      "class Keys extends GameScript { function OnHandleInput() { if (bKeyHit(uCMD_USER8)) print(\"user8 hit\"); if (bKeyPressed(uCMD_USER8)) print(\"user8 held\"); } }\n"}});
     Ready(s, "k.scn");
     CHECK(jpt_script_session_user_commands(s) == 0x80u);
     Input(s, 0xFFu, 0xFFu);
     CHECK(Has(Print("user8 hit")) && Has(Print("user8 held")));
     Close(s);
-    s = HudSession({{"scripts/plain.nut", "class P extends GameScript { function OnSimStep(d) {} }\n"}});
+    s = ApiSession({{"scripts/plain.nut", "class P extends GameScript { function OnSimStep(d) {} }\n"}});
     Ready(s, "p.scn");
     CHECK(jpt_script_session_user_commands(s) == 0u);
     Close(s);
-    s = HudSession({{"scripts/none.nut", "class Q extends LevelScript { static SCN = \"other.scn\"; function OnLevelStart() {} }\n"}});
+    s = ApiSession({{"scripts/none.nut", "class Q extends LevelScript { static SCN = \"other.scn\"; function OnLevelStart() {} }\n"}});
     Ready(s, "p.scn");
     CHECK(!jpt_script_session_has_vm(s) && jpt_script_session_user_commands(s) == 0u);
     Close(s);
@@ -41,24 +60,24 @@ static void test_user_commands() {
 }
 
 static void test_input() {
-    jpt_script_session* s = HudSession({{"scripts/hud.nut", kHudScript}});
-    Ready(s, "ti.scn");
-    // Sprint held and moving forward: the HUD's additive icon; not moving, or the key up: none.
-    CHECK(!Input(s, 0x1u, 0x1u, 1.0f).modal);
-    CHECK(Additive(jpt_script_level_paint(s)) == 1);
-    Input(s, 0x1u, 0u, 0.0f);
-    CHECK(Additive(jpt_script_level_paint(s)) == 0);
-    Input(s, 0x40u, 0u, 1.0f);
-    CHECK(Additive(jpt_script_level_paint(s)) == 0);
+    jpt_script_session* s = ApiSession({{"scripts/reader.nut", kReader}});
+    Ready(s, "input.scn");
+    // Hit is the frame the key went down, held while it stays down; the movement input as the game read it.
+    CHECK(!Input(s, 0x1u, 0x1u, 1.0f).modal && Has(Print("input hit=true held=true move=1")));
+    Input(s, 0x1u, 0u, 0.5f);
+    CHECK(Has(Print("input hit=false held=true move=0.5")));
+    // Another command's bits are not USER1.
+    Input(s, 0x40u, 0x40u, 0.0f);
+    CHECK(Has(Print("input hit=false held=false move=0")));
     Close(s);
     // The key state is read in the input handlers only.
-    s = HudSession({{"scripts/out.nut", "class Late extends GameScript { function OnSimStep(d) { bKeyHit(uCMD_USER1); } }\n"}});
+    s = ApiSession({{"scripts/out.nut", "class Late extends GameScript { function OnSimStep(d) { bKeyHit(uCMD_USER1); } }\n"}});
     Ready(s, "o.scn");
     Steps(s, 1);
     CHECK(Contains("bKeyHit: only in OnHandleInput or OnHandleModalInput"));
     Close(s);
     // An endless OnHandleInput: that script stops, the next frame goes on.
-    s = HudSession({{"scripts/loop.nut", "class Loop extends GameScript { function OnHandleInput() { while (true) {} } }\n"}}, 20000);
+    s = ApiSession({{"scripts/loop.nut", "class Loop extends GameScript { function OnHandleInput() { while (true) {} } }\n"}}, 20000);
     Ready(s, "l.scn");
     Input(s, 0u, 0u);
     CHECK(Contains("callback=OnHandleInput") && Contains("instruction budget exceeded (20000)"));
@@ -67,44 +86,48 @@ static void test_input() {
     Close(s);
 }
 
+static int Drawn(jpt_script_session* s) {
+    const jpt_draw_frame_t* f = jpt_script_level_paint(s);
+    return f ? f->count : 0;
+}
+
 static void test_modal() {
-    jpt_script_session* s = HudSession({{"scripts/hud.nut", kHudScript}});
-    Ready(s, "ti.scn");
-    // USER2 opens the map in modal mode: the player's controls stop, the mouse still looks once the modal handler says so.
+    jpt_script_session* s = ApiSession({{"scripts/dialog.nut", kDialog}});
+    Ready(s, "modal.scn");
+    CHECK(Drawn(s) == 0);
+    // Entered from OnHandleInput: the player's controls stop; the mouse still looks while OnHandleModalInput returns true.
     jpt_script_input_result r = Input(s, 0u, 0x2u);
-    CHECK(Has(Print("map true")) && r.modal && jpt_script_level_modal(s));
+    CHECK(Has(Print("open true")) && r.modal && jpt_script_level_modal(s));
     r = Input(s, 0u, 0u);
     CHECK(r.modal && r.look);
-    // Keys go to the script; F keys stay the port's.
-    CHECK(jpt_script_level_key(s, 0x27u, 1, 0, 0, 0) == 1 && Has(Print("key 39 true page 1")));
-    CHECK(jpt_script_level_key(s, 0x22u, 1, 0, 0, 0) == 1 && Has(Print("key 34 true page 2")));
-    CHECK(jpt_script_level_key(s, 0x25u, 0, 0, 0, 0) == 1 && Has(Print("key 37 false page 2")));
-    CHECK(jpt_script_level_key(s, 0x23u, 1, 1, 0, 0) == 1 && Has(Print("key 35 true page 9")));
-    CHECK(jpt_script_level_key(s, 0x24u, 1, 0, 1, 1) == 1 && Has(Print("key 36 true page 0")));
+    CHECK(Drawn(s) == 1);
+    // Keys go to OnModalKey with their state and modifiers; F keys stay the port's.
+    CHECK(jpt_script_level_key(s, 0x25u, 1, 0, 0, 0) == 1 && Has(Print("key left true false false false")));
+    CHECK(jpt_script_level_key(s, 0x27u, 0, 1, 0, 0) == 1 && Has(Print("key right false true false false")));
+    CHECK(jpt_script_level_key(s, 0x24u, 1, 0, 1, 0) == 1 && Has(Print("key home true false true false")));
+    CHECK(jpt_script_level_key(s, 0x23u, 1, 0, 0, 1) == 1 && Has(Print("key end true false false true")));
+    CHECK(jpt_script_level_key(s, 0x21u, 1, 0, 0, 0) == 1 && Has(Print("key prior true false false false")));
+    CHECK(jpt_script_level_key(s, 0x22u, 1, 0, 0, 0) == 1 && Has(Print("key next true false false false")));
+    CHECK(jpt_script_level_key(s, 0x41u, 1, 0, 0, 0) == 1 && Has(Print("key 65 true false false false")));
     CHECK(jpt_script_level_key(s, 0x74u, 1, 0, 0, 0) == 0);
-    // The map is drawn centred while modal.
-    const jpt_draw_frame_t* f = jpt_script_level_paint(s);
-    int map = 0;
-    for (int i = 0; f && i < f->count; i++) map += f->cmds[i].w == 256.0f && f->cmds[i].x == 384.0f && f->cmds[i].y == 320.0f;
-    CHECK(map == 1);
-    // USER2 again inside modal mode closes it.
+    // OnHandleModalInput ends it; then keys are the game's again and nothing is drawn.
     r = Input(s, 0u, 0x2u);
-    CHECK(Has(Print("map closed")) && !r.modal && !jpt_script_level_modal(s));
-    CHECK(jpt_script_level_key(s, 0x27u, 1, 0, 0, 0) == 0);
+    CHECK(Has(Print("closed")) && !r.modal && !jpt_script_level_modal(s));
+    CHECK(jpt_script_level_key(s, 0x27u, 1, 0, 0, 0) == 0 && Drawn(s) == 0);
     // Escape aborts it, taken from the game.
     Input(s, 0u, 0x2u);
     CHECK(jpt_script_level_key(s, 0x1Bu, 1, 0, 0, 0) == 1 && Has(Print("aborted")) && !jpt_script_level_modal(s));
     // The player's death aborts it.
     g_lines.clear();
     Input(s, 0u, 0x2u);
-    g_hud_world.objects[g_hud_world.player].hit_points = 0.0f;
+    g_world.objects[g_world.player].hit_points = 0.0f;
     r = Input(s, 0u, 0u);
     CHECK(Has(Print("aborted")) && !r.modal);
-    g_hud_world.objects[g_hud_world.player].hit_points = 50.0f;
+    g_world.objects[g_world.player].hit_points = 100.0f;
     // Restart and a transition end it with the VM.
     Input(s, 0u, 0x2u);
     CHECK(jpt_script_level_modal(s));
-    Begin(s, "ti.scn", JPT_SCRIPT_BEGIN_RESTART);
+    Begin(s, "modal.scn", JPT_SCRIPT_BEGIN_RESTART);
     CHECK(!jpt_script_level_modal(s) && jpt_script_level_key(s, 0x27u, 1, 0, 0, 0) == 0);
     jpt_script_level_ready(s, 1);
     CHECK(!jpt_script_level_modal(s) && !Input(s, 0u, 0u).modal);
@@ -113,6 +136,13 @@ static void test_modal() {
     jpt_script_level_ready(s, 1);
     CHECK(!jpt_script_level_modal(s));
     Close(s);
+    // OnHandleModalInput returning false: no mouse look either.
+    s = ApiSession({{"scripts/dialog.nut", std::string(kDialog) + "gLook = false;\n"}});
+    Ready(s, "modal.scn");
+    Input(s, 0u, 0x2u);
+    r = Input(s, 0u, 0u);
+    CHECK(r.modal && !r.look);
+    Close(s);
 }
 
 static void test_modal_owner_dies() {
@@ -120,7 +150,7 @@ static void test_modal_owner_dies() {
         "class First extends GameScript { function OnHandleInput() { if (bKeyHit(uCMD_USER1)) print(\"first \" + bSetModalMode(true)); }\n"
         "  function OnModalKey(vk, p, s, c, a) { if (vk == VK_LEFT) throw \"broken key\"; if (vk == VK_RIGHT) while (true) {} } }\n"
         "class Second extends GameScript { function OnHandleInput() { if (bKeyHit(uCMD_USER1)) print(\"second \" + bSetModalMode(true) + \" \" + bIsModalMode()); } }\n";
-    jpt_script_session* s = HudSession({{"scripts/two.nut", two}}, 20000);
+    jpt_script_session* s = ApiSession({{"scripts/two.nut", two}}, 20000);
     Ready(s, "t.scn");
     // One modal script at a time.
     Input(s, 0u, 0x1u);
@@ -131,7 +161,7 @@ static void test_modal_owner_dies() {
     CHECK(jpt_script_level_key(s, 0x27u, 1, 0, 0, 0) == 0 && !Input(s, 0u, 0u).modal);
     Close(s);
     // Out of its budget inside the key handler: the same.
-    s = HudSession({{"scripts/two.nut", two}}, 20000);
+    s = ApiSession({{"scripts/two.nut", two}}, 20000);
     Ready(s, "t.scn");
     Input(s, 0u, 0x1u);
     CHECK(jpt_script_level_key(s, 0x27u, 1, 0, 0, 0) == 1 && Contains("instruction budget exceeded (20000)") && !jpt_script_level_modal(s));

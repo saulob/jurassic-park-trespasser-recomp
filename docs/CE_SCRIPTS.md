@@ -1,8 +1,20 @@
 # Trespasser CE scripts (Squirrel)
 
-Status: phases 0 to 2 (which levels need scripts, the interpreter, the lifecycle, saves) are done. Phase 3, CE's engine API, is done
-for what the Spitter animals and the Cloning Facility of the corpus use. A level whose scripts use a name the port does not have is
+The port embeds the Squirrel interpreter and implements a compatibility layer that lets Trespasser CE scripts call functions of
+the game engine. Status: phases 0 to 2 (which levels need scripts, the interpreter, the lifecycle, saves) are done; phase 3, CE's
+engine API, is partly done (the registry below lists what exists). A level whose scripts use a name the port does not have is
 refused as `CE_SCRIPT_API`, with the names ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)).
+
+## What is verified, and how
+
+| Level of evidence | Meaning |
+|---|---|
+| Implemented API | the names in `src/common/jpt_script_registry.inc`, each with its binding and a headless test |
+| Static analysis | the launcher reads a level's scripts without running them and finds every CE name they use in the registry; it says nothing about whether the level's own logic works |
+| Synthetic tests | headless suites run small scripts written for the project over a model world ([Tests](#tests-headless-toolstestps1)) |
+| Real gameplay | no scripted community level has been confirmed in a full manual play-through in the port yet |
+
+A level that passes the static analysis is `READY` for its scripts; that is not a statement that the level's features work in play.
 
 ## Scope
 
@@ -11,7 +23,7 @@ every CE script feature acts through a script, so there is nothing for the campa
 session never creates the script session: no VM, no parser, no callback, no budget, no script state in its saves, nothing per frame
 (`src/common/jpt_level_scripts.cpp` returns at its first test; `script_session_tests` proves it before and after a custom session).
 
-The port implements the API that Trespasser CE documents, as documented. No CE code, data or file is used.
+The port implements part of the API that Trespasser CE documents, following that documentation. No CE code, data or file is used.
 
 ## Source of the API
 
@@ -72,8 +84,7 @@ out, locals and parameters never taken for engine names).
 * Each entry into a script (loading a file, a callback) gets 1,000,000 instructions. Running out is an error that `try` and
   `catch` cannot keep alive, also inside callbacks such as a sort's comparator; loops and recursion are instructions too.
 * Memory: 16 MB per VM (`JPT_SCRIPT_DEFAULT_MEMORY`), the whole VM's: Squirrel has one heap per VM and its objects, strings and
-  closures are shared by every script of it. An empty VM takes 45 KB; all the CE scripts of the corpus load in 140 KB at their peak
-  on x86. Every block carries a header with its heap and size and is charged to that heap, header included; the heap keeps the
+  closures are shared by every script of it. An empty VM takes 45 KB. Every block carries a header with its heap and size and is charged to that heap, header included; the heap keeps the
   bytes held, the peak, allocations, reallocations, frees, bytes freed and refusals by budget and by the system. Sizes are checked
   before any sum, so no count wraps.
 * An allocation past the budget is refused before it reaches the system; the VM is abandoned (none of its code runs again, every
@@ -165,23 +176,12 @@ the level no longer has is skipped with a line; a script without an `nvram` memb
 `null` (a script that makes its table only when not loading a save) gets a new table of the saved slots, as in CE. The save's package and the content of
 its worlds are checked as before (`jpt_save_belongs`).
 
-## What the corpus uses
+## Per-level results
 
-Of 262 levels of the TresCom corpus, 5 were refused for `CE_SCRIPTS` alone before phase 0. Required script functions, by file:
+`custom_level_scan --analyze-custom-level` lists, for one level, its script classes (`SCRIPT_CLASS`) and each file's required script
+functions (`SCRIPT_REQUIRES`). That is static analysis only ([What is verified, and how](#what-is-verified-and-how)).
 
-| Package | Level | Scripts | What they ask that the port does not have |
-|---|---|---|---|
-| Cloning Facility | `TI~ClnFcty.scn` | `CPlayerTI` (player), GameScripts `GameTI` with its HUD and inventory | nothing since phase 3: `READY` |
-| TresCom Ops Anthology | `trescom.scn`, `tc_isle.scn` (2022 updates) | `Spitter` animals, `SpitterProjectile` objects | nothing since phase 3: `READY` |
-| TresCom Ops Anthology | `tc_prequel.scn`, `tc_rescue.scn` | none act: no object names a class, `SpitterHelper` only keeps its state | nothing: no VM; `READY` |
-
-Each level is judged alone, so a sibling refused for CE's API does not refuse them: the corpus has 253 of 262 levels `READY`. The
-Cloning Facility's `fm.ini` sets `EnableAiActivityEx=-1`, which the analysis reports as ineffective: the level does not need CE's
-extended AI.
-
-`custom_level_scan --analyze-custom-level` and the compatibility report list them per level.
-
-## Phase 3: CE's engine API (Spitter and Cloning Facility done)
+## Phase 3: CE's engine API (partly done)
 
 One registry, `src/common/jpt_script_registry.inc`, lists every name of CE's API the port implements and every handler it calls, by
 script kind. The launcher's analysis (`jpt::script::IsImplemented`, `IsDrivenHandler`) refuses a level whose scripts use a CE name
@@ -252,7 +252,7 @@ that is not 0 to 2 or an argument that is not a texture, a script error. A scrip
 painting draws nothing that frame; a VM out of memory draws nothing.
 
 `TP_Engine.GetTexture(name)` loads a picture of the package (TGA, DDS, BMP; without an extension the first of `.tga`, `.dds`, `.bmp`
-that exists, as the Cloning Facility's `scripts/maps/map_GPS`) by a path relative to its game paths, once per name in a level; a
+that exists) by a path relative to its game paths, once per name in a level; a
 missing picture is `null`, as in CE. The texture is the VM's: 256 at most, 64 MB of pixels; `GetWidth` and `GetHeight` read its size, and
 it is gone with its VM at Restart, a transition or a load. `GetScreenWidth` and `GetScreenHeight` are the game's main rendering surface
 (its raster), the space the commands are in. `IsSoftwareMode` is `false`: the port draws these textures with every renderer.
@@ -306,7 +306,7 @@ places in `CPlayer::Process` and the hand-off are found in their own code (`conf
 `OnConsoleCommand(strCmd, strArgs)` is CE's handler of a console command the game does not know: game scripts in their order until
 one returns `true` (a bool; another value does not handle it). The retail game has no console and the port adds none, so the
 dispatcher (`jpt_script_level_console`) exists for the headless tests only and no command reaches it in play; a level that defines
-the handler is not refused for it. The Cloning Facility's one command, `MAP`, does what its map key does.
+the handler is not refused for it.
 
 ### Still missing
 

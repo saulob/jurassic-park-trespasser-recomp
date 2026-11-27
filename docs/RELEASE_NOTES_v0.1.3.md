@@ -1,6 +1,6 @@
 # Jurassic Park: Trespasser Recompiled v0.1.3 - The Custom Levels Update
 
-**v0.1.3 - The Custom Levels Update.** The launcher has a new Custom Levels page: import community levels and fan missions from a ZIP, 7z or RAR file or from a folder, see which ones the port can play before anything is installed, and play them with their own saves, a full restart, a generated minimap and objectives. It also brings Trespasser CE and ATX compatibility, including Trespasser CE's Squirrel scripting, fog, lighting and shadow improvements, renderer and launcher improvements, and Linux fixes.
+**v0.1.3 - The Custom Levels Update.** The launcher has a new Custom Levels page: import community levels and fan missions from a ZIP, 7z or RAR file or from a folder, see which ones the port can play before anything is installed, and play them with their own saves, a full restart, a generated minimap and objectives. It also adds support for many Trespasser CE and ATX features, a Squirrel interpreter for Trespasser CE scripts, fog, lighting and shadow improvements, renderer and launcher improvements, and Linux fixes.
 
 **No game files are included.** You need your own legally obtained *Jurassic Park: Trespasser* disc image. The launcher imports it, verifies it and keeps your installation, saves and settings beside the program.
 
@@ -14,11 +14,9 @@ Windows remains the primary platform. The Linux AppImage remains experimental, a
 
 ## Highlights
 
-- **Custom Levels** with **ZIP, 7z, RAR and folder import**, checked level by level before anything is installed.
-- **253 of 262 community levels classified as READY** in the TresCom download catalog used as the test corpus.
-- **Trespasser CE and ATX compatibility**: ActionTypes, textures, normal maps, skies, scene formats and larger engine limits for custom sessions.
-- **Squirrel scripting** for Trespasser CE scripts, with memory and instruction budgets.
-- **Spitter and the Cloning Facility** supported through generic scripting APIs, not code written for those levels.
+- **Custom Levels** with **ZIP, 7z, RAR and folder import**, checked level by level by an automated compatibility scanner before anything is installed.
+- **Trespasser CE and ATX features**: most ActionTypes, CE textures and normal maps, custom skies, newer scene formats and larger engine limits for custom sessions. Some features are not implemented yet (see [Known Limitations](#known-limitations)).
+- **Squirrel scripting**: the Squirrel interpreter and a compatibility layer that lets Trespasser CE scripts call into the game, with memory and instruction budgets.
 - **Minimap and objectives** generated for custom levels.
 - **Full restart and independent saves** for custom levels, kept apart from the campaign.
 - **Fog, lighting and shadow improvements**: new Fog and Shadows options, stronger terrain shadows, better object shadows and a fixed Gamma range.
@@ -40,6 +38,16 @@ The launcher has a new **Custom Levels** page in its sidebar, on Windows and Lin
 3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package.
 4. Check the status of each level: **Ready**, or **Not supported** with the reason.
 5. Select a Ready level and press **Play**.
+
+### Levels you already have on disk
+
+You do not need a ZIP, or to download a level again, if you already have it extracted. Choose **Import Folder** and select that folder.
+
+- **Import Folder** reads your folder and installs a copy of the level's files in the launcher's own `user_data/custom_levels/<package>` folder. Your folder is not moved or changed.
+- The port plays that **isolated copy**, so its saves, settings and checks stay apart from the campaign and from other packages. The copy uses its own disk space; **Delete** in the launcher removes it and keeps its saves.
+- **Playing directly from an external folder**, without a copy, is not available in v0.1.3.
+
+The game itself still has to be installed by the launcher from your disc image (ISO). Importing an existing Trespasser installation without an ISO is not supported in v0.1.3; it is being evaluated for a future version.
 
 ### Import
 
@@ -65,15 +73,21 @@ The launcher has a new **Custom Levels** page in its sidebar, on Windows and Lin
 
 ### What READY means
 
-**READY is a compatibility classification, not a guarantee that every level has been played through from start to finish.** It means that everything the level needs is present in the package or the installed game, and that every feature it uses is implemented in the port.
+**READY means that the automated compatibility scanner found no known blocking issues. It does not guarantee full gameplay compatibility.**
 
-The TresCom download catalog was used as the compatibility corpus: **253 of its 262 levels are classified as READY**. Of the other nine, six are missing files in their downloads or come as incomplete packages, and three need Trespasser CE features the port does not have yet (see [Known Limitations](#known-limitations)). Compatibility is judged by capabilities, never by level name: no level has code of its own.
+The scanner checks that the files a level needs are present and that the features, settings, ActionTypes and script functions it uses are ones the port implements. It does not play the level. A READY level can still have problems with scripts, triggers, graphics, performance or behaviour during play, and most READY levels have not been played from start to finish in the port.
+
+The same rules apply to every level; no level or author has code of its own in the port.
+
+When v0.1.3 was prepared, the scanner was run over the TresCom download catalog and classified 253 of its 262 levels as READY. That figure is a historical scanner result from before this documentation revision, not a play-through count, and it has not been re-run since.
 
 ## Trespasser CE and ATX Compatibility
 
+What is implemented:
+
 - **ActionTypes** 100 to 106, 109 to 118, 120 and 121: game speed, map pictures, gun reloads, health, videos, hint text, colours, fixed speeds, controls, player AI, teleport, use, jump, particles, texture swaps and trigger rules. ActionType 99 (scripted actions) is not supported.
 - **Textures**: BMP, TGA and DDS, including DXT1 to DXT5, with mipmaps and alpha; Trespasser CE's `texhw` texture folders; `.norm` normal maps.
-- **Skies**: Trespasser CE's dome, body and strip skies and `CE_SKY_2X`.
+- **Custom skies** (`.sky` files): dome, body and strip layers with the `OPAQUE`, `ALPHA`, `BURN`, `2X_ALPHA` and `2X_BURN` blend modes, drawn by Direct3D 11 and Vulkan. Stars and meteors layers are not supported.
 - **Terrain**: `TerrainBackfaceCullBias`.
 - **Scenes**: scene formats 23 to 26 and `hint_strings` text.
 - **ATX**: map pictures and the `MAPS` folder.
@@ -81,15 +95,22 @@ The TresCom download catalog was used as the compatibility corpus: **253 of its 
 
 ## Scripting
 
-Trespasser CE levels can carry Squirrel scripts. v0.1.3 runs them with Squirrel 3.2, for custom levels only: the campaign never starts a script machine.
+Trespasser CE levels can carry scripts written in Squirrel. The port embeds the Squirrel 3.2 interpreter and implements a compatibility layer, following Trespasser CE's scripting documentation, that lets those scripts call functions of the game engine. Scripts run in custom levels only: the campaign never starts a script machine.
+
+What the port implements:
 
 - **One script machine per level**, with a memory budget (16 MB by default) and an instruction budget for every callback. A script that fails, runs out of its budget or raises an error is stopped on its own and logged; the rest of the level goes on.
 - **No file, operating system or thread access** is exposed to scripts. This limits what a script can reach; it is not a promise that every faulty or hostile script is prevented from slowing down or stopping the game.
 - **Lifecycle**: constructors and destructors, `OnScriptInit`, `OnGameStart`, `OnLevelStart`, `OnLevelEnd` at transitions, `OnSimStep`, `OnPrepareSave`, `OnPostLoad`, `OnWorldPurge`, `OnMessage`, `OnPaintHW3D`, `OnHandleInput`, modal input, `OnActBite`, `OnJump` and the player's speed and jump factors.
 - **Saves**: each script's `nvram` is saved with the game and restored on load, restart and transition, as in Trespasser CE.
-- **Gameplay APIs**: world objects, animals, the player and guns (`CInstance`, `CAnimal`, `CPlayer`, `CGun`), `Vector3` and `Rotate3`, teleport and fixed velocity, messages, the player's voice, health, ammunition, head position and rotation, drawing textures on screen, and the USER keys.
+- **Engine functions**: world objects, animals, the player and guns (`CInstance`, `CAnimal`, `CPlayer`, `CGun`), `Vector3` and `Rotate3`, teleport and fixed velocity, messages, the player's voice, health, ammunition, head position and rotation, drawing textures on screen, and the USER keys.
+- **Not yet implemented**: part of Trespasser CE's documented scripting API, including action scripts (ActionType 99) and the `OnLevelTransitionRequested` and `OnGameCompleted` callbacks. A level whose scripts use something missing is listed as Not supported, with the missing names.
 
-**Spitter** (TresCom Ops Anthology: `trescom.scn` and `tc_isle.scn`) and the **Cloning Facility** (its HUD, inventory, map, sprint and stamina, jump, voice and USER keys) are supported through these generic APIs, not through code written for those levels. Their support was validated by analysis and headless tests; **a full manual play-through of both levels has not been done yet**.
+How script support has been checked:
+
+- **Static analysis**: the launcher reads a level's scripts without running them and checks every Trespasser CE function and callback they use against the list the port implements. Passing this check means the names exist in the port, not that the level's script logic behaves as intended.
+- **Synthetic tests**: headless tests run small scripts written for the project over a model of the game world, covering each implemented function and callback.
+- **Real gameplay**: no scripted community level has been confirmed in a full manual play-through in the port yet.
 
 ## Graphics
 
@@ -145,13 +166,32 @@ Custom levels play with the installed game version selected on the Play page.
 
 ## Known Limitations
 
-- **Not every custom level is supported.** Of the 262 levels in the TresCom test corpus, nine are not READY:
-  - six are missing files in their downloads or are incomplete packages (a world, a terrain or a texture set is absent, or a patch comes without its base level);
-  - three need Trespasser CE features that are not implemented: extended AI (`EnableAiActivityEx`), `EndGameDDF`, and texhw textures on meshes the original game bump-maps.
-- **ActionType 99** (scripted actions) is not supported, and `OnLevelTransitionRequested`, `OnGameCompleted` and the handlers of action scripts are not called; a level that needs them is listed as Not supported. `OnConsoleCommand` is not reachable in play, because the port has no console.
+### Custom level features not implemented
+
+A level that uses one of these is listed as **Not supported**, with the reason:
+
+- **Trespasser CE settings**: extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles (`EnableWoodSapParticles`) and a custom end screen (`EndGameDDF`).
+- **Trespasser CE textures**: `texhw` textures on meshes the original game bump-maps, and `texhw` textures whose sides are not powers of two.
+- **Custom skies**: stars and meteors layers.
+- **Scripted actions**: ActionType 99 and its action scripts (`ScriptAT`).
+- **Script callbacks and functions**: `OnLevelTransitionRequested`, `OnGameCompleted`, `OnLevelEnd` outside a level transition, and the parts of Trespasser CE's scripting API the port does not have yet.
+- **ATX features that Trespasser CE does not have either**, for a package that says it needs ATX: animals that jump as they bite (`MAPS/JMP`), animals that throw objects (`MAPS/SPT`), ATX plugins (`MAPS/PLG`) and rules changed in `ATXconfig.ini`.
+
+Present in the port but with limits:
+
+- **`OnConsoleCommand`** is implemented, but the game has no console, so no command reaches it in play. A level that defines it is not refused.
+- **Replacement menus, menu sounds and opening or ending videos** of a package are kept but not used: the launcher starts each level directly.
+- **ATX options that are off by default** (its HUD pictures, randomizer, night mode, rain and menu texts) are not used.
+
+### Why some levels were not READY
+
+In the scanner run made when v0.1.3 was prepared, nine of the 262 levels of the TresCom download catalog were not READY. Six were missing files in their downloads or were incomplete packages (a world, a terrain or a texture set absent, or a patch without its base level). Three needed features listed above: extended AI (`EnableAiActivityEx`), `EndGameDDF`, and `texhw` textures on bump-mapped meshes.
+
+### Other limitations
+
+- **READY is not a play-through.** It is the result of an automated scan; most custom levels have not been played from start to finish in the port.
 - **RAR archives** that are encrypted, split into volumes, made with RAR 1.5 or use a dictionary over 256 MB are refused: extract them and use **Import Folder**.
-- **READY is not a play-through.** Most custom levels have not been played from start to finish in the port.
-- **Spitter and the Cloning Facility** have not had a full manual play-through yet.
+- **Importing an existing Trespasser installation** without a disc image, and **playing a level directly from an external folder** without a copy, are not available.
 - **Linux mouse and pause menu fixes** were validated by headless tests, not yet on a physical Linux desktop.
 - **Windows is the primary platform.** Linux is experimental, and the Steam Deck has not been validated on physical hardware.
 - **Linux does not have every Windows display feature.** Native high resolutions and true 21:9 / 32:9 Hor+ gameplay remain Windows-only.
@@ -162,7 +202,7 @@ Custom levels play with the installed game version selected on the Play page.
 
 - The full headless gate passed on Windows and Linux: **259 passing results, 0 failures and 867,876 checks counted**, with **143 of 143 global features at parity between Windows and Linux** in the 194-feature contract. Some optional fixtures were skipped, as the gate report lists.
 - The Windows and Linux builds passed, and the Linux executable needs at most glibc 2.30, within the 2.31 baseline.
-- Custom level import, analysis, sessions, saves, restart and the script machine are covered by headless suites, and the TresCom corpus was analysed with the release scanner.
+- Custom level import, analysis, sessions, saves, restart and the script machine are covered by headless suites, and the TresCom download catalog was analysed with the release scanner.
 - The final Windows ZIP and Linux AppImage were checked by the project's release validators.
 - Real GPU rendering, audio, controllers, the Steam Deck and full play-throughs of custom levels still need manual testing; headless tests are not a substitute for it.
 
@@ -171,8 +211,6 @@ Custom levels play with the installed game version selected on the Play page.
 Thanks to the TresCom community, whose request for custom level support started this release, and to everyone who has made, kept and shared Trespasser levels over the years. The TresCom download catalog was the corpus every compatibility rule was checked against. Thanks also to everyone who tested v0.1.2 and sent reports. The full credits are in the [v0.1.0 notes](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/RELEASE_NOTES_v0.1.0.md#credits-and-acknowledgements).
 
 ## Downloads
-
-These links point to the v0.1.3 assets of the v0.1.3 release and work once it is published.
 
 | Platform | File | Checksum file |
 |---|---|---|
@@ -211,3 +249,9 @@ VirusTotal is an additional verification step, not an absolute guarantee of safe
 | Windows updater: `trg-updater.exe` (inside the ZIP) | `f8a985639a26e259a4439c0a827df4fcfa3bb316fb72298ce2380fa03e1b26b5` | [VirusTotal](https://www.virustotal.com/gui/file/f8a985639a26e259a4439c0a827df4fcfa3bb316fb72298ce2380fa03e1b26b5?nocache=1) |
 
 The project does not distribute commercial game files or community levels. You must supply your own compatible disc image.
+
+## About this revision
+
+These notes were revised after publication to describe custom level support more precisely: what READY means, which Trespasser CE features are implemented and which are not, how script support has been checked, and how to import a level you already have on disk. The release files, their checksums and the VirusTotal reports above are unchanged.
+
+This project is developed with AI coding assistance, and custom level compatibility was checked with an automated scanner run over community levels on the maintainer's machine. Some of those files were processed in AI-assisted sessions, including parts of the scripts of one community level whose author does not permit the use of their work with generative AI tools. The script tests modelled on that level's behaviour have been replaced in the repository by independent tests written from Trespasser CE's documentation; the earlier tests remain in the Git history and the v0.1.3 source archives. No community level file or name is in the release downloads. Details are in [LEGAL](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/LEGAL.md#community-levels).

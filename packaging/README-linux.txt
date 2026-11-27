@@ -53,8 +53,8 @@ CUSTOM LEVELS
 -------------
 The launcher's Custom Levels page imports community levels from a ZIP, 7z or RAR file or from a folder, checks each
 level before anything is installed and lists it as Ready or Not supported, with the reason. Imported levels go to
-user_data/custom_levels, and their saves are kept apart from the campaign's. Ready means that everything the level
-needs is present and implemented, not that the level was played through.
+user_data/custom_levels, and their saves are kept apart from the campaign's. Ready means that the automated
+compatibility scanner found no known blocking issues; it does not guarantee full gameplay compatibility.
 
 
 UPDATES

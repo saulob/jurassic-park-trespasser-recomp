@@ -16,6 +16,12 @@ expanded in memory; a larger one is decoded as a stream into a temporary folder 
 with at most one x86, ARM, ARM Thumb, PowerPC, SPARC or delta filter), otherwise it is refused above 768 MB. When a file of the
 package cannot be read, the analysis says so (unreadable, damaged, unsupported) instead of judging its levels. A package is unpacked and checked in a staging folder first, so a failed or cancelled import leaves nothing behind.
 
+A level that is already extracted does not need an archive: Import Folder reads that folder and installs a copy of the files the
+level needs under `user_data\custom_levels\<package>`, which is what the port plays. The folder chosen is only read, never moved or
+changed. The copy keeps the package's saves, settings and checks apart from everything else, and takes disk space of its own; Delete
+removes it and keeps its saves. Playing from an external folder without a copy is not implemented. The game itself is installed from a
+disc image only ([LAUNCHER](LAUNCHER.md#import-game)).
+
 | Refused | |
 |---|---|
 | paths | absolute, drive, `..`, reserved names, the same name twice (any case), a file where a folder is, more than 16 folders deep |
@@ -28,6 +34,9 @@ Level data, texts, pictures and Trespasser CE scripts (`.nut`, never run unless 
 manifest. In a package that an earlier version installed without its `.nut` files, a level whose world names a script class is refused as
 `CE_SCRIPT_FILES` until the package is imported again; its other levels are not. A package with the same files as an installed one is refused
 as a duplicate.
+
+`READY` is the result of an automated scan: no known blocking issue was found. It does not mean the level was played, or that its
+scripts, triggers, graphics and performance behave as intended.
 
 The rule is binary per level: each scene is `READY` or refused on its own, and a sibling's state never changes it. A package is
 analysed in a staging folder first and installed (one rename) when at least one of its levels is `READY`; its list shows every
@@ -320,7 +329,8 @@ fire count of 0, 121 takes every gun it names. They keep no bytes in scenes or s
 the mark of the package's saves, and what they changed in the game's objects is put back before each load. A video (105) is played on the
 next frame in the game's own video window, from the package's `menu` folder or the game's. Numbers that neither ATX nor Trespasser CE
 knows do nothing, as there; neither do 107, 108 and 119 (rain, an option of ATX's that is off by default). A level's `.sky` (`src/common/jpt_sky.c`) is
-drawn by the hardware renderers: DOME, BODY and STRIP layers with every blend mode.
+drawn by the hardware renderers: DOME, BODY and STRIP layers with the `OPAQUE`, `ALPHA`, `BURN`, `2X_ALPHA` and `2X_BURN` blend modes. A
+level with STARS or METEORS layers is not supported.
 
 A map action names its picture as ATX reads it, `MAPS\<name>`: the package's file of that path below its own `MAPS` folder, or else its
 only file of that path anywhere, is installed below the package's virtual `maps/`, whatever its readme says; a name that leaves the folder

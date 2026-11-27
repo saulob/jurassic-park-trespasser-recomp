@@ -3,7 +3,7 @@
 // overlay: the software one, the GPU list Vulkan draws, the RGBA layer and Direct3D 11 on a WARP device, without a window.
 #include "debug_menu_panel.h"
 #include "imgui_software.h"
-#include "script_hud_fixture.h"
+#include "script_api_fixture.h"
 
 #ifdef _WIN32
 #include <d3d11.h>
@@ -15,49 +15,60 @@ static const jpt_draw_cmd_t* With(const jpt_draw_frame_t* f, int blend) {
     return nullptr;
 }
 
+static const char* kPainter =
+    "class Painter extends GameScript {\n"
+    "  tex = null;\n"
+    "  function OnScriptInit(b) { tex = TP_Engine.GetTexture(\"textures/white.tga\"); }\n"
+    "  function OnPaintHW3D() {\n"
+    "    TP_Engine.DrawTexture(tex, 1, 2, 3, 2, 10, 20, 30, 40, 0xFF102030, 0);\n"
+    "    TP_Engine.DrawTexture(tex, 0, 0, 8, 4, TP_Engine.GetScreenWidth() / 2, TP_Engine.GetScreenHeight() / 2, 16, 8, 0x80FFFFFF, 1);\n"
+    "    TP_Engine.DrawTexture(tex, 0, 0, 8, 4, TP_Engine.GetElapsedSimTime() * 10.0, 0, 8, 4, TP_Engine.rgba(1, 2, 3, 4), 2);\n"
+    "  }\n"
+    "}\n";
+
+static const char* kTextureProbe =
+    "class Probe extends GameScript {\n"
+    "  function OnLevelStart() {\n"
+    "    local a = TP_Engine.GetTexture(\"textures/white.tga\"), b = TP_Engine.GetTexture(\"TEXTURES\\\\WHITE.TGA\");\n"
+    "    print(a.GetWidth() + \"x\" + a.GetHeight() + \" \" + (TP_Engine.GetTexture(\"textures/none.tga\") == null) + \" \" + TP_Engine.IsSoftwareMode() +\n"
+    "          \" \" + TP_Engine.GetScreenWidth() + \"x\" + TP_Engine.GetScreenHeight() + \" \" + (a instanceof TP_Engine.Texture));\n"
+    "  }\n"
+    "}\n";
+
 static void test_textures_and_commands() {
-    jpt_script_session* s = HudSession({{"scripts/hud.nut", kHudScript},
-                                        {"scripts/probe.nut",
-                                         "class Probe extends GameScript {\n"
-                                         "  function OnLevelStart() {\n"
-                                         "    local a = TP_Engine.GetTexture(\"scripts/bars.tga\"), b = TP_Engine.GetTexture(\"SCRIPTS\\\\BARS.TGA\");\n"
-                                         "    print(a.GetWidth() + \"x\" + a.GetHeight() + \" \" + (TP_Engine.GetTexture(\"scripts/none.tga\") == null) + \" \" + TP_Engine.IsSoftwareMode() +\n"
-                                         "          \" \" + TP_Engine.GetScreenWidth() + \"x\" + TP_Engine.GetScreenHeight() + \" \" + (a instanceof TP_Engine.Texture));\n"
-                                         "  }\n"
-                                         "}\n"}});
-    Ready(s, "ti.scn");
+    jpt_script_session* s = ApiSession({{"scripts/painter.nut", kPainter}, {"scripts/probe.nut", kTextureProbe}});
+    Ready(s, "draw.scn");
     // Loaded once per name (case and separators alike), a missing one null as CE's.
-    CHECK(Has(Print("64x32 true false 1024x768 true")) && g_hud_world.loads == 2);
+    CHECK(Has(Print("8x4 true false 1024x768 true")) && g_world.loads == 1);
     const jpt_draw_frame_t* f = jpt_script_level_paint(s);
-    CHECK(f && f->count == 2 && f->screen_w == 1024 && f->screen_h == 768 && f->texture_count == 2 && f->generation == jpt_script_session_generation(s));
-    const jpt_draw_cmd_t* frame = With(f, JPT_DRAW_ALPHA);
-    CHECK(frame && frame->x == 30.0f && frame->y == 722.0f && frame->w == 64.0f && frame->h == 16.0f && frame->argb == 0x66FFFFFFu);
-    // The health bar follows the player's real hit points.
-    CHECK(f->cmds[1].src_w == 16.0f && f->cmds[1].w == 16.0f && f->cmds[1].argb == 0xCCD42020u);
-    g_hud_world.objects[g_hud_world.player].hit_points = 100.0f;
+    CHECK(f && f->count == 3 && f->screen_w == 1024 && f->screen_h == 768 && f->texture_count == 1 && f->generation == jpt_script_session_generation(s));
+    // Each command as the script gave it: source and screen rectangles, ARGB and blend mode.
+    const jpt_draw_cmd_t* opaque = With(f, JPT_DRAW_OPAQUE);
+    CHECK(opaque && opaque->src_x == 1.0f && opaque->src_y == 2.0f && opaque->src_w == 3.0f && opaque->src_h == 2.0f);
+    CHECK(opaque && opaque->x == 10.0f && opaque->y == 20.0f && opaque->w == 30.0f && opaque->h == 40.0f && opaque->argb == 0xFF102030u);
+    const jpt_draw_cmd_t* alpha = With(f, JPT_DRAW_ALPHA);
+    CHECK(alpha && alpha->x == 512.0f && alpha->y == 384.0f && alpha->w == 16.0f && alpha->h == 8.0f && alpha->argb == 0x80FFFFFFu);
+    const jpt_draw_cmd_t* add = With(f, JPT_DRAW_ADD);
+    CHECK(add && add->x == 0.0f && add->argb == 0x04010203u);
+    const jpt_draw_texture_t* white = f && f->texture_count == 1 ? &f->textures[0] : nullptr;
+    CHECK(white && white->id == f->cmds[0].texture && white->width == 8 && white->height == 4 && white->rgba && white->rgba[0] == 0xFF);
+    // Every frame asks the script again: the engine's state and the screen's size as they are now.
+    g_world.time = 3.0f;
+    g_world.screen_w = 2048;
+    g_world.screen_h = 1536;
     f = jpt_script_level_paint(s);
-    CHECK(f->cmds[1].w == 32.0f);
-    const jpt_draw_texture_t* bars = nullptr;
-    for (int i = 0; i < f->texture_count; i++)
-        if (f->textures[i].id == f->cmds[0].texture) bars = &f->textures[i];
-    CHECK(bars && bars->width == 64 && bars->height == 32 && bars->rgba && bars->rgba[0] == 0xFF);
-    // Another screen: the map keeps its place in CE's 1024 x 768 reference.
-    g_hud_world.screen_w = 2048;
-    g_hud_world.screen_h = 1536;
-    Input(s, 0u, 0x2u);
-    f = jpt_script_level_paint(s);
-    int map = 0;
-    for (int i = 0; i < f->count; i++) map += f->cmds[i].w == 512.0f && f->cmds[i].x == 768.0f && f->cmds[i].y == 640.0f;
-    CHECK(map == 1 && f->screen_w == 2048);
-    // Restart: a new generation, the old textures gone with their VM.
+    add = With(f, JPT_DRAW_ADD);
+    alpha = With(f, JPT_DRAW_ALPHA);
+    CHECK(add && add->x == 30.0f && alpha && alpha->x == 1024.0f && alpha->y == 768.0f && f->screen_w == 2048);
+    // Restart: a new generation, the old texture gone with its VM.
     const uint32_t before = f->generation;
-    Begin(s, "ti.scn", JPT_SCRIPT_BEGIN_RESTART);
+    Begin(s, "draw.scn", JPT_SCRIPT_BEGIN_RESTART);
     CHECK(jpt_script_level_paint_frame(s)->count == 0);
     jpt_script_level_ready(s, 1);
     f = jpt_script_level_paint(s);
-    CHECK(f->generation == before + 1 && f->count == 2 && g_hud_world.loads == 4);
+    CHECK(f->generation == before + 1 && f->count == 3 && g_world.loads == 2);
     // No paint over a world being loaded.
-    Begin(s, "ti.scn", JPT_SCRIPT_BEGIN_RESTART);
+    Begin(s, "draw.scn", JPT_SCRIPT_BEGIN_RESTART);
     CHECK(jpt_script_level_paint(s)->count == 0);
     Close(s);
 }
@@ -65,14 +76,14 @@ static void test_textures_and_commands() {
 static void test_paint_errors() {
     const char* scripts =
         "gTex <- null;\n"
-        "class Good extends GameScript { function OnScriptInit(b) { gTex = TP_Engine.GetTexture(\"scripts/bars.tga\"); }\n"
+        "class Good extends GameScript { function OnScriptInit(b) { gTex = TP_Engine.GetTexture(\"textures/white.tga\"); }\n"
         "  function OnPaintHW3D() { TP_Engine.DrawTexture(gTex, 0, 0, 8, 8, 0, 0, 8, 8, 0xFFFFFFFF, 1); } }\n"
         "class Bad extends GameScript { function OnPaintHW3D() { TP_Engine.DrawTexture(gTex, 0, 0, 8, 8, 10, 10, 8, 8, 0xFFFFFFFF, 1); throw \"paint broke\"; } }\n"
         "class Mode extends GameScript { function OnPaintHW3D() { TP_Engine.DrawTexture(gTex, 0, 0, 8, 8, 0, 0, 8, 8, 0, 3); } }\n"
         "class Early extends GameScript { function OnSimStep(d) { TP_Engine.DrawTexture(gTex, 0, 0, 8, 8, 0, 0, 8, 8, 0, 1); } }\n"
         "class Wrong extends GameScript { function OnPaintHW3D() { TP_Engine.DrawTexture(Vector3(), 0, 0, 8, 8, 0, 0, 8, 8, 0, 1); } }\n"
         "class Many extends GameScript { function OnPaintHW3D() { for (local i = 0; i < 5000; i++) TP_Engine.DrawTexture(gTex, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1); } }\n";
-    jpt_script_session* s = HudSession({{"scripts/errors.nut", scripts}});
+    jpt_script_session* s = ApiSession({{"scripts/errors.nut", scripts}});
     Ready(s, "e.scn");
     const jpt_draw_frame_t* f = jpt_script_level_paint(s);
     // A script that fails while painting draws nothing that frame; the others' commands stay.
@@ -86,13 +97,13 @@ static void test_paint_errors() {
     CHECK(f->count == 1);
     Close(s);
     // An endless paint runs out of its budget; out of memory, the VM is abandoned and nothing is drawn.
-    s = HudSession({{"scripts/loop.nut", "class Loop extends GameScript { function OnPaintHW3D() { while (true) {} } }\n"}}, 20000);
+    s = ApiSession({{"scripts/loop.nut", "class Loop extends GameScript { function OnPaintHW3D() { while (true) {} } }\n"}}, 20000);
     Ready(s, "l.scn");
     CHECK(jpt_script_level_paint(s)->count == 0 && Contains("callback=OnPaintHW3D") && Contains("instruction budget exceeded (20000)"));
     Close(s);
-    s = HudSession({{"scripts/big.nut",
+    s = ApiSession({{"scripts/big.nut",
                      "gTex <- null; gAll <- [];\n"
-                     "class Big extends GameScript { function OnScriptInit(b) { gTex = TP_Engine.GetTexture(\"scripts/bars.tga\"); }\n"
+                     "class Big extends GameScript { function OnScriptInit(b) { gTex = TP_Engine.GetTexture(\"textures/white.tga\"); }\n"
                      "  function OnPaintHW3D() { TP_Engine.DrawTexture(gTex, 0, 0, 8, 8, 0, 0, 8, 8, 0, 1); while (true) gAll.append(array(4096)); } }\n"}},
                    200000000, 1u << 20);
     Ready(s, "b.scn");
