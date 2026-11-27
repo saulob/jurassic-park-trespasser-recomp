@@ -10,9 +10,11 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import trescom_catalog as catalog  # noqa: E402
-import trescom_corpus as corpus  # noqa: E402
-import trescom_report as report  # noqa: E402
+import corpus_exclusions  # noqa: E402
+import community_level_catalog as catalog  # noqa: E402
+import community_level_corpus as corpus  # noqa: E402
+import community_level_report as report  # noqa: E402
+from community_level_fetch import safe_name, sha256_of  # noqa: E402
 
 CLASSES = ('READY', 'REJECTED_MISSING', 'REJECTED_UNSUPPORTED', 'REJECTED_MALFORMED', 'REJECTED_OTHER')
 HAVE = (catalog.DOWNLOADED, catalog.DUPLICATE)
@@ -34,7 +36,7 @@ def blocker_of(issue):
 def level_row(level):
     blocking = [i for i in level['issues'] if i['blocks']]
     return {'scn': level['scn'], 'class': level['class'], 'version': level['scene_version'], 'features': level.get('features', []),
-            'blockers': sorted({blocker_of(i) for i in blocking}), 'issues': [{k: i[k] for k in ('code', 'subject', 'detail')} | {'policy': i.get('policy', '')} for i in blocking]}
+            'blockers': sorted({blocker_of(i) for i in blocking}), 'issues': [dict({k: i[k] for k in ('code', 'subject', 'detail')}, policy=i.get('policy', '')) for i in blocking]}
 
 
 def package_row(package, prefix=''):
@@ -46,16 +48,20 @@ def local(root, relative):
     return os.path.join(root, *relative.split('/'))
 
 
-def related_files(entry, entries):
-    """What an entry needs under it and what goes over it: the files of documented relations."""
+def related_files(entry, entries, excluded=frozenset()):
+    """What an entry needs under it and what goes over it: the files of documented relations. Needs None when one of them
+    is excluded; an excluded patch is left out."""
     by_id = {e['id']: e for e in entries}
     got = lambda e, roles: [p['file'] for p in e['parts'] if p['role'] in roles and p['status'] in HAVE and p['file']]
     needs, patches, seen = [], [], {entry['id']}
+    blocked = []
 
     def follow(item):
         for relation in item['dependencies']:
             target = by_id.get(relation['id'])
-            if target and target['id'] not in seen:
+            if target and target['id'] in excluded:
+                blocked.append(target['id'])
+            elif target and target['id'] not in seen:
                 seen.add(target['id'])
                 follow(target)
                 needs.extend(got(target, ('BASE', 'COMPLEMENT', 'PATCH')))
@@ -63,9 +69,9 @@ def related_files(entry, entries):
     needs.extend(got(entry, ('COMPLEMENT',)))
     patches.extend(got(entry, ('PATCH',)))
     for other in entries:
-        if any(r['type'] == 'PATCH_FOR' and r['id'] == entry['id'] for r in other['relations']):
+        if other['id'] not in excluded and any(r['type'] == 'PATCH_FOR' and r['id'] == entry['id'] for r in other['relations']):
             patches.extend(got(other, ('BASE', 'PATCH')))
-    return needs, patches
+    return (None if blocked else needs), patches
 
 
 def files_below(folder):
@@ -148,8 +154,11 @@ def add_over(base, patch):
             put(os.path.join(patch, name), script_target(base, files, name) or os.path.join(base, home, name.rpartition('/')[2]))
 
 
-def compose(root, entry, entries, target, notes):
-    needs, patches = related_files(entry, entries)
+def compose(root, entry, entries, target, notes, excluded=frozenset()):
+    needs, patches = related_files(entry, entries, excluded)
+    if needs is None:
+        notes.append(f'{entry["id"]}: it needs an excluded entry, not put together')
+        return False
     main = entry['parts'][0]
     base_file = main['file'] if main['status'] in HAVE else next((p['file'] for p in entry['parts'] if p['role'] == 'ALTERNATIVE' and p['status'] in HAVE), '')
     if not base_file or not (needs or patches):
@@ -173,13 +182,51 @@ def compose(root, entry, entries, target, notes):
         shutil.rmtree(work, ignore_errors=True)
 
 
-def analyse(root, exe, data, temporary):
-    with open(os.path.join(root, 'TRESCOM_LEVELS_CATALOG.json'), encoding='utf-8') as stream:
+def readable_folders(downloads, entries, rules, notes):
+    """The download folders that may be read, and the excluded ids. A folder no entry owns is not read: who made it is unknown.
+    A folder holding a file of an excluded hash excludes its entry."""
+    owners = {safe_name(e['id'], 'entry'): e for e in entries}
+    names = sorted(os.listdir(downloads)) if os.path.isdir(downloads) else []
+    for name in names:
+        if name not in owners:
+            notes.append(f'{name}: no catalog entry owns it, not read')
+    while True:
+        excluded = rules.resolve(entries)
+        folders = [name for name in names if name in owners and owners[name]['id'] not in excluded]
+        tainted = [name for name in folders if rules.hashes and any(rules.blocks_hash(sha256_of(os.path.join(downloads, name, *f.split('/')))) for f in files_below(os.path.join(downloads, name)))]
+        if not tainted:
+            return folders, excluded
+        rules.ids.update(owners[name]['id'] for name in tainted)
+
+
+def mark_duplicates(packages):
+    """Packages of the same content in different entry folders: the later ones stand for the first."""
+    first = {}
+    for package in sorted(packages, key=lambda p: p['path']):
+        if package['duplicate_of'] or not package['sha256']:
+            continue
+        if package['sha256'] in first:
+            package['duplicate_of'] = first[package['sha256']]
+        else:
+            first[package['sha256']] = package['path']
+    return packages
+
+
+def analyse(root, exe, data, temporary, rules=None, scanner=None):
+    """Every package of the corpus that the exclusions allow: scanned per entry folder, archives the scanner does not read
+    extracted, related entries put together. Nothing excluded is extracted, scanned or used as a part."""
+    rules = rules if rules is not None else corpus_exclusions.Exclusions()
+    scanner = scanner or scan
+    with open(corpus_exclusions.catalog_path(root), encoding='utf-8') as stream:
         entries = json.load(stream)['entries']
     notes = []
     downloads = os.path.join(root, 'downloads')
-    files = files_below(downloads)
-    packages = [package_row(p) for p in scan(exe, downloads, data)]
+    folders, excluded = readable_folders(downloads, entries, rules, notes)
+    files = [f'{folder}/{name}' for folder in folders for name in files_below(os.path.join(downloads, folder))]
+    packages = []
+    for folder in folders:
+        packages += [package_row(p, folder + '/') for p in scanner(exe, os.path.join(downloads, folder), data)]
+    mark_duplicates(packages)
     known = {p['path'] for p in packages if p['levels'] or p['duplicate_of']}
     extra = os.path.join(temporary, 'extra')
     os.makedirs(extra)
@@ -197,14 +244,15 @@ def analyse(root, exe, data, temporary):
         if not corpus.has_levels(where):
             shutil.rmtree(where, ignore_errors=True)
     if os.listdir(extra):
-        packages += [package_row(p) for p in scan(exe, extra, data)]
+        packages += [package_row(p) for p in scanner(exe, extra, data)]
     composed = os.path.join(temporary, 'composed')
     os.makedirs(composed)
     for entry in entries:
-        compose(root, entry, entries, os.path.join(composed, entry['id']), notes)
+        if entry['id'] not in excluded:
+            compose(root, entry, entries, os.path.join(composed, entry['id']), notes, excluded)
     if os.listdir(composed):
-        packages += [package_row(p, 'composed/') for p in scan(exe, composed, data)]
-    return entries, packages, notes
+        packages += [package_row(p, 'composed/') for p in scanner(exe, composed, data)]
+    return [e for e in entries if e['id'] not in excluded], packages, notes, len(excluded)
 
 
 def entry_of(path, by_id):
@@ -271,7 +319,7 @@ def source_of(blocker):
     return 'ATX' if blocker.startswith('ATX_') else 'unknown'
 
 
-def markdown(entries, rows, packages, notes, baseline):
+def markdown(entries, rows, packages, notes, baseline, excluded=0):
     by_id = {e['id']: e for e in entries}
     count = lambda name, chosen=rows: sum(row['class'] == name for row in chosen)
     analysed = {row['entry'] for row in rows}
@@ -279,8 +327,10 @@ def markdown(entries, rows, packages, notes, baseline):
     covered = analysed | {p['path'].split('/')[0] for p in duplicates}
     outside = [e for e in entries if e['id'] not in covered]
     sources = sum(1 for e in entries for p in e['parts'] if p['status'] in HAVE)
-    lines = ['# TresCom Level Compatibility', '', f'Generated: {time.strftime("%Y-%m-%d %H:%M")}', '', 'READY means that everything the level needs is there and is implemented. It does not mean that it was played.', '',
-             '## Summary', '', f'- Downloaded files: {sources}', f'- Entries analysed: {len(covered)} of {len(entries)}', f'- Packages with levels: {len({row["package"] for row in rows})}', f'- Levels: {len(rows)}']
+    lines = ['# Community Level Compatibility', '', f'Generated: {time.strftime("%Y-%m-%d %H:%M")}', '',
+             'READY means that the automated scanner found no known blocking issue. It does not mean that the level was played or that it works in full.', '',
+             '## Summary', '', f'- Downloaded files: {sources}', f'- Entries analysed: {len(covered)} of {len(entries)}', f'- Entries excluded (not read): {excluded}',
+             f'- Packages with levels: {len({row["package"] for row in rows})}', f'- Levels: {len(rows)}']
     lines += [f'- {name}: {count(name)}' for name in CLASSES]
     lines += [f'- Not analyzed (entries): {len(outside)}', '', '## Progress', '']
     was = {(r['entry'], r['scn'].rpartition('/')[2].lower(), r['package']): r for r in baseline} if baseline else {}
@@ -314,7 +364,7 @@ def markdown(entries, rows, packages, notes, baseline):
 
     def head(entry_id):
         entry = by_id[entry_id]
-        return [f'### {entry["title"]}', '', f'- Source: {report.link("Source on TresCom", entry["source_page"])}']
+        return [f'### {entry["title"]}', '', f'- Source: {report.link("Source page", entry["source_page"])}']
 
     lines += ['## Ready', '']
     for entry_id, group in grouped([r for r in rows if r['class'] == 'READY']):
@@ -343,7 +393,7 @@ def markdown(entries, rows, packages, notes, baseline):
         about = [n.split(': ', 1)[1] for n in notes if n.startswith(entry['id'])]
         mine = [p for p in packages if p['path'].split('/')[0] == entry['id']]
         reason = main['error'] or (about[0] if about else '') or next((p['unread'] or p['import'] for p in mine), '') or 'no level files in it'
-        lines += [f'### {entry["title"]}', '', f'- Download status: {entry["download_status"]}', f'- Reason: {reason}', f'- Source: {report.link("Source on TresCom", entry["source_page"])}',
+        lines += [f'### {entry["title"]}', '', f'- Download status: {entry["download_status"]}', f'- Reason: {reason}', f'- Source: {report.link("Source page", entry["source_page"])}',
                   f'- Download: {report.link("Download", report.external(main))}', '']
     lines += ['## Generic blockers', '', 'By the number of levels.', '']
     for name, users in ranked(rows):
@@ -368,12 +418,20 @@ def main(arguments=None):
     parser.add_argument('--state', default='', help='where this state is written')
     parser.add_argument('--temp', default='')
     parser.add_argument('--no-report', action='store_true')
+    parser.add_argument('--exclusions', default='', help=f'the local exclusions file (default: ${corpus_exclusions.ENVIRONMENT} or {corpus_exclusions.FILE_NAME} in the root)')
     options = parser.parse_args(arguments)
     root = os.path.abspath(options.root)
+    exclusions_file = corpus_exclusions.path_for(root, options.exclusions)
+    try:
+        rules = corpus_exclusions.load(exclusions_file)
+    except ValueError as error:
+        print(f'Stopped: {error}')
+        return 2
+    print(corpus_exclusions.describe(rules, exclusions_file))
     read_features(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src', 'common', 'jpt_level_features.c'))
     corpus.READER[:] = [os.path.abspath(options.exe)]
     with tempfile.TemporaryDirectory(prefix='jpt-corpus-', dir=options.temp or None) as temporary:
-        entries, packages, notes = analyse(root, os.path.abspath(options.exe), os.path.abspath(options.data), temporary)
+        entries, packages, notes, excluded = analyse(root, os.path.abspath(options.exe), os.path.abspath(options.data), temporary, rules)
     rows = levels_of(entries, packages)
     baseline = []
     if options.baseline:
@@ -382,7 +440,7 @@ def main(arguments=None):
     if options.state:
         catalog.write_text(options.state, json.dumps({'rows': rows, 'packages': packages, 'notes': notes}, indent=1, ensure_ascii=False))
     if not options.no_report:
-        catalog.write_text(os.path.join(root, 'TRESCOM_LEVEL_COMPATIBILITY.md'), markdown(entries, rows, packages, notes, baseline))
+        catalog.write_text(os.path.join(root, 'COMMUNITY_LEVEL_COMPATIBILITY.md'), markdown(entries, rows, packages, notes, baseline, excluded))
     print(f'{len(packages)} packages, {len(rows)} levels')
     for name in CLASSES:
         print(f'{name}: {sum(row["class"] == name for row in rows)}')

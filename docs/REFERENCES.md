@@ -79,3 +79,9 @@ this port. NVIDIA HBAO+, FidelityFX CACAO and XeGTAO are not used.
 | Trespasser CE scripting documentation (`doc/scripting/`: `ScriptingReadme.txt`, `API-reference.txt`, samples), installed by the CE Patcher and shipped with CE 1.07e | API documentation | the script kinds, where scripts are found and their load order, the loading process and the handlers called in it, `nvram` and its save limits, `static SCN` ([CE_SCRIPTS](CE_SCRIPTS.md)); the names `API-reference.txt` declares, as the table of `src/common/jpt_script_api.inc` that tells which a script asks for. No sample or code of CE is in the port. |
 | [Squirrel](http://www.squirrel-lang.org/) by Alberto Demichelis (MIT) | language | the interpreter of CE scripts ([CE_SCRIPTS](CE_SCRIPTS.md)), fetched at commit `f9267f2` (after `v3.2`) with two patches of the port's own (an instruction budget, a checked vector size) and the port's allocator with a memory budget per VM. Linked into the game, used by custom sessions only. Licence in `packaging/licenses/THIRD-PARTY-LICENSES.txt`. |
 | [Trespasser Mod Manager](https://github.com/miketheraptor/Trespasser-Mod-Manager) by MikeTheRaptor | configuration reference | the list of CE's options (`EnableQuickSaveKey`, `EnableDualStow`, `EnableAiActivityEx`, `MaxActiveAi`, `WaterRefraction`, `EnhancedSky`, `ForceMaxObjectDetail`). Its code and architecture are not used. |
+
+## Community levels
+
+| Reference | Kind | Used for |
+|---|---|---|
+| [TresCom download catalog](https://www.trescom.org/download-category/levels/) | test corpus (local analysis only, not distributed; under provenance review, with excluded packages left out per [PROVENANCE](PROVENANCE.md)) | which file layouts, formats, settings, ActionTypes and Trespasser CE features community levels use, to test the custom level scanner. No level file is in the repository or the releases ([LEGAL](LEGAL.md#community-levels)). |

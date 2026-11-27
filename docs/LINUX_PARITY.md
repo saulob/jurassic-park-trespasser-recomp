@@ -194,7 +194,7 @@ feature may have one.
 | `steam-deck-paths` | linux | LINUX ONLY (justified) | PASS | - | `linux_paths_tests`, `port_tests`, `test_linux_packaging.py` | AppImage and SteamOS SD card paths are Linux-specific |
 | `steam-deck-updater` | linux | LINUX ONLY (justified) | PASS | - | `update_tests`, `test_linux_parity.py`, `test_linux_packaging.py` | AppImage self-update applies to Linux; Windows uses trg-updater.exe |
 | `launcher-recovery` | global | PASS | PASS | `launcher_startup_tests`, `vulkan_policy_tests` | `launcher_startup_tests`, `vulkan_policy_tests` | - |
-| `custom-levels` | global | PASS | PASS | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `debug_menu_tests`, `engine_heaps_tests`, `level_actions_tests`, `test_trescom_levels.py` | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `linux_level_abort_tests` | - |
+| `custom-levels` | global | PASS | PASS | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `debug_menu_tests`, `engine_heaps_tests`, `level_actions_tests`, `test_community_levels.py` | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `linux_level_abort_tests` | - |
 | `level-session-log` | global | PASS | PASS | `level_session_tests` | `level_session_tests` | - |
 | `ce-script-interpreter` | global | PASS | PASS | `script_vm_tests` | `script_vm_tests` | - |
 | `ce-script-lifecycle` | global | PASS | PASS | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | - |

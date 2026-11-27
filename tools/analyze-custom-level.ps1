@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Prints what the Custom Levels import makes of a package (ZIP, 7z or folder), or of every package below a folder. Nothing is
-  installed and no window opens: it runs trespasser_recomp.exe, the same code the launcher imports with.
+  installed and no window opens: it runs trespasser_recomp.exe, the same code the launcher imports with. A path inside the
+  development corpus is refused: tools\community_level_compatibility.py analyses it with its exclusions (docs/PROVENANCE.md).
 
 .PARAMETER Path
   The archive or folder.
@@ -31,6 +32,8 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $Exe) { $Exe = Join-Path $root 'build\cmake\msvc-x86\trespasser_recomp.exe' }
 if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { Write-Host "FAILED: $Exe does not exist; build it with tools\build.ps1." -ForegroundColor Red; exit 1 }
 $source = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+& py -3 -I (Join-Path $PSScriptRoot 'corpus_exclusions.py') --check-path $source
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $arguments = if ($All) { @('--analyze-custom-levels', $source, '--report', $(if ($Report) { $Report } else { Join-Path $root 'build\logs' })) } else { @('--analyze-custom-level', $source) }
 if ($Json) { $arguments += '--json' }
 & $Exe @arguments

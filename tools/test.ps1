@@ -232,7 +232,7 @@ Add-Python $s @(
     , @('test_layout.py', 'host structure offsets per profile; an unknown access fails')
     , @('test_lifts.py', 'the lifts as project artifacts, a clean checkout without any original executable')
     , @('test_lift_hooks.py', 'lift hook list and placement')
-    , @('test_trescom_levels.py', 'the custom level catalog tool against a local server: downloads, resume, retries, refusals, relations, reports')
+    , @('test_community_levels.py', 'the community level catalog tool against a local server: downloads, resume, retries, refusals, relations, reports; the development corpus exclusions by id and hash (duplicates, patches, parts, catalog refresh) before any download, extraction or batch scan, and allowed entries unchanged')
     , @('test_lift_staging.py', 'lift staging, publishing changed files only, cleanup')
     , @('test_stable_entries.py', 'stable-entry renaming and check')
     , @('test_guest_module_lift.py', 'lifted guest DLL (MSVCIRT): config and manifest facts, sorted prefixed table, every jump target a lifted entry, no symbol collision, every code export and every code address held in its data lifted, no TLS, no forwarders')
@@ -373,7 +373,7 @@ $s = 'Script input'
 Add-Exes $s @(, @('script_input_tests', 'game scripts'' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only when the level''s scripts name them (none for other levels and the campaign), bKeyHit, bKeyPressed and the movement input in OnHandleInput only, a budget inside it, modal mode entered from OnHandleInput, its keys (VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR, VK_NEXT) to OnModalKey, F keys left to the port, OnHandleModalInput with mouse look, one modal script at a time, Escape and the player''s death aborting it, its script stopped by an error or its budget releasing it, Restart and transitions ending it', 40))
 
 $s = 'Script player'
-Add-Exes $s @(, @('script_player_tests', 'the player''s CPlayer script as CE calls it: fGetSpeedFactor on every movement request (walk, strafe, run, the sprint speed, slower when tired), fGetJumpFactor on one that asks to jump (0 when tired), negative factors as 0, a failing, non-number, wrong-arity or endless factor keeping the game''s own, OnJump only for the player''s handle, Say by sample name through the game''s voice (case and path separator aside, a missing sample ignored, a name required), r3HeadRotRel composing with r3Rot into the game''s view, handles refused after Restart, a load, a transition and when the player leaves the world, Restart clearing the script''s state, a save keeping its nvram only, the HUD, modal map and sprint of the Cloning Facility fixture alongside, the campaign with none of it', 40))
+Add-Exes $s @(, @('script_player_tests', 'the player''s CPlayer script as CE calls it: fGetSpeedFactor on every movement request with the script''s state of the moment, fGetJumpFactor on one that asks to jump (0 keeping the player on the ground), negative factors as 0, a failing, non-number, wrong-arity or endless factor keeping the game''s own, OnJump only for the player''s handle, Say by sample name through the game''s voice (case and path separator aside, a missing sample ignored, a name required), r3HeadRotRel composing with r3Rot into the game''s view, handles refused after Restart, a load, a transition and when the player leaves the world, Restart clearing the script''s state, a save keeping its nvram only (also one made only for a new game), game scripts reading input and drawing alongside, the campaign with none of it', 40))
 
 $s = 'Script console'
 Add-Exes $s @(, @('script_console_tests', 'OnConsoleCommand dispatched headless as CE does for a console command the game does not know (the port has no console): game scripts in order until one returns true, a number or string not counting, level scripts never asked, an empty command reaching none, an error or a budget stopping only that script, nothing while a level loads, Restart, a level without a VM, the campaign without it', 25))
@@ -456,7 +456,7 @@ $helperTestFiles = @{
     'tests\smk_fixture.h' = 'shared generator of a synthetic Smacker file: smacker_ffmpeg_tests'
     'tests\level_fixtures.h' = 'shared generator of synthetic scenes, worlds and texture sets: custom_level_tests and custom_level_session_tests'
     'tests\script_fixtures.h' = 'shared fixture of the script session suites: a log, a counting allocator, scripts in memory, packages and saves on disk: script_session_tests, script_save_tests and script_instance_tests'
-    'tests\script_hud_fixture.h' = 'shared fixture of a level shaped as the Cloning Facility''s scripts (HUD, map, sprint, modal map, MAP console command, the player''s stamina script): script_draw_tests, script_input_tests and script_player_tests'
+    'tests\script_api_fixture.h' = 'shared script session over the model world, without scripts of its own: script_draw_tests, script_input_tests and script_player_tests'
     'tests\script_world.h' = 'shared model world of the script API suites (the engine side of jpt_script_engine.h): script_bindings_tests and script_instance_tests'
     'tests\texhw_fixture.h' = 'shared generator of synthetic texhw pictures: texhw_tests'
 }
@@ -526,15 +526,16 @@ $toolRole = @{
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
     'tools\custom_level_scan.cpp' = 'developer tool target (custom_level_scan): the headless report of a folder of custom level packages, not a test'
     'tools\analyze-custom-level.ps1' = 'maintainer: prints what the import makes of one package; never run by the gate'
-    'tools\custom-level-compatibility.ps1' = 'maintainer: runs custom_level_scan over a folder of packages; never run by the gate'
-    'tools\download-trescom-levels.ps1' = 'maintainer: starts tools\download-trescom-levels.py (network); never run by the gate'
-    'tools\download-trescom-levels.py' = 'maintainer: catalogs and downloads a TresCom category (network); its modules are tested by tests\test_trescom_levels.py against a local server'
-    'tools\trescom_site.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_fetch.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_catalog.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_report.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_corpus.py' = 'library of trescom_compatibility.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_compatibility.py' = 'maintainer: the compatibility report of a downloaded corpus through custom_level_scan; its rules are tested by tests\test_trescom_levels.py'
+    'tools\custom-level-compatibility.ps1' = 'maintainer: runs custom_level_scan over a folder of packages, never a development corpus; never run by the gate'
+    'tools\download-community-levels.ps1' = 'maintainer: starts tools\download-community-levels.py (network); never run by the gate'
+    'tools\download-community-levels.py' = 'maintainer: catalogs and downloads a community level category (network); its modules are tested by tests\test_community_levels.py against a local server'
+    'tools\community_level_source.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_fetch.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_catalog.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_report.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_corpus.py' = 'library of community_level_compatibility.py: tested by tests\test_community_levels.py'
+    'tools\corpus_exclusions.py' = 'library of the corpus downloader, community_level_compatibility.py and the custom level scan wrappers: the local exclusions of the development corpus; tested by tests\test_community_levels.py'
+    'tools\community_level_compatibility.py' = 'maintainer: the compatibility report of a downloaded corpus through custom_level_scan; its rules are tested by tests\test_community_levels.py'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
     'tools\linux_lifted_link_report.py' = 'maintainer: what the lifted guest needs from a Linux host, run by tools/test-linux.sh'
     'tools\import-appimage-runtime.sh' = 'packaging helper: copies the pinned AppImage runtime from a WSL packaging cache; run by tools\package-release.ps1 in WSL, checked by tests\test_linux_packaging.py, never by this gate'

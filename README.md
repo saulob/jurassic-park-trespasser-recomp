@@ -18,7 +18,7 @@
 
 ## Status
 
-**v0.1.3 is the current release, the Custom Levels update** (community levels imported from ZIP, 7z, RAR or a folder and checked before they are installed, Trespasser CE, ATX and Squirrel script compatibility, graphics options and Linux fixes; see the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
+**v0.1.3 is the current release, the Custom Levels update** (community levels imported from ZIP, 7z, RAR or a folder and checked before they are installed, support for many Trespasser CE and ATX features and their Squirrel scripts, graphics options and Linux fixes; see the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
 
 | Milestone | State |
 |---|---|
@@ -48,7 +48,7 @@
 - **Gameplay improvements**: Quick Save and Quick Load, Dual Stow, Active AI, physics and collision fixes, and a reimplemented subset of the official 1.1 patch
 - **Cheats panel** (F10) with movement speed, jump height, invulnerability, infinite ammo, frozen dinosaurs, health, noclip, stealth, teleport, Level Select and a free camera
 - **Modern controls**: keyboard, mouse and SDL3 gamepads (Xbox, PlayStation, Switch, Steam Deck) with hotplug, glyphs and rebindable buttons
-- **Custom Levels**: community levels and fan missions imported from ZIP, 7z, RAR or a folder, checked level by level before they are installed, with Trespasser CE, ATX and Squirrel script compatibility and their own saves
+- **Custom Levels**: community levels and fan missions imported from ZIP, 7z, RAR or a folder, checked level by level before they are installed, with support for many Trespasser CE and ATX features and their own saves
 - **TRG launcher** that imports your disc image, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
 - **Seven languages**, video subtitles, restored English dialogue and corrected caption timings
 - **Portable**: saves, settings and logs stay next to the program
@@ -65,8 +65,10 @@ The launcher's **Custom Levels** page plays community levels and fan missions, o
 5. Select a Ready level and press **Play**.
 
 - **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready; the others stay listed as Not supported.
-- **Ready** means that everything the level needs is present and implemented in the port. It is a compatibility classification, not a promise that the level was played through from start to finish.
-- **Trespasser CE and ATX**: their ActionTypes, textures (BMP, TGA, DDS DXT1-DXT5 with mipmaps and alpha), normal maps, skies, scene formats 23-26 and larger engine limits for custom sessions. Trespasser CE's Squirrel scripts run in a separate script machine per level, with memory and instruction budgets.
+- **Ready** means that the automated compatibility scanner found no known blocking issues. It does not guarantee full gameplay compatibility: most Ready levels have not been played from start to finish in the port.
+- **Levels you already have**: you do not need a ZIP. **Import Folder** installs a copy of an extracted level's files in `user_data\custom_levels`; your folder is not changed. Playing directly from an external folder, without a copy, is not available yet.
+- **Trespasser CE and ATX**: most of their ActionTypes, textures (BMP, TGA, DDS DXT1-DXT5 with mipmaps and alpha), normal maps, custom skies (including the `2X_ALPHA` and `2X_BURN` blend modes), scene formats 23-26 and larger engine limits for custom sessions.
+- **Scripts**: the port embeds the Squirrel interpreter and implements part of Trespasser CE's scripting API, so a level's scripts can call into the game. Each level gets its own script machine with memory and instruction budgets.
 - **Isolated from the campaign**: levels are installed in `user_data\custom_levels`, saves go to their own folder per package, and nothing in the installed game is changed. No program inside a package is ever run.
 - **Readme**, **Open Folder** and **Delete** for each package; **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
 - **Bug Report** includes the selected level's analysis.
@@ -74,14 +76,14 @@ The launcher's **Custom Levels** page plays community levels and fan missions, o
 - **Script keys**: a level whose Trespasser CE scripts read the USER commands gets keys for them (`script_user1_key` to `script_user8_key` in `trespasser.ini`; Shift and M for the first two by default).
 - On Linux and the Steam Deck, the launcher's own file browser chooses the package when `zenity` or `kdialog` is not available.
 
-In the TresCom download catalog used as the test corpus, 253 of 262 levels are currently Ready; of the other nine, six are missing files in their downloads or are incomplete packages, and three need Trespasser CE features the port does not have yet. See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
+See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
 
 **Custom level limitations**
 
-- Not every community level is supported, and most Ready levels have not been played from start to finish in the port.
-- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `EndGameDDF`, texhw textures on meshes the original game bump-maps, scripted actions (ActionType 99), and the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks. A level that needs one is listed as Not supported, with the reason.
+- Not every community level is supported, and most Ready levels have not been played from start to finish in the port. No scripted community level has been confirmed in a full play-through yet.
+- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles, `EndGameDDF`, texhw textures on meshes the original game bump-maps, stars and meteors sky layers, scripted actions (ActionType 99), the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks and the rest of CE's scripting API the port does not have yet. A level that needs one is listed as Not supported, with the reason. The full list is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations).
+- The game must be installed from a disc image (ISO); importing an existing Trespasser installation is not supported yet.
 - Encrypted, multi-volume and RAR 1.5 archives, and RAR dictionaries over 256 MB, are refused: extract them and use **Import Folder**.
-- Spitter and the Cloning Facility are supported through generic scripting APIs and were validated by analysis and headless tests; a full manual play-through of both has not been done yet.
 - Scripts run with memory and instruction budgets and without file, system or thread access; that limits what a script can reach, but it is not a guarantee that a faulty script cannot slow down or stop the game.
 
 ## Graphics
@@ -410,7 +412,7 @@ Verified limits on Linux in v0.1.3:
 - **No validated high frame rate.** VSync Off removes the present wait, but there is no uncapped-frame-rate mode and no 120 FPS guarantee.
 - **"HD" means the front end, loading screens and videos**, not a texture pack; the 3D world uses the original textures.
 - No dedicated ultrawide HUD, no HDR, no vibration, no mods other than custom levels, no custom waypoints.
-- **Custom levels:** not every community level is supported. Trespasser CE's extended AI (`EnableAiActivityEx`), `EndGameDDF`, texhw textures on bump-mapped meshes, scripted actions (ActionType 99) and some CE script callbacks are not implemented; encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
+- **Custom levels:** not every community level is supported, and Ready is a scanner result, not a play-through. Some Trespasser CE features are not implemented ([Custom Levels](#custom-levels)); encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
 - Windows Vulkan is selectable but D3D11 is recommended; the playable host is 32-bit (the 64-bit host is groundwork only).
 - The Windows executable and updater are unsigned.
 
@@ -424,7 +426,7 @@ Use the launcher's **Bug Report** page: describe the problem, choose a log and p
 
 Get the published release files from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) page. The Windows port is x86; the Linux build is x86_64.
 
-Expected v0.1.3 release assets (available on the [releases page](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) once v0.1.3 is published):
+v0.1.3 release assets:
 
 | Platform | File | Checksum |
 |---|---|---|

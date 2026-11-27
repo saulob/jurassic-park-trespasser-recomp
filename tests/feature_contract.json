@@ -6595,8 +6595,8 @@
       "pattern": "test_retail_session"
      },
      {
-      "suite": "tests\\test_trescom_levels.py",
-      "file": "tests/test_trescom_levels.py",
+      "suite": "tests\\test_community_levels.py",
+      "file": "tests/test_community_levels.py",
       "pattern": "test_only_documented_files_are_put_together"
      },
      {
@@ -6951,12 +6951,12 @@
     {
      "suite": "script_player_tests",
      "file": "tests/script_player_tests.cpp",
-     "pattern": "test_restart_clears"
+     "pattern": "test_restart_and_save"
     },
     {
      "suite": "script_player_tests",
      "file": "tests/script_player_tests.cpp",
-     "pattern": "test_level_together"
+     "pattern": "test_with_game_scripts"
     },
     {
      "suite": "script_player_tests",

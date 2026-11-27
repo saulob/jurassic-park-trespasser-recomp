@@ -224,6 +224,22 @@ static void test_unreleased(void) {
     CHECK(!memcmp(s_surface, s_before, sizeof s_surface) && !tl_current(&v), "ending the frame puts the picture back");
 }
 
+/* A working copy may have CRLF line endings (core.autocrlf); the source checks below look for LF. */
+static char* lf_only(char* text) {
+    char* out = text;
+    for (const char* in = text; text && *in; in++)
+        if (!(in[0] == '\r' && in[1] == '\n')) *out++ = *in;
+    if (text) *out = 0;
+    return text;
+}
+
+static void test_line_endings(void) {
+    char crlf[] = "minimap(f);\r\n        text_layer(\r\n", lf[] = "minimap(f);\n        text_layer(\n", lone[] = "a\rb\r";
+    CHECK(!strcmp(lf_only(crlf), "minimap(f);\n        text_layer(\n") && !strcmp(lf_only(lf), "minimap(f);\n        text_layer(\n"),
+          "a source reads the same with CRLF and LF line endings");
+    CHECK(!strcmp(lf_only(lone), "a\rb\r") && lf_only(NULL) == NULL, "a lone carriage return is kept");
+}
+
 static char* read_file(const char* root, const char* path) {
     char name[512];
     FILE* f;
@@ -242,7 +258,7 @@ static char* read_file(const char* root, const char* path) {
         text = NULL;
     }
     fclose(f);
-    return text;
+    return lf_only(text);
 }
 
 /* One draw order for both renderers: HUD and minimap, the game's text, the frame counter, then the windows; both present
@@ -289,6 +305,7 @@ void text_layer_tests(int* checks, int* failures, const char* root) {
     test_same_layer();
     test_resize();
     test_unreleased();
+    test_line_endings();
     test_shared_order(root);
     (void)s_out;
 }

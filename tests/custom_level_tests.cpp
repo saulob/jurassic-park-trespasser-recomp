@@ -818,11 +818,11 @@ static void Place(const fs::path& user, const char* id, const Files& files) { Wr
 
 static void TestListingAndRemoval() {
     const fs::path user = Fresh("listing"), game = Fresh("game data");
-    Files lost = Level("LostJungle") + Files{{"LJreadme.txt", "IF ATX IS INSTALLED"}, {"LOSTJUNGLE_MAP.bmp", "b"}};
+    Files lost = Level("ForestRun") + Files{{"FRreadme.txt", "IF ATX IS INSTALLED"}, {"FORESTRUN_MAP.bmp", "b"}};
     const Files part = {{"part.scn", Scene("part.grf")}, {"part.grf", World("")}, {"part-130.pid", "p"}};
     const Files reuse = {{"reuse.scn", Scene("be.grf")}};
     const Files pair = Level("good") + Files{{"bad.scn", std::string(100, 'x')}};
-    CHECK(FromZip(user, lost, "LostJungle_ver00-7_Release.zip").ok());
+    CHECK(FromZip(user, lost, "ForestRun_ver00-7_Release.zip").ok());
     CHECK(FromZip(user, part, "part.zip").status == ImportStatus::kMissingFiles && FromZip(user, reuse, "reuse.zip").status == ImportStatus::kMissingFiles);
     CHECK(FromZip(user, pair, "pair.zip").ok() && ListLevelPackages(user, game).size() == 2);
     Place(user, "part", part);
@@ -831,7 +831,7 @@ static void TestListingAndRemoval() {
     std::vector<LevelPackage> listed = ListLevelPackages(user, game);
     CHECK(listed.size() == 4);
     if (listed.size() != 4) return;
-    CHECK(listed[0].id == "LostJungle_ver00-7_Release" && listed[0].readme == "LJreadme.txt" && listed[0].atx == Need::kOptional);
+    CHECK(listed[0].id == "ForestRun_ver00-7_Release" && listed[0].readme == "FRreadme.txt" && listed[0].atx == Need::kOptional);
     CHECK(listed[0].scenes.size() == 1 && listed[0].scenes[0].playable() && listed[0].scenes[0].missing.empty());
     CHECK(listed[1].id == "pair" && !listed[1].scenes[0].valid && listed[1].scenes[1].valid && listed[1].scenes[1].playable() && listed[1].readme.empty());
     CHECK(listed[2].id == "part" && !listed[2].scenes[0].playable() && listed[2].scenes[0].missing == std::vector<std::string>{"part-130.swp"});
@@ -850,9 +850,9 @@ static void TestListingAndRemoval() {
 }
 
 static void TestReadme() {
-    CHECK(ChooseReadme({"a.scn", "complex readme.txt", "Rain_storm.asa"}) == "complex readme.txt");
-    CHECK(ChooseReadme({"LJreadme.txt", "LJ.wtd"}) == "LJreadme.txt");
-    CHECK(ChooseReadme({"MistyJungle_readme.txt"}) == "MistyJungle_readme.txt");
+    CHECK(ChooseReadme({"a.scn", "plaza readme.txt", "Wind_gust.asa"}) == "plaza readme.txt");
+    CHECK(ChooseReadme({"FRreadme.txt", "FR.wtd"}) == "FRreadme.txt");
+    CHECK(ChooseReadme({"FoggyValley_readme.txt"}) == "FoggyValley_readme.txt");
     CHECK(ChooseReadme({"deep/README.txt", "changes.txt", "README.md", "INSTALL.txt"}) == "README.md");
     CHECK(ChooseReadme({"INSTALL.TXT", "notes.txt"}) == "INSTALL.TXT");
     CHECK(ChooseReadme({"instrucoes.txt"}) == "instrucoes.txt" && ChooseReadme({"LEIAME.txt"}) == "LEIAME.txt");
@@ -935,36 +935,36 @@ static bool Activate(const fs::path& user, const char* package, const char* scen
 
 static void TestOverlay() {
     const fs::path user = Fresh("overlay"), packages = CustomLevelsDir(user);
-    WriteTree(packages / "Lost", {{"data/LostJungle.scn", "scene"}, {"data/LostJungle.grf", "world"}, {"data/LJ.wtd", "terrain"},
-                                  {"data/LostJungle-130.pid", "pid"}, {"data/LostJungle-130.swp", "swap"}, {"data/Rain_storm.asa", "rain"},
+    WriteTree(packages / "Lost", {{"data/ForestRun.scn", "scene"}, {"data/ForestRun.grf", "world"}, {"data/FR.wtd", "terrain"},
+                                  {"data/ForestRun-130.pid", "pid"}, {"data/ForestRun-130.swp", "swap"}, {"data/Wind_gust.asa", "rain"},
                                   {"data/anim/Door.asa", "door"}, {"data/texhw/map/x.dds", "dds"}, {"data/menu/mainscreen.ddf", "menu"},
                                   {"data/Stream.tpa", "audio"}, {"extra/Far.wtd", "far"}, {"one/same.wtd", "1"}, {"two/same.wtd", "2"},
                                   {"other/Second Level.scn", "second"}, {"other/second.grf", "second world"}});
     WriteTree(packages / "Other", {{"Secret.grf", "secret"}, {"Other.scn", "scene"}});
-    CHECK(Found("LostJungle.grf") == "-");
+    CHECK(Found("ForestRun.grf") == "-");
     CHECK(!Activate(user, "Absent", "a.scn") && !Activate(user, "Lost", "absent.scn") && !Activate(user, "..", "x.scn") &&
           !Activate(user, "Lost/../Other", "Other.scn") && !jpt_custom_level_active());
-    CHECK(Activate(user, "Lost", "data/LostJungle.scn"));
-    CHECK(std::string(jpt_custom_level_scene()) == "LostJungle.scn" && std::string(jpt_custom_level_package()) == "Lost");
-    CHECK(Found("LOSTJUNGLE.SCN") == "scene" && Found("lostjungle.grf") == "world" && Found("lj.WTD") == "terrain");
-    CHECK(Found("LostJungle-130.pid") == "pid" && Found("lostjungle-130.swp") == "swap");
-    CHECK(Found("anim/door.asa") == "door" && Found("anim\\Door.ASA") == "door" && Found("anim/rain_storm.asa") == "rain");
+    CHECK(Activate(user, "Lost", "data/ForestRun.scn"));
+    CHECK(std::string(jpt_custom_level_scene()) == "ForestRun.scn" && std::string(jpt_custom_level_package()) == "Lost");
+    CHECK(Found("FORESTRUN.SCN") == "scene" && Found("forestrun.grf") == "world" && Found("fr.WTD") == "terrain");
+    CHECK(Found("ForestRun-130.pid") == "pid" && Found("forestrun-130.swp") == "swap");
+    CHECK(Found("anim/door.asa") == "door" && Found("anim\\Door.ASA") == "door" && Found("anim/wind_gust.asa") == "rain");
     CHECK(Found("texhw\\map\\x.dds") == "dds" && Found("Stream.tpa") == "audio" && Found("far.wtd") == "far" && Found("same.wtd") == "-");
     CHECK(Found("menu\\mainscreen.ddf") == "-" && Found("be.grf") == "-" && Found("BE.SCN") == "-" && Found("Secret.grf") == "-");
     CHECK(Found("..\\Other\\Secret.grf") == "-" && Found("../../x") == "-" && Found("") == "-" && Found("C:\\x.grf") == "-" && Found("a//b.grf") == "-");
     char host[1024];
-    CHECK(jpt_custom_level_find("LostJungle-130.spz", host, sizeof host) && !fs::exists(host));
+    CHECK(jpt_custom_level_find("ForestRun-130.spz", host, sizeof host) && !fs::exists(host));
     CHECK(jpt_custom_level_find("anim/Door.asb", host, sizeof host) && !fs::exists(host));
     CHECK(!jpt_custom_level_find("be-130.spz", host, sizeof host));
     CHECK(jpt_custom_level_scene_count() == 2);
-    const std::string second = jpt_custom_level_scene_at(0) == std::string("LostJungle.scn") ? jpt_custom_level_scene_at(1) : jpt_custom_level_scene_at(0);
+    const std::string second = jpt_custom_level_scene_at(0) == std::string("ForestRun.scn") ? jpt_custom_level_scene_at(1) : jpt_custom_level_scene_at(0);
     CHECK(second == "LEVEL2.SCN" && Found(second.c_str()) == "second" && Found("second.grf") == "second world");
-    CHECK(Activate(user, "Other", "Other.scn") && Found("LostJungle.grf") == "-" && Found("secret.grf") == "secret");
+    CHECK(Activate(user, "Other", "Other.scn") && Found("ForestRun.grf") == "-" && Found("secret.grf") == "secret");
     jpt_custom_level_deactivate();
     CHECK(Found("Secret.grf") == "-" && jpt_custom_level_scene_count() == 0 && !jpt_custom_level_scene()[0]);
 
     char name[JPT_CUSTOM_LEVEL_SCENE_CAP], saves[512];
-    CHECK(jpt_custom_level_scene_name("MistyJungle.scn", 0, name, sizeof name) && std::string(name) == "MistyJungle.scn");
+    CHECK(jpt_custom_level_scene_name("FoggyValley.scn", 0, name, sizeof name) && std::string(name) == "FoggyValley.scn");
     CHECK(jpt_custom_level_scene_name("twelve_chars.scn", 0, name, sizeof name) && std::string(name) == "twelve_chars.scn");
     CHECK(jpt_custom_level_scene_name("thirteen_char.scn", 4, name, sizeof name) && std::string(name) == "LEVEL5.SCN");
     CHECK(jpt_custom_level_scene_name("my level.scn", 0, name, sizeof name) && std::string(name) == "LEVEL1.SCN");
@@ -1087,8 +1087,8 @@ static int ReportPackages(const fs::path& dir) {
             const bool active = Activate(user, package.id.c_str(), scene.path.c_str());
             std::printf("; runs as %s\n", active ? jpt_custom_level_scene() : "REFUSED");
             const std::string stem = scene.file.substr(0, scene.file.size() - 4);
-            for (const std::string& name : {scene.file, stem + ".grf", stem + "-130.spz", stem + "-130.swp", stem + "-130.pid", std::string("LJ.wtd"), stem + ".wtd",
-                                            std::string("anim/Rain_storm.asa"), std::string("anim/anim_MayaDoor.asa")}) {
+            for (const std::string& name : {scene.file, stem + ".grf", stem + "-130.spz", stem + "-130.swp", stem + "-130.pid", std::string("FR.wtd"), stem + ".wtd",
+                                            std::string("anim/Wind_gust.asa"), std::string("anim/anim_StoneDoor.asa")}) {
                 char host[1024];
                 const bool found = jpt_custom_level_find(name.c_str(), host, sizeof host) != 0;
                 std::printf("    data/%-28s %s\n", name.c_str(), !found ? "original game" : fs::exists(host) ? Utf8(fs::path(host).lexically_relative(CustomLevelsDir(user))).c_str() : "hidden");

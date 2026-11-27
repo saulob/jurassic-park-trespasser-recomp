@@ -1,8 +1,13 @@
 """The catalog as a document to read: headings and short lists, no wide tables."""
 import time
 
-import trescom_catalog as catalog
-import trescom_site as site
+import community_level_catalog as catalog
+import community_level_source as community_source
+
+
+def without_suffix(text, suffix):
+    """str.removesuffix, which Python 3.8 (the Linux build baseline) lacks."""
+    return text[:-len(suffix)] if suffix and text.endswith(suffix) else text
 
 
 def link(label, url):
@@ -31,8 +36,8 @@ def part_lines(part, name):
         lines.append(f'  - Size: {megabytes(part["size"])}')
         lines.append(f'  - SHA-256: `{part["sha256"]}`')
     lines.append(f'  - Download: {link(part["label"] or "file", part["url"])}')
-    if part['resolved_url'] and part['resolved_url'] != part['url'] and site.host_of(part['resolved_url']) != site.host_of(part['url']):
-        lines.append(f'  - Served by: {link(site.host_of(part["resolved_url"]), part["resolved_url"])}')
+    if part['resolved_url'] and part['resolved_url'] != part['url'] and community_source.host_of(part['resolved_url']) != community_source.host_of(part['url']):
+        lines.append(f'  - Served by: {link(community_source.host_of(part["resolved_url"]), part["resolved_url"])}')
     if part['http_status']:
         lines.append(f'  - HTTP result: {part["http_status"]}')
     if part['error']:
@@ -47,10 +52,10 @@ def entry_lines(item, status_word):
     lines = [f'### {item["title"]}', '', f'- Status: {status_word}']
     if main['file']:
         lines += [f'- File: `{main["file"]}`', f'- Size: {megabytes(main["size"])}']
-    lines.append(f'- Source: {link("Source on TresCom", item["source_page"])}')
+    lines.append(f'- Source: {link("Source page", item["source_page"])}')
     lines.append(f'- Download: {link("Download", main["url"])}')
-    if main['resolved_url'] and site.host_of(main['resolved_url']) != site.host_of(main['url']):
-        lines.append(f'- Host: {link(site.manual_host(main["resolved_url"]) or site.host_of(main["resolved_url"]), main["resolved_url"])}')
+    if main['resolved_url'] and community_source.host_of(main['resolved_url']) != community_source.host_of(main['url']):
+        lines.append(f'- Host: {link(community_source.manual_host(main["resolved_url"]) or community_source.host_of(main["resolved_url"]), main["resolved_url"])}')
     for url in item['forum_urls']:
         lines.append(f'- Forum: {link("Forum topic", url)}')
     if item['author']:
@@ -85,7 +90,7 @@ def manual_lines(item):
     lines.append(f'- Download page: {link(external(main), external(main))}')
     for url in main.get('candidates', []):
         lines.append(f'  - Link found there: {link(url, url)}')
-    lines.append(f'- Expected name: {site.path_name(external(main).removesuffix("/file")) or "unknown"}')
+    lines.append(f'- Expected name: {community_source.path_name(without_suffix(external(main), "/file")) or "unknown"}')
     lines.append(f'- Expected size: {item["reported_size"] or "unknown"}')
     lines.append(f'- Reason: {main["error"]}')
     return lines
@@ -98,8 +103,8 @@ def markdown(items, source, folder, pages=1):
     count = lambda *names: sum(len(by.get(name, [])) for name in names)
     files = {p['file']: p['size'] for item in items for p in item['parts'] if p['file'] and p['status'] in (catalog.DOWNLOADED, catalog.DUPLICATE)}
     levels = [item for item in items if not item.get('category')]
-    lines = ['# TresCom Custom Levels Catalog', '', f'Generated: {time.strftime("%Y-%m-%d %H:%M")}', '', f'Source: {link(source, source)}', '', f'Download directory: `{folder}`', '',
-             'A downloaded level is not a supported level: see `TRESCOM_LEVEL_COMPATIBILITY.md`.', '', '## Summary', '',
+    lines = ['# Community Levels Catalog', '', f'Generated: {time.strftime("%Y-%m-%d %H:%M")}', '', f'Source: {link(source, source)}', '', f'Download directory: `{folder}`', '',
+             'A downloaded level is not a supported level: see `COMMUNITY_LEVEL_COMPATIBILITY.md`.', '', '## Summary', '',
              f'- Entries found in the category: {len(levels)}', f'- Entries from other categories that they require: {len(items) - len(levels)}',
              f'- Downloaded: {count(catalog.DOWNLOADED)}', f'- Duplicates of another entry: {count(catalog.DUPLICATE)}', f'- Partially downloaded: {count(catalog.PARTIAL)}',
              f'- Manual download required: {count(catalog.MANUAL)}', f'- Failed: {count(catalog.FAILED)}', f'- Unavailable: {count(catalog.UNAVAILABLE)}',
@@ -124,7 +129,7 @@ def markdown(items, source, folder, pages=1):
         relations = [r for r in item['relations'] if r['type'] in ('PATCH_FOR', 'PART_OF')]
         if not extra and not relations:
             continue
-        lines.extend([f'### {item["title"]}', '', f'- Source: {link("Source on TresCom", item["source_page"])}'])
+        lines.extend([f'### {item["title"]}', '', f'- Source: {link("Source page", item["source_page"])}'])
         for relation in relations:
             lines.append(f'- {relation["type"]}: {link(relation["title"], relation["source_page"])}')
         for part in extra:
@@ -135,7 +140,7 @@ def markdown(items, source, folder, pages=1):
         related = [r for r in item['relations'] if r['type'] in ('RELATED_TO', 'ALTERNATIVE_TO')]
         if item['download_status'] != catalog.DUPLICATE and not related:
             continue
-        lines.extend([f'### {item["title"]}', '', f'- Status: {item["download_status"]}', f'- Source: {link("Source on TresCom", item["source_page"])}'])
+        lines.extend([f'### {item["title"]}', '', f'- Status: {item["download_status"]}', f'- Source: {link("Source page", item["source_page"])}'])
         if item['download_status'] == catalog.DUPLICATE:
             lines.append(f'- Same file as: `{item["parts"][0]["file"]}`')
         for relation in related:
