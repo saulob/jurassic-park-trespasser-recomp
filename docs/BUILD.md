@@ -195,8 +195,8 @@ ninja -C build\cmake\msvc-x86 bug_report_tests update_tests update_network_tests
 .\build\cmake\msvc-x86\update_network_tests.exe # update failures against a scripted loopback HTTP server
 .\build\cmake\msvc-x86\update_helper_tests.exe  # the real trg-updater.exe: waits, replaces, rolls back, restarts
 $env:JPT_CPP_REQUEST = "$PWD\bug-report-request.json"; (cd server\trespasser-bug-reports; npm test)  # the Worker accepts the request the launcher builds (docs/BUG_REPORTS.md)
-.\tools\worker.ps1 -DryRun   # bundles the Worker with Wrangler, uploads nothing; without -DryRun it deploys (docs/BUG_REPORTS.md)
-.\tools\worker.ps1 -Test     # the Worker's node tests through the script, nothing remote
+npm ci --prefix server\trespasser-bug-reports   # once: the Worker's dependencies, Wrangler pinned by its package-lock.json
+.\tools\worker.ps1 -DryRun   # bundles the Worker with that local Wrangler, uploads nothing; without -DryRun it deploys (docs/BUG_REPORTS.md)
 .\tools\build-updater.ps1      # the release update helper: MSYS2 CLANG64 x64, static, debug outside the package
 .\tools\package-release.ps1   # Release build for Windows and Linux: ZIP and AppImage, each with .sha256 (local only)
 .\tools\verify-release.ps1 -Path dist\<asset>.zip   # the same check on an existing ZIP

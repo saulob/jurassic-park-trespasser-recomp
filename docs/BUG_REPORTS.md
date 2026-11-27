@@ -71,7 +71,7 @@ every private value**, which is why the page shows the preview and says so.
 
 ## Admin secret
 
-The dashboard token is the Cloudflare secret `JPT_BUG_REPORT_ADMIN_TOKEN` (set with `npx wrangler secret put JPT_BUG_REPORT_ADMIN_TOKEN` or `toolsworker.ps1`); it is never stored in the repository.
+The dashboard token is the Cloudflare secret `JPT_BUG_REPORT_ADMIN_TOKEN` (set with `npx wrangler secret put JPT_BUG_REPORT_ADMIN_TOKEN` in `server\trespasser-bug-reports` after `npm ci`); it is never stored in the repository.
 
 ## Service address
 

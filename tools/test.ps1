@@ -394,7 +394,7 @@ Add-Exes $s @(
     , @('update_network_tests', 'auto update failures against a scripted loopback HTTP server: 504, dropped connections, stalls, redirects, retries', 20)
     , @('update_helper_tests', 'the update helper as a real process: waits for its parent, replaces files, rolls back, restarts the program', 10)
 )
-Add-Suite $s 'script' 'tests\worker_script_tests.ps1' 'tools\worker.ps1 against a stand-in npx: arguments, dry run, missing folder, missing Wrangler configuration; nothing is deployed' @{}
+Add-Suite $s 'script' 'tests\worker_script_tests.ps1' 'tools\worker.ps1 on synthetic trees: the locked local Wrangler only (never npx or a global one), arguments, dry run, exit codes, spaces and Unicode, missing Node.js, npm, dependencies, lockfile, folder or configuration, Node.js too old, version mismatch; nothing is deployed' @{}
 Add-Suite $s 'check' 'bug report worker' 'server\trespasser-bug-reports: its own node test suite (API, limits, reports, admin, dashboard); DATA UNAVAILABLE without Node.js' @{ Run = 'Test-BugReportWorker' }
 
 $s = 'Vulkan renderer'
@@ -519,7 +519,7 @@ $toolRole = @{
     'tools\build-clang-cl.ps1' = 'maintainer: builds the clang-cl x86 Release executable; never run by this gate'
     'tools\package.ps1' = 'maintainer: builds the clang-cl Release and the CLANG64 helper, stages the Windows release ZIP: never run by the gate; checked statically by tests\test_player_polish.py and through tools\verify-release.ps1'
     'tools\package-release.ps1' = 'maintainer: package.ps1 plus the Linux AppImage through WSL and the final gates on both: never run by the gate; checked by tests\test_player_polish.py'
-    'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a stand-in npx'
+    'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a fake local Wrangler'
     'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
     'tools\openssl-bootstrap.sh' = 'a pinned static OpenSSL for the Bug Report HTTPS, built once into the cache: run by tools/build-linux.sh when the machine has no development files'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'

@@ -46,6 +46,16 @@ Production address: `https://trespasser-bug-reports.saulobenigno.workers.dev`. T
 `launcher/game_profile.h`). SQLite-backed Durable Objects are offered on Cloudflare's free and paid Workers plans; check
 Cloudflare's current limits for yours.
 
+Prerequisites: Node.js 22.12 or newer (with npm), then the Worker's dependencies once, from the repository root:
+
+```powershell
+npm ci --prefix server\trespasser-bug-reports   # installs the Wrangler version pinned in package-lock.json
+```
+
+`tools\worker.ps1` deploys with that local Wrangler (`-DryRun` bundles and uploads nothing). It runs from any folder,
+never uses a global Wrangler or `npx`, downloads nothing, and returns Wrangler's exit code. Inside this folder, after
+`npm ci`, `npx wrangler` also picks the local copy.
+
 ```powershell
 cd server\trespasser-bug-reports
 npx wrangler whoami                       # must be the account that owns saulobenigno.workers.dev
@@ -65,12 +75,23 @@ exists `/admin` answers `503 not_configured`. The token needs 24 or more charact
 
 `wrangler.toml` creates the Durable Object class `BugReportDesk` (migration `v1`, SQLite) and the rate-limit binding
 `REPORT_LIMITER`. Its `namespace_id` ships as the placeholder `"0"`: before the first deploy, set an integer that no other
-rate-limit binding of your Cloudflare account uses (never the value of another port's Worker). `tools\worker.ps1` refuses
-to deploy, and to dry-run, while it is the placeholder. Keep the block, it is the edge abuse limit. Do not edit an applied
+rate-limit binding of your Cloudflare account uses (never the value of another port's Worker). Keep the block, it is the
+edge abuse limit. Do not edit an applied
 migration. The admin token is a Cloudflare secret you set yourself (`npx wrangler secret put JPT_BUG_REPORT_ADMIN_TOKEN`);
 nothing in the repository holds one.
 
 Validate with a real submission: see the last section of `docs/BUG_REPORTS.md`.
+
+### Troubleshooting `tools\worker.ps1`
+
+| Message | Fix |
+|---|---|
+| `Node.js not found` | install Node.js 22.12 or newer and open a new terminal |
+| `dependencies are not installed` | run the `npm ci --prefix ...` command it prints |
+| `npm was not found` | reinstall Node.js with npm, then `npm ci` |
+| `local Wrangler is X but package-lock.json pins Y` | run `npm ci` again; it replaces `node_modules` with the locked versions |
+| `Node.js ... is too old` | update Node.js to the version it names |
+| `wrangler exited with code N` | Wrangler's own error, printed above it (login, configuration, network) |
 
 ## Operate
 
