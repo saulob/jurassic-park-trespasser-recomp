@@ -24,6 +24,8 @@ typedef struct {
     const char* layout;       /* custom only */
     const char* start_level;  /* custom only */
     const char* capabilities; /* custom only: names joined by ',' */
+    const char* compatibility; /* custom only: "ready", "limited" */
+    int experimental;          /* custom only: started by Play Anyway */
 } jpt_session_info_t;
 
 typedef void (*jpt_session_log_fn)(const char* tag, const char* text);

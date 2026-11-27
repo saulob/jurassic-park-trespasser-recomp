@@ -105,6 +105,7 @@ This save is not compatible with the current level	Dieser Spielstand passt nicht
 This level is missing required files	Diesem Level fehlen erforderliche Dateien
 This level cannot be loaded safely	Dieses Level kann nicht sicher geladen werden
 The next level is not included in this package	Das nächste Level ist in diesem Paket nicht enthalten
+This level needs Play Anyway in the launcher	Dieses Level braucht "Trotzdem spielen" im Launcher
 The game could not be saved. The previous save was kept.	Das Spiel konnte nicht gespeichert werden. Der vorherige Spielstand wurde behalten.
 No Quick Save yet	Noch kein Schnellspeicherstand
 Quick Save works in a level	Schnellspeichern nur in einem Level

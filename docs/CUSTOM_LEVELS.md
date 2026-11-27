@@ -39,38 +39,78 @@ The game itself is installed from a disc image or from a folder of the game ([LA
 
 Level data, texts, pictures and Trespasser CE scripts (`.nut`, never run unless a level needs them) are kept; everything else
 (programs, libraries, other scripts, ATX or CE components, shipped saves) is left out, counted and named with the reason in the
-manifest. In a package that an earlier version installed without its `.nut` files, a level whose world names a script class is refused as
-`CE_SCRIPT_FILES` until the package is imported again; its other levels are not. A package with the same files as an installed one is refused
-as a duplicate.
+manifest. In a package that an earlier version installed without its `.nut` files, a level whose world names a script class is
+`LIMITED COMPATIBILITY` (`CE_SCRIPT_FILES`) until the package is imported again; its other levels are not. A package with the same
+files as an installed one is refused as a duplicate.
+
+### Compatibility
+
+Every level of a package is in one of three states, judged on its own: a sibling never changes it.
+
+| State | Colour | Meaning | Play |
+|---|---|---|---|
+| `READY` | green | the automated scan found no known problem | **Play** |
+| `LIMITED COMPATIBILITY` | yellow | the level uses something the port does not have, or whose effect it cannot confirm, and the game can leave it out without risk | **Play Anyway**, after a warning |
+| `INVALID / UNSAFE` | red | a file it needs is missing or damaged, a format or a limit the engine cannot take, or a security problem | never |
 
 `READY` is the result of an automated scan: no known blocking issue was found. It does not mean the level was played, or that its
 scripts, triggers, graphics and performance behave as intended.
 
-The rule is binary per level: each scene is `READY` or refused on its own, and a sibling's state never changes it. A package is
-analysed in a staging folder first and installed (one rename) when at least one of its levels is `READY`; its list shows every
-level, with Play for the `READY` ones and Bug Report for the others (the reasons, of that level only, are in the log). A package
-without a `READY` level leaves nothing behind and the page says `Could not import this custom level` / `This custom level is not
-fully supported`, with Bug Report and Close. The listing record and `manifest.json` (`level_status`) keep each level's state,
-blockers and scripts; the preflight of Play judges the level asked for.
+One classification decides the state everywhere: the importer, the listing, Play, the compatibility report and the game read
+it from `src/common/jpt_level_compat.c`, never from translated text. Each problem has a stable code (`UNSUPPORTED_ACTION`,
+`MISSING_REQUIRED_TERRAIN`, ...) and a kind; a level takes the most restrictive state of its problems. A code that is not classified
+there is `INVALID / UNSAFE` until it is.
 
-| Class | |
-|---|---|
-| `READY` | its worlds (`.grf`) are in the package or the game; each world of the package has its texture set (`<world>-130.pid` and `.swp`/`.spz`/`.spp`), or the installed game has the set of that name, or loose pictures are in `Map\<world>`; the terrain data its world names (`.wtd`) is there; its textures are found, or only some are not (see below); no feature, setting or ActionType the port does not have |
-| `REJECTED_MISSING` | a required file, texture set or terrain is nowhere, or none of a world's textures is found (its texture set is not that world's) |
-| `REJECTED_UNSUPPORTED` | something its content requires is not `FULLY_SUPPORTED` or `NOT_REQUIRED` in `src/common/jpt_level_features.c`, a scene format newer than 26, or content beyond the engine's limits |
-| `REJECTED_MALFORMED` | a scene or world that cannot be read |
-| `REJECTED_OTHER` | anything else the port cannot vouch for: settings files in conflict or unreadable, a readme instruction that cannot be followed, two files for one game path |
+| Kind | State | Problems |
+|---|---|---|
+| missing feature | limited | ActionType 99 (an action script: the action does nothing); ATX jumps, projectiles, plugins (programs are never run) and rules in `ATXconfig.ini`; `EndGameDDF`; `EnableAiActivityEx`, `MaxAiActivateOnRenderDist`, `EnableWoodSapParticles`; Trespasser CE script functions the port does not have yet, scripts it cannot plan or that an earlier version left out (the level runs without a script VM, never with a stub); texhw over a texture the engine draws on the CPU or whose sides are no powers of two (the level's own texture stays); STARS and METEORS sky layers (not drawn) |
+| cannot be confirmed | limited | a file a readme names that is nowhere, a readme instruction that cannot be followed, two files for one game path, pictures that are not 8 bit uncompressed BMP (the grey texture or the game's stands for them), settings files that are unreadable, set twice, in conflict or with a value that is not one of the key |
+| missing required file | invalid | a world, terrain data or texture set the level cannot be built without; none of a world's textures found |
+| damaged file | invalid | a scene or world that cannot be read, an index past its table, two files told apart only by case |
+| incompatible format | invalid | a scene format newer than 26, curved bump maps that the texture set lacks (the engine would build them from nothing), a feature the runtime cannot leave out |
+| engine limit exceeded | invalid | content beyond the engine's limits (see [Before Play](#before-play)) |
+| security problem | invalid | a settings path outside the package |
 
-Information never refuses: a readme, the author's own note (Restart Level does not work), a world without terrain as the level
-was made, a scene 23 to 26 read as the game's own, a dependency only mentioned or recommended, heaps and texture pool sized for the
-level, and some textures of a world that are nowhere (`MISSING_TEXTURES`): the level plays as in Trespasser CE, which draws its grey
-texture for each of them; and a level a trigger loads that neither the package nor the game has (`MISSING_TRANSITION_LEVEL`):
-the launcher's row says where the level leads, and when the trigger fires the game stays in the current level with the notice
-"The next level is not included in this package". Such lines are logged with `info:`.
+Some features are `FULLY_SUPPORTED` or `NOT_REQUIRED` in `src/common/jpt_level_features.c` and never appear. A feature that is
+`NOT_SUPPORTED` there is `LIMITED COMPATIBILITY` only when `jpt_level_compat.c` names it, after its effect was checked where it
+would take effect; otherwise it blocks the level.
 
-A package installed by an earlier version is analysed with today's rule: refused, it shows `Not supported` with Bug Report, Open
-Folder and Delete, and no Play. Nothing of it is removed. The list is ordered by the date of import (newest or oldest first) or by
-name; a package of an earlier version takes the date of its oldest file.
+Information never changes the state: a readme, the author's own note (Restart Level does not work), a world without terrain as
+the level was made, a scene 23 to 26 read as the game's own, a dependency only mentioned or recommended, heaps and texture pool
+sized for the level, and some textures of a world that are nowhere (`MISSING_TEXTURES`): the level plays as in Trespasser CE, which
+draws its grey texture for each of them; and a level a trigger loads that neither the package nor the game has
+(`MISSING_TRANSITION_LEVEL`): the launcher's row says where the level leads, and when the trigger fires the game stays in the
+current level with the notice "The next level is not included in this package". Such lines are logged with `info:`.
+
+A package is analysed in a staging folder first and installed (one rename) when at least one of its levels is `READY` or
+`LIMITED COMPATIBILITY`, whatever the source: ZIP, 7z, RAR, Import Folder, Link External Folder or a fan mission of a Trespasser CE
+tree. A package with only `INVALID / UNSAFE` levels leaves nothing behind and the page says `Could not import this custom level`,
+with Bug Report and Close. A problem of the whole package (an unsafe path, a link, a size limit, encryption, a duplicate) refuses it
+whatever its levels are. After an import the page says how many levels need Play Anyway.
+
+Each row shows the level's state in its colour and **Compatibility details**: every reason with its kind, a missing feature apart
+from a missing or damaged file and a security problem. The listing record and `manifest.json` (`level_status`: `status`,
+`compatibility`, `blockers`, `limitations`) keep each level's state; `runtime.map` has a `compat <scene>|<state>` line per level,
+which the game checks.
+
+### Play Anyway
+
+**Play Anyway** shows **Compatibility Warning**: the level's reasons in a list that scrolls, and **Cancel** (the default, also
+Escape and a controller's B) or **Play Anyway**. It works with the mouse, the keyboard and a controller, and fits the window at any
+DPI. The answer counts for that start alone: nothing is saved, no setting, file or command-line option gives it, and the next start
+asks again. Play Anyway never starts an `INVALID / UNSAFE` level.
+
+One confirmation covers the level and the `LIMITED COMPATIBILITY` levels of its package that it leads to, directly or through
+other levels: the warning lists their reasons too. A `READY` level that leads to such levels plays with Play and has Play Anyway
+as well, to cover them. Before the game starts, the level is analysed again when any of its files changed (a linked folder
+included); a level that became `INVALID / UNSAFE` is not started, and one whose reasons changed asks again.
+
+Levels played this way may show graphical issues, broken or missing scripts, gameplay problems or crashes: the port leaves out
+what it does not have, and the level was not made for that.
+
+A package installed by an earlier version is analysed again with today's rule (see [Records of v0.1.3](#records-of-v013)); nothing of it
+is removed and it is never imported again. The list is ordered by the date of import (newest or oldest first) or by name; a
+package of an earlier version takes the date of its oldest file.
 
 The page lists the packages off the UI thread. Its first frame shows `Loading custom levels...` with a spinner, the scan starts
 on the next one and the page adopts the result when the job ends (a result asked for before a newer request is dropped). An
@@ -82,9 +122,19 @@ holds, the package is not analysed again. The log has one line per refresh with 
 
 ### Before Play
 
-When Play is pressed the level is checked with the runtime's own lookup, and again by the game's host before every level
-load (`src/common/jpt_level_gate.c`), while the game is still as it was. A level that fails is not started: one sentence, Bug
-Report and Close. Bug Report selects this session's log, where the reasons were just written. The log has the package, the level, the file, its type, where it was looked for and what it is needed for.
+When Play or Play Anyway is pressed the level is checked with the runtime's own lookup and admission, and again by the game's
+host before every level load (`src/common/jpt_level_gate.c`), while the game is still as it was. A level that fails is not started:
+one sentence, Bug Report and Close. Bug Report selects this session's log, where the reasons were just written. The log has the
+package, the level, the file, its type, where it was looked for and what it is needed for.
+
+The game does not take the launcher's word alone. At its start it reads each level's state from `runtime.map`: a level without a
+recorded state, an `INVALID / UNSAFE` one, or a `LIMITED COMPATIBILITY` one that this launch's Play Anyway does not cover is not
+started (`[custom-level] launch blocked: ...`, with a message box on Windows). The same holds at every level load of the session:
+a trigger that leads to an `INVALID / UNSAFE` level is refused as unsafe, one that leads to a `LIMITED COMPATIBILITY` level the
+confirmation did not cover is refused with "This level needs Play Anyway in the launcher"; the game stays in the current level, as
+for any refused transition. A save holds the level it was made in, and is judged the same way when it is loaded, so a save of an
+earlier Play Anyway does not open that level in a `READY` start. Restart Level and Quick Load keep the session what it was. The
+structural checks below run in every case: a state never replaces them.
 
 | Checked | |
 |---|---|
@@ -101,31 +151,50 @@ the world. Polygons with a curved bump map that such a set lacks would be built 
 the world is read, they are lit flat when their texture has a picture of its own; a texture without one is read as a missing
 texture (`src/common/jpt_level_world.c`). The files stay as they are.
 
-### Bug Report
+### Compatibility report and Bug Report
 
-Levels with warnings or errors have their own Bug Report button, with the log of that level's last run chosen, else this
-session's. A failed import or Play chooses this session's. A log picked by hand stays chosen.
+A level that is not `READY` has its own **Bug Report** button: the compatibility report. It is there for `LIMITED COMPATIBILITY`
+and `INVALID / UNSAFE` levels, before any attempt to play them, and after a refused import (the notice's Bug Report). It writes the
+level's reasons to this session's log and opens the Bug Report page on it, with its preview, privacy filter and consent: nothing
+is sent unless the player sends it, through the same service as any Bug Report.
 
-The outcome of an import stays below the import buttons until it is closed or another import starts. The technical side is in the
-log alone.
+| In the report | |
+|---|---|
+| state and reasons | `compatibility=limited (LIMITED COMPATIBILITY)`, each reason with its code, subject, kind and state |
+| origin and platform | imported archive, imported folder or external folder (never the folder's path); Windows or Linux |
+| versions | the launcher's version, the game version and the operating system, as every Bug Report has them |
+| after a run | the `[session]` block (`compatibility=limited experimental=1`, renderer, build), `[custom-level] experimental launch authorized`, the `[level]` lines with the result of each load, and the crash dump when there is one: Bug Report chooses the log of that level's last run |
+
+Scripts, assets, saves and the package's files are never part of it. A log picked by hand stays chosen.
+
+The outcome of an import stays below the import buttons until it is closed or another import starts; the technical side is in
+the log.
 
 The log holds the whole import under `custom level import:`: source, size and SHA-256 of the archive, every text of the package
 (a readme between `README BEGIN` and `README END`, any other between `TXT BEGIN` and `TXT END`, each once, up to 64 KB of each;
 never run or followed from the log), every file by type, what was ignored or rejected and why, runtime paths, each level with
-its scene version, files and what of its format is left out, settings files, dependencies, session settings and the result
-(`installed`, `rejected`).
+its scene version, files, what of its format is left out and its compatibility, settings files, dependencies, session settings and
+the result (`installed`, `rejected`, with the number of levels in each state).
 
 ```text
 user_data\custom_levels\<package>\
     ...            the package's own files, folders and names, never changed
     manifest.json  what the analysis found (schema_version, source_hash, levels, settings, actions, warnings)
-    runtime.map    what the game reads of it: each game path and the package's file that answers it
+    runtime.map    what the game reads of it: each game path and the package's file that answers it, each level's state
     .runtime\      loading pictures in the game's own format, the world facts and the listing record
 ```
 
 `manifest.json`, `runtime.map` and `.runtime` are generated. The launcher makes them again when they are missing, damaged or
 no longer match the package, which is how a package installed by an earlier version gets them. A manifest of a newer schema
-is left alone. Without a `runtime.map` a package is still read by its folders.
+is left alone. Without a `runtime.map` that records the level's state the game does not start it.
+
+### Records of v0.1.3
+
+Packages, links, saves and settings of v0.1.3 are kept as they are; nothing is imported again. Their listing records are of an
+older version, so every package is analysed again the first time the page lists it, and its manifest and `runtime.map` are
+written anew with each level's state. A level v0.1.3 called `Not supported` becomes `LIMITED COMPATIBILITY` only when that analysis
+finds nothing but problems the port can leave out; it is never converted by its old label. The package keeps its name, its date
+of import and its saves. A linked folder that is away shows the row its older record describes, and is analysed when it is back.
 
 ### Linked folders
 
@@ -377,7 +446,9 @@ The game's reader trusts every size and count of a save. One whose sections or n
 objects is neither listed nor loaded. A save is written to another file and takes the place of the previous one when it is
 whole; otherwise the previous one stays and the player is told. In a custom level's session the package and the content of its
 worlds are kept behind the save's own data, which the game does not read: a save of another package, or of one whose worlds
-changed, is refused (`save incompatible with current custom level`). Saves without that mark, made earlier, are taken.
+changed, is refused (`save incompatible with current custom level`). Saves without that mark, made earlier, are taken. A save of a
+`LIMITED COMPATIBILITY` level loads only in a start that Play Anyway covers ([Before Play](#before-play)); the package's saves stay
+in its own folder whatever its state.
 
 ### ActionTypes, skies and menus
 

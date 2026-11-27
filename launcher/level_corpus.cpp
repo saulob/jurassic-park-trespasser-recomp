@@ -147,6 +147,7 @@ bool HasFolder(const CorpusPackage& p, const char* name) {
 void CountLevel(const CorpusPackage& package, const LevelScene& scene, CorpusReport& report, std::map<std::string, Tally>& categories, std::map<std::string, Tally>& problems) {
     ++report.totals["levels"];
     ++report.totals[LevelClassName(scene.level_class())];
+    ++report.totals[std::string("compatibility ") + jpt_compat_name(scene.compatibility())];
     if (scene.playable()) ++report.totals["playable"];
     if (scene.auxiliary) ++report.totals["auxiliary"];
     if (scene.version) ++report.scene_versions[scene.version];
@@ -212,7 +213,7 @@ std::string LevelLine(const LevelScene& scene) {
     if (scene.start) text += "  StartLevel";
     if (scene.auxiliary) text += "  auxiliary";
     if (!scene.led_to_by.empty()) text += "  loaded by " + Joined(scene.led_to_by);
-    return text;
+    return text + "  compatibility " + jpt_compat_name(scene.compatibility());
 }
 
 void WritePackage(const CorpusPackage& p, std::string& out) {
@@ -354,7 +355,7 @@ std::string CorpusJson(const CorpusReport& report) {
         json.Text("import", r.scenes.empty() ? ImportStatusTitle(r.import.status) : r.import.ok() ? "can be installed" : ImportStatusTitle(r.import.status));
         json.Text("class", r.scenes.empty() ? "" : LevelClassName(PackageClass(r))).Text("layout", r.analysis.layout).Text("mod_folder", r.analysis.root).Text("start_level", r.analysis.start_level).List("files", Inventory(p)).Open("levels", '[');
         for (const LevelScene& scene : r.scenes) {
-            json.Open(nullptr, '{').Text("scn", scene.path).Text("class", LevelClassName(scene.level_class())).Number("scene_version", scene.version);
+            json.Open(nullptr, '{').Text("scn", scene.path).Text("class", LevelClassName(scene.level_class())).Text("compatibility", jpt_compat_name(scene.compatibility())).Number("scene_version", scene.version);
             json.Flag("start_level", scene.start).Flag("auxiliary", scene.auxiliary).List("loaded_by", scene.led_to_by).List("features", RequiredFeatures(r.analysis, scene));
             WriteIssues(json, scene);
             json.Close();

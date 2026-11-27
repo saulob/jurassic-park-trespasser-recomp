@@ -248,12 +248,12 @@ static void TestLevelsApart() {
     const fs::path source = Fresh("apart source");
     for (const auto& [path, bytes] : files) Write(source / PathFromUtf8(path), bytes);
     const ImportResult result = ImportLevelFolder(source, user, {}, {}, game);
-    CHECK(result.ok() && result.levels == 3);
+    CHECK(result.ok() && result.levels == 3 && result.limited == 1);
     const std::string id = result.package;
     ListingStats first;
     ListLevelPackages(user, game, &first);
     const LevelScene alpha = Listed(user, game, id, "alpha.scn"), beta = Listed(user, game, id, "beta.scn"), gamma = Listed(user, game, id, "gamma.scn"), delta = Listed(user, game, id, "delta.scn");
-    CHECK(alpha.playable() && beta.playable() && delta.playable() && gamma.state == LevelState::kNotSupported);
+    CHECK(alpha.playable() && beta.playable() && delta.playable() && gamma.state == LevelState::kLimited && gamma.compatibility() == JPT_COMPAT_LIMITED);
     CHECK(gamma.level_class() == LevelClass::kRejectedUnsupported && HasIssue(&gamma, "UNSUPPORTED_FEATURE"));
     for (const LevelScene* s : {&alpha, &beta, &delta}) CHECK(s->level_class() == LevelClass::kReady && !HasIssue(s, "PACKAGE_NOT_SUPPORTED") && !HasIssue(s, "UNSUPPORTED_FEATURE"));
     CHECK(!alpha.scripted && !delta.scripted && alpha.script_files.empty() && delta.script_files.empty());
@@ -262,7 +262,7 @@ static void TestLevelsApart() {
     for (const LevelScene* s : {&alpha, &delta})
         for (const LevelIssue& i : s->issues) CHECK(i.subject != "CE_SCRIPT_API" && i.subject != "CE_SCRIPT_FILES" && i.subject != "CE_SCRIPTS" && i.code != "SCRIPT_CLASS");
     CHECK(ActionsOf(&alpha, false).play && ActionsOf(&beta, false).play && ActionsOf(&delta, false).play);
-    CHECK(!ActionsOf(&gamma, false).play && ActionsOf(&gamma, false).report);
+    CHECK(!ActionsOf(&gamma, false).play && ActionsOf(&gamma, false).play_anyway && ActionsOf(&gamma, false).report);
 
     // The listing record keeps each level as it is; a script that changes is read again.
     ListingStats cached;
@@ -277,11 +277,30 @@ static void TestLevelsApart() {
     CHECK(status != std::string::npos && manifest.find("REJECTED_UNSUPPORTED", status) != std::string::npos && manifest.find("Four/data/alpha.scn", status) != std::string::npos);
     CHECK(manifest.find("ReplayVoiceover", status) != std::string::npos && manifest.find("Four/scripts/beta.nut", status) != std::string::npos);
     CHECK(map.find("\nuses beta.scn|Four/scripts/beta.nut\n") != std::string::npos && map.find("uses alpha.scn") == std::string::npos && map.find("uses delta.scn") == std::string::npos);
+    CHECK(map.find("\ncompat Four/data/gamma.scn|limited\n") != std::string::npos && map.find("\ncompat Four/data/alpha.scn|ready\n") != std::string::npos &&
+          manifest.find("\"limited\"", status) != std::string::npos && manifest.find("UNSUPPORTED_FEATURE CE_SCRIPT_API", status) != std::string::npos);
 
     // Play and its preflight: the level that is asked, never the package.
     for (const char* scene : {"Four/data/alpha.scn", "Four/data/beta.scn", "Four/data/delta.scn"}) CHECK(CheckBeforePlay(user, game, id, scene).ok);
     const PlayCheck refused = CheckBeforePlay(user, game, id, "Four/data/gamma.scn");
-    CHECK(!refused.ok && refused.reason == ImportStatus::kNotSupported && Has(refused.log, "CE_SCRIPT_API") && !Has(refused.log, "alpha.scn") && !Has(refused.log, "beta.scn"));
+    CHECK(!refused.ok && refused.needs_consent && refused.reason == ImportStatus::kNotSupported && Has(refused.log, "CE_SCRIPT_API") && !Has(refused.log, "alpha.scn") && !Has(refused.log, "beta.scn"));
+    // Play Anyway: gamma alone, without its scripts, which the port cannot run (no VM, no stub).
+    const PlayConsent consent{refused.keys};
+    const PlayCheck anyway = CheckBeforePlay(user, game, id, "Four/data/gamma.scn", &consent);
+    CHECK(anyway.ok && anyway.experimental && anyway.authorized == std::vector<std::string>{"Four/data/gamma.scn"} && Has(anyway.log, "experimental launch authorized"));
+    {
+        const jpt_custom_level_request_t request = LaunchRequest(id, "Four/data/gamma.scn", anyway);
+        char error[256] = "", line[512] = "";
+        CHECK(request.experimental == 1 && std::string(request.authorized) == "Four/data/gamma.scn");
+        CHECK(jpt_custom_level_activate(Utf8(user).c_str(), &request, error, sizeof error) && jpt_custom_level_admit_start(line, sizeof line) && jpt_custom_level_experimental());
+        g_script_lines.clear();
+        jpt_level_scripts_start(JPT_SESSION_CUSTOM, ScriptLine);
+        jpt_script_session* s = jpt_level_scripts_session();
+        jpt_level_scripts_begin(JPT_REASON_INITIAL, "gamma.scn", nullptr);
+        jpt_level_scripts_ready(1);
+        CHECK(s && !jpt_script_session_has_vm(s) && Has(g_script_lines, "result=refused"));
+        jpt_custom_level_deactivate();
+    }
 
     // Bug Report of gamma: its diagnosis, not a sibling's.
     LevelPackage listed;

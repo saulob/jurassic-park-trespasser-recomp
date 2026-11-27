@@ -431,6 +431,13 @@ static int start_custom_level(const jpt_custom_level_request_t* request, jpt_use
         MessageBoxA(NULL, error, "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR);
         return 0;
     }
+    host_log("custom-level", "compatibility=%s", jpt_custom_level_compat_name());
+    if (!jpt_custom_level_admit_start(error, sizeof error)) {
+        host_log("custom-level", "%s", error);
+        MessageBoxA(NULL, error, "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR);
+        return 0;
+    }
+    if (error[0]) host_log("custom-level", "%s", error);
     if (!jpt_custom_level_saves_dir(user->saves_dir, request->package, saves, sizeof saves) || !jpt_make_dirs(saves)) {
         host_log("custom-level", "cannot create the saves folder of %s", request->package);
         return 0;

@@ -285,10 +285,12 @@ void TestListingRecord() {
     CHECK(GameListingKey(game) != GameListingKey(game.parent_path() / "x" / "data") && GameListingKey({}) == "no game");
     CHECK(PackageListingKey(dir, "a") != PackageListingKey(dir, "b") && PackageListingKey(dir, "a") == PackageListingKey(dir, "a") && PackageListingKey(dir / "none", "a").empty());
 
-    // A package an earlier version installed READY_WITH_WARNINGS is analysed with today's rule: no Play.
+    // A package an earlier version installed is analysed with today's rule: a sky layer the port does not draw is Play Anyway.
     for (const auto& [path, bytes] : Level("old") + Files{{"old.sky", "[LAYER1]\nType=STARS\n"}}) Write(CustomLevelsDir(user) / "Old" / path, bytes);
     for (const LevelPackage& package : ListLevelPackages(user, game))
-        if (package.id == "Old") CHECK(package.levels().empty() && !ActionsOf(package.rows()[0], true).play && ActionsOf(package.rows()[0], true).report);
+        if (package.id == "Old")
+            CHECK(package.levels().size() == 1 && package.rows()[0]->limited() && !ActionsOf(package.rows()[0], true).play && ActionsOf(package.rows()[0], true).play_anyway &&
+                  ActionsOf(package.rows()[0], true).report);
 }
 
 void TestReadyRule() {
@@ -296,6 +298,13 @@ void TestReadyRule() {
     const auto refused = [&](const char* name, const Files& files, ImportStatus status, const char* logged) {
         const ImportResult r = Import(user, name, files, game);
         const bool ok = !r.ok() && r.status == status && r.levels == 0 && Nothing(user, name) && Logged(r.log, logged) && Logged(r.log, "result: rejected");
+        if (!ok) std::printf("  %s: %s\n", name, ImportStatusTitle(r.status));
+        return ok;
+    };
+    // LIMITED COMPATIBILITY: installed, never READY, for a feature the runtime leaves out.
+    const auto limited = [&](const char* name, const Files& files, const char* logged) {
+        const ImportResult r = Import(user, name, files, game);
+        const bool ok = r.ok() && r.levels == 0 && r.limited == 1 && Logged(r.log, logged) && Logged(r.log, "compatibility: limited") && Logged(r.log, "result: installed");
         if (!ok) std::printf("  %s: %s\n", name, ImportStatusTitle(r.status));
         return ok;
     };
@@ -319,13 +328,13 @@ void TestReadyRule() {
                 if (package.id == r.package) noted = scene.playable() && LevelNotes(scene) == std::vector<std::string>{"nowhere.scn"};
         CHECK(noted);
     }
-    CHECK(refused("Sky", Level("sky") + Files{{"sky.sky", "[LAYER1]\nType=STARS\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SKY_STARS"));
+    CHECK(limited("Sky", Level("sky") + Files{{"sky.sky", "[LAYER1]\nType=STARS\n"}}, "UNSUPPORTED_FEATURE CE_SKY_STARS"));
     // Trespasser CE scripts are the level's question: scripts that do nothing in it leave it ready, scripts that ask for CE's
-    // engine functions refuse it, and lifecycle scripts are installed and listed for the game.
+    // engine functions make it Play Anyway (no VM), and lifecycle scripts are installed and listed for the game.
     CHECK(Import(user, "Quiet script", Level("calm") + Files{{"scripts/x.nut", "class X {}\nclass H extends LevelScript { function OnScriptInit(b) {} }\n"}}, game).ok());
-    CHECK(refused("Script", Level("nut") + Files{{"scripts/x.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"}},
-                  ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
-    // A refused level stays out of Play without taking its sibling with it: the package is installed for the level that is READY.
+    CHECK(limited("Script", Level("nut") + Files{{"scripts/x.nut", "class Hud extends GameScript { function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"}},
+                  "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
+    // A limited level needs Play Anyway without taking its sibling with it: the READY one plays as made.
     {
         const ImportResult r = Import(user, "Half", Level("open") + Level("shut") +
                                                         Files{{"scripts/shut.nut", "class Hud extends LevelScript { static SCN = \"shut.scn\"; function OnLevelStart() { TP_Engine.ReplayVoiceover(); } }\n"}},
@@ -335,7 +344,7 @@ void TestReadyRule() {
         for (const LevelPackage& package : ListLevelPackages(user, game))
             for (const LevelScene& scene : package.scenes)
                 if (package.id == r.package) (scene.playable() ? ready : refused_levels) += 1;
-        CHECK(ready == 1 && refused_levels == 1);
+        CHECK(ready == 1 && refused_levels == 1 && r.limited == 1);
     }
     {
         const ImportResult r = Import(user, "Lifecycle", Level("life") + Files{{"scripts/count.nut", "class Count extends GameScript { nvram = null; function OnLevelStart() {} }\n"}}, game);
@@ -344,7 +353,7 @@ void TestReadyRule() {
         const std::string map((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         CHECK(map.find("\nnut scripts/count.nut\n") != std::string::npos && fs::exists(CustomLevelsDir(user) / r.package / "scripts" / "count.nut"));
     }
-    CHECK(refused("Instance script", [] {
+    CHECK(limited("Instance script", [] {
         WorldShape shape;
         shape.terrain = "door";
         shape.meshes.push_back({"Crate-00", "Map\\door\\crate.bmp"});
@@ -352,9 +361,9 @@ void TestReadyRule() {
         Files files = Level("door");
         files[1].second = MakeWorld(shape);
         return files + Files{{"scripts/door.nut", "class Door extends CInstance { function OnUse(b) { return true; } }\n"}};
-    }(), ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
+    }(), "UNSUPPORTED_FEATURE CE_SCRIPT_API"));
     // A world that names a script class the package has no script for, or only outside a scripts folder, as CE would not load it.
-    CHECK(refused("Scriptless", [] {
+    CHECK(limited("Scriptless", [] {
         WorldShape shape;
         shape.terrain = "bare";
         shape.meshes.push_back({"Crate-00", "Map\\bare\\crate.bmp"});
@@ -362,8 +371,8 @@ void TestReadyRule() {
         Files files = Level("bare");
         files[1].second = MakeWorld(shape);
         return files + Files{{"door.nut", "class Door extends CInstance {}\n"}};
-    }(), ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_SCRIPTS"));
-    CHECK(refused("Action", [] {
+    }(), "UNSUPPORTED_FEATURE CE_SCRIPTS"));
+    CHECK(limited("Action", [] {
         WorldShape shape;
         shape.terrain = "act";
         shape.meshes.push_back({"Crate-00", "Map\\act\\crate.bmp"});
@@ -371,15 +380,15 @@ void TestReadyRule() {
         Files files = Level("act");
         files[1].second = MakeWorld(shape);
         return files;
-    }(), ImportStatus::kNotSupported, "UNSUPPORTED_ACTION ActionType 99"));
+    }(), "UNSUPPORTED_ACTION ActionType 99"));
     CHECK(!refused("Optional", Level("opt") + Files{{"MAP.bmp", "b"}, {"readme.txt", "IF ATX IS INSTALLED, place MAP.bmp in the MAPS directory."}}, ImportStatus::kNotSupported, ""));
-    CHECK(refused("Settings", Level("set") + Files{{"fm.ini", "[General]\nStartLevel=set.scn\nEndGameDDF=end\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_END_GAME_DDF"));
-    CHECK(refused("EngineFile", Level("set") + Files{{"trespasser.ini", "[Game]\nEnableAiActivityEx=-1\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE CE_EXTENDED_AI"));
+    CHECK(limited("Settings", Level("set") + Files{{"fm.ini", "[General]\nStartLevel=set.scn\nEndGameDDF=end\n"}}, "UNSUPPORTED_FEATURE CE_END_GAME_DDF"));
+    CHECK(limited("EngineFile", Level("set") + Files{{"trespasser.ini", "[Game]\nEnableAiActivityEx=-1\n"}}, "UNSUPPORTED_FEATURE CE_EXTENDED_AI"));
     const Files atx = {{"readme.txt", "This level requires ATX."}};
     CHECK(!refused("AtxRequired", Level("atx") + atx, ImportStatus::kNotSupported, ""));
-    CHECK(refused("AtxJumps", Level("atx") + atx + Files{{"MAPS/JMP/atx.ini", "[General]\nPush=65\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE ATX_JUMPS"));
-    CHECK(refused("AtxThrows", Level("atx") + atx + Files{{"MAPS/SPT/atx.ini", "[Spitter]\nProjectileName1=Spit\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE ATX_PROJECTILES"));
-    CHECK(refused("AtxRules", Level("atx") + atx + Files{{"ATXconfig.ini", "[Variables]\nGravity=3.0\n"}}, ImportStatus::kNotSupported, "UNSUPPORTED_FEATURE ATX_SETTINGS"));
+    CHECK(limited("AtxJumps", Level("atx") + atx + Files{{"MAPS/JMP/atx.ini", "[General]\nPush=65\n"}}, "UNSUPPORTED_FEATURE ATX_JUMPS"));
+    CHECK(limited("AtxThrows", Level("atx") + atx + Files{{"MAPS/SPT/atx.ini", "[Spitter]\nProjectileName1=Spit\n"}}, "UNSUPPORTED_FEATURE ATX_PROJECTILES"));
+    CHECK(limited("AtxRules", Level("atx") + atx + Files{{"ATXconfig.ini", "[Variables]\nGravity=3.0\n"}}, "UNSUPPORTED_FEATURE ATX_SETTINGS"));
     CHECK(!refused("AtxOwnRules", Level("atx") + atx + Files{{"ATXconfig.ini", "[Variables]\nGravity=10.000000\nNormalGameSpeed=0\n[RainEffect]\nFeatureEnabled=1\n"}}, ImportStatus::kNotSupported, ""));
     CHECK(!refused("AtxOthers", Level("atx") + atx + Files{{"MAPS/JMP/example.ini", "[General]\nPush=65\n"}, {"MAPS/HUD/0.bmp", "b"}, {"MAPS/RAN/atx.ini", "[Instances]\n"}, {"MAPS/RNE/default.ini", "[CParticles]\n"}}, ImportStatus::kNotSupported, ""));
     CHECK(!refused("AtxForCe", Level("atx") + Files{{"MAPS/JMP/atx.ini", "[General]\nPush=65\n"}}, ImportStatus::kNotSupported, ""));
@@ -402,7 +411,7 @@ void TestReadyRule() {
         CHECK(notice.failed && notice.title == "Could not import this custom level" && notice.reason == "This custom level is not fully supported");
     }
     CHECK(!ImportNotice(ImportStatus::kInstalled).failed && !ImportNotice(ImportStatus::kCancelled).failed && ImportNotice(ImportStatus::kNoSpace).reason == "There is not enough free disk space");
-    CHECK(!ActionsOf(nullptr, true).play && ActionsOf(nullptr, true).report);
+    CHECK(!ActionsOf(nullptr, true).play && !ActionsOf(nullptr, true).play_anyway && ActionsOf(nullptr, true).report);
 }
 
 void TestLoadingLayoutAndText() {

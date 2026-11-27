@@ -900,14 +900,15 @@ static void TestImportLog() {
                                                 {"M/run.exe", "MZ"}, {"M/go.bat", "x"}, {"M/script.nut", "x"}, {"M/saves/SAVEGAME.000", "s"}, {"M/doc.html", "x"}, {"M/animb/x.asb", "b"}, {"M/data/a.sky", "[LAYER1]\nType=STARS\n"}};
     for (int i = 0; i < 60; ++i) files.push_back({"M/data/texhw/map/t" + std::to_string(i) + ".dds", "dds"});
     const ImportResult result = ImportFiles(user, "Mission", files, game);
-    CHECK(result.status == ImportStatus::kNotSupported && !Left(user, "Mission") && std::all_of(result.log.begin(), result.log.end(), [](const std::string& line) { return line.size() < 900 && line.find('\n') == std::string::npos; }));
+    CHECK(result.ok() && result.levels == 0 && result.limited == 1 && Left(user, "Mission") && std::all_of(result.log.begin(), result.log.end(), [](const std::string& line) { return line.size() < 900 && line.find('\n') == std::string::npos; }));
     for (const char* line : {"custom level import source: folder \"Mission\"", "source path: ", "package Mission, layout fan_mission, mod folder M", "files found: 80, accepted: 76, ignored: 2, rejected: 2",
                              "SCN (1):", "GRF (1):", "PID (1):", "SWP (1):", "WTD (1):", "INI (1):", "TPA (1):", "TXT (4):", "MD (1):", "NFO (1):", "ASA (1):", "DDS (60):", "SKY (1):", "  M/data/texhw/map/t59.dds",
                              "M/run.exe - a program or library", "M/go.bat - a script or shortcut", "M/saves/SAVEGAME.000 - a saved game",
-                             "level M/data/m.scn - Not supported", "  scene version 22, StartLevel", "  class: REJECTED_UNSUPPORTED",
+                             "level M/data/m.scn - Limited compatibility", "  scene version 22, StartLevel", "  class: REJECTED_UNSUPPORTED", "  compatibility: limited (LIMITED COMPATIBILITY)",
+                             "[missing feature, limited]",
                              "  UNSUPPORTED_FEATURE CE_SKY_STARS: ", "  GRF m.grf: M/data/m.grf", "  PID m-130.pid: M/data/m-130.pid", "  SWP m-130.swp: M/data/m-130.swp",
                              "  WTD m.wtd: M/data/m.wtd", "  config: M/fm.ini", "stream += More.tpa (ready)", "README BEGIN M/Readme.txt (40 bytes, SHA-256 ", "| Put the level in data.", "| === fault caf\xC3\xA9", "README END M/Readme.txt",
-                             "README BEGIN M/INSTALL.txt", "| Wide \xC3\xA9", "| caf\xC3\xA9", "| ... truncated: the first 65536 of 70000 bytes", "| not a readable text", "README BEGIN M/manual.txt", "TXT BEGIN M/data/notes.txt (5 bytes, SHA-256 ", "| hello", "TXT END M/data/notes.txt", "README (", "Configs (1):", "result: rejected, This custom level is not fully supported (m.scn)"})
+                             "README BEGIN M/INSTALL.txt", "| Wide \xC3\xA9", "| caf\xC3\xA9", "| ... truncated: the first 65536 of 70000 bytes", "| not a readable text", "README BEGIN M/manual.txt", "TXT BEGIN M/data/notes.txt (5 bytes, SHA-256 ", "| hello", "TXT END M/data/notes.txt", "README (", "Configs (1):", "result: installed; levels ready 0, limited 1, invalid 0"})
     {
         const bool logged = Logged(result.log, line);
         if (!logged) std::printf("  not logged: %s\n", line);
@@ -919,7 +920,7 @@ static void TestImportLog() {
     };
     CHECK(times("BEGIN M/Readme.txt") == 1 && times("BEGIN M/data/notes.txt") == 1 && times("| hello") == 1 && times(" BEGIN ") == times(" END "));
     const ImportResult again = ImportFiles(user, "Mission", files, game);
-    CHECK(again.status == ImportStatus::kNotSupported && !Left(user, "Mission"));
+    CHECK(again.status == ImportStatus::kAlreadyInstalled && Left(user, "Mission"));
     files.erase(std::remove_if(files.begin(), files.end(), [](const auto& f) { return f.first.find("texhw") != std::string::npos || PathType(f.first) == ".sky" || PathType(f.first) == ".nut"; }), files.end());
     CHECK(ImportFiles(user, "Mission", files, game).ok());
     const ImportResult twice = ImportFiles(user, "Mission", files, game);

@@ -197,15 +197,24 @@ void AddSceneIssues(const LevelInfo& level, LevelScene& scene) {
     else if (!level.version) scene.note = "its scene version could not be read";
 }
 
+// Of an INVALID / UNSAFE level, what its blocking problems are; its limitations alone never decide.
+LevelState BlockedState(const std::vector<LevelIssue>& issues) {
+    std::vector<LevelIssue> blocking;
+    for (const LevelIssue& issue : issues)
+        if (issue.compat() == JPT_COMPAT_INVALID) blocking.push_back(issue);
+    const LevelClass value = ClassOf(blocking);
+    if (value == LevelClass::kRejectedMalformed) return LevelState::kDamaged;
+    return value == LevelClass::kRejectedMissing ? LevelState::kIncomplete : LevelState::kNotSupported;
+}
+
 void JudgeScene(const LevelInfo& level, LevelScene& scene) {
     if (!scene.valid) return;
-    const LevelClass value = scene.level_class();
+    const jpt_compat_t compat = CompatibilityOf(scene.issues);
     if (!level.problem.empty()) scene.state = LevelState::kUnsupportedFormat;
     else if (!level.version) scene.state = LevelState::kUnknown;
-    else if (value == LevelClass::kRejectedMalformed) scene.state = LevelState::kDamaged;
-    else if (value == LevelClass::kRejectedMissing) scene.state = LevelState::kIncomplete;
-    else if (value != LevelClass::kReady) scene.state = LevelState::kNotSupported;
-    else scene.state = scene.auxiliary ? LevelState::kAuxiliary : LevelState::kReady;
+    else if (compat == JPT_COMPAT_INVALID) scene.state = BlockedState(scene.issues);
+    else if (scene.auxiliary) scene.state = LevelState::kAuxiliary;
+    else scene.state = compat == JPT_COMPAT_LIMITED ? LevelState::kLimited : LevelState::kReady;
 }
 
 LevelScene SceneOf(const LevelInfo& level, const PackageAnalysis& a, const std::vector<PackageFile>& files, const fs::path& data_dir, WorldChecker& checker) {
@@ -457,9 +466,17 @@ std::vector<LevelVerdict> VerdictsOf(const std::vector<LevelScene>& scenes) {
     std::vector<LevelVerdict> verdicts;
     for (const LevelScene& scene : scenes) {
         if (!scene.valid) continue;
-        LevelVerdict v{scene.path, LevelClassName(scene.level_class()), scene.playable(), scene.scripted, scene.script_files, scene.script_required, {}};
+        LevelVerdict v;
+        v.scn = scene.path;
+        v.status = LevelClassName(scene.level_class());
+        v.playable = scene.playable();
+        v.scripted = scene.scripted;
+        v.script_files = scene.script_files;
+        v.script_required = scene.script_required;
+        v.compatibility = jpt_compat_name(scene.compatibility());
         for (const LevelIssue& issue : scene.issues)
-            if (issue.blocks()) v.blockers.push_back(issue.code + " " + issue.subject);
+            if (issue.compat() == JPT_COMPAT_INVALID) v.blockers.push_back(issue.code + " " + issue.subject);
+            else if (issue.compat() == JPT_COMPAT_LIMITED) v.limitations.push_back(issue.code + " " + issue.subject);
         verdicts.push_back(std::move(v));
     }
     return verdicts;
@@ -474,6 +491,10 @@ std::vector<std::string> MissingOf(const std::vector<LevelScene>& scenes) {
 
 size_t Playable(const std::vector<LevelScene>& scenes) {
     return size_t(std::count_if(scenes.begin(), scenes.end(), [](const LevelScene& scene) { return scene.playable(); }));
+}
+
+size_t Limited(const std::vector<LevelScene>& scenes) {
+    return size_t(std::count_if(scenes.begin(), scenes.end(), [](const LevelScene& scene) { return scene.limited(); }));
 }
 
 RefusedFile Refused(const std::string& path) {
@@ -725,7 +746,7 @@ bool WriteRecords(const fs::path& files, const fs::path& records, const PackageM
             !WriteRecord(records / PathFromUtf8(LoadingPictureFile(i)), MakeLoadingPicture(bytes)))
             return false;
     }
-    return WriteRecord(records / JPT_CUSTOM_LEVEL_RUNTIME_MAP, RuntimeMap(a)) && WriteRecord(records / kManifestFile, ManifestJson(manifest));
+    return WriteRecord(records / JPT_CUSTOM_LEVEL_RUNTIME_MAP, RuntimeMap(a, manifest.verdicts)) && WriteRecord(records / kManifestFile, ManifestJson(manifest));
 }
 
 ArchiveError Unpack(ArchiveReader& reader, const PlannedFile& file, const fs::path& target, const ImportHooks& hooks,
@@ -784,11 +805,13 @@ ImportStatus RejectionOf(const LevelScene& scene) {
     return scene.level_class() == LevelClass::kRejectedMissing ? ImportStatus::kMissingFiles : ImportStatus::kNotSupported;
 }
 
-// A package with a level that can be played is installed; each of its levels keeps its own state. One with none is refused.
+// A package with a level that is READY or LIMITED COMPATIBILITY is installed; each of its levels keeps its own state. One with
+// only INVALID / UNSAFE levels is refused.
 ImportStatus Judge(const PackageAnalysis& a, const std::vector<LevelScene>& scenes, ImportResult& result) {
     result.levels = Playable(scenes);
+    result.limited = Limited(scenes);
     if (!a.playable()) return ImportStatus::kNoLevel;
-    if (result.levels) return ImportStatus::kInstalled;
+    if (result.levels || result.limited) return ImportStatus::kInstalled;
     const LevelScene* worst = nullptr;
     for (const LevelScene& scene : scenes) {
         if (!scene.rejected()) continue;
@@ -799,7 +822,7 @@ ImportStatus Judge(const PackageAnalysis& a, const std::vector<LevelScene>& scen
         result.detail = worst->file;
         return RejectionOf(*worst);
     }
-    return result.levels ? ImportStatus::kInstalled : ImportStatus::kNoLevel;
+    return ImportStatus::kNoLevel;
 }
 
 int64_t Now() { return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count(); }
@@ -1156,6 +1179,7 @@ ImportStatus LinkOne(PackageLink link, const fs::path& levels, const fs::path& d
     record.package = id;
     result.linked.push_back(id);
     result.levels += import.levels;
+    result.limited += import.limited;
     known.push_back({id, link});
     return finish(ImportStatus::kLinked, id);
 }
@@ -1434,7 +1458,7 @@ void CleanLevelStaging(const fs::path& user_dir) {
 std::vector<const LevelScene*> LevelPackage::levels() const {
     std::vector<const LevelScene*> list;
     for (const LevelScene& scene : scenes) {
-        if (!scene.playable()) continue;
+        if (!scene.launchable()) continue;
         if (scene.start) return {&scene};
         list.push_back(&scene);
     }
@@ -1451,17 +1475,53 @@ std::vector<const LevelScene*> LevelPackage::rows() const {
         list.push_back(&scene);
     }
     // Without a StartLevel, the scenes of a mission that another one leads to are parts of it.
-    const auto root = [](const LevelScene* s) { return s->playable() && s->led_to_by.empty(); };
+    const auto root = [](const LevelScene* s) { return s->launchable() && s->led_to_by.empty(); };
     if (mission && std::count_if(list.begin(), list.end(), root) == 1)
-        list.erase(std::remove_if(list.begin(), list.end(), [](const LevelScene* s) { return s->playable() && !s->led_to_by.empty(); }), list.end());
+        list.erase(std::remove_if(list.begin(), list.end(), [](const LevelScene* s) { return s->launchable() && !s->led_to_by.empty(); }), list.end());
     return list;
 }
 
-const char* LevelStatusText(const LevelScene& scene) { return scene.playable() ? "Ready" : "Not supported"; }
+jpt_compat_t LevelScene::compatibility() const {
+    switch (state) {
+    case LevelState::kReady:
+    case LevelState::kLimited:
+    case LevelState::kAuxiliary: return valid ? CompatibilityOf(issues) : JPT_COMPAT_INVALID;
+    default: break;
+    }
+    return JPT_COMPAT_INVALID;
+}
+
+const char* LevelStatusText(const LevelScene& scene) {
+    if (scene.playable()) return "Ready";
+    return scene.limited() ? "Limited Compatibility" : "Invalid / Unsafe";
+}
+
+const char* IssueKindLabel(jpt_issue_kind_t kind) {
+    switch (kind) {
+    case JPT_ISSUE_NOTE: return "Note";
+    case JPT_ISSUE_FEATURE: return "Missing feature";
+    case JPT_ISSUE_UNCONFIRMED: return "Cannot be confirmed";
+    case JPT_ISSUE_MISSING: return "Missing required file";
+    case JPT_ISSUE_DAMAGED: return "Damaged file";
+    case JPT_ISSUE_INCOMPATIBLE: return "Incompatible format";
+    case JPT_ISSUE_CAPACITY: return "Engine limit exceeded";
+    case JPT_ISSUE_SECURITY: return "Security problem";
+    default: break;
+    }
+    return "Unclassified problem";
+}
+
+std::vector<LevelReason> ReasonsOf(const LevelScene& scene) {
+    std::vector<LevelReason> reasons;
+    for (const LevelIssue& issue : scene.issues)
+        if (issue.compat() != JPT_COMPAT_READY) reasons.push_back({issue.compat(), issue.kind(), issue.code, issue.subject, issue.detail});
+    std::stable_sort(reasons.begin(), reasons.end(), [](const LevelReason& a, const LevelReason& b) { return a.compat > b.compat; });
+    return reasons;
+}
 
 std::vector<std::string> LevelNotes(const LevelScene& scene) {
     std::vector<std::string> notes;
-    if (!scene.playable()) return notes;
+    if (!scene.launchable()) return notes;
     for (const LevelIssue& i : scene.issues)
         if (i.code == "MISSING_TRANSITION_LEVEL") notes.push_back(i.subject);
     return notes;
@@ -1470,7 +1530,8 @@ std::vector<std::string> LevelNotes(const LevelScene& scene) {
 RowActions ActionsOf(const LevelScene* scene, bool has_readme) {
     RowActions actions;
     actions.play = scene && scene->playable();
-    actions.readme = actions.play && has_readme;
+    actions.play_anyway = scene && scene->limited();
+    actions.readme = scene && scene->launchable() && has_readme;
     actions.report = !actions.play;
     return actions;
 }
@@ -1523,7 +1584,7 @@ std::vector<std::string> WriteGuides(const fs::path& package_dir, const fs::path
                                      bool missing_only) {
     std::vector<std::string> log;
     for (const LevelScene& scene : scenes) {
-        if (!scene.playable()) continue;
+        if (!scene.launchable()) continue;
         std::error_code ec;
         const fs::path out = records / PathFromUtf8(kLevelGuideFolder) / PathFromUtf8(LevelGuideName(scene.file));
         if (missing_only && fs::is_regular_file(out, ec)) continue;
@@ -1661,18 +1722,22 @@ int FindGameFile(const char* relative, char* out, size_t cap) {
     return 0;
 }
 
-// The runtime's own lookup, with the package active as it is while the level plays.
+// The runtime's own lookup and admission, with the package active as it is while the level plays.
 class RuntimeLookup {
 public:
-    RuntimeLookup(const fs::path& user_dir, const fs::path& data_dir, const std::string& id, const std::string& scene) {
-        jpt_custom_level_request_t request{};
+    RuntimeLookup(const fs::path& user_dir, const fs::path& data_dir, const jpt_custom_level_request_t& request) {
         char error[256] = "";
-        std::snprintf(request.package, sizeof request.package, "%s", id.c_str());
-        std::snprintf(request.scene, sizeof request.scene, "%s", scene.c_str());
         s_game_data = data_dir;
         active_ = jpt_custom_level_activate(user_dir.string().c_str(), &request, error, sizeof error) != 0;
         if (active_) jpt_custom_level_set_game(FindGameFile);
         error_ = error;
+    }
+    // As the game decides at its start; ends the activation when it refuses.
+    bool Admits() {
+        char line[512] = "";
+        active_ = active_ && jpt_custom_level_admit_start(line, sizeof line) != 0;
+        if (line[0]) error_ = line;
+        return active_;
     }
     ~RuntimeLookup() { jpt_custom_level_deactivate(); }
     RuntimeLookup(const RuntimeLookup&) = delete;
@@ -1707,8 +1772,50 @@ std::string ElsewhereInGame(const fs::path& data_dir, const std::string& name) {
 
 } // namespace
 
+namespace {
+
+const char* OriginText(const LevelPackage& package) {
+    if (package.linked) return "external folder";
+    if (package.origin == "zip" || package.origin == "7z" || package.origin == "rar") return "imported archive";
+    return package.origin == "folder" ? "imported folder" : "installed by an earlier version";
+}
+
+const char* PlatformText() {
+#ifdef _WIN32
+    return "Windows";
+#else
+    return "Linux";
+#endif
+}
+
+const LevelScene* SceneAt(const LevelPackage& package, const std::string& path) {
+    for (const LevelScene& s : package.scenes)
+        if (s.path == path) return &s;
+    return nullptr;
+}
+
+} // namespace
+
+std::vector<const LevelScene*> PlayAnywayScenes(const LevelPackage& package, const LevelScene& scene) {
+    std::vector<const LevelScene*> reached = {&scene}, limited;
+    for (size_t i = 0; i < reached.size(); ++i) {
+        if (reached[i]->compatibility() == JPT_COMPAT_LIMITED) limited.push_back(reached[i]);
+        for (const LevelResource& r : reached[i]->resources) {
+            const LevelScene* next = r.type == "SCN" ? SceneAt(package, r.place) : nullptr;
+            if (next && std::find(reached.begin(), reached.end(), next) == reached.end()) reached.push_back(next);
+        }
+    }
+    return limited;
+}
+
+bool LeadsToLimited(const LevelPackage& package, const LevelScene& scene) {
+    const std::vector<const LevelScene*> limited = PlayAnywayScenes(package, scene);
+    return std::any_of(limited.begin(), limited.end(), [&scene](const LevelScene* s) { return s != &scene; });
+}
+
 std::vector<std::string> ReportLines(const LevelPackage& package, const LevelScene* scene, const fs::path& data_dir) {
     std::vector<std::string> lines;
+    lines.push_back("custom level " + package.id + ": compatibility report, origin " + OriginText(package) + ", platform " + PlatformText());
     if (!scene) lines.push_back("custom level " + package.id + ": no level of the package can be played");
     for (const LevelScene& each : package.scenes)
         if (scene ? &each == scene : each.rejected())
@@ -1717,9 +1824,12 @@ std::vector<std::string> ReportLines(const LevelPackage& package, const LevelSce
 }
 
 std::vector<std::string> LevelProblems(const LevelPackage& package, const LevelScene& scene, const fs::path& data_dir) {
-    std::vector<std::string> lines = {"package " + package.id + ", level " + scene.path + ": " + LevelClassName(scene.level_class())};
+    const jpt_compat_t compat = scene.compatibility();
+    std::vector<std::string> lines = {"package " + package.id + ", level " + scene.path + ": " + LevelClassName(scene.level_class()) + ", compatibility=" +
+                                      jpt_compat_name(compat) + " (" + jpt_compat_title(compat) + ")"};
     for (const LevelIssue& issue : scene.issues) {
-        lines.push_back("  " + issue.code + " " + issue.subject + ": " + issue.detail);
+        const std::string kind = issue.compat() == JPT_COMPAT_READY ? std::string() : std::string(" [") + jpt_issue_kind_name(issue.kind()) + ", " + jpt_compat_name(issue.compat()) + "]";
+        lines.push_back("  " + issue.code + " " + issue.subject + ": " + issue.detail + kind);
         if (issue.policy != IssuePolicy::kMissing) continue;
         const std::string folder = PathFolder(scene.path), other = ElsewhereInGame(data_dir, issue.subject);
         lines.push_back("    looked in: the package's " + (folder.empty() ? std::string("own folder") : folder) + ", its other folders, " + (data_dir.empty() ? std::string("no installed game") : Utf8(data_dir)));
@@ -1729,27 +1839,72 @@ std::vector<std::string> LevelProblems(const LevelPackage& package, const LevelS
     return lines;
 }
 
-PlayCheck CheckBeforePlay(const fs::path& user_dir, const fs::path& data_dir, const std::string& id, const std::string& scene) {
+jpt_custom_level_request_t LaunchRequest(const std::string& id, const std::string& scene, const PlayCheck& check) {
+    jpt_custom_level_request_t request{};
+    std::snprintf(request.package, sizeof request.package, "%s", id.c_str());
+    std::snprintf(request.scene, sizeof request.scene, "%s", scene.c_str());
+    std::snprintf(request.layout, sizeof request.layout, "%s", check.layout.c_str());
+    if (!check.experimental) return request;
+    request.experimental = 1;
+    std::string list;
+    // A path that does not fit stays unauthorized: the game then refuses that level.
+    for (const std::string& path : check.authorized)
+        if (list.size() + path.size() + 1 < sizeof request.authorized) list += (list.empty() ? "" : "\n") + path;
+    std::snprintf(request.authorized, sizeof request.authorized, "%s", list.c_str());
+    return request;
+}
+
+PlayCheck CheckBeforePlay(const fs::path& user_dir, const fs::path& data_dir, const std::string& id, const std::string& scene, const PlayConsent* consent) {
     PlayCheck check;
     const LevelPackage package = jpt_custom_level_id_valid(id.c_str()) ? ReadPackage(user_dir, data_dir, id) : LevelPackage();
+    const auto blocked = [&check](const std::string& why) {
+        check.ok = false;
+        check.log.push_back("  [custom-level] launch blocked: " + why);
+    };
     if (!package.available) {
         check.reason = ImportStatus::kFolderUnavailable;
         check.log.push_back("package " + id + ": its linked folder " + Utf8(package.link.root) + " is not available");
         check.log.push_back(std::string("  result: BLOCKED_PRECHECK, not started, ") + ImportStatusTitle(check.reason));
         return check;
     }
-    const auto level = std::find_if(package.scenes.begin(), package.scenes.end(), [&scene](const LevelScene& s) { return s.path == scene; });
-    if (level == package.scenes.end()) {
+    const LevelScene* level = SceneAt(package, scene);
+    if (!level) {
         check.log.push_back("package " + id + " has no level " + scene);
         return check;
     }
     check.layout = package.layout;
     check.log = LevelProblems(package, *level, data_dir);
+    check.compat = level->compatibility();
     check.reason = RejectionOf(*level);
-    check.ok = level->playable();
+    check.log.push_back(std::string("  [custom-level] compatibility=") + jpt_compat_name(check.compat) + ", origin " + OriginText(package));
+    const std::vector<const LevelScene*> limited = PlayAnywayScenes(package, *level);
+    std::vector<std::string> keys;
+    for (const LevelScene* s : limited) {
+        check.authorized.push_back(s->path);
+        for (const LevelReason& reason : ReasonsOf(*s)) {
+            check.reasons.push_back(reason);
+            check.reasons.back().subject = (s == level ? "" : s->file + ": ") + reason.subject;
+            keys.push_back(s->path + " " + reason.key());
+        }
+    }
+    const bool covered = consent && std::all_of(keys.begin(), keys.end(), [consent](const std::string& key) {
+        return std::find(consent->reasons.begin(), consent->reasons.end(), key) != consent->reasons.end();
+    });
+    check.keys = keys;
+    if (check.compat == JPT_COMPAT_INVALID || !level->launchable()) {
+        blocked("structural validation failed, the level is INVALID / UNSAFE");
+    } else if ((check.compat == JPT_COMPAT_LIMITED || (consent && !keys.empty())) && !covered) {
+        check.needs_consent = true;
+        check.reason = ImportStatus::kNotSupported;
+        blocked(consent ? "its compatibility changed after Play Anyway was confirmed" : "limited compatibility, Play Anyway was not confirmed");
+    } else {
+        check.ok = true;
+        check.experimental = covered && !check.authorized.empty();
+        if (!check.experimental) check.authorized.clear();
+    }
     if (check.ok) {
-        const RuntimeLookup runtime(user_dir, data_dir, id, scene);
-        if (!runtime.active()) check.ok = false, check.reason = ImportStatus::kUnsafeToLoad, check.log.push_back("  " + runtime.error());
+        RuntimeLookup runtime(user_dir, data_dir, LaunchRequest(id, scene, check));
+        if (!runtime.Admits()) check.ok = false, check.reason = ImportStatus::kUnsafeToLoad, check.log.push_back("  " + runtime.error());
         for (const LevelResource& r : level->resources) {
             if (!check.ok || r.place.empty() || r.type == "SCN" || runtime.Finds(r.name)) continue;
             check.ok = false;
@@ -1757,9 +1912,11 @@ PlayCheck CheckBeforePlay(const fs::path& user_dir, const fs::path& data_dir, co
             check.log.push_back("  " + r.type + " " + r.name + " was found in " + r.place + ", but the runtime does not find it");
         }
     }
+    if (check.ok && check.experimental)
+        check.log.push_back("  [custom-level] experimental launch authorized: Play Anyway covers " + std::to_string(check.authorized.size()) + " level(s) with limited compatibility");
     if (check.ok)
         for (const std::string& line : WriteGuides(package.dir, package.records, data_dir, package.scenes, true)) check.log.push_back("  " + line);
-    check.log.push_back(std::string("  result: ") + (check.ok ? "started" : std::string("BLOCKED_PRECHECK, not started, ") + ImportStatusTitle(check.reason)));
+    check.log.push_back(std::string("  result: ") + (check.ok ? check.experimental ? "started with Play Anyway" : "started" : std::string("BLOCKED_PRECHECK, not started, ") + ImportStatusTitle(check.reason)));
     return check;
 }
 

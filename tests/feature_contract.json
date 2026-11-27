@@ -6703,6 +6703,64 @@
    }
   },
   {
+   "id": "custom-level-compatibility",
+   "name": "Custom level compatibility in three states (READY, LIMITED COMPATIBILITY, INVALID / UNSAFE) from one typed classification; packages with a READY or LIMITED level installed from ZIP, 7z, RAR, folders, external folders and CE fan missions; Play Anyway after Compatibility Warning for one start; the game admits only recorded, authorized levels at start, transitions and loads; compatibility report lines; v0.1.3 records read again",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestClassification"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestImports"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestLinks"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestPlayAnyway"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestSessionsAndSaves"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestReports"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestOldRecords"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestCompatibilityWarning"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
    "id": "level-session-log",
    "name": "Session and level log: one [session] block per run (campaign or custom, package, layout, start level, build, renderer, capabilities) and [level] and [restart] lines at each load with its reason and source",
    "owner": "lifecycle",

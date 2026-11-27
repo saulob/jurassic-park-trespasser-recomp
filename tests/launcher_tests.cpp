@@ -41,6 +41,7 @@
 #include "jpt_string_table.h"
 #include "launcher_renderer.h"
 #include "jpt_user_data.h"
+#include "level_warning.h"
 #include "options.h"
 #include "user_data.h"
 #include "page_icons.h"
@@ -2100,6 +2101,36 @@ static void TestSidebarScroll() {
     CHECK(patch.find("-  ImGui::BeginChild(\"##sidebar\", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);") != std::string::npos);
 }
 
+// Compatibility Warning: Cancel is the default and the only answer to Escape or a controller's B; the dialog fits at 100, 150 and
+// 225% DPI; only its Play Anyway starts a level, for that start alone.
+static void TestCompatibilityWarning() {
+    CHECK(ChooseWarning(false, false, false, false) == WarningChoice::kNone && ChooseWarning(true, false, false, false) == WarningChoice::kCancel);
+    CHECK(ChooseWarning(false, false, true, false) == WarningChoice::kCancel && ChooseWarning(false, false, false, true) == WarningChoice::kCancel);
+    CHECK(ChooseWarning(false, true, false, false) == WarningChoice::kPlayAnyway && ChooseWarning(false, true, true, false) == WarningChoice::kCancel);
+    for (const float scale : {1.0f, 1.5f, 2.25f}) {
+        const float label = 90.0f * scale, padding = 8.0f * scale, spacing = 8.0f * scale;
+        for (const auto& [w, h] : {std::pair(1280.0f * scale, 720.0f * scale), std::pair(1024.0f, 600.0f), std::pair(800.0f, 480.0f)}) {
+            const WarningLayout l = LayOutWarning(scale, w, h, label, padding, spacing);
+            CHECK(l.width > 0 && l.width <= w - 32.0f * scale + 0.01f && l.width <= 560.0f * scale + 0.01f && l.list_height >= 80.0f * scale - 0.01f && l.list_height <= 220.0f * scale + 0.01f);
+            CHECK(l.row ? l.button * 2 + spacing <= l.width - 2 * padding + 0.01f : l.button <= l.width - 2 * padding + 0.01f);
+            CHECK(l.button >= std::min(label, l.width - 2 * padding) - 0.01f);
+        }
+    }
+    CHECK(!LayOutWarning(2.25f, 1024.0f, 600.0f, 500.0f, 18.0f, 18.0f).row && LayOutWarning(2.25f, 1024.0f, 600.0f, 300.0f, 18.0f, 18.0f).row && LayOutWarning(1.0f, 1280.0f, 720.0f, 100.0f, 8.0f, 8.0f).row);
+    const std::string page = ReadSource("launcher/custom_levels_page.cpp");
+    const std::string warning = page.substr(At(page, "void CustomLevelsPage::DrawWarning("), At(page, "void CustomLevelsPage::DrawOrigin(") - At(page, "void CustomLevelsPage::DrawWarning("));
+    CHECK(At(warning, "ImGui::Button(Tr(\"Cancel\")") < At(warning, "ImGui::SetItemDefaultFocus();") &&
+          At(warning, "ImGui::SetItemDefaultFocus();") < At(warning, "ImGui::Button(Tr(\"Play Anyway\")"));
+    CHECK(warning.find("ImGuiKey_Escape") != std::string::npos && warning.find("ImGuiKey_GamepadFaceRight") != std::string::npos && warning.find("BeginChild(\"##warning_reasons\"") != std::string::npos);
+    CHECK(warning.find("PlayConsent{shown.keys}") != std::string::npos && page.find("kWarningTitle[] = \"Compatibility Warning\"") != std::string::npos);
+    const std::string play = page.substr(At(page, "void CustomLevelsPage::Play("), At(page, "void CustomLevelsPage::ReportLevel(") - At(page, "void CustomLevelsPage::Play("));
+    CHECK(At(play, "check.needs_consent") < At(play, "hooks_.play(request)") && At(play, "LaunchRequest(play.id, play.scene, check)") < At(play, "hooks_.play(request)"));
+    // No setting, file or option grants it: a consent exists only in the page's pending start, made by the dialog.
+    const std::string settings = ReadSource("launcher/settings.cpp") + ReadSource("src/common/jpt_config.c");
+    for (const char* word : {"play_anyway", "PlayAnyway", "Play Anyway", "authorized", "PlayConsent"}) CHECK(settings.find(word) == std::string::npos);
+    CHECK(page.find("PlayConsent{") != std::string::npos && page.find("PlayConsent{") == page.rfind("PlayConsent{"));
+}
+
 static void TestCustomLevelsPageUi() {
     const std::string page = ReadSource("launcher/custom_levels_page.cpp"), header = ReadSource("launcher/custom_levels_page.h"),
                       launcher = ReadSource("launcher/launcher.cpp"), incident = ReadSource("launcher/incident_page.cpp");
@@ -2136,10 +2167,11 @@ static void TestCustomLevelsPageUi() {
     const size_t report = At(made, "hooks.open_bug_report = [this](const std::string& package, const std::string& scene) {");
     CHECK(At(made, "incident_page_->ChooseRunningLog();", report) < At(made, "launcher_->GoToPage(launcher_->FindPage(PageName(PageId::kBugReport)));", report));
     CHECK(incident.find("wanted_log_ = places_.running_log;") != std::string::npos && incident.find("SelectLog(DefaultGameLog(logs_))") == std::string::npos);
-    // A refused import or start says one plain sentence; the reasons (actions, texhw, versions, files) stay in the log.
+    // A refused import or start says one plain sentence; a level's reasons come typed from ReasonsOf, never read from issues by the page.
     CHECK(page.find("notice_ = ImportNotice(outcome->status);") != std::string::npos && page.find("ImportStatusTitle(ImportStatus::kNotSupported)") != std::string::npos);
     CHECK(page.find("scene_version") == std::string::npos && page.find("scene.version") == std::string::npos && page.find("JPT_SCENE") == std::string::npos && page.find("scene.note") == std::string::npos &&
-          page.find("issue.code") == std::string::npos && page.find("ActionType") == std::string::npos && page.find("texhw") == std::string::npos && page.find("detail") == std::string::npos);
+          page.find("issue.code") == std::string::npos && page.find("ActionType") == std::string::npos && page.find("texhw") == std::string::npos && page.find("ReasonsOf(") != std::string::npos &&
+          page.find("IssueKindLabel(reason.kind)") != std::string::npos);
     CHECK(page.find("for (const std::string& line : outcome->log) Log(") != std::string::npos);
     // The key that logs a level's class once is that class, never a phrase of its own that the page would have to translate.
     CHECK(page.find("scene.path + \": \" + LevelClassName(scene.level_class())") != std::string::npos && page.find("\" class\"") == std::string::npos);
@@ -2153,7 +2185,9 @@ static void TestCustomLevelsPageUi() {
                              "Custom level installed", "This level is not supported by this port yet", "Bug Report", "Close", "Loading custom levels...", "Reading the package...", "Copying the level files...", "Checking the level files...",
                              "The custom levels could not be listed"})
         CHECK(HasRow(text));
-    for (const char* text : {"Ready with warnings", "Missing files", "Unsupported feature", "Damaged file", "Could not install this custom level"}) CHECK(!HasRow(text) && page.find(text) == std::string::npos);
+    for (const char* text : {"Ready with warnings", "Missing files", "Unsupported feature", "Could not install this custom level"}) CHECK(!HasRow(text) && page.find(text) == std::string::npos);
+    for (const char* text : {"Limited Compatibility", "Invalid / Unsafe", "Play Anyway", "Compatibility Warning", "Compatibility details", "Missing feature", "Damaged file", "Missing required file", "Security problem"})
+        CHECK(HasRow(text));
     CHECK(page.find("TrFormat(\"Installed levels (%d)\", int(PlayableLevels(packages)))") != std::string::npos);
     // A row that cannot be played has Bug Report on this session's log, where its reasons were just written: never an older run.
     const std::string reported = page.substr(At(page, "void CustomLevelsPage::ReportLevel("), At(page, "void CustomLevelsPage::DrawRow(") - At(page, "void CustomLevelsPage::ReportLevel("));
@@ -2778,6 +2812,7 @@ int main() {
     TestFramePacing();
     TestSidebarScroll();
     TestCustomLevelsPageUi();
+    TestCompatibilityWarning();
     TestGoreAndTitleOptions();
     TestGameplayOrder();
     TestGraphicsCard(dir);

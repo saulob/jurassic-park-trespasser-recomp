@@ -29,6 +29,7 @@ const char* jpt_gate_message(jpt_gate_t gate) {
     case JPT_GATE_MISSING: return "This level is missing required files";
     case JPT_GATE_UNSAFE: return "This level cannot be loaded safely";
     case JPT_GATE_NOT_INCLUDED: return "The next level is not included in this package";
+    case JPT_GATE_NOT_AUTHORIZED: return "This level needs Play Anyway in the launcher";
     }
     return NULL;
 }
@@ -83,6 +84,19 @@ static jpt_gate_t worlds_gate(char worlds[JPT_SAVE_WORLDS][JPT_SAVE_TEXT_MAX], c
     return JPT_GATE_OPEN;
 }
 
+/* The compatibility of a scene of the package, as recorded for this launch: Play Anyway covers only the levels it was confirmed for. */
+static jpt_gate_t admission(const char* scene, char* why, size_t cap) {
+    switch (jpt_custom_level_admits(file_name(scene))) {
+    case JPT_ADMIT_OPEN: return JPT_GATE_OPEN;
+    case JPT_ADMIT_NEEDS_CONSENT:
+        snprintf(why, cap, "%s has limited compatibility and this launch's Play Anyway does not cover it", file_name(scene));
+        return JPT_GATE_NOT_AUTHORIZED;
+    case JPT_ADMIT_INVALID: snprintf(why, cap, "%s is INVALID / UNSAFE", file_name(scene)); break;
+    case JPT_ADMIT_UNRECORDED: snprintf(why, cap, "no compatibility was recorded for %s", file_name(scene)); break;
+    }
+    return JPT_GATE_UNSAFE;
+}
+
 static jpt_gate_t save_gate(const char* file, const char* asked, char* why, size_t cap) {
     jpt_save_info_t save;
     if (!jpt_save_inspect_file(file, &save)) {
@@ -90,7 +104,9 @@ static jpt_gate_t save_gate(const char* file, const char* asked, char* why, size
         return JPT_GATE_DAMAGED;
     }
     if (!jpt_save_belongs(&save, jpt_custom_level_active() ? jpt_custom_level_package() : "", content_of(&save), why, cap)) return JPT_GATE_INCOMPATIBLE;
-    return jpt_custom_level_active() ? worlds_gate(save.worlds, asked, why, cap) : JPT_GATE_OPEN;
+    if (!jpt_custom_level_active()) return JPT_GATE_OPEN;
+    const jpt_gate_t admitted = save.scene[0] ? admission(save.scene, why, cap) : JPT_GATE_OPEN;
+    return admitted != JPT_GATE_OPEN ? admitted : worlds_gate(save.worlds, asked, why, cap);
 }
 
 static jpt_gate_t scene_gate(const char* file, const char* asked, char* why, size_t cap) {
@@ -123,7 +139,8 @@ jpt_gate_t jpt_gate_load(const char* file, const char* asked, char* why, size_t 
         snprintf(why, cap, "neither the package nor the installed game has %s: the game stays in the current level", name);
         return JPT_GATE_NOT_INCLUDED;
     }
-    return scene_gate(own, asked, why, cap);
+    const jpt_gate_t admitted = admission(name, why, cap);
+    return admitted != JPT_GATE_OPEN ? admitted : scene_gate(own, asked, why, cap);
 }
 
 int jpt_gate_lists(const char* file, char* why, size_t cap) {

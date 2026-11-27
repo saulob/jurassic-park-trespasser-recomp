@@ -119,6 +119,12 @@ LevelClass ClassOf(const std::vector<LevelIssue>& issues) {
     return LevelClass::kRejectedMalformed;
 }
 
+jpt_compat_t CompatibilityOf(const std::vector<LevelIssue>& issues) {
+    jpt_compat_t worst = JPT_COMPAT_READY;
+    for (const LevelIssue& issue : issues) worst = jpt_compat_worst(worst, issue.compat());
+    return worst;
+}
+
 fs::path GameFile(const fs::path& data_dir, const std::string& name) {
     std::error_code ec;
     if (data_dir.empty()) return {};

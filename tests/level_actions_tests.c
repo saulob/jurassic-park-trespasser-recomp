@@ -83,6 +83,8 @@ const char* jpt_custom_level_cap_name(jpt_level_cap_t cap) { return cap == JPT_L
 const char* jpt_custom_level_package(void) { return "Package"; }
 const char* jpt_custom_level_layout(void) { return "loose"; }
 const char* jpt_custom_level_scene(void) { return "own.scn"; }
+const char* jpt_custom_level_compat_name(void) { return "ready"; }
+int jpt_custom_level_experimental(void) { return 0; }
 static char g_restarted[64];
 static unsigned g_restarts_told;
 int jpt_custom_level_restart(const char* scene, char* out, size_t cap) {

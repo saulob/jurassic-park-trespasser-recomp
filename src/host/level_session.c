@@ -42,6 +42,8 @@ void level_session_start(const char* build, const char* renderer, const char* la
         info.layout = jpt_custom_level_layout();
         info.start_level = jpt_custom_level_scene();
         info.capabilities = caps;
+        info.compatibility = jpt_custom_level_compat_name();
+        info.experimental = jpt_custom_level_experimental();
     }
     jpt_session_begin(&info);
     jpt_level_scripts_start(info.kind, script_line);

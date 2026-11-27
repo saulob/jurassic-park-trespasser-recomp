@@ -6,6 +6,7 @@
 
 #include "jpt_compat.h"
 #include "jpt_fs.h"
+#include "jpt_level_compat.h"
 #include "jpt_scene.h"
 #include "jpt_szdd.h"
 
@@ -39,6 +40,8 @@ typedef struct {
     const char* file;
     char name[JPT_CUSTOM_LEVEL_SCENE_CAP];
     int configured; /* in the active mod: the map's files come first, and its sounds and pictures apply */
+    int compat;     /* jpt_compat_t the launcher recorded; -1 for none */
+    int authorized; /* covered by this launch's Play Anyway */
 } scene_t;
 
 typedef struct {
@@ -104,6 +107,7 @@ static struct {
         const char *scene, *file;
     } script_uses[SCRIPT_REFS_MAX];
     int script_use_count;
+    int compat_known, experimental;
 } C;
 
 static jpt_custom_level_game_fn s_game;
@@ -331,6 +335,7 @@ static void name_scenes(void) {
         scene_t* s = &C.scenes[C.scene_count];
         if (!is_scene(C.files[i])) continue;
         s->file = C.files[i];
+        s->compat = -1;
         jpt_custom_level_scene_name(base_name(s->file), C.scene_count, s->name, sizeof s->name);
         for (int k = 0; k < C.scene_count; k++)
             if (!_stricmp(C.scenes[k].name, s->name)) snprintf(s->name, sizeof s->name, "LEVEL%d.SCN", C.scene_count + 1);
@@ -398,9 +403,14 @@ static void map_line(const char* kind, char* rest) {
     char *a = next_field(&rest), *b = next_field(&rest), *c = next_field(&rest), *d = next_field(&rest);
     const char* file;
     jpt_level_tpa_t pack;
+    jpt_compat_t compat;
     if (!strcmp(kind, "scene") && a) {
         for (int i = 0; i < C.scene_count; i++)
             if (!strcmp(C.scenes[i].file, a)) C.scenes[i].configured = 1;
+    } else if (!strcmp(kind, "compat") && a && b && jpt_compat_parse(b, &compat)) {
+        C.compat_known = 1;
+        for (int i = 0; i < C.scene_count; i++)
+            if (!strcmp(C.scenes[i].file, a)) C.scenes[i].compat = (int)compat;
     } else if (!strcmp(kind, "file") && a && b && (file = own_file(b)) != NULL && is_clean_path(a)) {
         C.mapped[C.mapped_count].target = a;
         C.mapped[C.mapped_count++].file = file;
@@ -560,6 +570,71 @@ static int read_link(void) {
     return found && jpt_fs_is_dir(C.dir) && !jpt_fs_is_link(C.dir);
 }
 
+static int scene_index(const char* name);
+
+static void authorize(const char* list, size_t cap) {
+    char path[JPT_CUSTOM_LEVEL_PATH_MAX];
+    const char* end = memchr(list, 0, cap);
+    for (const char* line = list; end && line < end;) {
+        const char* next = memchr(line, '\n', (size_t)(end - line));
+        const size_t length = (size_t)((next ? next : end) - line);
+        if (length < sizeof path) {
+            memcpy(path, line, length);
+            path[length] = 0;
+            for (int i = 0; i < C.scene_count; i++)
+                if (!strcmp(C.scenes[i].file, path)) C.scenes[i].authorized = 1;
+        }
+        line += length + 1;
+    }
+}
+
+static jpt_admit_t admit_index(int index) {
+    const scene_t* s = &C.scenes[index];
+    if (!C.compat_known) return JPT_ADMIT_OPEN;
+    switch (s->compat) {
+    case JPT_COMPAT_READY: return JPT_ADMIT_OPEN;
+    case JPT_COMPAT_LIMITED: return C.experimental && s->authorized ? JPT_ADMIT_OPEN : JPT_ADMIT_NEEDS_CONSENT;
+    case JPT_COMPAT_INVALID: return JPT_ADMIT_INVALID;
+    default: break;
+    }
+    return JPT_ADMIT_UNRECORDED;
+}
+
+int jpt_custom_level_admit_start(char* line, size_t cap) {
+    int covered = 0;
+    const char* file;
+    if (!C.active) return snprintf(line, cap, "launch blocked: no custom level is active"), 0;
+    file = C.scenes[C.scene].file;
+    for (int i = 0; i < C.scene_count; i++) covered += C.scenes[i].authorized && C.scenes[i].compat == JPT_COMPAT_LIMITED;
+    if (!C.compat_known || C.scenes[C.scene].compat < 0) {
+        snprintf(line, cap, "launch blocked: no compatibility was recorded for %s; open Custom Levels to check it again", file);
+    } else if (C.scenes[C.scene].compat == JPT_COMPAT_INVALID) {
+        snprintf(line, cap, "launch blocked: structural validation failed, %s is INVALID / UNSAFE", file);
+    } else if (admit_index(C.scene) != JPT_ADMIT_OPEN) {
+        snprintf(line, cap, "launch blocked: %s has limited compatibility and Play Anyway was not confirmed for this launch", file);
+    } else {
+        if (C.scenes[C.scene].compat == JPT_COMPAT_LIMITED)
+            snprintf(line, cap, "experimental launch authorized: Play Anyway for %s, %d limited level(s) of the package covered", file, covered);
+        else if (cap)
+            line[0] = 0;
+        return 1;
+    }
+    jpt_custom_level_deactivate();
+    return 0;
+}
+
+jpt_admit_t jpt_custom_level_admits(const char* scene_name) {
+    const int index = C.active && scene_name ? scene_index(scene_name) : -1;
+    return index < 0 ? JPT_ADMIT_OPEN : admit_index(index);
+}
+
+const char* jpt_custom_level_compat_name(void) {
+    if (!C.active || !C.compat_known || C.scenes[C.scene].compat < 0) return "unknown";
+    return jpt_compat_name((jpt_compat_t)C.scenes[C.scene].compat);
+}
+
+int jpt_custom_level_experimental(void) { return C.active && C.experimental && C.scenes[C.scene].compat == JPT_COMPAT_LIMITED; }
+
 int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_request_t* request, char* error, size_t cap) {
     int n;
     jpt_custom_level_deactivate();
@@ -582,6 +657,8 @@ int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_requ
     if (!scene_readable(C.scenes[C.scene].file))
         return refuse(error, cap, "unsupported level format", request->scene);
     read_map();
+    C.experimental = request->experimental != 0;
+    if (C.experimental) authorize(request->authorized, sizeof request->authorized);
     C.current = C.context = C.scene;
     snprintf(C.current_name, sizeof C.current_name, "%s", base_name(C.scenes[C.scene].file));
     snprintf(C.package, sizeof C.package, "%s", request->package);

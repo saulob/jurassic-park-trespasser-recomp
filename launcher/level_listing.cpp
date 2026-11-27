@@ -13,6 +13,7 @@
 #include "jpt_custom_level.h"
 #include "jpt_groff.h"
 #include "jpt_hash.h"
+#include "jpt_level_compat.h"
 #include "jpt_level_features.h"
 #include "jpt_scene.h"
 #include "jpt_script_plan.h"
@@ -174,7 +175,8 @@ std::string PackageListingKey(const fs::path& package_dir, const std::string& ga
     };
     std::string text = std::string(kRecordHead) + " " + Str(kListingVersion) + "|scene " + Str(JPT_SCENE_VERSION_MAX) + "|actions " + Str(JPT_GROFF_ACTION_OWN_LAST) +
                        "|runtime " + Str(JPT_CUSTOM_LEVEL_RUNTIME_VERSION) + "|manifest " + Str(kManifestSchema) + "|guide " + Str(kLevelGuideVersion) + "|game " + game_key + "|features ";
-    for (int i = 0; const jpt_level_feature_t* feature = jpt_level_feature_at(i); ++i) text += Str(int(feature->status));
+    for (int i = 0; const jpt_level_feature_t* feature = jpt_level_feature_at(i); ++i)
+        text += Str(int(feature->status)) + Str(int(jpt_level_issue_kind("UNSUPPORTED_FEATURE", feature->name, 0)));
     text += "|script api";
     for (const jpt::script::ApiEntry& e : jpt::script::Api()) text += std::string(" ") + e.owner + "." + e.name + ":" + Str(int(e.scopes));
     text += "\n";
@@ -248,7 +250,7 @@ bool ParseListingRecord(const std::string& text, const std::string& key, LevelPa
             s.file = f[1];
             s.note = f[7];
             if (!Flag(f[2], s.valid) || !Flag(f[3], s.start) || !Flag(f[4], s.auxiliary) || !Number(f[5], 0, 1 << 20, number) ||
-                !EnumOf(f[6], LevelState::kUnknown, s.state))
+                !EnumOf(f[6], LevelState::kLimited, s.state))
                 return false;
             s.version = int(number);
             p.scenes.push_back(std::move(s));
@@ -306,6 +308,9 @@ bool ReadLastListingRecord(const fs::path& package_dir, LevelPackage& package) {
     std::ifstream in(file, std::ios::binary);
     std::string text(size_t(size), '\0');
     if (!in || (size && !in.read(text.data(), std::streamsize(size)))) return false;
+    // Shown only while the folder is away, never played: the record of the version before has the same lines.
+    const std::string previous = std::string(kRecordHead) + " " + Str(kListingVersion - 1) + "\n";
+    if (text.rfind(previous, 0) == 0) text.replace(0, previous.size(), std::string(kRecordHead) + " " + Str(kListingVersion) + "\n");
     const size_t at = text.find("\nkey ");
     if (at == std::string::npos) return false;
     const size_t end = text.find('\n', at + 1);

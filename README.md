@@ -61,18 +61,21 @@ The launcher's **Custom Levels** page plays community levels and fan missions, o
 1. Open the launcher.
 2. Select **Custom Levels** in the sidebar.
 3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package, or **Link External Folder** to play a folder where it is.
-4. Check the status of each level: **Ready**, or **Not supported** with the reason.
-5. Select a Ready level and press **Play**.
+4. Check the status of each level: **Ready** (green), **Limited Compatibility** (yellow) or **Invalid / Unsafe** (red), and open **Compatibility details** for the reasons.
+5. Press **Play** on a Ready level, or **Play Anyway** on a Limited Compatibility level and confirm the warning.
 
-- **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready; the others stay listed as Not supported.
+- **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready or Limited Compatibility; a package with only Invalid / Unsafe levels, or with an unsafe file, is refused.
 - **Ready** means that the automated compatibility scanner found no known blocking issues. It does not guarantee full gameplay compatibility: most Ready levels have not been played from start to finish in the port.
+- **Limited Compatibility** means the level uses something the port does not have yet, such as a Trespasser CE script function or an ATX option, and the game can leave it out. **Play Anyway** shows a **Compatibility Warning** with the reasons; **Cancel** is the default, and the answer counts for that start only. Expect graphical issues, broken scripts, gameplay problems or crashes.
+- **Invalid / Unsafe** levels (missing or damaged files, formats or limits the engine cannot take, unsafe paths) are never started, by the launcher or by the game.
+- **Compatibility report**: a level that is not Ready has **Bug Report**, which puts its compatibility reasons in a report you can preview and choose to send; after a problem in a level, Bug Report picks the log of its last run. Nothing is sent automatically.
 - **Levels you already have**: you do not need a ZIP. **Import Folder** installs a copy of an extracted level's files in `user_data\custom_levels`; your folder is not changed. **Link External Folder** plays one or several levels where they already are, without a copy: the folder is only read, it must stay where it is, and **Unlink** forgets it without deleting anything in it. A moved folder shows **Folder unavailable** and can be found again with **Relocate Folder**; its saves stay.
 - **Trespasser CE mod folders**: link a folder with `tp_mod.ini` and each fan mission of its `FMPath` becomes a package, with the shared folders `ModPaths` and `UberModPaths` name and nothing reorganised, copied or packed. Not every mod is supported: each mission goes through the same checks.
 - **Trespasser CE and ATX**: most of their ActionTypes, textures (BMP, TGA, DDS DXT1-DXT5 with mipmaps and alpha), normal maps, custom skies (including the `2X_ALPHA` and `2X_BURN` blend modes), scene formats 23-26 and larger engine limits for custom sessions.
 - **Scripts**: the port embeds the Squirrel interpreter and implements part of Trespasser CE's scripting API, so a level's scripts can call into the game. Each level gets its own script machine with memory and instruction budgets.
 - **Isolated from the campaign**: levels are installed in `user_data\custom_levels`, saves go to their own folder per package, and nothing in the installed game is changed. No program inside a package is ever run.
 - **Readme**, **Open Folder** and **Delete** for each imported package (**Rescan** and **Unlink** for a linked one); **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
-- **Bug Report** includes the selected level's analysis.
+- **Bug Report** includes the selected level's analysis and compatibility.
 
 - **Script keys**: a level whose Trespasser CE scripts read the USER commands gets keys for them (`script_user1_key` to `script_user8_key` in `trespasser.ini`; Shift and M for the first two by default).
 - On Linux and the Steam Deck, the launcher's own file browser chooses the package when `zenity` or `kdialog` is not available.
@@ -82,7 +85,7 @@ See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
 **Custom level limitations**
 
 - Not every community level is supported, and most Ready levels have not been played from start to finish in the port. No scripted community level has been confirmed in a full play-through yet.
-- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles, `EndGameDDF`, texhw textures on meshes the original game bump-maps, stars and meteors sky layers, scripted actions (ActionType 99), the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks and the rest of CE's scripting API the port does not have yet. A level that needs one is listed as Not supported, with the reason. The full list is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations).
+- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles, `EndGameDDF`, texhw textures on meshes the original game bump-maps, stars and meteors sky layers, scripted actions (ActionType 99), the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks and the rest of CE's scripting API the port does not have yet. A level that needs one is listed as Limited Compatibility, with the reason, and plays without it only through Play Anyway. The full list is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations).
 - A linked folder on Windows must have a path the system's code page can spell and its files at most 250 characters deep; otherwise use **Import Folder**.
 - Encrypted, multi-volume and RAR 1.5 archives, and RAR dictionaries over 256 MB, are refused: extract them and use **Import Folder**.
 - Scripts run with memory and instruction budgets and without file, system or thread access; that limits what a script can reach, but it is not a guarantee that a faulty script cannot slow down or stop the game.
@@ -415,7 +418,7 @@ Verified limits on Linux in v0.1.3:
 - **No validated high frame rate.** VSync Off removes the present wait, but there is no uncapped-frame-rate mode and no 120 FPS guarantee.
 - **"HD" means the front end, loading screens and videos**, not a texture pack; the 3D world uses the original textures.
 - No dedicated ultrawide HUD, no HDR, no vibration, no mods other than custom levels, no custom waypoints.
-- **Custom levels:** not every community level is supported, and Ready is a scanner result, not a play-through. Some Trespasser CE features are not implemented ([Custom Levels](#custom-levels)); encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
+- **Custom levels:** not every community level is supported, Ready is a scanner result, not a play-through, and Limited Compatibility levels play without what the port lacks. Some Trespasser CE features are not implemented ([Custom Levels](#custom-levels)); encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
 - Windows Vulkan is selectable but D3D11 is recommended; the playable host is 32-bit (the 64-bit host is groundwork only).
 - The Windows executable and updater are unsigned.
 

@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-196 features. 145 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
+197 features. 146 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -197,6 +197,7 @@ feature may have one.
 | `launcher-recovery` | global | PASS | PASS | `launcher_startup_tests`, `vulkan_policy_tests` | `launcher_startup_tests`, `vulkan_policy_tests` | - |
 | `custom-levels` | global | PASS | PASS | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `debug_menu_tests`, `engine_heaps_tests`, `level_actions_tests`, `test_community_levels.py` | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `linux_level_abort_tests` | - |
 | `custom-level-links` | global | PASS | PASS | `custom_level_tests` | `custom_level_tests` | - |
+| `custom-level-compatibility` | global | PASS | PASS | `custom_level_tests`, `launcher_tests` | `custom_level_tests` | - |
 | `level-session-log` | global | PASS | PASS | `level_session_tests` | `level_session_tests` | - |
 | `ce-script-interpreter` | global | PASS | PASS | `script_vm_tests` | `script_vm_tests` | - |
 | `ce-script-lifecycle` | global | PASS | PASS | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | - |

@@ -12,13 +12,14 @@
 #include <utility>
 #include <vector>
 
+#include "jpt_level_compat.h"
 #include "level_analysis.h"
 
 namespace jpt {
 
 inline constexpr char kInstalledGame[] = "the installed game";
 
-// Info never stops a level; anything else means the port cannot promise the level works as made, and it is refused.
+// What the scanner found; jpt_level_compat decides from the code what it means for the level.
 enum class IssuePolicy { kInfo, kWarning, kMissing, kUnsupported, kMalformed };
 
 // A category of problem, never a level's own name.
@@ -28,7 +29,11 @@ struct LevelIssue {
     std::string detail;
     IssuePolicy policy = IssuePolicy::kWarning;
     bool blocks() const { return policy != IssuePolicy::kInfo; }
+    jpt_issue_kind_t kind() const { return jpt_level_issue_kind(code.c_str(), subject.c_str(), policy == IssuePolicy::kInfo); }
+    jpt_compat_t compat() const { return jpt_issue_compat(kind()); }
 };
+
+jpt_compat_t CompatibilityOf(const std::vector<LevelIssue>& issues);
 
 struct LevelResource {
     std::string type, name;

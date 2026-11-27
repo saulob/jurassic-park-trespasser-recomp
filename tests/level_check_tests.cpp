@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iterator>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -328,7 +329,7 @@ static void TestFaults() {
     CHECK(CheckBeforePlay(user, game, "Larger", "big.scn").ok);
     const std::vector<LevelPackage> listed = ListLevelPackages(user, game);
     CHECK(listed.size() == 2 && LimitsExceeded(listed[0].scenes[0].worlds[0].second, false).size() == 1 && LimitsExceeded(listed[1].scenes[0].worlds[0].second, true) == std::vector<std::string>{"MESH_EXCEEDS_LIMIT"} &&
-          LimitsExceeded(listed[1].scenes[0].worlds[0].second, false).empty() && std::string(LevelStatusText(listed[0].scenes[0])) == "Not supported");
+          LimitsExceeded(listed[1].scenes[0].worlds[0].second, false).empty() && std::string(LevelStatusText(listed[0].scenes[0])) == "Invalid / Unsafe");
 
     // A set the 1998 pool does not hold: a larger pool for this session.
     PidEntry far_one{TextureHash("Map\\big\\crate.bmp")};
@@ -691,6 +692,17 @@ static void TestOutOfMemory() {
         std::free(pid);
     }
     CHECK(whole && failures > 8);
+    // Its curved bump maps are not in its set: INVALID / UNSAFE, refused before its world is read.
+    CHECK(jpt_gate_load("", "w.scn", why, sizeof why) == JPT_GATE_UNSAFE && std::string(why).find("INVALID") != std::string::npos);
+    {
+        const fs::path map = CustomLevelsDir(user) / "W" / JPT_CUSTOM_LEVEL_RUNTIME_MAP;
+        std::string kept;
+        std::istringstream lines(Read(map));
+        for (std::string line; std::getline(lines, line);)
+            if (line.rfind("compat ", 0) != 0) kept += line + "\n";
+        Write(map, kept);
+    }
+    CHECK(Activate(user, "W", "w.scn"));
     CHECK(jpt_gate_load("", "w.scn", why, sizeof why) == JPT_GATE_OPEN);
     for (long n = 1; n < 12; ++n) {
         jpt_alloc_fail_at(n);
@@ -872,7 +884,10 @@ static void TestStates() {
     };
     LevelScene ready;
     ready.state = LevelState::kReady;
-    CHECK(std::string(LevelStatusText(ready)) == "Ready" && status({}) == "Not supported" && status({IssuePolicy::kInfo}) == "Not supported");
+    CHECK(std::string(LevelStatusText(ready)) == "Ready" && status({}) == "Invalid / Unsafe" && status({IssuePolicy::kInfo}) == "Invalid / Unsafe");
+    LevelScene limited;
+    limited.state = LevelState::kLimited;
+    CHECK(std::string(LevelStatusText(limited)) == "Limited Compatibility" && limited.launchable() && !limited.playable());
     CHECK(class_of({}) == "READY" && class_of({IssuePolicy::kInfo, IssuePolicy::kInfo}) == "READY" && class_of({IssuePolicy::kWarning}) == "REJECTED_OTHER");
     CHECK(class_of({IssuePolicy::kWarning, IssuePolicy::kMissing}) == "REJECTED_MISSING" && class_of({IssuePolicy::kMissing, IssuePolicy::kUnsupported}) == "REJECTED_UNSUPPORTED" &&
           class_of({IssuePolicy::kUnsupported, IssuePolicy::kMalformed}) == "REJECTED_MALFORMED");
