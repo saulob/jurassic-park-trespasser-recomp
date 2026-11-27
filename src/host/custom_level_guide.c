@@ -167,7 +167,7 @@ static int read_guide(const char* scene_file) {
     int ok = 0;
     snprintf(name, sizeof name, "%s", slash ? slash + 1 : scene_file);
     for (i = 0; name[i]; i++) name[i] = (char)tolower((unsigned char)name[i]);
-    if ((size_t)snprintf(path, sizeof path, "%s/%s/%s.txt", jpt_custom_level_dir(), LEVEL_GUIDE_FOLDER, name) >= sizeof path) return 0;
+    if ((size_t)snprintf(path, sizeof path, "%s/%s/%s.txt", jpt_custom_level_records_dir(), LEVEL_GUIDE_FOLDER, name) >= sizeof path) return 0;
     f = jpt_fs_open_read(path, &size);
     if (!f) return 0;
     text = size < GUIDE_BYTES_MAX ? (char*)malloc((size_t)size + 1) : NULL;

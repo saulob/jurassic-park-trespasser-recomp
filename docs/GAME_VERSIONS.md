@@ -1,6 +1,6 @@
 # Game versions
 
-The launcher imports a version from the player's own disc image into `game\versions\<id>`
+The launcher imports a version from the player's own disc image, or from folders of the game they already have, into `game\versions\<id>`
 ([LAUNCHER](LAUNCHER.md#import-game)); `src/common/jpt_game_version.c` is the one table of versions, shared by the
 host, the launcher and the tests. A disc is recognised by file digests, never by its file name or volume label.
 

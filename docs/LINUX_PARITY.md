@@ -9,7 +9,7 @@ Statuses: **PASS** is proved by suites that exist and passed in the run. **WINDO
 (justified)** name a platform-specific implementation and say why. **MISSING (blocked)** is a gap with a reason; no global
 feature may have one.
 
-194 features. 143 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
+196 features. 145 PASS / PASS; 29 PASS / WINDOWS ONLY (justified); 22 LINUX ONLY (justified) / PASS.
 
 | Feature | Scope | Windows | Linux | Windows evidence | Linux evidence | Justification |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -178,6 +178,7 @@ feature may have one.
 | `monitor-mode-size` | global | PASS | PASS | `test_linux_parity.py`, `presentation_tests` | `test_linux_parity.py`, `linux_sdl_window_tests` | - |
 | `cli-setting-options` | global | PASS | PASS | `test_linux_parity.py` | `test_linux_parity.py` | - |
 | `game-version-selection` | global | PASS | PASS | `launcher_tests` | `linux_launcher_tests`, `linux_boot_tests`, `test_linux_parity.py` | - |
+| `game-import-folders` | global | PASS | PASS | `launcher_tests` | `linux_launcher_tests` | - |
 | `handheld-1280x800` | linux | LINUX ONLY (justified) | PASS | - | `linux_present_tests`, `vulkan_policy_tests` | the 1280x800 handheld target is the Steam Deck, which runs the Linux build |
 | `launcher-file-picker` | linux | LINUX ONLY (justified) | PASS | - | `linux_launcher_tests`, `test_linux_parity.py` | Windows uses its own common dialog |
 | `launcher-open-folder` | linux | LINUX ONLY (justified) | PASS | - | `test_linux_parity.py` | Windows opens Explorer |
@@ -195,6 +196,7 @@ feature may have one.
 | `steam-deck-updater` | linux | LINUX ONLY (justified) | PASS | - | `update_tests`, `test_linux_parity.py`, `test_linux_packaging.py` | AppImage self-update applies to Linux; Windows uses trg-updater.exe |
 | `launcher-recovery` | global | PASS | PASS | `launcher_startup_tests`, `vulkan_policy_tests` | `launcher_startup_tests`, `vulkan_policy_tests` | - |
 | `custom-levels` | global | PASS | PASS | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `debug_menu_tests`, `engine_heaps_tests`, `level_actions_tests`, `test_community_levels.py` | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `linux_level_abort_tests` | - |
+| `custom-level-links` | global | PASS | PASS | `custom_level_tests` | `custom_level_tests` | - |
 | `level-session-log` | global | PASS | PASS | `level_session_tests` | `level_session_tests` | - |
 | `ce-script-interpreter` | global | PASS | PASS | `script_vm_tests` | `script_vm_tests` | - |
 | `ce-script-lifecycle` | global | PASS | PASS | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | - |

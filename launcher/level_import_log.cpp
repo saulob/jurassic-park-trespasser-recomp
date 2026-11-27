@@ -198,10 +198,10 @@ std::vector<std::string> ImportLog(const ImportRecord& r) {
     lines.Group("Dependencies", needs);
     lines.Group("Session", settings);
     lines.Group("Warnings", warnings);
-    const bool ok = r.status == ImportStatus::kInstalled;
+    const bool linked = r.status == ImportStatus::kLinked, ok = r.status == ImportStatus::kInstalled || linked;
     // A report carries the end of the log alone, which a long readme would otherwise fill.
     if (!r.documents.empty()) lines.Add("source: " + r.type + " \"" + r.name + "\"" + (r.sha256.empty() ? "" : ", SHA-256 " + r.sha256));
-    lines.Add(std::string("result: ") + (ok ? "installed" : "rejected") +
+    lines.Add(std::string("result: ") + (linked ? "linked" : ok ? "installed" : "rejected") +
               (ok ? "" : std::string(", ") + ImportStatusTitle(r.status)) + (r.detail.empty() ? "" : " (" + r.detail + ")"));
     return lines.Take();
 }

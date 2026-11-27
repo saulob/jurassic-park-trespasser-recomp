@@ -25,7 +25,14 @@ struct PackageSource {
     // Whole files up to a size, and the first bytes of a file of any size.
     std::function<bool(const std::string& path, uint64_t limit, std::string& bytes)> read;
     std::function<bool(const std::string& path, size_t count, std::string& bytes)> head;
+    // One fan mission of a tp_mod.ini tree, a folder below the file's own, played instead of the file's ActiveFM.
+    std::string active_fm;
 };
+
+// A path of a settings file: trimmed, '/' separated, without "./" in front or '/' at the end.
+std::string TrimmedPath(const std::string& text);
+// The folders of a '+' separated list (ModPaths, UberModPaths).
+std::vector<std::string> SplitPlus(const std::string& text);
 
 enum class Origin { kLayout, kFmIni, kTpModIni, kTrespasserIni, kReadme, kHeuristic };
 const char* OriginName(Origin origin);

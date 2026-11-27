@@ -24,6 +24,8 @@ int jpt_fs_remove(const char* path);
 int jpt_fs_remove_dir(const char* path);
 /* Copies src to dst only when dst does not exist. */
 int jpt_fs_copy_new(const char* src, const char* dst);
+/* A UTF-8 path as these functions take it; 0 when the ANSI code page cannot spell it exactly. */
+int jpt_fs_from_utf8(const char* utf8, char* out, size_t cap);
 
 /* A file read by offset, by any thread; NULL when it cannot be opened. jpt_fs_read_at is 1 when all n bytes were read. */
 typedef struct jpt_fs_file jpt_fs_file_t;

@@ -144,7 +144,30 @@ std::string GameListingKey(const fs::path& data_dir) {
     return Hex(text);
 }
 
-std::string PackageListingKey(const fs::path& package_dir, const std::string& game_key) {
+// A linked package's own files: the parts of its folder its link names, the launcher's names aside.
+static std::vector<std::string> LinkedLines(const PackageLink& link) {
+    const auto generated = [](const std::string& path) { return IsGeneratedPath(path); };
+    if (link.scope.empty()) return FileLines(link.root, generated);
+    std::vector<std::string> lines;
+    for (const std::string& part : link.scope) {
+        const fs::path path = link.root / PathFromUtf8(part);
+        std::error_code ec;
+        const fs::file_status status = fs::symlink_status(path, ec);
+        if (fs::is_regular_file(status)) {
+            std::error_code size_ec, time_ec;
+            const uintmax_t size = fs::file_size(path, size_ec);
+            const auto time = fs::last_write_time(path, time_ec);
+            lines.push_back(part + "|" + std::to_string(size_ec ? 0 : size) + "|" + std::to_string(time_ec ? 0 : time.time_since_epoch().count()));
+        } else if (fs::is_directory(status)) {
+            for (const std::string& line : FileLines(path, {})) lines.push_back(part + "/" + line);
+        } else {
+            lines.push_back(part + "|absent");
+        }
+    }
+    return lines;
+}
+
+std::string PackageListingKey(const fs::path& package_dir, const std::string& game_key, const PackageLink* link) {
     const std::string generated = LowerAscii(std::string(JPT_CUSTOM_LEVEL_GENERATED_DIR) + "/");
     const auto skip = [&generated](const std::string& path) {
         return path == generated + kRecordFile || path == generated + "worlds.txt" || path.rfind(generated + "guide/", 0) == 0;
@@ -158,12 +181,17 @@ std::string PackageListingKey(const fs::path& package_dir, const std::string& ga
     std::error_code ec;
     if (!fs::is_directory(fs::symlink_status(package_dir, ec))) return {};
     for (const std::string& line : FileLines(package_dir, skip)) text += line + "\n";
+    if (link) {
+        text += "link\n" + PackageLinkText(*link);
+        for (const std::string& line : LinkedLines(*link)) text += line + "\n";
+    }
     return Hex(text);
 }
 
 std::string ListingRecordText(const std::string& key, const LevelPackage& p) {
     std::string text = std::string(kRecordHead) + " " + Str(kListingVersion) + "\n" + Line("key", {key});
     text += Line("package", {Str(p.imported_at), p.layout, p.readme, Str(int(p.ce)), Str(int(p.atx)), Str(p.config_warnings), Str(p.recorded)});
+    if (!p.origin.empty()) text += Line("origin", {p.origin});
     for (const std::string& line : p.log) text += Line("log", {line});
     for (const LevelScene& s : p.scenes) {
         text += Line("scene", {s.path, s.file, Str(s.valid), Str(s.start), Str(s.auxiliary), Str(s.version), Str(int(s.state)), s.note});
@@ -212,6 +240,8 @@ bool ParseListingRecord(const std::string& text, const std::string& key, LevelPa
             described = true;
         } else if (kind == "log" && f.size() == 1) {
             p.log.push_back(f[0]);
+        } else if (kind == "origin" && f.size() == 1) {
+            p.origin = f[0];
         } else if (kind == "scene" && f.size() == 8) {
             LevelScene s;
             s.path = f[0];
@@ -266,6 +296,21 @@ bool ReadListingRecord(const fs::path& package_dir, const std::string& key, Leve
     std::string text(size_t(size), '\0');
     if (!in || (size && !in.read(text.data(), std::streamsize(size)))) return false;
     return ParseListingRecord(text, key, package);
+}
+
+bool ReadLastListingRecord(const fs::path& package_dir, LevelPackage& package) {
+    const fs::path file = package_dir / JPT_CUSTOM_LEVEL_GENERATED_DIR / kRecordFile;
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(file, ec);
+    if (ec || size > kRecordLimit || !fs::is_regular_file(fs::symlink_status(file, ec))) return false;
+    std::ifstream in(file, std::ios::binary);
+    std::string text(size_t(size), '\0');
+    if (!in || (size && !in.read(text.data(), std::streamsize(size)))) return false;
+    const size_t at = text.find("\nkey ");
+    if (at == std::string::npos) return false;
+    const size_t end = text.find('\n', at + 1);
+    const std::vector<std::string> key = Fields(text.substr(at + 5, end == std::string::npos ? std::string::npos : end - at - 5));
+    return key.size() == 1 && ParseListingRecord(text, key[0], package);
 }
 
 bool WriteListingRecord(const fs::path& package_dir, const std::string& key, const LevelPackage& package) {

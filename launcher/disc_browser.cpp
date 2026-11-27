@@ -19,6 +19,18 @@ const BrowsePurpose kBrowseLevelArchive = {"Select a custom level (.zip, .7z or 
 const BrowsePurpose kBrowseLevelFolder = {"Select the folder of a custom level", "/", "No folders here.",
                                           "Open the level's folder, then choose it. Controller: D-pad to move, A to choose, B to cancel.",
                                           true};
+const BrowsePurpose kBrowseLinkFolder = {"Select a folder of custom levels to link", "/", "No folders here.",
+                                         "Open the folder that holds the levels, then choose it. Controller: D-pad to move, A to choose, B to cancel.",
+                                         true};
+const BrowsePurpose kBrowseRelocateFolder = {"Select where the linked folder is now", "/", "No folders here.",
+                                             "Open the folder in its new place, then choose it. Controller: D-pad to move, A to choose, B to cancel.",
+                                             true};
+const BrowsePurpose kBrowseInstallFolder = {"Select the folder of your Trespasser installation", "/", "No folders here.",
+                                            "Open the game's folder, or a copy of the disc, then choose it. Controller: D-pad to move, A to choose, B to cancel.",
+                                            true};
+const BrowsePurpose kBrowseDiscFolder = {"Select the folder of the original disc", "/", "No folders here.",
+                                         "Open the folder that holds a copy of the disc, then choose it. Controller: D-pad to move, A to choose, B to cancel.",
+                                         true};
 
 std::string_view DiscBrowser::Filter() const {
     return show_all_ && !purpose_->folder ? std::string_view() : std::string_view(purpose_->extensions);

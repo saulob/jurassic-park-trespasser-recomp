@@ -15,14 +15,17 @@
 namespace jpt {
 
 // Raise whenever the analysis or the READY rule changes: every record made before is then read as stale.
-inline constexpr int kListingVersion = 9;
+inline constexpr int kListingVersion = 10;
 
 // What the analysis reads of the installed game: its version folder, every file by name, size and time.
 std::string GameListingKey(const std::filesystem::path& data_dir);
-// The package's own files (its listing and world caches aside), the game's key and what the analysis is.
-std::string PackageListingKey(const std::filesystem::path& package_dir, const std::string& game_key);
+// The package's own files (its listing and world caches aside), the game's key and what the analysis is. A linked package:
+// its records folder, its link and the files of its folder that the link names.
+std::string PackageListingKey(const std::filesystem::path& package_dir, const std::string& game_key, const PackageLink* link = nullptr);
 
 bool ReadListingRecord(const std::filesystem::path& package_dir, const std::string& key, LevelPackage& package);
+// The record as it was last written, whatever it was made from: what a linked package was while its folder was there.
+bool ReadLastListingRecord(const std::filesystem::path& package_dir, LevelPackage& package);
 bool WriteListingRecord(const std::filesystem::path& package_dir, const std::string& key, const LevelPackage& package);
 std::string ListingRecordText(const std::string& key, const LevelPackage& package);
 bool ParseListingRecord(const std::string& text, const std::string& key, LevelPackage& package);

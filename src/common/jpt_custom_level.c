@@ -63,6 +63,11 @@ static struct {
     char package[JPT_CUSTOM_LEVEL_ID_MAX + 1];
     char layout[24];
     char dir[JPT_PATH_MAX];
+    char records[JPT_PATH_MAX];
+    int linked;
+    char* link;
+    const char* scopes[JPT_CUSTOM_LEVEL_LINK_SCOPES_MAX];
+    int scope_count;
     char** files;
     int count, overflow;
     scene_t scenes[JPT_CUSTOM_LEVEL_SCENES_MAX];
@@ -177,6 +182,7 @@ void jpt_custom_level_deactivate(void) {
     free(C.files);
     free(C.mapped);
     free(C.map);
+    free(C.link);
     memset(&C, 0, sizeof C);
     s_game = NULL;
 }
@@ -215,12 +221,33 @@ const char* jpt_custom_level_scene_file_at(int index) {
 
 const char* jpt_custom_level_current_scene(void) { return C.active && C.current >= 0 ? C.scenes[C.current].file : ""; }
 const char* jpt_custom_level_dir(void) { return C.dir; }
+const char* jpt_custom_level_records_dir(void) { return C.records; }
+int jpt_custom_level_linked(void) { return C.active && C.linked; }
+
+/* What the launcher writes about a package. A linked package's copy of these names is never its own file. */
+static int generated(const char* relative) {
+    const size_t n = sizeof JPT_CUSTOM_LEVEL_GENERATED_DIR - 1;
+    if (!_strnicmp(relative, JPT_CUSTOM_LEVEL_GENERATED_DIR, n) && (relative[n] == 0 || relative[n] == '/')) return 1;
+    return !_stricmp(relative, JPT_CUSTOM_LEVEL_RUNTIME_MAP) || !_stricmp(relative, "manifest.json") ||
+           !_stricmp(relative, JPT_CUSTOM_LEVEL_LINK_FILE);
+}
+
+/* Programs and scripts are never level data; the importer leaves them out, and a linked folder's are not listed. */
+static int program(const char* name) {
+    static const char* const k_types[] = { ".exe", ".dll", ".com", ".scr", ".msi", ".asi", ".so",  ".sys", ".ocx", ".cpl", ".pif", ".bat",
+                                           ".cmd", ".ps1", ".vbs", ".js",  ".wsf", ".hta", ".sh",  ".lnk", ".reg", ".url", ".jar", ".py" };
+    const char* dot = strrchr(name, '.');
+    for (size_t i = 0; dot && i < sizeof k_types / sizeof k_types[0]; i++)
+        if (!_stricmp(dot, k_types[i])) return 1;
+    return 0;
+}
 
 static int host_path(const char* relative, char* out, size_t cap) {
-    int n = snprintf(out, cap, "%s%s%s", C.dir, relative[0] ? SEP : "", relative);
+    const char* base = C.linked && generated(relative) ? C.records : C.dir;
+    int n = snprintf(out, cap, "%s%s%s", base, relative[0] ? SEP : "", relative);
     if (n < 0 || (size_t)n >= cap) return 0;
 #ifdef _WIN32
-    for (char* c = out + strlen(C.dir); *c; c++)
+    for (char* c = out + strlen(base); *c; c++)
         if (*c == '/') *c = '\\';
 #endif
     return 1;
@@ -229,19 +256,12 @@ static int host_path(const char* relative, char* out, size_t cap) {
 typedef struct {
     const char* prefix;
     int depth;
+    int records; /* the records folder's own files, of a linked package */
 } walk_t;
 
-static void walk(const char* relative, int depth);
+static void walk(const char* relative, int depth, int records);
 
-static void visit(const char* name, int is_dir, void* user) {
-    const walk_t* w = (const walk_t*)user;
-    char path[JPT_CUSTOM_LEVEL_PATH_MAX], host[JPT_PATH_MAX];
-    int n = snprintf(path, sizeof path, "%s%s%s", w->prefix, w->prefix[0] ? "/" : "", name);
-    if (n < 0 || n >= (int)sizeof path || !host_path(path, host, sizeof host) || jpt_fs_is_link(host)) return;
-    if (is_dir) {
-        walk(path, w->depth + 1);
-        return;
-    }
+static void add_file(const char* path) {
     if (C.count == JPT_CUSTOM_LEVEL_FILES_MAX || (C.files[C.count] = _strdup(path)) == NULL) {
         C.overflow = 1;
         return;
@@ -249,19 +269,61 @@ static void visit(const char* name, int is_dir, void* user) {
     C.count++;
 }
 
-static void walk(const char* relative, int depth) {
+static void visit(const char* name, int is_dir, void* user) {
+    const walk_t* w = (const walk_t*)user;
+    char path[JPT_CUSTOM_LEVEL_PATH_MAX], host[JPT_PATH_MAX];
+    int n = snprintf(path, sizeof path, "%s%s%s", w->prefix, w->prefix[0] ? "/" : "", name);
+    if (n < 0 || n >= (int)sizeof path || !host_path(path, host, sizeof host) || jpt_fs_is_link(host)) return;
+    if (C.linked && !w->records && generated(path)) return;
+    if (is_dir) {
+        walk(path, w->depth + 1, w->records);
+        return;
+    }
+    if (!program(name)) add_file(path);
+}
+
+static void walk(const char* relative, int depth, int records) {
     char dir[JPT_PATH_MAX];
     walk_t w;
     if (depth > JPT_CUSTOM_LEVEL_DEPTH_MAX || !host_path(relative, dir, sizeof dir)) return;
     w.prefix = relative;
     w.depth = depth;
+    w.records = records;
     jpt_fs_list(dir, visit, &w);
+}
+
+/* A linked package is the parts of its folder the link names, or all of it, and the records' own generated files. */
+static void walk_package(void) {
+    if (!C.linked || !C.scope_count) walk("", 0, 0);
+    if (!C.linked) return;
+    for (int i = 0; i < C.scope_count; i++) {
+        char host[JPT_PATH_MAX];
+        int depth = 1;
+        for (const char* c = C.scopes[i]; *c; c++) depth += *c == '/';
+        if (!host_path(C.scopes[i], host, sizeof host) || jpt_fs_is_link(host) || generated(C.scopes[i])) continue;
+        if (jpt_fs_is_dir(host)) walk(C.scopes[i], depth, 0);
+        else if (jpt_fs_exists(host) && !program(C.scopes[i])) add_file(C.scopes[i]);
+    }
+    walk(JPT_CUSTOM_LEVEL_GENERATED_DIR, 1, 1);
 }
 
 static int by_path(const void* a, const void* b) {
     const char *x = *(char* const*)a, *y = *(char* const*)b;
     int c = _stricmp(x, y);
     return c ? c : strcmp(x, y);
+}
+
+/* Scopes that hold one another would list a file twice. */
+static void drop_repeats(void) {
+    int kept = 0;
+    for (int i = 0; i < C.count; i++) {
+        if (kept && !strcmp(C.files[kept - 1], C.files[i])) {
+            free(C.files[i]);
+            continue;
+        }
+        C.files[kept++] = C.files[i];
+    }
+    C.count = kept;
 }
 
 static void name_scenes(void) {
@@ -462,19 +524,57 @@ static int refuse(char* error, size_t cap, const char* text, const char* subject
     return 0;
 }
 
+/* The package's own folder, or the folder its link names. 0 for a link that cannot be followed. */
+static int read_link(void) {
+    char file[JPT_PATH_MAX];
+    size_t size = 0;
+    uint8_t* bytes;
+    int n = snprintf(file, sizeof file, "%s" SEP JPT_CUSTOM_LEVEL_LINK_FILE, C.records), head = 1, found = 0;
+    if (n < 0 || n >= (int)sizeof file || !jpt_fs_exists(file)) {
+        memcpy(C.dir, C.records, sizeof C.dir);
+        return 1;
+    }
+    if (jpt_fs_is_link(file) || (bytes = read_whole(file, MAP_LIMIT, &size)) == NULL) return 0;
+    C.link = (char*)malloc(size + 1);
+    if (C.link) {
+        memcpy(C.link, bytes, size);
+        C.link[size] = 0;
+    }
+    free(bytes);
+    if (!C.link) return 0;
+    C.linked = 1;
+    for (char *line = C.link, *next; line; line = next) {
+        next = strchr(line, '\n');
+        if (next) *next++ = 0;
+        line[strcspn(line, "\r")] = 0;
+        if (head) {
+            if (strcmp(line, JPT_CUSTOM_LEVEL_LINK_HEAD)) return 0;
+            head = 0;
+        } else if (!strncmp(line, "path ", 5)) {
+            found = jpt_fs_from_utf8(line + 5, C.dir, sizeof C.dir);
+        } else if (!strncmp(line, "scope ", 6)) {
+            if (!is_clean_path(line + 6) || C.scope_count == JPT_CUSTOM_LEVEL_LINK_SCOPES_MAX) return 0;
+            C.scopes[C.scope_count++] = line + 6;
+        }
+    }
+    return found && jpt_fs_is_dir(C.dir) && !jpt_fs_is_link(C.dir);
+}
+
 int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_request_t* request, char* error, size_t cap) {
     int n;
     jpt_custom_level_deactivate();
     if (!jpt_custom_level_id_valid(request->package))
         return refuse(error, cap, "invalid custom level package", request->package);
-    n = snprintf(C.dir, sizeof C.dir, "%s" SEP JPT_CUSTOM_LEVELS_DIR SEP "%s", user_root, request->package);
-    if (n < 0 || n >= (int)sizeof C.dir || !jpt_fs_is_dir(C.dir) || jpt_fs_is_link(C.dir))
+    n = snprintf(C.records, sizeof C.records, "%s" SEP JPT_CUSTOM_LEVELS_DIR SEP "%s", user_root, request->package);
+    if (n < 0 || n >= (int)sizeof C.records || !jpt_fs_is_dir(C.records) || jpt_fs_is_link(C.records))
         return refuse(error, cap, "the custom level package is not installed", request->package);
+    if (!read_link()) return refuse(error, cap, "the linked folder of the custom level is not available", request->package);
     C.files = (char**)calloc(JPT_CUSTOM_LEVEL_FILES_MAX, sizeof *C.files);
     if (!C.files) return refuse(error, cap, "out of memory for the custom level package", request->package);
-    walk("", 0);
+    walk_package();
     if (C.overflow) return refuse(error, cap, "the custom level package has too many files", request->package);
     qsort(C.files, (size_t)C.count, sizeof *C.files, by_path);
+    drop_repeats();
     name_scenes();
     for (C.scene = 0; C.scene < C.scene_count; C.scene++)
         if (!_stricmp(C.scenes[C.scene].file, request->scene)) break;

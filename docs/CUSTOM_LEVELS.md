@@ -19,8 +19,16 @@ package cannot be read, the analysis says so (unreadable, damaged, unsupported) 
 A level that is already extracted does not need an archive: Import Folder reads that folder and installs a copy of the files the
 level needs under `user_data\custom_levels\<package>`, which is what the port plays. The folder chosen is only read, never moved or
 changed. The copy keeps the package's saves, settings and checks apart from everything else, and takes disk space of its own; Delete
-removes it and keeps its saves. Playing from an external folder without a copy is not implemented. The game itself is installed from a
-disc image only ([LAUNCHER](LAUNCHER.md#import-game)).
+removes it and keeps its saves. To play a folder where it is, without a copy, use Link External Folder ([Linked folders](#linked-folders)).
+The game itself is installed from a disc image or from a folder of the game ([LAUNCHER](LAUNCHER.md#import-game)).
+
+| | Import Folder | Link External Folder |
+|---|---|---|
+| level files | copied into `user_data\custom_levels\<package>` | read where they are, never copied |
+| the folder chosen | read once, can be deleted afterwards | read every time the level plays: it must stay where it is |
+| several packages in it | refused: choose one | each one is linked on its own |
+| removing it | Delete removes the copy | Unlink forgets the folder; nothing in it is deleted |
+| saves, records, checks | in `user_data` | the same, in `user_data` |
 
 | Refused | |
 |---|---|
@@ -118,6 +126,55 @@ user_data\custom_levels\<package>\
 `manifest.json`, `runtime.map` and `.runtime` are generated. The launcher makes them again when they are missing, damaged or
 no longer match the package, which is how a package installed by an earlier version gets them. A manifest of a newer schema
 is left alone. Without a `runtime.map` a package is still read by its folders.
+
+### Linked folders
+
+**Link External Folder** registers levels where they already are (`launcher/level_link.*`, `LinkLevelFolder` in
+`launcher/custom_levels.cpp`). The folder may be one level, a fan mission, a folder of several of them, or a Trespasser CE mod
+tree. It is searched as the corpus scanner searches one (8 levels deep, 5,000 folders): a folder with a scene, a `data` folder
+with a scene, `fm.ini` or `tp_mod.ini` is a package. Archives in it are not linked (the log counts them): import them.
+
+Each package goes through the checks of an import (unsafe names, links, sizes, the analysis and the `READY` rule) on the files an
+import would copy; a package without a `READY` level is not linked. A linked package's folder in `user_data` holds only records:
+
+```text
+user_data\custom_levels\<package>\
+    external.link  the linked folder (UTF-8), the parts of it that are the package, its fan mission, its scenes' identity
+    manifest.json  source_type "external"
+    runtime.map
+    .runtime\
+```
+
+The linked folder is only read: no record, cache, guide, loading picture or save is ever written to it, and the game writes
+nothing under `data` while a package plays. Its own files named `manifest.json`, `runtime.map`, `external.link` or `.runtime` are
+not part of the package. Programs and scripts in it (`.exe`, `.dll`, `.bat`, `.ps1`, `.sh`, ...) are never listed or run.
+
+**Trespasser CE mod trees.** A folder with `tp_mod.ini` whose `FMPath` holds several fan missions becomes one package per fan
+mission (a folder that has a scene within 3 levels; `data` and the shared folders are not missions). Each one sees its own folder,
+`tp_mod.ini` and the folders `UberModPaths` and `ModPaths` name, never the other missions or the tree's own copy of the game. The
+mission plays as the tree's `ActiveFM`, whatever that key says. Files are found in Trespasser CE's order: `UberModPaths`, the
+mission (its `data` folder, then its own), `ModPaths`, then the installed game. `fm.ini`, `trespasser.ini` and `tpass.ini` are read
+inside the package for its session only, as for an imported one. Nothing has to be moved, renamed or packed.
+
+| Row | |
+|---|---|
+| External Folder: `<path>` | and ` · <fan mission>` for one of a tree |
+| Play, Readme | the files where they are |
+| Open Folder | the linked folder |
+| Rescan | drops the package's listing record and world cache: the next list reads the folder again |
+| Unlink | confirmation; removes the records folder, only when it holds nothing but the launcher's records. The linked folder and the saves stay |
+| Folder unavailable | the folder was moved, renamed, or is on a drive that is not connected. The row keeps what was last read, Play is off, **Relocate Folder** and Unlink remain |
+| Relocate Folder | the folder's new place, accepted only when it holds the same scenes (by path, any case). The package keeps its name, so its saves stay its own |
+
+Changes made outside the launcher are found without a scan of the whole library: the listing key of a linked package is its
+link and its files (path, size, time). A folder that changed is analysed again at the next list, and Play checks the level with the
+runtime's own lookup first. When its scenes change, the link's identity follows and the log says that a save of a level that is gone
+cannot be loaded. A folder that is the port's own (`user_data`, the game's version folders) or holds it is refused, and so is the
+same folder linked again, however its path is spelled (one canonical path, the same file system object).
+
+On Windows the game opens a level's files by ANSI paths of at most 250 characters: a folder whose path the system's code page
+cannot spell, or whose deepest file passes that length, is refused with `The game cannot open this folder's path` (Import Folder
+works there). Linux takes UTF-8 paths of any length the game's limits allow.
 
 ## Analysis
 
@@ -221,7 +278,11 @@ guide.
 A package is active for one run. The game still asks for `<Data Drive>\data\X` and the package answers first
 (`src/common/jpt_custom_level.c`), the original files second. The names in a package may differ from each other
 (`MyLevel.scn` with `ML.wtd`) and be in any case; two files told apart only by case answer by their exact name alone.
-Files outside `data` (`Map\<level>\x.bmp`, any other folder of the mod) are answered by their path below the game's folder.
+Files outside `data` (`Map\<level>\x.bmp`, any other folder of the mod) are answered by their path below the game's folder. A
+linked package answers from its own folder, limited to the parts its link names, and reads `runtime.map`, loading pictures and
+guides from its records in `user_data` (`jpt_custom_level_dir`, `jpt_custom_level_records_dir`); a link that names a path with
+`..`, a drive, or a folder that is a link is refused before anything is read. Transitions to the package's other levels and
+Restart Level read the same files.
 
 A texture the level's set (`.pid`, `.swp`) lacks is asked for by its path, `Map\<level>\<name>.bmp`; `<level>` is the folder in the
 request, from the name of the world, and the game's current directory plays no part. The places are Trespasser CE's
@@ -251,8 +312,8 @@ game's own `.asb`, `.gop` and `Map` files are refused.
 
 The scene is loaded by the same calls as Level Select (Direct Load) on the main menu's first turn, when the engine is ready and
 before the menu has drawn. Nothing is presented until then (5 seconds at most), so the loading screen is the first picture. The
-opening video is skipped for that run. Saves and level swap files go to `<saves>\custom_levels\<package>`; the game's own settings stay
-the version's. A scene whose name the game cannot keep in a save (more than 16 characters, or other than letters,
+opening video is skipped for that run. Saves and level swap files go to `<saves>\custom_levels\<package>`, for a linked package as for
+an imported one (never into its folder); the game's own settings stay the version's. A scene whose name the game cannot keep in a save (more than 16 characters, or other than letters,
 digits, `_` and `-`) is loaded as `LEVELn.SCN`.
 
 A package that names its `StartLevel` is one row, which starts it; its other scenes stay installed for the mission's own

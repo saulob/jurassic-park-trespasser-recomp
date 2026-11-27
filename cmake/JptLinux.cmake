@@ -374,7 +374,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   add_library(jpt_lzma_linux STATIC ${JPT_LZMA_SOURCES})
   target_compile_options(jpt_lzma_linux PRIVATE -w)
   set(JPT_ARCHIVE_SOURCES launcher/archive_reader.cpp launcher/archive_spool.cpp launcher/rar_blake2.cpp launcher/rar_ppm.cpp launcher/rar_reader.cpp launcher/rar_stream.cpp launcher/rar_unpack.cpp launcher/seven_zip_block.cpp)
-  set(JPT_CUSTOM_LEVEL_SOURCES launcher/custom_levels.cpp launcher/level_analysis.cpp launcher/level_check.cpp launcher/level_corpus.cpp launcher/level_import_log.cpp launcher/level_ini.cpp launcher/level_limits.cpp launcher/level_listing.cpp launcher/level_manifest.cpp
+  set(JPT_CUSTOM_LEVEL_SOURCES launcher/custom_levels.cpp launcher/level_analysis.cpp launcher/level_check.cpp launcher/level_corpus.cpp launcher/level_import_log.cpp launcher/level_ini.cpp launcher/level_limits.cpp launcher/level_link.cpp launcher/level_listing.cpp launcher/level_manifest.cpp
     launcher/level_picture.cpp launcher/level_readme.cpp launcher/level_settings.cpp launcher/level_guide.cpp)
   add_library(jpt_launcher_linux STATIC launcher/launcher.cpp launcher/disc_browser.cpp ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES} launcher/custom_levels_page.cpp launcher/level_analyze_cli.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
     launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
@@ -399,7 +399,7 @@ if(JPT_LINUX_LAUNCHER AND JPT_LINUX_SDL_VIDEO)
   jpt_linux_test(launcher_startup_tests SOURCES tests/launcher_startup_tests.cpp LIBS jpt_common_linux INCLUDES launcher)
   set_target_properties(launcher_startup_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
-  jpt_linux_test(custom_level_tests SOURCES tests/custom_level_tests.cpp tests/custom_level_analysis_tests.cpp tests/level_check_tests.cpp tests/custom_level_listing_tests.cpp ${JPT_ARCHIVE_SOURCES}
+  jpt_linux_test(custom_level_tests SOURCES tests/custom_level_tests.cpp tests/custom_level_analysis_tests.cpp tests/level_check_tests.cpp tests/custom_level_listing_tests.cpp tests/custom_level_link_tests.cpp ${JPT_ARCHIVE_SOURCES}
                  ${JPT_CUSTOM_LEVEL_SOURCES} src/host/tpa_merge.c launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp launcher/updater/third_party/miniz/miniz.c
                  LIBS jpt_launcher_core_linux jpt_lzma_linux INCLUDES launcher src/host)
   set_target_properties(custom_level_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)

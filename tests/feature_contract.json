@@ -5781,6 +5781,39 @@
    }
   },
   {
+   "id": "game-import-folders",
+   "name": "Import Existing Installation: a game version imported from folders (the disc copied to a folder, an installation) by the retail files' digests, completed by the disc's folder, its sources only read and nothing in them run",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestFolderInstall"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestFolderShapes"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestFolderInstall"
+     }
+    ]
+   }
+  },
+  {
    "id": "handheld-1280x800",
    "name": "A 1280x800 (16:10) display: the picture is centred with bars, 16:10 fills the window, the pointer maps back",
    "owner": "window",
@@ -6615,6 +6648,48 @@
       "pattern": "test_regions"
      }
     ]
+   }
+  },
+  {
+   "id": "custom-level-links",
+   "name": "Link External Folder: custom level packages played where they are (one folder, a folder of several, each fan mission of a Trespasser CE tp_mod.ini tree with its shared folders), never copied or written; records and saves in user_data; Rescan, Relocate Folder, Unlink",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestLinkFolder"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestLinkedSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestModTree"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestRescanRelocateUnlink"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestLinkRefusals"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
    }
   },
   {

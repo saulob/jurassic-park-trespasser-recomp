@@ -30,6 +30,12 @@ extern "C" {
 #define JPT_CUSTOM_LEVEL_RUNTIME_MAP "runtime.map"
 #define JPT_CUSTOM_LEVEL_RUNTIME_VERSION 1
 #define JPT_CUSTOM_LEVEL_GENERATED_DIR ".runtime"
+/* A package played from a folder outside user_data: this file of its records folder (user_data/custom_levels/<package>)
+ * names the folder ("path <UTF-8 folder>") and, for one fan mission of a larger tree, the parts of it that are the package
+ * ("scope <relative path>", none for the whole folder). The records stay in user_data; the folder is only read. */
+#define JPT_CUSTOM_LEVEL_LINK_FILE "external.link"
+#define JPT_CUSTOM_LEVEL_LINK_HEAD "trespasser-link 1"
+#define JPT_CUSTOM_LEVEL_LINK_SCOPES_MAX 32
 
 typedef enum { JPT_LEVEL_TPA_STREAM, JPT_LEVEL_TPA_EFFECTS, JPT_LEVEL_TPA_AMBIENT, JPT_LEVEL_TPA_KINDS } jpt_level_tpa_t;
 
@@ -78,7 +84,8 @@ int jpt_custom_level_scene_name(const char* file_name, int index, char* out, siz
 /* <saves>/custom_levels/<package>: the Installed Directory while the package is active. */
 int jpt_custom_level_saves_dir(const char* saves_dir, const char* package, char* out, size_t cap);
 
-/* 1 when the package and its scene exist; the error says why otherwise. Replaces an earlier activation. */
+/* 1 when the package and its scene exist (in its linked folder, for a linked one); the error says why otherwise.
+ * Replaces an earlier activation. */
 int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_request_t* request, char* error, size_t cap);
 void jpt_custom_level_deactivate(void);
 int jpt_custom_level_active(void);
@@ -97,7 +104,10 @@ int jpt_custom_level_script_reference(int index, const char** scene, const char*
 int jpt_custom_level_script_use(int index, const char** scene, const char** file);
 /* The scene being loaded or played, a file of the package; "" for a level of the original game. */
 const char* jpt_custom_level_current_scene(void);
+/* The package's files, and the launcher's records of it (runtime.map, .runtime): the same folder unless it is linked. */
 const char* jpt_custom_level_dir(void);
+const char* jpt_custom_level_records_dir(void);
+int jpt_custom_level_linked(void);
 
 /* The level the game starts to load, by its file or path: loading pictures and sound files of one level follow it. */
 void jpt_custom_level_scene_loading(const char* scene);

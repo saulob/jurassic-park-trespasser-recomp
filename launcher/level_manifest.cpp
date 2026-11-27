@@ -270,7 +270,8 @@ bool RuntimeIsSafe(const PackageAnalysis& a, const std::vector<PackageFile>& fil
 
 bool IsGeneratedPath(const std::string& path) {
     const std::string lower = LowerAscii(path), folder = std::string(JPT_CUSTOM_LEVEL_GENERATED_DIR) + "/";
-    return lower == kManifestFile || lower == JPT_CUSTOM_LEVEL_RUNTIME_MAP || lower.rfind(folder, 0) == 0 || lower + "/" == folder;
+    return lower == kManifestFile || lower == JPT_CUSTOM_LEVEL_RUNTIME_MAP || lower == JPT_CUSTOM_LEVEL_LINK_FILE || lower.rfind(folder, 0) == 0 ||
+           lower + "/" == folder;
 }
 
 std::string AnalysisReport(const PackageManifest& manifest) {

@@ -1,5 +1,6 @@
-// The custom level packages of user_data/custom_levels: import, listing, README and removal. A package is data only: nothing in
-// it is ever run, and the installed game versions are never written.
+// The custom level packages of user_data/custom_levels: import, link, listing, README and removal. A package is data only: nothing
+// in it is ever run, and the installed game versions are never written. A linked package's files stay in its own folder, which is
+// only read; its records and saves are kept in user_data like an imported one's.
 #pragma once
 
 #include <atomic>
@@ -12,6 +13,7 @@
 #include "archive_reader.h"
 #include "level_analysis.h"
 #include "level_check.h"
+#include "level_link.h"
 
 namespace jpt {
 
@@ -32,6 +34,10 @@ enum class ImportStatus {
     kSeveralPackages,
     kNoSpace,
     kWriteFailed,
+    kLinked,
+    kAlreadyLinked,
+    kFolderUnavailable,
+    kPathNotUsable, // the game cannot open the folder's files by their paths
 };
 
 const char* ImportStatusTitle(ImportStatus status);
@@ -42,6 +48,7 @@ struct LevelNotice {
     bool failed = false;
 };
 LevelNotice ImportNotice(ImportStatus status);
+LevelNotice LinkNotice(ImportStatus status);
 
 // A file of a source that is not installed. Rejected ones could run; the others are only of no use to the game.
 struct RefusedFile {
@@ -102,6 +109,29 @@ ImportResult ImportLevelFolder(const std::filesystem::path& folder, const std::f
                                const ArchiveLimits& limits = {}, const std::filesystem::path& data_dir = {});
 // What an interrupted import or removal left behind. Never called while one runs.
 void CleanLevelStaging(const std::filesystem::path& user_dir);
+
+// Link External Folder: every package below the folder is checked as the import checks one and registered where it is, never
+// copied, moved or written. Each fan mission of a tp_mod.ini tree is a package of its own with the tree's shared folders.
+struct LinkResult {
+    ImportStatus status = ImportStatus::kNoLevel; // kLinked when one package or more was linked
+    std::string detail;
+    std::vector<std::string> linked, already; // package ids
+    std::vector<std::string> log;
+    size_t levels = 0; // that can be played, of the packages linked now
+    bool ok() const { return status == ImportStatus::kLinked; }
+};
+inline constexpr const char* kLinkPhases[] = {"Reading the folder...", "Checking the level files..."};
+LinkResult LinkLevelFolder(const std::filesystem::path& folder, const std::filesystem::path& user_dir, const ImportHooks& hooks,
+                           const ArchiveLimits& limits = {}, const std::filesystem::path& data_dir = {});
+LinkResult RunLink(const ImportRequest& request, const std::function<void(const std::string& phase, long long done, long long total)>& publish,
+                   const std::function<bool()>& cancelled);
+
+// Points a linked package at the folder it was moved to, when that folder has the same scenes; its saves stay with it.
+bool RelocateLevelPackage(const std::filesystem::path& user_dir, const std::string& id, const std::filesystem::path& folder, std::string& error);
+// Forgets a linked package: its records go, its folder and its saves stay.
+bool UnlinkLevelPackage(const std::filesystem::path& user_dir, const std::string& id, std::string& error);
+// Drops what is kept of a package's analysis, so that the next listing reads its files again.
+bool RescanLevelPackage(const std::filesystem::path& user_dir, const std::string& id);
 
 // Whether the file is level data, a text or a picture; anything else in a package is left out.
 bool IsLevelPackageFile(const std::string& relative_path);
@@ -172,7 +202,12 @@ LevelSort LevelSortOf(const std::string& key);
 
 struct LevelPackage {
     std::string id;
-    std::filesystem::path dir;
+    std::filesystem::path dir;     // its files: user_data/custom_levels/<id>, or a linked package's folder
+    std::filesystem::path records; // what the launcher writes about it, always user_data/custom_levels/<id>
+    bool linked = false;
+    bool available = true;         // a linked package's folder is where its link says
+    PackageLink link;
+    std::string origin;            // the manifest's source_type: "zip", "7z", "rar", "folder", "external"
     std::vector<LevelScene> scenes; // the start level first
     std::string readme; // relative to the package; empty when it has no instructions
     Need ce = Need::kNone, atx = Need::kNone;

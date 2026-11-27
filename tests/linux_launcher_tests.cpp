@@ -1,6 +1,7 @@
 // The launcher's portable core on Linux, headless: the PE string-table reader that replaces Win32's resource functions, the
 // disc image reader over POSIX files (Joliet names in UTF-16), the part-file writer, SHA-256 of a file, the port folder inside
-// an AppImage, the version lookup with POSIX separators and the file picker probe. Scratch folders only; no window, no GPU.
+// an AppImage, the version lookup with POSIX separators, a game folder imported with another folder completing it and the file
+// picker probe. Scratch folders only; no window, no GPU.
 #include <unistd.h>
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -21,6 +23,7 @@
 #include "incident_report.h"
 #include "iso9660.h"
 #include "jpt_game_version.h"
+#include "jpt_hash.h"
 #include "jpt_port.h"
 #include "jpt_string_table.h"
 #include "options.h"
@@ -366,6 +369,66 @@ static void TestVersions() {
     fs::remove_all(dir, ec);
 }
 
+static std::string ShaOf(const std::string& text) {
+    char hex[65];
+    jpt_sha256_buffer_hex(text.data(), text.size(), hex);
+    return hex;
+}
+
+static void WriteText(const fs::path& file, const std::string& text) {
+    std::error_code ec;
+    fs::create_directories(file.parent_path(), ec);
+    std::ofstream(file, std::ios::binary) << text;
+}
+
+static std::string ReadText(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), {});
+}
+
+// An installation and the disc copied to a folder, with names in other cases and both read only: recognised by their files,
+// the one completing the other, copied without changing either.
+static void TestFolderInstall() {
+    const fs::path dir = Scratch("folders");
+    std::error_code ec;
+    const std::pair<const char*, const char*> paths[] = {
+        {"setup/tpassp6.exe", JPT_GUEST_IMAGE}, {"setup/MSVCIRT.DLL", "MSVCIRT.DLL"}, {"data/be.scn", "data/be.scn"}, {"data/menu/loader.ddf", "data/menu/loader.ddf"}};
+    const std::string contents[] = {"guest image", "runtime", "level", "identity"};
+    std::vector<std::string> digests;
+    std::vector<InstallFile> files;
+    for (const std::string& content : contents) digests.push_back(ShaOf(content));
+    for (size_t i = 0; i < 4; ++i)
+        files.push_back({SourceKind::kDisc, paths[i].first, paths[i].second, contents[i].size(), digests[i].c_str(), i == 0 ? FileRole::kGuestImage : FileRole::kData});
+    const DiscIdentity discs[] = {{"Folder test", "TEST"}};
+    const GameProfile profiles[] = {{&jpt_game_versions[0], "data/menu/loader.ddf", digests[3].c_str(), discs, nullptr, files}};
+
+    const fs::path installed = dir / "Trespasser Install", disc = dir / "CD Copy", root = dir / "game";
+    WriteText(installed / "TRESPASS.EXE", "guest image");
+    WriteText(installed / "msvcirt.dll", "runtime");
+    WriteText(installed / "MENU" / "LOADER.DDF", "identity");
+    WriteText(disc / "setup" / "tpassp6.exe", "guest image");
+    WriteText(disc / "setup" / "MSVCIRT.DLL", "runtime");
+    WriteText(disc / "data" / "be.scn", "level");
+    WriteText(disc / "data" / "menu" / "loader.ddf", "identity");
+    for (const fs::path& top : {installed, disc})
+        for (const fs::directory_entry& e : fs::recursive_directory_iterator(top))
+            if (e.is_regular_file()) fs::permissions(e.path(), fs::perms::owner_write | fs::perms::group_write | fs::perms::others_write, fs::perm_options::remove, ec);
+
+    InstallResult r = InstallFromFolders({installed}, root, InstallHooks{}, profiles);
+    CHECK(r.status == InstallStatus::kIncompleteInstallation && r.missing == std::vector<std::string>{"data/be.scn"} && !fs::exists(root));
+    r = InstallFromFolders({installed, disc}, root, InstallHooks{}, profiles);
+    const fs::path target = root / "versions" / "en-116";
+    CHECK(r.status == InstallStatus::kInstalled && r.profile == &profiles[0] && r.dir == target);
+    CHECK(ReadText(target / JPT_GUEST_IMAGE) == "guest image" && ReadText(target / "data" / "be.scn") == "level" && !fs::exists(target / "TRESPASS.EXE"));
+    CHECK(ReadText(installed / "TRESPASS.EXE") == "guest image" && ReadText(disc / "data" / "be.scn") == "level");
+    CHECK(InstallFromFolders({disc}, root, InstallHooks{}, profiles).status == InstallStatus::kUpToDate);
+    CHECK(InstallFromFolders({dir / "absent"}, root, InstallHooks{}, profiles).status == InstallStatus::kNotAnInstallation);
+    for (const fs::path& top : {installed, disc})
+        for (const fs::directory_entry& e : fs::recursive_directory_iterator(top))
+            if (e.is_regular_file()) fs::permissions(e.path(), fs::perms::owner_write, fs::perm_options::add, ec);
+    fs::remove_all(dir, ec);
+}
+
 static void TestVersionCompleteness() {
     const fs::path base = Scratch("completeness") / "Jurassic Park Trespasser" / "game";
     std::error_code ec;
@@ -552,6 +615,7 @@ int main(int argc, char** argv) {
     TestPortFolder();
     TestVersions();
     TestVersionCompleteness();
+    TestFolderInstall();
     TestFilePicker();
     TestFileBrowser();
     TestSteamDeck1280x800();

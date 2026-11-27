@@ -1,7 +1,8 @@
-// Import game: the player's own disc image is read directly (iso9660.h, is_cabinet.h) into
-// <game>\versions\<id>.install-temp, every file checked against its pressed SHA-256, and only then swapped in. Any
-// failure or Cancel leaves every installed version as it was. The image is only ever read. The disc's original
-// executables are import inputs only: one becomes the guest image, the Russian release's one the string table.
+// Import game: the player's own disc image (iso9660.h, is_cabinet.h), or folders of the game they already have (the disc
+// copied to a folder, an installation), are read directly into <game>\versions\<id>.install-temp, every file checked
+// against its pressed SHA-256, and only then swapped in. Any failure or Cancel leaves every installed version as it was.
+// Sources are only ever read. The original executables are import inputs only: one becomes the guest image, the Russian
+// release's one the string table; nothing found in a folder is ever run.
 #pragma once
 
 #include <cstdint>
@@ -31,6 +32,8 @@ enum class InstallStatus {
     kExtractFailed,
     kValidationFailed,
     kActivateFailed,
+    kNotAnInstallation,       // a folder without the game's data files
+    kIncompleteInstallation,  // a folder of a known version without all of its files; the disc's folder can complete it
 };
 
 struct InstallResult {
@@ -40,6 +43,7 @@ struct InstallResult {
     const DiscIdentity* disc = nullptr;
     std::filesystem::path dir;            // where the version is installed
     std::vector<std::string> diagnostics;  // an unsupported build's data file fingerprints, to add it later
+    std::vector<std::string> missing;      // a folder import: the version's files no chosen folder has with the pressed bytes
     size_t files = 0;
     size_t repaired = 0;  // damaged files taken from another installed version with the pressed digest
     uint64_t bytes = 0;
@@ -57,7 +61,9 @@ struct PlannedFile {
     const InstallFile* file;
     const IsoFile* disc = nullptr;
     const CabinetFile* cabinet = nullptr;
-    bool present() const { return disc || cabinet; }  // false: the disc lacks the source of a guest image or table
+    std::filesystem::path folder_file;  // a folder import: the file with the pressed bytes
+    // false: the source lacks the file of a guest image or table
+    bool present() const { return disc || cabinet || !folder_file.empty(); }
 };
 
 struct DiscMatch {
@@ -103,6 +109,24 @@ bool ActivateStaging(const std::filesystem::path& staging, const std::filesystem
 
 InstallResult InstallFromIso(const std::filesystem::path& iso, const std::filesystem::path& game_root,
                              const InstallHooks& hooks, std::span<const GameProfile> profiles = KnownProfiles());
+
+// What folders of the game hold, read only: the version whose identity file one of them has, and for each file of it
+// a copy with the pressed bytes wherever it is (the disc's own place, an installation's root or data folder, any name
+// for an executable). Several folders complete each other, the first one first.
+struct FolderMatch {
+    const GameProfile* profile = nullptr;
+    InstallStatus status = InstallStatus::kNotAnInstallation;  // when nothing can be installed
+    std::vector<PlannedFile> plan;
+    std::vector<std::string> missing;      // installed names no folder has with the pressed bytes
+    std::vector<std::string> modified;     // of those, the ones a folder has with other bytes (a patch or a mod)
+    std::vector<std::string> diagnostics;  // what the folders hold: executables, data file fingerprints
+    bool complete() const { return profile && missing.empty(); }
+};
+FolderMatch IdentifyFolders(const std::vector<std::filesystem::path>& folders, std::span<const GameProfile> profiles,
+                            std::string& why);
+
+InstallResult InstallFromFolders(const std::vector<std::filesystem::path>& folders, const std::filesystem::path& game_root,
+                                 const InstallHooks& hooks, std::span<const GameProfile> profiles = KnownProfiles());
 
 const char* InstallStatusTitle(InstallStatus status);
 

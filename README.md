@@ -49,7 +49,7 @@
 - **Cheats panel** (F10) with movement speed, jump height, invulnerability, infinite ammo, frozen dinosaurs, health, noclip, stealth, teleport, Level Select and a free camera
 - **Modern controls**: keyboard, mouse and SDL3 gamepads (Xbox, PlayStation, Switch, Steam Deck) with hotplug, glyphs and rebindable buttons
 - **Custom Levels**: community levels and fan missions imported from ZIP, 7z, RAR or a folder, checked level by level before they are installed, with support for many Trespasser CE and ATX features and their own saves
-- **TRG launcher** that imports your disc image, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
+- **TRG launcher** that imports your disc image or existing installation, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
 - **Seven languages**, video subtitles, restored English dialogue and corrected caption timings
 - **Portable**: saves, settings and logs stay next to the program
 - **Experimental native Linux and Steam Deck** AppImage
@@ -60,17 +60,18 @@ The launcher's **Custom Levels** page plays community levels and fan missions, o
 
 1. Open the launcher.
 2. Select **Custom Levels** in the sidebar.
-3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package.
+3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package, or **Link External Folder** to play a folder where it is.
 4. Check the status of each level: **Ready**, or **Not supported** with the reason.
 5. Select a Ready level and press **Play**.
 
 - **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready; the others stay listed as Not supported.
 - **Ready** means that the automated compatibility scanner found no known blocking issues. It does not guarantee full gameplay compatibility: most Ready levels have not been played from start to finish in the port.
-- **Levels you already have**: you do not need a ZIP. **Import Folder** installs a copy of an extracted level's files in `user_data\custom_levels`; your folder is not changed. Playing directly from an external folder, without a copy, is not available yet.
+- **Levels you already have**: you do not need a ZIP. **Import Folder** installs a copy of an extracted level's files in `user_data\custom_levels`; your folder is not changed. **Link External Folder** plays one or several levels where they already are, without a copy: the folder is only read, it must stay where it is, and **Unlink** forgets it without deleting anything in it. A moved folder shows **Folder unavailable** and can be found again with **Relocate Folder**; its saves stay.
+- **Trespasser CE mod folders**: link a folder with `tp_mod.ini` and each fan mission of its `FMPath` becomes a package, with the shared folders `ModPaths` and `UberModPaths` name and nothing reorganised, copied or packed. Not every mod is supported: each mission goes through the same checks.
 - **Trespasser CE and ATX**: most of their ActionTypes, textures (BMP, TGA, DDS DXT1-DXT5 with mipmaps and alpha), normal maps, custom skies (including the `2X_ALPHA` and `2X_BURN` blend modes), scene formats 23-26 and larger engine limits for custom sessions.
 - **Scripts**: the port embeds the Squirrel interpreter and implements part of Trespasser CE's scripting API, so a level's scripts can call into the game. Each level gets its own script machine with memory and instruction budgets.
 - **Isolated from the campaign**: levels are installed in `user_data\custom_levels`, saves go to their own folder per package, and nothing in the installed game is changed. No program inside a package is ever run.
-- **Readme**, **Open Folder** and **Delete** for each package; **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
+- **Readme**, **Open Folder** and **Delete** for each imported package (**Rescan** and **Unlink** for a linked one); **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
 - **Bug Report** includes the selected level's analysis.
 
 - **Script keys**: a level whose Trespasser CE scripts read the USER commands gets keys for them (`script_user1_key` to `script_user8_key` in `trespasser.ini`; Shift and M for the first two by default).
@@ -82,7 +83,7 @@ See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
 
 - Not every community level is supported, and most Ready levels have not been played from start to finish in the port. No scripted community level has been confirmed in a full play-through yet.
 - Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles, `EndGameDDF`, texhw textures on meshes the original game bump-maps, stars and meteors sky layers, scripted actions (ActionType 99), the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks and the rest of CE's scripting API the port does not have yet. A level that needs one is listed as Not supported, with the reason. The full list is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations).
-- The game must be installed from a disc image (ISO); importing an existing Trespasser installation is not supported yet.
+- A linked folder on Windows must have a path the system's code page can spell and its files at most 250 characters deep; otherwise use **Import Folder**.
 - Encrypted, multi-volume and RAR 1.5 archives, and RAR dictionaries over 256 MB, are refused: extract them and use **Import Folder**.
 - Scripts run with memory and instruction budgets and without file, system or thread access; that limits what a script can reach, but it is not a guarantee that a faulty script cannot slow down or stop the game.
 
@@ -369,7 +370,9 @@ translations of the same captions where they exist, and the rest was translated 
 | Spanish (`TRESPASSER_S`) | 1.1.117 | Yes | Yes |
 | Brazilian Portuguese | 1.1.117 | Yes | Yes |
 
-The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo or total conversion is supported as a game version; community levels are played from the [Custom Levels](#custom-levels) page. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
+The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only.
+
+**Import Existing Installation** takes the same files from folders instead of an image: the disc copied to a folder, or an installation, with no ISO needed. Each file must have the retail bytes, wherever and however it is named; nothing in the folder is run or changed. An installation that keeps its levels on the CD, was patched to 1.1 or carries Trespasser CE's files is incomplete on its own: the launcher names the missing files and **Add the Disc's Folder...** completes it with a folder copy of the original disc. The guest image is always made from the retail `tpassp6.exe`; Patch 1.1, CE and other modified executables are never used. See [LAUNCHER](docs/LAUNCHER.md#import-existing-installation). No demo or total conversion is supported as a game version; community levels are played from the [Custom Levels](#custom-levels) page. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
 
 The Windows and Linux executables in v0.1.3 carry the same three lifted builds: `lift116` serves English (1.0.116) and Russian Fargus (1.0.116), `lift_es117` serves Spanish (1.1.117), and `lift_ptbr117` serves Brazilian Portuguese (1.1.117). The installed version selects the active lift, and Linux also maps the lifted MSVCIRT module shared by all four releases.
 
@@ -381,7 +384,7 @@ Windows 10 or 11, 64-bit. The Windows program is a 32-bit (x86) host that runs o
 
 1. Download **JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
 2. Run **trespasser_recomp.exe**, keeping `trg-updater.exe` beside it.
-3. On the **Play** page choose **Import game...** and select your own Trespasser `.iso` disc image. It is only read.
+3. On the **Play** page choose **Import Disc Image...** and select your own Trespasser `.iso` disc image, or **Import Existing Installation...** and select the folder of the game you already have (a copy of the disc, or an installation). Both are only read.
 4. When Play says the game is ready, press **PLAY**.
 
 The Windows executable is not code-signed, so SmartScreen may warn on the first start; choose **More info**, then **Run anyway** if you downloaded it from this repository's releases.
@@ -392,7 +395,7 @@ The Windows executable is not code-signed, so SmartScreen may warn on the first 
 
 - **Vulkan** is the Linux GPU renderer; Software is the fallback. If Vulkan cannot start, the run falls back to Software and says why.
 - **AppImage**: make it executable and run it. Without FUSE it extracts itself and runs automatically (`APPIMAGE_EXTRACT_AND_RUN=1` forces that).
-- **Import** your disc image from the launcher's Play page, as on Windows.
+- **Import** your disc image or an existing installation from the launcher's Play page, as on Windows.
 - **`game`, `user_data` and `logs`** live next to the AppImage file, never inside it.
 - **Controllers** work through SDL3, including Steam Deck glyphs; the launcher is usable with a gamepad and has a built-in file browser when `zenity` or `kdialog` is missing.
 - **Updates** replace the AppImage itself after checking its SHA-256, and restart it.
@@ -467,7 +470,7 @@ original code, and which are Windows.
 Nothing that is already current is redone, so the same command is the normal way to build and to play.
 `.\tools\run.ps1` is an optional shortcut that starts the existing build without checking for changes.
 
-The build needs no game files. To play, import your own disc image from the launcher's Play page. Details, options and
+The build needs no game files. To play, import your own disc image or existing installation from the launcher's Play page. Details, options and
 what to do when a run stops: [BUILD](docs/BUILD.md).
 
 ### Layout

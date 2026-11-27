@@ -934,6 +934,151 @@ static void TestInstaller(const fs::path& dir) {
           partial.detail.find("has 2 bytes, expected 3") != std::string::npos);
 }
 
+// Every file below a folder with its bytes and time: what an import must leave as it was.
+static std::map<std::string, std::pair<std::string, fs::file_time_type>> Snapshot(const fs::path& dir) {
+    std::map<std::string, std::pair<std::string, fs::file_time_type>> files;
+    for (const fs::directory_entry& e : fs::recursive_directory_iterator(dir))
+        if (e.is_regular_file()) files[fs::relative(e.path(), dir).generic_string()] = {ReadFile(e.path()), e.last_write_time()};
+    return files;
+}
+
+static void WriteTree(const fs::path& dir, const std::vector<IsoInput>& files) {
+    for (const IsoInput& f : files) WriteFile(dir / f.path, f.content);
+}
+
+// A disc copied to a folder, an installation (files at its root, the executable renamed, the levels in data or beside
+// it), a patched one, an incomplete one completed by the disc's folder, Cancel, rollback and the sources left as they were.
+static void TestFolderInstall(const fs::path& dir) {
+    const GameProfile profiles[] = {TestProfile()};
+    const fs::path root = dir / "folder-game", target = root / "versions" / "test";
+    fs::remove_all(root);
+    std::string why;
+
+    // The disc copied to a folder, names in any case, the setup programs beside it.
+    const fs::path cd = dir / "folder-cd";
+    fs::remove_all(cd);
+    WriteTree(cd, TestDisc(false));
+    WriteFile(cd / "AUTORUN.INF", "[autorun]");
+    WriteFile(cd / "SETUP.EXE", "a setup program");
+    const auto cd_before = Snapshot(cd);
+    FolderMatch m = IdentifyFolders({cd}, profiles, why);
+    CHECK(m.complete() && m.profile == &profiles[0] && m.plan.size() == 7 && m.missing.empty());
+    for (const PlannedFile& f : m.plan) CHECK(f.present() && !f.disc && !f.cabinet);
+    InstallHooks hooks;
+    int phases = 0;
+    hooks.phase = [&](const char*) { ++phases; };
+    InstallResult r = InstallFromFolders({cd}, root, hooks, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && r.files == 7 && r.profile == &profiles[0] && r.dir == target && phases >= 5);
+    CHECK(ReadFile(target / JPT_GUEST_IMAGE) == "abc" && CheckGameFolder(target, profiles[0]).state == GameState::kReady);
+    CHECK(!fs::exists(target / "SETUP.EXE") && !fs::exists(target / "setup") && !fs::exists(target / "AUTORUN.INF"));
+    CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)) && Snapshot(cd) == cd_before);
+
+    // The same version again: nothing is copied; asked to replace, it is installed anew.
+    WriteFile(target / "marker.txt", "kept");
+    r = InstallFromFolders({cd}, root, hooks, profiles);
+    CHECK(r.status == InstallStatus::kUpToDate && r.ok() && fs::exists(target / "marker.txt"));
+
+    // An installation: the executable renamed at its root, the levels at its root, no setup folder.
+    const fs::path installed = dir / "folder-installed";
+    fs::remove_all(installed);
+    WriteTree(installed, {{"TRESPASS.EXE", "abc"}, {"MSVCIRT.DLL", "m"}, {"SMACKW32.DLL", "s"}, {"Processor.dll", "p"},
+                          {"Readme.txt", "r"}, {"be.scn", "levelbe"}, {"menu/tpassintro.smk", "intro"}, {"be-130.swp", "a swap file"}});
+    const fs::path fresh = dir / "folder-fresh";
+    fs::remove_all(fresh);
+    r = InstallFromFolders({installed}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && ReadFile(fresh / "versions" / "test" / "data" / "be.scn") == "levelbe");
+    CHECK(ReadFile(fresh / "versions" / "test" / JPT_GUEST_IMAGE) == "abc" && !fs::exists(fresh / "versions" / "test" / "TRESPASS.EXE"));
+    // ...and one that keeps its levels in data.
+    fs::remove(installed / "be.scn");
+    WriteFile(installed / "data" / "be.scn", "levelbe");
+    fs::remove_all(fresh);
+    CHECK(InstallFromFolders({installed}, fresh, hooks, profiles).status == InstallStatus::kInstalled);
+
+    // A patched installation: a file of the version with other bytes is never taken, and the folder is incomplete.
+    WriteFile(installed / "menu" / "tpassintro.smk", "INTRO");
+    fs::remove_all(fresh);
+    m = IdentifyFolders({installed}, profiles, why);
+    CHECK(!m.complete() && m.status == InstallStatus::kIncompleteInstallation && m.missing == std::vector<std::string>{"data/menu/tpassintro.smk"});
+    CHECK(m.modified == m.missing && why.find("other contents") != std::string::npos && why.find("original disc") != std::string::npos);
+    r = InstallFromFolders({installed}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kIncompleteInstallation && !r.ok() && r.missing == m.missing && !fs::exists(fresh));
+
+    // An executable that is not the retail one, whatever its name: the guest image is missing, nothing is installed.
+    const fs::path other_exe = dir / "folder-other-exe";
+    fs::remove_all(other_exe);
+    WriteTree(other_exe, {{"trespass.exe", "xyz"}, {"tpassp6.exe", "abcd"}, {"MSVCIRT.DLL", "m"}, {"SMACKW32.DLL", "s"},
+                          {"Processor.dll", "p"}, {"Readme.txt", "r"}, {"data/be.scn", "levelbe"}, {"data/menu/tpassintro.smk", "intro"}});
+    r = InstallFromFolders({other_exe}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kIncompleteInstallation && r.missing == std::vector<std::string>{JPT_GUEST_IMAGE});
+    CHECK(r.detail.find("setup/tpassp6.exe") != std::string::npos && !fs::exists(fresh));
+
+    // Files missing: named, by their installed names.
+    const fs::path partial = dir / "folder-partial";
+    fs::remove_all(partial);
+    WriteTree(partial, {{"data/be.scn", "levelbe"}, {"MSVCIRT.DLL", "m"}});
+    r = InstallFromFolders({partial}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kIncompleteInstallation && r.missing.size() == 5 && !fs::exists(fresh));
+    CHECK(std::find(r.missing.begin(), r.missing.end(), "Readme.txt") != r.missing.end());
+
+    // The disc's folder completes them: the first folder's copies first, the rest from the second.
+    const auto installed_before = Snapshot(installed);
+    r = InstallFromFolders({installed, cd}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && ReadFile(fresh / "versions" / "test" / "data" / "menu" / "tpassintro.smk") == "intro");
+    CHECK(Snapshot(installed) == installed_before && Snapshot(cd) == cd_before);
+    fs::remove_all(fresh);
+    CHECK(InstallFromFolders({other_exe, cd}, fresh, hooks, profiles).status == InstallStatus::kInstalled);
+    CHECK(ReadFile(fresh / "versions" / "test" / JPT_GUEST_IMAGE) == "abc");
+
+    // Folders with no game files, an unknown build, a folder that is not there.
+    WriteFile(dir / "folder-empty" / "notes.txt", "nothing");
+    r = InstallFromFolders({dir / "folder-empty"}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kNotAnInstallation && r.detail.find("no Trespasser game files") != std::string::npos);
+    const fs::path unknown = dir / "folder-unknown";
+    WriteTree(unknown, {{"data/be.scn", "another build"}, {"data/menu/loader.ddf", "loader"}});
+    r = InstallFromFolders({unknown}, fresh, hooks, profiles);
+    CHECK(r.status == InstallStatus::kUnsupportedBuild && !r.diagnostics.empty());
+    bool fingerprint = false;
+    for (const std::string& line : r.diagnostics) fingerprint = fingerprint || line.find(Sha("another build")) != std::string::npos;
+    CHECK(fingerprint);
+    CHECK(InstallFromFolders({dir / "folder-nowhere"}, fresh, hooks, profiles).status == InstallStatus::kNotAnInstallation);
+    CHECK(InstallFromFolders({}, fresh, hooks, profiles).status == InstallStatus::kNotAnInstallation);
+
+    // Cancel during the copy, and an activation that cannot happen: the installed version stays as it was.
+    InstallHooks replace = hooks;
+    replace.replace = true;
+    WriteFile(target / "data" / "be.scn", "levelbe");
+    InstallHooks cancel = replace;
+    cancel.progress = [](uint64_t done, uint64_t) { return done < 4; };
+    r = InstallFromFolders({cd}, root, cancel, profiles);
+    CHECK(r.status == InstallStatus::kCancelled && fs::exists(target / "marker.txt") && !fs::exists(StagingFolder(target)));
+    HANDLE held = CreateFileW((target / JPT_GUEST_IMAGE).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    r = InstallFromFolders({cd}, root, replace, profiles);
+    CloseHandle(held);
+    CHECK(r.status == InstallStatus::kActivateFailed && fs::exists(target / "marker.txt"));
+    CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
+    r = InstallFromFolders({cd}, root, replace, profiles);
+    CHECK(r.status == InstallStatus::kInstalled && !fs::exists(target / "marker.txt") && Snapshot(cd) == cd_before);
+
+    // The version folder itself, or a folder holding it, is never a source.
+    CHECK(InstallFromFolders({target}, root, replace, profiles).status == InstallStatus::kInsideGameFolder);
+    CHECK(InstallFromFolders({root}, root, replace, profiles).status == InstallStatus::kInsideGameFolder);
+
+    // A link inside a folder is not followed (when this account may make one).
+    const fs::path linked = dir / "folder-linked";
+    fs::remove_all(linked);
+    WriteTree(linked, {{"MSVCIRT.DLL", "m"}, {"SMACKW32.DLL", "s"}, {"Processor.dll", "p"}, {"Readme.txt", "r"},
+                       {"data/be.scn", "levelbe"}, {"data/menu/tpassintro.smk", "intro"}});
+    std::error_code link_ec;
+    fs::create_directory_symlink(cd / "setup", linked / "setup", link_ec);
+    if (!link_ec) {
+        m = IdentifyFolders({linked}, profiles, why);
+        CHECK(!m.complete() && m.missing == std::vector<std::string>{JPT_GUEST_IMAGE});
+    }
+}
+
+// The four versions' shapes as folders: the disc copied as it is, the Russian one with its cabinet and text source.
+static void TestFolderShapes(const fs::path& dir);
+
 static void InstallTestTree(const fs::path& dir) {
     for (const InstallFile& f : TestFiles()) WriteFile(dir / f.installed, std::string(static_cast<size_t>(f.size), 'x'));
 }
@@ -1430,6 +1575,74 @@ static void TestImportShapes(const fs::path& dir) {
         }
 }
 
+static void TestFolderShapes(const fs::path& dir) {
+    std::string pe;
+    CHECK(MakeResourcePe(dir / "folder-shape-source.bin", StringBlocks(), pe));
+    std::vector<std::unique_ptr<Fixture>> fixtures;
+    GameProfile all[JPT_GAME_VERSION_COUNT];
+    for (size_t i = 0; i < JPT_GAME_VERSION_COUNT; ++i) {
+        fixtures.push_back(MakeFixture(i, pe, dir / "folder-shape-scratch"));
+        all[i] = fixtures[i]->profile;
+    }
+    for (size_t i = 0; i < JPT_GAME_VERSION_COUNT; ++i) {
+        const Fixture& fx = *fixtures[i];
+        const std::string id = fx.version->id;
+        const fs::path folder = dir / ("folder-shape-" + id), root = dir / ("folder-shape-" + id + "-game"), target = root / "versions" / id;
+        fs::remove_all(folder);
+        fs::remove_all(root);
+        std::string why;
+        WriteTree(folder, fx.Disc(false, false));
+        const FolderMatch m = IdentifyFolders({folder}, all, why);
+        CHECK(m.profile == &all[i] && m.status == InstallStatus::kIncompleteInstallation && !m.missing.empty());
+        CHECK(m.missing.size() == (fx.ru() ? 2u : 1u) && m.missing[0] == JPT_GUEST_IMAGE);
+        CHECK(InstallFromFolders({folder}, root, InstallHooks{}, all).status == InstallStatus::kIncompleteInstallation && !fs::exists(root));
+
+        fs::remove_all(folder);
+        WriteTree(folder, fx.Disc(true, true));
+        const InstallResult r = InstallFromFolders({folder}, root, InstallHooks{}, all);
+        CHECK(r.status == InstallStatus::kInstalled && r.profile == &all[i] && r.files == fx.rows.size());
+        CHECK(ReadFile(target / JPT_GUEST_IMAGE) == fx.guest && CheckGameFolder(target, all[i]).state == GameState::kReady);
+        for (const auto& [name, content] : fx.installed) CHECK(ReadFile(target / name) == content);
+        for (const std::string& name : Tree(target)) CHECK(name.find(".exe") == std::string::npos && name.find("tpassp") == std::string::npos);
+        if (fx.ru()) {
+            std::vector<ReleaseString> strings;
+            CHECK(ReadTable(Bytes(ReadFile(target / "text" / "strings.dat")), strings) && SameStrings(strings, kExpectedStrings));
+        }
+    }
+}
+
+// TRESPASSER_TEST_INSTALL_FOLDERS=<folder>[|<folder>...][;...]: each group of real game folders is identified and planned
+// (read only: nothing is installed or written).
+static void TestRealInstallFolders() {
+    char list[4096];
+    if (!GetEnvironmentVariableA("TRESPASSER_TEST_INSTALL_FOLDERS", list, sizeof list)) {
+        std::printf("real game folders: skipped (TRESPASSER_TEST_INSTALL_FOLDERS not set)\n");
+        return;
+    }
+    std::string rest = list;
+    while (!rest.empty()) {
+        const size_t semi = rest.find(';');
+        std::string group = rest.substr(0, semi);
+        rest = semi == std::string::npos ? "" : rest.substr(semi + 1);
+        std::vector<fs::path> folders;
+        while (!group.empty()) {
+            const size_t bar = group.find('|');
+            folders.push_back(PathFromUtf8(group.substr(0, bar)));
+            group = bar == std::string::npos ? "" : group.substr(bar + 1);
+        }
+        std::string why;
+        const FolderMatch m = IdentifyFolders(folders, KnownProfiles(), why);
+        std::printf("real game folders:");
+        for (const fs::path& folder : folders) std::printf(" [%s]", Utf8(folder).c_str());
+        std::printf("\n  %s: %s%s%s\n", InstallStatusTitle(m.complete() ? InstallStatus::kInstalled : m.status),
+                    m.profile ? m.profile->label() : "no version", why.empty() ? "" : ": ", why.c_str());
+        for (const std::string& name : m.missing)
+            std::printf("  missing %s%s\n", name.c_str(),
+                        std::find(m.modified.begin(), m.modified.end(), name) != m.modified.end() ? " (present with other contents)" : "");
+        for (const std::string& line : m.diagnostics) std::printf("  %s\n", line.c_str());
+    }
+}
+
 // TRESPASSER_TEST_ISO=<image>[;<image>...]: each real disc is identified and planned in full (read only). With
 // TRESPASSER_TEST_INSTALL_ROOT=<folder> each one is also imported there, in order, and imported again.
 static void TestRealDiscs() {
@@ -1485,7 +1698,9 @@ static void TestRealDiscs() {
 
 static std::string ReadSource(const char* relative) {
     std::ifstream in(fs::path(JPT_SOURCE_DIR) / relative, std::ios::binary);
-    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    std::string text(std::istreambuf_iterator<char>(in), {});
+    text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());  // checkouts with CRLF line ends
+    return text;
 }
 
 static bool HasRow(const char* english) {
@@ -1599,7 +1814,7 @@ static void TestUiCoverage() {
     for (const PageId page : kPageOrder) require(PageName(page), "page");
     for (const GameState state : {GameState::kReady, GameState::kMissing, GameState::kInvalid})
         require(GameStateTitle(state), "game state");
-    for (int status = 0; status <= static_cast<int>(InstallStatus::kActivateFailed); ++status)
+    for (int status = 0; status <= static_cast<int>(InstallStatus::kIncompleteInstallation); ++status)
         require(InstallStatusTitle(static_cast<InstallStatus>(status)), "install status");
     for (int outcome = 0; outcome <= static_cast<int>(UserDataOutcome::kExplicit); ++outcome)
         require(UserDataFolderHelp(static_cast<UserDataOutcome>(outcome)), "user data");
@@ -1903,7 +2118,16 @@ static void TestCustomLevelsPageUi() {
     CHECK(page.find("ResolveReadme(user_dir_, package, file)") != std::string::npos && page.find("hooks_.open_file(file)") != std::string::npos);
     for (const char* text : {"BeginPopupModal(kPopup, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize", "level_readme", "readme_text_"})
         CHECK(page.find(text) == std::string::npos && header.find(text) == std::string::npos);
-    CHECK(page.find("const RowActions actions = ActionsOf(scene, !package.readme.empty());") != std::string::npos);
+    CHECK(page.find("const RowActions actions = package.available ? ActionsOf(scene, !package.readme.empty()) : RowActions{};") != std::string::npos);
+    // A linked folder is unlinked, never deleted; one that is gone cannot be played and can be relocated.
+    const std::string row = page.substr(At(page, "void CustomLevelsPage::DrawRow("), At(page, "void CustomLevelsPage::DrawOrigin(") - At(page, "void CustomLevelsPage::DrawRow("));
+    CHECK(At(row, "if (package.linked) {") < At(row, "Tr(\"Unlink\")") && At(row, "Tr(\"Unlink\")") < At(row, "} else if (ImGui::Button(Tr(\"Delete\")"));
+    CHECK(row.find("!package.available && ImGui::Button(Tr(\"Relocate Folder\")") != std::string::npos && row.find("Tr(\"Rescan\")") != std::string::npos);
+    const std::string unlink = page.substr(At(page, "void CustomLevelsPage::DrawUnlink("));
+    CHECK(unlink.find("UnlinkLevelPackage(") != std::string::npos && unlink.find("DeleteLevelPackage(") == std::string::npos);
+    const size_t buttons = At(page, "void CustomLevelsPage::DrawImport(");
+    CHECK(At(page, "Import Folder", buttons) < At(page, "Link External Folder", buttons) &&
+          At(page, "Link External Folder", buttons) < At(page, "DrawNotice(ui);", buttons));
     // The outcome of an import stays below the import buttons until it is closed; Bug Report opens its page on this session's log.
     const size_t import = At(page, "void CustomLevelsPage::DrawImport("), notice = At(page, "void CustomLevelsPage::DrawNotice(");
     const std::string drawn = page.substr(notice, At(page, "void CustomLevelsPage::DrawSort(") - notice);
@@ -2532,8 +2756,10 @@ int main() {
     TestIsoReader(dir);
     TestIdentity(dir);
     TestInstaller(dir);
+    TestFolderInstall(dir);
     TestStringTable(dir);
     TestImportShapes(dir);
+    TestFolderShapes(dir);
     TestVersions(dir);
     TestGameVersionTable();
     TestHostResolution(dir);
@@ -2560,6 +2786,7 @@ int main() {
     TestCheats(dir);
     TestEmbeddedOnly();
     TestRealDiscs();
+    TestRealInstallFolders();
     std::error_code ec;
     fs::remove_all(dir, ec);
     std::printf("launcher_tests: %d checks, %d failures\n", g_checks, g_failures);

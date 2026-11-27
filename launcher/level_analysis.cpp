@@ -73,6 +73,8 @@ bool IsRuntimeType(const std::string& path) {
 
 bool IsTpa(const std::string& head) { return head.size() >= 4 && !std::memcmp(head.data(), "\x50\x01\0\0", 4); }
 
+} // namespace
+
 std::string TrimmedPath(const std::string& text) {
     std::string path = TrimText(text);
     std::replace(path.begin(), path.end(), '\\', '/');
@@ -92,6 +94,8 @@ std::vector<std::string> SplitPlus(const std::string& text) {
     }
     return parts;
 }
+
+namespace {
 
 class Analyzer {
 public:
@@ -280,6 +284,12 @@ private:
         }
         Layers(ini.Find("Paths", "UberModPaths"), home, uber_, "UberModPaths");
         Layers(ini.Find("Paths", "ModPaths"), home, mods_, "ModPaths");
+        if (!source_.active_fm.empty()) {
+            const std::string folder = FolderAt(Join(home, source_.active_fm));
+            if (!folder.empty() && HasScene(folder)) return SetRoot(folder, Origin::kTpModIni, "the fan mission " + source_.active_fm + " of tp_mod.ini, chosen when it was linked");
+            Warn("config_active_fm_missing", source_.active_fm);
+            return false;
+        }
         if (active.empty()) return false;
         for (const std::string& candidate : {Join(Join(home, fm_path), active), Join(home, active)}) {
             const std::string folder = FolderAt(candidate);

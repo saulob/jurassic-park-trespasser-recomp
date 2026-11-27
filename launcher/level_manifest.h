@@ -17,7 +17,7 @@ inline constexpr char kManifestFile[] = "manifest.json";
 
 // Where a package came from; the only part of a manifest that its files do not tell.
 struct PackageOrigin {
-    std::string source_type; // "zip", "7z", "rar", "folder", "migrated"
+    std::string source_type; // "zip", "7z", "rar", "folder", "migrated", "external" (linked, never copied)
     std::string source_name;
     std::string source_hash; // SHA-256 of the installed files: names and contents
     std::vector<std::string> refused; // "name - reason", files of the source that are not installed

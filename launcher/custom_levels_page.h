@@ -1,4 +1,5 @@
-// The launcher's Custom Levels page: import, list, play, open the readme of and remove the packages of user_data/custom_levels.
+// The launcher's Custom Levels page: import or link, list, play, open the readme of, rescan, relocate, unlink and remove the
+// packages of user_data/custom_levels.
 #pragma once
 
 #include <atomic>
@@ -18,8 +19,11 @@
 
 namespace jpt {
 
+// What a chosen path is for.
+enum class LevelPick { kArchive, kFolder, kLink, kRelocate };
+
 struct CustomLevelsHooks {
-    std::function<void(bool folder)> choose; // the chosen path comes back through Picked, now or on a later frame
+    std::function<void(LevelPick)> choose; // the chosen path comes back through Picked, now or on a later frame
     std::function<bool()> game_ready;
     std::function<std::filesystem::path()> data_dir;
     std::function<void(const jpt_custom_level_request_t&)> play;
@@ -37,7 +41,7 @@ public:
     ~CustomLevelsPage();
 
     void Draw(trg::Ui& ui);
-    void Picked(const std::string& path, bool folder);
+    void Picked(const std::string& path, LevelPick pick);
     // Every frame, whichever page is open: picks up a finished import.
     void Poll(trg::Launcher& launcher);
     bool importing() const { return import_.running(); }
@@ -53,6 +57,9 @@ private:
     void Play(const std::string& id, const std::string& scene);
     void OpenReadme(trg::Ui& ui, const LevelPackage& package);
     void DrawDelete(trg::Ui& ui);
+    void DrawUnlink(trg::Ui& ui);
+    void DrawOrigin(trg::Ui& ui, const LevelPackage& package);
+    void RunPending(trg::Ui& ui);
 
     std::filesystem::path user_dir_;
     CustomLevelsHooks hooks_;
@@ -67,6 +74,12 @@ private:
     std::optional<std::pair<std::string, std::string>> pending_play_;
     std::string delete_id_;
     bool open_delete_ = false;
+    std::shared_ptr<LinkResult> link_outcome_;
+    std::string unlink_id_, relocate_id_;
+    bool open_unlink_ = false;
+    // Wait, like a Play, for the listing job, which may be writing the same package's records.
+    std::optional<std::string> pending_rescan_;
+    std::optional<std::pair<std::string, std::string>> pending_relocate_; // package, folder
     std::set<std::string> logged_;
 };
 
