@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import zipfile
 
-from trescom_fetch import archive_kind, safe_name
+from community_level_fetch import archive_kind, safe_name
 
 ARCHIVES = ('.zip', '.7z', '.rar', '.exe')
 MAX_DEPTH = 3

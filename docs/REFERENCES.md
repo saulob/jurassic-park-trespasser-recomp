@@ -84,4 +84,4 @@ this port. NVIDIA HBAO+, FidelityFX CACAO and XeGTAO are not used.
 
 | Reference | Kind | Used for |
 |---|---|---|
-| [TresCom download catalog](https://www.trescom.org/download-category/levels/) | test corpus (local analysis only, not distributed) | which file layouts, formats, settings, ActionTypes and Trespasser CE features community levels use, to test the custom level scanner. No level file is in the repository or the releases ([LEGAL](LEGAL.md#community-levels)). |
+| [TresCom download catalog](https://www.trescom.org/download-category/levels/) | test corpus (local analysis only, not distributed; under provenance review, with excluded packages left out per [PROVENANCE](PROVENANCE.md)) | which file layouts, formats, settings, ActionTypes and Trespasser CE features community levels use, to test the custom level scanner. No level file is in the repository or the releases ([LEGAL](LEGAL.md#community-levels)). |

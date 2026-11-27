@@ -1,6 +1,7 @@
 import contextlib
 import hashlib
 import http.server
+import importlib.util
 import io
 import json
 import os
@@ -12,16 +13,18 @@ import time
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 
-import trescom_catalog as catalog  # noqa: E402
-import trescom_compatibility as compatibility  # noqa: E402
-import trescom_corpus as corpus  # noqa: E402
-import trescom_fetch as fetch  # noqa: E402
-import trescom_report as report  # noqa: E402
-import trescom_site as site  # noqa: E402
+import corpus_exclusions  # noqa: E402
+import community_level_catalog as catalog  # noqa: E402
+import community_level_compatibility as compatibility  # noqa: E402
+import community_level_corpus as corpus  # noqa: E402
+import community_level_fetch as fetch  # noqa: E402
+import community_level_report as report  # noqa: E402
+import community_level_source as community_source  # noqa: E402
 
 
 def make_zip(text='level'):
@@ -147,7 +150,7 @@ class Base(unittest.TestCase):
     def entry(self, *links, title='Some Level', path='/get?id=1', identifier='some-level'):
         entry = {'id': identifier, 'title': title, 'source_page': self.url('/download/' + identifier + '/'), 'download_url': self.url(path), 'download_label': 'Download',
                  'reported_size': '1 KB', 'reported_files': 1, 'description': '', 'links': [], 'forums': [], 'other_links': [], 'detail': {}, 'relations': [], 'download_status': ''}
-        entry['parts'] = [catalog.new_part(site.BASE, 'Download', entry['download_url'])] + [catalog.new_part(role, label, url) for role, label, url in links]
+        entry['parts'] = [catalog.new_part(community_source.BASE, 'Download', entry['download_url'])] + [catalog.new_part(role, label, url) for role, label, url in links]
         return entry
 
     def downloader(self, registry=None, **options):
@@ -271,14 +274,14 @@ class Parsing(Base):
         body = ('<p><a href="http://x.org/a.part01.rar">Split Download - Part 1</a> <a href="http://x.org/fix.zip">Optional Update</a> '
                 '<a href="http://x.org/terrain.rar">Terrain File</a> <a href="https://www.moddb.com/members/a/downloads/b">MODDB Page</a> '
                 '<a href="http://x.org/wide.rar">Widescreen Ratio</a> <a href="https://forum.org/viewtopic.php?t=1">Topic</a> <a href="http://x.org/p.png">pic</a></p>')
-        entry = site.parse_listing(card('T', 'http://x.org/download/t/?wpdmdl=1', 'http://x.org/download/t/', body=body), 'http://x.org/')[0]
-        self.assertEqual([l['role'] for l in entry['links']], [site.SPLIT_PART, site.PATCH, site.COMPLEMENT, site.ALTERNATIVE, site.ALTERNATIVE])
+        entry = community_source.parse_listing(card('T', 'http://x.org/download/t/?wpdmdl=1', 'http://x.org/download/t/', body=body), 'http://x.org/')[0]
+        self.assertEqual([l['role'] for l in entry['links']], [community_source.SPLIT_PART, community_source.PATCH, community_source.COMPLEMENT, community_source.ALTERNATIVE, community_source.ALTERNATIVE])
         self.assertEqual([f['url'] for f in entry['forums']], ['https://forum.org/viewtopic.php?t=1'])
 
     def test_sizes(self):
-        self.assertEqual(site.parse_size('20,82 MB'), int(20.82 * (1 << 20)))
-        self.assertEqual(site.parse_size('0.00 KB'), 0)
-        self.assertEqual(site.parse_size('nothing'), 0)
+        self.assertEqual(community_source.parse_size('20,82 MB'), int(20.82 * (1 << 20)))
+        self.assertEqual(community_source.parse_size('0.00 KB'), 0)
+        self.assertEqual(community_source.parse_size('nothing'), 0)
 
     def test_relations_need_evidence(self):
         def entry(identifier, title, text=''):
@@ -360,7 +363,7 @@ class Entries(Base):
 
     def test_full_package_is_preferred_to_its_parts(self):
         self.site.serve('/get?id=1', make_zip(), 'level.zip')
-        entry = self.entry((site.SPLIT_PART, 'Part 1', self.url('/p1.rar')), (site.ALTERNATIVE, 'Mirror', self.url('/m.zip')))
+        entry = self.entry((community_source.SPLIT_PART, 'Part 1', self.url('/p1.rar')), (community_source.ALTERNATIVE, 'Mirror', self.url('/m.zip')))
         self.downloader().entry(entry)
         self.assertEqual([p['status'] for p in entry['parts']], [catalog.DOWNLOADED, catalog.NOT_NEEDED, catalog.NOT_NEEDED])
         self.assertNotIn('/p1.rar', self.site.hits)
@@ -368,23 +371,23 @@ class Entries(Base):
     def test_parts_replace_a_lost_full_package(self):
         self.site.serve('/p1.zip', make_zip('one'))
         self.site.serve('/p2.zip', make_zip('two'))
-        entry = self.entry((site.SPLIT_PART, 'Part 1', self.url('/p1.zip')), (site.SPLIT_PART, 'Part 2', self.url('/p2.zip')))
+        entry = self.entry((community_source.SPLIT_PART, 'Part 1', self.url('/p1.zip')), (community_source.SPLIT_PART, 'Part 2', self.url('/p2.zip')))
         self.downloader().entry(entry)
         self.assertEqual(entry['download_status'], catalog.DOWNLOADED)
-        broken = self.entry((site.SPLIT_PART, 'Part 1', self.url('/p1.zip')), (site.SPLIT_PART, 'Part 2', self.url('/lost.zip')), identifier='broken')
+        broken = self.entry((community_source.SPLIT_PART, 'Part 1', self.url('/p1.zip')), (community_source.SPLIT_PART, 'Part 2', self.url('/lost.zip')), identifier='broken')
         self.downloader().entry(broken)
         self.assertEqual(broken['download_status'], catalog.PARTIAL)
 
     def test_mirror_replaces_a_lost_download(self):
         self.site.serve('/m.zip', make_zip())
-        entry = self.entry((site.ALTERNATIVE, 'Mirror', self.url('/m.zip')))
+        entry = self.entry((community_source.ALTERNATIVE, 'Mirror', self.url('/m.zip')))
         self.downloader().entry(entry)
         self.assertEqual(entry['download_status'], catalog.DOWNLOADED)
 
     def test_patch_is_kept_apart_and_related(self):
         self.site.serve('/get?id=1', make_zip('base'), 'level.zip')
         self.site.serve('/fix.zip', make_zip('fix'))
-        entry = self.entry((site.PATCH, 'Update', self.url('/fix.zip')))
+        entry = self.entry((community_source.PATCH, 'Update', self.url('/fix.zip')))
         self.downloader().entry(entry)
         self.assertEqual([p['relation'] for p in entry['parts']], ['BASE', 'PATCH_FOR'])
         self.assertEqual(len({p['file'] for p in entry['parts']}), 2)
@@ -392,7 +395,7 @@ class Entries(Base):
 
     def test_lost_patch_is_partial(self):
         self.site.serve('/get?id=1', make_zip('base'), 'level.zip')
-        entry = self.entry((site.PATCH, 'Update', self.url('/lost.zip')))
+        entry = self.entry((community_source.PATCH, 'Update', self.url('/lost.zip')))
         self.downloader().entry(entry)
         self.assertEqual(entry['download_status'], catalog.PARTIAL)
 
@@ -445,8 +448,8 @@ class Entries(Base):
         self.assertEqual(entry['parts'][0]['resolved_url'], 'https://example.invalid/page')
 
     def test_plain_external_link_is_followed(self):
-        self.assertEqual(site.mediafire_direct('<a href="https://download1.mediafire.com/abc/x/level.zip" id="downloadButton">'), 'https://download1.mediafire.com/abc/x/level.zip')
-        self.assertEqual(site.moddb_start('<a href="/downloads/start/7">Download</a>', 'https://www.moddb.com/x'), 'https://www.moddb.com/downloads/start/7')
+        self.assertEqual(community_source.mediafire_direct('<a href="https://download1.mediafire.com/abc/x/level.zip" id="downloadButton">'), 'https://download1.mediafire.com/abc/x/level.zip')
+        self.assertEqual(community_source.moddb_start('<a href="/downloads/start/7">Download</a>', 'https://www.moddb.com/x'), 'https://www.moddb.com/downloads/start/7')
 
 
 class Report(Base):
@@ -468,6 +471,15 @@ class Report(Base):
         path = os.path.join(self.root, 'catalog.json')
         catalog.write_json(path, items, 'http://x/')
         self.assertEqual(len(json.loads(Path(path).read_text('utf-8'))['entries']), 2)
+
+
+class PythonBaseline(unittest.TestCase):
+    """The tools run on the Linux build machines' Python 3.8."""
+
+    def test_suffix_removal_matches_removesuffix(self):
+        for text, suffix in (('a/file', '/file'), ('a/file/', '/file'), ('/file', '/file'), ('a', ''), ('', '/file')):
+            expected = text[:-len(suffix)] if suffix and text.endswith(suffix) else text
+            self.assertEqual(report.without_suffix(text, suffix), expected)
 
 
 class Compatibility(Base):
@@ -546,6 +558,179 @@ class Compatibility(Base):
         for part in ('## Summary', '## Progress', '## Ready', '## Rejected: missing files', '## Rejected: unsupported features', '## Not analyzed', '## Generic blockers', 'READY: 1', 'ActionType 99', 'Gain: +1',
                      '#### CE_SKY', f']({entry["source_page"]})'):
             self.assertIn(part, text)
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+class Exclusions(Base):
+    """The development corpus's local exclusions, over made-up catalogs and packages in a temporary folder."""
+
+    def write_exclusions(self, ids=(), hashes=()):
+        path = os.path.join(self.root, corpus_exclusions.FILE_NAME)
+        Path(path).write_text(json.dumps({'ids': list(ids), 'sha256': list(hashes)}))
+        return path
+
+    def item(self, identifier, files=(), relations=(), dependencies=()):
+        parts = [{'role': 'BASE', 'status': catalog.DOWNLOADED, 'file': f'downloads/{identifier}/{name}', 'sha256': digest, 'url': f'http://x/{identifier}/{name}'}
+                 for name, digest in files] or [{'role': 'BASE', 'status': catalog.CATALOG_ONLY, 'file': '', 'sha256': '', 'url': f'http://x/{identifier}'}]
+        return {'id': identifier, 'title': identifier.title(), 'source_page': f'http://x/{identifier}/', 'download_status': catalog.DOWNLOADED, 'parts': parts,
+                'relations': [{'type': t, 'id': i} for t, i in relations], 'dependencies': [{'type': 'REQUIRES', 'id': i} for i in dependencies],
+                'sha256': {p['file']: p['sha256'] for p in parts if p['file']}}
+
+    def test_by_id_and_by_hash(self):
+        rules = corpus_exclusions.Exclusions({'gone'}, {sha(b'bad')})
+        entries = [self.item('gone'), self.item('kept', [('a.zip', sha(b'good'))]), self.item('same-bytes', [('b.zip', sha(b'bad'))])]
+        self.assertEqual(rules.resolve(entries), {'gone', 'same-bytes'})
+
+    def test_duplicates_patches_and_parts_follow(self):
+        rules = corpus_exclusions.Exclusions({'gone'})
+        entries = [self.item('gone', [('a.zip', sha(b'a'))]), self.item('copy', [('a-copy.zip', sha(b'a'))]), self.item('fix', [('f.zip', sha(b'f'))], [('PATCH_FOR', 'gone')]),
+                   self.item('part-two', [('p.zip', sha(b'p'))], [('PART_OF', 'gone')]), self.item('needs-it', [('n.zip', sha(b'n'))], dependencies=['gone']),
+                   self.item('linked', [('l.zip', sha(b'l'))], [('RELATED_TO', 'gone')])]
+        self.assertEqual(rules.resolve(entries), {'gone', 'copy', 'fix', 'part-two'})
+        self.assertIn(sha(b'a'), rules.hashes)
+
+    def test_a_refreshed_catalog_keeps_the_exclusion(self):
+        rules = corpus_exclusions.Exclusions(hashes={sha(b'old')})
+        fresh = self.entry(identifier='renamed-entry')
+        registry = {fresh['parts'][0]['url']: {'sha256': sha(b'new'), 'versions': [{'file': 'x', 'size': 1, 'sha256': sha(b'old')}]}}
+        self.assertEqual(rules.resolve([fresh], registry), {'renamed-entry'})
+
+    def test_file_rules(self):
+        self.assertFalse(corpus_exclusions.load(os.path.join(self.root, 'none.json')))
+        rules = corpus_exclusions.load(self.write_exclusions(['an-id'], [sha(b'x').upper()]))
+        self.assertEqual((rules.ids, rules.hashes), ({'an-id'}, {sha(b'x')}))
+        for document in ('[]', '{"ids": "an-id"}', '{"ids": ["../x"]}', '{"sha256": ["123"]}', '{"names": []}', 'not json'):
+            Path(self.root, corpus_exclusions.FILE_NAME).write_text(document)
+            with self.assertRaises(ValueError):
+                corpus_exclusions.load(os.path.join(self.root, corpus_exclusions.FILE_NAME))
+        self.write_exclusions(['an-id'])
+        with mock.patch.object(corpus_exclusions, 'REPOSITORY', os.path.realpath(self.root)), self.assertRaises(ValueError):
+            corpus_exclusions.load(os.path.join(self.root, corpus_exclusions.FILE_NAME))
+
+    def serve_category(self):
+        cards = card('One', self.url('/download/one/?wpdmdl=1'), self.url('/download/one/')) + card('Two', self.url('/download/two/?wpdmdl=2'), self.url('/download/two/'))
+        self.site.serve('/cat/', cards.encode(), kind='text/html')
+        for name in ('one', 'two'):
+            self.site.serve(f'/download/{name}/', b'<html><p>Page</p></html>', kind='text/html')
+            self.site.serve(f'/download/{name}/?wpdmdl={1 if name == "one" else 2}', make_zip(name), f'{name}.zip', 'application/zip')
+
+    def download(self, *extra):
+        spec = importlib.util.spec_from_file_location('download_community_levels', ROOT / 'tools' / 'download-community-levels.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = module.main(['--output-root', self.root, '--source', self.url('/cat/'), '--delay', '0', '--retries', '1', '--timeout', '5', *extra])
+        if code:
+            return code, {}
+        document = json.loads(Path(self.root, corpus_exclusions.CATALOG_NAME).read_text('utf-8'))
+        return code, {e['id']: e for e in document['entries']}
+
+    def test_an_excluded_entry_is_never_fetched(self):
+        self.serve_category()
+        self.write_exclusions(['one'])
+        code, items = self.download()
+        self.assertEqual(code, 0)
+        self.assertFalse([path for path in self.site.hits if path.startswith('/download/one/')])
+        self.assertEqual((items['one']['download_status'], items['one']['description'], items['one']['local_files']), (corpus_exclusions.EXCLUDED, '', []))
+        self.assertEqual(items['two']['download_status'], catalog.DOWNLOADED)
+        self.assertTrue(os.path.exists(os.path.join(self.root, 'downloads', 'two', 'two.zip')))
+        self.assertFalse(os.path.exists(os.path.join(self.root, 'downloads', 'one')))
+        code, items = self.download('--refresh-catalog')
+        self.assertEqual(items['one']['download_status'], corpus_exclusions.EXCLUDED)
+        self.assertFalse([path for path in self.site.hits if path.startswith('/download/one/')])
+
+    def test_a_download_of_an_excluded_hash_is_dropped(self):
+        self.serve_category()
+        self.write_exclusions(hashes=[sha(make_zip('two'))])
+        code, items = self.download()
+        self.assertEqual((code, items['two']['download_status'], items['two']['local_files']), (0, corpus_exclusions.EXCLUDED, []))
+        self.assertFalse(os.path.exists(os.path.join(self.root, 'downloads', 'two')))
+        self.assertEqual(items['one']['download_status'], catalog.DOWNLOADED)
+        asked = self.site.hits['/download/two/?wpdmdl=2']
+        code, items = self.download('--retry-failed')
+        self.assertEqual((items['two']['download_status'], self.site.hits['/download/two/?wpdmdl=2']), (corpus_exclusions.EXCLUDED, asked))
+
+    def test_an_untrusted_exclusions_file_stops_the_download(self):
+        self.serve_category()
+        Path(self.root, corpus_exclusions.FILE_NAME).write_text('{"ids": [1]}')
+        self.assertEqual(self.download()[0], 2)
+        self.assertEqual(self.site.hits, {})
+
+    def corpus(self, catalog_name=corpus_exclusions.CATALOG_NAME):
+        files = {'allowed/a.zip': b'allowed', 'allowed/b.rar': b'rar', 'gone/c.zip': b'secret', 'gone/d.rar': b'secret rar', 'copy/c2.zip': b'secret',
+                 'fix/f.zip': b'patch', 'orphan/o.zip': b'unknown'}
+        for name, data in files.items():
+            Path(self.root, 'downloads', *name.split('/')).parent.mkdir(parents=True, exist_ok=True)
+            Path(self.root, 'downloads', *name.split('/')).write_bytes(data)
+        items = [self.item('allowed', [('a.zip', sha(b'allowed')), ('b.rar', sha(b'rar'))], dependencies=['gone']), self.item('gone', [('c.zip', sha(b'secret'))]),
+                 self.item('copy'), self.item('fix', [('f.zip', sha(b'patch'))], [('PATCH_FOR', 'gone')])]
+        catalog.write_json(os.path.join(self.root, catalog_name), items, 'http://x/')
+
+    def test_the_batch_analysis_reads_only_what_is_allowed(self):
+        self.corpus()
+        scanned, extracted = [], []
+
+        def scanner(exe, folder, data):
+            scanned.append(os.path.relpath(folder, self.root).replace(os.sep, '/'))
+            return [{'path': name, 'sha256': sha(Path(folder, name).read_bytes()), 'duplicate_of': '', 'unread': '', 'import': '',
+                     'levels': [{'scn': 'l.scn', 'class': 'READY', 'scene_version': 22, 'issues': []}]} for name in compatibility.files_below(folder) if name.endswith('.zip')]
+
+        def extract(path, folder):
+            extracted.append(os.path.relpath(path, self.root).replace(os.sep, '/'))
+            return 'not read in this test'
+
+        work = os.path.join(self.root, 'work')
+        os.makedirs(work)
+        with mock.patch.object(corpus, 'extract', extract):
+            entries, packages, notes, excluded = compatibility.analyse(self.root, 'scan.exe', 'data', work, corpus_exclusions.Exclusions({'gone'}), scanner)
+        self.assertEqual(scanned, ['downloads/allowed'])
+        self.assertEqual(extracted, ['downloads/allowed/b.rar'])
+        self.assertEqual(([e['id'] for e in entries], excluded), (['allowed'], 3))
+        self.assertEqual([p['path'] for p in packages], ['allowed/a.zip'])
+        self.assertIn('orphan: no catalog entry owns it, not read', notes)
+        self.assertIn('allowed: it needs an excluded entry, not put together', notes)
+
+    def test_without_exclusions_every_entry_is_read(self):
+        self.corpus()
+        scanned = []
+        work = os.path.join(self.root, 'work')
+        os.makedirs(work)
+        with mock.patch.object(corpus, 'extract', lambda path, folder: 'not read in this test'):
+            entries, packages, _, excluded = compatibility.analyse(self.root, 'scan.exe', 'data', work, corpus_exclusions.Exclusions(),
+                                                                   lambda exe, folder, data: scanned.append(os.path.basename(folder)) or [])
+        self.assertEqual((sorted(scanned), excluded), (['allowed', 'copy', 'fix', 'gone'], 0))
+
+    def test_duplicates_across_entries(self):
+        packages = [{'path': 'b/x.zip', 'sha256': 'h', 'duplicate_of': ''}, {'path': 'a/x.zip', 'sha256': 'h', 'duplicate_of': ''}, {'path': 'c/y.zip', 'sha256': 'k', 'duplicate_of': ''}]
+        compatibility.mark_duplicates(packages)
+        self.assertEqual([p['duplicate_of'] for p in packages], ['a/x.zip', '', ''])
+
+    def test_a_corpus_with_the_legacy_catalog_name_keeps_its_exclusions(self):
+        self.corpus(corpus_exclusions.LEGACY_CATALOG_NAMES[0])
+        self.assertEqual(corpus_exclusions.catalog_path(self.root), os.path.join(self.root, corpus_exclusions.LEGACY_CATALOG_NAMES[0]))
+        self.assertEqual(corpus_exclusions.corpus_root_of(os.path.join(self.root, 'downloads', 'gone')), os.path.realpath(self.root))
+        scanned = []
+        work = os.path.join(self.root, 'work')
+        os.makedirs(work)
+        with mock.patch.object(corpus, 'extract', lambda path, folder: 'not read in this test'):
+            entries, _, _, excluded = compatibility.analyse(self.root, 'scan.exe', 'data', work, corpus_exclusions.Exclusions({'gone'}),
+                                                            lambda exe, folder, data: scanned.append(os.path.basename(folder)) or [])
+        self.assertEqual((scanned, [e['id'] for e in entries], excluded), (['allowed'], ['allowed'], 3))
+        catalog.write_json(os.path.join(self.root, corpus_exclusions.CATALOG_NAME), [], 'http://x/')
+        self.assertEqual(corpus_exclusions.catalog_path(self.root), os.path.join(self.root, corpus_exclusions.CATALOG_NAME))
+
+    def test_corpus_folders_are_refused_by_the_generic_scanners(self):
+        self.corpus()
+        inside = os.path.join(self.root, 'downloads', 'allowed')
+        self.assertEqual(corpus_exclusions.corpus_root_of(inside), os.path.realpath(self.root))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(corpus_exclusions.main(['--check-path', inside]), 3)
+        outside = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, outside)
+        self.assertEqual(corpus_exclusions.main(['--check-path', outside]), 0)
 
 
 if __name__ == '__main__':

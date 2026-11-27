@@ -232,7 +232,7 @@ Add-Python $s @(
     , @('test_layout.py', 'host structure offsets per profile; an unknown access fails')
     , @('test_lifts.py', 'the lifts as project artifacts, a clean checkout without any original executable')
     , @('test_lift_hooks.py', 'lift hook list and placement')
-    , @('test_trescom_levels.py', 'the custom level catalog tool against a local server: downloads, resume, retries, refusals, relations, reports')
+    , @('test_community_levels.py', 'the community level catalog tool against a local server: downloads, resume, retries, refusals, relations, reports; the development corpus exclusions by id and hash (duplicates, patches, parts, catalog refresh) before any download, extraction or batch scan, and allowed entries unchanged')
     , @('test_lift_staging.py', 'lift staging, publishing changed files only, cleanup')
     , @('test_stable_entries.py', 'stable-entry renaming and check')
     , @('test_guest_module_lift.py', 'lifted guest DLL (MSVCIRT): config and manifest facts, sorted prefixed table, every jump target a lifted entry, no symbol collision, every code export and every code address held in its data lifted, no TLS, no forwarders')
@@ -526,15 +526,16 @@ $toolRole = @{
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
     'tools\custom_level_scan.cpp' = 'developer tool target (custom_level_scan): the headless report of a folder of custom level packages, not a test'
     'tools\analyze-custom-level.ps1' = 'maintainer: prints what the import makes of one package; never run by the gate'
-    'tools\custom-level-compatibility.ps1' = 'maintainer: runs custom_level_scan over a folder of packages; never run by the gate'
-    'tools\download-trescom-levels.ps1' = 'maintainer: starts tools\download-trescom-levels.py (network); never run by the gate'
-    'tools\download-trescom-levels.py' = 'maintainer: catalogs and downloads a TresCom category (network); its modules are tested by tests\test_trescom_levels.py against a local server'
-    'tools\trescom_site.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_fetch.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_catalog.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_report.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_corpus.py' = 'library of trescom_compatibility.py: tested by tests\test_trescom_levels.py'
-    'tools\trescom_compatibility.py' = 'maintainer: the compatibility report of a downloaded corpus through custom_level_scan; its rules are tested by tests\test_trescom_levels.py'
+    'tools\custom-level-compatibility.ps1' = 'maintainer: runs custom_level_scan over a folder of packages, never a development corpus; never run by the gate'
+    'tools\download-community-levels.ps1' = 'maintainer: starts tools\download-community-levels.py (network); never run by the gate'
+    'tools\download-community-levels.py' = 'maintainer: catalogs and downloads a community level category (network); its modules are tested by tests\test_community_levels.py against a local server'
+    'tools\community_level_source.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_fetch.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_catalog.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_report.py' = 'library of download-community-levels.py: tested by tests\test_community_levels.py'
+    'tools\community_level_corpus.py' = 'library of community_level_compatibility.py: tested by tests\test_community_levels.py'
+    'tools\corpus_exclusions.py' = 'library of the corpus downloader, community_level_compatibility.py and the custom level scan wrappers: the local exclusions of the development corpus; tested by tests\test_community_levels.py'
+    'tools\community_level_compatibility.py' = 'maintainer: the compatibility report of a downloaded corpus through custom_level_scan; its rules are tested by tests\test_community_levels.py'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
     'tools\linux_lifted_link_report.py' = 'maintainer: what the lifted guest needs from a Linux host, run by tools/test-linux.sh'
     'tools\import-appimage-runtime.sh' = 'packaging helper: copies the pinned AppImage runtime from a WSL packaging cache; run by tools\package-release.ps1 in WSL, checked by tests\test_linux_packaging.py, never by this gate'

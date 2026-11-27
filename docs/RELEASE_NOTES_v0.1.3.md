@@ -79,7 +79,7 @@ The scanner checks that the files a level needs are present and that the feature
 
 The same rules apply to every level; no level or author has code of its own in the port.
 
-When v0.1.3 was prepared, the scanner was run over the TresCom download catalog and classified 253 of its 262 levels as READY. That figure is a historical scanner result from before this documentation revision, not a play-through count, and it has not been re-run since.
+The scanner was developed and checked against a local corpus of community levels. That corpus is under a provenance review ([LEGAL](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/LEGAL.md#community-levels)), so these notes no longer quote its counts as a measure of compatibility.
 
 ## Trespasser CE and ATX Compatibility
 
@@ -183,9 +183,10 @@ Present in the port but with limits:
 - **Replacement menus, menu sounds and opening or ending videos** of a package are kept but not used: the launcher starts each level directly.
 - **ATX options that are off by default** (its HUD pictures, randomizer, night mode, rain and menu texts) are not used.
 
-### Why some levels were not READY
+### Common reasons a level is not READY
 
-In the scanner run made when v0.1.3 was prepared, nine of the 262 levels of the TresCom download catalog were not READY. Six were missing files in their downloads or were incomplete packages (a world, a terrain or a texture set absent, or a patch without its base level). Three needed features listed above: extended AI (`EnableAiActivityEx`), `EndGameDDF`, and `texhw` textures on bump-mapped meshes.
+- Files missing from the download or an incomplete package: a world, a terrain or a texture set absent, or a patch without its base level.
+- One of the features listed above, for example extended AI (`EnableAiActivityEx`), `EndGameDDF` or `texhw` textures on bump-mapped meshes.
 
 ### Other limitations
 
@@ -254,4 +255,6 @@ The project does not distribute commercial game files or community levels. You m
 
 These notes were revised after publication to describe custom level support more precisely: what READY means, which Trespasser CE features are implemented and which are not, how script support has been checked, and how to import a level you already have on disk. The release files, their checksums and the VirusTotal reports above are unchanged.
 
-This project is developed with AI coding assistance, and custom level compatibility was checked with an automated scanner run over community levels on the maintainer's machine. Some of those files were processed in AI-assisted sessions, including parts of the scripts of one community level whose author does not permit the use of their work with generative AI tools. The script tests modelled on that level's behaviour have been replaced in the repository by independent tests written from Trespasser CE's documentation; the earlier tests remain in the Git history and the v0.1.3 source archives. No community level file or name is in the release downloads. Details are in [LEGAL](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/LEGAL.md#community-levels).
+This project is developed with AI coding assistance, and custom level compatibility was checked with an automated scanner run over community levels on the maintainer's machine. Some of those files were processed in AI-assisted sessions, including parts of the scripts of one community level whose author does not permit the use of their work with generative AI tools. The script tests modelled on that level's behaviour have been replaced in the repository by independent tests written from Trespasser CE's documentation; the earlier tests remain in the Git history and the v0.1.3 source archives. No community level file is in the release downloads.
+
+The project's [provenance policy](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/PROVENANCE.md) was revised: material whose author does not permit AI use, and material whose authorship is uncertain, is kept out of AI-assisted work, and the tools of the local development corpus skip excluded packages before downloading, extracting or scanning them. These changes cannot withdraw what is already in the Git history, in published source archives or in data already processed by external services. Details are in [LEGAL](https://github.com/saulob/jurassic-park-trespasser-recomp/blob/main/docs/LEGAL.md#community-levels).

@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   The compatibility of every custom level package below a folder: a summary here and CUSTOM_LEVEL_COMPATIBILITY.md in that folder.
-  Nothing is installed, no window opens and the packages are only read.
+  Nothing is installed, no window opens and the packages are only read. A folder of the development corpus is refused:
+  tools\community_level_compatibility.py analyses it with its exclusions (docs/PROVENANCE.md).
 
 .PARAMETER Path
   The folder of packages (ZIP, 7z, RAR, folders).
@@ -28,6 +29,8 @@ param(
 )
 
 $root = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+& py -3 -I (Join-Path $PSScriptRoot 'corpus_exclusions.py') --check-path $root
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if (-not $Data) { $Data = Join-Path (Split-Path -Parent $PSScriptRoot) 'game\versions\en-116\data' }
 $arguments = @($root, '--data', $Data, '--md', (Join-Path $root 'CUSTOM_LEVEL_COMPATIBILITY.md'))
 if ($Baseline) { $arguments += @('--baseline', $Baseline) }

@@ -26,6 +26,31 @@ work is done by hand or with AI coding assistance.
    level as working because the scanner classified it as READY.
 8. **When in doubt, stop.** If an analysis would need the original material of an author who has not allowed AI use, it
    stops at that point and is left to a human review outside AI tools.
+9. **Uncertain authorship counts as excluded.** Co-authored packages of such an author, and packages whose authorship
+   cannot be confirmed without opening them, stay out of AI-assisted work until a person has reviewed them.
+
+## Development corpus exclusions
+
+The corpus tools read a local exclusions file that is never versioned: `corpus_exclusions.json` in the corpus folder, or the
+file named by `JPT_CORPUS_EXCLUSIONS` or `--exclusions`. A file inside the repository is refused.
+
+```json
+{ "ids": ["catalog-id"], "sha256": ["64 hexadecimal digits"] }
+```
+
+- `tools/download-community-levels.py` never fetches the page or the files of an excluded entry, drops a download whose
+  hash is excluded before anything reads it, and keeps the entry excluded after a catalog refresh.
+- `tools/community_level_compatibility.py` never extracts, scans or combines an excluded package. A download folder that no
+  catalog entry owns is not read.
+- Exclusion spreads to patches and parts of an excluded entry and to every package with the same content.
+- `tools/analyze-custom-level.ps1` and `tools/custom-level-compatibility.ps1` refuse a folder of the development corpus.
+- A file that cannot be read or that has unknown keys stops the tools; nothing is downloaded or scanned.
+- The tools write `COMMUNITY_LEVELS_CATALOG.json` and `.md` and `COMMUNITY_LEVEL_COMPATIBILITY.md`. A corpus catalogued under the
+  earlier name `TRESCOM_LEVELS_CATALOG.json` is still read, with the same exclusions; nothing in it is renamed or rewritten.
+- Nothing names an author or a level in the repository. The player's Custom Levels import is not affected.
+
+An entry that is not excluded is still not permitted for AI use: rules 1 and 2 apply to it. Without clear permission only
+conventional local checks run, and only their metadata reaches an AI session.
 
 ## When a concern is raised
 

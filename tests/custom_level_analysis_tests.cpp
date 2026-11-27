@@ -218,35 +218,36 @@ static std::string UseOf(const PackageAnalysis& a, const char* key) {
     return "-";
 }
 
-static const char kCausewayIni[] =
-    "[General]\r\nStartLevel=Causeway~HD.scn\r\nNewGameMovie=0\r\nWinMovie=0\r\nStreamTPA+=CWStream.tpa\r\nEffectsTPA+=CWEffects.tpa\r\n"
-    "AmbientTPA+=CWAmbient.tpa\r\n\r\nDisableSimpleLevelRestart=True\r\nEnableDualStow=True\r\nEnableQuickSaveKey=True\r\n\r\n[DisplayDX9]\r\nUseDX9=True\r\n"
-    "PixelShaderBump=True\r\nScaleModeMenus=3\r\nEnhancedSky=True\r\n\r\n[Causeway~HD.scn]\r\nLoadingImage=menu/li_causewayHD.tga\r\n\r\n[Render]\r\n"
-    "32bitHardwareTextures=True\r\nForceNoBlendTrans=False\r\nForceMaxObjectDetail=False\r\n";
+// A synthetic fan mission: one setting of each use the analysis knows.
+static const char kSampleIni[] =
+    "[General]\r\nStartLevel=Sample~HD.scn\r\nWinMovie=0\r\nNewGameMovie=0\r\nEnableDualStow=True\r\nEnableQuickSaveKey=True\r\nDisableSimpleLevelRestart=True\r\n"
+    "StreamTPA+=SMStream.tpa\r\nEffectsTPA+=SMEffects.tpa\r\nAmbientTPA+=SMAmbient.tpa\r\n\r\n[Sample~HD.scn]\r\nLoadingImage=menu/li_sampleHD.tga\r\n\r\n"
+    "[DisplayDX9]\r\nUseDX9=True\r\nEnhancedSky=True\r\nPixelShaderBump=True\r\nScaleModeMenus=3\r\n\r\n"
+    "[Render]\r\nForceMaxObjectDetail=False\r\nForceNoBlendTrans=False\r\n32bitHardwareTextures=True\r\n";
 
-static Files Causeway() {
-    const std::string mod = "Causeway~HD/";
-    return Level(mod + "data/", "Causeway~HD") +
-           Files{{mod + "fm.ini", kCausewayIni}, {mod + "CWStream.tpa", Tpa({{1, "stream"}})}, {mod + "CWEffects.tpa", Tpa({{2, "effects"}})},
-                 {mod + "CWAmbient.tpa", Tpa({{3, "ambient"}})}, {mod + "data/anim/anim_hsc.asa", "hsc"}, {mod + "data/Causeway~HD.sky", "sky"},
-                 {mod + "data/menu/li_causewayHD.tga", Tga(64, 36, 24, true)}, {mod + "data/texhw/map/a.dds", "dds"},
-                 {"Causeway~HD_readme.txt", "2. Installation\n\n    Recommended CE packages to play Causeway~HD in are:\n\t*Trespasser CD installation with CE patch\n\n"
-                  "   i. Place the \"Causeway~HD\" folder in the \"mods\" folder of the Tres CE directory\n"}};
+static Files SampleMission() {
+    const std::string mod = "Sample~HD/";
+    return Level(mod + "data/", "Sample~HD") +
+           Files{{mod + "fm.ini", kSampleIni}, {mod + "SMStream.tpa", Tpa({{1, "stream"}})}, {mod + "SMEffects.tpa", Tpa({{2, "effects"}})},
+                 {mod + "SMAmbient.tpa", Tpa({{3, "ambient"}})}, {mod + "data/anim/anim_hsc.asa", "hsc"}, {mod + "data/Sample~HD.sky", "sky"},
+                 {mod + "data/menu/li_sampleHD.tga", Tga(64, 36, 24, true)}, {mod + "data/texhw/map/a.dds", "dds"},
+                 {"Sample~HD_readme.txt", "Setup\n\n  Trespasser CE is recommended for this sample.\n\n"
+                  "  Place the \"Sample~HD\" folder in the \"mods\" folder of your Trespasser CE directory\n"}};
 }
 
-static std::string ReadyCausewayIni() {
-    std::string ini = kCausewayIni;
+static std::string ReadySampleIni() {
+    std::string ini = kSampleIni;
     const std::string feature = "DisableSimpleLevelRestart=True\r\n";
     ini.erase(ini.find(feature), feature.size());
     return ini;
 }
 
-// Causeway without what this port does not have (its sky, its texhw pictures, a CE setting): what an import installs.
-static Files ReadyCauseway() {
+// The sample without what this port does not have (its sky, its texhw pictures, a CE setting): what an import installs.
+static Files ReadySampleMission() {
     Files files;
-    for (auto& [path, bytes] : Causeway()) {
+    for (auto& [path, bytes] : SampleMission()) {
         if (path.find("/texhw/") != std::string::npos || PathType(path) == ".sky") continue;
-        files.push_back({path, path == "Causeway~HD/fm.ini" ? ReadyCausewayIni() : bytes});
+        files.push_back({path, path == "Sample~HD/fm.ini" ? ReadySampleIni() : bytes});
     }
     return files;
 }
@@ -283,37 +284,37 @@ static void TestAtxFiles() {
 }
 
 static void TestLooseLevels() {
-    const PackageAnalysis complex = Analyze(
-        Level("", "complex") + Files{{"Rain_storm.asa", "rain"}, {"complex readme.txt",
-                                      "Extract all the files into the data directory of the tres cd folder: C:\\tres cd\\data.\r\n"
-                                      "Move \"rain_storm.asa\" into the \"anim\" directory: C:\\tres cd\\data\\anim.\r\n"}});
-    CHECK(complex.layout == "loose" && complex.root.empty() && complex.start_level == "complex.scn" && complex.warnings.empty());
-    CHECK(RuntimeSource(complex, "data/anim/Rain_storm.asa") == "Rain_storm.asa" && RuntimeSource(complex, "data/Rain_storm.asa") == "-");
-    CHECK(Acted(complex, "move", "Rain_storm.asa", Origin::kReadme) && Acted(complex, "keep", "", Origin::kReadme));
-    CHECK(complex.need("Trespasser CE") == Need::kNone && complex.need("ATX") == Need::kNone && complex.directories == std::vector<std::string>{"anim"});
+    const PackageAnalysis plaza = Analyze(
+        Level("", "plaza") + Files{{"Wind_gust.asa", "rain"}, {"plaza readme.txt",
+                                      "Extract all the files into the data directory of your game folder: C:\\game\\data.\r\n"
+                                      "Move \"wind_gust.asa\" into the \"anim\" directory: C:\\game\\data\\anim.\r\n"}});
+    CHECK(plaza.layout == "loose" && plaza.root.empty() && plaza.start_level == "plaza.scn" && plaza.warnings.empty());
+    CHECK(RuntimeSource(plaza, "data/anim/Wind_gust.asa") == "Wind_gust.asa" && RuntimeSource(plaza, "data/Wind_gust.asa") == "-");
+    CHECK(Acted(plaza, "move", "Wind_gust.asa", Origin::kReadme) && Acted(plaza, "keep", "", Origin::kReadme));
+    CHECK(plaza.need("Trespasser CE") == Need::kNone && plaza.need("ATX") == Need::kNone && plaza.directories == std::vector<std::string>{"anim"});
 
-    const PackageAnalysis unread = Analyze(Level("", "complex") + Files{{"Rain_storm.asa", "rain"}});
-    CHECK(RuntimeSource(unread, "data/anim/Rain_storm.asa") == "Rain_storm.asa" && Acted(unread, "move", "Rain_storm.asa", Origin::kHeuristic));
+    const PackageAnalysis unread = Analyze(Level("", "plaza") + Files{{"Wind_gust.asa", "rain"}});
+    CHECK(RuntimeSource(unread, "data/anim/Wind_gust.asa") == "Wind_gust.asa" && Acted(unread, "move", "Wind_gust.asa", Origin::kHeuristic));
 
     const PackageAnalysis jungle = Analyze(
-        Level("", "LostJungle") + Files{{"LOSTJUNGLE_MAP.bmp", "bmp"}, {"LJreadme.txt",
-                                         "1. Installation\r\n\r\n   i. Place the level files* into your \"\\data\" directory\r\n\r\nLevel files*  LostJungle-130.pid\r\n\t   LJ.wtd\r\n\r\n"
-                                         "  ii. (Optional) IF ATX IS INSTALLED: Place \"LOSTJUNGLE_MAP.bmp\" in the \"\\MAPS\" directory\r\n\r\n"
-                                         "   i. Lost Jungle (LJ) is optimized for use with Big Red's ATX Patch. However, ATX is not required.\r\n"
-                                         "  ii. The LJ level cannot be restarted via the menu; to begin a new game you must close Trespasser.\r\n"}});
-    CHECK(RuntimeSource(jungle, "maps/LOSTJUNGLE_MAP.bmp") == "LOSTJUNGLE_MAP.bmp" && RuntimeSource(jungle, "data/LOSTJUNGLE_MAP.bmp") == "-");
+        Level("", "ForestRun") + Files{{"FORESTRUN_MAP.bmp", "bmp"}, {"FRreadme.txt",
+                                         "Setup\r\n\r\n  Place the level files* into your \"\\data\" directory\r\n\r\nLevel files*  ForestRun-130.pid\r\n\t   FR.wtd\r\n\r\n"
+                                         "  Optional, if ATX is installed: place \"FORESTRUN_MAP.bmp\" in the \"\\MAPS\" directory\r\n\r\n"
+                                         "  This sample works with the ATX patch. However, ATX is not required.\r\n"
+                                         "  This sample cannot be restarted from the menu; close Trespasser to start again.\r\n"}});
+    CHECK(RuntimeSource(jungle, "maps/FORESTRUN_MAP.bmp") == "FORESTRUN_MAP.bmp" && RuntimeSource(jungle, "data/FORESTRUN_MAP.bmp") == "-");
     CHECK(jungle.need("ATX") == Need::kOptional && Warned(jungle, "no_restart") && !jungle.config_warnings());
-    CHECK(std::any_of(jungle.runtime.begin(), jungle.runtime.end(), [](const RuntimeFile& f) { return f.target == "maps/LOSTJUNGLE_MAP.bmp" && f.active; }));
+    CHECK(std::any_of(jungle.runtime.begin(), jungle.runtime.end(), [](const RuntimeFile& f) { return f.target == "maps/FORESTRUN_MAP.bmp" && f.active; }));
 
-    const PackageAnalysis misty = Analyze(
-        Level("", "MistyJungle") + Files{{"anim/anim_MayaDoor.asa", "door"}, {"texhw/map/camo.dds", "dds"}, {"MistyJungle_readme.txt",
-                                          "   Place the level files + the anim and texhw folders into your \"\\data\" directory\r\n\r\n\tMistyJungle-130.pid\r\n\r\n"
-                                          "**Due to higher poly models, Misty Jungle can only be run in Trespasser CE**\r\n\r\n   Lee Arbuco for Trespasser CE\r\n"}});
-    CHECK(RuntimeSource(misty, "data/anim/anim_MayaDoor.asa") == "anim/anim_MayaDoor.asa" && RuntimeSource(misty, "data/texhw/map/camo.dds") == "texhw/map/camo.dds");
-    CHECK(Acted(misty, "keep", "anim", Origin::kReadme) && Acted(misty, "keep", "texhw", Origin::kReadme) && misty.need("Trespasser CE") == Need::kRequired);
+    const PackageAnalysis foggy = Analyze(
+        Level("", "FoggyValley") + Files{{"anim/anim_StoneDoor.asa", "door"}, {"texhw/map/camo.dds", "dds"}, {"FoggyValley_readme.txt",
+                                          "   Place the level files + the anim and texhw folders into your \"\\data\" directory\r\n\r\n\tFoggyValley-130.pid\r\n\r\n"
+                                          "**This sample has meshes over the 1998 limits and can only be run in Trespasser CE**\r\n"}});
+    CHECK(RuntimeSource(foggy, "data/anim/anim_StoneDoor.asa") == "anim/anim_StoneDoor.asa" && RuntimeSource(foggy, "data/texhw/map/camo.dds") == "texhw/map/camo.dds");
+    CHECK(Acted(foggy, "keep", "anim", Origin::kReadme) && Acted(foggy, "keep", "texhw", Origin::kReadme) && foggy.need("Trespasser CE") == Need::kRequired);
 
-    const PackageAnalysis scene = Analyze(Level("", "TstScnRld") + Files{{"TstScnRld_readme.txt", "Place the level files* into your \"\\data\" directory"}});
-    CHECK(scene.dependencies.empty() && scene.warnings.empty() && RuntimeSource(scene, "data/TstScnRld.wtd") == "TstScnRld.wtd");
+    const PackageAnalysis scene = Analyze(Level("", "SceneProbe") + Files{{"SceneProbe_readme.txt", "Place the level files* into your \"\\data\" directory"}});
+    CHECK(scene.dependencies.empty() && scene.warnings.empty() && RuntimeSource(scene, "data/SceneProbe.wtd") == "SceneProbe.wtd");
     CHECK(Analyze(Level("Parent/data/", "x") + Files{{"Parent/MAPS/x.bmp", "b"}}).layout == "data_folder");
     CHECK(RuntimeSource(Analyze(Level("Parent/data/", "x") + Files{{"Parent/MAPS/x.bmp", "b"}}), "maps/x.bmp") == "Parent/MAPS/x.bmp");
     CHECK(!Analyze({{"readme.txt", "nothing"}}).playable() && Analyze({{"fake.scn", "xx"}}).layout == "loose" && !Analyze({{"fake.scn", "xx"}}).playable());
@@ -346,53 +347,53 @@ static void TestReadmeRules() {
 }
 
 static void TestFanMissions() {
-    const PackageAnalysis causeway = Analyze(Causeway());
-    CHECK(causeway.layout == "fan_mission" && causeway.root == "Causeway~HD" && causeway.start_level == "Causeway~HD/data/Causeway~HD.scn" && causeway.levels[0].start);
-    CHECK(causeway.audio.size() == 3 && std::all_of(causeway.audio.begin(), causeway.audio.end(), [](const AudioPack& p) { return p.additive && p.state == "ready" && p.scene.empty(); }));
-    CHECK(causeway.audio[0].path == "Causeway~HD/CWStream.tpa" && causeway.images.size() == 1 && causeway.images[0].path == "Causeway~HD/data/menu/li_causewayHD.tga");
-    CHECK(Override(causeway, "dual_stow") == "1" && Override(causeway, "enhanced_sky") == "1" && causeway.overrides.size() == 2 && causeway.skip_win_movie);
-    CHECK(UseOf(causeway, "StartLevel") == "applied" && UseOf(causeway, "UseDX9") == "user_choice" && UseOf(causeway, "32bitHardwareTextures") == "obsolete");
-    CHECK(UseOf(causeway, "EnableQuickSaveKey") == "built_in" && UseOf(causeway, "DisableSimpleLevelRestart") == "ineffective" && UseOf(causeway, "ForceMaxObjectDetail") == "recommended");
-    CHECK(causeway.need("Trespasser CE") == Need::kRecommended && causeway.warnings.empty());
+    const PackageAnalysis sample = Analyze(SampleMission());
+    CHECK(sample.layout == "fan_mission" && sample.root == "Sample~HD" && sample.start_level == "Sample~HD/data/Sample~HD.scn" && sample.levels[0].start);
+    CHECK(sample.audio.size() == 3 && std::all_of(sample.audio.begin(), sample.audio.end(), [](const AudioPack& p) { return p.additive && p.state == "ready" && p.scene.empty(); }));
+    CHECK(sample.audio[0].path == "Sample~HD/SMStream.tpa" && sample.images.size() == 1 && sample.images[0].path == "Sample~HD/data/menu/li_sampleHD.tga");
+    CHECK(Override(sample, "dual_stow") == "1" && Override(sample, "enhanced_sky") == "1" && sample.overrides.size() == 2 && sample.skip_win_movie);
+    CHECK(UseOf(sample, "StartLevel") == "applied" && UseOf(sample, "UseDX9") == "user_choice" && UseOf(sample, "32bitHardwareTextures") == "obsolete");
+    CHECK(UseOf(sample, "EnableQuickSaveKey") == "built_in" && UseOf(sample, "DisableSimpleLevelRestart") == "ineffective" && UseOf(sample, "ForceMaxObjectDetail") == "recommended");
+    CHECK(sample.need("Trespasser CE") == Need::kRecommended && sample.warnings.empty());
 
     const PackageAnalysis escape = Analyze(
-        Level("EFTLW/data/", "TCC~Caldera") + Files{{"EFTLW/fm.ini", "[General]\nStartLevel=TCC~Caldera.scn\nEffectsTPA+=EffectsJP.tpa\n[TCC~Caldera.scn]\nLoadingImage=menu/li_caldera_0\n"},
-                                                    {"EFTLW/EffectsJP.tpa", Tpa({{9, "x"}})}, {"EFTLW/data/menu/li_caldera_0.tga", Tga(8, 6, 24, false)},
-                                                    {"tp_mod.ini", "[Paths]\nFMPath=mods\n[FM]\nActiveFM=EFTLW\n;ActiveFM=(mod folder name here)\n"}});
-    CHECK(escape.layout == "mod_tree" && escape.root == "EFTLW" && Acted(escape, "root", "EFTLW", Origin::kTpModIni));
-    CHECK(escape.images.size() == 1 && escape.images[0].state == "ready" && escape.images[0].path == "EFTLW/data/menu/li_caldera_0.tga");
+        Level("MODTREE/data/", "PFX~Crater") + Files{{"MODTREE/fm.ini", "[General]\nStartLevel=PFX~Crater.scn\nEffectsTPA+=EffectsMT.tpa\n[PFX~Crater.scn]\nLoadingImage=menu/li_crater_0\n"},
+                                                    {"MODTREE/EffectsMT.tpa", Tpa({{9, "x"}})}, {"MODTREE/data/menu/li_crater_0.tga", Tga(8, 6, 24, false)},
+                                                    {"tp_mod.ini", "[Paths]\nFMPath=mods\n[FM]\nActiveFM=MODTREE\n;ActiveFM=(mod folder name here)\n"}});
+    CHECK(escape.layout == "mod_tree" && escape.root == "MODTREE" && Acted(escape, "root", "MODTREE", Origin::kTpModIni));
+    CHECK(escape.images.size() == 1 && escape.images[0].state == "ready" && escape.images[0].path == "MODTREE/data/menu/li_crater_0.tga");
 
-    const std::string trescom = "TresCom20/FMs/TresCom20/";
+    const std::string kit = "KitGame20/FMs/KitGame20/";
     const PackageAnalysis standalone = Analyze(
-        Level(trescom + "data/", "TresCom20") +
-        Files{{trescom + "fm.ini", "[General]\nStartLevel=TresCom20.scn\nStreamTPA+=TresCom20Stream.tpa\n"}, {trescom + "TresCom20Stream.tpa", Tpa({{5, "x"}})},
-              {"TresCom20/tp_mod.ini", "[Paths]\nFMPath=FMs\n[FM]\nActiveFM=TresCom20\n"}, {"TresCom20/data/Stream.tpa", Tpa({{1, "the game's own"}})},
-              {"TresCom20/trespasser.ini", "[General]\nEnableDualStow=True\nEnableAiActivityEx=-1\n[DisplayDX9]\nMultiSamplingLevel=16\nWaterRefraction=True\n[SoundOpenAL]\nDevice=Generic Software\n[New]\nMystery=1\n"},
-              {"TresCom20/tpass.ini", "[Settings]\nWidth=1440\nUse D3D=1\nKeyMap=0100\nDX9 Adapter=0\n"}});
-    CHECK(standalone.layout == "standalone" && standalone.root == "TresCom20/FMs/TresCom20" && Acted(standalone, "ignore", "TresCom20/data", Origin::kTpModIni));
+        Level(kit + "data/", "KitGame20") +
+        Files{{kit + "fm.ini", "[General]\nStartLevel=KitGame20.scn\nStreamTPA+=KitGame20Stream.tpa\n"}, {kit + "KitGame20Stream.tpa", Tpa({{5, "x"}})},
+              {"KitGame20/tp_mod.ini", "[Paths]\nFMPath=FMs\n[FM]\nActiveFM=KitGame20\n"}, {"KitGame20/data/Stream.tpa", Tpa({{1, "the game's own"}})},
+              {"KitGame20/trespasser.ini", "[General]\nEnableDualStow=True\nEnableAiActivityEx=-1\n[DisplayDX9]\nMultiSamplingLevel=16\nWaterRefraction=True\n[SoundOpenAL]\nDevice=Generic Software\n[New]\nMystery=1\n"},
+              {"KitGame20/tpass.ini", "[Settings]\nWidth=1440\nUse D3D=1\nKeyMap=0100\nDX9 Adapter=0\n"}});
+    CHECK(standalone.layout == "standalone" && standalone.root == "KitGame20/FMs/KitGame20" && Acted(standalone, "ignore", "KitGame20/data", Origin::kTpModIni));
     CHECK(RuntimeSource(standalone, "data/Stream.tpa") == "-" && Override(standalone, "dual_stow") == "1" && Override(standalone, "water_refraction") == "1" && standalone.overrides.size() == 2);
     CHECK(UseOf(standalone, "MultiSamplingLevel") == "user_choice" && UseOf(standalone, "Device") == "obsolete" && UseOf(standalone, "EnableAiActivityEx") == "ineffective");
     CHECK(UseOf(standalone, "Width") == "user_choice" && UseOf(standalone, "DX9 Adapter") == "user_choice" && UseOf(standalone, "Mystery") == "unknown");
 
     const PackageAnalysis ascent = Analyze(
-        Level("AS2R/data/", "as2") + Files{{"AS2R/fm.ini", "[General]\nStartLevel=as2.scn\n"}, {"AS2R/anim/Pterotest00.ASA", "p"}, {"AS2R/animb/Pterotest00.asb", "b"},
-                                           {"trespasser.AS2R.ini", "[General]\nEnableDualStow=True\nTryIncompleteInstall=True\n"}, {"Readme_AS2R.txt",
-                                            "1.Download the zip and extract the 'AS2R' folder to your mods directory.\n\n2.b. Find 'trespasser.AS2R.ini' in the AS2R folder and move it to the main "
-                                            "Trespasser directory, then rename that to 'trespasser.ini'- these steps replace the trespasser ini.\n"}});
-    CHECK(ascent.root == "AS2R" && Acted(ascent, "root", "AS2R", Origin::kReadme) && Acted(ascent, "settings", "trespasser.AS2R.ini", Origin::kReadme));
-    CHECK(Override(ascent, "dual_stow") == "1" && RuntimeSource(ascent, "data/anim/Pterotest00.ASA") == "AS2R/anim/Pterotest00.ASA");
+        Level("AS2X/data/", "as2") + Files{{"AS2X/fm.ini", "[General]\nStartLevel=as2.scn\n"}, {"AS2X/anim/Flyer00.ASA", "p"}, {"AS2X/animb/Flyer00.asb", "b"},
+                                           {"trespasser.AS2X.ini", "[General]\nEnableDualStow=True\nTryIncompleteInstall=True\n"}, {"Readme_AS2X.txt",
+                                            "1. Extract the 'AS2X' folder to your mods directory.\n\n2. Find 'trespasser.AS2X.ini' in the AS2X folder and move it to the main "
+                                            "Trespasser directory, then rename that to 'trespasser.ini'.\n"}});
+    CHECK(ascent.root == "AS2X" && Acted(ascent, "root", "AS2X", Origin::kReadme) && Acted(ascent, "settings", "trespasser.AS2X.ini", Origin::kReadme));
+    CHECK(Override(ascent, "dual_stow") == "1" && RuntimeSource(ascent, "data/anim/Flyer00.ASA") == "AS2X/anim/Flyer00.ASA");
     CHECK(std::none_of(ascent.runtime.begin(), ascent.runtime.end(), [](const RuntimeFile& f) { return f.source.find(".ini") != std::string::npos || f.source.find(".asb") != std::string::npos; }));
 
-    const PackageAnalysis town = Analyze(Level("TLW/data/", "TLWCITY") + Level("TLW/data/", "TLWSFI") +
-                                         Files{{"TLW/fm.ini", "[General]\nStartLevel=TLWCITY.scn\nWinMovie=0\n[TLWCITY.scn]\nAmbientTPA+=AmbientDS.tpa\n"}, {"TLW/AmbientDS.tpa", Tpa({{4, "x"}})}});
-    CHECK(town.levels.size() == 2 && town.levels[0].start && !town.levels[1].auxiliary && town.audio.size() == 1 && town.audio[0].scene == "TLWCITY.scn");
-    Files castle = Level("D/data/", "Castle01") + Level("D/data/", "Castle02") + Files{{"D/data/Castle01b.scn", Scene("castle01.grf")}, {"D/Spare.scn", Scene("Castle02.grf")}};
-    castle.push_back({"D/fm.ini", "[General]\nStartLevel=castle01.SCN\nEffectsTPA+=L.tpa\nStreamTPA+=L.tpa\nAmbientTPA+=L.tpa\n"});
+    const PackageAnalysis town = Analyze(Level("MOD/data/", "MODCITY") + Level("MOD/data/", "MODSIDE") +
+                                         Files{{"MOD/fm.ini", "[General]\nStartLevel=MODCITY.scn\nWinMovie=0\n[MODCITY.scn]\nAmbientTPA+=AmbientMD.tpa\n"}, {"MOD/AmbientMD.tpa", Tpa({{4, "x"}})}});
+    CHECK(town.levels.size() == 2 && town.levels[0].start && !town.levels[1].auxiliary && town.audio.size() == 1 && town.audio[0].scene == "MODCITY.scn");
+    Files castle = Level("D/data/", "Keep01") + Level("D/data/", "Keep02") + Files{{"D/data/Keep01b.scn", Scene("keep01.grf")}, {"D/Spare.scn", Scene("Keep02.grf")}};
+    castle.push_back({"D/fm.ini", "[General]\nStartLevel=keep01.SCN\nEffectsTPA+=L.tpa\nStreamTPA+=L.tpa\nAmbientTPA+=L.tpa\n"});
     castle.push_back({"D/L.tpa", Tpa({{4, "x"}})});
     const PackageAnalysis campaign = Analyze(castle);
-    CHECK(campaign.audio.size() == 3 && campaign.warnings.empty() && campaign.start_level == "D/data/Castle01.scn");
+    CHECK(campaign.audio.size() == 3 && campaign.warnings.empty() && campaign.start_level == "D/data/Keep01.scn");
     size_t auxiliary = 0;
-    for (const LevelInfo& level : campaign.levels) auxiliary += level.auxiliary && (level.file == "Castle01b.scn" || level.file == "Spare.scn") && !level.auxiliary_reason.empty();
+    for (const LevelInfo& level : campaign.levels) auxiliary += level.auxiliary && (level.file == "Keep01b.scn" || level.file == "Spare.scn") && !level.auxiliary_reason.empty();
     CHECK(auxiliary == 2 && campaign.levels.size() == 4);
     const PackageAnalysis retold = Analyze(Level("SNE/data/", "be") + Level("SNE/data/", "it") + Files{{"SNE/Error.scn", Scene("be.grf")}, {"SNE/Stream.tpa", Tpa({{1, "x"}})}});
     CHECK(retold.layout == "data_folder" && RuntimeSource(retold, "data/Stream.tpa") == "SNE/Stream.tpa" && retold.levels.back().file == "Error.scn" && retold.levels.back().auxiliary);
@@ -590,16 +591,16 @@ static std::string Setting(const char* wanted) {
 }
 
 static void TestManifest() {
-    const fs::path user = Fresh("manifest"), dir = Install(user, "Causeway", ReadyCauseway() + Files{{"Causeway~HD/tool.exe", "MZ"}});
+    const fs::path user = Fresh("manifest"), dir = Install(user, "Sample", ReadySampleMission() + Files{{"Sample~HD/tool.exe", "MZ"}});
     const std::string text = Read(dir / kManifestFile), map = Read(dir / JPT_CUSTOM_LEVEL_RUNTIME_MAP);
     const auto json = trg::update::json::Parse(text);
-    CHECK(json && json->Find("schema_version") && json->Find("schema_version")->AsNumber() == kManifestSchema && json->Find("package_id")->AsString() == "Causeway");
+    CHECK(json && json->Find("schema_version") && json->Find("schema_version")->AsNumber() == kManifestSchema && json->Find("package_id")->AsString() == "Sample");
     CHECK(json && json->Find("layout_type")->AsString() == "fan_mission" && json->Find("source_type")->AsString() == "folder" && json->Find("source_hash")->AsString().size() == 64);
     for (const char* key : {"levels", "readmes", "configs", "audio", "directories", "dependencies", "session_overrides", "unsupported_settings", "install_actions", "warnings", "refused_files", "runtime"})
         CHECK(json && json->Find(key));
-    CHECK(json && json->Find("refused_files")->AsArray().size() == 1 && json->Find("refused_files")->At(0)->AsString() == "Causeway~HD/tool.exe - a program or library");
-    CHECK(!fs::exists(dir / "Causeway~HD" / "tool.exe") && Read(dir / "Causeway~HD" / "fm.ini") == ReadyCausewayIni());
-    CHECK(map.rfind("trespasser-runtime 1\n", 0) == 0 && map.find("tpa+ stream|*|Causeway~HD/CWStream.tpa\n") != std::string::npos);
+    CHECK(json && json->Find("refused_files")->AsArray().size() == 1 && json->Find("refused_files")->At(0)->AsString() == "Sample~HD/tool.exe - a program or library");
+    CHECK(!fs::exists(dir / "Sample~HD" / "tool.exe") && Read(dir / "Sample~HD" / "fm.ini") == ReadySampleIni());
+    CHECK(map.rfind("trespasser-runtime 1\n", 0) == 0 && map.find("tpa+ stream|*|Sample~HD/SMStream.tpa\n") != std::string::npos);
     CHECK(map.find(".ini") == std::string::npos && map.find("texhw") == std::string::npos && fs::exists(dir / PathFromUtf8(LoadingPictureFile(0))));
     PackageOrigin origin;
     CHECK(ReadManifestOrigin(text, origin) && origin.refused.size() == 1 && !ReadManifestOrigin("{}", origin) && !ReadManifestOrigin("nonsense", origin) && !ManifestIsNewer(text));
@@ -609,7 +610,7 @@ static void TestManifest() {
     CHECK(Read(dir / kManifestFile) == text && Read(dir / JPT_CUSTOM_LEVEL_RUNTIME_MAP) == map);
 
     // A package of an earlier version has no records; its files and saves stay as they are.
-    const fs::path save = user / "saves" / "custom_levels" / "Causeway" / "SAVEGAME.000";
+    const fs::path save = user / "saves" / "custom_levels" / "Sample" / "SAVEGAME.000";
     Write(save, "save");
     for (const char* name : {"manifest.json", "runtime.map"}) fs::remove(dir / name);
     fs::remove_all(dir / JPT_CUSTOM_LEVEL_GENERATED_DIR);
@@ -625,16 +626,16 @@ static void TestManifest() {
     CHECK(!listed[0].recorded && Read(dir / kManifestFile) == "{\"schema_version\": 99}" && listed[0].levels().size() == 1);
 
     const fs::path source = Fresh("again");
-    for (const auto& [path, bytes] : ReadyCauseway()) Write(source / "Renamed" / PathFromUtf8(path), bytes);
+    for (const auto& [path, bytes] : ReadySampleMission()) Write(source / "Renamed" / PathFromUtf8(path), bytes);
     CHECK(ImportLevelFolder(source / "Renamed", user, {}).status == ImportStatus::kAlreadyInstalled);
-    Write(source / "Renamed" / "Causeway~HD" / "data" / "Causeway~HD.wtd", "terrain of another release");
+    Write(source / "Renamed" / "Sample~HD" / "data" / "Sample~HD.wtd", "terrain of another release");
     CHECK(ImportLevelFolder(source / "Renamed", user, {}).package == "Renamed");
-    Write(source / "Renamed" / "Causeway~HD" / "data" / "Causeway~HD.wtd", "a third release of the terrain");
+    Write(source / "Renamed" / "Sample~HD" / "data" / "Sample~HD.wtd", "a third release of the terrain");
     CHECK(ImportLevelFolder(source / "Renamed", user, {}).package == "Renamed-2");
 
     const size_t before = size_t(std::distance(fs::recursive_directory_iterator(user), fs::recursive_directory_iterator()));
     const AnalysisResult result = AnalyzeLevelSource(source / "Renamed");
-    CHECK(result.import.status == ImportStatus::kInstalled && result.report.find("CWStream.tpa") != std::string::npos && trg::update::json::Parse(result.json));
+    CHECK(result.import.status == ImportStatus::kInstalled && result.report.find("SMStream.tpa") != std::string::npos && trg::update::json::Parse(result.json));
     CHECK(size_t(std::distance(fs::recursive_directory_iterator(user), fs::recursive_directory_iterator())) == before && !fs::exists(source / "Renamed" / kManifestFile));
     CHECK(AnalyzeLevelSource(source / "none").import.status == ImportStatus::kUnreadable);
 }
@@ -679,14 +680,14 @@ static std::string Winner(const char* path) {
 // Trespasser CE 1.07e: texhw\<path>, else texhw\Map\<file>, else <path>; each through the mod's folder, its data folder, the game.
 static void TestTextureRoots() {
     const fs::path user = Fresh("textures"), game = g_texture_game = Fresh("textures game");
-    const fs::path dir = Install(user, "AS2R", Level("AS2R/data/", "as2") + Level("AS2R/data/", "other") +
-        Files{{"AS2R/fm.ini", "[General]\nStartLevel=as2.scn\n"},
-              {"AS2R/data/texhw/map/whitewaterDiff.bmp", Bmp8("shared")}, {"AS2R/data/texhw/map/as2/Rock.bmp", Bmp8("rock of as2")},
-              {"AS2R/data/texhw/map/both.bmp", Bmp8("shared both")}, {"AS2R/data/texhw/map/as2/both.bmp", Bmp8("both of as2")},
-              {"AS2R/data/texhw/map/other/Private.bmp", Bmp8("private")}, {"AS2R/texhw/map/twice.bmp", Bmp8("mod folder")}, {"AS2R/data/texhw/map/twice.bmp", Bmp8("data folder")},
-              {"AS2R/Map/as2/foam.bmp", Bmp8("foam")}, {"AS2R/data/Map/sign.bmp", Bmp8("sign")}, {"AS2R/Map/as2/over.bmp", Bmp8("plain")}, {"AS2R/data/texhw/map/over.bmp", Bmp8("over")},
-              {"AS2R/data/texhw/map/deep.bmp", "BM not 8 bits"}, {"AS2R/data/texhw/map/cloud.dds", "dds"}, {"AS2R/Props/doors/Door.asa", "door"}, {"AS2R/saves/SAVEGAME.000", "save"}});
-    CHECK(!fs::exists(dir / "AS2R" / "saves" / "SAVEGAME.000") && Activate(user, "AS2R", "AS2R/data/as2.scn"));
+    const fs::path dir = Install(user, "AS2X", Level("AS2X/data/", "as2") + Level("AS2X/data/", "other") +
+        Files{{"AS2X/fm.ini", "[General]\nStartLevel=as2.scn\n"},
+              {"AS2X/data/texhw/map/whitewaterDiff.bmp", Bmp8("shared")}, {"AS2X/data/texhw/map/as2/Rock.bmp", Bmp8("rock of as2")},
+              {"AS2X/data/texhw/map/both.bmp", Bmp8("shared both")}, {"AS2X/data/texhw/map/as2/both.bmp", Bmp8("both of as2")},
+              {"AS2X/data/texhw/map/other/Private.bmp", Bmp8("private")}, {"AS2X/texhw/map/twice.bmp", Bmp8("mod folder")}, {"AS2X/data/texhw/map/twice.bmp", Bmp8("data folder")},
+              {"AS2X/Map/as2/foam.bmp", Bmp8("foam")}, {"AS2X/data/Map/sign.bmp", Bmp8("sign")}, {"AS2X/Map/as2/over.bmp", Bmp8("plain")}, {"AS2X/data/texhw/map/over.bmp", Bmp8("over")},
+              {"AS2X/data/texhw/map/deep.bmp", "BM not 8 bits"}, {"AS2X/data/texhw/map/cloud.dds", "dds"}, {"AS2X/Props/doors/Door.asa", "door"}, {"AS2X/saves/SAVEGAME.000", "save"}});
+    CHECK(!fs::exists(dir / "AS2X" / "saves" / "SAVEGAME.000") && Activate(user, "AS2X", "AS2X/data/as2.scn"));
     jpt_custom_level_set_game(GameFile);
     const size_t files = size_t(std::distance(fs::recursive_directory_iterator(user), fs::recursive_directory_iterator()));
 
@@ -712,7 +713,7 @@ static void TestTextureRoots() {
     for (int i = 0; jpt_custom_level_texture_try("Map\\as2\\deep.bmp", i, &t); ++i) tried += std::string(t.in_game ? "g:" : "p:") + t.relative + (t.result == JPT_TEXTURE_UNUSABLE ? "!" : "") + " ";
     CHECK(tried == "p:texhw/Map/as2/deep.bmp g:texhw/Map/as2/deep.bmp p:texhw/Map/deep.bmp! g:texhw/Map/deep.bmp p:Map/as2/deep.bmp g:Map/as2/deep.bmp ");
     char other[256] = "";
-    CHECK(jpt_custom_level_texture_other("Map\\as2\\cloud.bmp", other, sizeof other) && std::string(other) == "AS2R/data/texhw/map/cloud.dds" && !jpt_custom_level_texture_other("Map\\as2\\gone.bmp", other, sizeof other));
+    CHECK(jpt_custom_level_texture_other("Map\\as2\\cloud.bmp", other, sizeof other) && std::string(other) == "AS2X/data/texhw/map/cloud.dds" && !jpt_custom_level_texture_other("Map\\as2\\gone.bmp", other, sizeof other));
     CHECK(size_t(std::distance(fs::recursive_directory_iterator(user), fs::recursive_directory_iterator())) == files);
 
     const fs::path home = fs::current_path(), elsewhere = Fresh("textures elsewhere");
@@ -751,9 +752,9 @@ static void TestSessionLimits() {
         const long heap = LimitOf(a, "mesh_heap_mb"), nodes = LimitOf(a, "terrain_nodes");
         CHECK((heap == 0 || (heap >= kMeshHeapMegabytes && heap <= kMeshHeapMegabytesMax)) && nodes >= 0 && nodes <= kTerrainNodesMax);
     }
-    // Misty Jungle's own shape: no ini at all, a readme that asks for CE.
-    const Files misty = Level("", "Misty") + Files{{"Misty_readme.txt", "Due to higher poly models this level can only be run in Trespasser CE."}};
-    CHECK(Analyze(misty).need("Trespasser CE") == Need::kRequired && LimitOf(Analyze(misty), "mesh_heap_mb") == 0);
+    // No ini at all, a readme that asks for CE: no limit is set from it.
+    const Files foggy = Level("", "Foggy") + Files{{"Foggy_readme.txt", "This sample can only be run in Trespasser CE."}};
+    CHECK(Analyze(foggy).need("Trespasser CE") == Need::kRequired && LimitOf(Analyze(foggy), "mesh_heap_mb") == 0);
 
     const fs::path user = Fresh("limits");
     Install(user, "Big", Level("M/data/", "m") + Files{{"M/fm.ini", "[Memory]\nMeshHeapSize=64\nExtraTerrainNodes=100\n"}});
@@ -1074,12 +1075,12 @@ static void TestMissingTexture() {
 
 static void TestListedLevels() {
     const fs::path user = Fresh("listed"), game = Fresh("listed game");
-    const Files town = Level("TLW/data/", "TLWCITY") + Level("TLW/data/", "TLWSFI") + Files{{"TLW/fm.ini", "[General]\nStartLevel=TLWCITY.scn\n"}};
-    const ImportResult imported = ImportFiles(user, "CityChaos", town, game);
+    const Files town = Level("MOD/data/", "MODCITY") + Level("MOD/data/", "MODSIDE") + Files{{"MOD/fm.ini", "[General]\nStartLevel=MODCITY.scn\n"}};
+    const ImportResult imported = ImportFiles(user, "CityTest", town, game);
     std::vector<LevelPackage> listed = ListLevelPackages(user, game);
-    CHECK(imported.ok() && listed.size() == 1 && listed[0].scenes.size() == 2 && listed[0].levels().size() == 1 && listed[0].levels()[0]->file == "TLWCITY.scn" && PlayableLevels(listed) == 1);
-    CHECK(fs::exists(CustomLevelsDir(user) / "CityChaos" / "TLW" / "data" / "TLWSFI.scn") && Logged(imported.log, "TLWSFI.scn - Ready") && Logged(imported.log, "scene version 22, StartLevel"));
-    CHECK(Activate(user, "CityChaos", "TLW/data/TLWCITY.scn") && Found("TLWSFI.scn") == Scene("TLWSFI.grf") && Found("TLWSFI.grf") == World("TLWSFI"));
+    CHECK(imported.ok() && listed.size() == 1 && listed[0].scenes.size() == 2 && listed[0].levels().size() == 1 && listed[0].levels()[0]->file == "MODCITY.scn" && PlayableLevels(listed) == 1);
+    CHECK(fs::exists(CustomLevelsDir(user) / "CityTest" / "MOD" / "data" / "MODSIDE.scn") && Logged(imported.log, "MODSIDE.scn - Ready") && Logged(imported.log, "scene version 22, StartLevel"));
+    CHECK(Activate(user, "CityTest", "MOD/data/MODCITY.scn") && Found("MODSIDE.scn") == Scene("MODSIDE.grf") && Found("MODSIDE.grf") == World("MODSIDE"));
     jpt_custom_level_deactivate();
 
     CHECK(ImportFiles(user, "Loose", Level("", "one") + Level("", "two") + Level("", "three"), game).ok());
@@ -1089,7 +1090,7 @@ static void TestListedLevels() {
 
     // A start level that cannot be played does not hide the others.
     Files broken = town;
-    broken[0].second = Scene("TLWCITY.grf", 27);
+    broken[0].second = Scene("MODCITY.grf", 27);
     CHECK(ImportFiles(user, "Broken", broken, game).ok() && fs::exists(CustomLevelsDir(user) / "Broken"));
     for (const auto& [path, bytes] : broken) Write(CustomLevelsDir(user) / "Broken" / PathFromUtf8(path), bytes);
     listed = ListLevelPackages(user, game);
@@ -1099,54 +1100,54 @@ static void TestListedLevels() {
 
 static void TestActivePackage() {
     const fs::path user = Fresh("active");
-    Install(user, "Causeway", Causeway());
-    Install(user, "Town", Level("TLW/data/", "TLWCITY") + Level("TLW/data/", "TLWSFI") + Level("TLW/data/", "be") +
-                              Files{{"TLW/fm.ini", "[General]\nStartLevel=TLWCITY.scn\nEffectsTPA=Own.tpa\nStreamTPA+=All.tpa\n[TLWCITY.scn]\nAmbientTPA+=City.tpa\nLoadingImage=menu/li_city.tga\n[TLWSFI.scn]\nStreamTPA+=Sfi.tpa\n"},
-                                    {"TLW/Own.tpa", Tpa({{1, "own"}})}, {"TLW/All.tpa", Tpa({{1, "all"}})}, {"TLW/City.tpa", Tpa({{1, "city"}})}, {"TLW/Sfi.tpa", Tpa({{1, "sfi"}})},
-                                    {"TLW/anim/Bird.ASA", "bird"}, {"TLW/data/menu/li_city.tga", Tga(640, 480, 24, false)}, {"TLW/data/menu/mainscreen.ddf", "menu"}, {"TLW/data/menu/Scene.smk", "video"}});
-    Install(user, "Complex", Level("", "complex") + Files{{"Rain_storm.asa", "rain"}, {"MAP.bmp", "bmp"}, {"readme.txt", "Move rain_storm.asa into the anim directory.\n\nPlace MAP.bmp in the MAPS directory."}});
-    CHECK(Activate(user, "Causeway", "Causeway~HD/data/Causeway~HD.scn"));
-    CHECK(std::string(jpt_custom_level_scene()) == "LEVEL1.SCN" && Found("LEVEL1.SCN") == Scene("Causeway~HD.grf") && Found("causeway~hd.scn") == Scene("Causeway~HD.grf"));
-    CHECK(Added(JPT_LEVEL_TPA_STREAM, 0) == "CWStream.tpa" && Added(JPT_LEVEL_TPA_EFFECTS, 0) == "CWEffects.tpa" && Added(JPT_LEVEL_TPA_AMBIENT, 0) == "CWAmbient.tpa" && Added(JPT_LEVEL_TPA_STREAM, 1) == "-");
+    Install(user, "Sample", SampleMission());
+    Install(user, "Town", Level("MOD/data/", "MODCITY") + Level("MOD/data/", "MODSIDE") + Level("MOD/data/", "be") +
+                              Files{{"MOD/fm.ini", "[General]\nStartLevel=MODCITY.scn\nEffectsTPA=Own.tpa\nStreamTPA+=All.tpa\n[MODCITY.scn]\nAmbientTPA+=City.tpa\nLoadingImage=menu/li_city.tga\n[MODSIDE.scn]\nStreamTPA+=Sfi.tpa\n"},
+                                    {"MOD/Own.tpa", Tpa({{1, "own"}})}, {"MOD/All.tpa", Tpa({{1, "all"}})}, {"MOD/City.tpa", Tpa({{1, "city"}})}, {"MOD/Sfi.tpa", Tpa({{1, "sfi"}})},
+                                    {"MOD/anim/Bird.ASA", "bird"}, {"MOD/data/menu/li_city.tga", Tga(640, 480, 24, false)}, {"MOD/data/menu/mainscreen.ddf", "menu"}, {"MOD/data/menu/Scene.smk", "video"}});
+    Install(user, "Plaza", Level("", "plaza") + Files{{"Wind_gust.asa", "rain"}, {"MAP.bmp", "bmp"}, {"readme.txt", "Move wind_gust.asa into the anim directory.\n\nPlace MAP.bmp in the MAPS directory."}});
+    CHECK(Activate(user, "Sample", "Sample~HD/data/Sample~HD.scn"));
+    CHECK(std::string(jpt_custom_level_scene()) == "LEVEL1.SCN" && Found("LEVEL1.SCN") == Scene("Sample~HD.grf") && Found("sample~hd.scn") == Scene("Sample~HD.grf"));
+    CHECK(Added(JPT_LEVEL_TPA_STREAM, 0) == "SMStream.tpa" && Added(JPT_LEVEL_TPA_EFFECTS, 0) == "SMEffects.tpa" && Added(JPT_LEVEL_TPA_AMBIENT, 0) == "SMAmbient.tpa" && Added(JPT_LEVEL_TPA_STREAM, 1) == "-");
     CHECK(Setting("dual_stow") == "1" && Setting("enhanced_sky") == "1" && Setting("renderer") == "-" && jpt_custom_level_skips_ending());
     CHECK(Found("menu\\li_other_0.tga").size() == 18 + 640 * 480 * 2 && Found("menu\\mainscreen.ddf") == "-" && Found("menu/li_other_0.ddf") == "-");
     CHECK(Found("anim\\anim_hsc.asa") == "hsc" && Found("Stream.tpa") == "-");
     jpt_custom_level_scene_loading("C:\\data\\sum.scn");
-    CHECK(Found("menu\\li_sum_0.tga") == "-" && Added(JPT_LEVEL_TPA_STREAM, 0) == "CWStream.tpa" && jpt_custom_level_caps());
+    CHECK(Found("menu\\li_sum_0.tga") == "-" && Added(JPT_LEVEL_TPA_STREAM, 0) == "SMStream.tpa" && jpt_custom_level_caps());
     jpt_custom_level_scene_loading("C:\\data\\LEVEL1.SCN");
     CHECK(Found("menu\\li_other_0.tga") != "-");
     jpt_custom_level_scene_loading("D:\\SAVEGAME.000");
     CHECK(Found("menu\\li_other_0.tga") != "-");
 
-    CHECK(Activate(user, "Town", "TLW/data/TLWCITY.scn"));
+    CHECK(Activate(user, "Town", "MOD/data/MODCITY.scn"));
     CHECK(Added(JPT_LEVEL_TPA_STREAM, 0) == "All.tpa" && Added(JPT_LEVEL_TPA_STREAM, 1) == "-" && Added(JPT_LEVEL_TPA_AMBIENT, 0) == "City.tpa" && Added(JPT_LEVEL_TPA_EFFECTS, 0) == "-");
     CHECK(Found("EFFECTS.TPA") == Tpa({{1, "own"}}) && Found("Ambient.tpa") == "-" && Found("anim/bird.asa") == "bird" && Found("menu/li_other_0.tga") != "-");
     // A video answers only while an action plays it.
     CHECK(Found("menu\\scene.smk") == "-" && jpt_custom_level_play_video("menu\\scene.smk") && Found("menu\\scene.smk") == "video" && Found("menu\\other.smk") == "-");
     CHECK(!jpt_custom_level_play_video(nullptr) && Found("menu\\scene.smk") == "-" && !jpt_custom_level_play_video("menu\\other.smk") && !jpt_custom_level_play_video("..\\scene.smk"));
-    CHECK(Setting("dual_stow") == "-" && !jpt_custom_level_skips_ending() && Found("CWStream.tpa") == "-");
-    jpt_custom_level_scene_loading("data\\TLWSFI.scn");
+    CHECK(Setting("dual_stow") == "-" && !jpt_custom_level_skips_ending() && Found("SMStream.tpa") == "-");
+    jpt_custom_level_scene_loading("data\\MODSIDE.scn");
     CHECK(Added(JPT_LEVEL_TPA_STREAM, 1) == "Sfi.tpa" && Added(JPT_LEVEL_TPA_AMBIENT, 0) == "-" && Found("menu/li_other_0.tga") == "-");
     jpt_custom_level_scene_loading("be.scn");
     CHECK(Found("be.scn") == Scene("be.grf") && Found("be.wtd") == "terrain of be");
 
-    CHECK(Activate(user, "Complex", "complex.scn") && Found("anim\\rain_storm.ASA") == "rain" && Found("complex.wtd") == "terrain of complex" && Found("maps/MAP.bmp") == "-");
+    CHECK(Activate(user, "Plaza", "plaza.scn") && Found("anim\\wind_gust.ASA") == "rain" && Found("plaza.wtd") == "terrain of plaza" && Found("maps/MAP.bmp") == "-");
     CHECK(Added(JPT_LEVEL_TPA_STREAM, 0) == "-" && Setting("dual_stow") == "-");
 
     // A map is only ever a pointer to the package's own files.
-    const fs::path map = CustomLevelsDir(user) / "Complex" / JPT_CUSTOM_LEVEL_RUNTIME_MAP;
+    const fs::path map = CustomLevelsDir(user) / "Plaza" / JPT_CUSTOM_LEVEL_RUNTIME_MAP;
     Write(user / "outside.tpa", "outside");
-    Write(map, "trespasser-runtime 1\nscene complex.scn\nfile data/secret.wtd|../../outside.tpa\nfile data/../up.wtd|complex.wtd\nfile data/two.wtd|complex.wtd\ntpa+ stream|*|../../outside.tpa\n"
-               "tpa+ stream|*|../Town/TLW/All.tpa\nset renderer|software\nset dual_stow|1\nloading complex.scn|../Town/x.tga\nnonsense\nfile\nfile |\ntpa+ other|*|complex.wtd\n");
-    CHECK(Activate(user, "Complex", "complex.scn") && Found("secret.wtd") == "-" && Found("two.wtd") == "terrain of complex" && Found("..\\up.wtd") == "-");
+    Write(map, "trespasser-runtime 1\nscene plaza.scn\nfile data/secret.wtd|../../outside.tpa\nfile data/../up.wtd|plaza.wtd\nfile data/two.wtd|plaza.wtd\ntpa+ stream|*|../../outside.tpa\n"
+               "tpa+ stream|*|../Town/MOD/All.tpa\nset renderer|software\nset dual_stow|1\nloading plaza.scn|../Town/x.tga\nnonsense\nfile\nfile |\ntpa+ other|*|plaza.wtd\n");
+    CHECK(Activate(user, "Plaza", "plaza.scn") && Found("secret.wtd") == "-" && Found("two.wtd") == "terrain of plaza" && Found("..\\up.wtd") == "-");
     CHECK(Added(JPT_LEVEL_TPA_STREAM, 0) == "-" && Setting("renderer") == "-" && Setting("dual_stow") == "1" && Found("menu/li_other_0.tga") == "-");
-    Write(map, "trespasser-runtime 2\nscene complex.scn\nset dual_stow|1\n");
-    CHECK(Activate(user, "Complex", "complex.scn") && Setting("dual_stow") == "-" && Found("anim/rain_storm.asa") == "rain");
+    Write(map, "trespasser-runtime 2\nscene plaza.scn\nset dual_stow|1\n");
+    CHECK(Activate(user, "Plaza", "plaza.scn") && Setting("dual_stow") == "-" && Found("anim/wind_gust.asa") == "rain");
     fs::remove(map);
-    CHECK(Activate(user, "Complex", "complex.scn") && Found("anim/rain_storm.asa") == "rain" && Found("complex.grf") == World("complex"));
+    CHECK(Activate(user, "Plaza", "plaza.scn") && Found("anim/wind_gust.asa") == "rain" && Found("plaza.grf") == World("plaza"));
 #ifndef _WIN32
-    Write(CustomLevelsDir(user) / "Complex" / "COMPLEX.wtd", "another");
-    CHECK(Activate(user, "Complex", "complex.scn") && Found("Complex.WTD") == "-" && Found("complex.wtd") == "terrain of complex");
+    Write(CustomLevelsDir(user) / "Plaza" / "PLAZA.wtd", "another");
+    CHECK(Activate(user, "Plaza", "plaza.scn") && Found("Plaza.WTD") == "-" && Found("plaza.wtd") == "terrain of plaza");
 #endif
     jpt_custom_level_deactivate();
     CHECK(Added(JPT_LEVEL_TPA_STREAM, 0) == "-" && Setting("dual_stow") == "-" && !jpt_custom_level_skips_ending());
@@ -1519,8 +1520,8 @@ static void TestFeaturesOfUnknownPackages() {
 
 // No package and no level is told by its name.
 static void TestNamesDecideNothing() {
-    static const char* const kNames[] = {"AS2R", "Revae", "Causeway", "Caldera", "EFTLW", "TresCom2", "Tres20", "MistyJungle", "LostJungle", "lostjungle", "Maharaja", "Derelict", "TLWCITY", "TLWSFI", "CityChaos", "MountTres",
-                                         "Mount_Tres", "nemlevl", "contestlev", "JurassicGorge", "Castle01", "Castle02", "TresDracul", "PrinceOfPersia", "TresPrince", "TeroJungle", "TstScnRld", "TrespasserCity", "TresPasserCity", "\"complex"};
+    static const char* const kNames[] = {"Sample~HD", "SMStream", "PFX~Crater", "MODTREE", "KitGame20", "AS2X", "Flyer00", "MODCITY", "MODSIDE", "CityTest",
+                                         "ForestRun", "forestrun", "FoggyValley", "SceneProbe", "Keep01", "Keep02", "Wind_gust", "\"plaza"};
     size_t files = 0;
     for (const char* folder : {"src/host", "src/linux", "src/common", "src/vulkan", "launcher", "tools"})
         for (const auto& entry : fs::recursive_directory_iterator(fs::path(JPT_SOURCE_DIR) / folder)) {

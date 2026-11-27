@@ -115,8 +115,12 @@ v0.1.3 shipped script tests modelled on that level's behaviour. They have been r
 written from Trespasser CE's scripting documentation and the port's own interfaces. The earlier tests, and the earlier
 documentation that described the level, remain in this repository's Git history and in the v0.1.3 source archives. The
 default keys of the first two script commands (Shift and M) were chosen during that work and will be reviewed for v0.1.4.
-None of the release programs contains any of that level's files or names. Work on custom levels follows the
-[provenance policy](PROVENANCE.md).
+None of the release programs contains any of that level's files or names.
+
+The development corpus is under review. Packages by that author, including co-authored ones, and packages whose
+authorship is uncertain are excluded from AI-assisted work, and the corpus tools skip excluded packages before downloading,
+extracting or scanning them ([provenance policy](PROVENANCE.md)). Removing local copies does not withdraw what the Git
+history, published source archives or external services already hold.
 
 ## This repository's own code
 

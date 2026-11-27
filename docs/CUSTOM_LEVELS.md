@@ -220,7 +220,7 @@ guide.
 
 A package is active for one run. The game still asks for `<Data Drive>\data\X` and the package answers first
 (`src/common/jpt_custom_level.c`), the original files second. The names in a package may differ from each other
-(`LostJungle.scn` with `LJ.wtd`) and be in any case; two files told apart only by case answer by their exact name alone.
+(`MyLevel.scn` with `ML.wtd`) and be in any case; two files told apart only by case answer by their exact name alone.
 Files outside `data` (`Map\<level>\x.bmp`, any other folder of the mod) are answered by their path below the game's folder.
 
 A texture the level's set (`.pid`, `.swp`) lacks is asked for by its path, `Map\<level>\<name>.bmp`; `<level>` is the folder in the
@@ -259,7 +259,7 @@ A package that names its `StartLevel` is one row, which starts it; its other sce
 transitions. Any other package has a row for each playable level. `Installed levels (N)` counts the rows.
 
 The engine builds each mesh in fixed arrays (2048 polygons, 8192 vertices) without checking them, and community levels go past
-them: Misty Jungle has a mesh of 2368 polygons. A package whose meshes need more gets arrays of that size, up to 8192 polygons
+them: some have meshes of more than 2048 polygons. A package whose meshes need more gets arrays of that size, up to 8192 polygons
 (`src/host/engine_heaps.c`), and one whose loaded meshes need more than the engine's 32 MB, or whose `MeshHeapSize` says so, a larger
 heap. `ExtraTerrainNodes` goes to the terrain's tree, the tree of its queries and its scaling arrays as in Trespasser CE. A texture set
 beyond the engine's 128 MB pool gets a larger one, up to 256 MB. The buffer that the sections of scenes and saves pass through,
@@ -346,7 +346,8 @@ a readme requires ATX refuses nothing by itself. A package it says so of is refu
 
 Menus, menu sounds and videos that no action plays are kept in a package and not used: the launcher and the game's Level Select start every level of a
 package, and a session starts in its level. `tools/custom-level-compatibility.ps1` prints and
-writes the state of a whole folder of packages.
+writes the state of a whole folder of packages; it refuses a folder of the development corpus, whose exclusions only
+`tools/community_level_compatibility.py` applies ([PROVENANCE](PROVENANCE.md)).
 
 Trespasser CE scripts ([CE_SCRIPTS](CE_SCRIPTS.md)) are read from the `scripts` folder of each game path of the package (its mod
 paths, the fan mission, its uber mod paths: CE's load order, the lowest priority first), and judged per level, never per package. A
