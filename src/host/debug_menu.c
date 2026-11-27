@@ -317,7 +317,8 @@ static void navigate(uint32_t scratch, uint32_t now) {
     int64_t section = perf_section_begin();
     notice = objectives_frame(&D.world, D.state.open && D.state.menu == DM_MENU_OBJECTIVES, scratch);
     perf_section_end(PS_OBJECTIVES, section);
-    if (notice) dm_notice(&D.state, notice, now);
+    dm_guidance_sync(&D.state);
+    dm_guidance_notice(&D.state, notice, now);
     minimap_level_seen(D.world.level);
     dm_navigate(&D.state, &D.world, &scene, objectives_goal(), now, &D.hud);
     section = perf_section_begin();

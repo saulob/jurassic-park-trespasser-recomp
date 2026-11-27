@@ -65,7 +65,8 @@ typedef enum { CP_TEXT_SUBTITLE, CP_TEXT_HOST_PROMPT, CP_TEXT_GAME_PROMPT, CP_TE
 cp_text_kind_t cp_text_kind(uint32_t category, int host_prompt, int first_y, int raster_h);
 int cp_text_hides_hud(cp_text_kind_t kind);
 
-/* Keys compass and waypoints (default on): the strip, and every objective marker (3D diamond, arrow, trail, strip and minimap). */
+/* Keys compass and waypoints (default on): the strip, and every objective marker (3D diamond, arrow, trail, strip and minimap)
+ * with the objective notices. */
 void cp_configure(int compass, int waypoints);
 int cp_compass_enabled(void);
 int cp_waypoints_enabled(void);
@@ -134,7 +135,8 @@ typedef struct {
 
 /* A press: 1 starts (or restarts) the reminder for the current objective; 0 when there is none to show. */
 int cp_reminder_press(cp_reminder_t* r, uint32_t now_ms, const cp_goal_t* goal);
-/* How visible the title is now (0 when hidden). A changed objective restarts the timer at once; losing it ends it. */
+/* How visible the title is now (0 when hidden). A changed objective restarts the timer at once (ends it while Waypoints
+ * is off); losing it ends it. */
 float cp_reminder_step(cp_reminder_t* r, uint32_t now_ms, const cp_goal_t* goal);
 /* The title into the frame's HUD at that visibility; nothing while the HUD itself is not allowed. */
 void cp_hud_reminder(cp_hud_t* hud, const cp_goal_t* goal, float visibility);

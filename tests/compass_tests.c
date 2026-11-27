@@ -2,13 +2,17 @@
  * what the HUD shows, the F5 and F3 panels and where the strip goes on each screen shape. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "cheats_policy.h"
 #include "compass_policy.h"
 #include "debug_menu_policy.h"
 #include "host_policy.h"
+#include "jpt_config.h"
 #include "jpt_gamepad.h"
+#include "objective_policy.h"
 
 static int g_checks, g_failures;
 
@@ -376,6 +380,97 @@ static void test_reminder(void) {
     CHECK(!strcmp(hud.objective, "Reach the next area") && near(hud.objective_alpha, 0.4f, 1e-6f), "asked for: its title");
 }
 
+static void waypoint_frame(const dm_state_t* s, uint32_t now, cp_hud_t* hud) {
+    dm_world_t w = level_world("be.scn");
+    cp_scene_t scene = gameplay();
+    cp_goal_t goal = goal_at(0.0f, 184.0f);
+    dm_navigate(s, &w, &scene, &goal, now, hud);
+}
+
+static int settings_path(char* out, size_t cap) {
+    const char* dir = getenv("TEMP");
+    if (!dir || !dir[0]) dir = getenv("TMPDIR");
+#ifndef _WIN32
+    if (!dir || !dir[0]) dir = "/tmp";
+#endif
+    return dir && dir[0] && snprintf(out, cap, "%s/jpt_waypoint_notice_%u.ini", dir, (unsigned)clock()) < (int)cap;
+}
+
+static void test_waypoint_notices(void) {
+    dm_state_t s;
+    cp_hud_t hud;
+    cp_reminder_t r;
+    cp_goal_t goal = goal_at(0.0f, 100.0f), next = goal_at(0.0f, 100.0f);
+    const ob_level_t* be = ob_level("BE");
+    memset(&s, 0, sizeof s);
+    snprintf(next.title, sizeof next.title, "Find a way through");
+
+    cp_configure(1, 1);
+    dm_guidance_notice(&s, "Objective updated", 1000);
+    waypoint_frame(&s, 1000, &hud);
+    CHECK(!strcmp(hud.notice, "Objective updated") && hud.marker, "waypoints on: the objective notice and the marker show");
+
+    cp_configure(1, 0);
+    dm_guidance_sync(&s);
+    waypoint_frame(&s, 1100, &hud);
+    CHECK(!hud.notice[0] && !s.notice[0], "waypoints turned off while the objective notice shows: it goes at once");
+    dm_guidance_notice(&s, "Objective updated", 1200);
+    waypoint_frame(&s, 1200, &hud);
+    CHECK(!hud.notice[0] && !s.notice[0] && !hud.marker, "waypoints off: the objective notice is suppressed, no marker");
+
+    cp_configure(1, 1);
+    dm_guidance_sync(&s);
+    waypoint_frame(&s, 1300, &hud);
+    CHECK(!hud.notice[0], "waypoints on again: an objective notice from while they were off never replays");
+    dm_guidance_notice(&s, "Objective updated", 1400);
+    waypoint_frame(&s, 1400, &hud);
+    CHECK(!strcmp(hud.notice, "Objective updated"), "waypoints on again: the next objective notice shows");
+
+    cp_configure(1, 0);
+    dm_notice(&s, "Minimap Off", 2000);
+    dm_guidance_sync(&s);
+    dm_guidance_notice(&s, "Objective updated", 2050);
+    waypoint_frame(&s, 2100, &hud);
+    CHECK(!strcmp(hud.notice, "Minimap Off"), "waypoints off: other HUD notices (save, minimap, quick save) still show");
+    dm_guidance_notice(&s, "Objective updated", 2200);
+    CHECK(!strcmp(s.notice, "Minimap Off") && !s.notice_guidance,
+          "waypoints off: a dropped objective notice does not replace another notice");
+    dm_notice_for(&s, "No objective information", 2300, CP_NO_OBJECTIVE_MS);
+    dm_guidance_sync(&s);
+    CHECK(!strcmp(s.notice, "No objective information"), "a custom level's own notice is not waypoint guidance");
+
+    CHECK(be && be->count >= 2, "BE has objectives");
+    for (int i = 0; be && i < be->count; i++)
+        CHECK(ob_current(be, be->items[i].hint, i - 1) == i && ob_status(i - 1, i) == DM_GOAL_DONE,
+              "waypoints off: hint %d still advances to objective %d", be->items[i].hint, i);
+    memset(&r, 0, sizeof r);
+    CHECK(cp_reminder_press(&r, 3000, &goal) && cp_reminder_step(&r, 3000, &goal) == 1.0f,
+          "waypoints off: Show Objective still answers a press");
+    CHECK(cp_reminder_step(&r, 3500, &next) == 0.0f && !r.active, "waypoints off: a new objective does not pop up its title");
+    cp_configure(1, 1);
+    cp_reminder_press(&r, 4000, &goal);
+    CHECK(cp_reminder_step(&r, 4500, &next) == 1.0f && !strcmp(r.title, "Find a way through"),
+          "waypoints on: a new objective still shows at once while the reminder runs");
+
+    {
+        char path[512];
+        const char* key[1] = { JPT_KEY_WAYPOINTS };
+        const char* off[1] = { "0" };
+        jpt_config_t c;
+        CHECK(settings_path(path, sizeof path), "a temporary settings file");
+        if (settings_path(path, sizeof path) && jpt_ini_set(path, key, off, 1) && jpt_config_load(path, &c)) {
+            cp_configure(c.compass, c.waypoints);
+            memset(&s, 0, sizeof s);
+            dm_guidance_notice(&s, "Objective updated", 5000);
+            CHECK(!c.waypoints && !s.notice[0], "Waypoints off read back from settings: objective notices stay suppressed");
+        } else {
+            CHECK(0, "Waypoints off written and read back");
+        }
+        remove(path);
+    }
+    cp_configure(1, 1);
+}
+
 /* Where the game's text sits decides whether it covers the HUD: voice subtitles never do. */
 static void test_text_kinds(void) {
     const int raster_h = 480;
@@ -713,6 +808,7 @@ void compass_tests(int* checks, int* failures) {
     test_route();
     test_hud();
     test_reminder();
+    test_waypoint_notices();
     test_level_map();
     test_text_kinds();
     test_hud_text();

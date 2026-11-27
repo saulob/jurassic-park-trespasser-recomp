@@ -18,6 +18,7 @@
 #include "linux_panel.h"
 #include "linux_text.h"
 #include "minimap.h"
+#include "objective_policy.h"
 
 static int g_checks, g_failures;
 
@@ -128,6 +129,62 @@ static void test_compass(void) {
     CHECK(lit_in(l.left, l.top, l.right - l.left, l.height) > 200, "the compass strip is drawn along the top of the picture (%u pixels)",
           lit_in(l.left, l.top, l.right - l.left, l.height));
     CHECK(lit_in(0, (float)H / 2, (float)W, (float)H / 2) == 0, "and nothing below the HUD");
+}
+
+static unsigned notice_pixels(const dm_state_t* s, uint32_t now) {
+    dm_world_t w;
+    cp_scene_t scene;
+    cp_goal_t goal;
+    cp_hud_t hud;
+    cp_layout_t l;
+    dmp_frame_t f;
+    memset(&w, 0, sizeof w);
+    memset(&scene, 0, sizeof scene);
+    memset(&goal, 0, sizeof goal);
+    memset(&f, 0, sizeof f);
+    w.place = DM_PLACE_LEVEL;
+    snprintf(w.level, sizeof w.level, "BE");
+    w.player = w.eye = 1;
+    w.at.rot[0] = w.eye_at.rot[0] = 1.0f;
+    w.tan_half_h = 0.75f;
+    scene.level = scene.player = 1;
+    goal.set = goal.target = 1;
+    goal.pos[1] = 50.0f;
+    snprintf(goal.title, sizeof goal.title, "Reach the next area");
+    dm_navigate(s, &w, &scene, &goal, now, &hud);
+    f.view_w = (float)W, f.view_h = (float)H, f.dpi_scale = 1.0f, f.hud = &hud;
+    cp_layout_in(0.0f, 0.0f, (float)W, (float)H, &l);
+    clear_frame();
+    dmp_draw_software(s_pixels, W, H, W, &f);
+    return lit_in(0.0f, l.notice_y - l.small_px, (float)W, l.small_px * 2.5f);
+}
+
+static void test_waypoint_notices(void) {
+    dm_state_t s;
+    memset(&s, 0, sizeof s);
+    minimap_configure(0);
+    cp_configure(0, 1);
+    dm_guidance_notice(&s, "Objective updated", 1000);
+    CHECK(notice_pixels(&s, 1000) > 50, "waypoints on: the objective notice is drawn");
+    cp_configure(0, 0);
+    dm_guidance_sync(&s);
+    CHECK(notice_pixels(&s, 1100) == 0 && !s.notice[0], "waypoints turned off: the visible objective notice goes at once");
+    dm_guidance_notice(&s, "Objective updated", 1200);
+    CHECK(notice_pixels(&s, 1200) == 0, "waypoints off: a new objective notice is suppressed");
+    cp_configure(0, 1);
+    dm_guidance_sync(&s);
+    CHECK(notice_pixels(&s, 1300) == 0, "waypoints on again: no old objective notice replays");
+    cp_configure(0, 0);
+    dm_notice(&s, "Minimap Off", 1400);
+    dm_guidance_sync(&s);
+    CHECK(notice_pixels(&s, 1400) > 50, "waypoints off: other HUD notices are still drawn");
+    {
+        const ob_level_t* be = ob_level("BE");
+        CHECK(be && be->count >= 2 && ob_current(be, be->items[1].hint, 0) == 1,
+              "waypoints off: the objectives still advance with the game's hint");
+    }
+    cp_configure(1, 1);
+    minimap_configure(1);
 }
 
 static void hud_target_ahead(cp_hud_t* hud) {
@@ -337,6 +394,7 @@ int main(void) {
     test_minimap();
     test_compass();
     test_hud_visibility();
+    test_waypoint_notices();
     test_cheats_panel();
     test_objectives_window();
     test_main_menu_refuses_objectives();

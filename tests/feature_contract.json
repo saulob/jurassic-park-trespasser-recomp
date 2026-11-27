@@ -3386,6 +3386,11 @@
       "pattern": "(?i)objective"
      },
      {
+      "suite": "debug_menu_tests",
+      "file": "tests/compass_tests.c",
+      "pattern": "waypoints turned off while the objective notice shows"
+     },
+     {
       "suite": "tests\\test_objectives_retail.py",
       "file": "tests/test_objectives_retail.py",
       "pattern": "(?i)objective"
@@ -3399,6 +3404,11 @@
       "suite": "linux_panel_tests",
       "file": "tests/linux_panel_tests.c",
       "pattern": "Objectives is a window in the middle of the picture"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "waypoints turned off: the visible objective notice goes at once"
      },
      {
       "suite": "linux_features_tests",
