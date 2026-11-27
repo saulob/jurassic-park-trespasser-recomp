@@ -75,7 +75,7 @@ feature may have one.
 | `vulkan-fixed-function` | global | PASS | PASS | `test_vulkan_shaders.py`, `vulkan_runtime_tests` | `test_vulkan_shaders.py` | - |
 | `vulkan-depth` | global | PASS | PASS | `vulkan_render_tests` | `vulkan_render_tests` | - |
 | `vulkan-blending` | global | PASS | PASS | `vulkan_render_tests` | `vulkan_render_tests` | - |
-| `vulkan-filtering` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
+| `vulkan-filtering` | global | PASS | PASS | `vulkan_policy_tests`, `vulkan_runtime_tests` | `vulkan_policy_tests` | - |
 | `vulkan-aa` | global | PASS | PASS | `vulkan_policy_tests` | `vulkan_policy_tests` | - |
 | `vulkan-ao` | global | PASS | PASS | `vulkan_render_tests` | `vulkan_render_tests` | - |
 | `vulkan-water-refraction` | global | PASS | PASS | `vulkan_render_tests` | `vulkan_render_tests` | - |
@@ -197,14 +197,14 @@ feature may have one.
 | `launcher-recovery` | global | PASS | PASS | `launcher_startup_tests`, `vulkan_policy_tests` | `launcher_startup_tests`, `vulkan_policy_tests` | - |
 | `custom-levels` | global | PASS | PASS | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `debug_menu_tests`, `engine_heaps_tests`, `level_actions_tests`, `test_community_levels.py` | `custom_level_session_tests`, `custom_level_tests`, `texhw_tests`, `sky_tests`, `bug_report_tests`, `linux_level_abort_tests` | - |
 | `custom-level-links` | global | PASS | PASS | `custom_level_tests` | `custom_level_tests` | - |
-| `custom-level-compatibility` | global | PASS | PASS | `custom_level_tests`, `launcher_tests` | `custom_level_tests` | - |
+| `custom-level-compatibility` | global | PASS | PASS | `custom_level_tests`, `launcher_tests`, `test_community_levels.py` | `custom_level_tests` | - |
 | `level-session-log` | global | PASS | PASS | `level_session_tests` | `level_session_tests` | - |
 | `ce-script-interpreter` | global | PASS | PASS | `script_vm_tests` | `script_vm_tests` | - |
 | `ce-script-lifecycle` | global | PASS | PASS | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | `script_plan_tests`, `script_session_tests`, `script_save_tests`, `custom_level_session_tests` | - |
 | `ce-script-api` | global | PASS | PASS | `script_bindings_tests` | `script_bindings_tests` | - |
 | `ce-instance-scripts` | global | PASS | PASS | `script_instance_tests` | `script_instance_tests` | - |
 | `ce-script-drawing` | global | PASS | PASS | `script_draw_tests` | `script_draw_tests` | - |
-| `ce-script-input` | global | PASS | PASS | `script_input_tests` | `script_input_tests` | - |
+| `ce-script-input` | global | PASS | PASS | `script_input_tests`, `ce_tests` | `script_input_tests`, `ce_tests` | - |
 | `ce-script-player` | global | PASS | PASS | `script_player_tests` | `script_player_tests` | - |
 | `ce-script-console` | global | PASS | PASS | `script_console_tests` | `script_console_tests` | - |
 | `custom-level-full-restart` | global | PASS | PASS | `custom_level_session_tests`, `level_actions_tests` | `custom_level_session_tests` | - |
