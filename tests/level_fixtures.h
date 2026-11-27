@@ -93,6 +93,7 @@ struct WorldShape {
     uint32_t meeting = 0;          // faces of one more mesh that meet in a point
     bool meeting_skeleton = false, planted = false;
     int normals = 0;
+    std::vector<uint32_t> fan_face; // the corners of that mesh's first face, instead of its own
 };
 
 class WorldBuilder {
@@ -132,7 +133,7 @@ public:
             if (shape.meeting_skeleton) values.push_back({"NumJoints", Whole(1)});
             if (shape.normals) values.push_back({"Normals", Whole(shape.normals)});
             if (shape.planted) values.push_back({"Planted", Flag(true)});
-            Object("Fan-00", FanObject(shape.meeting), values);
+            Object("Fan-00", FanObject(shape.meeting, shape.fan_face), values);
         }
         for (const std::string& level : shape.levels) Object("Leave-00", 0, {{"Class", Text("CLocationTrigger")}, {"ActionType", Whole(16)}, {"LevelName", Text(level)}});
         for (const std::string& map : shape.maps) Object("Map-00", 0, {{"Class", Text("CLocationTrigger")}, {"ActionType", Whole(102)}, {"Sample", Text(map)}});
@@ -240,13 +241,13 @@ private:
     }
 
     // Faces around one point, each turned a little further.
-    uint32_t FanObject(uint32_t count) {
+    uint32_t FanObject(uint32_t count, const std::vector<uint32_t>& first = {}) {
         std::string points = F32(0) + F32(0) + F32(0), faces, corners, ids;
         for (uint32_t i = 0; i <= count; ++i) {
             const float a = 6.2831853f * float(i) / float(count + 1);
             points += F32(std::cos(a)) + F32(std::sin(a)) + F32(i % 2 ? 1.0f : 0.2f);
         }
-        for (uint32_t i = 0; i < count; ++i) faces += U32(0) + U32(i + 1) + U32(i + 2);
+        for (uint32_t i = 0; i < count; ++i) faces += i == 0 && first.size() == 3 ? U32(first[0]) + U32(first[1]) + U32(first[2]) : U32(0) + U32(i + 1) + U32(i + 2);
         const std::string geometry = std::string(12, '\0') + U32(count + 2) + U32(count) + U32(0) + U32(0) + std::string(12, '\0') + points + faces + std::string(count * 12, '\0');
         return Add("object", U32(Symbol("Fan-00")) + U32(Add("geometry", geometry)) + std::string(20, '\0'));
     }

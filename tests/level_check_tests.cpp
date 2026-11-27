@@ -259,6 +259,29 @@ static void TestFaults() {
     CHECK(fan([](WorldShape& w) { w.meeting = 200; }).empty() && fan([](WorldShape& w) { w.meeting = 65, w.optimized = false, w.normals = 2; }) == "NORMALS_EXCEED_LIMIT");
     CHECK(fan([](WorldShape& w) { w.meeting = 16, w.optimized = false, w.normals = 1; }).empty() && fan([](WorldShape& w) { w.meeting = 40, w.optimized = false, w.normals = 1; }) == "NORMALS_EXCEED_LIMIT" &&
           fan([](WorldShape& w) { w.meeting = 40, w.optimized = false, w.normals = 2; }).empty());
+    // A face with a corner past the points is reported and left out of the normals of the point it shares; it is never read.
+    const auto broken_fan = [](std::vector<uint32_t> face, int normals) {
+        WorldShape shape;
+        shape.meeting = 40, shape.optimized = false, shape.normals = normals, shape.fan_face = face;
+        return FaultsOf(shape);
+    };
+    const uint32_t points = 42;
+    CHECK(broken_fan({0, 1, 2}, 2).empty() && broken_fan({0, 1, 2}, 1) == "NORMALS_EXCEED_LIMIT");
+    for (const std::vector<uint32_t>& face : std::vector<std::vector<uint32_t>>{{points, 0, 1},
+                                                                             {0, points, 1},
+                                                                             {0, 1, points},
+                                                                             {0, 1, points + 5},
+                                                                             {0xFFFFFFFFu, 0, 1},
+                                                                             {0, 0x7FFFFFFFu, 1},
+                                                                             {0, 1, 0xFFFFFFFFu}}) {
+        CHECK(broken_fan(face, 2) == "INVALID_MESH_INDEX");
+        CHECK(broken_fan(face, 1) == "INVALID_MESH_INDEX NORMALS_EXCEED_LIMIT");
+    }
+    WorldShape far_corner;
+    far_corner.meeting = 40, far_corner.optimized = false, far_corner.normals = 2, far_corner.fan_face = {0, 1, 0xFFFFFFFFu};
+    jpt_groff_report_t far_report{};
+    CHECK(Describe(MakeWorld(far_corner), far_report) && far_report.fault_count == 1 && !std::strcmp(far_report.faults[0].code, "INVALID_MESH_INDEX") &&
+          far_report.faults[0].value == 0xFFFFFFFFu && far_report.faults[0].limit == points && far_report.faults[0].count == 1);
     CHECK(fan([](WorldShape& w) { w.meeting = 62, w.optimized = false, w.normals = 2, w.planted = true; }).empty() && fan([](WorldShape& w) { w.meeting = 63, w.optimized = false, w.normals = 2, w.planted = true; }) == "PLANTED_POINTS_EXCEED_LIMIT" &&
           fan([](WorldShape& w) { w.meeting = 63, w.planted = true; }).empty());
     CHECK(world([](WorldShape& w) { w.optimized = false; }) == "MALFORMED_MESH");
@@ -629,6 +652,10 @@ static void TestGate() {
     beyond.trigger_actions = 17;
     Write(home / "two.grf", MakeWorld(beyond));
     CHECK(gate("two.scn") == JPT_GATE_UNSAFE && std::strstr(why, "engine limit exceeded") && std::strstr(why, "TRIGGER_ACTIONS_EXCEED_LIMIT"));
+    WorldShape broken;
+    broken.meeting = 40, broken.optimized = false, broken.normals = 2, broken.fan_face = {0, 1, 0xFFFFFFFFu};
+    Write(home / "two.grf", MakeWorld(broken));
+    CHECK(gate("two.scn") == JPT_GATE_UNSAFE && std::strstr(why, "INVALID_MESH_INDEX"));
     Write(home / "two.scn", Scene("two.grf").substr(0, 1000));
     CHECK(gate("two.scn") == JPT_GATE_UNSAFE);
     Write(home / "two.scn", Scene("gone.grf"));
@@ -869,6 +896,17 @@ static void TestStates() {
     const ImportResult partly = Install(user, "Partly", With(Level("", "part"), "part.grf", MakeWorld(some)), game);
     CHECK(partly.ok() && partly.levels == 1 && Logged(partly.log, "MISSING_TEXTURES part.grf: 1 of 2 textures") && Logged(partly.log, "grey texture stands for them"));
     CHECK(Logged(partly.log, "class: READY") && !Logged(partly.log, "REJECTED"));
+
+    // A face with a corner past the mesh's points keeps its level from READY, alone or beside one that is.
+    WorldShape broken;
+    broken.terrain = "fan";
+    broken.meeting = 40, broken.optimized = false, broken.normals = 2, broken.fan_face = {0, 1, 0xFFFFFFFFu};
+    const Files fan = With(Level("", "fan"), "fan.grf", MakeWorld(broken));
+    const ImportResult alone = Install(user, "Fan", fan, game);
+    CHECK(!alone.ok() && alone.levels == 0 && Logged(alone.log, "INVALID_MESH_INDEX") && Logged(alone.log, "class: REJECTED_UNSUPPORTED") && !Logged(alone.log, "class: READY"));
+    CHECK(!fs::exists(CustomLevelsDir(user) / "Fan"));
+    const ImportResult beside = Install(user, "FanAndGood", fan + Level("", "good"), game);
+    CHECK(beside.ok() && beside.levels == 1 && !CheckBeforePlay(user, game, "FanAndGood", "fan.scn").ok && CheckBeforePlay(user, game, "FanAndGood", "good.scn").ok);
 
     // None of the world's textures anywhere: the texture set is not the world's, and the level is refused.
     const ImportResult pictures = Install(user, "Pictures", With(Level("", "pic"), "pic-130.pid", TextureSet({{1}})), game);

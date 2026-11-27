@@ -11,7 +11,7 @@
 #define ACTIONS "src/host/level_actions.c"
 
 static const jpt_level_feature_t k_features[] = {
-    { "ATX_ACTION_99", "Scripted action", NONE, "", "an ActionType script (ScriptAT) needs CE's scripting API, which the port does not have yet" },
+    { "ATX_ACTION_99", "Scripted action", NONE, "", "an ActionType script (ScriptAT): the port does not run action scripts yet" },
     { "ATX_ACTION_100", "Slow motion for a while", FULL, ACTIONS, "the interval is the time between its transitions; kept in saves" },
     { "ATX_ACTION_101", "Set game speed", FULL, ACTIONS, "kept in saves, back to normal at each load" },
     { "ATX_ACTION_102", "Set map picture", FULL, ACTIONS, "Show Objective shows the picture below the title with Anne's place, instead of ATX's MAP cheat; kept in saves" },

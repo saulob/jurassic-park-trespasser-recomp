@@ -127,9 +127,9 @@ Where the port differs from CE, and why:
   across a transition); its `nvram`, all CE saves of it, travels.
 * `OnScriptInit` and `OnLevelStart` run after the game's level load returned, so after the start triggers (CE calls
   `OnScriptInit` before them). Without CE's API a script cannot see the difference.
-* `OnLevelEnd` is called at transitions only. `OnLevelTransitionRequested`, `OnGameCompleted`, the paint, input, console and modal
-  handlers, the player's handlers and every handler of action scripts are not called yet: a level whose scripts declare one is
-  refused, with its name.
+* `OnLevelEnd` is called at transitions only. `OnLevelTransitionRequested`, `OnGameCompleted` and the handlers of action scripts
+  are not called: a level whose scripts declare one is refused, with its name. `OnConsoleCommand` is reached by the headless tests
+  only (see Console commands).
 * The nvram of game and level scripts is put back when the level's load returned, before `OnScriptInit` (CE: when the save's state
   is read, step 3), not before the load.
 

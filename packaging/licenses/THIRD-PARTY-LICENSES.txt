@@ -19,7 +19,7 @@ stb_image / stb_truetype    Public domain (or MIT where marked). No copyright cl
 Droid Sans                  Apache-2.0. Copyright 2008 The Android Open Source Project. external/imgui/misc/fonts/DroidSans.ttf, the embedded text face.
 OpenSSL 3.5.9 (Linux)       Apache-2.0. The OpenSSL Project.           this folder's OpenSSL-LICENSE.txt
 FFmpeg n7.1.1 (Linux)       LGPL-2.1-or-later. The FFmpeg developers.  this folder's FFmpeg-LGPL-2.1.txt and FFMPEG-SOURCE.txt
-Squirrel 3.2                MIT. Copyright (c) 2003-2022 Alberto Demichelis. https://github.com/albertodemichelis/squirrel (the notice is below; built for the scripts of custom levels, not yet linked into the program)
+Squirrel 3.2                MIT. Copyright (c) 2003-2022 Alberto Demichelis. https://github.com/albertodemichelis/squirrel (the notice is below; runs the scripts of custom levels)
 
 Squirrel 3.2 (https://github.com/albertodemichelis/squirrel, f9267f2f2a9afa1face89d8ea078c686331e30d1, after the v3.2 tag)
   MIT License. Copyright (c) 2003-2022 Alberto Demichelis. Patched by this port: an instruction budget and a checked

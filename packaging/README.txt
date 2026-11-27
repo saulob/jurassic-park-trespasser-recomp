@@ -10,6 +10,9 @@ Start trespasser_recomp.exe. The launcher opens first: Play > Import game, then 
   logs\        one log per run (the Bug Report page sends one of them only when you press Send report)
   game\        the installed game versions
 
+Custom Levels: the launcher's Custom Levels page imports community levels (ZIP, 7z, RAR or a folder) into
+user_data\custom_levels and checks each level before it is installed. Their saves are kept apart from the campaign's.
+
 The launcher checks for a newer release and updates the port in place; user_data, logs and game are never touched.
 trg-updater.exe is the helper that replaces the program files during an update: keep it next to the program.
 

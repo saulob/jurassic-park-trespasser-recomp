@@ -693,9 +693,12 @@ typedef struct {
     float x, y, z;
 } vector_t;
 
-static vector_t face_normal(const uint8_t* points, const uint8_t* face) {
+/* 0, with nothing written, for a face with a corner that is not one of the points (INVALID_MESH_INDEX). */
+static int face_normal(const uint8_t* points, uint32_t point_count, const uint8_t* face, vector_t* normal) {
     vector_t p[3], n;
     float length;
+    for (int k = 0; k < 3; k++)
+        if (rd(face + k * 4) >= point_count) return 0;
     for (int k = 0; k < 3; k++) {
         const uint8_t* at = points + (size_t)rd(face + k * 4) * 12;
         p[k].x = rdf(at), p[k].y = rdf(at + 4), p[k].z = rdf(at + 8);
@@ -705,11 +708,12 @@ static vector_t face_normal(const uint8_t* points, const uint8_t* face) {
     n.z = (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x);
     length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
     if (length > 0) n.x /= length, n.y /= length, n.z /= length;
-    return n;
+    *normal = n;
+    return 1;
 }
 
 /* The normals the engine makes of the faces that meet in a point: one for each group within the crease of one another. */
-static uint32_t groups_at(const uint8_t* points, const uint8_t* faces, uint32_t face_count, uint32_t point, float crease) {
+static uint32_t groups_at(const uint8_t* points, uint32_t point_count, const uint8_t* faces, uint32_t face_count, uint32_t point, float crease) {
     vector_t member[FACES_AT_POINT_MAX];
     uint8_t group[FACES_AT_POINT_MAX];
     uint32_t count = 0, groups = 0;
@@ -717,7 +721,7 @@ static uint32_t groups_at(const uint8_t* points, const uint8_t* faces, uint32_t 
         const uint8_t* face = faces + (size_t)f * 12;
         uint32_t joined = 0;
         if (rd(face) != point && rd(face + 4) != point && rd(face + 8) != point) continue;
-        member[count] = face_normal(points, face);
+        if (!face_normal(points, point_count, face, &member[count])) continue;
         for (; joined < groups; joined++) {
             uint32_t k = 0;
             for (; k < count; k++)
@@ -747,7 +751,7 @@ static int check_plain(const jpt_groff_t* g, const object_t* o, int skeleton, co
     for (uint32_t p = 0; p < point_count; p++) {
         at_most(report, "NORMALS_EXCEED_LIMIT", name, met[p], FACES_AT_POINT_MAX);
         if (!skeleton && met[p] > NORMALS_AT_POINT_MAX && met[p] <= FACES_AT_POINT_MAX)
-            at_most(report, "NORMALS_EXCEED_LIMIT", name, groups_at(points, faces, face_count, p, crease), NORMALS_AT_POINT_MAX);
+            at_most(report, "NORMALS_EXCEED_LIMIT", name, groups_at(points, point_count, faces, face_count, p, crease), NORMALS_AT_POINT_MAX);
     }
     if (!skeleton && is_true(g, o->values, NAME_PLANTED)) at_most(report, "PLANTED_POINTS_EXCEED_LIMIT", name, point_count, PLANTED_POINTS_MAX);
     free(met);
