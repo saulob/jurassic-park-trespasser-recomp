@@ -74,6 +74,8 @@ struct lx_window_backend {
     /* F11, a key of the shared hotkey table: windowed and fullscreen swap. */
     void (*toggle_fullscreen)(lx_window_backend_t* b);
     void (*present_scene)(lx_window_backend_t* b, const lx_scene_frame_t* frame);
+    /* Where the pointer is, in client pixels; 0 when it is not over the window. */
+    int (*pointer_position)(lx_window_backend_t* b, int* client_x, int* client_y);
 };
 
 /* The window the guest's windows use. A backend is installed before the guest runs; with none, the virtual one is. */
@@ -91,6 +93,7 @@ typedef struct {
     uint32_t last_checksum;
     unsigned events_returned;
     unsigned fullscreen_toggles;
+    int pointer_known, pointer_x, pointer_y; /* the last absolute position it returned, as a window system knows it */
 } lx_virtual_state_t;
 
 lx_window_backend_t* lx_virtual_backend(void);

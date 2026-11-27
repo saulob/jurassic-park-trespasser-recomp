@@ -176,6 +176,10 @@ void lx_screen_set_frame_limit(unsigned frames) { s_frame_limit = frames; }
 void lx_screen_set_frame_hook(lx_frame_hook_fn fn, void* user) { s_hook = fn, s_hook_user = user; }
 
 int lx_screen_client_to_guest(int cx, int cy, int* gx, int* gy) {
+    int client_w = 0, client_h = 0;
     ensure_presentation();
+    /* The window system resizes the window (maximise, tiling, F11) without telling the guest: the picture follows it, so must the mouse. */
+    lx_screen_window_client(&client_w, &client_h);
+    jpt_presentation_set_host(&s_pres, client_w, client_h);
     return jpt_presentation_to_guest(&s_pres, cx, cy, gx, gy);
 }

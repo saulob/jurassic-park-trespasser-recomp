@@ -13,6 +13,7 @@
 #include "linux_gamepad.h"
 #include "linux_gdi32.h"
 #include "linux_guest_quit.h"
+#include "linux_guest_ui.h"
 #include "linux_hostkeys.h"
 #include "linux_shutdown.h"
 #include "linux_log.h"
@@ -106,6 +107,7 @@ static unsigned s_idle_limit, s_empty_peeks;
 static uint64_t s_last_click_ms;
 static int s_last_click_x, s_last_click_y;
 static uint32_t s_last_click_message;
+static open_press_t s_open_press;
 
 void lx_user32_set_idle_limit(unsigned empty_peeks) { s_idle_limit = empty_peeks; }
 
@@ -132,6 +134,7 @@ void hle_user32_init(void) {
     s_empty_peeks = 0;
     s_last_click_ms = 0;
     s_last_click_message = 0;
+    open_press_reset(&s_open_press);
 }
 
 void hle_user32_shutdown(void) { lx_screen_window_close(); }
@@ -347,6 +350,7 @@ static void translate_event(const lx_event_t* ev) {
         if (w) lx_user32_post(target, WM_MOUSEWHEEL, ((uint32_t)(ev->y & 0xFFFF) << 16) | key_state_flags(), mouse_lparam(s_cursor_x, s_cursor_y));
         break;
     case LX_EV_FOCUS:
+        if (!ev->down) open_press_reset(&s_open_press);
         lx_mouse_set_focus(ev->down);
         if (w) {
             lx_user32_post(target, WM_ACTIVATEAPP, (uint32_t)ev->down, 0);
@@ -391,11 +395,35 @@ static int paint_message(uint32_t hwnd, uint32_t lo, uint32_t hi, message_t* out
     return 0;
 }
 
+/* Judged when the game takes the message, as the Windows host does when it is dispatched: the key-down has not opened its
+ * window yet, and the key-up comes after it did. */
+static int open_press_drops(const message_t* m) {
+    guest_ui_view_t v;
+    if (m->message != WM_KEYDOWN && m->message != WM_KEYUP) return 0;
+    memset(&v, 0, sizeof v);
+    lx_guest_ui_probe(&v);
+    if (m->message == WM_KEYDOWN) {
+        open_press_keydown(&s_open_press, m->wparam, (m->lparam >> 30) & 1u, v.ui == GUEST_UI_GAMEPLAY, v.depth);
+        return 0;
+    }
+    if (!open_press_keyup(&s_open_press, m->wparam, v.depth)) return 0;
+    lx_log("Linux input", "%s key-up of the press that opened the game's %s kept from it", m->wparam == 0x1Bu ? "Esc" : "F1",
+           guest_ui_model_class_name(jpt_gva_table(), v.top_vtable));
+    return 1;
+}
+
 static int fetch_message(uint32_t hwnd, uint32_t lo, uint32_t hi, int remove, message_t* out) {
     pump_backend();
-    for (unsigned i = 0; i < s_qcount; i++) {
+    for (unsigned i = 0; i < s_qcount;) {
         message_t* m = &s_queue[(s_qhead + i) % MAX_QUEUE];
-        if (!message_matches(m, hwnd, lo, hi)) continue;
+        if (!message_matches(m, hwnd, lo, hi)) {
+            i++;
+            continue;
+        }
+        if (remove && open_press_drops(m)) {
+            remove_queue_at(i);
+            continue;
+        }
         *out = *m;
         if (remove) remove_queue_at(i);
         return 1;

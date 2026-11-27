@@ -583,7 +583,11 @@ Measured headless (virtual window, SDL dummy audio and video drivers, nothing sh
   hidden (INPUT_GAMEPLAY_CAPTURED)`). `linux_mouse_tests` follows the game's own call sequence (start-up, video, menu, level, pause,
   focus); `linux_video_tests` checks, against the real guest, that no grab or relative mode occurs during the videos, an Escape skip
   and the menu (it failed before the change: 1005 frames grabbed, 305 of them in the menu), with a focus loss during the intro and
-  relative mode on in the level.
+  relative mode on in the level. JPT-Y2CHNM: the SDL backend defines every field of each event (a stale `relative` in user32's
+  uncleared event turned absolute positions outside the level into dropped looks: a menu cursor that did not move); positions map
+  through the window's current size (maximise, tiling, F11); leaving the level the game's cursor takes the real pointer's position;
+  and, as on Windows (`open_press`), the key-up of the Esc/F1 press that opened a window of the game is kept from it (CUIWnd cancels
+  on Esc key-up: the in-game options closed themselves, Resume, when Esc was released).
 * **Gamepad.** `linux_gamepad.*` is the Windows policy layer (`gamepad_policy`, `jpt_gamepad`, `pad_sdl`) behind an SDL3 device
   backend: connection, hot-plug (a poll every 200 ms), the controller in use, the look as cursor motion, the actions' command bits
   and Start as Escape, added to the game's own CInput read (`0x005F80B0`, through the shared override table: `lx_features_install_cinput`, which also empties the result while a host menu is open). `linux_gamepad_tests`
