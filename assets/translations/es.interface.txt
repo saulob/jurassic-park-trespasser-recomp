@@ -92,10 +92,20 @@ Teleport failed	Error al teletransportar
 Freeze AI failed	Error al congelar la IA
 No objective	Ningún objetivo
 Objective updated	Objetivo actualizado
+No map information	Sin información del mapa
+No objective information	Sin información de objetivos
+Find the way out	Encuentra la salida
+Objective %d	Objetivo %d
 Quick Save	Guardado rápido
 Quick saved	Guardado rápido realizado
 Quick Save failed	Error en el guardado rápido
 Quick Load failed	Error en la carga rápida
+This save is damaged and was not loaded	Esta partida está dañada y no se ha cargado
+This save is not compatible with the current level	Esta partida no es compatible con el nivel actual
+This level is missing required files	A este nivel le faltan archivos necesarios
+This level cannot be loaded safely	Este nivel no se puede cargar de forma segura
+The next level is not included in this package	El siguiente nivel no está incluido en este paquete
+The game could not be saved. The previous save was kept.	No se pudo guardar la partida. Se conservó la partida anterior.
 No Quick Save yet	Aún no hay guardado rápido
 Quick Save works in a level	El guardado rápido funciona en un nivel
 Quick Save is not available now	Guardado rápido no disponible ahora

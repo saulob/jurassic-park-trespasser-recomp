@@ -48,6 +48,8 @@ SHADERS = [
     ("VIDEO_FINAL_FRAG", "video_final.frag", "frag"),
     ("UI_VERT", "ui.vert", "vert"),
     ("UI_FRAG", "ui.frag", "frag"),
+    ("LIT_VERT", "lit.vert", "vert"),
+    ("LIT_FRAG", "lit.frag", "frag"),
 ]
 
 SPIRV_MAGIC = 0x07230203

@@ -333,6 +333,7 @@ intro_video_t intro_video_of(const char* guest_name);
 const char* intro_video_name(intro_video_t video);
 /* Skip Intro answers the game's own "NoVideo" for an opening it plays itself; the Video Test's requests still play. */
 int skip_intro_applies(int enabled, intro_video_t video, int video_test_request);
+int is_ending_video(const char* guest_name);
 
 /* The human pelvis's crouch height (Pel[me][MOUTH]) after Pelvic_IDOF's clamps (0x004F441D, 0x004F4442) and its ceiling
  * check (0x004F46F2), as the x87 computes them at the 24-bit precision CPhysicsSystem::Integrate (0x004CF8A0) selects:
@@ -555,6 +556,10 @@ uint32_t engine_terrain_shadow_kb(uint32_t page_px);
 int terrain_shadow_pool_call(const uint8_t* code, uint32_t code_va, uint32_t size, uint32_t* pool_va,
                              uint32_t* alloc_va);
 #define ENGINE_RENDER_QUALITY_TOP 4u
+/* Fog Off: every distance of a CFog's tables unfogged, and the terrain's fog starting past the far clip (distances
+ * are shares of it). 1 when anything changed. */
+#define SCENE_FOG_NEVER 2.0f
+int scene_fog_clear(int32_t* bands, float* values, unsigned count, float* terrain_start);
 /* SPartitionSettings::fGetCullDistance (0x004A22D0) plus the radius: how far an object of that radius stays drawn
  * with level cull distance max_at (CullMaxDist, 800 by default). */
 float engine_cull_distance(float radius, float max_at, float scale, float cap);
@@ -581,6 +586,18 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim);
 /* "Max Recommended Tex Dim" and "RenderQuality" answers: 0 leaves the stored value or the game default. */
 uint32_t engine_texture_dim_policy(int modern);
 uint32_t engine_render_quality_policy(int hardware, int value_stored);
+/* InitGamma (0x00414F20) raises every reflectance to g_afGamma[level] * 0.29, which is 0 past level 7: lit and shadowed
+ * surfaces become one brightness and the terrain shadows disappear. */
+#define ENGINE_GAMMA_TOP 7u
+uint32_t engine_gamma_level(uint32_t stored);
+/* A terrain ramp's shading (row = scale * light + offset) taken off row 0: its darkest light, start, then maps to row 1. */
+#define ENGINE_SHADOW_BRIGHTNESS 0.627f /* the ambient light, 0.2, at the default Gamma's exponent, 0.29 */
+int engine_ramp_reserved(float scale, float offset, float start);
+int engine_ramp_reserve(float* scale, float* offset, float start, uint32_t rows);
+/* The brightness of a row of a reserved ramp. */
+float engine_ramp_brightness(uint32_t level, uint32_t rows, float start);
+/* channels: position and 8 - width of red, green and blue. */
+uint16_t engine_scale_pixel(uint16_t pixel, const uint8_t channels[6], float scale);
 
 /* The game's UseSubTitles registry value is On until a choice is stored. A store that holds the Off the game wrote at
  * exit before the port kept this default becomes On once (marker absent); a stored choice after that is kept. Returns 1
@@ -621,6 +638,24 @@ typedef struct {
 } engine_heap_t;
 /* The heap a reservation of this size is, scale 1 when it is none of them. */
 engine_heap_t engine_heap_for(uint32_t bytes);
+/* A custom level's session: the mesh builder's arrays (0x0048A3D0, 2048 polygons a mesh), the loaded meshes' heap and the
+ * terrain's nodes, as the package asks for them. */
+#define ENGINE_MESH_FACES 2048u
+#define ENGINE_MESH_HEAP_BYTES 0x2000000u
+#define ENGINE_TEXTURE_POOL_BYTES 0x8000000u
+typedef struct {
+    int custom_level;
+    unsigned mesh_heap_mb;        /* 0: the engine's own */
+    unsigned extra_terrain_nodes; /* in thousands */
+    unsigned texture_pool_mb;     /* 0: the engine's own */
+    unsigned mesh_step;           /* how far into the builder's reservations the last one was */
+    unsigned mesh_faces;          /* 0: the engine's own */
+} engine_session_t;
+/* What the heap of this size is, for the log. */
+const char* engine_heap_name(uint32_t bytes);
+uint32_t engine_session_heap_bytes(engine_session_t* session, uint32_t bytes, unsigned scale);
+/* Bytes of a request at pv that do not fit the reservation [base, end). */
+uint32_t engine_heap_overflow(uint32_t pv, uint32_t bytes, uint32_t end);
 /* What pvCommitMem may commit of a request at pv: whole pages that stay inside the reservation ending at end. */
 uint32_t engine_heap_commit_bytes(uint32_t pv, uint32_t bytes, uint32_t reservation_end, uint32_t page);
 typedef struct {

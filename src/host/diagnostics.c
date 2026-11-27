@@ -2,6 +2,7 @@
 #include "guest_abi.h"
 #include "guest_va.h"
 #include "crash_dump.h"
+#include "engine_mode.h"
 #include "host.h"
 
 #include <stdarg.h>
@@ -232,6 +233,7 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS* ep) {
         uint32_t at = (uint32_t)r->ExceptionInformation[1];
         report_add("  %s of 0x%08X%s\n", op == 0 ? "read" : op == 1 ? "write" : "execute", at,
                    native32_in_guest(at) ? " (inside the guest image)" : at < 0x10000 ? " (null/low)" : "");
+        if (engine_heaps_guard(at)) report_add("  GUARD_PAGE_HIT: past an engine heap that was not asked for the room, a bug of the port\n");
     }
     report_machine_state();
     report_emit();

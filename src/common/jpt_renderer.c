@@ -87,6 +87,11 @@ int jpt_renderer_available_on_platform(jpt_renderer_t renderer, int is_windows) 
 
 int jpt_renderer_is_hardware(jpt_renderer_t renderer) { return renderer != JPT_RENDERER_SOFTWARE; }
 
+int jpt_launcher_renderer_valid(const char* value, int is_windows) {
+    if (!value) return 0;
+    return !strcmp(value, "auto") || !strcmp(value, "software") || (is_windows && !strcmp(value, "direct3d11"));
+}
+
 void jpt_renderer_resolve_policy(jpt_renderer_t requested, int is_windows, int d3d11_available, int vulkan_available,
                                  const char* vulkan_unavailable_reason, jpt_renderer_decision_t* out) {
     const char* vk_why = (vulkan_unavailable_reason && vulkan_unavailable_reason[0]) ? vulkan_unavailable_reason

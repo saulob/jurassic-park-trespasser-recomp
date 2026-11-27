@@ -75,6 +75,7 @@ Windows build), then starts the game when **Play** is pressed. Every page and se
 | --- | --- |
 | `--launcher` | show the launcher even when it is turned off (Shift at start is not available on Linux) |
 | `--skip-launcher` | skip it once, unless the game files are not ready |
+| `--launcher-renderer auto\|software` | what draws the launcher's own window, for this run only; `software` needs no Vulkan (docs/LAUNCHER.md). The game's renderer does not change |
 | `--run` | start the game at once, without the launcher |
 | `--dry-run`, `--bootstrap-headless` | the headless modes of the earlier bring-up |
 | `--renderer`, `--graphics-card` | override the renderer and the Vulkan card for this run |
@@ -246,7 +247,7 @@ same native Linux x86_64 AppImage (built by `tools/package-linux.sh`).
 tools/test-linux-parity.sh                 # the parity checks of this chapter, headless, no build needed beyond the suites
 tools/test-linux.sh                        # the whole headless Linux gate
 python3 -I tools/linux_parity_report.py --write   # rewrite docs/LINUX_PARITY.md after editing tests/feature_contract.json
-python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui and TRG Launcher at their pinned commits (build-linux.sh runs it)
+python3 tools/fetch_launcher_deps.py       # SDL3, Dear ImGui, TRG Launcher and Squirrel at their pinned commits (build-linux.sh runs it)
 ```
 
 ### Known limits
@@ -278,8 +279,8 @@ two together.
   `build`, `user_data`, `logs`, `game`, `.git` never take part. `tools/gen_build_info.py` writes the header during the build and
   rewrites it only when it changed. No clock goes into the binary.
 * **Self-check.** `trespasser_recomp --self-check` opens no window, no audio device, no log and writes no file; no guest code runs.
-  Each capability is a real call into its module: SelfMod entries, the override registry (70 listed, the number Linux can install, the
-  number installed with default settings), the 27 lift hooks, the host features, the audio pacer (policy version, queue target,
+  Each capability is a real call into its module: SelfMod entries, the override registry (81 listed, the number Linux can install, the
+  number installed with default settings), the 29 lift hooks, the host features, the audio pacer (policy version, queue target,
   periods that follow the mixer rate) and SDL's audio stream, the input context (menus: free absolute pointer; gameplay: relative
   motion), the gamepad layer and its menu step, the HD front end and loading screen, the controls card, Russian text, FFmpeg Smacker,
   the virtual Stream.tpa, video subtitles and save pictures.
@@ -292,9 +293,9 @@ two together.
   the last validated binary alone. `tools/package-linux.sh --skip-build` verifies the artifact against its manifest and the current
   sources (`linux_artifact.py verify`), requires the Release configuration and packages it; it never builds. Without `--skip-build`,
   the script runs the Release gate first.
-* **Boot log.** After the features are installed: `Linux features: 29/70 overrides installed (N required), 27/27 lift hooks active`
-  (with the host features off it says so). 29 is what Linux can install with every option on; the number installed follows the
-  settings (28 with the defaults).
+* **Boot log.** After the features are installed: `Linux features: 34/81 overrides installed (N required), 29/29 lift hooks active`
+  (with the host features off it says so). 34 is what Linux can install with every option on; the number installed follows the
+  settings (29 with the defaults).
 * **Audio log.** One line after the device opens (`SDL3 pacer active (policy 1): source 22050 Hz ..., device N Hz, ..., queue target N
   periods`) and one at shutdown with the underruns, backlog drops, queue minimum and maximum and the longest wake-up gap; they
   separate our bugs from device jitter. `JPT_AUDIO_STATS=1` still logs while running.
@@ -499,7 +500,7 @@ words on the stack that point into the executable's code. Stages are single atom
   `1`..`4`, clipper and palette, as guest COM objects: 16-byte faces in guest memory, vtables of thunks in the standard method order,
   one reference count per object. The semantics follow `src/host/ddraw` (the virtual 16 bpp RGB565 display, the same mode list and caps,
   flip chains with pixel exchange, Lock with a real guest address, colour fill, source colour keys, stretch, surface loss when the mode
-  changes). No Direct3D: `QueryInterface` for it is refused and the game keeps its software renderer. Pixels live in guest memory, so the
+  changes). Without a GPU renderer there is no Direct3D: `QueryInterface` for it is refused and the game keeps its software renderer. Pixels live in guest memory, so the
   guest's own rasteriser (SelfMod) writes straight into the surface the presenter shows.
 * **Presenter** (`linux_screen.*`, `linux_window.*`): frames go to the backend unconverted (RGB565 stays RGB565; other formats become
   XRGB8888). `jpt_presentation` decides the view: letterboxed, a new guest screen size takes effect only with the first frame of that
@@ -582,7 +583,11 @@ Measured headless (virtual window, SDL dummy audio and video drivers, nothing sh
   hidden (INPUT_GAMEPLAY_CAPTURED)`). `linux_mouse_tests` follows the game's own call sequence (start-up, video, menu, level, pause,
   focus); `linux_video_tests` checks, against the real guest, that no grab or relative mode occurs during the videos, an Escape skip
   and the menu (it failed before the change: 1005 frames grabbed, 305 of them in the menu), with a focus loss during the intro and
-  relative mode on in the level.
+  relative mode on in the level. JPT-Y2CHNM: the SDL backend defines every field of each event (a stale `relative` in user32's
+  uncleared event turned absolute positions outside the level into dropped looks: a menu cursor that did not move); positions map
+  through the window's current size (maximise, tiling, F11); leaving the level the game's cursor takes the real pointer's position;
+  and, as on Windows (`open_press`), the key-up of the Esc/F1 press that opened a window of the game is kept from it (CUIWnd cancels
+  on Esc key-up: the in-game options closed themselves, Resume, when Esc was released).
 * **Gamepad.** `linux_gamepad.*` is the Windows policy layer (`gamepad_policy`, `jpt_gamepad`, `pad_sdl`) behind an SDL3 device
   backend: connection, hot-plug (a poll every 200 ms), the controller in use, the look as cursor motion, the actions' command bits
   and Start as Escape, added to the game's own CInput read (`0x005F80B0`, through the shared override table: `lx_features_install_cinput`, which also empties the result while a host menu is open). `linux_gamepad_tests`
@@ -604,7 +609,7 @@ and writes (`guest_read32`, `guest_readable`, `guest_writable`, `guest_load_stri
 (`guest_override_install`) and the game's window stack (`guest_ui_probe`). Windows implements it in the host (`host.h` includes it), Linux
 in `src/linux/linux_host.c`, `linux_overrides.c` and `linux_features.c`.
 
-- **One table.** `src/host/guest_override_list.h` (70 sites) and `src/host/lift_hook_list.h` (27 hooks) are read by both hosts.
+- **One table.** `src/host/guest_override_list.h` (72 sites) and `src/host/lift_hook_list.h` (27 hooks) are read by both hosts.
   `guest_override_lift.inc` gives each listed function its stable entry `lift116_sub_<va>` and its row in the registry
   (`override_registry.c`); a replacement is installed through the entry, never into the ELF. The lifted code calls the entries, so an
   override is reached by every direct call, alias entry and dispatch.
@@ -680,7 +685,7 @@ is below; nothing is copied.
 
 Suites: `linux_frontend_tests` (219 checks: scene reading, painter, text, compositor geometry, pointer, resize, session, performance,
 loading, card), `linux_gamepad_tests` (73: menu navigation, Start/View/B, device sharing), `linux_save_files_tests` (save pictures),
-`linux_overrides_tests` (F2 through the host key table, 29 overrides of 70 installed).
+`linux_overrides_tests` (F2 through the host key table, 33 overrides of 72 installed).
 
 ## Next blocker
 
@@ -764,7 +769,7 @@ the launcher are the first things to try by hand; the log (`Linux presentation: 
 
 ```
 trespasser_recomp [--game DIR] [--version ID] [--user_data_root DIR] [--log-dir DIR] [--log-file FILE]
-                  [--launcher | --skip-launcher | --run | --dry-run | --bootstrap-headless]
+                  [--launcher | --skip-launcher | --run | --dry-run | --bootstrap-headless] [--launcher-renderer NAME]
                   [--renderer NAME] [--graphics-card ID] [--<setting> VALUE ...]
 ```
 
@@ -777,4 +782,24 @@ Defaults: `game/`, `user_data/` and `logs/` next to the program (`TRESPASSER_GAM
 * **Backend selection.** `trespasser.ini` (`renderer = auto | vulkan | software`) or `--renderer <name>` on the CLI. `auto` selects Vulkan when available and falls back cleanly to Software with a logged reason if no loader/ICD/compatible GPU exists. `d3d11` is unavailable on Linux and falls back cleanly without crashing.
 * **GPU selection.** `graphics_card` or `--graphics-card <auto | label | vendor:device | vendor:device:uuid8>`. `auto` checks minimum requirements first (graphics + present queues, `VK_KHR_swapchain`, depth attachment format), prefers usable discrete GPUs over integrated/virtual/CPU devices, and respects `DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, and `__NV_PRIME_RENDER_OFFLOAD`.
 * **Fallback and recovery.** Missing loader/GPU falls back to Software with a readable message. Swapchain `OUT_OF_DATE`, `SURFACE_LOST`, resize, minimize (`0x0` wait), and persistent `SUBOPTIMAL` (capped to avoid Gamescope/Wayland loops) are handled cleanly; `VK_ERROR_DEVICE_LOST` latches cleanly without infinite recovery loops.
-* **Known limitations.** Manual Steam Deck verification remains; the AppImage is packaged by `tools/package-linux.sh`. No RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).
+* **Direct3D 6 bridge (`linux_d3d.c`, `linux_d3d_target.c`, `linux_d3d_guest.c`).** With Vulkan the game takes its own Direct3D path
+  (`Use D3D`, `D3D GUID`, `Hardware Water` and, until the game stores one, `RenderQuality` are answered as on Windows). The vtables are
+  those of `d3d.h`: IDirect3D3 12, IDirect3DDevice3 42, IDirect3DViewport3 21 and IDirect3DTexture2 6 methods, each popping its own
+  arguments; what the game never calls is refused with DDERR_UNSUPPORTED and one log line. IDirect3D3 and IDirect3DTexture2 are faces of
+  the DirectDraw object and of the texture surface. z-buffers attach, and a level's worth of surfaces fits (8192).
+  The target is hybrid as on Windows: text and the polygons the game rasterises go to its 16-bit copy and only what changed is drawn
+  over the GPU's scene; a Lock that reads gets the scene back (a polygon only its box). In gameplay Flip shows the GPU's scene with the
+  host's overlays as a layer; under a menu, a dialog or a loading screen the CPU's picture is made complete and takes the usual path,
+  so the HD front end is unchanged. The target keeps the guest's shape inside the launcher's render resolution, and a CPU picture is
+  shown in its own shape, as the SDL renderer shows it and as the mouse is mapped.
+* **Water refraction, Enhanced sky, Fog, Shadows, Ambient occlusion.** With Vulkan they have effect on Linux: the water's rows run as
+  the host kernel, a Load links the drawn texture to its wave field (one field per water texture), the sky's draws take the level's fog
+  band, the device's fog colour and the Clear2 background follow the level at BeginScene, and ambient occlusion gets the camera's view.
+  Fog and Shadows act on the engine's own data, so they also apply to Software. All are read at start.
+* **Validation state.** Implemented, and covered headless by `linux_d3d_tests` (vtables and stack sizes of every method, HRESULTs, guest
+  writes, device life, states, textures, water, sky, the hybrid target, Flip) with a recorder in place of the GPU. **Not validated by
+  eye yet**: no gameplay frame through this bridge on a real Linux GPU. `--renderer software` keeps the game's own rasteriser. At exit
+  the log's `[d3d]` line counts frames, draws, texture uploads, water and sky draws, readbacks and refused states.
+* **Known limitations.** A host-rasterised text or a blended software polygon costs a readback of its area or of the screen; the
+  software polygons Windows can draw on the GPU (textured and bump, 1.0.116) stay on the CPU; a texture changed without Lock, Load or
+  Blt is not noticed (none was seen on Windows). Manual Steam Deck verification remains; the AppImage is packaged by `tools/package-linux.sh`. No RenderDoc or validation layers are bundled (`JPT_VK_VALIDATION=1` optionally enables Khronos validation in development when installed).

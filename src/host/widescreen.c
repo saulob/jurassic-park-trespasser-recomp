@@ -6,6 +6,7 @@
 #include "guest_abi.h"
 #include "guest_features.h"
 #include "host_policy.h"
+#include "terrain_shadows.h"
 
 #include <math.h>
 #include <string.h>
@@ -64,6 +65,7 @@ static void camera_set_properties(void) {
     uint8_t* copy;
     float w, h, tan_half, aspect;
     double scale, view_tan;
+    if (!g_alias_entry) terrain_shadows_camera(self, props);
     if (g_alias_entry || !props || !MEM8(props + PROP_PERSPECTIVE) || !has_main_view(self, props)) {
         s_set_properties_lifted();
         return;

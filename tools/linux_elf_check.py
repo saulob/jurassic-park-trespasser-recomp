@@ -34,6 +34,17 @@ WINE_PATTERNS = [rb"wineserver", rb"winelib", rb"libwine", rb"WINEPREFIX", rb"WI
 SDL_WINE_DETECTION = [rb"wine64-preloader", rb"Wine launched by Steam"]
 
 
+def dll_names_in(data):
+    """The .dll names held as whole C strings (a NUL on each side), the next name's leading NUL shared: the bytes of an
+    instruction that builds a name in registers sit next to opcodes."""
+    return {m.group(1).decode("latin1").lower() for m in re.finditer(rb"\x00([A-Za-z0-9_+-]{2,32}\.(?:dll|DLL))(?=\x00)", data)}
+
+
+def stray_dll_names(names):
+    # A GUID's last byte (0x46, "F") can sit right in front of a merged module-name string: that is data, not another name.
+    return sorted(n for n in names - GUEST_MODULE_NAMES if n[1:] not in GUEST_MODULE_NAMES)
+
+
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
@@ -117,10 +128,8 @@ def main():
     wine_hits = scan_strings(data, WINE_PATTERNS)
     wine_needed = [n for n in needed if re.search(r"wine|proton", n, re.I)]
     sdl_wine = [p.decode() for p in SDL_WINE_DETECTION if p in data]
-    # A whole C string (a NUL on each side): the bytes of an instruction that builds a name in registers sit next to opcodes.
-    dll_names = {m.group(1).decode("latin1").lower() for m in re.finditer(rb"\x00([A-Za-z0-9_+-]{2,32}\.(?:dll|DLL))\x00", data)}
-    # A GUID's last byte (0x46, "F") can sit right in front of a merged module-name string: that is data, not another name.
-    stray_dlls = sorted(n for n in dll_names - GUEST_MODULE_NAMES if n[1:] not in GUEST_MODULE_NAMES)
+    dll_names = dll_names_in(data)
+    stray_dlls = stray_dll_names(dll_names)
     dll_needed = [n for n in needed if n.lower().endswith(".dll")]
 
     rows = [

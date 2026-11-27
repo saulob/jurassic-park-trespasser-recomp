@@ -26,6 +26,9 @@ unsigned d3dt_indexed_triangles(int type, const uint16_t* in, unsigned count, ui
 /* Render and texture stage state values; 0 means the value is not valid for Direct3D 6. */
 int d3dt_blend(uint32_t value, int alpha_channel);
 int d3dt_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11);
+/* The same pair for a target whose alpha is the fog visibility: the shader's alpha is the second source and the
+ * destination's reads 1, as in RGB565; visibility mixes as colour does, or stays when no factor says how. */
+int d3dt_ao_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11);
 int d3dt_compare(uint32_t value);
 int d3dt_address(uint32_t value);
 int d3dt_cull(uint32_t value);
@@ -45,6 +48,13 @@ int d3dt_depth_bias(uint32_t zbias, uint32_t zfunc);
  * reference the pixel shader follows; texture_alpha says whether the texture format has alpha. */
 uint32_t d3dt_texture_blend(uint32_t mode, uint32_t texel, uint32_t diffuse, int texture_alpha);
 int d3dt_texture_blend_known(uint32_t mode);
+/* The pixel shader's per-draw constants (cbuffer Draw of d3d11_shaders.c) for a device's render states. */
+typedef struct {
+    uint32_t flags, blend_mode, alpha_func;
+    float alpha_ref;
+    float fog[4];
+} d3dt_draw_constants_t;
+void d3dt_draw_constants(const uint32_t* render, d3dt_draw_constants_t* out);
 /* Vertex fog: fog_alpha (specular alpha) 255 keeps the colour, 0 gives the fog colour; alpha kept. */
 uint32_t d3dt_apply_fog(uint32_t color, uint32_t fog_color, uint32_t fog_alpha);
 
@@ -200,6 +210,8 @@ void d3dt_matrix_multiply(const float* a, const float* b, float* out);
 
 /* A world vertex's layer field (D3D11_LAYER_* in d3d11_shaders.h): slice, the batch's array slot, texture flags and
  * sampler. */
+/* A texture map blend of the host's own: MODULATEALPHA with the colour times two. */
+#define D3DT_TBLEND_MODULATEALPHA_2X 16
 uint32_t d3dt_world_layer(uint32_t slice, uint32_t slot, uint32_t flags, uint32_t sampler);
 /* The sampler for stage 0's address modes: wrap or clamp per axis travel in the vertex, anything else is the device's. */
 uint32_t d3dt_vertex_sampler(uint32_t address_u, uint32_t address_v);

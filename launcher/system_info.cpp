@@ -13,9 +13,12 @@ namespace jpt {
 
 #ifdef _WIN32
 
-std::vector<jpt_gpu_t> ListGpus() {
+std::vector<jpt_gpu_t> ListGpus(std::string* detail) {
     std::vector<jpt_gpu_t> gpus(JPT_GPU_MAX);
     gpus.resize(static_cast<size_t>(jpt_gpu_list(gpus.data(), JPT_GPU_MAX)));
+    if (detail && GpuChoices(gpus).empty()) {
+        *detail = gpus.empty() ? "DXGI lists no adapter" : "no adapter creates a Direct3D 11 device";
+    }
     return gpus;
 }
 
@@ -59,8 +62,9 @@ const jpt_vk_probe_result_t& Probe() {
 
 }  // namespace
 
-std::vector<jpt_gpu_t> ListGpus() {
+std::vector<jpt_gpu_t> ListGpus(std::string* detail) {
     const jpt_vk_probe_result_t& probe = Probe();
+    if (detail && !probe.available) *detail = std::string(jpt_vk_probe_status_name(probe.status)) + ": " + probe.summary;
     std::vector<jpt_gpu_t> gpus;
     for (int i = 0; i < probe.gpu_count && i < JPT_GPU_MAX; ++i) {
         const jpt_vk_gpu_info_t& info = probe.gpus[i];
@@ -86,16 +90,6 @@ unsigned GpuMsaaMask(int index) {
 }
 
 #endif
-
-std::vector<std::string> GpuChoices(const std::vector<jpt_gpu_t>& gpus) {
-    std::vector<std::string> choices;
-    for (const jpt_gpu_t& gpu : gpus) {
-        if (gpu.label[0]) {
-            choices.emplace_back(gpu.label);
-        }
-    }
-    return choices;
-}
 
 std::vector<jpt_monitor_t> ListMonitors() {
     std::vector<jpt_monitor_t> monitors(JPT_MAX_MONITORS);

@@ -9,6 +9,8 @@
 
 #include <imgui.h>
 
+#include "frame_pacer.h"
+#include "launcher_renderer.h"
 #include "placement.h"
 
 struct SDL_Renderer;
@@ -25,7 +27,11 @@ struct HostOptions {
     int min_height = 560;
     std::optional<WindowPlacement> restore;  // used when it lies on a display
     bool hidden = false;                     // page screenshots without showing the window
+    std::string renderer = std::string(kLauncherRendererAuto); // --launcher-renderer
 };
+
+// The system's own message box: needs no renderer and no open window.
+void ShowNativeError(const std::string& title, const std::string& text);
 
 struct ConnectedGamepad {
     std::string name;
@@ -40,19 +46,25 @@ public:
     LauncherHost(const LauncherHost&) = delete;
     LauncherHost& operator=(const LauncherHost&) = delete;
 
-    // False when no window or renderer could be created; nothing is left open then.
+    // False when no window or renderer could be created; nothing is left open then and FailureText says why.
     bool Open(const HostOptions& options);
+    const std::string& FailureText() const { return failure_text_; }
+    // The SDL renderer in use; empty when none is open.
+    const std::string& RendererName() const { return renderer_name_; }
     // Shows the window once its first frame has been drawn. Does nothing when it was opened hidden.
     void Show();
     void Close();
+    // The HWND on Windows while the window is open; nullptr elsewhere.
+    void* NativeWindow() const;
 
-    // Handles the window's events (F11 switches the launcher's own fullscreen). False once it was closed.
-    bool PumpEvents();
-    bool Minimized() const;
+    // Handles the window's events (F11 switches the launcher's own fullscreen) and sleeps until the next frame is due, at
+    // most 60 per second; a hidden window is not limited. False once the window was closed.
+    bool WaitForFrame();
 
-    // Between these two the caller draws the launcher with ImGui. A capture path saves the frame as a PNG.
+    // Between these two the caller draws the launcher with ImGui. A capture path saves the frame as a PNG. False only when
+    // the first frame could not be drawn, uploaded or presented; FailureText says why.
     void BeginFrame();
-    void EndFrame(const ImVec4& clear, const char* capture_path = nullptr);
+    bool EndFrame(const ImVec4& clear, const char* capture_path = nullptr);
 
     bool Fullscreen() const;
     void SetFullscreen(bool fullscreen);
@@ -69,15 +81,35 @@ public:
     const std::optional<WindowPlacement>& Restored() const { return restored_; }
 
 private:
+    bool StartVideo(bool plain_framebuffer);
+    bool OpenWindow(const HostOptions& options, std::string& reason);
+    std::optional<RendererFailure> OpenRenderer(const HostOptions& options, std::string_view name);
+    std::optional<RendererFailure> ProbeFirstFrame();
+    std::string PresentChecked();
+    void ReleaseWindow();
+    bool PumpEvents();
+    bool Minimized() const;
+    void ConfigureVsync();
+    void NoteFrameDrawn(int64_t now_ns, const FrameTimes& times);
+
     std::optional<WindowPlacement> restored_;
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
     ImGuiContext* imgui_ = nullptr;
     std::vector<SDL_Texture*> textures_;
+    bool sdl_backend_ = false;
+    bool renderer_backend_ = false;
+    bool first_frame_ = true;
+    int pinned_modules_ = 0;
+    std::string failure_text_;
     bool video_ = false;
     bool gamepad_ = false;
     bool hidden_ = false;
     bool quit_ = false;
+    FramePacer pacer_;
+    LoopMonitor monitor_;
+    std::string renderer_name_;
+    int64_t frame_begin_ns_ = 0;
 };
 
 } // namespace jpt

@@ -28,16 +28,10 @@ void lx_vk_set_fullscreen(int fullscreen);
 void lx_vk_present_frame(const lx_frame_t* frame);
 void lx_vk_shutdown(void);
 
-/* DirectDraw / Direct3D 6 guest COM bridge (32-bit guest pointers via host64) */
-uint32_t lx_vk_query_direct3d3(void);
-uint32_t lx_vk_surface_query_texture2(uint32_t surface_slot, uint32_t width, uint32_t height, uint32_t pitch,
-                                      uint32_t guest_bits, const uint32_t pf[8], int has_colorkey, uint32_t ck_lo,
-                                      uint32_t ck_hi);
-void lx_vk_surface_notify_unlock(uint32_t surface_slot, uint32_t width, uint32_t height, uint32_t pitch,
-                                 uint32_t guest_bits, const uint32_t pf[8], int has_colorkey, uint32_t ck_lo,
-                                 uint32_t ck_hi);
-void lx_vk_surface_notify_destroy(uint32_t surface_slot);
-void lx_vk_reset_com(void);
+/* The scene the guest's Direct3D device drew this frame (linux_d3d.h), with the host's overlays. */
+void lx_vk_present_scene(const lx_scene_frame_t* frame);
+/* The window cannot use Vulkan: this run goes on with the Software renderer. */
+void lx_vk_window_failed(const char* why);
 
 #ifdef __cplusplus
 }

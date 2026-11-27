@@ -4,10 +4,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "guest_features.h"
 #include "guest_ptr.h"
 #include "jpt_fs.h"
+#include "jpt_level_gate.h"
+#include "jpt_level_world.h"
+#include "jpt_scene.h"
+#include "jpt_szdd.h"
+#include "jpt_texhw.h"
 #include "linux_log.h"
 
 #define MAX_FILES 16
@@ -16,8 +22,6 @@
 #define OFSTRUCT_BYTES 136
 #define OFSTRUCT_PATH 8
 #define OFSTRUCT_PATH_MAX 128
-#define SZDD_HEADER 14
-#define WINDOW 4096
 
 typedef struct {
     int used;
@@ -39,44 +43,6 @@ static uint8_t* read_file(const char* path, size_t* size) {
     }
     fclose(f);
     return data;
-}
-
-/* The LZSS of expand.exe: a 4096-byte window of spaces, written from 4096 - 16; a control byte tells literals (1) from
- * matches (0), a match is a 12-bit window position and a 4-bit length - 3. */
-static uint8_t* expand(const uint8_t* in, size_t in_size, size_t* out_size) {
-    static const uint8_t magic[8] = { 'S', 'Z', 'D', 'D', 0x88, 0xF0, 0x27, 0x33 };
-    uint8_t window[WINDOW];
-    uint8_t* out;
-    size_t want, o = 0, i = SZDD_HEADER;
-    int w = WINDOW - 16;
-    if (in_size < SZDD_HEADER || memcmp(in, magic, sizeof magic) != 0 || in[8] != 'A') return NULL;
-    want = (size_t)in[10] | (size_t)in[11] << 8 | (size_t)in[12] << 16 | (size_t)in[13] << 24;
-    out = (uint8_t*)malloc(want ? want : 1);
-    if (!out) return NULL;
-    memset(window, ' ', sizeof window);
-    while (o < want && i < in_size) {
-        unsigned control = in[i++];
-        for (int bit = 0; bit < 8 && o < want; bit++, control >>= 1) {
-            if (control & 1) {
-                if (i >= in_size) break;
-                out[o++] = window[w] = in[i++];
-                w = (w + 1) & (WINDOW - 1);
-            } else {
-                int pos, len;
-                if (i + 1 >= in_size) break;
-                pos = in[i] | ((in[i + 1] & 0xF0) << 4);
-                len = (in[i + 1] & 0x0F) + 3;
-                i += 2;
-                for (int k = 0; k < len && o < want; k++) {
-                    uint8_t c = window[(pos + k) & (WINDOW - 1)];
-                    out[o++] = window[w] = c;
-                    w = (w + 1) & (WINDOW - 1);
-                }
-            }
-        }
-    }
-    *out_size = o;
-    return out;
 }
 
 static lz_file_t* file_of(uint32_t handle) {
@@ -124,6 +90,42 @@ static void serve_fixed_level(const char* host_path, const uint8_t* raw, size_t 
     *data = fixed, *size = fixed_size;
 }
 
+/* A package's scene of a later format, as the game's own loader reads it; the file stays as it is. 0 when it cannot be. */
+static int adapt_scene(const char* host_path, const uint8_t* raw, uint8_t** data, size_t* size) {
+    jpt_scene_report_t report;
+    size_t adapted_size = 0;
+    uint8_t* adapted;
+    adapted = jpt_custom_level_adapt_scene(host_path, *data, *size, &adapted_size, &report);
+    if (report.problem[0]) {
+        lx_log("custom-level", "%s cannot be read: %s", host_path, report.problem);
+        return 0;
+    }
+    if (!adapted) return 1;
+    lx_log("custom-level", "%s: scene version %d read as the game's own layout (%zu -> %zu bytes, in memory)", host_path, report.version, *size, adapted_size);
+    for (int i = 0; i < report.note_count; i++) lx_log("custom-level", "  %s", report.notes[i]);
+    if (*data != raw) free(*data);
+    *data = adapted, *size = adapted_size;
+    return 1;
+}
+
+static void texhw_line(const char* line) { lx_log("custom-level", "%s", line); }
+
+static void adapt_world(const char* name, uint8_t* data, size_t size) {
+    jpt_level_world_t world;
+    char line[512];
+    jpt_texhw_set_log(texhw_line);
+    jpt_level_world_prepare(name, data, size, &world);
+    for (int i = 0; jpt_level_world_line(&world, i, line, sizeof line); i++) lx_log("custom-level", "%s", line);
+    if (world.failed) hle_exit_process(HLE_EXIT_LEVEL);
+}
+
+static int adapt(const char* name, const char* host_path, const uint8_t* raw, uint8_t** data, size_t* size) {
+    const size_t n = strlen(host_path);
+    if (n > 4 && !strcasecmp(host_path + n - 4, ".scn")) return adapt_scene(host_path, raw, data, size);
+    if (n > 4 && !strcasecmp(host_path + n - 4, ".grf")) adapt_world(name, *data, *size);
+    return 1;
+}
+
 static uint64_t z_LZOpenFileA(const uint32_t* a, void* u) {
     const char* name = gp_string(a[0], 260);
     char host[JPT_PATH_MAX];
@@ -131,17 +133,28 @@ static uint64_t z_LZOpenFileA(const uint32_t* a, void* u) {
     uint8_t* data;
     size_t size = 0, expanded = 0;
     uint8_t info[OFSTRUCT_BYTES];
-    int slot = -1;
+    int slot = -1, overlaid = 0, readable;
     (void)u;
-    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return HFILE_ERROR;
+    if (!name || !hle_vpath() || jpt_vpath_resolve_read(hle_vpath(), name, host, sizeof host, &overlaid) != JPT_VP_OK)
+        return HFILE_ERROR;
     for (int i = 0; i < MAX_FILES && slot < 0; i++)
         if (!s_file[i].used) slot = i;
+    if (jpt_save_is_name(name) || jpt_save_is_temporary(name)) {
+        char why[160];
+        if (!jpt_gate_reads(host, why, sizeof why)) return lx_log("save", "%s is damaged and was not read: %s", name, why), HFILE_ERROR;
+    }
     raw = slot < 0 ? NULL : read_file(host, &size);
     if (!raw) return HFILE_ERROR;
-    data = expand(raw, size, &expanded);
+    data = jpt_szdd_expand(raw, size, &expanded);
     if (!data) data = raw, expanded = size;
     serve_fixed_level(host, raw, size, &data, &expanded);
+    if (!overlaid && strlen(host) > 4 && !strcasecmp(host + strlen(host) - 4, ".grf")) jpt_level_world_original(host);
+    readable = !overlaid || adapt(name, host, raw, &data, &expanded);
     if (data != raw) free(raw);
+    if (!readable) {
+        free(data);
+        return HFILE_ERROR;
+    }
     s_file[slot].used = 1, s_file[slot].data = data, s_file[slot].size = expanded, s_file[slot].pos = 0;
     if (a[1]) {
         memset(info, 0, sizeof info);

@@ -14,6 +14,17 @@
 
 int host_perf_logging(void) { return 0; }
 
+int guest_reservation_fits(uint32_t bytes) {
+    const uint32_t va = gm_reserve(0, (bytes + GM_PAGE - 1u) & ~(GM_PAGE - 1u), "probe");
+    if (va) gm_release(va);
+    return va != 0;
+}
+
+void host_stop_level(const char* message) {
+    host_log("exit", "stopped by the host: %s", message);
+    hle_exit_process(HLE_EXIT_LEVEL);
+}
+
 static struct {
     const void* host;
     uint32_t guest;

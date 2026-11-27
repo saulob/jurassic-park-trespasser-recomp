@@ -49,6 +49,14 @@ INSTALL
 To repair an installation, use "Reinstall game..." on the Play page. Your saves and settings are kept.
 
 
+CUSTOM LEVELS
+-------------
+The launcher's Custom Levels page imports community levels from a ZIP, 7z or RAR file or from a folder, checks each
+level before anything is installed and lists it as Ready or Not supported, with the reason. Imported levels go to
+user_data/custom_levels, and their saves are kept apart from the campaign's. Ready means that everything the level
+needs is present and implemented, not that the level was played through.
+
+
 UPDATES
 -------
 The launcher checks the project's GitHub releases once per start. When a newer AppImage exists, an update banner
@@ -83,6 +91,8 @@ PLAYING
 - Controllers are read through SDL's gamepad support: Xbox controllers and the Steam Deck's own controls.
 - To open the launcher again after turning it off, start the AppImage with --launcher (or use the "Show launcher"
   action of its desktop entry).
+- If the launcher does not open on this graphics driver, start the AppImage with
+  --launcher --launcher-renderer software
 - The launcher's Bug Report page sends a report, with the log you choose, only when you press Send report. My Reports
   keeps the reports sent from this computer.
 
@@ -112,8 +122,8 @@ LICENSE
 The port's own source code has no licence file yet; that choice belongs to the repository owner. The legal notes and
 the third-party notices are in usr/share/licenses/JurassicParkTrespasserRecompiled/ inside the AppImage (run it with
 --appimage-extract to see the files). Third-party components keep their own licences, including SDL3 (zlib), Dear
-ImGui (MIT), miniz (MIT), pcrecomp (MIT), Vulkan-Headers (Apache-2.0), FFmpeg (LGPL-2.1-or-later) and OpenSSL
-(Apache-2.0).
+ImGui (MIT), miniz (MIT), pcrecomp (MIT), Squirrel (MIT), the LZMA SDK (public domain), Vulkan-Headers (Apache-2.0),
+FFmpeg (LGPL-2.1-or-later) and OpenSSL (Apache-2.0).
 
 The game and its assets are not included and are not covered by this project's licence. This port is not affiliated
 with or endorsed by DreamWorks Interactive, Electronic Arts or any other rights holder of Jurassic Park: Trespasser.

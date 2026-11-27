@@ -6,7 +6,7 @@
 #define JUMP_AMOUNT 0.9f
 
 patch117_jump_request_t patch117_jump_request(int on, int hit, int held) {
-    patch117_jump_request_t r = { 0.0f, 0 };
+    patch117_jump_request_t r = { 0.0f, 0, 1.0f };
     if (hit) {
         r.amount = JUMP_AMOUNT;
         r.is_new = 1;
@@ -16,9 +16,9 @@ patch117_jump_request_t patch117_jump_request(int on, int hit, int held) {
     return r;
 }
 
-static void arm(patch117_jump_t* j) {
+static void arm(patch117_jump_t* j, float scale) {
     j->x = j->y = 0.0f;
-    j->z = 1.0f;
+    j->z = scale;
     j->voluntary = 1;
     j->ttl = PATCH117_JUMP_TTL_STEPS;
 }
@@ -28,11 +28,11 @@ static void clear(patch117_jump_t* j) { j->x = j->y = j->z = 0.0f; }
 void patch117_jump_frame(int on, patch117_jump_t* j, patch117_jump_request_t request) {
     if (!on) {
         if (request.amount != 0.0f)
-            arm(j);
+            arm(j, request.scale);
         else
             clear(j);
     } else if (request.amount != 0.0f && (request.is_new || j->z == 0.0f)) {
-        arm(j);
+        arm(j, request.scale);
     }
 }
 

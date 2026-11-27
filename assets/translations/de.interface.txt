@@ -92,10 +92,20 @@ Teleport failed	Teleport fehlgeschlagen
 Freeze AI failed	KI einfrieren fehlgeschlagen
 No objective	Kein Ziel
 Objective updated	Ziel aktualisiert
+No map information	Keine Karteninformationen
+No objective information	Keine Zielinformationen
+Find the way out	Finde den Weg hinaus
+Objective %d	Ziel %d
 Quick Save	Schnellspeichern
 Quick saved	Schnell gespeichert
 Quick Save failed	Schnellspeichern fehlgeschlagen
 Quick Load failed	Schnellladen fehlgeschlagen
+This save is damaged and was not loaded	Dieser Spielstand ist beschädigt und wurde nicht geladen
+This save is not compatible with the current level	Dieser Spielstand passt nicht zum aktuellen Level
+This level is missing required files	Diesem Level fehlen erforderliche Dateien
+This level cannot be loaded safely	Dieses Level kann nicht sicher geladen werden
+The next level is not included in this package	Das nächste Level ist in diesem Paket nicht enthalten
+The game could not be saved. The previous save was kept.	Das Spiel konnte nicht gespeichert werden. Der vorherige Spielstand wurde behalten.
 No Quick Save yet	Noch kein Schnellspeicherstand
 Quick Save works in a level	Schnellspeichern nur in einem Level
 Quick Save is not available now	Schnellspeichern ist gerade nicht möglich

@@ -13,6 +13,7 @@
 #include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "l10n.h"
+#include "custom_level_guide.h"
 #include "objective_policy.h"
 #include "objectives.h"
 
@@ -142,7 +143,7 @@ const char* objectives_frame(dm_world_t* w, int list, uint32_t scratch) {
     }
     if (strcmp(w->level, O.level)) {
         snprintf(O.level, sizeof O.level, "%s", w->level);
-        O.table = ob_level(w->level);
+        if (!level_guide_objectives(w->level, &O.table)) O.table = ob_level(w->level);
         forget();
         O.current = O.hint = -1;
         note("level %s: %d objectives (-1: none known)", w->level, O.table ? O.table->count : -1);

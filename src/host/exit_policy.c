@@ -144,6 +144,31 @@ static void guest_exit(int code, const char* api) {
     host_finish(host_code);
 }
 
+static int on_worker(void) {
+    for (LONG i = 0; i < s_thread_count; i++)
+        if (s_threads[i].id == GetCurrentThreadId()) return 1;
+    return 0;
+}
+
+/* The game's partly built state is left as it is: its destructors are not run, and the process ends with it. */
+__declspec(noreturn) void host_stop_level(const char* message) {
+    static LONG stopping;
+    if (InterlockedExchange(&stopping, 1)) Sleep(INFINITE);
+    host_log("exit", "stopped by the host: %s", message);
+    if (on_worker()) {
+        MessageBoxA(NULL, message, "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+        diagnostics_process_ending();
+        host_log("exit", "exit code %d", HOST_EXIT_GAME_FAILED);
+        ExitProcess(HOST_EXIT_GAME_FAILED);
+    }
+    window_host_crt_exiting();
+    end_guest_crt(0);
+    window_host_guest_stopped();
+    window_host_release_cursor();
+    MessageBoxA(NULL, message, "Jurassic Park: Trespasser Recompiled", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+    host_finish(HOST_EXIT_GAME_FAILED);
+}
+
 void shim_exit(void) { guest_exit((int)GUEST_ARG(0), "exit"); }
 
 void shim__exit(void) { guest_exit((int)GUEST_ARG(0), "_exit"); }

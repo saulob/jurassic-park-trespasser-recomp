@@ -26,6 +26,8 @@ extern "C" {
 #define CP_REMINDER_MS 4000u
 #define CP_REMINDER_FADE_MS 400u
 #define CP_NO_OBJECTIVE_MS 2000u
+/* The map picture of Show Objective: its longer side as a fraction of the picture height. */
+#define CP_MAP_SIDE 0.42f
 
 float cp_wrap360(float deg);
 /* (-180, 180] */
@@ -100,6 +102,11 @@ typedef struct {
     char notice[CP_TEXT_MAX];
     int minimap;                     /* draw the minimap this frame */
     char minimap_level[MM_LEVEL_ID_MAX];
+    char minimap_note[CP_TEXT_MAX];  /* a custom level without map data: the minimap says so */
+    const minimap_picture_t* level_map; /* Show Objective: the map picture the level itself names, below the title */
+    float level_map_alpha;
+    float level_map_cursor[2];          /* where Anne is on it, 0..1 across and down */
+    int level_map_outside;              /* she is beyond its edge: the cursor stays on the edge */
     float player_pos[3];
     int waypoint;                    /* draw the active objective on the minimap */
     float waypoint_pos[3];
@@ -132,6 +139,19 @@ float cp_reminder_step(cp_reminder_t* r, uint32_t now_ms, const cp_goal_t* goal)
 /* The title into the frame's HUD at that visibility; nothing while the HUD itself is not allowed. */
 void cp_hud_reminder(cp_hud_t* hud, const cp_goal_t* goal, float visibility);
 
+/* Show Objective also shows the map picture a level names (ATX's map), for as long as the title, whether or not there is an
+ * objective. */
+typedef struct {
+    int active;
+    uint32_t start_ms;
+} cp_map_view_t;
+
+int cp_map_view_press(cp_map_view_t* v, uint32_t now_ms, int has_map);
+float cp_map_view_step(cp_map_view_t* v, uint32_t now_ms, int has_map);
+/* Where a point is on a picture laid over the world from (x0, y0) at its first corner to (x1, y1) at its last: 0..1 across and
+ * down, held at the edge when the point is outside. 0 when the picture has no extent. */
+int cp_map_cursor(const minimap_picture_t* map, float x, float y, float out[2], int* outside);
+
 /* The first anchor still ahead of Anne: past the one she is nearest to once she is within reach of it, or once the
  * next one is nearer to her than to it. */
 int cp_route_next(const float route[][3], int count, const float at[3]);
@@ -147,6 +167,8 @@ void cp_layout(float view_w, float view_h, cp_layout_t* out);
 /* The same for the 3D image inside the presentation surface (x, y, w, h in the surface's pixels): sized by the image and
  * glued to its top edge, whatever margin the game's view-size setting leaves around it. */
 void cp_layout_in(float x, float y, float w, float h, cp_layout_t* out);
+/* The picture's box below the objective's title: its side scaled to fit, keeping the picture's shape. */
+void cp_map_box(const cp_layout_t* l, float view_h, int cols, int rows, float* x, float* y, float* w, float* h);
 /* The objective title's outline: a pixel at the base scale, growing with the picture. */
 float cp_outline_px(const cp_layout_t* l);
 /* A relative direction on the strip; side -1 or 1 when it is past an end and pinned there. */

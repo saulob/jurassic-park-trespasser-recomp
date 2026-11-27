@@ -34,6 +34,23 @@ static void copy_fn(void* dst_fn_ptr, void* raw_sym) {
         memcpy(&l->name, &fn_, sizeof fn_); \
     } while (0)
 
+int jpt_vk_loader_bind(jpt_vk_loader_t* l, PFN_vkGetInstanceProcAddr get, char* err, size_t err_cap) {
+    l->vkGetInstanceProcAddr = get;
+    LOAD_GLOBAL(vkEnumerateInstanceVersion);
+    LOAD_GLOBAL(vkEnumerateInstanceExtensionProperties);
+    LOAD_GLOBAL(vkEnumerateInstanceLayerProperties);
+    LOAD_GLOBAL(vkCreateInstance);
+
+    if (!l->vkCreateInstance || !l->vkEnumerateInstanceExtensionProperties) {
+        set_err(err, err_cap, "Vulkan loader missing vkCreateInstance / vkEnumerateInstanceExtensionProperties");
+        jpt_vk_loader_close(l);
+        return 0;
+    }
+
+    l->loaded = 1;
+    return 1;
+}
+
 int jpt_vk_loader_open(jpt_vk_loader_t* l, int use_sdl_video, char* err, size_t err_cap) {
     if (!l) return 0;
     memset(l, 0, sizeof *l);
@@ -75,19 +92,7 @@ int jpt_vk_loader_open(jpt_vk_loader_t* l, int use_sdl_video, char* err, size_t 
     }
 
     (void)copy_fn;
-    LOAD_GLOBAL(vkEnumerateInstanceVersion);
-    LOAD_GLOBAL(vkEnumerateInstanceExtensionProperties);
-    LOAD_GLOBAL(vkEnumerateInstanceLayerProperties);
-    LOAD_GLOBAL(vkCreateInstance);
-
-    if (!l->vkCreateInstance || !l->vkEnumerateInstanceExtensionProperties) {
-        set_err(err, err_cap, "Vulkan loader missing vkCreateInstance / vkEnumerateInstanceExtensionProperties");
-        jpt_vk_loader_close(l);
-        return 0;
-    }
-
-    l->loaded = 1;
-    return 1;
+    return jpt_vk_loader_bind(l, l->vkGetInstanceProcAddr, err, err_cap);
 }
 
 int jpt_vk_loader_load_instance(jpt_vk_loader_t* l, VkInstance instance, char* err, size_t err_cap) {
@@ -123,7 +128,9 @@ int jpt_vk_loader_load_instance(jpt_vk_loader_t* l, VkInstance instance, char* e
     LOAD_INST(instance, vkSetDebugUtilsObjectNameEXT);
 
     if (!l->vkDestroyInstance || !l->vkEnumeratePhysicalDevices || !l->vkGetPhysicalDeviceProperties ||
-        !l->vkCreateDevice || !l->vkGetDeviceProcAddr) {
+        !l->vkGetPhysicalDeviceFeatures || !l->vkGetPhysicalDeviceMemoryProperties ||
+        !l->vkGetPhysicalDeviceQueueFamilyProperties || !l->vkGetPhysicalDeviceFormatProperties ||
+        !l->vkEnumerateDeviceExtensionProperties || !l->vkCreateDevice || !l->vkGetDeviceProcAddr) {
         set_err(err, err_cap, "Vulkan instance missing core entry points");
         return 0;
     }

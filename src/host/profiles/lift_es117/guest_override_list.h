@@ -14,6 +14,7 @@ GUEST_OVERRIDE(00411FC0, REQUIRED) /* window centring (ui_canvas.c) */
 GUEST_OVERRIDE(004129C0, REQUIRED) /* RasterBlt (ui_canvas.c) */
 GUEST_OVERRIDE(00413160, OPTIONAL) /* screen message (loading_hd.c) */
 GUEST_OVERRIDE(004143B0, OPTIONAL) /* level load (loading_hd.c) */
+GUEST_OVERRIDE(00414580, OPTIONAL) /* Restart Level (level_actions.c) */
 GUEST_OVERRIDE(00414E50, OPTIONAL) /* menu selection sound loader, menu-only volume (menu_audio.c) */
 GUEST_OVERRIDE(00415BD0, OPTIONAL) /* CLoaderWnd draw and present (loading_hd.c) */
 GUEST_OVERRIDE(00417420, REQUIRED) /* CUIWnd frame (ui_canvas.c) */
@@ -22,6 +23,10 @@ GUEST_OVERRIDE(00417530, REQUIRED) /* UI cursor (ui_canvas.c) */
 GUEST_OVERRIDE(00418B40, OPTIONAL) /* CVideoWnd::Play (video_hd.c) */
 GUEST_OVERRIDE(0041D4A0, OPTIONAL) /* voice captions to the text overlay (l10n.c) */
 GUEST_OVERRIDE(00445B20, OPTIONAL) /* CPlayer stow handler, Dual stow (ce_gameplay.c) */
+GUEST_OVERRIDE(0044D270, OPTIONAL) /* CSetHintAction, actions of ATX and Trespasser CE (level_actions.c) */
+GUEST_OVERRIDE(0044D280, OPTIONAL) /* CSetHintAction load (level_actions.c) */
+GUEST_OVERRIDE(0044D2A0, OPTIONAL) /* CSetHintAction save (level_actions.c) */
+GUEST_OVERRIDE(00451510, OPTIONAL) /* trigger action factory (level_actions.c) */
 GUEST_OVERRIDE(004581A0, OPTIONAL) /* level TEXT action (l10n.c) */
 GUEST_OVERRIDE(0045B6F0, REQUIRED) /* CPartition::bAddChild, official Patch 1.1 fix (patch117.c) */
 GUEST_OVERRIDE(0045D1A0, REQUIRED) /* CPartition::bInRange (engine_limits.c) */
@@ -31,6 +36,7 @@ GUEST_OVERRIDE(00470B70, REQUIRED) /* CTextureNode::SetTextureMemSize (engine_li
 GUEST_OVERRIDE(0047D180, REQUIRED) /* CQuadRootTIN::Update (terrain_quality.c) */
 GUEST_OVERRIDE(004BCFD0, REQUIRED) /* physics box set-up, official Patch 1.1 fix (patch117_physics.c) */
 GUEST_OVERRIDE(004D9CF0, REQUIRED) /* Pelvic_IDOF (physics_fixes.c) */
+GUEST_OVERRIDE(004DCEB0, OPTIONAL) /* the player's jump vocal, OnJump of CE scripts (script_engine.c) */
 GUEST_OVERRIDE(004E8820, REQUIRED) /* mode table (widescreen.c) */
 GUEST_OVERRIDE(004E92B0, REQUIRED) /* CRasterVid::Lock (cpu_polygons.c) */
 GUEST_OVERRIDE(004EC150, OPTIONAL) /* CDirect3D::AllocateTextureMemory, logged (engine_limits.c) */
@@ -58,8 +64,10 @@ GUEST_OVERRIDE(00563C20, REQUIRED) /* bump primitive, perspective (cpu_polygons.
 GUEST_OVERRIDE(005DE210, OPTIONAL) /* CInput::tinReadDefaultControls (gamepad.c) */
 GUEST_OVERRIDE(005DEFA0, REQUIRED) /* pHeapAlloc (engine_heaps.c) */
 GUEST_OVERRIDE(005DF090, REQUIRED) /* pvCommitMem (engine_heaps.c) */
+GUEST_OVERRIDE(005EC660, OPTIONAL) /* CWorld::bLoadScene (level_actions.c) */
 GUEST_OVERRIDE(005F4970, OPTIONAL) /* water texture rows (water_kernels.c) */
 GUEST_OVERRIDE(005F6190, REQUIRED) /* CEntityWater::CPriv::Integrate (physics_fixes.c) */
+GUEST_OVERRIDE(005FB4D0, REQUIRED) /* CInstance::pcLoad, scenes of Trespasser CE (scene_scripts.c) */
 GUEST_OVERRIDE(0060D880, REQUIRED) /* CAISystem constructor, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060DAC0, REQUIRED) /* CAISystem destructor, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060DD20, REQUIRED) /* CAISystem::Activate, Active AI (active_ai.c) */
@@ -69,9 +77,12 @@ GUEST_OVERRIDE(0060E200, REQUIRED) /* nearest active animal sees an object, Acti
 GUEST_OVERRIDE(0060E2D0, REQUIRED) /* active animals near a point hear it, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060E350, REQUIRED) /* AI think scheduler, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060E720, REQUIRED) /* CAISystem::Process, Active AI (active_ai.c) */
+GUEST_OVERRIDE(0060F270, REQUIRED) /* CAISystem vocal table slot, bounds (ai_vocals.c) */
 GUEST_OVERRIDE(0060F2D0, REQUIRED) /* CAISystem save, Active AI (active_ai.c) */
 GUEST_OVERRIDE(0060F380, REQUIRED) /* CAISystem load, Active AI (active_ai.c) */
 GUEST_OVERRIDE(00612FB0, REQUIRED) /* brain influences, Active AI (active_ai.c) */
 GUEST_OVERRIDE(00613400, REQUIRED) /* brain influences tail, Active AI (active_ai.c) */
+GUEST_OVERRIDE(0061F660, OPTIONAL) /* CActivityBite::Act, OnActBite of CE scripts (script_engine.c) */
+GUEST_OVERRIDE(0061F7D0, OPTIONAL) /* CActivityFeint::Act, OnActBite of CE scripts (script_engine.c) */
 GUEST_OVERRIDE(00631FA0, OPTIONAL) /* object occlusion test (occlusion_kernel.c) */
 GUEST_OVERRIDE(00639970, OPTIONAL) /* CSimWaveVar2D step (water_kernels.c) */

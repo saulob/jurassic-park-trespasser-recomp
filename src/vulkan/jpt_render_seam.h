@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "jpt_lit.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -64,6 +66,7 @@ typedef struct {
     uint32_t pitch;
     jpt_render_tex_format_t format;
     int has_colorkey;
+    int standalone; /* an image of its own, not a slice of a shared one */
     uint32_t colorkey_lo;
     uint32_t colorkey_hi;
     const uint32_t* palette;
@@ -101,6 +104,8 @@ typedef struct {
     uint32_t sky_mode;
     int has_texture;
     uint64_t texture_id;
+    uint64_t normal_id;         /* with lit: the normal map */
+    const jpt_lit_draw_t* lit;  /* NULL: the vertices' own colours */
 } jpt_render_state_t;
 
 typedef struct {

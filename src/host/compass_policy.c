@@ -94,6 +94,47 @@ void cp_hud_reminder(cp_hud_t* hud, const cp_goal_t* goal, float visibility) {
     hud->objective_alpha = visibility > 1.0f ? 1.0f : visibility;
 }
 
+static float shown_for(uint32_t age) {
+    return age + CP_REMINDER_FADE_MS <= CP_REMINDER_MS ? 1.0f : (float)(CP_REMINDER_MS - age) / (float)CP_REMINDER_FADE_MS;
+}
+
+int cp_map_view_press(cp_map_view_t* v, uint32_t now_ms, int has_map) {
+    v->active = has_map != 0;
+    v->start_ms = now_ms;
+    return v->active;
+}
+
+float cp_map_view_step(cp_map_view_t* v, uint32_t now_ms, int has_map) {
+    const uint32_t age = now_ms - v->start_ms;
+    if (!v->active || !has_map || age >= CP_REMINDER_MS) {
+        v->active = 0;
+        return 0.0f;
+    }
+    return shown_for(age);
+}
+
+static float clamp01(float v, int* outside) {
+    if (v < 0.0f || v > 1.0f) *outside = 1;
+    return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
+}
+
+int cp_map_cursor(const minimap_picture_t* map, float x, float y, float out[2], int* outside) {
+    const float w = map ? map->x1 - map->x0 : 0.0f, h = map ? map->y1 - map->y0 : 0.0f;
+    *outside = 0;
+    if (!map || !isfinite(x) || !isfinite(y) || !(fabsf(w) > 0.0f) || !(fabsf(h) > 0.0f)) return 0;
+    out[0] = clamp01((x - map->x0) / w, outside);
+    out[1] = clamp01((y - map->y0) / h, outside);
+    return 1;
+}
+
+void cp_map_box(const cp_layout_t* l, float view_h, int cols, int rows, float* x, float* y, float* w, float* h) {
+    const float side = CP_MAP_SIDE * view_h, aspect = cols > 0 && rows > 0 ? (float)cols / (float)rows : 1.0f;
+    *w = aspect >= 1.0f ? side : side * aspect;
+    *h = aspect >= 1.0f ? side / aspect : side;
+    *x = l->centre - *w * 0.5f;
+    *y = l->notice_y + l->small_px * 1.6f;
+}
+
 float cp_reminder_step(cp_reminder_t* r, uint32_t now_ms, const cp_goal_t* goal) {
     uint32_t age;
     if (!r->active) return 0.0f;
@@ -110,7 +151,7 @@ float cp_reminder_step(cp_reminder_t* r, uint32_t now_ms, const cp_goal_t* goal)
         memset(r, 0, sizeof *r);
         return 0.0f;
     }
-    return age + CP_REMINDER_FADE_MS <= CP_REMINDER_MS ? 1.0f : (float)(CP_REMINDER_MS - age) / (float)CP_REMINDER_FADE_MS;
+    return shown_for(age);
 }
 
 static float at_least(float v, float floor) { return v < floor ? floor : v; }

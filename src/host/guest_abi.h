@@ -29,6 +29,15 @@ void host_log_perf(const char* tag, const char* fmt, ...);
 /* --perf-log is on (always off on Linux). */
 int host_perf_logging(void);
 
+/* Ends the session in an orderly way: the custom level cannot go on, and why is in the log. */
+#ifdef _MSC_VER
+__declspec(noreturn)
+#endif
+void host_stop_level(const char* message);
+
+/* Whether a reservation of this size can be made now. */
+int guest_reservation_fits(uint32_t bytes);
+
 /* A lifted function called from the host; 0 when it is missing or left the stack moved. */
 int guest_call(uint32_t va, uint32_t self, const uint32_t* args, int count, int caller_pops, uint32_t* result);
 int guest_call_virtual(uint32_t self, uint32_t slot, const uint32_t* args, int count, uint32_t* result);

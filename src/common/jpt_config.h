@@ -51,6 +51,9 @@ extern "C" {
 #define JPT_KEY_ACTIVE_AI "active_ai"
 #define JPT_KEY_WATER_REFRACTION "water_refraction"
 #define JPT_KEY_ENHANCED_SKY "enhanced_sky"
+/* The original game's distance fog and terrain shadows, in every renderer. */
+#define JPT_KEY_FOG_ENABLED "fog_enabled"
+#define JPT_KEY_SHADOWS_ENABLED "shadows_enabled"
 #define JPT_KEY_MINIMAP "minimap"
 #define JPT_KEY_COMPASS "compass"
 #define JPT_KEY_WAYPOINTS "waypoints"
@@ -98,6 +101,10 @@ extern const char* const jpt_ao_names[JPT_AO_COUNT];
 /* The port's rebindable hotkeys. They never reach the game, so they are limited to keys the game itself leaves unused
  * and that never type text. */
 enum { JPT_HOTKEY_QUICK_SAVE, JPT_HOTKEY_QUICK_LOAD, JPT_HOTKEY_COUNT };
+
+/* The keys of Trespasser CE's uCMD_USER1 to uCMD_USER8, bound only in a custom level whose scripts use them. */
+#define JPT_SCRIPT_USER_KEYS 8
+uint32_t jpt_script_user_key_vk(const char* name);
 typedef struct {
     const char* setting;
     const char* name;
@@ -141,6 +148,8 @@ typedef struct {
     int active_ai_enhanced; /* 0: the retail 3 active animals, 1: 6 */
     int water_refraction;
     int enhanced_sky;
+    int fog_enabled;
+    int shadows_enabled;
     int minimap;
     int compass;
     int waypoints;
@@ -154,6 +163,7 @@ typedef struct {
     int language_forced;                                                /* --language: every version plays in it */
     char game_version[JPT_GAME_VERSION_ID_MAX];
     uint32_t hotkey_vk[JPT_HOTKEY_COUNT];
+    uint32_t script_user_vk[JPT_SCRIPT_USER_KEYS]; /* script_user1_key ... script_user8_key; 0: unbound */
     jpt_gamepad_settings_t gamepad;
 } jpt_config_t;
 
@@ -162,7 +172,7 @@ typedef struct {
     const char* default_value;
 } jpt_setting_t;
 
-#define JPT_SETTING_COUNT (33 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
+#define JPT_SETTING_COUNT (35 + JPT_CHEAT_PERSISTENT_COUNT + JPT_GAMEPAD_SETTING_COUNT)
 extern const jpt_setting_t jpt_settings[JPT_SETTING_COUNT];
 
 void jpt_config_defaults(jpt_config_t* c);

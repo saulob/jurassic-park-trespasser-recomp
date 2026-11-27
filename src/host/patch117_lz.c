@@ -93,7 +93,10 @@ void shim_LZRead(void) {
     char* buffer = (char*)GUEST_PTR(1);
     INT wanted = (INT)GUEST_ARG(2);
     scene_view_t* v = view_of(handle);
-    if (!v) {
+    int result;
+    if (custom_level_lz_read(handle, buffer, wanted, &result)) {
+        g_eax = (uint32_t)result;
+    } else if (!v) {
         g_eax = (uint32_t)LZRead(handle, buffer, wanted);
     } else {
         LONG n = wanted < 0 ? 0 : v->size - v->pos < wanted ? v->size - v->pos : wanted;
@@ -109,7 +112,10 @@ void shim_LZSeek(void) {
     LONG offset = (LONG)GUEST_ARG(1);
     INT origin = (INT)GUEST_ARG(2);
     scene_view_t* v = view_of(handle);
-    if (!v) {
+    int result;
+    if (custom_level_lz_seek(handle, offset, origin, &result)) {
+        g_eax = (uint32_t)result;
+    } else if (!v) {
         g_eax = (uint32_t)LZSeek(handle, offset, origin);
     } else {
         LONG base = origin == 1 ? v->pos : origin == 2 ? v->size : 0, to = base + offset;
@@ -130,6 +136,6 @@ void shim_LZClose(void) {
         free(v->data);
         memset(v, 0, sizeof *v);
     }
-    LZClose(handle);
+    if (!custom_level_lz_close(handle)) LZClose(handle);
     GUEST_RETURN_STDCALL(1);
 }

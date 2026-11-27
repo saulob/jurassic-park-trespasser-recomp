@@ -15,8 +15,15 @@
 
 #include "frontend_assets.h"
 #include "frontend_hd.h"
+#include "jpt_custom_level.h"
+#include "jpt_fs.h"
 #include "jpt_l10n.h"
+#include "jpt_level_gate.h"
+#include "jpt_level_scripts.h"
+#include "jpt_save.h"
+#include "jpt_tr.h"
 #include "l10n.h"
+#include "level_session.h"
 #include "loading_hd.h"
 #include "save_preview.h"
 
@@ -335,7 +342,7 @@ static void load_hd_art(int screen_w, int screen_h, const char* slot) {
 }
 
 static void use_hd_art(ld_scene_t* s, const char* slot) {
-    if (slot[0] && !L.art_tried) load_hd_art(s->screen_w, s->screen_h, slot);
+    if (slot[0] && !L.art_tried && !jpt_custom_level_active()) load_hd_art(s->screen_w, s->screen_h, slot);
     if (!L.art.pixels || strcmp(L.art_slot, slot)) return;
     s->art32 = L.art.pixels;
     s->art565 = NULL;
@@ -485,11 +492,69 @@ static void log_load(void) {
              L.updates, bars[0] ? bars : "no bars", L.held);
 }
 
+/* A saved game names its level apart from its own file. */
+static void tell_custom_level(void) {
+    char name[2][MAX_PATH];
+    for (uint32_t i = 0; i < 2; i++) {
+        uint32_t at = MEM32(g_esp + 4 + 4 * i);
+        if (!at || !guest_read_string(at, name[i], sizeof name[i])) name[i][0] = 0;
+    }
+    jpt_custom_level_scene_loading(name[1][0] ? name[1] : name[0]);
+}
+
+/* The game's refusal of a file it cannot read, before it changes anything of its own. */
+static int refused(void) {
+    char asked[MAX_PATH], file[JPT_PATH_MAX], why[256];
+    uint32_t at = MEM32(g_esp + 4);
+    jpt_gate_t gate;
+    if (!at || !guest_read_string(at, asked, sizeof asked)) return 0;
+    if (!fe_host_level_file(asked, file, sizeof file)) {
+        if (jpt_save_is_name(asked) || jpt_save_is_temporary(asked)) return 0;
+        file[0] = 0;
+    }
+    gate = jpt_gate_load(file, asked, why, sizeof why);
+    if (gate == JPT_GATE_OPEN) return 0;
+    host_log("loading", "BLOCKED_PRECHECK: %s was not loaded%s%s: %s", asked, jpt_custom_level_active() ? ", custom level " : "", jpt_custom_level_active() ? jpt_custom_level_package() : "", why);
+    fe_host_notice(jpt_tr(jpt_gate_message(gate)));
+    g_eax = (uint32_t)-1;
+    GUEST_RETURN_STDCALL(2);
+    return 1;
+}
+
+static int from_main_menu(void) {
+    guest_ui_view_t front;
+    return guest_ui_probe(&front) && front.kind == GUEST_WND_MAIN_MENU;
+}
+
+/* The game's temporary save, written while its display is rebuilt, is a saved game for the scripts too. */
+static void begin_scripts(jpt_level_reason_t reason, const char* path, const char* scene) {
+    char save[JPT_PATH_MAX];
+    const int saved = path[0] && (jpt_save_is_name(path) || jpt_save_is_temporary(path)) && guest_host_path(path, save, sizeof save);
+    jpt_level_scripts_begin(reason, scene, saved ? save : NULL);
+}
+
+static void begin_level(void) {
+    char path[MAX_PATH], scene[MAX_PATH];
+    const uint32_t at = MEM32(g_esp + 4), named = MEM32(g_esp + 8);
+    const char* name;
+    jpt_level_reason_t reason;
+    if (!at || !guest_read_string(at, path, sizeof path)) path[0] = 0;
+    if (!named || !guest_read_string(named, scene, sizeof scene)) scene[0] = 0;
+    name = scene[0] ? scene : path;
+    reason = jpt_session_reason(path[0] && jpt_save_is_name(path), from_main_menu());
+    jpt_session_level_begin(reason, name, level_session_source(name));
+    begin_scripts(reason, path, name);
+}
+
 static void level_load(void) {
+    uint32_t result;
     if (g_alias_entry) {
         L.level_lifted();
         return;
     }
+    if (refused()) return;
+    if (jpt_custom_level_active()) tell_custom_level();
+    begin_level();
     if (fe_host_layer_available()) {
         frontend_hd_release();
         load_hold_arm(&L.hold, fe_host_tick());
@@ -501,6 +566,7 @@ static void level_load(void) {
     L.scene[0] = L.slot[0] = L.refusal[0] = 0;
     fe_host_level_load_begin();
     L.level_lifted();
+    result = g_eax;
     fe_host_level_loaded();
     L.loading = 0;
     fe_host_level_load_done();
@@ -508,6 +574,9 @@ static void level_load(void) {
     release();
     if (fe_host_layer_available()) load_hold_arm(&L.hold, fe_host_tick());
     else load_hold_release(&L.hold);
+    jpt_session_level_end((int32_t)result >= 0, (int)(int32_t)result);
+    jpt_level_scripts_ready((int32_t)result >= 0);
+    g_eax = result;
 }
 
 int loading_hd_level_loading(void) { return L.loading; }

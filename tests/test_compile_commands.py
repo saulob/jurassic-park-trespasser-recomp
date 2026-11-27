@@ -27,7 +27,7 @@ FAMILIES = {
 }
 SUPPRESSION = re.compile(r"^[/-](w|wd\d+|W0)$")
 OVERRIDE = re.compile(r"^[/-]w$")
-GENERATED = re.compile(r"(water_lifted|water_lifted_alt|water_callees|input_lifted)\.c$", re.I)
+GENERATED = re.compile(r"(water_lifted|water_lifted_alt|water_callees|input_lifted|heaps_lifted|heaps_users)\.c$", re.I)
 JUSTIFIED = {("launcher/page_icons.cpp", "/wd4702"): "vendored nanosvg: C4702 is reported at code generation, past its include's warning pragma"}
 OUTSIDE = ("src/recomp/", "external/", "third_party/", "launcher/third_party/", "launcher/updater/third_party/")
 

@@ -48,13 +48,17 @@ struct GameLog {
 };
 
 std::vector<GameLog> FindGameLogs(const std::filesystem::path& folder, const std::filesystem::path& running_log,
-                                  size_t most = kMostGameLogs);
+                                  size_t most = kMostGameLogs, const std::filesystem::path& wanted = {});
+// The newest log of a run of that level; empty when none is left.
+std::filesystem::path FindLevelLog(const std::filesystem::path& folder, const std::filesystem::path& running_log, const std::string& package, const std::string& scene);
 
 std::string DumpNameOf(std::string_view log_name);
 DumpProblem CheckCrashDump(const GameLog& log, const std::filesystem::path& dump);
 bool DefaultAttachCrashReport(const GameLog& log);
 
 size_t DefaultGameLog(const std::vector<GameLog>& logs);
+// The log a report is asked for about, else the default one.
+size_t ChooseGameLog(const std::vector<GameLog>& logs, const std::filesystem::path& wanted);
 const char* LogRoleText(LogRole role);
 const char* PreviewButtonText(bool preview_open);
 std::string LogDateText(std::time_t written, bool portuguese);

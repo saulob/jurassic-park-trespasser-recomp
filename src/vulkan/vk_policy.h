@@ -39,7 +39,8 @@ typedef enum {
 typedef enum {
     JPT_VK_SHADER_FIXED = 0,
     JPT_VK_SHADER_WATER = 1,
-    JPT_VK_SHADER_SKY = 2
+    JPT_VK_SHADER_SKY = 2,
+    JPT_VK_SHADER_LIT = 3
 } jpt_vk_shader_kind_t;
 
 typedef enum {

@@ -28,6 +28,7 @@ typedef struct {
     unsigned long long last_frame_reads;
     unsigned long long still_draws;
     unsigned long long mipped_textures;
+    unsigned long long dynamic_textures;
     unsigned long long still_uploads;
     long validation_errors;
     int validation_enabled;

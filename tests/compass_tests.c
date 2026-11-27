@@ -668,6 +668,42 @@ static void test_view_margin_policy(void) {
     }
 }
 
+/* Show Objective shows a level's own map picture below the title, for as long, with or without an objective; the minimap never. */
+static void test_level_map(void) {
+    static const uint32_t cells[6] = { 0 };
+    const minimap_picture_t map = { 100.0f, 400.0f, 300.0f, 200.0f, 3, 2, cells, 1 };
+    cp_map_view_t v;
+    cp_layout_t l;
+    float at[2], x, y, w, h;
+    int outside;
+    memset(&v, 0, sizeof v);
+    CHECK(cp_map_view_step(&v, 1000, 1) == 0.0f, "nothing until Show Objective");
+    CHECK(!cp_map_view_press(&v, 1000, 0) && cp_map_view_step(&v, 1000, 0) == 0.0f, "a level without a map shows none");
+    CHECK(cp_map_view_press(&v, 1000, 1) && cp_map_view_step(&v, 1000, 1) == 1.0f, "a press shows the map");
+    CHECK(cp_map_view_step(&v, 1000 + CP_REMINDER_MS - CP_REMINDER_FADE_MS, 1) == 1.0f, "as long as the title");
+    CHECK(near(cp_map_view_step(&v, 1000 + CP_REMINDER_MS - CP_REMINDER_FADE_MS / 2, 1), 0.5f, 0.01f), "with the same fade");
+    CHECK(cp_map_view_step(&v, 1000 + CP_REMINDER_MS, 1) == 0.0f && !v.active, "and gone with it");
+    cp_map_view_press(&v, 5000, 1);
+    CHECK(cp_map_view_step(&v, 5100, 0) == 0.0f && !v.active, "a map the level drops goes at once");
+
+    CHECK(cp_map_cursor(&map, 200.0f, 300.0f, at, &outside) && near(at[0], 0.5f, 1e-5f) && near(at[1], 0.5f, 1e-5f) && !outside,
+          "the middle of the world box is the middle of the picture");
+    CHECK(cp_map_cursor(&map, 100.0f, 400.0f, at, &outside) && at[0] == 0.0f && at[1] == 0.0f && !outside, "the first corner is the top left");
+    CHECK(cp_map_cursor(&map, 350.0f, 150.0f, at, &outside) && at[0] == 1.0f && at[1] == 1.0f && outside, "beyond the last corner: held on the edge");
+    CHECK(!cp_map_cursor(&(minimap_picture_t){ 1.0f, 1.0f, 1.0f, 5.0f, 1, 1, cells, 1 }, 1.0f, 2.0f, at, &outside) &&
+              !cp_map_cursor(NULL, 0.0f, 0.0f, at, &outside) && !cp_map_cursor(&map, NAN, 0.0f, at, &outside),
+          "no extent, no picture or no position: no cursor");
+
+    cp_layout(1920.0f, 1080.0f, &l);
+    cp_map_box(&l, 1080.0f, 210, 210, &x, &y, &w, &h);
+    CHECK(near(w, CP_MAP_SIDE * 1080.0f, 0.01f) && near(h, w, 0.01f) && near(x + w * 0.5f, l.centre, 0.01f) && y > l.notice_y && y + h < 1080.0f,
+          "a square map below the title and its notice, centred, inside the picture");
+    cp_map_box(&l, 1080.0f, 256, 128, &x, &y, &w, &h);
+    CHECK(near(w, 2.0f * h, 0.01f) && near(w, CP_MAP_SIDE * 1080.0f, 0.01f), "a wide map keeps its shape");
+    cp_map_box(&l, 1080.0f, 64, 128, &x, &y, &w, &h);
+    CHECK(near(h, 2.0f * w, 0.01f) && near(h, CP_MAP_SIDE * 1080.0f, 0.01f), "a tall one too");
+}
+
 void compass_tests(int* checks, int* failures) {
     test_headings();
     test_wrap_and_ticks();
@@ -677,6 +713,7 @@ void compass_tests(int* checks, int* failures) {
     test_route();
     test_hud();
     test_reminder();
+    test_level_map();
     test_text_kinds();
     test_hud_text();
     test_menus();

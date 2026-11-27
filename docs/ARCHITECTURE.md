@@ -297,6 +297,20 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   `polygon_submit.c`: address modes, the lit and fogged D3DTLVERTEX fan, render states and DrawPrimitive, each call
   made through the device's vtable as the lifted code makes it). `tests/water_tests.c` runs them against the lifted
   C copied out of `src/recomp/gen`; `--lifted-water` keeps the lifted functions.
+- Fog and Shadows Off (`scene_options.c`, both hosts) change what the engine reads, never the renderers: the two `CFog` tables
+  and the terrain's fog start (0x00732850 and 0x00732888, the latter 0x38 after the former in every lift; their lengths are
+  checked before a write) and the `bShadows` byte of the five quality rows (0x0066C4E8 + 0x38). The step is idempotent and runs
+  in the UI loop and, on Windows, at every BeginScene. No override or hook is involved.
+- Direct3D 6 on Linux (`src/linux/linux_d3d*.c`): the guest's IDirect3D3, IDirect3DDevice3, IDirect3DViewport3 and IDirect3DTexture2
+  are guest COM objects whose vtables list every method of `d3d.h` with its stack size (a wrong size moves the guest's stack);
+  a method the game never calls answers DDERR_UNSUPPORTED. `linux_d3d_target.c` draws through `lx_gpu_ops_t` (`linux_vulkan.c`
+  over `src/vulkan`; a recorder in `linux_d3d_tests`) and shares `target_sync.c`, `d3d_translate.c` and `ce_effects.c` with Windows.
+  `linux_d3d_guest.c` hooks what those effects need from the lifted game: the sky's draws, the water's rows, DrawPolygon.
+- Vulkan water: each water texture keeps its own wave field (4 slots, as `FX_WAVE_TEXTURES`), and a field is re-uploaded after
+  the fragment reads of the frame before it. A texture the game Loads every frame (water, terrain pages) follows
+  `d3dt_note_upload` like the Direct3D 11 renderer's: level 0 only and only the changed rows. `IDirect3DTexture2::Load` used to
+  mark it whole, which kept water and terrain pages on regenerated mip chains. In the exit line, `alpha-blended draws of other
+  textures` are foliage and the like, not water that lost its waves.
 - `bump_spans.c` models the software renderer's bump-mapped scanlines (SelfMod `0x00640FE0`): the span records,
   the texel walk in closed form and the per-pixel colour, which `water_tests` checks against the game's own
   routine run from `game	respass.exe`, and which `d3d11_bump_shader_source` draws on the GPU. The renderer does
@@ -331,8 +345,10 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   `0x0051FF0B`) with the matching projection (the main camera's vertical tangent, Hor+, divided by its zoom; the
   target's own aspect) and reconstructs normals itself. While AO is on, the stencil marks every pixel without a depth
   of its own: CPU composites (game text, subtitles, CPU polygons), colour fills and draws without depth writes; only
-  pixels left by depth-writing draws are darkened, and only on gameplay frames that drew 3D. Off creates nothing and
-  draws nothing. A failure (shaders, resources, device) logs and turns
+  pixels left by depth-writing draws are darkened, and only on gameplay frames that drew 3D. The fog is part of the
+  colour by then, so while AO is on the scene's alpha holds the share of the pixel the vertex fog leaves visible
+  (`ps_*_ao`; blended draws mix it through a second blend source) and `ps_apply` darkens only that share, as if the
+  occlusion came before the fog. Off creates nothing and draws nothing. A failure (shaders, resources, device) logs and turns
   it Off.
 - If the D3D11 device, feature level 10.0 or `d3dcompiler_47.dll` is missing, the host logs it and
   falls back to the software renderer before the game starts.

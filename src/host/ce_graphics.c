@@ -7,6 +7,8 @@
 
 #include "ce_effects.h"
 #include "ddraw/d3d_legacy.h"
+#include "ddraw/sky_draw.h"
+#include "scene_options.h"
 #include "water_kernels.h"
 
 #define SKY_DRAW_D3D GVA(0x005242C0)
@@ -16,22 +18,14 @@
 #define SKY_SCROLL_U 0x48u
 #define SKY_SCROLL_V 0x4Cu
 #define CAMERA_POSITION GVA(0x00732978) /* CSkyRender's copy, refreshed by 0x00523D00 before each draw */
-#define FOG_COLOR GVA(0x006D1E94)
-/* CRasterD3D's background: the colour its Clear2 passes, which the device's fog application fills with the fog colour. */
-#define RENDER_BACKGROUND GVA(0x006D0F14)
 
 static recomp_func_t s_sky_lifted;
 
 static float rdf(uint32_t va) { return *(const float*)ADDR(va); }
 
-/* The game keeps the level's fog colour in its own state; the device's copy is a cache that a recreated device loses.
- * The background is cached the same way, and only when the device is created, so it keeps the previous level's fog. */
 static void sync_fog_color(d3d_device_t* dev) {
-    uint32_t color, background;
-    if (!guest_read32(FOG_COLOR, &color)) return;
-    d3dr_set_fog_color(dev, color);
-    color |= 0xFF000000u;
-    if (guest_read32(RENDER_BACKGROUND, &background) && background != color) guest_write32(RENDER_BACKGROUND, color);
+    uint32_t color;
+    if (scene_fog_color(&color)) d3dr_set_fog_color(dev, color);
 }
 
 /* thiscall, no arguments. */
@@ -41,6 +35,14 @@ static void sky_draw(void) {
     if (g_alias_entry || !sky || !guest_readable(sky + SKY_FOG_HIGH, SKY_SCROLL_V + 4 - SKY_FOG_HIGH) ||
         !guest_readable(CAMERA_POSITION, 12)) {
         s_sky_lifted();
+        return;
+    }
+    if (sky_layers_ready()) {
+        sky_layers_begin(sky);
+        d3dr_replace_next_draw(sky_draw_layers);
+        s_sky_lifted();
+        d3dr_replace_next_draw(NULL);
+        sky_layers_end(sky);
         return;
     }
     p[0] = rdf(CAMERA_POSITION) * FX_SKY_UV_PER_METRE + FX_SKY_U_OFFSET + rdf(sky + SKY_SCROLL_U);
@@ -57,6 +59,7 @@ void ce_graphics_install(int hardware) {
     if (!hardware) return;
     d3d_set_fog_sync(sync_fog_color);
     water_rows_observer = fx_water_store;
+    sky_layers_install(sky_draw_free);
     if (!guest_override_install(SKY_DRAW_D3D, sky_draw, &s_sky_lifted))
         host_log("host", "warning: the sky's Direct3D draw could not be hooked: Enhanced sky is not available");
 }

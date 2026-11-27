@@ -45,7 +45,9 @@ typedef enum {
     JPT_VK_SH_VIDEO_FINAL_FRAG = 26,
     JPT_VK_SH_UI_VERT = 27,
     JPT_VK_SH_UI_FRAG = 28,
-    JPT_VK_SH_COUNT = 29
+    JPT_VK_SH_LIT_VERT = 29,
+    JPT_VK_SH_LIT_FRAG = 30,
+    JPT_VK_SH_COUNT = 31
 } jpt_vk_shader_id_t;
 
 const char* jpt_vk_shader_bundle_sha256(void);

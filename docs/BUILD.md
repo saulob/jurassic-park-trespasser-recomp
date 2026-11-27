@@ -40,7 +40,7 @@ The original executables are development inputs only; neither the build nor the 
 |---|---|---|
 | pcrecomp | `external\pcrecomp` | the checkout is missing, not at the commit in `config\target.json`, or `patches\pcrecomp` (applied in `series` order, recorded in `external\pcrecomp.patches`) changed |
 | Lifts | `lifts\manifest.json`, `lifts\*.tar.xz` | always checked (a few hundred ms): each archive's SHA-256 against the manifest, its generator format and source metadata |
-| Launcher sources | `external\imgui`, `external\trg-launcher`, `external\SDL` | missing, at another commit than `config\launcher_deps.txt`, or `launcher\patches\` changed |
+| Launcher sources | `external\imgui`, `external\trg-launcher`, `external\SDL`, `external\squirrel` | missing, at another commit than `config\launcher_deps.txt`, or `launcher\patches\` changed |
 | CMake configure | `build\cmake\msvc-x86\` | the cache is missing, or the configuration, `-GenOpt`, `-Trace` or the source folder changed |
 | Build | `build\cmake\msvc-x86\trespasser_recomp.exe` | always asked of Ninja, which compiles only what changed |
 
@@ -140,6 +140,7 @@ the game.
 | `--run` | accepted for older scripts; the game runs unless `--dry-run` is given |
 | `--dry-run` | fingerprint, map and bind, then stop |
 | `--launcher` / `--skip-launcher` | show the launcher even when it is turned off / skip it once (it still opens when the game files are not ready); holding Shift while starting also shows it |
+| `--launcher-renderer auto\|software\|direct3d11` | what draws the launcher's own window, for this run only; `software` needs no graphics driver (docs/LAUNCHER.md). The game's renderer does not change |
 | `--game DIR` | game directory (default `game\`, or `TRESPASSER_GAME_DIR`) |
 | `--user_data_root DIR` | user data root: `launcher\trespasser.ini`, `saves\` (the game's registry store and saves) (default `user_data\` next to the program, or `TRESPASSER_USER_DATA_ROOT`; `build.ps1 -Run` passes `build\user_data`; see `docs\user-data.md`) |
 | `--log-file FILE` | append to FILE (what `build.ps1 -Run` passes) |

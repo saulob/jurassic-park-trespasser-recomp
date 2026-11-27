@@ -17,8 +17,11 @@
 #include "debug_menu_panel.h"
 #include "debug_menu_policy.h"
 #include "jpt_config.h"
+#include "jpt_custom_level.h"
+#include "level_actions.h"
 #include "jpt_fs.h"
 #include "jpt_gamepad.h"
+#include "jpt_level_scripts.h"
 #include "jpt_sync.h"
 #include "jpt_tr.h"
 #include "objectives.h"
@@ -52,10 +55,12 @@ static struct {
     dm_state_t state;
     dm_world_t world;
     dm_row_t rows[DM_ROWS_MAX];
+    dm_start_t start;
     int was_open;
     dm_menu_t was_menu;
     cp_hud_t hud;
     cp_reminder_t reminder;
+    cp_map_view_t map_view;
     int pointer;
     float pointer_x, pointer_y;
     void (*changed)(void);
@@ -179,6 +184,26 @@ static int load_level(const char* scene, const guest_ui_view_t* v, uint32_t scra
     return guest_ui_end_window(v, MAIN_MENU_PLAY, 0) == 1;
 }
 
+static void forget_start(void) { memset(&D.start, 0, sizeof D.start); }
+
+void debug_menu_start_custom_level(void) {
+    forget_start();
+    if (!jpt_custom_level_active()) return;
+    jpt_custom_level_on_end(forget_start);
+    if (!dm_start_request(&D.start, jpt_custom_level_scene()))
+        host_log("custom-level", "the game cannot load a scene named %s", jpt_custom_level_scene());
+}
+
+int debug_menu_start_holds_present(void) { return dm_start_holds_present(&D.start, jpt_time_ms()); }
+
+static void start_level(const guest_ui_view_t* v, uint32_t scratch) {
+    char scene[DM_SCENE_MAX];
+    if (!dm_start_due(&D.start, D.world.place, scene)) return;
+    cheats_suspend();
+    host_log("custom-level", "loading %s of %s", scene, jpt_custom_level_package());
+    if (!load_level(scene, v, scratch)) host_log("custom-level", "%s could not be loaded", scene);
+}
+
 static dm_item_t action_item(dm_action_kind_t kind) {
     switch (kind) {
     case DM_ACT_LOAD_LEVEL: return DM_LEVEL_SELECT;
@@ -255,7 +280,8 @@ static char minimap_seen[DM_LEVEL_ID_MAX];
 static void minimap_level_seen(const char* level) {
     if (!level || !level[0] || !strcmp(minimap_seen, level)) return;
     snprintf(minimap_seen, sizeof minimap_seen, "%s", level);
-    if (!minimap_bounds(level)) host_log("minimap", "no map data for level %s: the minimap is hidden", level);
+    if (!minimap_bounds(level))
+        host_log("minimap", "no map data for level %s: %s", level, jpt_custom_level_active() ? "\"No map information\" is shown" : "the minimap is hidden");
 }
 
 static void minimap_creatures(uint32_t scratch) {
@@ -274,6 +300,16 @@ static void minimap_creatures(uint32_t scratch) {
                                                     D.hud.creatures, MM_CREATURES_MAX);
 }
 
+static void level_map(uint32_t now) {
+    const minimap_picture_t* map = D.map_view.active ? level_actions_map() : NULL;
+    const float shown = cp_map_view_step(&D.map_view, now, map != NULL);
+    if (!(shown > 0.0f) || !(D.hud.alpha > 0.0f) || !D.world.player ||
+        !cp_map_cursor(map, D.world.at.pos[0], D.world.at.pos[1], D.hud.level_map_cursor, &D.hud.level_map_outside))
+        return;
+    D.hud.level_map = map;
+    D.hud.level_map_alpha = shown;
+}
+
 static void navigate(uint32_t scratch, uint32_t now) {
     cp_scene_t scene;
     const char* notice;
@@ -285,9 +321,12 @@ static void navigate(uint32_t scratch, uint32_t now) {
     minimap_level_seen(D.world.level);
     dm_navigate(&D.state, &D.world, &scene, objectives_goal(), now, &D.hud);
     section = perf_section_begin();
+    if (D.hud.minimap && jpt_custom_level_active() && !minimap_bounds(D.hud.minimap_level))
+        snprintf(D.hud.minimap_note, sizeof D.hud.minimap_note, "%s", jpt_tr("No map information"));
     if (D.hud.minimap) minimap_creatures(scratch);
     perf_section_end(PS_MINIMAP_STATE, section);
     cp_hud_reminder(&D.hud, objectives_goal(), cp_reminder_step(&D.reminder, now, objectives_goal()));
+    level_map(now);
 }
 
 static void note_changes(void) {
@@ -322,6 +361,7 @@ void debug_menu_ui_loop(void) {
     scratch = g_esp;
     sample(&v, scratch);
     dm_world_seen(&D.state, &D.world);
+    start_level(&v, scratch);
     if (dm_take(&D.state, &action)) run(&action, &v, scratch, now);
     {
         int64_t section = perf_section_begin();
@@ -329,8 +369,16 @@ void debug_menu_ui_loop(void) {
         perf_section_end(PS_CHEATS, section);
     }
     navigate(scratch, now);
+    if (jpt_custom_level_active() && place_of(&v) == DM_PLACE_LEVEL) jpt_level_scripts_paint();
     g_esp = esp;
     note_changes();
+}
+
+/* Scripts draw only over gameplay: never over a load, a menu of the game or a world being torn down. */
+static const jpt_draw_frame_t* script_frame(void) {
+    guest_ui_view_t v;
+    const jpt_draw_frame_t* frame = jpt_custom_level_active() ? jpt_level_scripts_frame() : NULL;
+    return frame && guest_ui_probe(&v) && place_of(&v) == DM_PLACE_LEVEL ? frame : NULL;
 }
 
 static void add_level(const char* name, int is_dir, void* user) {
@@ -341,6 +389,7 @@ static void read_levels(void) {
     char dir[LEVEL_PATH_MAX];
     dm_levels_t levels;
     memset(&levels, 0, sizeof levels);
+    for (int i = 0; i < jpt_custom_level_scene_count(); i++) dm_levels_add(&levels, jpt_custom_level_scene_at(i));
     if (guest_data_dir(dir, sizeof dir)) jpt_fs_list(dir, add_level, &levels);
     dm_set_levels(&D.state, &levels);
 }
@@ -362,11 +411,13 @@ void debug_menu_f3(void) { toggle(DM_MENU_OBJECTIVES, "F3"); }
 
 void debug_menu_show_objective(void) {
     uint32_t now = jpt_time_ms();
+    const int map = cp_map_view_press(&D.map_view, now, level_actions_map() != NULL);
     if (cp_reminder_press(&D.reminder, now, objectives_goal())) {
-        host_log("objectives", "Show Objective: %s", D.reminder.title);
+        host_log("objectives", "Show Objective: %s%s", D.reminder.title, map ? ", with the level's map" : "");
         return;
     }
-    dm_notice_for(&D.state, jpt_tr("No objective"), now, CP_NO_OBJECTIVE_MS);
+    if (map) host_log("objectives", "Show Objective: the level's map");
+    else dm_notice_for(&D.state, jpt_tr(jpt_custom_level_active() ? "No objective information" : "No objective"), now, CP_NO_OBJECTIVE_MS);
 }
 
 void debug_menu_notice(const char* text) { dm_notice(&D.state, text, jpt_time_ms()); }
@@ -444,7 +495,7 @@ static int hud_wanted(void) {
     return D.hud.compass || D.hud.marker || D.hud.objective[0] || D.hud.notice[0] || D.hud.minimap;
 }
 
-int debug_menu_overlay_wanted(int frame_counter_on) { return D.state.open || hud_wanted() || frame_counter_on; }
+int debug_menu_overlay_wanted(int frame_counter_on) { return D.state.open || hud_wanted() || frame_counter_on || script_frame(); }
 
 /* The UI loop that refreshes the HUD does not run under videos or loads: the picture is checked as it is shown. */
 int debug_menu_hud_on_screen(void) {
@@ -456,6 +507,7 @@ void debug_menu_fill_frame(dmp_frame_t* f) {
     f->menu = D.state.open;
     f->objectives = D.state.open && D.state.menu == DM_MENU_OBJECTIVES;
     if (debug_menu_hud_on_screen()) f->hud = &D.hud;
+    f->script = script_frame();
     if (f->menu) {
         f->rows = D.rows;
         f->row_count = dm_rows(&D.state, &D.world, D.rows, DM_ROWS_MAX);

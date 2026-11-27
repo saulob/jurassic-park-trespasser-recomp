@@ -7,6 +7,7 @@
 #include "host.h"
 
 #include "perf_sections.h"
+#include "texhw_guest.h"
 #include "texture_gpu_policy.h"
 #include "ddraw/perf_stat.h"
 
@@ -506,7 +507,9 @@ static void draw_polygon(void) {
     s_draw_pixels = 0;
     s_draw_key = MEM32(MEM32(g_esp + 4) + 8);
     s_drawing++;
+    texhw_lit_begin(MEM32(g_esp + 4));
     s_draw_lifted();
+    texhw_lit_end();
     s_drawing--;
     end = perf_section_begin();
     perf_section_commit(PS_CPU_POLYGONS, begin, end);

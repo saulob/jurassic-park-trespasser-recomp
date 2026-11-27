@@ -33,6 +33,16 @@ const char* jpt_vpath_cwd(const jpt_vpath_t* v);
  * the existing entry spells it, and its parent must exist. */
 int jpt_vpath_resolve(jpt_vpath_t* v, const char* guest_path, int create, char* host_path, size_t cap);
 
+/* The overlay answers reads below "<drive>:\\<folder>": a file it finds (by its path relative to that folder) takes the
+ * place of the mounted one. Nothing is created, changed or removed there while an overlay is set. */
+typedef int (*jpt_vpath_overlay_fn)(const char* relative, char* host_path, size_t cap);
+void jpt_vpath_set_overlay(jpt_vpath_t* v, char drive, const char* folder, jpt_vpath_overlay_fn find);
+/* Once an overlay is set: find answers the other paths of its drive, relative paths without a drive on any. */
+void jpt_vpath_set_drive_overlay(jpt_vpath_t* v, jpt_vpath_overlay_fn find, jpt_vpath_overlay_fn relative);
+/* jpt_vpath_resolve without create, for a read: the overlay first. *overlaid (may be NULL) tells which one answered. */
+int jpt_vpath_resolve_read(jpt_vpath_t* v, const char* guest_path, char* host_path, size_t cap, int* overlaid);
+int jpt_vpath_write_refused(jpt_vpath_t* v, const char* guest_path);
+
 /* Tells the cache a file or folder was created, renamed or removed under host_dir, so the next lookup lists the folder
  * again. A lookup also lists again once when a name is missing. */
 void jpt_vpath_invalidate(jpt_vpath_t* v, const char* host_dir);

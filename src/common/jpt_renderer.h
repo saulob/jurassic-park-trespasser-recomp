@@ -51,6 +51,9 @@ int jpt_renderer_parse(const char* text, jpt_renderer_t* out);
 int jpt_renderer_available_on_platform(jpt_renderer_t renderer, int is_windows);
 int jpt_renderer_is_hardware(jpt_renderer_t renderer);
 
+/* A --launcher-renderer value: the launcher window's own renderer, never the game's and never saved. */
+int jpt_launcher_renderer_valid(const char* value, int is_windows);
+
 void jpt_renderer_select_request(int ini_present, jpt_renderer_t ini_value, const char* env_text,
                                  const char* cli_text, jpt_renderer_selection_t* out);
 

@@ -6,6 +6,9 @@
 #include "guest_va.h"
 #include "host.h"
 #include "perf_sections.h"
+#include "texhw_guest.h"
+
+void d3dr_texture_override(uint32_t iface, int id);
 
 #define UPLOAD_POLYGONS_VA GVA(0x0055A4E0) /* CScreenRenderAuxD3D::UploadPolygonArray(n, polygons) */
 
@@ -47,6 +50,7 @@ void shim_GetTickCount(void) {
 }
 
 static void upload_polygons(void) {
+    const uint32_t count = g_alias_entry ? 0 : GUEST_ARG(0), polygons = g_alias_entry ? 0 : GUEST_ARG(1);
     LARGE_INTEGER start;
     double ms;
     int previous_ran_out = s_clock.ran_out;
@@ -63,6 +67,7 @@ static void upload_polygons(void) {
     s_clock.active = engine_limits_modern();
     s_upload_lifted();
     s_clock.active = 0;
+    texhw_tag_polygons(count, polygons, d3dr_texture_override);
     ms = elapsed_ms(&start);
     perf_section_end(PS_TEXTURE_UPLOADS, start.QuadPart);
     s_stats.windows++;

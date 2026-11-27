@@ -18,6 +18,13 @@
     {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RECT_W", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
     {"file": "src/host/video/smacker_compat.h", "name": "SMK_OFF_RECT_H", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
     {"file": "src/host/video/smacker_compat.h", "name": "SMK_STRUCT_BYTES", "reason": "field of the SMACK structure of SMACKW32.DLL, identical in every version, which the Smacker HLE reproduces"},
-    {"file": "src/host/video/smacker_header.c", "name": "HEADER_RATE_TRACK0", "reason": "offset in the Smacker file header, fixed by the file format"}
+    {"file": "src/host/video/smacker_header.c", "name": "HEADER_RATE_TRACK0", "reason": "offset in the Smacker file header, fixed by the file format"},
+    {"file": "src/host/custom_level_files.c", "name": "LZ_FIRST", "reason": "first handle value of the host's own LZ files"},
+    {"file": "src/host/tpa_merge.c", "name": "TPA_COLLISIONS", "reason": "the TPA file layout, fixed by the file format"},
+    {"file": "src/host/tpa_merge.c", "name": "TPA_COLLISIONS_AT", "reason": "the TPA file layout, fixed by the file format"},
+    {"file": "src/host/tpa_merge.c", "name": "TPA_ENTRIES", "reason": "the TPA file layout, fixed by the file format"},
+    {"file": "src/host/tpa_merge.c", "name": "TPA_HEADER_FIELD", "reason": "the TPA file layout, fixed by the file format"},
+    {"file": "src/host/tpa_merge.c", "name": "COLLISION_BYTES", "reason": "the TPA file layout, fixed by the file format"},
+    {"file": "src/host/sky_layers.h", "name": "SKY_LAYERS_FVF", "reason": "a Direct3D vertex format, not an offset"}
   ]
 }

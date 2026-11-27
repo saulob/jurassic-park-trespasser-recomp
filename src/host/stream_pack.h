@@ -42,11 +42,13 @@ uint64_t stream_pack_size(const stream_pack_t* pack);
 /* Copies up to n bytes at `offset`; returns the count (0 at the end of the file) or -1 when the real file cannot be read. */
 long stream_pack_read(const stream_pack_t* pack, uint64_t offset, void* buf, size_t n);
 
-/* The game reads Stream.tpa's directory through one handle and the stream data through a pool of handles it opens
- * read-write (8 per pack, two packs while a level load replaces one). Every one of them must see the view, or the
+/* The game reads a TPA's directory through one handle and its data through a pool of handles it opens read-write (Stream 8,
+ * Effects 16, Ambient 10, and twice that while a level load replaces them). Every one of them must see the view, or the
  * offsets of the view's directory are read from the real file. */
-#define STREAM_PACK_MAX_VIEWS 32
+#define STREAM_PACK_MAX_VIEWS 128
 int stream_pack_serves_open(const char* path, uint32_t access, uint32_t flags);
+/* The same for a sound file of another name, in lower case. */
+int stream_pack_serves_named(const char* path, const char* wanted, uint32_t access, uint32_t flags);
 
 #ifdef __cplusplus
 }

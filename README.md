@@ -2,7 +2,7 @@
 
 # Jurassic Park: Trespasser - PC Port
 
-### Native recompilation of the original 1998 PC game, with modern Windows support, experimental native Linux and Steam Deck support, modern graphics and display options, a minimap, compass and waypoints, gameplay improvements and the TRG launcher
+### Native recompilation of the original 1998 PC game, with modern Windows support, experimental native Linux and Steam Deck support, modern graphics and display options, community custom levels, a minimap, compass and waypoints, gameplay improvements and the TRG launcher
 
 [![Latest release](https://img.shields.io/github/v/release/saulob/jurassic-park-trespasser-recomp?style=for-the-badge&label=release&color=d89a2b&labelColor=0b1a12&include_prereleases&cacheSeconds=300)](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/saulob/jurassic-park-trespasser-recomp/total?style=for-the-badge&color=d89a2b&labelColor=0b1a12&cacheSeconds=300)](https://github.com/saulob/jurassic-park-trespasser-recomp/releases)
@@ -18,7 +18,7 @@
 
 ## Status
 
-**v0.1.2 is the current release** (an update to v0.1.1 with independent minimap, compass and waypoint switches, Linux game folder and disc-check fixes, unified Windows and Linux logs, and AppImage catalog metadata; see the [v0.1.2 release notes](docs/RELEASE_NOTES_v0.1.2.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
+**v0.1.3 is the current release, the Custom Levels update** (community levels imported from ZIP, 7z, RAR or a folder and checked before they are installed, Trespasser CE, ATX and Squirrel script compatibility, graphics options and Linux fixes; see the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
 
 | Milestone | State |
 |---|---|
@@ -48,10 +48,41 @@
 - **Gameplay improvements**: Quick Save and Quick Load, Dual Stow, Active AI, physics and collision fixes, and a reimplemented subset of the official 1.1 patch
 - **Cheats panel** (F10) with movement speed, jump height, invulnerability, infinite ammo, frozen dinosaurs, health, noclip, stealth, teleport, Level Select and a free camera
 - **Modern controls**: keyboard, mouse and SDL3 gamepads (Xbox, PlayStation, Switch, Steam Deck) with hotplug, glyphs and rebindable buttons
+- **Custom Levels**: community levels and fan missions imported from ZIP, 7z, RAR or a folder, checked level by level before they are installed, with Trespasser CE, ATX and Squirrel script compatibility and their own saves
 - **TRG launcher** that imports your disc image, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
 - **Seven languages**, video subtitles, restored English dialogue and corrected caption timings
 - **Portable**: saves, settings and logs stay next to the program
 - **Experimental native Linux and Steam Deck** AppImage
+
+## Custom Levels
+
+The launcher's **Custom Levels** page plays community levels and fan missions, on Windows and Linux.
+
+1. Open the launcher.
+2. Select **Custom Levels** in the sidebar.
+3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package.
+4. Check the status of each level: **Ready**, or **Not supported** with the reason.
+5. Select a Ready level and press **Play**.
+
+- **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready; the others stay listed as Not supported.
+- **Ready** means that everything the level needs is present and implemented in the port. It is a compatibility classification, not a promise that the level was played through from start to finish.
+- **Trespasser CE and ATX**: their ActionTypes, textures (BMP, TGA, DDS DXT1-DXT5 with mipmaps and alpha), normal maps, skies, scene formats 23-26 and larger engine limits for custom sessions. Trespasser CE's Squirrel scripts run in a separate script machine per level, with memory and instruction budgets.
+- **Isolated from the campaign**: levels are installed in `user_data\custom_levels`, saves go to their own folder per package, and nothing in the installed game is changed. No program inside a package is ever run.
+- **Readme**, **Open Folder** and **Delete** for each package; **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
+- **Bug Report** includes the selected level's analysis.
+
+- **Script keys**: a level whose Trespasser CE scripts read the USER commands gets keys for them (`script_user1_key` to `script_user8_key` in `trespasser.ini`; Shift and M for the first two by default).
+- On Linux and the Steam Deck, the launcher's own file browser chooses the package when `zenity` or `kdialog` is not available.
+
+In the TresCom download catalog used as the test corpus, 253 of 262 levels are currently Ready; of the other nine, six are missing files in their downloads or are incomplete packages, and three need Trespasser CE features the port does not have yet. See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
+
+**Custom level limitations**
+
+- Not every community level is supported, and most Ready levels have not been played from start to finish in the port.
+- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `EndGameDDF`, texhw textures on meshes the original game bump-maps, scripted actions (ActionType 99), and the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks. A level that needs one is listed as Not supported, with the reason.
+- Encrypted, multi-volume and RAR 1.5 archives, and RAR dictionaries over 256 MB, are refused: extract them and use **Import Folder**.
+- Spitter and the Cloning Facility are supported through generic scripting APIs and were validated by analysis and headless tests; a full manual play-through of both has not been done yet.
+- Scripts run with memory and instruction budgets and without file, system or thread access; that limits what a script can reach, but it is not a guarantee that a faulty script cannot slow down or stop the game.
 
 ## Graphics
 
@@ -60,7 +91,8 @@
 - **Field of view**: 60 to 110 degrees across the 4:3 view (75, the original, by default).
 - **Texture filtering and anti-aliasing**: anisotropic filtering up to 16x, MSAA up to 8x where the card supports it, and generated mipmaps (the game's files are never changed).
 - **Draw distance, LOD and terrain**: objects stay drawn 1.2 times as far and stay 3D models out to 25-150 m before becoming flat impostors (15 m in 1998); the terrain keeps its textures out to 750 m; textures and impostors use 256 pixels instead of the 1998 limit of 128; optional Maximum object detail.
-- **Ambient occlusion** (Off to Ultra), **water refraction** and **enhanced sky**, as Direct3D 11 and Vulkan passes.
+- **Ambient occlusion** (Off to Ultra), **water refraction** and **enhanced sky**, as Direct3D 11 and Vulkan passes. Ambient occlusion respects the fog.
+- **Fog and Shadows**: the original distance fog and the shadows of objects and dinosaurs can each be turned off, in every renderer; terrain shadows keep their contrast at the default brightness, and Gamma 8 and 9 no longer remove them.
 - **Texture cache and streaming**: texture memory grows from 24 MB to 96 MB, and uploads are timed precisely so new scenery gets its textures sooner.
 - **HD front end, loading screens and videos** (video on Windows): rebuilt at the screen's resolution from the game's own art. **No HD texture pack is included**; the 3D world uses the original textures.
 - **Window and presentation**: Windowed and Borderless Fullscreen (F11), monitor selection, Letterbox or Stretch, VSync on or off, FPS in the title and a frame counter (F6).
@@ -73,7 +105,7 @@ The Linux Vulkan build has its own filtering, MSAA, ambient occlusion, water, sk
 - **True Ultrawide** is this Hor+ rendering at 21:9 and 32:9: a 21:9 screen shows more than 16:9, and 32:9 more than 21:9. It is supported on **Windows**.
 - **Stretch is not ultrawide.** The launcher's Presentation setting has Letterbox (keeps the picture's shape, with bars) and Stretch (fills the window by stretching the finished picture). Stretch does not add any world to the sides; use Letterbox for correct geometry.
 - Menus and dialogs stay 4:3 and are pillarboxed. There is no dedicated ultrawide HUD layout.
-- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.2.
+- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.3.
 
 ## Navigation
 
@@ -335,9 +367,9 @@ translations of the same captions where they exist, and the rest was translated 
 | Spanish (`TRESPASSER_S`) | 1.1.117 | Yes | Yes |
 | Brazilian Portuguese | 1.1.117 | Yes | Yes |
 
-The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo, mod or fan-made conversion is supported. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
+The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo or total conversion is supported as a game version; community levels are played from the [Custom Levels](#custom-levels) page. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
 
-The Windows and Linux executables in v0.1.2 carry the same three lifted builds: `lift116` serves English (1.0.116) and Russian Fargus (1.0.116), `lift_es117` serves Spanish (1.1.117), and `lift_ptbr117` serves Brazilian Portuguese (1.1.117). The installed version selects the active lift, and Linux also maps the lifted MSVCIRT module shared by all four releases.
+The Windows and Linux executables in v0.1.3 carry the same three lifted builds: `lift116` serves English (1.0.116) and Russian Fargus (1.0.116), `lift_es117` serves Spanish (1.1.117), and `lift_ptbr117` serves Brazilian Portuguese (1.1.117). The installed version selects the active lift, and Linux also maps the lifted MSVCIRT module shared by all four releases.
 
 All four versions pass the headless first-frame boot tests on Linux. Full gameplay, interface, audio and input on real Linux hardware still require manual validation. (The earlier published **v0.1.0** Linux AppImage predated this parity fix and ran English and Russian only.)
 
@@ -345,7 +377,7 @@ All four versions pass the headless first-frame boot tests on Linux. Full gamepl
 
 Windows 10 or 11, 64-bit. The Windows program is a 32-bit (x86) host that runs on 64-bit Windows.
 
-1. Download **JurassicParkTrespasserRecompiled-v0.1.2-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
+1. Download **JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
 2. Run **trespasser_recomp.exe**, keeping `trg-updater.exe` beside it.
 3. On the **Play** page choose **Import game...** and select your own Trespasser `.iso` disc image. It is only read.
 4. When Play says the game is ready, press **PLAY**.
@@ -366,7 +398,7 @@ The Windows executable is not code-signed, so SmartScreen may warn on the first 
 
 **Steam Deck** support is experimental and uses the same AppImage: add it with **Games > Add a Non-Steam Game to My Library**. It has **not been validated on Steam Deck hardware**, and it is not Steam Deck Verified. See [docs/LINUX.md](docs/LINUX.md) and [docs/LINUX_PARITY.md](docs/LINUX_PARITY.md).
 
-Verified limits on Linux in v0.1.2:
+Verified limits on Linux in v0.1.3:
 
 - Linux support is still experimental, and the Steam Deck has not been validated on physical hardware.
 - The guest keeps its 4:3 presentation, scaled to the window; there is no native True Ultrawide on Linux.
@@ -377,11 +409,12 @@ Verified limits on Linux in v0.1.2:
 
 - **No validated high frame rate.** VSync Off removes the present wait, but there is no uncapped-frame-rate mode and no 120 FPS guarantee.
 - **"HD" means the front end, loading screens and videos**, not a texture pack; the 3D world uses the original textures.
-- No dedicated ultrawide HUD, no HDR, no vibration, no mods, no custom waypoints.
+- No dedicated ultrawide HUD, no HDR, no vibration, no mods other than custom levels, no custom waypoints.
+- **Custom levels:** not every community level is supported. Trespasser CE's extended AI (`EnableAiActivityEx`), `EndGameDDF`, texhw textures on bump-mapped meshes, scripted actions (ActionType 99) and some CE script callbacks are not implemented; encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
 - Windows Vulkan is selectable but D3D11 is recommended; the playable host is 32-bit (the 64-bit host is groundwork only).
 - The Windows executable and updater are unsigned.
 
-See the [v0.1.2 release notes](docs/RELEASE_NOTES_v0.1.2.md#known-limitations), the [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md#known-limitations) and the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) for the full list.
+See the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations), the [v0.1.2 release notes](docs/RELEASE_NOTES_v0.1.2.md#known-limitations), the [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md#known-limitations) and the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) for the full list.
 
 ## Bug reports
 
@@ -391,18 +424,18 @@ Use the launcher's **Bug Report** page: describe the problem, choose a log and p
 
 Get the published release files from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) page. The Windows port is x86; the Linux build is x86_64.
 
-Expected v0.1.2 release assets (available on the [releases page](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) once v0.1.2 is published):
+Expected v0.1.3 release assets (available on the [releases page](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) once v0.1.3 is published):
 
 | Platform | File | Checksum |
 |---|---|---|
-| Windows 10 / 11 | `JurassicParkTrespasserRecompiled-v0.1.2-windows-x86.zip` | `JurassicParkTrespasserRecompiled-v0.1.2-windows-x86.zip.sha256` |
-| Linux x86_64 / Steam Deck (experimental) | `JurassicParkTrespasserRecompiled-v0.1.2-x86_64.AppImage` | `JurassicParkTrespasserRecompiled-v0.1.2-x86_64.AppImage.sha256` |
+| Windows 10 / 11 | `JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip` | `JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip.sha256` |
+| Linux x86_64 / Steam Deck (experimental) | `JurassicParkTrespasserRecompiled-v0.1.3-x86_64.AppImage` | `JurassicParkTrespasserRecompiled-v0.1.3-x86_64.AppImage.sha256` |
 
 No game files are in the downloads.
 
 ## Security
 
-SHA-256 checksums for v0.1.2 are published alongside the release artifacts. The four final files were checked manually on VirusTotal, and the project maintainer reported OK for all four; the per-file table is in the [v0.1.2 release notes](docs/RELEASE_NOTES_v0.1.2.md#security). A clean scan is an additional verification step, not an absolute guarantee of safety: verify the SHA-256 values before running a file, and download only from this repository's Releases page.
+SHA-256 checksums for v0.1.3 are published alongside the release artifacts; the per-file table is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#security). A clean scan is an additional verification step, not an absolute guarantee of safety: verify the SHA-256 values before running a file, and download only from this repository's Releases page.
 
 For the published **v0.1.0** release, the four files (the Windows ZIP, `trespasser_recomp.exe`, `trg-updater.exe` and the Linux AppImage) were scanned on VirusTotal with no detections: [ZIP](https://www.virustotal.com/gui/file/4b677fb36519f63221ff25dffd5b5a50a250672db56658b07865810649bc1a36), [EXE](https://www.virustotal.com/gui/file/52b4dc10c9da024b1c10ef152615f1235d21301f9bcacf0d1d6f742f91c0d7fd), [updater](https://www.virustotal.com/gui/file/ba019e55a195d234c8f6b02e6f2bc2dc04aeb0df27ac3aa3570c29cb514c4be6), [AppImage](https://www.virustotal.com/gui/file/eb4e8d6308fa41407b503668e59536c387da654baf0ffa87bc88b2e4447856d9). A clean scan is an additional signal, not a guarantee of safety: verify the SHA-256 and download only from this repository. The full v0.1.0 table is in the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#security-and-virustotal); see also [RELEASE_SECURITY](docs/RELEASE_SECURITY.md).
 
@@ -474,7 +507,17 @@ feature by feature against `tests\feature_contract.json`. It ends with `ALL TEST
 .\tools\test.ps1 -Detail            # also show the output of passing suites
 .\tools\test.ps1 -Release           # also validate the release artifacts already in dist\ (never packages)
 .\tools\test.ps1 -Full              # water_tests without --quick (about five minutes more)
+.\tools\test.ps1 -TestJobs 2 -BuildJobs 2   # more jobs by hand (or JPT_TEST_JOBS and JPT_BUILD_JOBS); the memory limits still hold
+.\tools\test.ps1 -Sequential        # diagnostic: one suite at a time in strict list order
+.\tools\test.ps1 -Resume            # go on after the last suite that passed, only with the same sources and parameters
 ```
+
+Every run is memory-limited and finishes on a busy desktop: one suite and one compiler at a time, the Windows half before the
+Linux half, and a watch over the RAM of the gate's own process tree. When that tree passes 30% of the RAM the stage is stopped
+and fails with `MEMORY LIMIT EXCEEDED`, and the next suites go on. Other applications using the RAM never stop a running stage:
+under 2 GB free it is reported (`LOW SYSTEM MEMORY`, `CRITICAL SYSTEM MEMORY` at 0.5 GB), and at 0.5 GB free no new stage
+starts until the RAM is back. Every row shows the progress, the ETA, the finish time and the memory, from the durations kept in `build\test-history`
+(ignored by Git). `-Resume` reads the checkpoint there and refuses when anything that could change a result differs.
 
 It is headless: it never starts the game or the launcher, opens a window, reads a controller, plays audio or uses the
 network (the Linux half runs on SDL's dummy drivers), and it works from any folder. Without WSL the Linux rows are BLOCKED, never

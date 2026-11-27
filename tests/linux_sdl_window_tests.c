@@ -71,6 +71,14 @@ static lx_event_t next(lx_window_backend_t* b) {
     return ev;
 }
 
+/* As user32 pumps: one event variable for every call, never cleared by the caller. */
+static void next_reused(lx_window_backend_t* b, lx_event_t* ev) {
+    for (int i = 0; i < 32; i++) {
+        b->next_event(b, 0, ev);
+        if (ev->kind != LX_EV_RESIZE && ev->kind != LX_EV_FOCUS) return;
+    }
+}
+
 static lx_window_backend_t* open_window(void) {
     lx_window_backend_t* b = lx_sdl_backend();
     lx_window_desc_t desc;
@@ -178,6 +186,41 @@ int main(void) {
         b->set_relative_mouse(b, 0);
         CHECK(!lx_sdl_relative(), "and goes off again");
         b->destroy(b);
+    }
+    {
+        lx_event_t reused;
+        memset(&reused, 0x5A, sizeof reused);
+        b = open_window();
+        if (b) {
+            b->set_relative_mouse(b, 1);
+            push_motion(10.0f, 10.0f, SDL_GetTicksNS() + 1000000u);
+            next_reused(b, &reused);
+            CHECK(reused.kind == LX_EV_MOUSE_MOVE && reused.relative == 1, "JPT-Y2CHNM: a look in the level leaves relative set in the caller's event");
+            b->set_relative_mouse(b, 0);
+            b->destroy(b);
+        }
+        b = open_window();
+        if (b) {
+            int w = 0, h = 0, px = -1, py = -1;
+            push_motion(200.0f, 120.0f, SDL_GetTicksNS());
+            next_reused(b, &reused);
+            CHECK(reused.kind == LX_EV_MOUSE_MOVE && reused.relative == 0 && reused.dx == 0.0f && reused.dy == 0.0f && reused.synthetic == 0 &&
+                      reused.x == 200 && reused.y == 120,
+                  "JPT-Y2CHNM: the next absolute position in the same event is absolute, not a stale look (relative %d, synthetic %d, %d, %d)",
+                  reused.relative, reused.synthetic, reused.x, reused.y);
+            b->client_size(b, &w, &h);
+            CHECK(b->pointer_position && (!b->pointer_position(b, &px, &py) || (px >= 0 && py >= 0 && px < w && py < h)),
+                  "the backend reports the pointer in client pixels, or that it is not over the window (%d, %d)", px, py);
+            b->destroy(b);
+        }
+        memset(&reused, 0x5A, sizeof reused);
+        b = open_window();
+        if (b) {
+            push_window_event(SDL_EVENT_WINDOW_CLOSE_REQUESTED);
+            next_reused(b, &reused);
+            CHECK(reused.kind == LX_EV_CLOSE && reused.vk == 0 && reused.relative == 0, "a window close is not read as Alt+F4 from a stale key (vk 0x%X)", reused.vk);
+            b->destroy(b);
+        }
     }
     b = open_window();
     if (b) {

@@ -80,6 +80,13 @@ static input_state_t derive(void) {
     return input_state_from(&signals);
 }
 
+/* Leaving the virtual cursor the game reads the real pointer again, as GetCursorPos does on Windows; SDL has just put it back. */
+static void adopt_real_pointer(void) {
+    lx_window_backend_t* b = lx_window_backend();
+    int cx, cy, gx, gy;
+    if (b->pointer_position && b->pointer_position(b, &cx, &cy) && lx_screen_client_to_guest(cx, cy, &gx, &gy)) lx_user32_cursor_set(gx, gy);
+}
+
 void lx_mouse_update(void) {
     input_state_t before = S.state, state = derive();
     int relative = input_captured(state), hidden = input_hide_pointer(state, S.count < 0), changed = 0;
@@ -107,6 +114,7 @@ void lx_mouse_update(void) {
         lx_mouse_log_summary();
     }
     if (lx_user32_cursor_get(&x, &y) && pointer_recapture(before, state, &x, &y, width, height)) lx_user32_cursor_set((int)x, (int)y);
+    else if (S.applied && input_cursor_virtual(before) && !input_cursor_virtual(state)) adopt_real_pointer();
     if (changed && S.applied)
         lx_log("Linux mouse", "relative %s, pointer %s (%s, the game's %s in front); the guest's ClipCursor and capture stay logical", S.relative ? "on" : "off",
                S.cursor_hidden ? "hidden" : "shown", input_state_name(state), guest_ui_model_class_name(jpt_gva_table(), S.view.top_vtable));

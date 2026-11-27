@@ -92,10 +92,20 @@ Teleport failed	Не удалось телепортироваться
 Freeze AI failed	Не удалось заморозить ИИ
 No objective	Нет задачи
 Objective updated	Задача обновлена
+No map information	Нет данных карты
+No objective information	Нет данных о задачах
+Find the way out	Найдите выход
+Objective %d	Задача %d
 Quick Save	Быстрое сохранение
 Quick saved	Игра сохранена
 Quick Save failed	Ошибка быстрого сохранения
 Quick Load failed	Ошибка быстрой загрузки
+This save is damaged and was not loaded	Это сохранение повреждено и не загружено
+This save is not compatible with the current level	Это сохранение несовместимо с текущим уровнем
+This level is missing required files	Этому уровню не хватает необходимых файлов
+This level cannot be loaded safely	Этот уровень нельзя загрузить безопасно
+The next level is not included in this package	Следующий уровень не входит в этот пакет
+The game could not be saved. The previous save was kept.	Не удалось сохранить игру. Предыдущее сохранение оставлено.
 No Quick Save yet	Быстрого сохранения ещё нет
 Quick Save works in a level	Быстрое сохранение работает только на уровне
 Quick Save is not available now	Быстрое сохранение сейчас недоступно

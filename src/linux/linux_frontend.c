@@ -12,7 +12,10 @@
 #include "guest_abi.h"
 #include "guest_va.h"
 #include "host_input.h"
+#include "jpt_sync.h"
+#include "linux_hle.h"
 #include "linux_log.h"
+#include "linux_overlay.h"
 #include "linux_user32.h"
 #include "loading_hd.h"
 
@@ -145,6 +148,10 @@ void fe_host_level_load_begin(void) {}
 void fe_host_level_loaded(void) {}
 void fe_host_level_load_done(void) {}
 int fe_host_display_built(void) { return 1; }
+int fe_host_level_file(const char* path, char* out, size_t cap) {
+    return hle_vpath() && jpt_vpath_resolve_read(hle_vpath(), path, out, cap, NULL) == JPT_VP_OK;
+}
+void fe_host_notice(const char* text) { lx_overlay_notice(text, jpt_time_ms()); }
 
 /* ---- window centring (the Options and Audio windows lose the entries that have no meaning here) ---- */
 

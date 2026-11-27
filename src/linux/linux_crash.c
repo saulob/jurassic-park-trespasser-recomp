@@ -10,6 +10,8 @@
 #include <ucontext.h>
 #include <unistd.h>
 
+#include "engine_mode.h"
+#include "guest_memory.h"
 #include "guest_thunks.h"
 #include "linux_log.h"
 #include "recomp_types.h"
@@ -94,6 +96,9 @@ static int build_report(out_t* o, int signo, int code, void* fault_address, void
     field(o, "host rip           ", (uint64_t)(uintptr_t)host_rip);
     field(o, "host rip - base    ", (uint64_t)((uintptr_t)host_rip - s_load_base));
     field(o, "load base          ", (uint64_t)s_load_base);
+    if ((uintptr_t)fault_address >= (uintptr_t)gm_base() && (uintptr_t)fault_address - (uintptr_t)gm_base() <= UINT32_MAX &&
+        engine_heaps_guard((uint32_t)((uintptr_t)fault_address - (uintptr_t)gm_base())))
+        put_str(o, "  GUARD_PAGE_HIT: past an engine heap that was not asked for the room, a bug of the port\n");
     put_str(o, "  host thread        ");
     put_dec(o, syscall(SYS_gettid));
     put_str(o, "\n  guest thread       ");

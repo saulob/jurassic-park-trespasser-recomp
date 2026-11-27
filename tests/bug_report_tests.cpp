@@ -419,6 +419,36 @@ void TestLogDiscoveryAndCrashValidation() {
     Check(logs[2].role == LogRole::kOtherGameplay, "older gameplay role");
     Check(!logs[2].Crashed() && !logs[2].CanAttachCrash() && !DefaultAttachCrashReport(logs[2]), "non-crashed log has no dump");
     Check(DefaultGameLog({}) == 0, "default log on empty vector is 0");
+    // Bug Report after a failed import: this session's own log, whatever an older game session ended like.
+    Check(ChooseGameLog(logs, running) == 0 && logs[0].path == running, "the import's own session log is chosen");
+    Check(ChooseGameLog(logs, dir / "." / running.filename()) == 0, "the same log by another spelling of its path");
+    Check(ChooseGameLog(logs, logs[2].path) == 2, "a log picked by hand stays chosen after a rescan");
+    Check(ChooseGameLog(logs, {}) == DefaultGameLog(logs) && ChooseGameLog(logs, dir / "gone.log") == DefaultGameLog(logs), "nothing asked for: the default log");
+    Check(ChooseGameLog({}, running) == 0, "no logs");
+    // Bug Report of a level: the log of that level's own last run, never another one's crash.
+    const auto run = [&](const char* name, const std::string& package, const std::string& scene, int minutes) {
+        std::ifstream in(gameplay, std::ios::binary);
+        std::string text(std::istreambuf_iterator<char>(in), {});
+        text += "[00:00:01.000] [custom-level] " + package + ", scene " + scene + " loaded as LEVEL.SCN; saves in x\n";
+        WriteBytes(dir / name, text);
+        std::error_code touched;
+        fs::last_write_time(dir / name, now - std::chrono::minutes(minutes), touched);
+        return dir / name;
+    };
+    const fs::path first = run("trespasser_recomp_101.log", "Isle", "data/isle.scn", 200), second = run("trespasser_recomp_102.log", "Isle", "data/isle.scn", 150),
+                   other = run("trespasser_recomp_103.log", "Isle", "data/other.scn", 140), same = run("trespasser_recomp_104.log", "Isle-2", "data/isle.scn", 130);
+    Check(FindLevelLog(dir, running, "Isle", "data/isle.scn") == second && FindLevelLog(dir, running, "Isle", "data/other.scn") == other, "the newest log of the level's runs");
+    Check(FindLevelLog(dir, running, "Isle-2", "data/isle.scn") == same && FindLevelLog(dir, running, "Isle", "isle.scn").empty() && FindLevelLog(dir, running, "Gone", "x.scn").empty(), "another package's or level's log is never taken");
+    const auto with = FindGameLogs(dir, running, 2, first);
+    Check(with.size() == 3 && with[ChooseGameLog(with, first)].path == first && ChooseGameLog(FindGameLogs(dir, running, 2), first) == DefaultGameLog(FindGameLogs(dir, running, 2)), "an old log asked for is listed and chosen");
+    {
+        std::ofstream ended(second, std::ios::binary | std::ios::app);
+        ended << "[00:00:02.000] [custom-level] ENGINE_LIMIT_EXCEEDED: the scene's vertices at 0x10000000 holds 1 bytes, 1 are in use and 40 more were asked for; nothing of them was written\n"
+                 "[00:00:02.000] [custom-level] CONTROLLED_LOAD_FAILURE: isle.scn of Isle\n[00:00:02.000] [exit    ] exit code 6\n";
+    }
+    fs::last_write_time(second, now - std::chrono::minutes(150), ec);
+    Check(FindLevelLog(dir, running, "Isle", "data/isle.scn") == second, "the log of a load that was ended is the level's log");
+    for (const fs::path& log : {first, second, other, same}) fs::remove(log, ec);
 
     // Dump naming.
     Check(DumpNameOf("trespasser_recomp_004.log") == "trespasser_recomp_004.dmp", "dump name from .log");

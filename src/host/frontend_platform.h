@@ -49,6 +49,10 @@ const char* fe_host_user_folder(void);
 /* The folder of the executable, with its trailing separator; 0 when unknown. */
 int fe_host_exe_dir(char* out, size_t cap);
 int fe_host_file_exists(const char* path);
+/* The host's path of a scene or save the game names, from a package when it has it. */
+int fe_host_level_file(const char* path, char* out, size_t cap);
+/* A line over the game for a moment. */
+void fe_host_notice(const char* text);
 /* A level load: its start, the loaded level before the game counts the load as over, and after. */
 void fe_host_level_load_begin(void);
 void fe_host_level_loaded(void);
@@ -122,6 +126,10 @@ static inline int fe_host_exe_dir(char* out, size_t cap) {
 }
 static inline int fe_host_file_exists(const char* path) { return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES; }
 static inline int fe_host_display_built(void) { return guest_display_built(); }
+static inline void fe_host_notice(const char* text) { debug_menu_notice(text); }
+static inline int fe_host_level_file(const char* path, char* out, size_t cap) {
+    return custom_level_file(path, out, cap) || (strlen(path) < cap && strcpy(out, path) != NULL);
+}
 #endif
 
 #endif

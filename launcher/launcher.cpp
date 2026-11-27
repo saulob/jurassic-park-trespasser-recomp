@@ -17,11 +17,13 @@
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "custom_levels_page.h"
 #include "disc_browser.h"
 #include "file_browser.h"
 #include "file_picker.h"
 #include "game_files.h"
 #include "game_install.h"
+#include "graphics_cards.h"
 #include "header_art.h"
 #include "host.h"
 #include "incident_page.h"
@@ -33,6 +35,7 @@
 #include "jpt_prompt_text.h"
 #include "launcher_log.h"
 #include "launcher_quit.h"
+#include "launcher_renderer.h"
 #include "localization/ui_text.h"
 #include "options.h"
 #include "page_icons.h"
@@ -140,6 +143,12 @@ constexpr char kWaterRefractionHelp[] =
 constexpr char kEnhancedSkyHelp[] =
     "Fades the sky into the level's fog colour towards the horizon by view direction, with the level's own sky fog "
     "band, as Trespasser CE's enhanced sky. Off keeps the original sky fog.";
+constexpr char kFogHelp[] =
+    "The original game's distance fog over objects, terrain and water, in every renderer. Off draws them without it; "
+    "the sky keeps its own haze, and the draw distance does not change.";
+constexpr char kShadowsHelp[] =
+    "The original game's shadows of objects and dinosaurs on the ground, in every renderer. Off draws the ground without "
+    "them. Ambient occlusion is a separate setting.";
 constexpr char kActiveAiHelp[] =
     "Controls how many AI creatures can be active at once. Original uses the retail limit of 3; Enhanced uses 6, as "
     "supported by Trespasser CE. Applies the next time the game starts.";
@@ -301,6 +310,14 @@ std::string StatusDetail(const InstalledVersion* v, const GameCheck& check) {
 
 enum class Outcome { kRunning, kPlay, kQuit };
 
+std::string RequestedRenderer(const jpt_launcher_config_t& config) {
+    return config.launcher_renderer && *config.launcher_renderer ? config.launcher_renderer : std::string(kLauncherRendererAuto);
+}
+
+bool SoftwareRecovery(const jpt_launcher_config_t& config) {
+    return RequestedRenderer(config) == kLauncherRendererSoftware;
+}
+
 class LauncherApp {
 public:
     LauncherApp(const jpt_launcher_config_t& config, LauncherSettings& settings)
@@ -312,75 +329,132 @@ public:
         Recheck();
     }
 
-    // Runs the launcher window until Play or Quit. False when no window could be opened.
+    const std::string& failure_text() const { return failure_text_; }
+
+    // Runs the launcher window until Play or Quit. False when no window could be opened; failure_text says why.
     bool Run(Outcome& outcome) {
+        SetLauncherLanguage(EffectiveLanguage());
         HostOptions options;
+        options.renderer = RequestedRenderer(config_);
         options.title = kGameTitle;
         const WindowPlacement saved = ReadPlacement(settings_);
         if (PlacementIsSet(saved)) {
             options.restore = saved;
         }
         if (!host_.Open(options)) {
+            failure_text_ = host_.FailureText();
             return false;
         }
         monitors_ = ListMonitors();
-        ListGraphicsCards();
+        DetectGraphics();
         Log("%zu monitor(s)", monitors_.size());
         ReadGameRegistry();
-        SetLauncherLanguage(EffectiveLanguage());
-        placement_ = PlacementTracker(host_.Restored());
-        fonts_ = trg::LoadSystemFonts(trg::layout::kTextBody);
         if (LoadLauncherImage("header-art.png", header_art_image_)) {
             header_art_aspect_ = float(header_art_image_.width) / float(header_art_image_.height);
         }
-        sponsor_icon_ = LoadSponsorIcon(host_);
         trg::SetTranslator(&TranslateLauncherText);
         incident_page_ = std::make_unique<IncidentPage>(IncidentPlaces());
         incident_page_->CheckReports();
-        launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+        custom_levels_ = std::make_unique<CustomLevelsPage>(user_dir_, MakeCustomLevelsHooks());
         updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(InstallDir()));
         updater_->StartCheck();
 
-        outcome = Outcome::kRunning;
-        host_.BeginFrame();
-        outcome = Frame();
-        host_.EndFrame(LauncherTheme().bg);
+        if (!DrawFirstFrame(outcome) && !RetryWithSoftware(options, outcome)) {
+            StopUpdater();
+            return false;
+        }
         host_.Show();
         Log("shown");
         while (outcome == Outcome::kRunning) {
-            if (!host_.PumpEvents()) {
+            if (!host_.WaitForFrame()) {
                 outcome = Outcome::kQuit;
                 break;
-            }
-            if (host_.Minimized()) {
-                SDL_Delay(30);
-                continue;
             }
             host_.BeginFrame();
             outcome = Frame();
             host_.EndFrame(LauncherTheme().bg);
         }
+        if (outcome == Outcome::kPlay) StartHandoff();
         if (install_.running()) {
             install_.Cancel();
             install_.Finish();
         }
+        custom_levels_.reset();
         if (!skip_finish_save_) {
             SavePlacement(placement_.Flush());
         }
-        if (updater_) {
-            updater_->Cancel();
-            if (updater_->Busy()) {
-                // Do not join a network call on the UI thread when the launcher leaves.
-                updater_.release();
-            }
-        }
+        StopUpdater();
         launcher_.reset();
         host_.Close();
+        if (config_.custom_level) *config_.custom_level = outcome == Outcome::kPlay ? level_ : jpt_custom_level_request_t{};
         Log(outcome == Outcome::kPlay ? "closed, starting the game" : "closed");
         return true;
     }
 
 private:
+    static unsigned Rgb(const ImVec4& c) {
+        const auto byte = [](float v) { return unsigned(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        return byte(c.x) << 16 | byte(c.y) << 8 | byte(c.z);
+    }
+
+    // The handoff window shows below this one before it closes, so the desktop never shows between them.
+    void StartHandoff() {
+        if (!config_.handoff) return;
+        const trg::Theme theme = LauncherTheme();
+        jpt_launch_handoff_request_t request{};
+        request.window = host_.NativeWindow();
+        request.custom = level_.scene[0] != 0;
+        request.level = level_.package;
+        request.background = Rgb(theme.bg);
+        request.text = Rgb(theme.text);
+        request.dim = Rgb(theme.dim);
+        request.accent = Rgb(theme.accent);
+        config_.handoff(&request);
+    }
+
+    void StopUpdater() {
+        updater_->Cancel();
+        // Do not join a network call on the UI thread when the launcher leaves.
+        if (updater_->Busy()) updater_.release();
+    }
+
+    // Everything that belongs to the open window's renderer, then the first frame.
+    bool DrawFirstFrame(Outcome& outcome) {
+        placement_ = PlacementTracker(host_.Restored());
+        fonts_ = trg::LoadSystemFonts(trg::layout::kTextBody);
+        sponsor_icon_ = LoadSponsorIcon(host_);
+        launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+        host_.BeginFrame();
+        outcome = Frame();
+        if (host_.EndFrame(LauncherTheme().bg)) return true;
+        failure_text_ = host_.RendererName() + ": " + host_.FailureText();
+        Log("startup: first frame failed: %s", failure_text_.c_str());
+        return false;
+    }
+
+    bool RetryWithSoftware(HostOptions& options, Outcome& outcome) {
+        const bool retry = options.renderer == kLauncherRendererAuto && host_.RendererName() != kLauncherRendererSoftware;
+        launcher_.reset();
+        page_icons_.clear();
+        header_art_ = sponsor_icon_ = ImTextureID{};
+        header_art_width_ = header_art_height_ = 0;
+        fonts_ = {};
+        host_.Close();
+        if (!retry) return false;
+        Log("startup: fallback to software after the first frame");
+        options.renderer = std::string(kLauncherRendererSoftware);
+        if (!host_.Open(options)) {
+            failure_text_ += "\n" + host_.FailureText();
+            return false;
+        }
+        const std::string first = failure_text_;
+        if (DrawFirstFrame(outcome)) return true;
+        failure_text_ = first + "\n" + failure_text_;
+        launcher_.reset();
+        host_.Close();
+        return false;
+    }
+
     bool Ready() const { return Playable(Selected()); }
 
     const InstalledVersion* Selected() const { return selected_ >= 0 ? &versions_[size_t(selected_)] : nullptr; }
@@ -419,6 +493,7 @@ private:
         NormalizeCheats();
         TrackPlacement();
         PollInstall();
+        custom_levels_->Poll(*launcher_);
         PollUpdate();
         if (play_.starting() && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds) {
             return Outcome::kPlay;
@@ -434,7 +509,8 @@ private:
         if (disc_browser_.active()) {
             if (const std::optional<std::filesystem::path> picked =
                     disc_browser_.Draw(fonts_.regular, fonts_.size, launcher_->config().theme)) {
-                StartInstall(Utf8(*picked), browse_replace_);
+                if (&disc_browser_.purpose() == &kBrowseDisc) StartInstall(Utf8(*picked), browse_replace_);
+                else custom_levels_->Picked(Utf8(*picked), disc_browser_.purpose().folder);
             }
         }
         if (result == trg::Result::kNone && !play_.starting() &&
@@ -446,7 +522,7 @@ private:
         }
         switch (result) {
         case trg::Result::kPlay:
-            RequestPlay();
+            RequestPlay({});
             break;
         case trg::Result::kQuit:
             if (!play_.starting() && !disc_browser_.active() &&
@@ -488,13 +564,14 @@ private:
     }
 
     // PLAY saves the settings once here, then starts the transition. A failed save keeps the launcher open.
-    void RequestPlay() {
+    void RequestPlay(const jpt_custom_level_request_t& level) {
         if (play_.starting()) {
             return;
         }
         Recheck();
-        switch (play_.Request(install_.running(), Ready(), [this] { return launcher_->Save(); })) {
+        switch (play_.Request(install_.running() || custom_levels_->importing(), Ready(), [this] { return launcher_->Save(); })) {
         case PlayRequest::kStarting:
+            level_ = level;
             play_started_ = ImGui::GetTime();
             launcher_->SetStatus("", 0.0);
             Log("settings saved to %s, starting the game", Utf8(settings_.file()).c_str());
@@ -562,7 +639,7 @@ private:
             c.pages.back().icon = [this, page](int pixels) { return PageIconTexture(page, pixels); };
         }
         c.can_play = [this] {
-            if (install_.running()) {
+            if (install_.running() || custom_levels_->importing()) {
                 return trg::PlayCheck{false, "Wait for the installation to finish.", 0};
             }
             if (!Ready()) {
@@ -605,33 +682,48 @@ private:
     }
 
     trg::Page MakePage(PageId page) {
-        const std::string name(PageName(page));
+        trg::Page result;
+        result.name = PageName(page);
         switch (page) {
         case PageId::kPlay:
-            return {name, "Import game versions from your discs, choose one and start it.",
-                    [this](trg::Ui& ui) { PagePlay(ui); },
-                    [this] { return !Ready(); }, nullptr, nullptr, {}};
+            result.blurb = "Import game versions from your discs, choose one and start it.";
+            result.draw = [this](trg::Ui& ui) { PagePlay(ui); };
+            result.needs_attention = [this] { return !Ready(); };
+            break;
+        case PageId::kCustomLevels:
+            result.blurb = "Import levels made by the community and play them.";
+            result.draw = [this](trg::Ui& ui) { custom_levels_->Draw(ui); };
+            break;
         case PageId::kDisplay:
-            return {name, "Window, monitor, aspect ratio and presentation.", [this](trg::Ui& ui) { PageDisplay(ui); },
-                    nullptr, nullptr, {}, {}};
+            result.blurb = "Window, monitor, aspect ratio and presentation.";
+            result.draw = [this](trg::Ui& ui) { PageDisplay(ui); };
+            break;
         case PageId::kGraphics:
-            return {name, "Renderer, graphics card, resolution, field of view, anti-aliasing and texture filtering.",
-                    [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr, nullptr, {}, {}};
+            result.blurb = "Renderer, graphics card, resolution, field of view, anti-aliasing and texture filtering.";
+            result.draw = [this](trg::Ui& ui) { PageGraphics(ui); };
+            break;
         case PageId::kGameplay:
-            return {name, "Language, Skip Intro, video subtitles and what the window title shows.",
-                    [this](trg::Ui& ui) { PageGameplay(ui); }, nullptr, nullptr, {}, {}};
+            result.blurb = "Language, Skip Intro, video subtitles and what the window title shows.";
+            result.draw = [this](trg::Ui& ui) { PageGameplay(ui); };
+            break;
         case PageId::kControls:
-            return {name, "Keyboard, mouse and gamepad.", [this](trg::Ui& ui) { PageControls(ui); }, nullptr, nullptr, {}, {}};
+            result.blurb = "Keyboard, mouse and gamepad.";
+            result.draw = [this](trg::Ui& ui) { PageControls(ui); };
+            break;
         case PageId::kCheats:
-            return {name, kCheatsPageSubtitle, [this](trg::Ui& ui) { PageCheats(ui); }, nullptr, nullptr, {}, {}};
+            result.blurb = kCheatsPageSubtitle;
+            result.draw = [this](trg::Ui& ui) { PageCheats(ui); };
+            break;
         case PageId::kBugReport:
-            return {name, "Describe a problem and send a report with one game log.",
-                    [this](trg::Ui& ui) { PageBugReport(ui); }, nullptr, nullptr, {}, {}};
+            result.blurb = "Describe a problem and send a report with one game log.";
+            result.draw = [this](trg::Ui& ui) { PageBugReport(ui); };
+            break;
         case PageId::kAbout:
-            return {name, "This port, and where your files and settings live.", [this](trg::Ui& ui) { PageAbout(ui); },
-                    nullptr, nullptr, {}, {}};
+            result.blurb = "This port, and where your files and settings live.";
+            result.draw = [this](trg::Ui& ui) { PageAbout(ui); };
+            break;
         }
-        return {};
+        return result;
     }
 
     // ---- Play
@@ -693,6 +785,56 @@ private:
         }
     }
 
+    // ---- Custom Levels
+
+    CustomLevelsHooks MakeCustomLevelsHooks() {
+        CustomLevelsHooks hooks;
+        hooks.choose = [this](bool folder) { BrowseForLevel(folder); };
+        hooks.game_ready = [this] { return Ready(); };
+        hooks.data_dir = [this] {
+            const InstalledVersion* selected = Selected();
+            return selected ? selected->dir / "data" : std::filesystem::path();
+        };
+        hooks.play = [this](const jpt_custom_level_request_t& level) { RequestPlay(level); };
+        hooks.open_folder = [](const std::filesystem::path& folder) { trg::OpenInFileManager(Utf8(folder)); };
+        hooks.open_file = [](const std::filesystem::path& file) { trg::OpenUrl(Utf8(file)); };
+        hooks.sort = [this] { return settings_.Get(kLauncherLevelSortKey); };
+        hooks.set_sort = [this](const std::string& sort) {
+            if (!settings_.SaveNow({{kLauncherLevelSortKey, sort}})) Log("the order of the custom levels could not be saved");
+        };
+        hooks.open_bug_report = [this](const std::string& package, const std::string& scene) {
+            if (package.empty()) incident_page_->ChooseRunningLog();
+            else incident_page_->ChooseLevelLog(package, scene);
+            launcher_->GoToPage(launcher_->FindPage(PageName(PageId::kBugReport)));
+        };
+        return hooks;
+    }
+
+    void BrowseForLevel(bool folder) {
+        if (custom_levels_->importing() || disc_browser_.active()) return;
+        if (UseBuiltInChooser()) {
+            disc_browser_.Open(PortFolder(), folder ? kBrowseLevelFolder : kBrowseLevelArchive);
+            return;
+        }
+        if (!FilePickerAvailable()) {
+            Log("no file picker: neither zenity nor kdialog is on the PATH");
+            launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the level."), 10.0);
+            return;
+        }
+        custom_levels_->Picked(folder ? trg::BrowseForFolder(Tr("Select the folder of a custom level"))
+                                      : trg::BrowseForFile(Tr("Select a custom level (.zip, .7z or .rar)"), {{Tr("Level packages (*.zip, *.7z, *.rar)"), "*.zip;*.7z;*.rar"}}),
+                               folder);
+    }
+
+    static bool UseBuiltInChooser() {
+#ifdef _WIN32
+        constexpr bool is_windows = true;
+#else
+        constexpr bool is_windows = false;
+#endif
+        return UseBuiltInFileChooser(is_windows, jpt_port_in_gamescope() != 0, FilePickerAvailable(), FileChooserPreference());
+    }
+
     void RemoveSelected() {
         const InstalledVersion* selected = Selected();
         if (!selected || !selected->profile || install_.running()) return;
@@ -711,18 +853,12 @@ private:
         if (install_.running() || disc_browser_.active()) {
             return;
         }
-        const bool native_available = FilePickerAvailable();
-#ifdef _WIN32
-        constexpr bool is_windows = true;
-#else
-        constexpr bool is_windows = false;
-#endif
-        if (UseBuiltInFileChooser(is_windows, jpt_port_in_gamescope() != 0, native_available, FileChooserPreference())) {
+        if (UseBuiltInChooser()) {
             browse_replace_ = replace;
             disc_browser_.Open(PortFolder());
             return;
         }
-        if (!native_available) {
+        if (!FilePickerAvailable()) {
             Log("no file picker: neither zenity nor kdialog is on the PATH");
             launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the disc image."), 10.0);
             return;
@@ -873,44 +1009,36 @@ private:
         return {monitor->bounds.right - monitor->bounds.left, monitor->bounds.bottom - monitor->bounds.top};
     }
 
-    void ListGraphicsCards() {
-        gpus_ = ListGpus();
-        gpu_names_ = GpuChoices(gpus_);
-        gpu_msaa_.assign(gpus_.size(), 0);
-        for (size_t i = 0; i < gpus_.size(); ++i) {
-            if (!gpus_[i].name[0]) {
+    void DetectGraphics() {
+        Log("startup: gpu enumeration starting");
+        cards_ = DetectGraphicsCards(SoftwareRecovery(config_),
+                                     {[](std::string& detail) { return ListGpus(&detail); }, [](int index) { return GpuMsaaMask(index); }});
+        for (size_t i = 0; i < cards_.gpus.size(); ++i) {
+            if (!cards_.gpus[i].name[0]) {
                 continue;
             }
-            gpu_msaa_[i] = GpuMsaaMask(static_cast<int>(i));
-            Log("graphics card %zu \"%s\", MSAA %s%s%s", i, gpus_[i].label, gpu_msaa_[i] & 4 ? "2x " : "",
-                gpu_msaa_[i] & 16 ? "4x " : "", gpu_msaa_[i] & 256 ? "8x" : "");
+            Log("graphics card %zu \"%s\", MSAA %s%s%s", i, cards_.gpus[i].label, cards_.msaa[i] & 4 ? "2x " : "",
+                cards_.msaa[i] & 16 ? "4x " : "", cards_.msaa[i] & 256 ? "8x" : "");
         }
-        if (gpu_names_.empty()) {
-            Log("no graphics card found");
-        }
-    }
-
-    // The adapter the game will use for the saved choice (the renderer resolves it the same way).
-    int ChosenGpu() const {
-        return jpt_gpu_resolve(gpus_.data(), static_cast<int>(gpus_.size()), settings_.Get(JPT_KEY_GRAPHICS_CARD).c_str());
+        Log("startup: gpu enumeration result=%s usable=%zu", GraphicsCardsResult(cards_), cards_.names.size());
+        if (!cards_.detail.empty()) Log("startup: gpu enumeration reason=%s", cards_.detail.c_str());
     }
 
     void NormalizeGraphicsCard() {
-        const int found = ChosenGpu();
-        if (found >= 0 && settings_.Get(JPT_KEY_GRAPHICS_CARD) != gpus_[size_t(found)].label) {
-            settings_.Set(JPT_KEY_GRAPHICS_CARD, gpus_[size_t(found)].label);
+        if (const std::optional<std::string> label = CardToStore(cards_, settings_.Get(JPT_KEY_GRAPHICS_CARD))) {
+            settings_.Set(JPT_KEY_GRAPHICS_CARD, *label);
         }
     }
 
     void GraphicsCardCombo() {
-        if (gpu_names_.empty()) {
-            ImGui::TextUnformatted(Tr("No graphics card found"));
+        if (cards_.names.empty()) {
+            ImGui::TextWrapped("%s", Tr(GraphicsCardsProblem(cards_)));
             return;
         }
         const std::string current = settings_.Get(JPT_KEY_GRAPHICS_CARD);
         ImGui::SetNextItemWidth(-FLT_MIN);
         if (ImGui::BeginCombo("##graphics_card", current.c_str())) {
-            for (const std::string& name : gpu_names_) {
+            for (const std::string& name : cards_.names) {
                 if (ImGui::Selectable(name.c_str(), name == current) && name != current) {
                     settings_.Set(JPT_KEY_GRAPHICS_CARD, name);
                 }
@@ -940,6 +1068,8 @@ private:
         AntiAliasingRow(ui);
         ui.Combo("Ambient occlusion", kAmbientOcclusionHelp, JPT_KEY_AMBIENT_OCCLUSION, "medium",
                  {{"off", "Off"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"}, {"ultra", "Ultra"}});
+        ui.Toggle("Fog", kFogHelp, JPT_KEY_FOG_ENABLED, true, "Off", "On");
+        ui.Toggle("Shadows", kShadowsHelp, JPT_KEY_SHADOWS_ENABLED, true, "Off", "On");
         {
             const bool available = Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER));
             ImGui::BeginDisabled(!available);
@@ -996,19 +1126,14 @@ private:
     }
 
     void AntiAliasingRow(trg::Ui& ui) {
-        const int gpu = ChosenGpu();
-        const unsigned msaa = gpu >= 0 ? gpu_msaa_[size_t(gpu)] : 0;
-        std::vector<trg::Option> options{{"0", "Off"}};
-        for (unsigned samples = 2; samples <= 8; samples *= 2) {
-            if (msaa & (1u << samples)) {
-                options.push_back({std::to_string(samples), std::to_string(samples) + "x MSAA"});
-            }
-        }
         const std::string current = settings_.Get(JPT_KEY_MSAA);
-        const bool listed = current == "1" || std::any_of(options.begin(), options.end(),
-                                                          [&current](const trg::Option& o) { return o.value == current; });
+        const SampleLevels levels = AntiAliasingLevels(cards_, settings_.Get(JPT_KEY_GRAPHICS_CARD), current);
+        std::vector<trg::Option> options{{"0", "Off"}};
+        for (const unsigned samples : levels.levels) {
+            options.push_back({std::to_string(samples), std::to_string(samples) + "x MSAA"});
+        }
         std::string help = Tr(kAntiAliasingHelp);
-        if (!listed) {
+        if (levels.unsupported) {
             help += " " + TrFormat("The saved %sx is not supported here: choose another level.", current.c_str());
         }
         ui.Choice("Anti-aliasing", help.c_str(), JPT_KEY_MSAA, "4", options, 4);
@@ -1355,7 +1480,7 @@ private:
 
     // The helper replaces this installation's programs once this process exits; a running game still holds them.
     bool InstallBlocked() {
-        if (install_.running()) {
+        if (install_.running() || custom_levels_->importing()) {
             launcher_->SetStatus("Wait for the current install to finish.", 5.0);
             return true;
         }
@@ -1496,6 +1621,7 @@ private:
     int selected_ = -1;
     GameCheck check_;
     LauncherHost host_;
+    std::string failure_text_;
     Image header_art_image_;
     float header_art_aspect_ = kHeaderArtAspect;
     ImTextureID header_art_{};
@@ -1506,6 +1632,8 @@ private:
     std::unique_ptr<trg::Launcher> launcher_;
     std::unique_ptr<trg::update::UpdateController> updater_;
     std::unique_ptr<IncidentPage> incident_page_;
+    std::unique_ptr<CustomLevelsPage> custom_levels_;
+    jpt_custom_level_request_t level_{};
     bool skip_finish_save_ = false;
     trg::Fonts fonts_;
     PlacementTracker placement_;
@@ -1515,17 +1643,31 @@ private:
     std::shared_ptr<InstallResult> outcome_;
     std::string install_failure_, install_failure_text_;
     std::vector<jpt_monitor_t> monitors_;
-    std::vector<jpt_gpu_t> gpus_;
-    std::vector<std::string> gpu_names_;
-    std::vector<unsigned> gpu_msaa_;
+    GraphicsCards cards_;
     PlayGate play_;
     double play_started_ = 0.0;
     bool invert_ = false, invert_dirty_ = false;
     jpt_key_binding_t keymap_[JPT_KEYMAP_COUNT] = {};
 };
 
+jpt_launcher_result_t ReportLauncherFailure(const jpt_launcher_config_t& config, const std::string& detail, bool ready) {
+    Log("could not open its window; the game was not started");
+    std::string text = std::string(Tr("The launcher window could not be opened.")) + "\n\n" + detail + "\n\n" +
+                       Tr("The game was not started.");
+    if (!SoftwareRecovery(config)) {
+        text += "\n" + TrFormat("To open the launcher with software rendering, start the program with: %s",
+                                "--launcher --launcher-renderer software");
+    }
+    if (ready) text += "\n" + TrFormat("To start the game without the launcher, start the program with: %s", "--skip-launcher");
+    if (config.log_file) text += std::string("\n\n") + config.log_file;
+    ShowNativeError(kGameTitle, text);
+    return JPT_LAUNCHER_FAILED;
+}
+
 } // namespace
 } // namespace jpt
+
+extern "C" const char* jpt_launcher_text(const char* english) { return jpt::Tr(english); }
 
 extern "C" jpt_launcher_result_t jpt_launcher_run(const jpt_launcher_config_t* config) {
     using namespace jpt;
@@ -1544,11 +1686,9 @@ extern "C" jpt_launcher_result_t jpt_launcher_run(const jpt_launcher_config_t* c
     Log("settings file %s", Utf8(settings.file()).c_str());
     Log("opening: %s%s%s", ready ? "game ready" : "game files not ready", show_setting ? ", show_launcher on" : "",
         shift ? ", Shift held or --launcher" : "");
+    Log("startup: game renderer setting=%s", settings.Get(JPT_KEY_RENDERER).c_str());
     LauncherApp app(*config, settings);
     Outcome outcome = Outcome::kRunning;
-    if (!app.Run(outcome)) {
-        Log("could not open its window; %s", ready ? "starting the game" : "game files are not ready");
-        return ready ? JPT_LAUNCHER_PLAY : JPT_LAUNCHER_QUIT;
-    }
+    if (!app.Run(outcome)) return ReportLauncherFailure(*config, app.failure_text(), ready);
     return outcome == Outcome::kPlay ? JPT_LAUNCHER_PLAY : JPT_LAUNCHER_QUIT;
 }

@@ -21,10 +21,11 @@ typedef struct {
 } patch117_jump_t;
 
 /* CPlayer::Process's jump request for a frame: amount 0.9 on the key's hit frame; 117 also asks while it is held,
- * without the new-press mark. */
+ * without the new-press mark. scale: the impulse's z when it arms, 1 in the game (a CE script's jump factor). */
 typedef struct {
     float amount;
     int is_new;
+    float scale;
 } patch117_jump_request_t;
 
 patch117_jump_request_t patch117_jump_request(int on, int hit, int held);

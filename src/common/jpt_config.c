@@ -30,6 +30,22 @@ const jpt_hotkey_choice_t jpt_hotkey_choices[JPT_HOTKEY_CHOICE_COUNT] = {
     { "Delete", 0x2E }, { "Home", 0x24 }, { "End", 0x23 }, { "PageUp", 0x21 }, { "PageDown", 0x22 },
 };
 
+uint32_t jpt_script_user_key_vk(const char* name) {
+    static const struct {
+        const char* name;
+        uint32_t vk;
+    } named[] = { { "None", 0 },        { "Shift", 0x10 },    { "Control", 0x11 }, { "Alt", 0x12 },    { "Tab", 0x09 },
+                  { "Space", 0x20 },    { "Backspace", 0x08 }, { "Enter", 0x0D },  { "PageUp", 0x21 }, { "PageDown", 0x22 },
+                  { "End", 0x23 },      { "Home", 0x24 },     { "Left", 0x25 },    { "Up", 0x26 },     { "Right", 0x27 },
+                  { "Down", 0x28 },     { "Insert", 0x2D },   { "Delete", 0x2E } };
+    if (!name) return 0xFFFFFFFFu;
+    if (name[0] && !name[1] && ((name[0] >= 'A' && name[0] <= 'Z') || (name[0] >= 'a' && name[0] <= 'z') || (name[0] >= '0' && name[0] <= '9')))
+        return (uint32_t)(unsigned char)toupper((unsigned char)name[0]);
+    for (size_t i = 0; i < sizeof named / sizeof named[0]; i++)
+        if (!_stricmp(name, named[i].name)) return named[i].vk;
+    return 0xFFFFFFFFu;
+}
+
 uint32_t jpt_hotkey_vk(const char* key) {
     for (int i = 0; key && i < JPT_HOTKEY_CHOICE_COUNT; i++)
         if (!_stricmp(key, jpt_hotkey_choices[i].key)) return jpt_hotkey_choices[i].vk;
@@ -62,6 +78,8 @@ const jpt_setting_t jpt_settings[JPT_SETTING_COUNT] = {
     { JPT_KEY_ACTIVE_AI, "enhanced" },
     { JPT_KEY_WATER_REFRACTION, "1" },
     { JPT_KEY_ENHANCED_SKY, "1" },
+    { JPT_KEY_FOG_ENABLED, "1" },
+    { JPT_KEY_SHADOWS_ENABLED, "1" },
     { JPT_KEY_MINIMAP, "1" },
     { JPT_KEY_COMPASS, "1" },
     { JPT_KEY_WAYPOINTS, "1" },
@@ -153,6 +171,10 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
             uint32_t vk = jpt_hotkey_vk(value);
             return vk ? (c->hotkey_vk[n] = vk, 1) : 0;
         }
+    if (!strncmp(key, "script_user", 11) && key[11] >= '1' && key[11] <= '8' && !strcmp(key + 12, "_key")) {
+        const uint32_t vk = jpt_script_user_key_vk(value);
+        return vk != 0xFFFFFFFFu ? (c->script_user_vk[key[11] - '1'] = vk, 1) : 0;
+    }
     for (n = 0; n < JPT_CHEAT_COUNT; n++)
         if (jpt_cheat_is_saved(&jpt_cheats[n]) && !strcmp(key, jpt_cheats[n].key)) {
             int parsed;
@@ -169,6 +191,8 @@ static int apply(jpt_config_t* c, const char* key, const char* value) {
     if (!strcmp(key, JPT_KEY_MAX_OBJECT_DETAIL)) return jpt_parse_bool(value, &c->max_object_detail);
     if (!strcmp(key, JPT_KEY_WATER_REFRACTION)) return jpt_parse_bool(value, &c->water_refraction);
     if (!strcmp(key, JPT_KEY_ENHANCED_SKY)) return jpt_parse_bool(value, &c->enhanced_sky);
+    if (!strcmp(key, JPT_KEY_FOG_ENABLED)) return jpt_parse_bool(value, &c->fog_enabled);
+    if (!strcmp(key, JPT_KEY_SHADOWS_ENABLED)) return jpt_parse_bool(value, &c->shadows_enabled);
     if (!strcmp(key, JPT_KEY_MINIMAP)) return jpt_parse_bool(value, &c->minimap);
     if (!strcmp(key, JPT_KEY_COMPASS)) return jpt_parse_bool(value, &c->compass);
     if (!strcmp(key, JPT_KEY_WAYPOINTS)) return jpt_parse_bool(value, &c->waypoints);
@@ -293,6 +317,8 @@ int jpt_config_valid(const char* key, const char* value) {
 void jpt_config_defaults(jpt_config_t* c) {
     memset(c, 0, sizeof *c);
     for (int i = 0; i < JPT_SETTING_COUNT; i++) apply(c, jpt_settings[i].key, jpt_settings[i].default_value);
+    c->script_user_vk[0] = 0x10; /* uCMD_USER1: Shift */
+    c->script_user_vk[1] = 'M';  /* uCMD_USER2 */
 }
 
 static char* trim(char* s) {

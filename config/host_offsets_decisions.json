@@ -103,6 +103,198 @@
    "status": "unmoved",
    "value": "0xC",
    "evidence": "CInfluenceList::See (0x0061A280, identical by hash to 0x00424AB0) reads [obj+0x28] then [info+0x10]; Add (0x0061A300) opens with the same 1.0.116 prologue and tests byte [esi+0xc] & 2 of that CAIInfo at 0x0061A316, the same distance from See as 0x00424B46"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_TABLE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x1C",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_TABLE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x1C",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_TABLE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x24",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_TABLE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x24",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_TERRAIN_START",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x30",
+   "evidence": "SetFogLevelsFloat clears [this+0x30] (0x00507AA3) and the terrain clip 0x00502F00 compares it at 0x007351F0 (0x0050357C, 0x00503634, 0x0050364F), as 0x0051CF90 does with 0x00732880 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_TERRAIN_START",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x30",
+   "evidence": "the terrain clip 0x005045C0 compares the terrain CFog's +0x30 at 0x007369A0 (0x00504D0B, 0x00504DC0, 0x00504DD8), as 0x0051CF90 does with 0x00732880 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_SIZE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x38",
+   "evidence": "the objects' CFog (0x007351F8) lies 0x38 after the terrain's (0x007351C0), as 0x00732888 after 0x00732850 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_SIZE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x38",
+   "evidence": "the objects' CFog (0x007369A8) lies 0x38 after the terrain's (0x00736970), as 0x00732888 after 0x00732850 in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_DATA",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x20",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_INT_DATA",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x20",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_DATA",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x28",
+   "evidence": "the two CFog constructors (0x00507BA5, 0x00507CB5) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007351F8 (objects) and 0x007351C0 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/scene_options.c",
+   "name": "FOG_FLOAT_DATA",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x28",
+   "evidence": "the two CFog constructors (0x00509215, 0x00509325) store {8, data}, {0x400, data}, {0x400, data}, 8 at +0x14, +0x1C, +0x24, +0x2C of 0x007369A8 (objects) and 0x00736970 (terrain), as 0x00521BB5 and 0x00521CC5 do in 1.0.116"
+  },
+  {
+   "file": "src/host/terrain_shadows.c",
+   "name": "FRAME_FROM_CAMERA",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x22C",
+   "evidence": "ShadowLighting (0x00515150) passes [ebp-0x22C] to the camera constructor at 0x00515303 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+  },
+  {
+   "file": "src/host/terrain_shadows.c",
+   "name": "FRAME_FROM_CAMERA",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x22C",
+   "evidence": "ShadowLighting (0x00516E00) passes [ebp-0x22C] to the camera constructor at 0x00516FB3 and reads its light level, moving and static flags at [ebp+0x14], [ebp+0x18], [ebp+0x1C], as 0x0052F210 does in 1.0.116"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PLAYER_HEAD",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0xD88",
+   "evidence": "CPlayer::Process builds the view from the body rotation [player+0x3C] and the head rotation [player+0xD88] (1.0.116 0x004554FD: add edx,0x3c / add eax,0xd88, then the w = 1 test); es-117 0x00438D08 does the same with its player local [ebp-0x1c00]"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PROCESS_REQUEST",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x118",
+   "evidence": "CPlayer::Process sends its movement request [ebp-0x118] through the player's vtable +0x1DC (1.0.116 0x00455C9E, es-117 0x004394E2: lea reg,[ebp-0x118]; push reg)"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_SPEED",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x14",
+   "evidence": "the request's walk speed: the jump hand-off reads [request+0x10] and [request+0x14] (1.0.116 0x004F097D/0x004F09D3, es-117 0x004D66C3: fld [esi+0x14]) and multiplies the walk velocity by +0x14"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_AMOUNT",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x84",
+   "evidence": "the jump sub-request at [ebp-0x94] = request+0x84 (amount, scale, new press) is built by the same constructor on the hit frame (1.0.116 0x00455B60, es-117 0x00439362: lea ecx,[ebp-0x94]); the hand-off tests [request+0x84] before it arms"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_SCALE",
+   "profile": "es-117",
+   "status": "unmoved",
+   "value": "0x88",
+   "evidence": "the second field of that jump sub-request ([ebp-0x90] = request+0x88), set to 1.0 by the constructor's argument in both builds (1.0.116 0x00455B57 call 0x0042FC70 with 1, es-117 0x00439362 with 0x00439520 with 1)"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PLAYER_HEAD",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0xD88",
+   "evidence": "CPlayer::Process builds the view from the body rotation [player+0x3C] and the head rotation [player+0xD88] (1.0.116 0x004554FD: add edx,0x3c / add eax,0xd88, then the w = 1 test); ptbr-117 0x00438ED8 does the same with its player local [ebp-0x1c00]"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "PROCESS_REQUEST",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x118",
+   "evidence": "CPlayer::Process sends its movement request [ebp-0x118] through the player's vtable +0x1DC (1.0.116 0x00455C9E, ptbr-117 0x004396B2: lea reg,[ebp-0x118]; push reg)"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_SPEED",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x14",
+   "evidence": "the request's walk speed: the jump hand-off reads [request+0x10] and [request+0x14] (1.0.116 0x004F097D/0x004F09D3, ptbr-117 0x004D7A73: fld [esi+0x14]) and multiplies the walk velocity by +0x14"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_AMOUNT",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x84",
+   "evidence": "the jump sub-request at [ebp-0x94] = request+0x84 (amount, scale, new press) is built by the same constructor on the hit frame (1.0.116 0x00455B60, ptbr-117 0x00439532: lea ecx,[ebp-0x94]); the hand-off tests [request+0x84] before it arms"
+  },
+  {
+   "file": "src/host/script_engine.c",
+   "name": "REQUEST_JUMP_SCALE",
+   "profile": "ptbr-117",
+   "status": "unmoved",
+   "value": "0x88",
+   "evidence": "the second field of that jump sub-request ([ebp-0x90] = request+0x88), set to 1.0 by the constructor's argument in both builds (1.0.116 0x00455B57 call 0x0042FC70 with 1, ptbr-117 0x00439532 with 0x00439700 with 1)"
   }
  ]
 }

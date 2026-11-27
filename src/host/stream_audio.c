@@ -39,24 +39,44 @@ stream_pack_t* stream_audio_open_view(HANDLE file, uint64_t size) {
     return stream_catalog_open_pack(read_handle, file, size);
 }
 
-void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flags) {
-    LARGE_INTEGER size;
-    stream_vfile_t* virtual_file;
-    if (file == INVALID_HANDLE_VALUE || !stream_pack_serves_open(path, access, flags)) return;
-    if (!GetFileSizeEx(file, &size)) return;
-    stream_audio_init();
-    virtual_file = stream_vfile_open(read_handle, file, (uint64_t)size.QuadPart);
-    if (!virtual_file) return;
+static int attach(HANDLE file, stream_vfile_t* virtual_file) {
+    int attached = 0;
     EnterCriticalSection(&S.lock);
-    for (int i = 0; i < STREAM_PACK_MAX_VIEWS; i++) {
+    for (int i = 0; !attached && i < STREAM_PACK_MAX_VIEWS; i++) {
         if (S.files[i].handle) continue;
         S.files[i].handle = file;
         S.files[i].file = virtual_file;
-        virtual_file = NULL;
-        break;
+        attached = 1;
     }
     LeaveCriticalSection(&S.lock);
-    if (virtual_file) stream_vfile_close(virtual_file);
+    if (!attached) stream_vfile_close(virtual_file);
+    return attached;
+}
+
+void stream_audio_attach(HANDLE file, const char* path, DWORD access, DWORD flags, int package_file) {
+    LARGE_INTEGER size;
+    const int kind = stream_vfile_kind(path, access, flags, package_file);
+    stream_vfile_t* virtual_file;
+    if (file == INVALID_HANDLE_VALUE || kind < 0) return;
+    if (!GetFileSizeEx(file, &size)) return;
+    stream_audio_init();
+    virtual_file = stream_vfile_open_kind(kind, package_file, read_handle, file, (uint64_t)size.QuadPart);
+    if (virtual_file) attach(file, virtual_file);
+}
+
+HANDLE stream_audio_open_memory(uint8_t* bytes, size_t size) {
+    stream_vfile_t* virtual_file = stream_vfile_open_memory(bytes, size);
+    HANDLE file;
+    if (!virtual_file) return INVALID_HANDLE_VALUE;
+    stream_audio_init();
+    file = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        stream_vfile_close(virtual_file);
+        return file;
+    }
+    if (attach(file, virtual_file)) return file;
+    CloseHandle(file);
+    return INVALID_HANDLE_VALUE;
 }
 
 void stream_audio_detach(HANDLE file) {

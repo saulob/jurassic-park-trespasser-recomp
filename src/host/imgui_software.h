@@ -19,6 +19,12 @@ void imgui_software_render(ImDrawData* data, uint32_t* pixels, int width, int he
 #define OVERLAY_TILE_SHIFT 5
 #endif
 void imgui_software_update_textures(ImDrawData* data);
+/* A draw list callback: what follows is blended additively (colour times alpha added) until ImDrawCallback_ResetRenderState.
+ * Backends that draw themselves recognise it; the Direct3D 11 one calls it, and it runs imgui_blend_additive_hook. */
+void imgui_blend_additive(const ImDrawList* list, const ImDrawCmd* cmd);
+extern void (*imgui_blend_additive_hook)(void);
+/* Straight-alpha layers cannot add to what is under them: additive commands of the RGBA backend are blended as alpha, counted here. */
+extern unsigned imgui_software_rgba_additive;
 void imgui_software_render_rgba(ImDrawData* data, uint8_t* rgba, int width, int height, uint8_t* tiles, int tiles_w,
                                 int tiles_h);
 

@@ -205,6 +205,18 @@
    "va": "004EC5A2",
    "category": "NO_EQUIVALENT",
    "evidence": "hook site of the 116-to-1.1 port: this build contains the official 1.1 code natively (CPlayer::Process, Foot_IDOF and the box-box functions are identical to the official executable), so no hook applies"
+  },
+  {
+   "va": "00455C9E",
+   "to": "004396B2",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "CPlayer::Process sends its movement request: 116 'lea ecx,[ebp-0x118]; push ecx; ...; call [eax+0x1dc]' (0x00455C9E..0x00455CB3), ptbr-117 'lea eax,[ebp-0x118]; push eax; ...; call [edx+0x1dc]' (0x004396B2..0x004396C7); the same request local (speed +0x14, jump amount +0x84, scale +0x88), only the player local moves ([ebp-0x1e68] -> [ebp-0x1c00]), which the hook does not read"
+  },
+  {
+   "va": "004F0C00",
+   "to": "004D7CCE",
+   "category": "PROVED_CHANGED_EQUIVALENT",
+   "evidence": "the instruction after the jump hand-off arms the impulse with z = 1.0: 116 'mov [0x0067AFA8], 0x3f800000' at 0x004F0BF6, ptbr-117 'mov [0x006D1A64], 0x3f800000' at 0x004D7CC4; 1.1 arms on a new press or with nothing pending, the hook only replaces the z just stored"
   }
  ]
 }

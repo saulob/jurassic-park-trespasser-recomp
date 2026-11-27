@@ -59,7 +59,49 @@
 
 .PARAMETER Sanitize
   Runs only the Linux-specific suites of an AddressSanitizer + UndefinedBehaviorSanitizer build (a separate tree, slower); a
-  partial run, never part of the default.
+  partial run, never part of the default. High-memory: one suite and one compiler at a time, gate limits of 20% and 25% of the RAM.
+
+.PARAMETER TestJobs
+  The most test processes at once (default 1; JPT_TEST_JOBS when this is not given). Above 1, only the suites marked Background run
+  beside the current one, never a heavy suite. The memory limits below still hold.
+
+.PARAMETER BuildJobs
+  The compilers at once for the Windows test targets, the Linux build and its FFmpeg and OpenSSL bootstraps (default 1;
+  JPT_BUILD_JOBS when this is not given). The memory limits below still hold.
+
+.PARAMETER LowMemory
+  Legacy alias, the same behavior as the default: every run is already the low-memory one. Accepted and ignored.
+
+.PARAMETER Sequential
+  Diagnostic: one suite at a time in strict list order whatever -TestJobs says; the Linux suites one at a time.
+
+.PARAMETER Resume
+  Goes on after the last suite of the previous run that passed in list order (build\test-history\last-run.json), only when the
+  git HEAD, the tracked changes, the untracked files, the game data, the parameters and the suite list are all the same; otherwise
+  it refuses and says why. The suite that failed or was stopped for memory runs again, as does working tree unchanged, the
+  build steps and the whole Linux half. Without -Resume a run always starts from the first suite.
+
+.NOTES
+  Every run is memory-limited and works on a busy desktop, one stage at a time. The gate protects the machine by the RAM of its
+  own process tree (this PowerShell, cmd, ninja, cl, link, cmake, python, node, wsl.exe, the test programs and everything below
+  them; never other applications), watched about every 0.75 s:
+    hard limit       30% of the RAM: the stage (only its own process tree) is stopped and FAILS (MEMORY LIMIT EXCEEDED)
+    soft limit       25% of the RAM: no second stage starts beside a running one
+    warning below    2 GB free: LOW SYSTEM MEMORY is reported; nothing waits or stops for it
+    start floor      0.5 GB free: no new stage starts (CRITICAL SYSTEM MEMORY is reported while one runs, which goes on); with
+                     nothing running for 30 s there the gate stops (EMERGENCY SYSTEM MEMORY TOO LOW TO START NEXT STAGE)
+  Stage estimates (light 0.25, normal 0.75, heavy 1.5, build 2.0, wsl 2.0, sanitize 2.5 GB, or a suite's measured peak from the
+  history) are diagnostics; a serial stage never waits for them. The WSL VM's growth while a WSL stage runs counts for that stage when no other wsl.exe
+  is running. One test process and one compiler at a time by default, the Windows half before the Linux half. Durations are kept in build\test-history\timings.json (ignored by git) for the ETA;
+  JPT_TEST_ANIMATE=0 or 1 forces plain or animated progress.
+
+.EXAMPLE
+  .\tools\test.ps1
+  The whole gate under the memory limits, one suite and one compiler at a time.
+
+.EXAMPLE
+  .\tools\test.ps1 -TestJobs 2 -BuildJobs 2
+  More jobs by hand; the memory limits still hold.
 #>
 [CmdletBinding()]
 param(
@@ -76,12 +118,27 @@ param(
     [switch]$SkipLinux,
     [string]$LinuxDistro = '',
     [string]$GameIsoDir = '',
-    [switch]$Sanitize
+    [switch]$Sanitize,
+    [ValidateRange(0, 64)][int]$TestJobs = 0,
+    [ValidateRange(0, 64)][int]$BuildJobs = 0,
+    [switch]$LowMemory,
+    [switch]$Sequential,
+    [switch]$Resume
 )
 
 . (Join-Path $PSScriptRoot '_common.ps1')
+. (Join-Path $PSScriptRoot '_progress.ps1')
+. (Join-Path $PSScriptRoot '_test_history.ps1')
+. (Join-Path $PSScriptRoot '_memory_guard.ps1')
+. (Join-Path $PSScriptRoot '_test_runner.ps1')
 $callerEnvironment = Get-ProcessEnvironment
 $root = $script:RepoRoot
+# A gate sets JPT_GATE_OWNER_ROOT for everything it starts. A gate of the same repository started that way (tests\gate_tests.ps1
+# runs some) is nested: the checkpoint and the timings belong to the run that started it, so it leaves them alone.
+function Test-SamePath([string]$A, [string]$B) {
+    try { return [string]::Equals([IO.Path]::GetFullPath($A).TrimEnd('\', '/'), [IO.Path]::GetFullPath($B).TrimEnd('\', '/'), [StringComparison]::OrdinalIgnoreCase) } catch { return $false }
+}
+$nestedGate = [bool]$env:JPT_GATE_OWNER_ROOT -and (Test-SamePath $env:JPT_GATE_OWNER_ROOT $root)
 $buildDir = if (-not $BuildDir) { Join-Path $root 'build\cmake\msvc-x86' } elseif ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 $buildDir = [IO.Path]::GetFullPath($buildDir)
 $buildDir64 = Join-Path $root 'build\cmake\msvc-x64'
@@ -175,6 +232,7 @@ Add-Python $s @(
     , @('test_layout.py', 'host structure offsets per profile; an unknown access fails')
     , @('test_lifts.py', 'the lifts as project artifacts, a clean checkout without any original executable')
     , @('test_lift_hooks.py', 'lift hook list and placement')
+    , @('test_trescom_levels.py', 'the custom level catalog tool against a local server: downloads, resume, retries, refusals, relations, reports')
     , @('test_lift_staging.py', 'lift staging, publishing changed files only, cleanup')
     , @('test_stable_entries.py', 'stable-entry renaming and check')
     , @('test_guest_module_lift.py', 'lifted guest DLL (MSVCIRT): config and manifest facts, sorted prefixed table, every jump target a lifted entry, no symbol collision, every code export and every code address held in its data lifted, no TLS, no forwarders')
@@ -187,6 +245,7 @@ Add-Python $s @(
     , @('test_compile_commands.py', 'ninja -t commands of every test target: no contradicting flags, no warning suppression in project code, /W3 or higher, whether or not anything recompiles')
 )
 Add-Suite $s 'script' 'tests\build_script_tests.ps1' 'tools\build.ps1 statically: parameters, configurations, -Run arguments, user_data, SDL pin, test targets outside the default build' @{}
+Add-Suite $s 'script' 'tests\link_recovery_tests.ps1' 'tools\_link_recovery.ps1 on fake builds: LNK1207 removes the target PDB/ILK and retries once, nothing else' @{}
 
 $s = 'Platform'
 Add-Exes $s @(
@@ -196,6 +255,7 @@ Add-Exes $s @(
     , @('hotkey_tests', 'the port hotkey table both hosts read: F2 to F11, Alt+F4, repeats, modifiers and the Quick keys winning over the table', 40)
     , @('input_context_tests', 'the input context read from the game window stack (video, menu, loader, level, pause), input state, relative mouse and pointer decisions', 40)
     , @('host_tests', 'input and capture state machine, hotkeys, shutdown, Safe Mode, filesystem mapping, readbacks, D3D6 to D3D11 translation, shaders, hand and physics', 400000)
+    , @('engine_heaps_tests', 'the lifted arrays and heaps full, past full and out of memory: the load ends before anything is written, the guard is never reached', 160)
     , @('x87_tests', 'the patched runtime: x87 ring, inline rounding, per-site call cache', 50)
     , @('x64_tests', 'x64 groundwork: guest address space, pointer marshalling, leak detection, COM handles', 0, @{ Arch = 'x64' })
 )
@@ -228,6 +288,7 @@ Add-Exes $s @(
 $s = 'Graphics'
 Add-Exes $s @(
     , @('ao_tests', 'ambient occlusion levels, configuration and the ASSAO pass on a WARP device', 150)
+    , @('ao_fog_tests', 'ambient occlusion and fog through the real Direct3D 11 renderer on a WARP device: levels, vegetation, sky, translucency, gamma, MSAA, resize, device recreation', 150)
     , @('ce_gpu_tests', 'water refraction and enhanced sky shaders on a WARP device', 50)
     , @('video_tests', 'HD video presentation and GPU passes on a WARP device', 300)
     , @('video_focus_tests', 'video focus and pause policy', 20)
@@ -253,7 +314,7 @@ Add-Python $s @(
 
 $s = 'Localization and audio'
 Add-Exes $s @(
-    , @('l10n_tests', 'seven languages: game text, captions, interface keys, code pages, wrapping, Russian rendering, hard-coded English', 40000)
+    , @('l10n_tests', 'seven languages: game text, captions, interface keys, code pages, wrapping, Russian rendering, hard-coded English', 40000, @{ KeepOutput = $true })
     , @('stream_tests', 'restored audio records, virtual Stream.tpa, caption timings per language', 4000)
     , @('video_subtitle_tests', 'video subtitle cues, timelines and retail fingerprints per language', 2000)
     , @('menu_audio_tests', 'menu click sound redirect')
@@ -277,6 +338,53 @@ Add-Suite $s 'check' 'linux audio probe' 'the portable audio and Smacker layers 
 
 $s = 'Launcher'
 Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
+Add-Exes $s @(, @('launcher_startup_tests', 'launcher start without graphics support: renderer order and fallback, --launcher-renderer, graphics card list failures, a failed launcher never starts the game', 120))
+Add-Exes $s @(, @('sky_tests', 'custom skies: the file, the layers'' shapes, projection and clipping, package lookup, session', 1000))
+Add-Exes $s @(, @('texhw_tests', 'custom level pictures (BMP, TGA, DDS) and their hardware texture overrides', 60))
+Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths; package analysis: fm.ini, tp_mod.ini, trespasser.ini, tpass.ini, readme rules, manifest and migration, added sound files, loading pictures, session settings', 400))
+$s = 'Custom level session'
+Add-Exes $s @(, @('custom_level_session_tests', 'an active custom level session as the game reads it: BMP layouts, ATX map pictures below the package''s MAPS (map actions, README, case, separators, traversal, absent or unreadable pictures, session end); Restart Level as a full level cycle over a fake engine and real packages (loose and fan mission, scenes 22, 25 and 26, own PID and SWP, game SPZ, texhw, MAPS, added TPA, custom to custom and custom to retail transitions, restart after a transition and twice, a save made before, the campaign afterwards); level guides: minimap and objectives made from a level''s world, the campaign''s only over the game''s own world, no information otherwise; a fan mission with a Trespasser CE script one level needs: the script installed and listed in the runtime map, read back by the game, a VM only while that level is played; one package of four levels judged apart (no script, a supported script, a refused script API, an unused script): installed for its READY levels, listing, cache, manifest, runtime map, Play preflight and Bug Report per level, a VM only for the level that needs it', 250))
+
+$s = 'Restart lifecycle'
+Add-Exes $s @(, @('level_actions_tests', 'the actions of ATX and Trespasser CE over a fake guest (speed, hint, controls, reload, map, teleport, particles, saves, session end) and the real Restart Level override over a fake engine: the game''s own restart keeps the world, a custom session purges and loads the level whole (new player, objects, triggers, AI, actions, world generation), after transitions and twice; the campaign''s restart unchanged', 600))
+
+$s = 'Session logging'
+Add-Exes $s @(, @('level_session_tests', 'the [session], [level] and [restart] lines: campaign and custom sessions, reasons new_game/initial/transition/restart/load_save, package or retail source, world generations, failed loads and restarts, no line without a lifecycle event', 40))
+
+$s = 'Script VM'
+Add-Exes $s @(, @('script_vm_tests', 'the interpreter of Trespasser CE scripts (Squirrel): loading and calls, compile and runtime errors with level, script, file, callback and line, a script stopped until the level ends, the instruction budget (loops, recursion, callbacks, try and catch cannot keep a script running) and the memory budget of the VM, instances, methods and their arguments, nvram values and their limits, only the math, string and blob libraries (no I/O, system, threads, debug hooks or error handler), print() and its cap, no log line forged by a script', 1900))
+
+$s = 'Script lifecycle'
+Add-Exes $s @(
+    , @('script_plan_tests', 'which Trespasser CE scripts a level needs: the scan of a script (classes, bases, handlers, static SCN, globals, locals; comments and strings ignored), game, level, action and instance kinds, a level needs a VM only when its scripts act in it (per level, never per package), files and load order with their dependencies, a class the world names that no script declares, the CE functions, classes and handlers the port does not have yet', 100)
+    , @('script_session_tests', 'the scripts of a custom session over a model engine: VM creation and destruction without a leak, CE load steps and callbacks in order (constructor, OnScriptInit, OnGameStart, OnLevelStart, OnSimStep, OnLevelEnd, OnWorldPurge, destructor), a level without scripts and no VM in the same package, transitions with game script nvram, Restart Level from the level start (repeated), missing files, syntax and runtime errors, one script stopped while the others go on, the instruction budget per call, the memory budget of the whole VM, the campaign creating nothing before and after a custom session', 100)
+)
+
+$s = 'Script bindings'
+Add-Exes $s @(, @('script_bindings_tests', 'CE''s script API in a VM: every name of the registry the launcher accepts exists on its owner, Vector3 and Rotate3 (constructors, components, operators, rotation as the engine''s quaternions, inverse, scaled rotation, Dot, Cross, Length, LengthSqr, Normalise without NaN, division by zero refused), TP_Engine''s simulation time and seeded random numbers in their ranges, the world''s objects as handles looked up at every call (a gone object, a world being loaded, an older world generation and a script-made object refused with a script error), engine classes of script classes, nvram with Vector3, Rotate3 and objects saved by unique handle', 150))
+
+$s = 'Script instances'
+Add-Exes $s @(, @('script_instance_tests', 'instance scripts of a custom level over a model world: the objects the world names get their scripts, the engine class checked, a missing object named, OnScriptInit, OnActBite from the AI with the target, a spitting animal launching projectiles with Teleport and MoveWithFixedVelocity from its head, a projectile gone from the world stopping only that script, the instruction budget per instance, Restart with a new world generation, saves and loads of nvram by object with OnPostLoad, transitions destroying them', 30))
+
+$s = 'Script drawing'
+Add-Exes $s @(, @('script_draw_tests', 'what game scripts draw: GetTexture (one texture per name, null when missing, its width and height, gone with its VM at Restart), GetScreenWidth and GetScreenHeight, IsSoftwareMode, DrawTexture from OnPaintHW3D only with its rectangles, ARGB and blend modes 0, 1 and 2, a script that fails or runs out of its budget while painting drawing nothing, the VM out of memory drawing nothing, no paint over a load; the same commands through every overlay backend without a window: software pixels for alpha, additive and opaque, off-screen clipping, the GPU list Vulkan draws with its additive commands and texture slots freed by a new level, the RGBA layer, Direct3D 11 on WARP', 40))
+
+$s = 'Script input'
+Add-Exes $s @(, @('script_input_tests', 'game scripts'' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only when the level''s scripts name them (none for other levels and the campaign), bKeyHit, bKeyPressed and the movement input in OnHandleInput only, a budget inside it, modal mode entered from OnHandleInput, its keys (VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR, VK_NEXT) to OnModalKey, F keys left to the port, OnHandleModalInput with mouse look, one modal script at a time, Escape and the player''s death aborting it, its script stopped by an error or its budget releasing it, Restart and transitions ending it', 40))
+
+$s = 'Script player'
+Add-Exes $s @(, @('script_player_tests', 'the player''s CPlayer script as CE calls it: fGetSpeedFactor on every movement request (walk, strafe, run, the sprint speed, slower when tired), fGetJumpFactor on one that asks to jump (0 when tired), negative factors as 0, a failing, non-number, wrong-arity or endless factor keeping the game''s own, OnJump only for the player''s handle, Say by sample name through the game''s voice (case and path separator aside, a missing sample ignored, a name required), r3HeadRotRel composing with r3Rot into the game''s view, handles refused after Restart, a load, a transition and when the player leaves the world, Restart clearing the script''s state, a save keeping its nvram only, the HUD, modal map and sprint of the Cloning Facility fixture alongside, the campaign with none of it', 40))
+
+$s = 'Script console'
+Add-Exes $s @(, @('script_console_tests', 'OnConsoleCommand dispatched headless as CE does for a console command the game does not know (the port has no console): game scripts in order until one returns true, a number or string not counting, level scripts never asked, an empty command reaching none, an error or a budget stopping only that script, nothing while a level loads, Restart, a level without a VM, the campaign without it', 25))
+
+$s = 'Script save'
+Add-Exes $s @(, @('script_save_tests', 'what a custom session''s save keeps of its scripts: the nvram of game and level scripts by class and the level''s start, loading it into new scripts, damaged, truncated and unknown blocks ignored with their reason, scripts changed since the save, the block behind the stamp and the actions'' state of stamped saves only, never in a campaign save', 80))
+
+$s = 'Launch handoff'
+Add-Exes $s @(, @('launch_handoff_tests', 'PLAY to the game window without opening one: campaign and custom, slow and fast starts, a created but not ready window, black frame and first present, failure before the window, no way back after PLAY, D3D11 and Vulkan alike; never a moment without one of our windows, no launcher input after PLAY', 200))
+
+$s = 'Launcher'
 Add-Python $s @(, @('test_setting_parity.py', 'launcher rows and runtime settings agree: parsers, defaults, ranges, lists, readers'))
 Add-Python $s @(, @('test_player_polish.py', 'gamepad icon in the executable and both windows, numbered Level Select, Bug Report page and Worker, auto update wiring and release contract, Windows and Linux'))
 Add-Exes $s @(
@@ -321,6 +429,15 @@ Add-Suite $s 'check' 'repository hygiene' 'no markers in strings, local paths, c
 Add-Suite $s 'check' 'git diff --check' 'no whitespace errors or conflict markers in changes, staged or not, nor in new files' @{ Run = 'Test-GitWhitespace' }
 Add-Suite $s 'check' 'working tree unchanged' 'no tracked, staged or untracked file changed, and game\ and user_data untouched' @{ Run = 'Test-TreeUnchanged'; Always = $true }
 
+# Memory class for the scheduler. Heavy: a GPU, WARP or Vulkan device, large images, compilers in WSL or nested gates. Checks run
+# inside this process and are light; everything else is normal.
+$heavySuites = 'host_tests', 'frontend_tests', 'debug_menu_tests', 'launcher_tests', 'ao_tests', 'ao_fog_tests', 'ce_gpu_tests',
+    'video_tests', 'video_vulkan_tests', 'script_draw_tests', 'vulkan_policy_tests', 'vulkan_render_tests', 'vulkan_runtime_tests',
+    'renderer_benchmark_d3d11_tests', 'renderer_benchmark_vulkan_tests', 'linux audio probe', 'tests\gate_tests.ps1'
+foreach ($suite in $suites) {
+    $suite.Options['Memory'] = if ($heavySuites -contains $suite.Name) { 'heavy' } elseif ($suite.Kind -eq 'check') { 'light' } else { 'normal' }
+}
+
 $excludedTargets = @{}
 $helperTestFiles = @{
     'tests\renderer_workload.h' = 'command stream shared by renderer_benchmark_d3d11_tests and renderer_benchmark_vulkan_tests'
@@ -337,10 +454,20 @@ $helperTestFiles = @{
     'tests\fault_guard.h' = 'shared helper of x64_tests: access-violation probes on Windows and POSIX'
     'tests\linux_suites.json' = 'classification of the suites for the Linux gate (tools/linux_gate.py)'
     'tests\smk_fixture.h' = 'shared generator of a synthetic Smacker file: smacker_ffmpeg_tests'
+    'tests\level_fixtures.h' = 'shared generator of synthetic scenes, worlds and texture sets: custom_level_tests and custom_level_session_tests'
+    'tests\script_fixtures.h' = 'shared fixture of the script session suites: a log, a counting allocator, scripts in memory, packages and saves on disk: script_session_tests, script_save_tests and script_instance_tests'
+    'tests\script_hud_fixture.h' = 'shared fixture of a level shaped as the Cloning Facility''s scripts (HUD, map, sprint, modal map, MAP console command, the player''s stamina script): script_draw_tests, script_input_tests and script_player_tests'
+    'tests\script_world.h' = 'shared model world of the script API suites (the engine side of jpt_script_engine.h): script_bindings_tests and script_instance_tests'
+    'tests\texhw_fixture.h' = 'shared generator of synthetic texhw pictures: texhw_tests'
 }
 $toolRole = @{
     'tools\_common.ps1' = 'helper dot-sourced by the tool scripts'
-    'tools\_gate_linux.ps1' = 'the Linux half of this script: WSL discovery, the Linux gate run, progress and the feature parity; dot-sourced'
+    'tools\_link_recovery.ps1' = 'dot-sourced by tools\build.ps1; exercised by tests\link_recovery_tests.ps1'
+    'tools\_gate_linux.ps1' = 'the Linux half of this script: WSL discovery, the Linux gate run and the feature parity; dot-sourced'
+    'tools\_progress.ps1' = 'progress line, ETA and timing report of this script; dot-sourced, tested by tests\gate_tests.ps1'
+    'tools\_test_history.ps1' = 'the local duration history of this script (build\test-history); dot-sourced, tested by tests\gate_tests.ps1'
+    'tools\_memory_guard.ps1' = 'the memory limits of this script: process tree sampling, stage estimates, critical and warning floors, soft and hard limits; dot-sourced, tested by tests\gate_tests.ps1'
+    'tools\_test_runner.ps1' = 'processes, job policy and the memory-aware suite scheduler of this script; dot-sourced, tested by tests\gate_tests.ps1'
     'tools\linux_gate.py' = 'the Linux gate runner: run in WSL by tools/test-linux.sh'
     'tools\linux_probe.sh' = 'what a WSL distribution offers the Linux gate: run in WSL by this script'
     'tools\build.ps1' = 'builds the game: never run by the gate; checked statically by tests\build_script_tests.ps1'
@@ -386,7 +513,7 @@ $toolRole = @{
     'tools\test-linux.sh' = 'the Linux gate: Linux only, run in WSL by this script or on Linux by hand'
     'tools\test-linux-parity.sh' = 'the Linux parity gate: the static contracts of tests\test_linux_parity.py, then tools/test-linux.sh; Linux only, run in WSL or by hand'
     'tools\linux_parity_report.py' = 'writes and checks docs\LINUX_PARITY.md from the feature contract; checked by tests\test_linux_parity.py'
-    'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui and TRG Launcher at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
+    'tools\fetch_launcher_deps.py' = 'maintainer and Linux build: fetches SDL3, Dear ImGui, TRG Launcher and Squirrel at their pinned commits (network), like Sync-LauncherDependencies of tools\build.ps1'
     'tools\make-app-icon.py' = 'maintainer: renders packaging\icons\app-icon.svg into the PNGs and the ICO (--check verifies them); checked by tests\test_app_icon.py'
     'tools\build-updater.ps1' = 'maintainer: builds the CLANG64 x64 release helper; run by tools/package.ps1, never by this gate'
     'tools\build-clang-cl.ps1' = 'maintainer: builds the clang-cl x86 Release executable; never run by this gate'
@@ -397,6 +524,17 @@ $toolRole = @{
     'tools\openssl-bootstrap.sh' = 'a pinned static OpenSSL for the Bug Report HTTPS, built once into the cache: run by tools/build-linux.sh when the machine has no development files'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'
     'tools\linux_symbolize.sh' = 'maintainer: symbolizes the host addresses of a Linux crash report'
+    'tools\custom_level_scan.cpp' = 'developer tool target (custom_level_scan): the headless report of a folder of custom level packages, not a test'
+    'tools\analyze-custom-level.ps1' = 'maintainer: prints what the import makes of one package; never run by the gate'
+    'tools\custom-level-compatibility.ps1' = 'maintainer: runs custom_level_scan over a folder of packages; never run by the gate'
+    'tools\download-trescom-levels.ps1' = 'maintainer: starts tools\download-trescom-levels.py (network); never run by the gate'
+    'tools\download-trescom-levels.py' = 'maintainer: catalogs and downloads a TresCom category (network); its modules are tested by tests\test_trescom_levels.py against a local server'
+    'tools\trescom_site.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_fetch.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_catalog.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_report.py' = 'library of download-trescom-levels.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_corpus.py' = 'library of trescom_compatibility.py: tested by tests\test_trescom_levels.py'
+    'tools\trescom_compatibility.py' = 'maintainer: the compatibility report of a downloaded corpus through custom_level_scan; its rules are tested by tests\test_trescom_levels.py'
     'tools\linux_inventory.py' = 'maintainer: classifies the guest imports for the Linux port'
     'tools\linux_lifted_link_report.py' = 'maintainer: what the lifted guest needs from a Linux host, run by tools/test-linux.sh'
     'tools\import-appimage-runtime.sh' = 'packaging helper: copies the pinned AppImage runtime from a WSL packaging cache; run by tools\package-release.ps1 in WSL, checked by tests\test_linux_packaging.py, never by this gate'
@@ -441,54 +579,9 @@ if ($Filter -and @($suites | Where-Object { -not $_.Options['Always'] }).Count -
 # ---------------------------------------------------------------------------------------------------------------------
 # Running things
 # ---------------------------------------------------------------------------------------------------------------------
-$tempDir =Join-Path ([IO.Path]::GetTempPath()) "jpt-test-$PID"
+$tempDir = Join-Path ([IO.Path]::GetTempPath()) "jpt-test-$PID"
 $reportDir = Join-Path $tempDir 'report'
-
-function ConvertTo-CmdArg([string]$Text) {
-    if ($Text -eq '' -or $Text -match '[\s"&|<>^()]') { return '"' + ($Text -replace '"', '""') + '"' }
-    return $Text
-}
-
-function Start-Proc([string]$File, [string[]]$Arguments = @(), [string]$WorkDir = $root, [int]$TimeoutSec = 900) {
-    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    $out = Join-Path $tempDir ('out-{0}.txt' -f [guid]::NewGuid().ToString('N'))
-    $command = (@($File) + $Arguments | ForEach-Object { ConvertTo-CmdArg $_ }) -join ' '
-    $info = New-Object System.Diagnostics.ProcessStartInfo
-    $info.FileName = $env:ComSpec
-    $info.Arguments = '/d /s /c "{0} < nul > "{1}" 2>&1"' -f $command, $out
-    $info.WorkingDirectory = $WorkDir
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    # cmd.exe truncates a PATH over 8191 characters and then cannot find wsl.exe: child processes get it de-duplicated.
-    $info.EnvironmentVariables['PATH'] = Get-CleanPathValue $env:PATH
-    $process = [System.Diagnostics.Process]::Start($info)
-    return [pscustomobject]@{ Process = $process; Out = $out; Command = $command; WorkDir = $WorkDir; Timeout = $TimeoutSec; Clock = [System.Diagnostics.Stopwatch]::StartNew() }
-}
-
-function Wait-Proc($Handle) {
-    $remaining = [Math]::Max(1, $Handle.Timeout * 1000 - [int]$Handle.Clock.ElapsedMilliseconds)
-    $timedOut = -not $Handle.Process.WaitForExit($remaining)
-    if ($timedOut) {
-        & taskkill.exe /PID $Handle.Process.Id /T /F 2>&1 | Out-Null
-        $Handle.Process.WaitForExit()
-    }
-    $code = $Handle.Process.ExitCode
-    $seconds = if ($timedOut) { $Handle.Clock.Elapsed.TotalSeconds } else { ($Handle.Process.ExitTime - $Handle.Process.StartTime).TotalSeconds }
-    $Handle.Process.Dispose()
-    $lines = @()
-    if (Test-Path -LiteralPath $Handle.Out) {
-        $text = [IO.File]::ReadAllText($Handle.Out, [Text.Encoding]::UTF8)
-        if ($text.Length -gt 0) { $lines = @($text -split "\r?\n") }
-        if ($lines.Count -gt 0 -and $lines[-1] -eq '') { $lines = @($lines[0..($lines.Count - 2)]) }
-        Remove-Item -LiteralPath $Handle.Out -Force -ErrorAction SilentlyContinue
-    }
-    if ($timedOut) { $lines += "TIMEOUT: stopped after $($Handle.Timeout) s"; $code = 124 }
-    return [pscustomobject]@{ Code = $code; Lines = $lines; Command = $Handle.Command; WorkDir = $Handle.WorkDir; Seconds = $seconds }
-}
-
-function Invoke-Process([string]$File, [string[]]$Arguments = @(), [string]$WorkDir = $root, [int]$TimeoutSec = 900) {
-    return Wait-Proc (Start-Proc $File $Arguments $WorkDir $TimeoutSec)
-}
+$script:GateTempDir = $tempDir
 
 function New-Result([int]$Code, [string[]]$Lines) { return [pscustomobject]@{ Code = $Code; Lines = @($Lines); Command = '' } }
 
@@ -540,7 +633,7 @@ function Test-Hygiene {
     $problems = New-Object System.Collections.Generic.List[string]
     $files = Get-RepositoryFiles
     if (-not $files.Count) { return New-Result 1 @('git listed no files: is this a repository?') }
-    $forbidden = '(?i)^(game|user|user_data|cache|logs|build|dist|out|external)/|(^|/)SAVEGAME\.|\.(log|iso|tpa|scn|grf|smk|wtd|spz|pdb|ilk|dmp|obj|pid|bak|tmp|7z|sav|pfx|pem)$|(^|/)(trespass\.exe|guest\.img|recomp-registry\.txt|trespasser\.ini)$'
+    $forbidden = '(?i)^(game|user|user_data|cache|logs|build|dist|out|external)/|(^|/)SAVEGAME\.|(^|/)\.jpt-gate-fixture$|\.(log|iso|tpa|scn|grf|smk|wtd|spz|pdb|ilk|dmp|obj|pid|bak|tmp|7z|sav|pfx|pem)$|(^|/)(trespass\.exe|guest\.img|recomp-registry\.txt|trespasser\.ini)$'
     foreach ($relative in $files) { if ($relative -match $forbidden) { $problems.Add("${relative}: game data, logs, saves, build output or tool state do not belong in the repository") } }
     $absolute = '(?i)\b[A-Z]:[\\/]+(Users|VisualStudio)[\\/]|' + ('Decomp_' + 'Downloads')
     $secret = 'ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|sk-[A-Za-z0-9]{32,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
@@ -756,6 +849,7 @@ function Test-Coverage {
         if ($toolSuiteScripts -contains $relative -or $listedNames -contains $relative -or $toolRole.ContainsKey($relative)) { continue }
         $problems.Add("$relative is neither run by tools\test.ps1 nor listed with its role")
     }
+    foreach ($name in $heavySuites) { if ($listedNames -notcontains $name) { $problems.Add("the heavy memory class names $name, which is no suite") } }
     foreach ($text in @($cmake -split "\r?\n" | Where-Object { $_ -match '_tests' -and $_ -match '/wd\d+' })) { $problems.Add("a test target masks warnings: $($text.Trim())") }
     if ($problems.Count) { return New-Result 1 @($problems) }
     $excluded = @($known | Where-Object { $excludedTargets.ContainsKey($_) })
@@ -782,7 +876,7 @@ function Test-LinuxAudioProbe {
     $script = @(& $clean (Invoke-Process 'wsl.exe' @('wslpath', '-a', ((Join-Path $root 'tools\linux_audio_probe.sh') -replace '\\', '/')) $root 60).Lines)
     $repo = @(& $clean (Invoke-Process 'wsl.exe' @('wslpath', '-a', ($root -replace '\\', '/')) $root 60).Lines)
     if ($script.Count -ne 1 -or $repo.Count -ne 1) { return New-Result 1 @('linux audio probe: wslpath did not answer') }
-    $run = Invoke-Process 'wsl.exe' @('--', 'bash', $script[0], $repo[0]) $root 1500
+    $run = Invoke-Process 'wsl.exe' @('--', 'bash', $script[0], $repo[0], "$($script:Policy.BuildJobs)") $root 1500 'linux audio probe' 'wsl'
     $lines = @(& $clean $run.Lines)
     if ($run.Code -ne 0) { return [pscustomobject]@{ Code = 1; Lines = $lines; Command = $run.Command } }
     $summary = @($lines | Where-Object { $_ -match '^linux audio probe: ' })
@@ -876,7 +970,7 @@ function Test-ReleaseContract {
     $licensesPath = Join-Path $root 'packaging\licenses\THIRD-PARTY-LICENSES.txt'
     if (Test-Path -LiteralPath $licensesPath) {
         $licenses = [IO.File]::ReadAllText($licensesPath)
-        foreach ($name in 'pcrecomp', 'Dear ImGui', 'SDL', 'ASSAO', 'nanosvg', 'OpenSSL', 'FFmpeg', 'Vulkan') { if ($licenses -notmatch [regex]::Escape($name)) { $problems.Add("THIRD-PARTY-LICENSES.txt does not name $name") } }
+        foreach ($name in 'pcrecomp', 'Dear ImGui', 'SDL', 'ASSAO', 'nanosvg', 'OpenSSL', 'FFmpeg', 'Vulkan', 'Squirrel') { if ($licenses -notmatch [regex]::Escape($name)) { $problems.Add("THIRD-PARTY-LICENSES.txt does not name $name") } }
     }
     $deps = [IO.File]::ReadAllText((Join-Path $root 'config\launcher_deps.txt'))
     if ($deps -notmatch 'SDL is release-3\.4\.20' -or $deps -notmatch 'external/SDL\s+\S+\s+[0-9a-f]{40}') { $problems.Add('config\launcher_deps.txt does not pin SDL 3.4.20 to a commit') }
@@ -940,7 +1034,7 @@ function Show-BuildWarnings([string[]]$Lines) {
 function Invoke-Configure([string]$Folder, [string]$Arch) {
     $arguments = @('-S', $root, '-B', $Folder, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=RelWithDebInfo', '-DCMAKE_C_COMPILER=cl', '-DCMAKE_CXX_COMPILER=cl',
         '-DTRESPASSER_GEN_OPT=/Od', '-DTRESPASSER_TRACE=OFF')
-    return Invoke-Process 'cmake' $arguments $root 1800
+    return Invoke-Process 'cmake' $arguments $root 1800 "cmake configure $Arch" 'build'
 }
 
 function Build-TestTargets([string]$Folder, [string]$Arch, [string[]]$Targets) {
@@ -953,7 +1047,7 @@ function Build-TestTargets([string]$Folder, [string]$Arch, [string[]]$Targets) {
         $configure = Invoke-Configure $Folder $Arch
         if ($configure.Code -ne 0) { return "CMake could not configure $Folder (exit $($configure.Code)); run tools\build.ps1 once to prepare the sources:`n$($configure.Lines -join "`n")" }
     }
-    $buildRun = Invoke-Process 'ninja' (@('-C', $Folder, '-k', '0') + $Targets) $root 3600
+    $buildRun = Invoke-Process 'ninja' (@('-C', $Folder, '-k', '0', '-j', "$($script:Policy.BuildJobs)") + $Targets) $root 3600 "ninja $Arch build" 'build'
     $warnings = @(Show-BuildWarnings $buildRun.Lines)
     if ($buildRun.Code -ne 0) { return "ninja exit code $($buildRun.Code):`n$(($buildRun.Lines | Select-Object -Last 60) -join "`n")" }
     if ($warnings.Count) { return "$($warnings.Count) compiler warning(s) in project sources:`n$($warnings -join "`n")" }
@@ -999,7 +1093,7 @@ function Start-Suite($Suite) {
             }
             $arguments = @()
             if ($Suite.Options.ContainsKey('QuickArguments') -and -not $Full) { $arguments = $Suite.Options['QuickArguments'] }
-            return Start-Proc $exe $arguments $root 900
+            return Start-Proc $exe $arguments $root 900 $Suite.Name (Get-SuiteClass $Suite) -EstimateGB (Get-SuiteMemoryEstimate $Suite)
         }
         'python' {
             $problem = Get-PythonProblem
@@ -1007,28 +1101,81 @@ function Start-Suite($Suite) {
             $script = Join-Path $root $Suite.Name
             if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { return New-Result 127 @("missing script: $script") }
             $arguments = @($script:Python.Args) + @('-X', 'utf8', '-I', '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', (Split-Path $Suite.Name -Leaf), '-v')
-            return Start-Proc $script:Python.Exe $arguments $root 900
+            return Start-Proc $script:Python.Exe $arguments $root 900 $Suite.Name (Get-SuiteClass $Suite) -EstimateGB (Get-SuiteMemoryEstimate $Suite)
         }
         'tool' {
             $problem = Get-PythonProblem
             if ($problem) { return New-Result 1 @($problem) }
             $script = Join-Path $root $Suite.Options['Script']
             if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { return New-Result 127 @("missing script: $script") }
-            return Start-Proc $script:Python.Exe (@($script:Python.Args) + @('-X', 'utf8', '-B', $script) + @($Suite.Options['Arguments'])) $root 900
+            return Start-Proc $script:Python.Exe (@($script:Python.Args) + @('-X', 'utf8', '-B', $script) + @($Suite.Options['Arguments'])) $root 900 $Suite.Name (Get-SuiteClass $Suite) -EstimateGB (Get-SuiteMemoryEstimate $Suite)
         }
         'script' {
             $script = Join-Path $root $Suite.Name
             if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { return New-Result 127 @("missing script: $script") }
-            return Start-Proc $hostShell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script) $root 900
+            return Start-Proc $hostShell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script) $root 900 $Suite.Name (Get-SuiteClass $Suite) -EstimateGB (Get-SuiteMemoryEstimate $Suite)
         }
+        'check' { return & $Suite.Options['Run'] }
         default { return $null }
     }
 }
 
-function Complete-Suite($Suite, $Started) {
-    if ($Suite.Kind -eq 'check') { return & $Suite.Options['Run'] }
-    if ($Started -is [pscustomobject] -and $Started.PSObject.Properties['Process']) { return Wait-Proc $Started }
+# The sources a checkpoint stands for: git HEAD and the snapshot the working-tree check takes (git status with every changed or
+# untracked file's content, both diffs, game\), without user_data, which the tests never read.
+function Get-SourceFingerprint($Snapshot) {
+    $head = Invoke-GitCapture @('rev-parse', '--verify', '-q', 'HEAD')
+    $keys = [string[]]@($Snapshot.Keys | Where-Object { $_ -notlike 'user_data*' -and $_ -notlike 'build\user_data*' })
+    [Array]::Sort($keys, [StringComparer]::Ordinal)
+    $lines = @('head ' + $(if ($head.Code -eq 0) { [Text.Encoding]::ASCII.GetString($head.Bytes).Trim() } else { 'none' })) + @($keys | ForEach-Object { "$_ = $($Snapshot[$_])" })
+    return Get-BytesSha256 ([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))
+}
+
+function Get-CheckpointLines($Entry) {
+    $saved = Get-Field $Entry 'lines'
+    if ($null -eq $saved) { return , [string[]]@() }
+    return , [string[]]@($saved)
+}
+
+function Copy-ReportFiles([string]$From, [string]$To) {
+    if (-not (Test-Path -LiteralPath $From)) { return }
+    New-Item -ItemType Directory -Force -Path $To | Out-Null
+    foreach ($file in @(Get-ChildItem -LiteralPath $From -Filter '*.json' -File -ErrorAction SilentlyContinue)) { Copy-Item -LiteralPath $file.FullName -Destination $To -Force }
+}
+
+function Get-SuiteMemoryEstimate($Suite) { return Get-MemoryEstimate $script:History (Get-TimingKey 'windows' $historyMode $Suite.Name) }
+
+function Complete-Suite($Started) {
+    if (Test-HandleLive $Started) { return Wait-Proc $Started }
     return $Started
+}
+
+# What a passing suite keeps for the summary once its row is printed; a failing one keeps its whole output (or its tail).
+function Limit-RetainedLines([string]$Status, [string[]]$Lines, [bool]$KeepAll) {
+    if ($KeepAll -or $Detail) { return @($Lines) }
+    if ($Status -eq 'PASS') { return @($Lines | Select-Object -Last $script:PassLinesKept) }
+    return @($Lines | Select-Object -Last $script:FailLinesKept)
+}
+
+function Write-Line([string]$Text, [string]$Color = '') {
+    Clear-ProgressLine $script:Progress
+    if ($Color) { Write-Host $Text -ForegroundColor $Color } else { Write-Host $Text }
+}
+
+function Get-GateNow { return $script:RunClock.Elapsed.TotalSeconds }
+
+function Update-GateProgress {
+    if ($script:Progress) { [void](Update-Progress $script:Progress (Get-GateNow)) }
+}
+
+function Get-RowPrefix { return Format-RowPrefix $script:Progress (Get-GateNow) }
+
+# Interrupted (Ctrl+C or a throw): the gate's own children and the run's temporary folder go; the history keeps what passed.
+function Stop-GateRun {
+    $stopped = Stop-GateProcesses
+    Clear-ProgressLine $script:Progress
+    if ($stopped) { Write-Host "stopped $stopped process tree(s) started by the gate" -ForegroundColor Yellow }
+    if ($script:History) { [void](Save-TestHistory $script:History) }
+    [void](Remove-GateTempDir $tempDir)
 }
 
 function Get-Counts([object[]]$Lines) {
@@ -1053,7 +1200,8 @@ function Get-SkipNotes([string]$Label, [object[]]$Lines) {
 # ---------------------------------------------------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------------------------------------------------
-$environment = [ordered]@{ SDL_VIDEODRIVER = 'dummy'; SDL_AUDIODRIVER = 'dummy'; PYTHONDONTWRITEBYTECODE = '1'; JPT_GATE_REPORT = $reportDir; JPT_GATE_COMMANDS = $null; TRESPASSER_TEST_LIFT = $null }
+$environment = [ordered]@{ SDL_VIDEODRIVER = 'dummy'; SDL_AUDIODRIVER = 'dummy'; PYTHONDONTWRITEBYTECODE = '1'; JPT_GATE_REPORT = $reportDir; JPT_GATE_COMMANDS = $null; TRESPASSER_TEST_LIFT = $null
+                          JPT_GATE_OWNER_ROOT = $root }
 
 $results = New-Object System.Collections.Generic.List[object]
 $notes = New-Object System.Collections.Generic.List[string]
@@ -1072,25 +1220,114 @@ foreach ($id in 'en-116', 'ru-116', 'es-117', 'ptbr-117') {
 if ($runLinux -and $importRequested) { $linuxPlanned = @('game imports') + $linuxPlanned }
 if ($runLinux -and -not $Filter -and -not $Sanitize) { $linuxPlanned = @('linux build') + @($linuxPlanned | Where-Object { $_ -ne 'linux build' }) }
 if ($Sanitize) { $linuxPlanned = @($linuxPlanned | Where-Object { $_ -match '^[a-z0-9_]+_tests$' }) }
-Import-TestHistory
-if ($runWindows) {
-    if (-not $Filter -and -not $NoBuild) { $script:ProgressPlan.Add('windows runtime (trespasser_recomp)') }
-    $script:ProgressPlan.Add('x86 test targets'); $script:ProgressPlan.Add('x64 test targets')
-    foreach ($suite in $suites) { $script:ProgressPlan.Add($suite.Name) }
-}
-if ($runLinux) { foreach ($name in $linuxPlanned) { $script:ProgressPlan.Add($name) } }
+$x86Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -ne 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
+$x64Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -eq 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
+$buildsWindows = -not $NoBuild -and ($x86Targets.Count + $x64Targets.Count)
 
+$policyArguments = @{
+    TestJobs = $TestJobs; BuildJobs = $BuildJobs; EnvTestJobs = "$env:JPT_TEST_JOBS"; EnvBuildJobs = "$env:JPT_BUILD_JOBS"
+    Sequential = [bool]$Sequential; Sanitize = [bool]$Sanitize
+}
+$script:Policy = Get-ResourcePolicy @policyArguments
+[void](Initialize-MemoryProbe)
+$memoryAtStart = Get-MemorySample
+$memoryLimits = Get-MemoryLimits $memoryAtStart.TotalGB ([bool]$Sanitize)
+$script:Guard = New-MemoryGuard $memoryLimits $PID $true
+$script:Guard.SimulatedFreeGB = Get-FixtureNumber $root 'JPT_GATE_TEST_FREE_GB'
+$fixtureWait = Get-FixtureNumber $root 'JPT_GATE_TEST_WAIT_SECONDS'
+if ($null -ne $fixtureWait) { $memoryLimits.EmergencyWaitSeconds = [int]$fixtureWait }
+if ($null -ne $script:Guard.SimulatedFreeGB) { $memoryAtStart.FreeGB = $script:Guard.SimulatedFreeGB }
+$script:Guard.OnAbort = { param($Lines) Clear-ProgressLine $script:Progress; foreach ($line in $Lines) { Write-Host $line -ForegroundColor Red } }
+$script:Guard.OnWait = { param($Text) Write-Line "  $Text" 'Yellow' }
+$script:Guard.OnWarn = { param($Text) Write-Line "  $Text" 'Yellow' }
+$script:Guard.Tick = { Update-GateProgress }
+$historyMode = if ($Sanitize) { 'sanitize' } elseif ($Full) { 'full' } else { 'default' }
+$script:History = New-TestHistory (Join-Path $root 'build\test-history\timings.json')
+if ($nestedGate) { $script:History.Writable = $false }
+$plannedGroups = New-Object System.Collections.Generic.List[object]
+function Get-LinuxGroupName([string]$Name) { return "[linux] $Name" }
+function Add-PlannedGroup([string]$Name, [string]$Platform, $Nominal = $null) {
+    $estimate = Get-DurationEstimate $script:History $Platform $historyMode $Name $Nominal
+    $group = if ($Platform -eq 'linux') { Get-LinuxGroupName $Name } else { $Name }
+    $plannedGroups.Add((New-ProgressGroup $group $Platform $estimate.Seconds $estimate.Known $estimate.Previous))
+}
+if ($runWindows) {
+    if ($buildsWindows) {
+        if (-not $Filter) { Add-PlannedGroup 'windows runtime (trespasser_recomp)' 'windows' 60 }
+        if ($x86Targets.Count) { Add-PlannedGroup 'x86 test targets' 'windows' 30 }
+        if ($x64Targets.Count) { Add-PlannedGroup 'x64 test targets' 'windows' 30 }
+    }
+    foreach ($suite in $suites) { Add-PlannedGroup $suite.Name 'windows' }
+}
+if ($runLinux) { foreach ($name in $linuxPlanned) { Add-PlannedGroup $name 'linux' $(if ($name -eq 'linux build') { 120 } else { $null }) } }
+$interactive = Test-InteractiveConsole
+$script:RunClock = [System.Diagnostics.Stopwatch]::StartNew()
+$script:Progress = New-ProgressReporter $plannedGroups 0 $interactive {
+    param([string]$Text, [bool]$NoNewline)
+    if ($NoNewline) { Write-Host $Text -NoNewline } else { Write-Host $Text -ForegroundColor DarkGray }
+} 0 ([datetime]::Now) {
+    $guard = $script:Guard
+    if (-not $guard -or -not $guard.Samples) { return $null }
+    [pscustomobject]@{ GateGB = $guard.GateBytes / 1GB; HardGB = $guard.Limits.HardGB; PeakGB = $guard.PeakGateBytes / 1GB; FreeGB = $guard.FreeGB
+                       Low = ($null -ne $guard.FreeGB -and $guard.FreeGB -lt $guard.Limits.WarningGB) }
+}
+$script:WaitTick = { Update-GateProgress }
+
+function Start-NextGroup([string]$Platform) {
+    foreach ($group in $script:Progress.Groups) {
+        if ($group.State -eq 'WAITING' -and $group.Platform -eq $Platform) { Start-ProgressGroup $script:Progress $group.Name (Get-GateNow) -Platform $Platform; return }
+    }
+}
+
+Write-Host '==> Memory safety' -ForegroundColor Cyan
+Format-MemorySafety $memoryLimits $script:Policy.TestJobs $script:Policy.BuildJobs $script:Guard.Native $memoryAtStart.FreeGB | ForEach-Object { Write-Host $_ }
+if ($null -ne $script:Guard.SimulatedFreeGB) { Write-Host '  the free RAM is simulated: a gate_tests fixture repository' -ForegroundColor DarkGray }
+if ($LowMemory) { Write-Host '  -LowMemory is a legacy alias: every run already uses these limits' -ForegroundColor DarkGray }
+if ($memoryAtStart.FreeGB -lt $memoryLimits.WarningGB) {
+    Write-Host ('  WARNING: {0} free: suites still start above {2}; a running stage is stopped only when the gate''s processes pass {1}' -f (Format-GBValue $memoryAtStart.FreeGB), (Format-GBValue $memoryLimits.HardGB), (Format-GBValue $memoryLimits.EmergencyGB)) -ForegroundColor Yellow
+}
+Write-Host ('==> Jobs: {0}' -f (Format-ResourcePolicy $script:Policy)) -ForegroundColor Cyan
+$historyText = if ($nestedGate) { "$($script:History.Path), read only: this gate runs inside another gate of this repository, which owns the timings and the checkpoint" } elseif ($script:History.Problem) { "$($script:History.Path) was $($script:History.Problem); starting without it" } else { "$($script:History.Path), $($script:History.Groups.Count) suite(s) known" }
+Write-Host "    progress: $(if ($interactive) { 'animated line (JPT_TEST_ANIMATE=0 for plain lines)' } else { 'RUNNING lines every 30 s (JPT_TEST_ANIMATE=1 to animate)' }); history: $historyText" -ForegroundColor DarkGray
+
+$windowsDone = $false
 try {
     Remove-DuplicatePathEntries
     foreach ($name in $environment.Keys) { [Environment]::SetEnvironmentVariable($name, $environment[$name]) }
     New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
     $script:SnapshotBefore = Get-TreeSnapshot
 
-    $x86Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -ne 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
-    $x64Targets = @($suites | Where-Object { $_.Kind -eq 'exe' -and $_.Options['Arch'] -eq 'x64' } | ForEach-Object { $_.Name } | Sort-Object -Unique)
+    $checkpointFolder = if ($nestedGate) { Join-Path $tempDir 'checkpoint' } else { Join-Path $root 'build\test-history' }
+    $checkpointPath = Join-Path $checkpointFolder 'last-run.json'
+    $checkpointReports = Join-Path $checkpointFolder 'last-run-reports'
+    $resumeConfig = 'filter={0}; release={1}; full={2}; nobuild={3}; builddir={4}; windows={5}; linux={6}; distro={7}; iso={8}; sanitize={9}' -f $Filter, [bool]$Release, [bool]$Full, [bool]$NoBuild, $buildDir, $runWindows, $runLinux, $LinuxDistro, $GameIsoDir, [bool]$Sanitize
+    $suitesKey = Get-BytesSha256 ([Text.Encoding]::UTF8.GetBytes(((@($suites | ForEach-Object { $_.Name }) + @('-- linux --') + @($linuxPlanned)) -join "`n")))
+    $fingerprint = Get-SourceFingerprint $script:SnapshotBefore
+    $script:Checkpoint = New-RunCheckpoint $fingerprint $resumeConfig $suitesKey
+    $resumed = @{}
+    if ($Resume) {
+        $verdict = Test-RunCheckpoint (Read-RunCheckpoint $checkpointPath) $fingerprint $resumeConfig $suitesKey @($suites | ForEach-Object { $_.Name })
+        if (-not $verdict.Ok) {
+            Write-Line 'FAILED: -Resume refused:' 'Red'
+            foreach ($reason in $verdict.Reasons) { Write-Host "  $reason" -ForegroundColor Red }
+            Write-Host '  run .\tools\test.ps1 without -Resume to start from the first suite' -ForegroundColor Red
+            exit 1
+        }
+        foreach ($entry in $verdict.Passed) {
+            $resumed[$entry.name] = $entry
+            [void](Add-CheckpointResult $script:Checkpoint $entry.name $entry.platform 'PASS' $entry.checks (Get-CheckpointLines $entry))
+        }
+        Copy-ReportFiles $checkpointReports $reportDir
+        $next = @($suites | Where-Object { -not $resumed.ContainsKey($_.Name) -or $_.Options['Always'] } | Select-Object -First 1)
+        Write-Host ('==> Resume: {0} suite(s) passed in the previous run with the same sources and parameters; the run goes on at {1}' -f $resumed.Count, $(if ($next.Count) { $next[0].Name } else { 'the Linux half' })) -ForegroundColor Cyan
+    } elseif (Test-Path -LiteralPath $checkpointReports) {
+        Get-ChildItem -LiteralPath $checkpointReports -Filter '*.json' -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+    Save-RunCheckpoint $script:Checkpoint $checkpointPath
+
     $winRuntimeArtifact = $null
     if ($runWindows) { Write-Host '==> Windows focused gate' -ForegroundColor Cyan }
-    if (-not $NoBuild -and ($x86Targets.Count + $x64Targets.Count)) {
+    if ($buildsWindows) {
         Write-Host '==> Build (runtime + test targets, incremental)' -ForegroundColor Cyan
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         $buildPlans = New-Object System.Collections.Generic.List[object]
@@ -1102,16 +1339,18 @@ try {
         foreach ($plan in $buildPlans) {
             if (-not $plan.Targets.Count) { continue }
             $archName = if ($plan.Arch) { $plan.Arch } else { 'x86' }
+            Start-ProgressGroup $script:Progress $plan.Label (Get-GateNow)
             $outcome = Build-TestTargets $plan.Folder $archName $plan.Targets
+            $buildState = if ($outcome -is [string]) { 'FAIL' } else { 'PASS' }
+            Complete-ProgressGroup $script:Progress $plan.Label $buildState (Get-GateNow) $null $watch.Elapsed.TotalSeconds
+            [void](Add-TimingSample $script:History (Get-TimingKey 'windows' $historyMode $plan.Label) $buildState $watch.Elapsed.TotalSeconds)
             if ($outcome -is [string]) {
                 if (-not $plan.IsRuntime) { $script:BuildProblems[$plan.Arch] = $outcome.Split("`n")[0] }
-                Step-Progress
-                Write-Host ('{0} FAIL  {1,-46}' -f (Get-ProgressPrefix), $plan.Label) -ForegroundColor Red
+                Write-Line ('{0} FAIL  {1,-46}' -f (Get-RowPrefix), $plan.Label) 'Red'
                 Write-Host "        $outcome" -ForegroundColor Red
                 $results.Add([pscustomobject]@{ Section = 'Build'; Platform = 'windows'; Name = $plan.Label; Status = 'FAIL'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = 'build failed'; Lines = @() })
             } else {
-                Step-Progress
-                Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3} targets, {4} compile or link step(s), no warnings' -f (Get-ProgressPrefix), $plan.Label, $watch.Elapsed.TotalSeconds, $outcome.Targets, $outcome.Steps) -ForegroundColor Green
+                Write-Line ('{0} PASS  {1,-46} {2,6:N1} s  {3} targets, {4} compile or link step(s), {5} job(s), no warnings' -f (Get-RowPrefix), $plan.Label, $watch.Elapsed.TotalSeconds, $outcome.Targets, $outcome.Steps, $script:Policy.BuildJobs) 'Green'
                 $results.Add([pscustomobject]@{ Section = 'Build'; Platform = 'windows'; Name = $plan.Label; Status = 'PASS'; Seconds = $watch.Elapsed.TotalSeconds; Checks = 0; Summary = "$($outcome.Steps) steps"; Lines = @() })
                 if ($plan.IsRuntime) {
                     $exePath = Join-Path $plan.Folder 'trespasser_recomp.exe'
@@ -1146,7 +1385,6 @@ try {
         } else {
             Write-Host ('BUILD ONLY: {0} build step(s) passed; no suite ran and the Linux half was not started.' -f $buildRows.Count) -ForegroundColor Green
         }
-        if (Test-Path -LiteralPath $tempDir) { Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
         exit $(if ($buildRows.Count -and -not $buildFailed.Count) { 0 } else { 1 })
     }
 
@@ -1157,23 +1395,38 @@ try {
         if ($commands.Failure) { $notes.Add("compile commands: $($commands.Failure)") }
     }
 
-    $pending = @{}
-    foreach ($suite in $suites) {
-        if ($suite.Options['Background']) { $pending[$suite.Name] = Start-Suite $suite }
+    $notify = {
+        param($Kind, $Entry)
+        if ($Kind -eq 'start') { Start-ProgressGroup $script:Progress $Entry.Suite.Name (Get-GateNow) -Background; return }
+        $passed = $false
+        try { $passed = if (Test-HandleLive $Entry.Handle) { $Entry.Handle.Process.HasExited -and $Entry.Handle.Process.ExitCode -eq 0 } else { $null -ne $Entry.Handle -and $Entry.Handle.Code -eq 0 } } catch { $passed = $false }
+        Complete-ProgressGroup $script:Progress $Entry.Suite.Name $(if ($passed) { 'PASS' } else { 'FAIL' }) (Get-GateNow)
     }
+    $memoryRoom = { param($Class) Invoke-MemoryWatch; Get-MemoryStartBlocker $script:Guard.Limits ($script:Guard.GateBytes / 1GB) $script:Guard.FreeGB $Class (Get-LiveStages).Count }
+    $script:Scheduler = New-SuiteScheduler $script:Policy { param($Suite) Start-Suite $Suite } $memoryRoom { param($Ms) Start-Sleep -Milliseconds $Ms; Invoke-MemoryWatch; Update-GateProgress } $notify
+    foreach ($suite in $suites) { if ($suite.Options['Background'] -and -not $resumed.ContainsKey($suite.Name)) { Add-BackgroundSuite $script:Scheduler $suite } }
+    Step-Scheduler $script:Scheduler
 
     $section = ''
     foreach ($suite in $suites) {
-        if ($suite.Section -ne $section) { $section = $suite.Section; Write-Host "==> $section" -ForegroundColor Cyan }
+        if ($suite.Section -ne $section) { $section = $suite.Section; Write-Line "==> $section" 'Cyan' }
         $label = $suite.Name
+        if ($resumed.ContainsKey($label) -and -not $suite.Options['Always']) {
+            $entry = $resumed[$label]
+            $results.Add([pscustomobject]@{ Section = $section; Platform = 'windows'; Name = $label; Status = 'PASS'; Seconds = 0; Checks = [int]$entry.checks; Summary = 'resumed: passed in the previous run with the same sources'; Lines = (Get-CheckpointLines $entry); Skipped = 0; Unavailable = $false; Resumed = $true })
+            Complete-ProgressGroup $script:Progress $label 'PASS' (Get-GateNow) ([int]$entry.checks) 0
+            Write-Line ('{0} PASS  {1,-46}   resumed: passed in the previous run with the same sources and parameters' -f (Get-RowPrefix), $label) 'DarkGreen'
+            continue
+        }
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         try {
-            $started = if ($pending.ContainsKey($suite.Name)) { $pending[$suite.Name] } else { Start-Suite $suite }
-            $run = Complete-Suite $suite $started
-            if ($pending.ContainsKey($suite.Name)) { $pending.Remove($suite.Name) }
+            if ((Get-ProgressGroup $script:Progress $label).State -eq 'WAITING') { Start-ProgressGroup $script:Progress $label (Get-GateNow) } else { $script:Progress.Foreground = $label }
+            $run = Complete-Suite (Invoke-SchedulerSuite $script:Scheduler $suite)
+            if ($null -eq $run) { throw "no runner for a suite of kind $($suite.Kind)" }
         } catch { $run = New-Result 1 @("the suite could not run: $($_.Exception.Message)") }
+        if ($script:Guard.Stopped) { throw $script:Guard.Stopped }
         $watch.Stop()
-        $seconds = if ($run.PSObject.Properties['Seconds']) { $run.Seconds } else { $watch.Elapsed.TotalSeconds }
+        $seconds = [Math]::Max(0.0, $(if ($run.PSObject.Properties['Seconds']) { [double]$run.Seconds } else { $watch.Elapsed.TotalSeconds }))
 
         $lines = @($run.Lines)
         $status = if ($run.Code -eq 0) { 'PASS' } else { 'FAIL' }
@@ -1187,7 +1440,7 @@ try {
         if ($status -eq 'PASS' -and $suite.Kind -in 'python') {
             if (-not (@($lines | Where-Object { $_ -match '^(OK|OK \(skipped=\d+\))$' }).Count)) { $status = 'FAIL'; $problem = 'unittest did not report OK' }
         }
-        if ($status -eq 'PASS' -and $pending.Count -eq 0 -and $suite.Name -ne 'working tree unchanged') {
+        if ($status -eq 'PASS' -and $script:Scheduler.Running.Count -eq 0 -and $suite.Name -ne 'working tree unchanged') {
             $stray = @(Get-DescendantProcesses | Where-Object { $_.Name -ne 'conhost.exe' })
             if ($stray.Count) { $status = 'FAIL'; $problem = "the suite left process(es) of the gate running: $((@($stray | ForEach-Object { "$($_.Name) ($($_.ProcessId))" })) -join ', ')" }
         }
@@ -1204,15 +1457,21 @@ try {
         foreach ($note in $skipNotes) { $notes.Add($note) }
 
         $unavailable = ($status -eq 'PASS' -and $checks -le 2 -and @($lines | Where-Object { $_ -match 'DATA UNAVAILABLE' }).Count -gt 0)
-        $results.Add([pscustomobject]@{ Section = $section; Platform = 'windows'; Name = $label; Status = $status; Seconds = $seconds; Checks = $checks; Summary = $summary; Lines = $lines; Skipped = $skipNotes.Count; Unavailable = $unavailable })
-        Step-Progress
+        $results.Add([pscustomobject]@{ Section = $section; Platform = 'windows'; Name = $label; Status = $status; Seconds = $seconds; Checks = $checks; Summary = $summary; Lines = (Limit-RetainedLines $status $lines ([bool]$suite.Options['KeepOutput'])); Skipped = $skipNotes.Count; Unavailable = $unavailable })
+        Complete-ProgressGroup $script:Progress $label $status (Get-GateNow) $checks $seconds
+        if ((Add-CheckpointResult $script:Checkpoint $label 'windows' $status $checks $(if ($suite.Options['KeepOutput']) { $lines } else { @() })) -or $status -ne 'PASS') {
+            Save-RunCheckpoint $script:Checkpoint $checkpointPath
+            if ($status -eq 'PASS') { Copy-ReportFiles $reportDir $checkpointReports }
+        }
+        $peakGB = if ($run.PSObject.Properties['PeakBytes']) { [double]$run.PeakBytes / 1GB } else { 0.0 }
+        [void](Add-TimingSample $script:History (Get-TimingKey 'windows' $historyMode $label) $(if ($unavailable) { 'BLOCKED' } else { $status }) $seconds $checks -MemoryGB $peakGB)
         if ($status -eq 'PASS') {
             $tail = if ($skipNotes.Count) { "$summary  [$($skipNotes.Count) part(s) skipped]" } else { $summary }
             if ($unavailable) { $tail = "DATA UNAVAILABLE: $tail" }
-            Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3}' -f (Get-ProgressPrefix), $label, $seconds, $tail) -ForegroundColor $(if ($unavailable) { 'Yellow' } else { 'Green' })
+            Write-Line ('{0} PASS  {1,-46} {2,6:N1} s  {3}' -f (Get-RowPrefix), $label, $seconds, $tail) $(if ($unavailable) { 'Yellow' } else { 'Green' })
             if ($Detail) { $lines | ForEach-Object { Write-Host "        $_" } }
         } else {
-            Write-Host ('{0} FAIL  {1,-46} {2,6:N1} s  exit code {3}' -f (Get-ProgressPrefix), $label, $seconds, $run.Code) -ForegroundColor Red
+            Write-Line ('{0} FAIL  {1,-46} {2,6:N1} s  exit code {3}' -f (Get-RowPrefix), $label, $seconds, $run.Code) 'Red'
             if ($problem) { Write-Host "        $problem" -ForegroundColor Red }
             if ($run.Command) { Write-Host "        command: $($run.Command)" -ForegroundColor Red }
             if ($run.PSObject.Properties['WorkDir'] -and $run.WorkDir) { Write-Host "        working directory: $($run.WorkDir)" -ForegroundColor Red }
@@ -1225,17 +1484,18 @@ try {
             Write-Host '  ----- end of output -----' -ForegroundColor Red
         }
     }
+    Wait-SchedulerIdle $script:Scheduler
+    Close-WaitingGroups $script:Progress 'windows'
+    $windowsDone = $true
 } catch {
-    Write-Host "FAILED: the gate itself stopped: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Line "FAILED: the gate itself stopped: $($_.Exception.Message)" 'Red'
     Write-Host "  at $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber): $("$($_.InvocationInfo.Line)".Trim())" -ForegroundColor Red
     $gateStopped = $true
 } finally {
+    if (-not $windowsDone) { Stop-GateRun }
     Restore-ProcessEnvironment $callerEnvironment
 }
-if ($gateStopped) {
-    if (Test-Path -LiteralPath $tempDir) { Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
-    exit 1
-}
+if ($gateStopped) { exit 1 }
 
 # ---------------------------------------------------------------------------------------------------------------------
 # The Linux half: PowerShell -> wsl.exe -> wslpath -> bash -> tools/test-linux.sh -> tools/linux_gate.py
@@ -1243,61 +1503,74 @@ if ($gateStopped) {
 $linux = [ordered]@{ Requested = $runLinux -and ($linuxPlanned.Count -gt 0); Ran = $false; Environment = $null; Why = ''; Info = @{}; Seconds = 0.0 }
 $versionReportPath = Join-Path $root 'build\logs\version_parity.json'
 if ($runLinux) { Remove-Item -LiteralPath $versionReportPath -Force -ErrorAction SilentlyContinue }
-if ($linux.Requested) {
-    Write-Host '==> Linux gate (WSL)' -ForegroundColor Cyan
-    $linux.Environment = Find-LinuxEnvironment $LinuxDistro
-    if (-not $linux.Environment.Found) {
-        $linux.Why = "BLOCKED: WSL unavailable ($($linux.Environment.Reason))"
-        Write-Host "  $($linux.Why)" -ForegroundColor Red
-        Write-Host '  Linux is NOT validated: no Linux row can pass and the feature parity reports it.' -ForegroundColor Red
-        $results.Add([pscustomobject]@{ Section = 'Linux (WSL)'; Platform = 'linux'; Name = 'wsl'; Status = 'FAIL'; Seconds = 0; Checks = 0; Summary = $linux.Why; Lines = @(); Skipped = 0; Unavailable = $false })
-    } else {
-        $linuxEnv = $linux.Environment
-        Write-Host ('  distribution : {0}  ({1}; glibc {2}; {3})' -f $linuxEnv.Name, $linuxEnv.Os, $linuxEnv.Glibc, $linuxEnv.Why)
-        Write-Host ('  repository   : {0}  (converted with wslpath)' -f $linuxEnv.Repo)
-        if ($importRequested) { Write-Host ('  game images  : {0}  (imported headlessly; existing installs are kept)' -f $gameIsoDir) }
-        Write-Host ('  command      : wsl.exe -d {0} --exec bash {1}/tools/test-linux.sh --native-build --machine --cc {2}{3}{4}' -f $linuxEnv.Name, $linuxEnv.Repo, $linuxEnv.Cc, $(if ($NoBuild) { ' --no-build' } else { '' }), $(if ($importRequested) { ' --import-dir <images>' } else { '' }))
-        if (-not $linuxEnv.Baseline) { Write-Host '  NOTE: the glibc 2.31 baseline is not proven by this run (no Ubuntu 20.04 environment was usable).' -ForegroundColor Yellow }
-        if (-not $linuxEnv.Ffmpeg) { Write-Host "  NOTE: no FFmpeg development files in $($linuxEnv.Name): the Linux gate builds a pinned LGPL-only FFmpeg into ~/.cache/jpt-recomp/ffmpeg (tools/ffmpeg-bootstrap.sh; offline, the Smacker suites report DATA UNAVAILABLE)." -ForegroundColor Yellow }
-        $print = {
-            param($row)
-            Step-Progress
-            $blocked = $row.Status -eq 'PASS' -and $row.Unavailable
-            $tail = $row.Summary
-            if ($row.Notes.Count -and $row.Status -eq 'PASS') { $tail = "$tail  [$($row.Notes.Count) note(s)]" }
-            if ($row.Status -eq 'PASS') {
-                if ($blocked) { $tail = "DATA UNAVAILABLE: $tail" }
-                Write-Host ('{0} PASS  {1,-46} {2,6:N1} s  {3}' -f (Get-ProgressPrefix), $row.Name, $row.Seconds, $tail) -ForegroundColor $(if ($blocked) { 'Yellow' } else { 'Green' })
-                if ($Detail) { $row.Lines | ForEach-Object { Write-Host "        $_" } }
-            } else {
-                Write-Host ('{0} FAIL  {1,-46} {2,6:N1} s  {3}' -f (Get-ProgressPrefix), $row.Name, $row.Seconds, $row.Summary) -ForegroundColor Red
-                Write-Host "  ----- output of $($row.Name) (Linux) -----" -ForegroundColor Red
-                $row.Lines | ForEach-Object { Write-Host "        $_" }
-                Write-Host '  ----- end of output -----' -ForegroundColor Red
+$linuxDone = $false
+try {
+    if ($linux.Requested) {
+        Write-Host '==> Linux gate (WSL)' -ForegroundColor Cyan
+        $linux.Environment = Find-LinuxEnvironment $LinuxDistro
+        if (-not $linux.Environment.Found) {
+            $linux.Why = "BLOCKED: WSL unavailable ($($linux.Environment.Reason))"
+            Write-Host "  $($linux.Why)" -ForegroundColor Red
+            Write-Host '  Linux is NOT validated: no Linux row can pass and the feature parity reports it.' -ForegroundColor Red
+            $results.Add([pscustomobject]@{ Section = 'Linux (WSL)'; Platform = 'linux'; Name = 'wsl'; Status = 'FAIL'; Seconds = 0; Checks = 0; Summary = $linux.Why; Lines = @(); Skipped = 0; Unavailable = $false })
+        } else {
+            $linuxEnv = $linux.Environment
+            Write-Host ('  distribution : {0}  ({1}; glibc {2}; {3})' -f $linuxEnv.Name, $linuxEnv.Os, $linuxEnv.Glibc, $linuxEnv.Why)
+            Write-Host ('  repository   : {0}  (converted with wslpath)' -f $linuxEnv.Repo)
+            if ($importRequested) { Write-Host ('  game images  : {0}  (imported headlessly; existing installs are kept)' -f $gameIsoDir) }
+            Write-Host ('  command      : wsl.exe -d {0} --exec bash {1}/tools/test-linux.sh --native-build --machine --cc {2} --jobs {3} --test-jobs {4}{5}{6}' -f $linuxEnv.Name, $linuxEnv.Repo, $linuxEnv.Cc, $script:Policy.BuildJobs, $script:Policy.LinuxTestJobs, $(if ($NoBuild) { ' --no-build' } else { '' }), $(if ($importRequested) { ' --import-dir <images>' } else { '' }))
+            if (-not $linuxEnv.Baseline) { Write-Host '  NOTE: the glibc 2.31 baseline is not proven by this run (no Ubuntu 20.04 environment was usable).' -ForegroundColor Yellow }
+            if (-not $linuxEnv.Ffmpeg) { Write-Host "  NOTE: no FFmpeg development files in $($linuxEnv.Name): the Linux gate builds a pinned LGPL-only FFmpeg into ~/.cache/jpt-recomp/ffmpeg (tools/ffmpeg-bootstrap.sh; offline, the Smacker suites report DATA UNAVAILABLE)." -ForegroundColor Yellow }
+            $print = {
+                param($row)
+                Complete-ProgressGroup $script:Progress (Get-LinuxGroupName $row.Name) $row.Status (Get-GateNow) $row.Checks $row.Seconds 'linux'
+                [void](Add-TimingSample $script:History (Get-TimingKey 'linux' $historyMode $row.Name) $(if ($row.Unavailable) { 'BLOCKED' } else { $row.Status }) $row.Seconds $row.Checks)
+                foreach ($group in $script:Progress.Groups) { if ($group.State -eq 'RUNNING' -and $group.Platform -eq 'linux') { $group.State = 'WAITING' } }
+                Start-NextGroup 'linux'
+                $blocked = $row.Status -eq 'PASS' -and $row.Unavailable
+                $tail = $row.Summary
+                if ($row.Notes.Count -and $row.Status -eq 'PASS') { $tail = "$tail  [$($row.Notes.Count) note(s)]" }
+                if ($row.Status -eq 'PASS') {
+                    if ($blocked) { $tail = "DATA UNAVAILABLE: $tail" }
+                    Write-Line ('{0} PASS  {1,-46} {2,6:N1} s  {3}' -f (Get-RowPrefix), $row.Name, $row.Seconds, $tail) $(if ($blocked) { 'Yellow' } else { 'Green' })
+                    if ($Detail) { $row.Lines | ForEach-Object { Write-Host "        $_" } }
+                } else {
+                    Write-Line ('{0} FAIL  {1,-46} {2,6:N1} s  {3}' -f (Get-RowPrefix), $row.Name, $row.Seconds, $row.Summary) 'Red'
+                    Write-Host "  ----- output of $($row.Name) (Linux) -----" -ForegroundColor Red
+                    $row.Lines | ForEach-Object { Write-Host "        $_" }
+                    Write-Host '  ----- end of output -----' -ForegroundColor Red
+                }
+                $row.Lines = Limit-RetainedLines $row.Status @($row.Lines) $false
             }
+            $watch = [System.Diagnostics.Stopwatch]::StartNew()
+            Start-NextGroup 'linux'
+            $outcome = Invoke-LinuxGate $linuxEnv $Filter ([bool]$NoBuild) ([bool]$Sanitize) $(if ($importRequested) { $gameIsoDir } else { '' }) $print $script:Policy.BuildJobs $script:Policy.LinuxTestJobs
+            $linux.Seconds = $watch.Elapsed.TotalSeconds
+            $linux.Info = $outcome.Info
+            $linux.Ran = $true
+            $importRow = @($outcome.Rows | Where-Object { $_.Name -eq 'game imports' -and $_.Status -eq 'PASS' })
+            if ($importRow.Count -and $missingVersionPaths.Count) { $script:ImportedVersionPaths = $missingVersionPaths }
+            foreach ($row in $outcome.Rows) {
+                $skip = @($row.Notes)
+                foreach ($note in $skip) { $notes.Add("Linux $($row.Name): $note") }
+                $results.Add([pscustomobject]@{ Section = 'Linux (WSL)'; Platform = 'linux'; Name = $row.Name; Status = $row.Status; Seconds = $row.Seconds; Checks = $row.Checks; Summary = $row.Summary; Lines = $row.Lines; Skipped = 0; Unavailable = $row.Unavailable })
+            }
+            if ($outcome.Info.Count) { Write-Host ('  Linux gate: glibc {0} on this system, executable needs at most glibc {1}, compiler {2}' -f $outcome.Info['glibc'], $(if ($outcome.Info['glibc_max']) { $outcome.Info['glibc_max'] } else { 'unknown' }), $outcome.Info['compiler']) -ForegroundColor DarkGray }
         }
-        $watch = [System.Diagnostics.Stopwatch]::StartNew()
-        $outcome = Invoke-LinuxGate $linuxEnv $Filter ([bool]$NoBuild) ([bool]$Sanitize) $(if ($importRequested) { $gameIsoDir } else { '' }) $print
-        $linux.Seconds = $watch.Elapsed.TotalSeconds
-        $linux.Info = $outcome.Info
-        $linux.Ran = $true
-        $importRow = @($outcome.Rows | Where-Object { $_.Name -eq 'game imports' -and $_.Status -eq 'PASS' })
-        if ($importRow.Count -and $missingVersionPaths.Count) { $script:ImportedVersionPaths = $missingVersionPaths }
-        foreach ($row in $outcome.Rows) {
-            $skip = @($row.Notes)
-            foreach ($note in $skip) { $notes.Add("Linux $($row.Name): $note") }
-            $results.Add([pscustomobject]@{ Section = 'Linux (WSL)'; Platform = 'linux'; Name = $row.Name; Status = $row.Status; Seconds = $row.Seconds; Checks = $row.Checks; Summary = $row.Summary; Lines = $row.Lines; Skipped = 0; Unavailable = $row.Unavailable })
-        }
-        if ($outcome.Info.Count) { Write-Host ('  Linux gate: glibc {0} on this system, executable needs at most glibc {1}, compiler {2}' -f $outcome.Info['glibc'], $(if ($outcome.Info['glibc_max']) { $outcome.Info['glibc_max'] } else { 'unknown' }), $outcome.Info['compiler']) -ForegroundColor DarkGray }
+    } elseif ($runLinux -and $Filter) {
+        $notes.Add("Linux: no row matches the filter '$Filter'; the Linux half did not run")
     }
-} elseif ($runLinux -and $Filter) {
-    $notes.Add("Linux: no row matches the filter '$Filter'; the Linux half did not run")
+    Close-WaitingGroups $script:Progress 'linux'
+    $linuxDone = $true
+} finally {
+    if (-not $linuxDone) { Stop-GateRun }
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------------------------------------------------
 $clock.Stop()
+Clear-ProgressLine $script:Progress
 if (-not $Filter -and $runWindows) { foreach ($entry in $notRunSuites) { $results.Add($entry) } }
 $failed = @($results | Where-Object { $_.Status -eq 'FAIL' })
 $passed = @($results | Where-Object { $_.Status -eq 'PASS' })
@@ -1442,7 +1715,7 @@ if (-not $partial -and $runWindows -and $linux.Ran -and -not $failed.Count -and 
     [IO.File]::WriteAllText($recordPath, ($gateRecord | ConvertTo-Json -Depth 5))
     $repoLinux = $linuxEnv.Repo
     $stageArguments = @('-d', $linuxEnv.Name, '--exec', 'python3', '-I', "$repoLinux/tools/linux_artifact.py", 'stage', '--elf', "$($linux.Info['build_dir'])/bin/trespasser_recomp", '--dest-dir', "$repoLinux/build/linux/bin", '--result-json', "$repoLinux/build/logs/linux_artifact_gate.json")
-    $stage = Invoke-Process 'wsl.exe' $stageArguments $root 900
+    try { $stage = Invoke-Process 'wsl.exe' $stageArguments $root 900 } finally { [void](Stop-GateProcesses) }
     $stageLines = @(ConvertFrom-WslText $stage.Lines)
     $manifestPath = Join-Path $root 'build\linux\bin\trespasser_recomp.build.json'
     if ($stage.Code -eq 0 -and (Test-Path -LiteralPath $manifestPath)) {
@@ -1500,16 +1773,29 @@ $passed = @($results | Where-Object { $_.Status -eq 'PASS' })
 $notRun = @($results | Where-Object { $_.Status -eq 'NOT RUN' })
 $checkTotal = ($results | Measure-Object -Property Checks -Sum).Sum
 
-$slowest = @($results | Where-Object { $_.Status -in 'PASS', 'FAIL' -and $_.Seconds -gt 0 } | Sort-Object Seconds -Descending | Select-Object -First 5)
 $partlySkipped = @($results | Where-Object { $_.PSObject.Properties['Skipped'] -and $_.Skipped -gt 0 })
 $windowsSeconds = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }) 'Seconds'
 $linuxSeconds = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }) 'Seconds'
 $windowsChecks = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }) 'Checks'
 $linuxChecks = Measure-Sum @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }) 'Checks'
 Write-Host ('  PASS: {0}   FAIL: {1}   SKIPPED parts in {2} suites   NOT RUN: {3}   checks counted: {4:N0}   time: {5:N0} s' -f $passed.Count, $failed.Count, $partlySkipped.Count, $notRun.Count, $checkTotal, $clock.Elapsed.TotalSeconds)
-Write-Host ('  Test timing: Windows {0}  ({1} suites, {2:N0} checks)   Linux {3}  ({4} rows, {5:N0} checks)   total {6}' -f (Format-Clock $windowsSeconds), @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }).Count, $windowsChecks, (Format-Clock $linuxSeconds), @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }).Count, $linuxChecks, (Format-Clock $clock.Elapsed.TotalSeconds)) -ForegroundColor DarkGray
-Export-TestHistory @($results | Where-Object { (Get-Prop $_ 'Platform') -in 'windows', 'linux' })
-Write-Host ('  slowest: ' + (($slowest | ForEach-Object { '{0} {1:N1} s' -f $_.Name, $_.Seconds }) -join ', ')) -ForegroundColor DarkGray
+Write-Host ('  Test timing: Windows {0}  ({1} suites, {2:N0} checks)   Linux {3}  ({4} rows, {5:N0} checks)   total {6}' -f (Format-Elapsed $windowsSeconds), @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'windows' }).Count, $windowsChecks, (Format-Elapsed $linuxSeconds), @($results | Where-Object { (Get-Prop $_ 'Platform') -eq 'linux' }).Count, $linuxChecks, (Format-Elapsed $clock.Elapsed.TotalSeconds)) -ForegroundColor DarkGray
+$runKey = '{0}|{1}{2}' -f $historyMode, $(if ($runWindows -and $runLinux) { 'windows+linux' } elseif ($runWindows) { 'windows' } else { 'linux' }), $(if ($NoBuild) { '|no-build' } else { '' })
+$previousRun = if ($partial) { $null } else { Get-PreviousRun $script:History $runKey }
+foreach ($line in (Format-TimingReport $script:Progress (Get-GateNow) $previousRun)) { Write-Host "  $line" -ForegroundColor $(if ($line -like 'WARNING:*') { 'Yellow' } else { 'DarkGray' }) }
+[void](Add-RunSample $script:History $runKey (-not $partial -and -not $failed.Count) (Get-GateNow) $script:Progress.Groups.Count)
+[void](Save-TestHistory $script:History)
+Write-Host ('  Jobs: {0}' -f (Format-ResourcePolicy $script:Policy)) -ForegroundColor DarkGray
+if (Test-Path variable:script:Scheduler) {
+    Write-Host ('  Concurrency: at most {0} test process(es) at once; heavy suite beside another: {1}' -f $script:Scheduler.Peak, $script:Scheduler.HeavyOverlap) -ForegroundColor DarkGray
+}
+$guard = $script:Guard
+$peakProcess = if ($guard.PeakProcess) { '{0} PID {1} {2}' -f $guard.PeakProcess.Name, $guard.PeakProcess.Id, (Format-GB $guard.PeakProcess.Bytes) } else { 'none' }
+Write-Host ('  Memory: gate peak {0} of {1} (soft {2}); largest process {3}; lowest system free {4} (warning below {5}, start floor {6}); {7} sample(s), {8} wait(s), {11} low-memory warning(s), {9} abort(s){10}' -f (Format-GB $guard.PeakGateBytes), (Format-GBValue $guard.Limits.HardGB), (Format-GBValue $guard.Limits.SoftGB), $peakProcess, $(if ($null -ne $guard.LowestFreeGB) { Format-GBValue $guard.LowestFreeGB } else { 'unknown' }), (Format-GBValue $guard.Limits.WarningGB), (Format-GBValue $guard.Limits.EmergencyGB), $guard.Samples, $guard.Waits, $guard.Aborts.Count, $(if ($guard.WslShared) { '; another wsl.exe ran, so the WSL VM was not counted' } else { '' }), $guard.Warnings) -ForegroundColor $(if ($guard.Aborts.Count) { 'Red' } else { 'DarkGray' })
+Write-Host ('  Memory starts: {0}, {1} of them with LOW SYSTEM MEMORY{2}' -f $guard.Starts, $guard.LowStarts.Count, $(if ($guard.LowStarts.Count) { ': ' + (($guard.LowStarts | Select-Object -Unique | Select-Object -First 12) -join ', ') } else { '' })) -ForegroundColor $(if ($guard.LowStarts.Count) { 'Yellow' } else { 'DarkGray' })
+if ($guard.Aborts.Count) { Write-Host '  Stopped for memory:' -ForegroundColor Red }
+foreach ($abort in $guard.Aborts) { Write-Host "    $($abort.Reason): $($abort.Label)" -ForegroundColor Red }
+if ($script:History.SaveProblem) { Write-Host "  Timing history: not saved ($($script:History.SaveProblem))" -ForegroundColor Yellow }
 if ($notRun.Count) {
     Write-Host '  NOT RUN (not failures; each says why):' -ForegroundColor Yellow
     foreach ($entry in $notRun) { Write-Host "    $($entry.Name): $($entry.Summary)" -ForegroundColor Yellow }
@@ -1518,7 +1804,9 @@ if ($notes.Count) {
     Write-Host '  parts the suites skipped or data unavailable (not failures, not proven here):' -ForegroundColor Yellow
     $notes | Select-Object -Unique | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
 }
-if (Test-Path -LiteralPath $tempDir) { Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
+Stop-GateRun
+$resumedRows = @($results | Where-Object { $_.PSObject.Properties['Resumed'] -and $_.Resumed })
+if ($resumedRows.Count) { Write-Host ('  RESUMED RUN: {0} suite(s) passed in the previous run with the same sources and parameters and were not run again (from {1} to {2}).' -f $resumedRows.Count, $resumedRows[0].Name, $resumedRows[-1].Name) -ForegroundColor Yellow }
 if ($Filter) { Write-Host "  PARTIAL RUN: only suites matching '$Filter' ran." -ForegroundColor Yellow }
 if ($failed.Count) {
     Write-Host ('FAILED: {0}' -f (($failed | ForEach-Object { $_.Name }) -join ', ')) -ForegroundColor Red

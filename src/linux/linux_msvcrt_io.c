@@ -11,7 +11,10 @@
 
 #include "guest_memory.h"
 #include "guest_ptr.h"
+#include "jpt_custom_level.h"
+#include "jpt_level_gate.h"
 #include "jpt_fs.h"
+#include "jpt_level_world.h"
 #include "linux_frontend.h"
 #include "linux_hle.h"
 #include "linux_log.h"
@@ -32,6 +35,10 @@ typedef struct {
 } guest_file_t;
 
 static int s_fds[MAX_FDS];
+static struct {
+    uint32_t fd; /* the guest's; 0 while no save is being written */
+    char path[JPT_PATH_MAX], temp[JPT_PATH_MAX];
+} s_save;
 static guest_file_t s_files[MAX_FILES];
 static uint32_t s_iob, s_pioinfo, s_badioinfo;
 
@@ -88,25 +95,42 @@ static int host_fd(uint32_t guest_fd) { return guest_fd < MAX_FDS ? s_fds[guest_
 #define O_TRUNC_G 0x0200u
 #define O_EXCL_G 0x0400u
 
+/* The engine would go on with a null world. */
+static void stop_without(const char* name) {
+    if (!jpt_custom_level_active() || !jpt_level_world_needs(name)) return;
+    lx_log("custom-level", "%s of %s cannot be played: its terrain data %s is neither in the package nor in the installed game, and the engine has no world without it",
+           jpt_custom_level_current_scene(), jpt_custom_level_package(), name);
+    hle_exit_process(HLE_EXIT_LEVEL);
+}
+
 static uint64_t io__sopen(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     uint32_t mode = a[1];
     char host[JPT_PATH_MAX];
-    int flags = (mode & O_RDWR_G) == O_RDWR_G ? O_RDWR : (mode & O_WRONLY_G) ? O_WRONLY : O_RDONLY, fd;
+    int flags = (mode & O_RDWR_G) == O_RDWR_G ? O_RDWR : (mode & O_WRONLY_G) ? O_WRONLY : O_RDONLY, fd, is_save;
     (void)u;
     if (!name || !hle_vpath()) return (uint32_t)-1;
     if (mode & O_APPEND_G) flags |= O_APPEND;
     if (mode & O_CREAT_G) flags |= O_CREAT;
     if (mode & O_TRUNC_G) flags |= O_TRUNC;
     if (mode & O_EXCL_G) flags |= O_EXCL;
-    if (jpt_vpath_resolve(hle_vpath(), name, (mode & O_CREAT_G) != 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
-    fd = open(host, flags | O_CLOEXEC, 0666);
+    if (mode & (O_CREAT_G | O_TRUNC_G | O_WRONLY_G | O_RDWR_G)) {
+        if (jpt_vpath_write_refused(hle_vpath(), name)) return (uint32_t)-1;
+        if (jpt_vpath_resolve(hle_vpath(), name, (mode & O_CREAT_G) != 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    } else if (jpt_vpath_resolve_read(hle_vpath(), name, host, sizeof host, NULL) != JPT_VP_OK) {
+        stop_without(name);
+        return (uint32_t)-1;
+    }
+    is_save = (mode & O_CREAT_G) && (mode & O_TRUNC_G) && !s_save.fd && jpt_gate_save_begin(host, s_save.temp, sizeof s_save.temp);
+    if (is_save) snprintf(s_save.path, sizeof s_save.path, "%s", host);
+    fd = open(is_save ? s_save.temp : host, flags | O_CLOEXEC, 0666);
     if (fd < 0) return (uint32_t)-1;
     if (mode & O_CREAT_G) jpt_vpath_invalidate(hle_vpath(), host);
     if ((mode & O_CREAT_G) && (mode & O_TRUNC_G)) lx_frontend_file_created(name);
     for (int i = 3; i < MAX_FDS; i++)
         if (s_fds[i] < 0) {
             s_fds[i] = fd;
+            if (is_save) s_save.fd = (uint32_t)i;
             return (uint32_t)i;
         }
     close(fd);
@@ -119,7 +143,8 @@ static uint64_t io_remove(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     char host[JPT_PATH_MAX];
     (void)u;
-    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    if (!name || !hle_vpath() || jpt_vpath_write_refused(hle_vpath(), name)) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), name, 0, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
     if (!jpt_fs_remove(host)) return (uint32_t)-1;
     jpt_vpath_invalidate(hle_vpath(), host);
     return 0;
@@ -129,9 +154,11 @@ static uint64_t io_rename(const uint32_t* a, void* u) {
     const char *from = cstr(a[0]), *to_name;
     char source[JPT_PATH_MAX], target[JPT_PATH_MAX];
     (void)u;
-    if (!from || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), from, 0, source, sizeof source) != JPT_VP_OK) return (uint32_t)-1;
     to_name = cstr(a[1]);
-    if (!to_name || jpt_vpath_resolve(hle_vpath(), to_name, 1, target, sizeof target) != JPT_VP_OK) return (uint32_t)-1;
+    if (!from || !to_name || !hle_vpath()) return (uint32_t)-1;
+    if (jpt_vpath_write_refused(hle_vpath(), from) || jpt_vpath_write_refused(hle_vpath(), to_name)) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), from, 0, source, sizeof source) != JPT_VP_OK) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), to_name, 1, target, sizeof target) != JPT_VP_OK) return (uint32_t)-1;
     if (rename(source, target) != 0) return (uint32_t)-1;
     jpt_vpath_invalidate(hle_vpath(), source);
     jpt_vpath_invalidate(hle_vpath(), target);
@@ -164,6 +191,12 @@ static uint64_t io__close(const uint32_t* a, void* u) {
     if (fd < 0) return (uint32_t)-1;
     if (a[0] >= 3) close(fd);
     s_fds[a[0]] = a[0] < 3 ? s_fds[a[0]] : -1;
+    if (a[0] && a[0] == s_save.fd) {
+        char why[160];
+        s_save.fd = 0;
+        if (!jpt_gate_save_end(s_save.path, s_save.temp, why, sizeof why)) lx_log("save", "%s was not saved, the previous one was kept: %s", s_save.path, why);
+        jpt_vpath_invalidate(hle_vpath(), s_save.path);
+    }
     return 0;
 }
 
@@ -210,7 +243,8 @@ static uint64_t io__mkdir(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     char host[JPT_PATH_MAX];
     (void)u;
-    if (!name || !hle_vpath() || jpt_vpath_resolve(hle_vpath(), name, 1, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
+    if (!name || !hle_vpath() || jpt_vpath_write_refused(hle_vpath(), name)) return (uint32_t)-1;
+    if (jpt_vpath_resolve(hle_vpath(), name, 1, host, sizeof host) != JPT_VP_OK) return (uint32_t)-1;
     if (jpt_fs_is_dir(host)) return (uint32_t)-1;
     if (!jpt_fs_mkdir(host)) return (uint32_t)-1;
     jpt_vpath_invalidate(hle_vpath(), host);

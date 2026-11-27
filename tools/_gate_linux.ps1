@@ -1,12 +1,6 @@
-# The Linux half of tools\test.ps1: WSL discovery, the Linux gate run through wslpath, progress with an ETA, and the Windows/Linux
-# feature parity computed from the per-platform results. Dot-sourced by tools\test.ps1 after its own helpers (Invoke-Process,
-# Start-Proc, Wait-Proc, $root). Nothing here starts the game, the launcher, a window or a sound.
-
-$script:ProgressPlan = New-Object System.Collections.Generic.List[string]
-$script:ProgressPlanDone = 0
-$script:History = @{}
-$script:HistoryPath = Join-Path $root 'build\logs\test-timings.json'
-$script:RunClock = [System.Diagnostics.Stopwatch]::StartNew()
+# The Linux half of tools\test.ps1: WSL discovery, the Linux gate run through wslpath under the gate's job limits, and the
+# Windows/Linux feature parity computed from the per-platform results. Dot-sourced by tools\test.ps1 after tools\_test_runner.ps1
+# (Invoke-Process, Start-Proc). Nothing here starts the game, the launcher, a window or a sound.
 
 function Get-LinuxSuiteNames {
     $path = Join-Path $root 'tests\linux_suites.json'
@@ -14,41 +8,6 @@ function Get-LinuxSuiteNames {
     $config = [IO.File]::ReadAllText($path) | ConvertFrom-Json
     return @(@($config.portable) + @($config.linux_specific) + @($config.python | ForEach-Object { "tests\$_" }) + @($config.tools | ForEach-Object { $_ -replace '/', '\' }) + @($config.static))
 }
-
-function Import-TestHistory {
-    if (-not (Test-Path -LiteralPath $script:HistoryPath)) { return }
-    try {
-        $loaded = [IO.File]::ReadAllText($script:HistoryPath) | ConvertFrom-Json
-        foreach ($property in $loaded.PSObject.Properties) { $script:History[$property.Name] = [double]$property.Value }
-    } catch { $script:History = @{} }
-}
-
-function Export-TestHistory([object[]]$Rows) {
-    foreach ($row in $Rows) { if ($row.Seconds -gt 0 -and $row.Status -in 'PASS', 'FAIL') { $script:History[$row.Name] = [Math]::Round([double]$row.Seconds, 1) } }
-    try {
-        New-Item -ItemType Directory -Force -Path (Split-Path $script:HistoryPath) | Out-Null
-        [IO.File]::WriteAllText($script:HistoryPath, ($script:History | ConvertTo-Json))
-    } catch { }
-}
-
-function Format-Clock([double]$Seconds) {
-    $total = [int][Math]::Max(0, [Math]::Round($Seconds))
-    return '{0}:{1:00}' -f [int]($total / 60), ($total % 60)
-}
-
-# "[ 37/181  20%  4:12 elapsed, ETA 11:05]": the ETA is what the rows still to come took last time (4 s for an unknown one).
-function Get-ProgressPrefix {
-    $total = [Math]::Max(1, $script:ProgressPlan.Count)
-    $done = [Math]::Min($script:ProgressPlanDone, $total)
-    $remaining = 0.0
-    for ($i = $done; $i -lt $script:ProgressPlan.Count; $i++) {
-        $name = $script:ProgressPlan[$i]
-        $remaining += $(if ($script:History.ContainsKey($name)) { $script:History[$name] } else { 4.0 })
-    }
-    return '[{0,3}/{1,-3} {2,3}%  {3} elapsed, ETA {4}]' -f $done, $total, [int](100 * $done / $total), (Format-Clock $script:RunClock.Elapsed.TotalSeconds), (Format-Clock $remaining)
-}
-
-function Step-Progress { $script:ProgressPlanDone++ }
 
 # Strict mode makes a missing property an error; the contract leaves out what a feature does not need.
 function Get-Prop($Object, [string]$Name, $Default = $null) {
@@ -161,14 +120,17 @@ function Wait-ProcStreaming($Handle, [scriptblock]$OnLine) {
             & $drain $false
             if ($Handle.Clock.Elapsed.TotalSeconds -gt $Handle.Timeout) { break }
             Start-Sleep -Milliseconds 150
+            Invoke-MemoryWatch
+            if ($script:WaitTick) { & $script:WaitTick }
         }
         $timedOut = -not $Handle.Process.HasExited
         if ($timedOut) { & taskkill.exe /PID $Handle.Process.Id /T /F 2>&1 | Out-Null }
         $Handle.Process.WaitForExit()
         & $drain $true
-        $code = if ($timedOut) { 124 } else { $Handle.Process.ExitCode }
+        $code = if ($timedOut) { 124 } elseif (@(Get-HandleAbort $Handle).Count) { 137 } else { $Handle.Process.ExitCode }
     } finally {
         if ($streamState.File) { $streamState.File.Dispose() }
+        [void]$script:GateProcesses.Remove($Handle)
         $Handle.Process.Dispose()
         Remove-Item -LiteralPath $Handle.Out -Force -ErrorAction SilentlyContinue
     }
@@ -176,13 +138,17 @@ function Wait-ProcStreaming($Handle, [scriptblock]$OnLine) {
 }
 
 # Runs tools/test-linux.sh in the chosen distribution (PowerShell -> wsl.exe -> wslpath -> bash -> the Linux gate) and returns its rows.
-# A row is printed when the next one starts, so the notes and the output lines that follow it are on it.
-function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$Sanitize, [string]$ImportDir, [scriptblock]$Print) {
+# A row is printed when the next one starts, so the notes and the output lines that follow it are on it. BuildJobs bounds the
+# compilers of the Linux build; TestJobs is the number of Python workers beside the suite programs (0: one process at a time).
+# The Linux side writes its PID to a file, so a stopped run ends exactly its own process tree inside the distribution.
+function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$Sanitize, [string]$ImportDir, [scriptblock]$Print, [int]$BuildJobs, [int]$TestJobs) {
     $rows = New-Object System.Collections.Generic.List[object]
     $info = @{}
-    $other = New-Object System.Collections.Generic.List[string]
+    $other = New-Object System.Collections.Generic.Queue[string]
+    $pidFile = '/tmp/jpt-gate-{0}.pid' -f [guid]::NewGuid().ToString('N')
     $gateState = @{ Pending = $null }
-    $arguments = @('-d', $Environment.Name, '--exec', 'bash', "$($Environment.Repo)/tools/test-linux.sh", '--native-build', '--machine', '--cc', $Environment.Cc)
+    $arguments = @('-d', $Environment.Name, '--exec', 'bash', "$($Environment.Repo)/tools/test-linux.sh", '--native-build', '--machine', '--cc', $Environment.Cc,
+                   '--jobs', "$BuildJobs", '--test-jobs', "$TestJobs", '--pid-file', $pidFile)
     if ($NoBuild) { $arguments += '--no-build' }
     if ($Filter) { $arguments += @('--filter', $Filter) }
     if ($Sanitize) { $arguments += '--sanitize' }
@@ -191,11 +157,16 @@ function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$
         if ($wslImport) { $arguments += @('--import-dir', $wslImport) }
     }
     $flush = { if ($gateState.Pending) { & $Print $gateState.Pending; $gateState.Pending = $null } }
-    $handle = Start-Proc 'wsl.exe' $arguments $root 3600
+    $handle = Start-Proc 'wsl.exe' $arguments $root 3600 'linux gate (WSL)' $(if ($Sanitize) { 'sanitize' } else { 'wsl' })
+    $stopArguments = @('-d', $Environment.Name, '--exec', 'bash', "$($Environment.Repo)/tools/test-linux.sh", '--stop', $pidFile)
+    $handle | Add-Member -NotePropertyName LinuxStopArguments -NotePropertyValue $stopArguments
     $onLine = {
         param([string]$line)
         $line = $line -replace "`0", ''
-        if (-not $line.StartsWith('@@')) { if ($line.Trim()) { $other.Add($line) }; return }
+        if (-not $line.StartsWith('@@')) {
+            if ($line.Trim()) { $other.Enqueue($line); if ($other.Count -gt 200) { [void]$other.Dequeue() } }
+            return
+        }
         $parts = $line.Substring(2).Split('|')
         $tail = if ($parts.Count -gt 2) { $parts[2..($parts.Count - 1)] -join '|' } else { '' }
         switch ($parts[0]) {
@@ -223,18 +194,24 @@ function Invoke-LinuxGate($Environment, [string]$Filter, [bool]$NoBuild, [bool]$
             'OUT' {
                 $target = $gateState.Pending
                 if ($target -and ($target.Name -eq $parts[1] -or ($parts[1] -eq 'build' -and $target.Name -eq 'linux build') -or
-                                  ($parts[1] -eq 'import' -and $target.Name -eq 'game imports'))) { $target.Lines += $tail }
+                                  ($parts[1] -eq 'import' -and $target.Name -eq 'game imports'))) {
+                    $target.Lines = @(@($target.Lines) + $tail | Select-Object -Last $script:FailLinesKept)
+                }
             }
             'END' { & $flush }
         }
     }
     $code = Wait-ProcStreaming $handle $onLine
     & $flush
-    if ($code -ne 0 -and @($rows | Where-Object { $_.Status -eq 'FAIL' }).Count -eq 0) {
-        $row = [pscustomobject]@{ Name = 'linux gate'; Status = 'FAIL'; Checks = 0; Seconds = 0; Unavailable = $false; Summary = "the Linux gate exited with code $code"; Lines = @($other | Select-Object -Last 40); Notes = @() }
+    $abort = @(Get-HandleAbort $handle)
+    if ($abort.Count) {
+        $row = [pscustomobject]@{ Name = 'linux gate'; Status = 'FAIL'; Checks = 0; Seconds = 0; Unavailable = $false; Summary = $abort[0]; Lines = $abort; Notes = @() }
+        $rows.Add($row); & $Print $row
+    } elseif ($code -ne 0 -and @($rows | Where-Object { $_.Status -eq 'FAIL' }).Count -eq 0) {
+        $row = [pscustomobject]@{ Name = 'linux gate'; Status = 'FAIL'; Checks = 0; Seconds = 0; Unavailable = $false; Summary = "the Linux gate exited with code $code"; Lines = @($other.ToArray() | Select-Object -Last 40); Notes = @() }
         $rows.Add($row); & $Print $row
     }
-    return [pscustomobject]@{ Rows = $rows; Info = $info; Code = $code; Other = $other }
+    return [pscustomobject]@{ Rows = $rows; Info = $info; Code = $code; Other = $other.ToArray() }
 }
 
 # ---------------------------------------------------------------------------------------------------------------------

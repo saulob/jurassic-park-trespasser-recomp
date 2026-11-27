@@ -163,10 +163,10 @@ static void migrate_subtitles_default(void) {
     if (!marker || !marker->data) set_value(SUBTITLES_MARKER, REG_DWORD, &on, 4);
 }
 
-void guest_registry_init(const char* game_dir, const char* user_dir) {
+void guest_registry_init(const char* game_dir, const char* store_dir, const char* user_dir) {
     char data_root[MAX_PATH], user_root[MAX_PATH];
     DWORD installed = 1;
-    _snprintf(s_store_path, sizeof s_store_path - 1, "%s\\" STORE_FILE, user_dir);
+    _snprintf(s_store_path, sizeof s_store_path - 1, "%s\\" STORE_FILE, store_dir);
     _snprintf(data_root, sizeof data_root - 1, "%s\\", game_dir);
     _snprintf(user_root, sizeof user_root - 1, "%s\\", user_dir);
     data_root[sizeof data_root - 1] = 0;
@@ -306,11 +306,21 @@ static int policy_value(const char* name, int stored, policy_t* p) {
     return 0;
 }
 
+static int gamma_policy(const reg_value_t* v, policy_t* p) {
+    DWORD level;
+    if (!v || !v->data || _stricmp(v->name, "Gamma") || v->type != REG_DWORD || v->size != sizeof level) return 0;
+    memcpy(&level, v->data, sizeof level);
+    if (engine_gamma_level(level) == level) return 0;
+    policy_dword(p, engine_gamma_level(level), "host policy: 7, the brightest level with shading and shadows (the stored "
+                                               "one lights everything alike)");
+    return 1;
+}
+
 static LONG query_value(const char* name, DWORD* type, BYTE* data, DWORD* size, const char** policy_text) {
     reg_value_t* v = find_value(name ? name : "");
     policy_t policy;
     *policy_text = NULL;
-    if (policy_value(name, v && v->data, &policy)) {
+    if (gamma_policy(v, &policy) || policy_value(name, v && v->data, &policy)) {
         *policy_text = policy.text;
         if (type) *type = policy.type;
         if (data) {

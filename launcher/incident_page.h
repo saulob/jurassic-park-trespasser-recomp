@@ -31,6 +31,10 @@ public:
     void CheckReports() { my_reports_.Refresh(); }
     bool HasReportUpdates() { return my_reports_.HasUpdates(); }
     bool Loading() const { return !logs_found_; }
+    // The next report is about this session: its log stays chosen until the player picks another.
+    void ChooseRunningLog();
+    // The log of the level's last run, else the running one.
+    void ChooseLevelLog(const std::string& package, const std::string& scene);
 
 private:
     struct Delivery {
@@ -74,6 +78,7 @@ private:
     std::vector<GameLog> logs_;
     bool logs_found_ = false;
     size_t selected_ = 0;
+    std::filesystem::path wanted_log_;
     DraftProblem problem_ = DraftProblem::kNone;
     double problem_time_ = 0.0;
     bool bring_problem_into_view_ = false;

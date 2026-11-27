@@ -16,6 +16,7 @@
 #include "jpt_restored_audio.h"
 #include "l10n_assets.h"
 #include "stream_pack.h"
+#include "stream_vfile.h"
 
 static int s_failures, s_checks, s_skipped;
 
@@ -751,10 +752,31 @@ static void test_no_development_path(void) {
     CHECK(hits == 0);
 }
 
+static void test_memory_file(void) {
+    static const char k_text[] = "0123456789";
+    const unsigned live = stream_vfile_live();
+    uint8_t* bytes = (uint8_t*)malloc(10);
+    stream_vfile_t* file;
+    char read[16];
+    uint32_t got = 0;
+    uint64_t position = 0;
+    memcpy(bytes, k_text, 10);
+    file = stream_vfile_open_memory(bytes, 10);
+    CHECK(file && stream_vfile_size(file) == 10 && stream_vfile_live() == live + 1);
+    CHECK(stream_vfile_read(file, read, sizeof read, &got) && got == 10 && !memcmp(read, k_text, 10));
+    CHECK(stream_vfile_read(file, read, 4, &got) && got == 0);
+    CHECK(stream_vfile_seek(file, 8, 0, &position) && stream_vfile_read(file, read, 4, &got) && got == 2 && !memcmp(read, "89", 2));
+    CHECK(stream_vfile_seek(file, 4, 2, &position) && position == 14 && stream_vfile_read(file, read, 4, &got) && got == 0);
+    CHECK(!stream_vfile_seek(file, -1, 0, &position) && stream_vfile_seek(file, -9, 2, &position) && position == 1);
+    stream_vfile_close(file);
+    CHECK(!stream_vfile_open_memory(NULL, 0) && stream_vfile_live() == live);
+}
+
 int main(void) {
     test_synthetic_pack();
     test_caption_into_a_sample_without_one();
     test_game_handle_pool();
+    test_memory_file();
     test_release_views();
     test_embedded_audio();
     test_retail_view();

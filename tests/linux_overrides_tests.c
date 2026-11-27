@@ -23,6 +23,7 @@
 #include "jpt_vpath.h"
 #include "linux_advapi32.h"
 #include "linux_card.h"
+#include "linux_d3d.h"
 #include "linux_features.h"
 #include "linux_hostkeys.h"
 #include "linux_hle.h"
@@ -139,17 +140,17 @@ static void run_on_guest(body_fn fn) {
 
 static void test_tables(void) {
     CHECK(override_registry_valid(&lift116_registry), "the override list is sorted, unique and every stable entry points at its lifted body");
-    CHECK(lx_lift116_override_count() == 70, "70 overrides are listed (%u)", lx_lift116_override_count());
-    CHECK(lx_lift116_hook_count() == 27, "27 lift hooks are listed (%u)", lx_lift116_hook_count());
+    CHECK(lx_lift116_override_count() == 81, "81 overrides are listed (%u)", lx_lift116_override_count());
+    CHECK(lx_lift116_hook_count() == 29, "29 lift hooks are listed (%u)", lx_lift116_hook_count());
     CHECK(lift116_registry.count == lx_lift116_override_count(), "the registry holds the whole list");
 }
 
 /* ---- installation ---------------------------------------------------------------------------------------------------- */
 
 static const uint32_t k_shared[] = {
-    0x0040DA00, 0x00410540, 0x00411EA0, 0x00413040, 0x004142C0, 0x00415AD0, 0x004610D0, 0x00419330, 0x004195A0, 0x00419800, 0x004199D0, 0x00419C60, 0x00419CE0, 0x00419DB0, 0x00419E30,
-    0x0041A200, 0x0041AE50, 0x0041AF00, 0x004213F0, 0x004218C0, 0x00418AE0, 0x00475F60, 0x0049E530, 0x004EDFA0, 0x004F0960, 0x004F3FB0,
-    0x0051FD90, 0x0060FC10, 0x005F80B0,
+    0x0040DA00, 0x00410540, 0x00411EA0, 0x00413040, 0x004142C0, 0x00414480, 0x00415AD0, 0x004610D0, 0x00419330, 0x004195A0, 0x00419800, 0x004199D0, 0x00419C60, 0x00419CE0, 0x00419DB0, 0x00419E30,
+    0x0041A200, 0x0041ADF0, 0x0041AE50, 0x0041AF00, 0x004213F0, 0x004218C0, 0x00418AE0, 0x00475F60, 0x0049E530, 0x004EDFA0, 0x004F0960, 0x004F3FB0,
+    0x0051FD90, 0x0060FC10, 0x005F80B0, 0x005F8A20, 0x005F8B10, 0x00614F50,
 };
 
 
@@ -194,10 +195,68 @@ static void test_install(void) {
     }
     CHECK(c.installed == n && c.required_refused == 0 && c.refused == 0, "%u installed, exactly the shared set (%u), no refusal (%u)", c.installed, n, c.refused);
     CHECK(c.installed + c.unused == c.listed, "what is not installed is unused, not failed (%u + %u of %u)", c.installed, c.unused, c.listed);
+    for (unsigned i = 0; i < lift116_registry.count; i++) {
+        int shared = 0;
+        if (lift116_registry.entries[i].state != OVERRIDE_INSTALLED) continue;
+        for (unsigned j = 0; j < sizeof k_shared / sizeof k_shared[0]; j++) shared |= k_shared[j] == lift116_registry.entries[i].va;
+        CHECK(shared, "the installed override of sub_%08X belongs to the shared set", lift116_registry.entries[i].va);
+    }
     for (unsigned i = 0; i < lift116_registry.count; i++)
         CHECK(lift116_registry.entries[i].state != OVERRIDE_FAILED, "sub_%08X did not fail", lift116_registry.entries[i].va);
     test_f2_card();
     lx_features_stop();
+}
+
+static int gpu_yes(void) { return 1; }
+static unsigned gpu_generation(void) { return 0; }
+
+/* With a GPU renderer the Direct3D path's hooks are part of the features; without one the lifted game keeps its functions. */
+static void test_direct3d_hooks(void) {
+    static const uint32_t hooks[] = { 0x00503400, 0x005242C0, 0x0055F540, 0x00563890, 0x005668C0, 0x00568EF0, 0x0057B7B0, 0x0057DB50, 0x0060E3F0 };
+    static lx_gpu_ops_t ops;
+    jpt_config_t cfg;
+    override_counts_t c;
+    install_config(&cfg);
+    CHECK(lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with the Software renderer");
+    for (size_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++) CHECK(!installed(hooks[i]), "sub_%08X stays the game's", hooks[i]);
+    lx_features_stop();
+    memset(&ops, 0, sizeof ops);
+    ops.name = "test", ops.available = gpu_yes, ops.generation = gpu_generation;
+    lx_d3d_set_gpu(&ops);
+    CHECK(lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with a GPU renderer");
+    for (size_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++) CHECK(installed(hooks[i]), "sub_%08X is hooked", hooks[i]);
+    c = lx_overrides_counts();
+    CHECK(c.refused == 0 && guest_overrides_check(), "no refusal (%u)", c.refused);
+    lx_features_stop();
+    lx_d3d_set_gpu(NULL);
+}
+
+/* The other lifts list the same functions at their own addresses, or the install above would refuse their run. */
+static void test_direct3d_hooks_of_every_lift(void) {
+    static const unsigned hooks[] = { GVA_ID(0x00503400), GVA_ID(0x005242C0), GVA_ID(0x0055F540), GVA_ID(0x00563890), GVA_ID(0x005668C0),
+                                      GVA_ID(0x00568EF0), GVA_ID(0x0057B7B0), GVA_ID(0x0057DB50), GVA_ID(0x0060E3F0) };
+    static const uint32_t es[] = {
+#define GUEST_OVERRIDE(va, need) 0x##va##u,
+#include "profiles/lift_es117/guest_override_list.h"
+#undef GUEST_OVERRIDE
+    };
+    static const uint32_t ptbr[] = {
+#define GUEST_OVERRIDE(va, need) 0x##va##u,
+#include "profiles/lift_ptbr117/guest_override_list.h"
+#undef GUEST_OVERRIDE
+    };
+    static const struct {
+        jpt_lift_t lift;
+        const uint32_t* list;
+        size_t count;
+    } k[] = { { JPT_LIFT_ES117, es, sizeof es / sizeof es[0] }, { JPT_LIFT_PTBR117, ptbr, sizeof ptbr / sizeof ptbr[0] } };
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        for (size_t h = 0; h < sizeof hooks / sizeof hooks[0]; h++) {
+            uint32_t va = jpt_lift_data[k[i].lift].gva[hooks[h]];
+            int listed = 0;
+            for (size_t n = 0; n < k[i].count; n++) listed |= k[i].list[n] == va;
+            CHECK(va && listed, "lift %d lists sub_%08X (hook %u)", (int)k[i].lift, va, (unsigned)h);
+        }
 }
 
 static void test_settings_choose(void) {
@@ -359,6 +418,125 @@ static void test_field_of_view(void) {
     }
     CHECK(readf(s_props + 0x48) == tan_game, "the caller's properties are put back: callers copy, edit and set them again");
     CHECK(readf(s_camera + PROPS_IN_CAMERA + 0x48) == tan_game, "and the camera keeps the game's own angle, savegames keep it");
+    lx_features_stop();
+}
+
+#define SHADOW_CLUT 0x00A40000u
+#define SHADOW_TABLE 0x00A50000u
+#define SHADOW_FRAME_FROM_CAMERA 0x22Cu
+
+static void body_terrain_update(void) {
+    uint32_t args[2] = { 0, 0 };
+    g_ecx = 0x00A60000u;
+    push_args(2, args);
+    lift116_sub_0049E530();
+}
+
+static uint32_t pixel_at(uint32_t row, uint32_t entry) { return read32(SHADOW_TABLE + (row * 256u + entry) * 2u) & 0xFFFFu; }
+
+/* A terrain ramp as CClut builds it: 32 rows of 256 RGB555 entries from the darkest light to full light. */
+static void build_ramp(float start) {
+    const float scale = (32.0f - 0.02f) / (1.0f - start);
+    static const uint8_t format[7] = { 16, 10, 3, 5, 3, 0, 3 };
+    for (uint32_t at = 0; at < 0x6Cu; at += 4) write32(SHADOW_CLUT + at, 0);
+    write32(SHADOW_CLUT + 0x14, 32), write32(SHADOW_CLUT + 0x18, 1);
+    writef(SHADOW_CLUT + 0x1C, scale), writef(SHADOW_CLUT + 0x20, 0.01f - start * scale);
+    write32(SHADOW_CLUT + 0x2C, 32), writef(SHADOW_CLUT + 0x30, start);
+    write32(SHADOW_CLUT + 0x38, SHADOW_TABLE), write32(SHADOW_CLUT + 0x40, 2), write32(SHADOW_CLUT + 0x4C, 256);
+    gp_copy_out(SHADOW_CLUT + 0x64, format, sizeof format);
+    for (uint32_t row = 0; row < 32; row++)
+        for (uint32_t i = 0; i < 256; i += 2) {
+            uint32_t v = (uint32_t)((start + (float)row / 31.0f * (1.0f - start)) * 31.0f), px = v << 10 | v << 5 | v;
+            write32(SHADOW_TABLE + (row * 256u + i) * 2u, px << 16 | px);
+        }
+    write32(0x0066FA0Cu, SHADOW_CLUT);
+}
+
+/* ShadowLighting's frame and the camera it builds there, with its light level. */
+static void shadow_call(uint32_t level, uint32_t moving) {
+    uint32_t frame = s_camera + SHADOW_FRAME_FROM_CAMERA;
+    write32(frame + 0x14, level), write32(frame + 0x18, moving), write32(frame + 0x1C, 1u - moving);
+    write32(0x0066FA14u, level);
+    writef(s_props, 256.0f), writef(s_props + 4, 256.0f);
+    write32(s_props + 0x34, 1), writef(s_props + 0x38, 1.0f), writef(s_props + 0x3C, 2000.0f);
+}
+
+static uint32_t shadow_level_after(void) {
+    run_on_guest(body_set_properties);
+    return read32(s_camera + SHADOW_FRAME_FROM_CAMERA + 0x14);
+}
+
+static void test_terrain_shadows(void) {
+    jpt_config_t cfg;
+    uint32_t built;
+    install_config(&cfg);
+    cfg.aspect = 0;
+    CHECK(cfg.shadows_enabled && lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with shadows on");
+    g_body = NULL;
+    write32(0x0073F444u, 0);
+    s_camera = 0x00A20000u;
+    s_props = s_camera + PROPS_IN_CAMERA;
+    write32(0x0066FA0Cu, 0);
+    run_on_guest(body_terrain_update);
+    shadow_call(0, 1);
+    CHECK(shadow_level_after() == 0, "no Direct3D ramp: nothing is changed");
+    shadow_call(9, 1);
+    CHECK(shadow_level_after() == 9, "nor without one is a light level");
+
+    build_ramp(0.8685f);
+    run_on_guest(body_terrain_update);
+    CHECK(pixel_at(0, 4) == (19u << 10 | 19u << 5 | 19u) && pixel_at(31, 4) == 0x7FFFu && pixel_at(1, 4) == pixel_at(2, 4),
+          "row 0 is the shadow's, the lit rows are the game's (%04X %04X)", pixel_at(0, 4), pixel_at(31, 4));
+    CHECK(readf(SHADOW_CLUT + 0x1C) * 0.8685f + readf(SHADOW_CLUT + 0x20) >= 1.0f &&
+          readf(SHADOW_CLUT + 0x1C) + readf(SHADOW_CLUT + 0x20) < 32.0f, "and no light of the terrain reaches it");
+    {
+        float scale = readf(SHADOW_CLUT + 0x1C);
+        run_on_guest(body_terrain_update);
+        CHECK(readf(SHADOW_CLUT + 0x1C) == scale, "once per ramp");
+    }
+    for (uint32_t moving = 0; moving < 2; moving++) {
+        shadow_call(1, moving);
+        CHECK(shadow_level_after() == 0, "a shadow lighter than at the default brightness draws with the shadow row (moving %u)", moving);
+    }
+    shadow_call(1, 1);
+    writef(s_props + 0x3C, 1000.0f);
+    CHECK(shadow_level_after() == 1, "another camera is left alone");
+    shadow_call(1, 1);
+    write32(0x0066FA14u, 2);
+    CHECK(shadow_level_after() == 1, "so is a frame whose light level is not the shadow's");
+    shadow_call(1, 1);
+    write32(s_camera + SHADOW_FRAME_FROM_CAMERA + 0x1C, 1);
+    CHECK(shadow_level_after() == 1, "or whose passes do not add up");
+    shadow_call(1, 1);
+    s_props = 0x00A30000u;
+    for (uint32_t at = 0; at < PROPS_SIZE; at += 4) write32(s_props + at, read32(s_camera + PROPS_IN_CAMERA + at));
+    CHECK(shadow_level_after() == 1, "or a camera given other properties than its own");
+    s_props = s_camera + PROPS_IN_CAMERA;
+
+    build_ramp(0.4f);
+    run_on_guest(body_terrain_update);
+    shadow_call(1, 1);
+    CHECK(shadow_level_after() == 1, "a shadow already darker keeps its light level");
+    shadow_call(26, 0);
+    CHECK(shadow_level_after() == 0, "a brighter one in an older ramp does not");
+
+    build_ramp(0.8685f);
+    built = pixel_at(0, 4);
+    write32(SHADOW_CLUT + 0x14, 64);
+    run_on_guest(body_terrain_update);
+    shadow_call(1, 1);
+    CHECK(pixel_at(0, 4) == built && shadow_level_after() == 1, "a ramp of another shape is refused");
+    lx_features_stop();
+
+    install_config(&cfg);
+    cfg.aspect = 0, cfg.shadows_enabled = 0;
+    CHECK(lx_features_start(&cfg, "game", "en-116", NULL, NULL), "features start with shadows off");
+    build_ramp(0.8685f);
+    built = pixel_at(0, 4);
+    run_on_guest(body_terrain_update);
+    shadow_call(1, 1);
+    CHECK(pixel_at(0, 4) == built && shadow_level_after() == 1, "Shadows Off: the ramp and the light level are the game's");
+    write32(0x0066FA0Cu, 0);
     lx_features_stop();
 }
 
@@ -545,7 +723,29 @@ static void test_safe_mode_and_registry_policy(void) {
     call_import("advapi32.dll", "RegSetValueExA", 6, args);
     CHECK(query_dword(key, "Safemode") == 0, "Safe Mode is suppressed: the game's 'unstable last time' flag reads 0 even after it wrote 1");
     CHECK(safemode_value_virtual(0) == 1 && safemode_value_virtual(1) == 0, "the shared policy: virtual unless the legacy dialog is asked for");
+    {
+        static lx_gpu_ops_t ops;
+        uint32_t guid = 0x00A80700u, size_va = 0x00A80740u, type_va = 0x00A80744u;
+        CHECK(query_dword(key, "Use D3D") == 0, "Use D3D is 0 without a GPU renderer");
+        ops.available = gpu_yes, ops.generation = gpu_generation;
+        lx_d3d_set_gpu(&ops);
+        CHECK(query_dword(key, "Use D3D") == 1 && query_dword(key, "Hardware Water") == 1 && query_dword(key, "RenderQuality") == ENGINE_RENDER_QUALITY_TOP,
+              "with one the game takes its Direct3D path, its hardware water and its top quality");
+        args[0] = key, args[1] = put_text(0x00A80400u, "D3D GUID"), args[2] = 0, args[3] = type_va, args[4] = guid, args[5] = size_va;
+        write32(size_va, 16);
+        CHECK(call_import("advapi32.dll", "RegQueryValueExA", 6, args) == 0 && read32(type_va) == 3 && read32(size_va) == 16 && read32(guid) == 0x84E63DE0u,
+              "and the hardware device's GUID");
+        lx_d3d_set_gpu(NULL);
+        CHECK(query_dword(key, "Use D3D") == 0, "nothing of it is stored");
+    }
     CHECK(query_dword(key, "AudioEnable3D") == 0, "AudioEnable3D stays 0 whatever is stored");
+    for (uint32_t level = 5; level <= 9; level += 2) {
+        args[0] = key, args[1] = put_text(0x00A80400u, "Gamma"), args[2] = 0, args[3] = 4, args[4] = 0x00A80500u, args[5] = 4;
+        write32(0x00A80500u, level);
+        call_import("advapi32.dll", "RegSetValueExA", 6, args);
+        CHECK(query_dword(key, "Gamma") == (level > ENGINE_GAMMA_TOP ? ENGINE_GAMMA_TOP : level),
+              "a brightness level without shading reads as the last one that has it");
+    }
     CHECK(query_dword(key, "UseSubTitles") == 1, "subtitles are On until the game's options store a choice");
     guest_skip_video(1);
     CHECK(query_dword(key, "NoVideo") == 1, "Skip Intro: NoVideo reads 1 while an opening is skipped");
@@ -722,12 +922,15 @@ int main(void) {
     lx_lift116_register_overrides();
     test_tables();
     test_install();
+    test_direct3d_hooks();
+    test_direct3d_hooks_of_every_lift();
     test_settings_choose();
     test_fingerprints();
     test_duplicates_and_rollback();
     test_replace_abi();
     test_ecx_reaches_the_lifted_body();
     test_field_of_view();
+    test_terrain_shadows();
     test_nested_around();
     test_lift_hooks_are_defined();
     test_dual_stow();

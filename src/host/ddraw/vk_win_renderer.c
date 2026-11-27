@@ -10,6 +10,7 @@
 #include "jpt_display.h"
 #include "jpt_present_policy.h"
 #include "jpt_renderer.h"
+#include "jpt_texhw.h"
 #include "renderer_backend.h"
 #include "target_sync.h"
 #include "texture_gpu_policy.h"
@@ -200,7 +201,11 @@ static struct {
     size_t sub_rgba_cap;
     float* wave_buf;
     size_t wave_cap;
-    unsigned wave_serial;
+    struct {
+        const void* drawn;
+        unsigned serial, used;
+    } wave_slots[JPT_VK_WAVE_SLOTS];
+    unsigned wave_clock;
 
     /* Frontend HD / UI Canvas / Still picture state */
     const uint32_t* fe_pixels;
@@ -262,7 +267,7 @@ static struct {
     unsigned long long tex_palette_refresh;
     unsigned long long tex_unavailable_logged;
     unsigned long long water_requested;
-    unsigned long long water_no_link;
+    unsigned long long blended_not_water;
     unsigned long long water_wave_uploads;
     unsigned long long sky_requested;
     struct {
@@ -452,6 +457,8 @@ static void choose_internal_size(uint32_t legacy_w, uint32_t legacy_h, uint32_t*
     *out_h = h ? h : (legacy_h ? legacy_h : 480u);
 }
 
+static void drop_overrides(void);
+
 static void drop_all_textures(void) {
     for (int i = 0; i < V.tex_count; i++) {
         vk_win_tex_t* e = V.tex_entries[i];
@@ -475,8 +482,10 @@ static void release_vk_instance(void) {
         if (V.active_target) tsync_gpu_gone(&V.active_target->sync);
         bank_vk_stats();
         drop_all_textures();
+        drop_overrides();
         jpt_vk_renderer_destroy(V.vk);
         V.vk = NULL;
+        if (!V.test_headless) window_host_presentation_target(0);
     }
     V.frame_open = 0;
     V.drew_3d = 0;
@@ -551,10 +560,12 @@ static int ensure_vk_renderer(HWND game_window, uint32_t legacy_w, uint32_t lega
                      (uint32_t)(uintptr_t)surf, err[0] ? err : "unknown error");
             return 0;
         }
+        memset(V.wave_slots, 0, sizeof V.wave_slots);
         V.game_hwnd = game_window;
         V.surface_hwnd = surf;
         V.rt_w = iw;
         V.rt_h = ih;
+        if (!V.test_headless) window_host_presentation_target(1);
         if (V.debug_flags) jpt_vk_renderer_set_debug_output(V.vk, V.debug_flags);
         jpt_vk_renderer_set_present_options(V.vk, V.vsync, V.fullscreen, effective_stretch(game_window, surf));
 
@@ -748,6 +759,50 @@ static int upload_surface_pixels(dd_surface_t* s, int fmt, const jpt_render_rect
     return jpt_vk_renderer_update_texture(V.vk, e->vk_tex_id, &desc, rows, rect);
 }
 
+#define OVERRIDE_POOL_SIDE 256u
+static uint64_t s_overrides[JPT_TEXHW_FILES_MAX][JPT_TEXHW_CLASSES];
+static unsigned s_override_generation;
+
+static void drop_overrides(void) {
+    for (int i = 0; i < JPT_TEXHW_FILES_MAX; i++)
+        for (int k = 0; k < JPT_TEXHW_CLASSES; k++) {
+            if (s_overrides[i][k] && V.vk && jpt_vk_renderer_texture_alive(V.vk, s_overrides[i][k])) jpt_vk_renderer_destroy_texture(V.vk, s_overrides[i][k]);
+            s_overrides[i][k] = 0;
+        }
+}
+
+/* A custom level's picture that stands for the texture. */
+static uint64_t override_picture(int id, jpt_texhw_class_t as, int alpha) {
+    jpt_render_tex_desc_t desc;
+    jpt_picture_t picture;
+    uint64_t* at;
+    if (s_override_generation != jpt_texhw_generation()) {
+        drop_overrides();
+        s_override_generation = jpt_texhw_generation();
+    }
+    if (!V.vk || id < 1 || id > JPT_TEXHW_FILES_MAX) return 0;
+    at = &s_overrides[id - 1][as];
+    if (*at && !jpt_vk_renderer_texture_alive(V.vk, *at)) *at = 0;
+    if (*at || jpt_texhw_picture(id, as, &picture) <= 0) return *at;
+    memset(&desc, 0, sizeof desc);
+    desc.width = picture.width;
+    desc.height = picture.height;
+    desc.pitch = picture.width * 4u;
+    desc.format = JPT_TEXFMT_BGRA8888_PREPARED;
+    desc.has_alpha = alpha;
+    desc.mip_levels = d3dt_filter_uses_mips(V.filter_d3dr) && picture.levels > 1 ? (uint32_t)picture.levels : 0;
+    desc.standalone = picture.width > OVERRIDE_POOL_SIDE || picture.height > OVERRIDE_POOL_SIDE;
+    *at = jpt_vk_renderer_create_texture(V.vk, &desc, picture.bgra);
+    jpt_picture_free(&picture);
+    return *at;
+}
+
+static uint64_t override_for(const dd_surface_t* s) {
+    const int fmt = pixelformat_to_d3dt(&s->format), alpha = d3dt_format_has_alpha(fmt);
+    if (fmt == D3DT_FMT_UNKNOWN) return 0;
+    return override_picture(s->override_id, !alpha ? JPT_TEXHW_OPAQUE : fmt == D3DT_FMT_ARGB1555 ? JPT_TEXHW_CUTOUT : JPT_TEXHW_BLENDED, alpha);
+}
+
 static uint64_t ensure_surface_vk_texture_untimed(dd_surface_t* s, const char** why);
 static uint64_t ensure_surface_vk_texture(dd_surface_t* s, const char** why) {
     uint64_t result_;
@@ -769,6 +824,10 @@ static uint64_t ensure_surface_vk_texture_untimed(dd_surface_t* s, const char** 
     if (!V.vk || !s) {
         *why = "no Vulkan renderer";
         return 0;
+    }
+    if (s->override_id) {
+        const uint64_t picture = override_for(s);
+        if (picture) return picture;
     }
     fmt = pixelformat_to_d3dt(&s->format);
     if (fmt == D3DT_FMT_UNKNOWN) {
@@ -1460,9 +1519,9 @@ static void log_u64_histogram(const char* label, const uint64_t* counts, const c
 
 static void log_evidence_summary(const jpt_vk_renderer_stats_t* st) {
     host_log("vulkan", "evidence: ambient occlusion %llu passes executed (requested level %s), water %llu requested / "
-             "%llu Vulkan draws (%llu without a wave link, %llu wave uploads), enhanced sky %llu requested / %llu "
+             "%llu Vulkan draws (%llu wave uploads; %llu alpha-blended draws of other textures), enhanced sky %llu requested / %llu "
              "Vulkan draws", (unsigned long long)st->ao_passes, jpt_ao_names[V.ao_level], V.water_requested,
-             (unsigned long long)st->water_draws, V.water_no_link, V.water_wave_uploads, V.sky_requested,
+             (unsigned long long)st->water_draws, V.water_wave_uploads, V.blended_not_water, V.sky_requested,
              (unsigned long long)st->sky_draws);
 }
 
@@ -2580,6 +2639,20 @@ static void note_fvf(DWORD fvf) {
     }
 }
 
+/* Each water texture keeps its own wave field, as in the Direct3D 11 renderer. */
+static unsigned wave_slot_for(const void* drawn) {
+    unsigned at = 0;
+    for (unsigned i = 0; i < JPT_VK_WAVE_SLOTS; i++) {
+        if (V.wave_slots[i].drawn == drawn) {
+            at = i;
+            break;
+        }
+        if (V.wave_slots[i].used < V.wave_slots[at].used) at = i;
+    }
+    V.wave_slots[at].used = ++V.wave_clock;
+    return at;
+}
+
 static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
                            DWORD index_count);
 static HRESULT vk_win_draw(d3d_device_t* dev, int type, DWORD fvf, const void* vertices, DWORD count, const WORD* indices,
@@ -2692,7 +2765,7 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
         st.src_blend == D3DBLEND_SRCALPHA && st.dst_blend == D3DBLEND_INVSRCALPHA) {
         const fx_water_link_t* link = fx_water_link(dev->texture);
         if (link && link->width > 0 && link->height > 0) {
-            unsigned serial = fx_water_serial();
+            unsigned serial = fx_water_serial(), slot = wave_slot_for(dev->texture);
             size_t floats = (size_t)link->width * (size_t)link->height * 2u;
             if (floats > V.wave_cap) {
                 float* grown = (float*)realloc(V.wave_buf, floats * sizeof(float));
@@ -2702,14 +2775,17 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
                 }
             }
             const float* upload_waves = NULL;
-            if (V.wave_buf && V.wave_cap >= floats && V.wave_serial != serial) {
+            if (V.wave_buf && V.wave_cap >= floats &&
+                (V.wave_slots[slot].drawn != dev->texture || V.wave_slots[slot].serial != serial)) {
                 fx_water_fill(link->bits, link->pitch, link->width, link->height, V.wave_buf, NULL);
-                V.wave_serial = serial;
+                V.wave_slots[slot].drawn = dev->texture;
+                V.wave_slots[slot].serial = serial;
                 upload_waves = V.wave_buf;
                 V.water_wave_uploads++;
             }
             float bounds[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
             fx_water_scene_bounds(vpx, vpy, vpx + (long)vpw, vpy + (long)vph, (int)V.rt_w, (int)V.rt_h, bounds);
+            jpt_vk_renderer_select_waves(V.vk, slot);
             jpt_vk_renderer_set_water_params(V.vk, FX_WATER_STRENGTH, FX_WATER_RHW_METRE, bounds[0], bounds[1],
                                              bounds[2], bounds[3], upload_waves, (uint32_t)link->width,
                                              (uint32_t)link->height);
@@ -2720,9 +2796,13 @@ static HRESULT vk_win_draw_untimed(d3d_device_t* dev, int type, DWORD fvf, const
             V.water_requested++;
             V.water_batches++;
         } else {
-            V.water_no_link++;
+            V.blended_not_water++;
         }
     }
+
+    if (!indices && st.has_texture && dev->texture->override_id && st.texture_id == override_for(dev->texture) && (st.lit = jpt_lit_draw(count)) != NULL &&
+        (st.normal_id = override_picture(st.lit->normal, JPT_TEXHW_NORMAL, 1)) == 0)
+        st.lit = NULL;
 
     if ((size_t)count > V.vtx_cap) {
         jpt_render_vertex_t* grown = (jpt_render_vertex_t*)realloc(V.vtx_buf, (size_t)count * sizeof *grown);
@@ -2950,7 +3030,6 @@ static void vk_win_texture_loaded(dd_surface_t* dst, const dd_surface_t* src) {
     if (!dst || !src) return;
     fx_water_loaded(dst, src, (uintptr_t)src->bits, src->pitch, (int)src->width, (int)src->height,
                     dd_format_bytes(&src->format));
-    if (dst->gpu_texture) ((vk_win_tex_t*)dst->gpu_texture)->dirty = 1;
 }
 
 static void vk_win_set_ui_layer(const uint16_t* bits, long pitch, int guest_w, int guest_h) {
@@ -3717,6 +3796,7 @@ void vk_win_test_bridge_stats(vk_win_test_bridge_stats_t* out) {
     out->untracked_writes = V.tex_untracked_writes;
     out->palette_refreshes = V.tex_palette_refresh;
     out->water_requested = V.water_requested;
+    out->dynamic_textures = V.dynamic_textures;
     out->sky_requested = V.sky_requested;
     out->composites = V.sync_composites;
     out->uploads = V.sync_uploads;

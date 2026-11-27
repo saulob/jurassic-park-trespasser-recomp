@@ -1022,6 +1022,11 @@ dd_surface_t* d3d_surface_from_texture(void* iface) {
     return iface && ((dd_face_t*)iface)->vtbl == &s_texture2_vtbl ? DD_OWNER(dd_surface_t, iface) : NULL;
 }
 
+void d3dr_texture_override(uint32_t iface, int id) {
+    dd_surface_t* s = d3d_surface_from_texture((void*)(uintptr_t)iface);
+    if (s) s->override_id = id;
+}
+
 int d3d_is_texture_iid(REFIID riid) { return IsEqualGUID(riid, &IID_IDirect3DTexture2); }
 
 static HRESULT STDMETHODCALLTYPE tx_QueryInterface(IDirect3DTexture2* This, REFIID riid, LPVOID* out) {

@@ -197,6 +197,9 @@ void jpt_vk_renderer_clear(jpt_vk_renderer_t* r, int clear_color, uint32_t argb,
 void jpt_vk_renderer_set_viewport(jpt_vk_renderer_t* r, int32_t x, int32_t y, uint32_t w, uint32_t h);
 void jpt_vk_renderer_set_scissor(jpt_vk_renderer_t* r, int enabled, int32_t x, int32_t y, uint32_t w, uint32_t h);
 
+#define JPT_VK_WAVE_SLOTS 4u
+/* The wave field the next set_water_params uploads to and the water draws after it sample. */
+void jpt_vk_renderer_select_waves(jpt_vk_renderer_t* r, uint32_t slot);
 void jpt_vk_renderer_set_water_params(jpt_vk_renderer_t* r, float strength, float rhw_metre, float vp_u0, float vp_v0,
                                       float vp_u1, float vp_v1, const float* waves_rg, uint32_t waves_w,
                                       uint32_t waves_h);
@@ -227,6 +230,7 @@ typedef struct {
     uint32_t idx_offset, idx_count;
     int32_t vtx_offset;
     uint32_t texture;
+    uint32_t blend; /* 0 alpha, 1 additive */
 } jpt_vk_ui_cmd_t;
 
 typedef struct {

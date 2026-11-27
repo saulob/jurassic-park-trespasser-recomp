@@ -20,7 +20,14 @@ std::string Lower(std::string text) {
 }
 
 bool HasExtension(const fs::path& name, std::string_view extension) {
-    return extension.empty() || Lower(Utf8(name.extension())) == Lower(std::string(extension));
+    const std::string own = Lower(Utf8(name.extension()));
+    while (!extension.empty()) {
+        const size_t end = std::min(extension.find(';'), extension.size());
+        if (own == Lower(std::string(extension.substr(0, end)))) return true;
+        extension.remove_prefix(std::min(end + 1, extension.size()));
+        if (extension.empty()) return false;
+    }
+    return true;
 }
 
 fs::path HomeFolder() {

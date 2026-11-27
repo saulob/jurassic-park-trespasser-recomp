@@ -17,6 +17,8 @@ struct ID3D11RenderTargetView;
 typedef struct {
     struct ID3D11ShaderResourceView* depth;   /* R24_UNORM_X8_TYPELESS view, multisampled or not */
     struct ID3D11ShaderResourceView* stencil; /* X24_TYPELESS_G8_UINT view of the same buffer: 0 where AO applies */
+    struct ID3D11ShaderResourceView* color;   /* the resolved scene before gamma; alpha: the share the fog leaves visible */
+    float fog[3];                             /* the colour of the rest */
     unsigned width, height, samples;
     float tan_half_x, tan_half_y;
 } assao_scene_t;
@@ -27,8 +29,8 @@ int assao_ready(void);
 void assao_set_quality(int level); /* JPT_AO_* */
 int assao_quality(void);
 int assao_resize(unsigned width, unsigned height);
-/* Multiplies out, the scene's size, by the occlusion of the pixels the stencil leaves open, and leaves out bound as the
- * only render target. 0 when nothing was drawn. */
+/* Multiplies out, the scene's size, by the occlusion of the pixels the stencil leaves open, never darkening their fog,
+ * and leaves out bound as the only render target. 0 when nothing was drawn. */
 int assao_render(struct ID3D11DeviceContext* context, const assao_scene_t* scene, struct ID3D11RenderTargetView* out);
 void assao_shutdown(void);
 unsigned long long assao_frames(void);

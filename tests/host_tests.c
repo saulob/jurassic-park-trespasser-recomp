@@ -1046,6 +1046,14 @@ static void test_states(void) {
     CHECK(d3dt_blend_pair(12, 1, &s, &d, &sa, &da) && s == 5 && d == 6);
     CHECK(d3dt_blend_pair(13, 1, &s, &d, &sa, &da) && s == 6 && d == 5);
     CHECK(!d3dt_blend_pair(0, 2, &s, &d, &sa, &da));
+    CHECK(d3dt_ao_blend_pair(5, 6, &s, &d, &sa, &da) && s == 18 && d == 19 && sa == 18 && da == 19);
+    CHECK(d3dt_ao_blend_pair(6, 5, &s, &d, &sa, &da) && s == 19 && d == 18 && sa == 19 && da == 18);
+    CHECK(d3dt_ao_blend_pair(2, 1, &s, &d, &sa, &da) && s == 2 && d == 1 && sa == 2 && da == 1);
+    CHECK(d3dt_ao_blend_pair(2, 2, &s, &d, &sa, &da) && s == 2 && d == 2 && sa == 1 && da == 2);
+    CHECK(d3dt_ao_blend_pair(9, 1, &s, &d, &sa, &da) && s == 9 && d == 1 && sa == 1 && da == 2);
+    CHECK(d3dt_ao_blend_pair(7, 8, &s, &d, &sa, &da) && s == 2 && d == 1);
+    CHECK(d3dt_ao_blend_pair(11, 8, &s, &d, &sa, &da) && s == 1 && d == 1);
+    CHECK(!d3dt_ao_blend_pair(0, 2, &s, &d, &sa, &da));
     CHECK(d3dt_compare(7) == 7 && d3dt_compare(0) == 0 && d3dt_compare(9) == 0);
     CHECK(d3dt_address(3) == 3 && d3dt_address(5) == 0);
     CHECK(d3dt_cull(1) == 1 && d3dt_cull(2) == 2 && d3dt_cull(3) == 3 && d3dt_cull(4) == 0);
@@ -1295,6 +1303,32 @@ static void test_terrain_blend(void) {
     CHECK(d3dt_texture_blend(6, 0xFFFF8000u, 0x40808080u, 1) == 0x40804000u);
     CHECK(d3dt_texture_blend(6, 0xFEFF8000u, 0x40808080u, 1) == 0x40808080u);
     CHECK(d3dt_texture_blend(8, 0xFFF0F0F0u, 0x20404040u, 0) == 0x20FFFFFFu);
+}
+
+/* What a batch is drawn with follows the device's states, and a change of any state in it draws the open batch first. */
+static void test_draw_constants(void) {
+    enum { SHADE = 9, ALPHATEST = 15, MAPBLEND = 21, ALPHAREF = 24, ALPHAFUNC = 25, FOG = 28, SPECULAR = 29, FOGCOLOR = 34 };
+    static const unsigned flushes[] = { SHADE, ALPHATEST, MAPBLEND, ALPHAREF, ALPHAFUNC, FOG, SPECULAR, FOGCOLOR };
+    uint32_t render[256] = { 0 };
+    d3dt_draw_constants_t off, on, c;
+    render[SHADE] = 2;
+    d3dt_draw_constants(render, &off);
+    CHECK(off.flags == 0 && off.fog[3] == 1.0f && sizeof off == 32);
+    render[FOG] = 1;
+    render[FOGCOLOR] = 0xFF336699u;
+    d3dt_draw_constants(render, &on);
+    CHECK(on.flags == D3D11_PS_FOG && on.fog[0] == 0x33 / 255.0f && on.fog[1] == 0x66 / 255.0f && on.fog[2] == 0x99 / 255.0f);
+    render[FOGCOLOR] = 0x00010203u;
+    d3dt_draw_constants(render, &c);
+    CHECK(c.flags == on.flags && c.fog[0] == 1 / 255.0f && memcmp(&c, &on, sizeof c));
+    render[FOG] = 0;
+    d3dt_draw_constants(render, &c);
+    CHECK(c.flags == 0);
+    render[SPECULAR] = 1, render[ALPHATEST] = 1, render[SHADE] = 1, render[MAPBLEND] = 2, render[ALPHAFUNC] = 5, render[ALPHAREF] = 0x10FF;
+    d3dt_draw_constants(render, &c);
+    CHECK(c.flags == (D3D11_PS_SPECULAR | D3D11_PS_ALPHA_TEST | D3D11_PS_FLAT) && c.blend_mode == 2 && c.alpha_func == 5 && c.alpha_ref == 1.0f);
+    for (size_t i = 0; i < sizeof flushes / sizeof flushes[0]; i++)
+        CHECK(d3dt_render_change_flushes(flushes[i], 0, 1) && !d3dt_render_state_keeps_batch(flushes[i]));
 }
 
 static void test_fog_and_layout(void) {
@@ -2836,6 +2870,61 @@ static void test_projected_cull(void) {
 }
 
 /* An object visited first and kept 3D holds its parts 3D in the same frame; the next frame starts empty. */
+static int ramp_row(float scale, float offset, float light, float start) {
+    return (int)((light < start ? start : light) * scale + offset);
+}
+
+/* CClu's ramp: 32 rows from the darkest light to full light, inset by the engine's tolerance. */
+static void test_terrain_shadow_row(void) {
+    static const uint8_t rgb555[6] = { 10, 3, 5, 3, 0, 3 }, rgb565[6] = { 11, 3, 5, 2, 0, 3 }, bad[6] = { 16, 3, 5, 3, 0, 3 };
+    static const float starts[] = { 0.38f, 0.627f, 0.8685f };
+    const float tolerance = 0.2f, rows = 32.0f;
+    for (int i = 0; i < 3; i++) {
+        float start = starts[i], scale = (rows - 2.0f * tolerance) / (1.0f - start), offset = tolerance - start * scale;
+        const float was_scale = scale, was_offset = offset;
+        CHECK(ramp_row(scale, offset, 0.2f, start) == 0 && !engine_ramp_reserved(scale, offset, start));
+        CHECK(engine_ramp_reserve(&scale, &offset, start, 32) && engine_ramp_reserved(scale, offset, start));
+        CHECK(!engine_ramp_reserve(&scale, &offset, start, 32));
+        for (float light = 0.0f; light <= 1.0f; light += 0.001f) {
+            int row = ramp_row(scale, offset, light, start), was = ramp_row(was_scale, was_offset, light, start);
+            CHECK(row >= 1 && row < 32 && row >= was && row <= was + 1);
+        }
+        CHECK(ramp_row(scale, offset, 1.0f, start) == 31 && ramp_row(scale, offset, 0.2f, start) == 1);
+    }
+    CHECK(engine_ramp_brightness(1, 32, 0.8685f) == 0.8685f && engine_ramp_brightness(0, 32, 0.8685f) == 0.8685f);
+    CHECK(engine_ramp_brightness(1, 32, 0.8685f) > ENGINE_SHADOW_BRIGHTNESS);
+    CHECK(engine_ramp_brightness(26, 32, 0.38f) > ENGINE_SHADOW_BRIGHTNESS);
+    CHECK(engine_ramp_brightness(1, 32, (float)pow(0.2, 0.406)) < ENGINE_SHADOW_BRIGHTNESS);
+    CHECK(engine_ramp_brightness(40, 32, 0.5f) == 1.0f && engine_ramp_brightness(5, 1, 0.5f) == 1.0f);
+    CHECK(fabs(pow(0.2, 0.29) - ENGINE_SHADOW_BRIGHTNESS) < 0.001);
+    {
+        float scale = INFINITY, offset = 0.0f, start = 1.0f;
+        CHECK(!engine_ramp_reserve(&scale, &offset, start, 32) && !engine_ramp_reserve(&scale, &offset, 0.5f, 1));
+        scale = NAN;
+        CHECK(!engine_ramp_reserve(&scale, &offset, 0.5f, 32) && !engine_ramp_reserved(scale, offset, 0.5f));
+    }
+    CHECK(engine_scale_pixel(0x7FFF, rgb555, 1.0f) == 0x7FFF && engine_scale_pixel(0xFFFF, rgb565, 1.0f) == 0xFFFF);
+    CHECK(engine_scale_pixel(0xFFFF, rgb555, 0.0f) == 0x8000 && engine_scale_pixel(0xFFFF, rgb565, 0.0f) == 0);
+    CHECK(engine_scale_pixel(0x7FFF, rgb555, ENGINE_SHADOW_BRIGHTNESS) == (19 << 10 | 19 << 5 | 19));
+    CHECK(engine_scale_pixel(0xFFFF, rgb565, ENGINE_SHADOW_BRIGHTNESS) == (19 << 11 | 40 << 5 | 19));
+    CHECK(engine_scale_pixel(0x1234, bad, 0.5f) == 0x1234);
+    for (uint32_t p = 0; p < 0x10000u; p++) CHECK(engine_scale_pixel((uint16_t)p, rgb565, ENGINE_SHADOW_BRIGHTNESS) <= p);
+}
+
+/* g_afGamma (retail .rdata): the exponent of level i is gamma[i] * (3.0 - 0.1) * 0.1. */
+static void test_gamma_level(void) {
+    static const double gamma[10] = { 3.0, 2.6, 2.2, 1.8, 1.4, 1.0, 0.6, 0.3, 0.0, 0.0 };
+    const double ambient = 0.2, lit = 0.909;
+    for (uint32_t level = 0; level < 10; level++) {
+        uint32_t used = engine_gamma_level(level);
+        double power = gamma[used] * 0.29, shadow = pow(ambient, power) / pow(lit, power);
+        CHECK(used == (level < ENGINE_GAMMA_TOP ? level : ENGINE_GAMMA_TOP));
+        CHECK(power > 0.0 && shadow < 0.9);
+    }
+    CHECK(pow(ambient, gamma[9] * 0.29) == pow(lit, gamma[9] * 0.29));
+    CHECK(engine_gamma_level(10) == ENGINE_GAMMA_TOP && engine_gamma_level(0xFFFFFFFFu) == ENGINE_GAMMA_TOP);
+}
+
 static void test_object_atomicity(void) {
     static engine_frame_slot_t set[64];
     const uint32_t object = 0x01234560u, other = 0x0BADF00Du;
@@ -3307,6 +3396,24 @@ static void test_scene_heap_overflow(void) {
         /* Depth sort's alloca arrays (8 bytes per polygon) stay far below the 4 MB guest stack. */
         CHECK(polys.capacity * polys.scale * 8u < (4u << 20) / 4u);
     }
+    /* A custom level's session: the mesh builder's arrays as one run, loaded meshes and terrain as its package asks. */
+    {
+        static const uint32_t k_mesh[] = { 2048u * 40u, 32768u * 4u, 8192u * 32u, 8192u * 12u, 8192u * 12u, 2048u * 4u };
+        engine_session_t original = { 0, 64u, 100u, 0 }, level = { 1, 64u, 100u, 0 }, plain = { 1, 0u, 0u, 0 };
+        original.mesh_faces = level.mesh_faces = 8192u;
+        for (size_t i = 0; i < 6; i++) CHECK(engine_session_heap_bytes(&plain, k_mesh[i], 1u) == k_mesh[i]);
+        for (size_t i = 0; i < 6; i++) CHECK(engine_session_heap_bytes(&original, k_mesh[i], 1u) == k_mesh[i]);
+        for (size_t i = 0; i < 6; i++) CHECK(engine_session_heap_bytes(&level, k_mesh[i], 1u) == k_mesh[i] * 4u);
+        CHECK(engine_session_heap_bytes(&level, 12345u, 1u) == 12345u && engine_session_heap_bytes(&level, k_mesh[3], 1u) == k_mesh[3]);
+        CHECK(engine_session_heap_bytes(&level, k_mesh[0], 1u) == k_mesh[0] * 4u && engine_session_heap_bytes(&level, 12345u, 2u) == 24690u);
+        CHECK(2368u * 40u > k_mesh[0] && 3934u * 40u < k_mesh[0] * 4u && 11802u * 32u < k_mesh[2] * 4u);
+        level.mesh_faces = 2604u;
+        CHECK(engine_session_heap_bytes(&level, k_mesh[0], 1u) == k_mesh[0] * 2u);
+        CHECK(engine_session_heap_bytes(&level, ENGINE_MESH_HEAP_BYTES, 1u) == 64u << 20 && engine_session_heap_bytes(&original, ENGINE_MESH_HEAP_BYTES, 1u) == ENGINE_MESH_HEAP_BYTES);
+        CHECK(engine_session_heap_bytes(&plain, ENGINE_MESH_HEAP_BYTES, 1u) == ENGINE_MESH_HEAP_BYTES && engine_session_heap_bytes(&original, 1758600u, TERRAIN_HEAP_SCALE) == 1758600u * TERRAIN_HEAP_SCALE);
+        CHECK(engine_session_heap_bytes(&level, 1758600u, 1u) == 1758600u * 8u && engine_session_heap_bytes(&level, 996520u, 1u) == 996520u * 9u && engine_session_heap_bytes(&level, 543400u, 1u) == 543400u * 8u && engine_session_heap_bytes(&plain, 1758600u, TERRAIN_HEAP_SCALE) == 1758600u * TERRAIN_HEAP_SCALE);
+        CHECK(engine_session_heap_bytes(&plain, 996520u, 1u) == 996520u && engine_session_heap_bytes(&original, 996520u, 1u) == 996520u);
+    }
 }
 
 static void test_cache_refusals(void) {
@@ -3638,6 +3745,8 @@ static void test_engine_limits(void) {
     CHECK(engine_texture_dim_policy(1) == 256 && engine_texture_dim_policy(0) == 0);
     CHECK(engine_render_quality_policy(1, 0) == 4 && !engine_render_quality_policy(1, 1) &&
           !engine_render_quality_policy(0, 0));
+    test_gamma_level();
+    test_terrain_shadow_row();
     /* x86: the texture memory the game may hold, twice over for its pages and ours, stays far below 2 GB. */
     CHECK((unsigned long long)ENGINE_TEXTURE_MB_MODERN * 2 * 1048576 < 256ull * 1048576);
     /* Terrain pages: 256 px, 16-bit, and the regular textures keep more than the old 40 MB budget gave them. */
@@ -4543,6 +4652,7 @@ int main(void) {
     test_hardware_water();
     test_skip_intro();
     test_pelvis_clamps();
+    test_draw_constants();
     test_fog_and_layout();
     test_depth_and_cull();
     test_coverage_and_uv();

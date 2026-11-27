@@ -530,6 +530,48 @@ engine_heap_t engine_heap_for(uint32_t bytes) {
     return none;
 }
 
+const char* engine_heap_name(uint32_t bytes) {
+    static const struct {
+        uint32_t bytes;
+        const char* name;
+    } k[] = { { 0x2000000u, "the heap of loaded meshes" }, { 2048u * 40u, "the mesh builder's polygons" }, { 32768u * 4u, "the mesh builder's vertex pointers" }, { 8192u * 32u, "the mesh builder's vertices" },
+              { 8192u * 12u, "the mesh builder's points" }, { 2048u * 4u, "the mesh builder's surfaces" }, { 1758600u, "the terrain's nodes" }, { 996520u, "the nodes of the terrain's queries" },
+              { 543400u, "the terrain's scaling arrays" }, { 160000u, "the terrain's triangles" }, { 4000u, "the terrain's query rectangles" }, { 0x30D400u, "the scene's vertices" },
+              { 0x4E200u, "the scene's vertex pointers" }, { 0x25D780u, "the scene's polygons" }, { 0x13880u, "the scene's polygon pointers" }, { 0x1000000u, "a 16 MB heap of objects" }, { 0x800000u, "the picture loader's heap" },
+              { 0x100000u, "the occlusion's heap" } };
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++)
+        if (k[i].bytes == bytes) return k[i].name;
+    return "a heap of the engine";
+}
+
+uint32_t engine_heap_overflow(uint32_t pv, uint32_t bytes, uint32_t end) {
+    const uint32_t room = pv < end ? end - pv : 0;
+    return bytes > room ? bytes - room : 0;
+}
+
+/* The bytes to reserve, the engine's `bytes` times `scale` being what any session gets. */
+uint32_t engine_session_heap_bytes(engine_session_t* session, uint32_t bytes, unsigned scale) {
+    static const uint32_t k_mesh[] = { 2048u * 40u, 32768u * 4u, 8192u * 32u, 8192u * 12u, 8192u * 12u, 2048u * 4u };
+    /* Trespasser CE's ExtraTerrainNodes: to the tree, the query's tree, the scaling arrays and the iterator. */
+    static const struct {
+        uint32_t bytes, nodes, for_each_thousand;
+    } k_terrain[] = { { 1758600u, 15000u, 1000u }, { 996520u, 7000u, 500u }, { 543400u, 22000u, 1500u }, { 160000u, 22000u, 1000u } };
+    const unsigned steps = sizeof k_mesh / sizeof k_mesh[0];
+    if (!session->custom_level) return bytes * scale;
+    if (session->mesh_step >= steps || bytes != k_mesh[session->mesh_step]) session->mesh_step = 0;
+    if (bytes == k_mesh[session->mesh_step]) {
+        session->mesh_step++;
+        return bytes * (session->mesh_faces > ENGINE_MESH_FACES ? (session->mesh_faces + ENGINE_MESH_FACES - 1u) / ENGINE_MESH_FACES : 1u);
+    }
+    if (bytes == ENGINE_MESH_HEAP_BYTES && session->mesh_heap_mb > (bytes >> 20)) return session->mesh_heap_mb << 20;
+    for (size_t i = 0; i < sizeof k_terrain / sizeof k_terrain[0]; i++) {
+        const unsigned nodes = k_terrain[i].nodes + session->extra_terrain_nodes * k_terrain[i].for_each_thousand;
+        const unsigned wanted = (nodes + k_terrain[i].nodes - 1u) / k_terrain[i].nodes;
+        if (bytes == k_terrain[i].bytes) return bytes * (wanted > scale ? wanted : scale);
+    }
+    return bytes * scale;
+}
+
 uint32_t engine_heap_commit_bytes(uint32_t pv, uint32_t bytes, uint32_t reservation_end, uint32_t page) {
     uint32_t want = (bytes + page - 1u) & ~(page - 1u);
     if (pv >= reservation_end) return 0;
@@ -804,6 +846,14 @@ unsigned engine_impostor_pages(unsigned cache_kb, unsigned dim) {
 
 uint32_t engine_texture_dim_policy(int modern) { return modern ? ENGINE_TEX_DIM_MODERN : 0u; }
 
+int scene_fog_clear(int32_t* bands, float* values, unsigned count, float* terrain_start) {
+    if (!count || (!bands[count - 1] && values[count - 1] == 0.0f && *terrain_start == SCENE_FOG_NEVER)) return 0;
+    memset(bands, 0, count * sizeof *bands);
+    memset(values, 0, count * sizeof *values);
+    *terrain_start = SCENE_FOG_NEVER;
+    return 1;
+}
+
 uint32_t engine_terrain_shadow_kb(uint32_t page_px) {
     uint32_t kb = page_px <= 1024u ? ENGINE_TERRAIN_SHADOW_PAGES * page_px * page_px * 2u / 1024u : 0u;
     return kb > ENGINE_TERRAIN_SHADOW_KB_ORIGINAL ? kb : ENGINE_TERRAIN_SHADOW_KB_ORIGINAL;
@@ -839,6 +889,38 @@ int registry_view_margin_name(const char* name) {
 
 uint32_t engine_render_quality_policy(int hardware, int value_stored) {
     return hardware && !value_stored ? ENGINE_RENDER_QUALITY_TOP : 0u;
+}
+
+uint32_t engine_gamma_level(uint32_t stored) { return stored > ENGINE_GAMMA_TOP ? ENGINE_GAMMA_TOP : stored; }
+
+int engine_ramp_reserved(float scale, float offset, float start) { return scale * start + offset >= 0.999f; }
+
+int engine_ramp_reserve(float* scale, float* offset, float start, uint32_t rows) {
+    const float n = (float)rows, first = *scale * start + *offset, last = *scale + *offset;
+    if (rows < 2u || !(start > 0.0f && start < 1.0f)) return 0;
+    if (!(first > -0.5f && first < 0.5f) || !(last > n - 1.0f && last < n + 0.5f)) return 0;
+    *scale *= (n - 1.0f) / n;
+    *offset = *offset * (n - 1.0f) / n + 1.0f;
+    return 1;
+}
+
+float engine_ramp_brightness(uint32_t level, uint32_t rows, float start) {
+    float light;
+    if (rows < 2u) return 1.0f;
+    light = level > 1u ? (float)(level - 1u) / (float)(rows - 1u) : 0.0f;
+    return start + (light > 1.0f ? 1.0f : light) * (1.0f - start);
+}
+
+uint16_t engine_scale_pixel(uint16_t pixel, const uint8_t channels[6], float scale) {
+    uint32_t out = pixel;
+    for (int i = 0; i < 6; i += 2) {
+        uint32_t mask, value;
+        if (channels[i] > 15u || channels[i + 1] > 7u) return pixel;
+        mask = 0xFFu >> channels[i + 1];
+        value = (uint32_t)((float)((pixel >> channels[i]) & mask) * scale + 0.5f);
+        out = (out & ~(mask << channels[i])) | (value > mask ? mask : value) << channels[i];
+    }
+    return (uint16_t)out;
 }
 
 uint32_t engine_upload_clock(uint32_t start_tick, double elapsed_ms, double budget_ms) {
@@ -888,6 +970,8 @@ intro_video_t intro_video_of(const char* guest_name) {
 const char* intro_video_name(intro_video_t video) {
     return video == INTRO_STARTUP ? "tpassintro.smk" : video == INTRO_NEW_GAME ? "newgame.smk" : "";
 }
+
+int is_ending_video(const char* guest_name) { return guest_name && base_name_is(guest_name, "win"); }
 
 int skip_intro_applies(int enabled, intro_video_t video, int video_test_request) {
     return enabled && video != INTRO_NONE && !video_test_request;

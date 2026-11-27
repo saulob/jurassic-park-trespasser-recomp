@@ -1,4 +1,5 @@
 #include "linux_screen.h"
+#include "debug_menu.h"
 
 #include <string.h>
 
@@ -113,9 +114,38 @@ void lx_screen_set_client_size(int w, int h) {
     jpt_presentation_set_host(&s_pres, w, h);
 }
 
+static void frame_presented(int width, int height, const char* kind) {
+    if (++s_frames == 1) lx_log("Linux presentation", "first frame %dx%d %s presented", width, height, kind);
+    if (lx_quick_pending()) lx_quick_pump(lx_quick_guest_ops());
+    if (s_hook) {
+        lx_crash_present_stage(LX_PRESENT_FRAME_HOOK);
+        s_hook(s_frames, s_hook_user);
+    }
+    lx_crash_present_stage(LX_PRESENT_END);
+    if (s_frame_limit && s_frames >= s_frame_limit) lx_abort(LX_STOP, s_frames, "frame presented");
+}
+
+void lx_screen_present_scene(int width, int height) {
+    lx_scene_frame_t f = { width, height, NULL, 0, 0 };
+    int window_w = 0, window_h = 0;
+    if (!s_open || !lx_window_backend()->present_scene || debug_menu_start_holds_present()) return;
+    ensure_presentation();
+    lx_screen_window_client(&window_w, &window_h);
+    lx_frontend_frame(width, height, window_w, window_h);
+    lx_frontend_frame_done();
+    lx_overlay_set_picture(0, 0, 0, 0);
+    lx_overlay_frame_presented(jpt_time_ms());
+    f.overlay = lx_overlay_compose_layer(width, height, jpt_time_ms());
+    f.overlay_w = width, f.overlay_h = height;
+    if (width == s_mode.width && height == s_mode.height) jpt_presentation_commit(&s_pres, s_generation);
+    lx_crash_present_stage(LX_PRESENT_BEGIN);
+    lx_window_backend()->present_scene(lx_window_backend(), &f);
+    frame_presented(width, height, "Direct3D scene");
+}
+
 void lx_screen_present(const lx_frame_t* frame) {
     lx_frame_t f = *frame, composed;
-    if (!s_open) return;
+    if (!s_open || debug_menu_start_holds_present()) return;
     ensure_presentation();
     if (lx_vsub_compose(&f, &composed)) f = composed;
     {
@@ -138,15 +168,7 @@ void lx_screen_present(const lx_frame_t* frame) {
     if (frame->width == s_mode.width && frame->height == s_mode.height) jpt_presentation_commit(&s_pres, s_generation);
     lx_crash_present_stage(LX_PRESENT_BEGIN);
     lx_window_backend()->present(lx_window_backend(), &f);
-    if (++s_frames == 1)
-        lx_log("Linux presentation", "first frame %dx%d %s presented", f.width, f.height, f.format == LX_PF_RGB565 ? "RGB565" : "XRGB8888");
-    if (lx_quick_pending()) lx_quick_pump(lx_quick_guest_ops());
-    if (s_hook) {
-        lx_crash_present_stage(LX_PRESENT_FRAME_HOOK);
-        s_hook(s_frames, s_hook_user);
-    }
-    lx_crash_present_stage(LX_PRESENT_END);
-    if (s_frame_limit && s_frames >= s_frame_limit) lx_abort(LX_STOP, s_frames, "frame presented");
+    frame_presented(f.width, f.height, f.format == LX_PF_RGB565 ? "RGB565" : "XRGB8888");
 }
 
 unsigned lx_screen_frames(void) { return s_frames; }
@@ -154,6 +176,10 @@ void lx_screen_set_frame_limit(unsigned frames) { s_frame_limit = frames; }
 void lx_screen_set_frame_hook(lx_frame_hook_fn fn, void* user) { s_hook = fn, s_hook_user = user; }
 
 int lx_screen_client_to_guest(int cx, int cy, int* gx, int* gy) {
+    int client_w = 0, client_h = 0;
     ensure_presentation();
+    /* The window system resizes the window (maximise, tiling, F11) without telling the guest: the picture follows it, so must the mouse. */
+    lx_screen_window_client(&client_w, &client_h);
+    jpt_presentation_set_host(&s_pres, client_w, client_h);
     return jpt_presentation_to_guest(&s_pres, cx, cy, gx, gy);
 }

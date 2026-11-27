@@ -1,5 +1,10 @@
 #include "l10n.h"
 #include "linux_hle.h"
+#include "missing_textures.h"
+#include "jpt_level_gate.h"
+#include "engine_mode.h"
+#include "level_abort.h"
+#include "jpt_level_world.h"
 #include "stream_vfile.h"
 
 #include <errno.h>
@@ -514,13 +519,22 @@ static uint32_t protect_to_gm(uint32_t protect) {
     }
 }
 
+static void commit_failed(uint32_t va, uint32_t bytes) {
+    uint32_t lo = 0, size = 0;
+    if (!gm_region(va, &lo, &size, NULL) || bytes > size - (va - lo)) level_limit_exceeded("a region of the engine", va, va - lo, bytes, size);
+    level_allocation_failed("a commit of the engine", va, bytes);
+}
+
 static uint64_t k_VirtualAlloc(const uint32_t* a, void* u) {
     uint32_t address = a[0], size = a[1], type = a[2], base = address;
     (void)u;
     if (!size) return set_error(ERROR_INVALID_PARAMETER), 0;
+    if (!address && type == MEM_RESERVE) size = engine_heaps_region_bytes(size);
+    if (!address && type == (MEM_RESERVE | MEM_COMMIT)) size = engine_heaps_buffer_bytes(size);
     size = (size + GM_PAGE - 1) & ~(GM_PAGE - 1);
     if (type & MEM_RESERVE) {
         base = gm_reserve(address, size, "VirtualAlloc");
+        if (!base && jpt_custom_level_active()) level_allocation_failed("a reservation of the engine", address, size);
         if (!base) return set_error(address ? ERROR_INVALID_PARAMETER : ERROR_NOT_ENOUGH_MEMORY), 0;
     } else if (!(type & MEM_COMMIT) || !address) {
         return set_error(ERROR_INVALID_PARAMETER), 0;
@@ -530,6 +544,7 @@ static uint64_t k_VirtualAlloc(const uint32_t* a, void* u) {
         uint32_t end = (base + size + GM_PAGE - 1) & ~(GM_PAGE - 1);
         if (!gm_commit(page, end - page, protect_to_gm(a[3]))) {
             if (type & MEM_RESERVE) gm_release(base);
+            if (jpt_custom_level_active()) commit_failed(page, end - page);
             return set_error(ERROR_NOT_ENOUGH_MEMORY), 0;
         }
     }
@@ -737,6 +752,19 @@ static int resolve(const char* guest, int create, char* host, size_t cap) {
     return 0;
 }
 
+static int resolve_read(const char* guest, char* host, size_t cap, int* overlaid) {
+    int r = jpt_vpath_resolve_read(s_vpath, guest, host, cap, overlaid);
+    if (r == JPT_VP_OK) return 1;
+    set_error(r == JPT_VP_NOT_FOUND ? ERROR_FILE_NOT_FOUND : ERROR_PATH_NOT_FOUND);
+    return 0;
+}
+
+static int write_refused(const char* guest) {
+    if (!s_vpath || !jpt_vpath_write_refused(s_vpath, guest)) return 0;
+    set_error(ERROR_ACCESS_DENIED);
+    return 1;
+}
+
 static int pread_exact(void* context, uint64_t offset, void* buffer, size_t bytes) {
     int fd = (int)(intptr_t)context;
     uint8_t* out = (uint8_t*)buffer;
@@ -749,25 +777,54 @@ static int pread_exact(void* context, uint64_t offset, void* buffer, size_t byte
     return 1;
 }
 
-static stream_vfile_t* open_stream_view(int fd) {
+static stream_vfile_t* open_stream_view(int fd, int kind, int package_file) {
     struct stat st;
     if (fstat(fd, &st) != 0) return NULL;
-    return stream_vfile_open(pread_exact, (void*)(intptr_t)fd, (uint64_t)st.st_size);
+    return stream_vfile_open_kind(kind, package_file, pread_exact, (void*)(intptr_t)fd, (uint64_t)st.st_size);
+}
+
+/* A file that is only in memory, behind a descriptor of its own. */
+static uint32_t open_memory(const char* name, uint8_t* bytes, size_t size) {
+    handle_t h;
+    uint32_t v = 0;
+    memset(&h, 0, sizeof h);
+    h.kind = H_FILE;
+    h.vfile = stream_vfile_open_memory(bytes, size);
+    if (!h.vfile) return INVALID_HANDLE;
+    h.fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
+    h.guest_name = strdup(name);
+    if (h.fd >= 0) v = new_handle(&h);
+    if (v) return v;
+    stream_vfile_close(h.vfile);
+    free(h.guest_name);
+    if (h.fd >= 0) close(h.fd);
+    return INVALID_HANDLE;
 }
 
 static uint64_t k_CreateFileA(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     uint32_t access = a[1], disposition = a[4];
     char host[JPT_PATH_MAX], translated[JPT_PATH_MAX];
-    int flags = 0, fd, served;
+    int flags = 0, fd, kind = -1, overlaid = 0;
     handle_t h;
     (void)u;
     if (!name || !s_vpath) return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
     flags = (access & GENERIC_WRITE) ? ((access & GENERIC_READ) ? O_RDWR : O_WRONLY) : O_RDONLY;
-    served = disposition == OPEN_EXISTING && stream_pack_serves_open(name, access, a[5]);
-    if (served) flags = O_RDONLY;
-    if (!resolve(name, disposition != OPEN_EXISTING && disposition != TRUNCATE_EXISTING, host, sizeof host)) return INVALID_HANDLE;
-    if (disposition == OPEN_EXISTING && l10n_menu_file(name, translated, sizeof translated)) memcpy(host, translated, strlen(translated) + 1), served = 0;
+    if (disposition == OPEN_EXISTING) {
+        size_t size = 0;
+        uint8_t* set = jpt_custom_level_active() ? jpt_level_world_take_set(name, &size) : NULL;
+        if (set) return open_memory(name, set, size);
+        if (!resolve_read(name, host, sizeof host, &overlaid)) {
+            uint8_t* picture = NULL;
+            missing_texture_attempt(name, &picture, &size);
+            return picture ? open_memory(name, picture, size) : INVALID_HANDLE;
+        }
+        kind = stream_vfile_kind(name, access, a[5], overlaid);
+        if (overlaid || kind >= 0) flags = O_RDONLY;
+    } else if (write_refused(name) || !resolve(name, disposition != TRUNCATE_EXISTING, host, sizeof host)) {
+        return INVALID_HANDLE;
+    }
+    if (disposition == OPEN_EXISTING && l10n_menu_file(name, translated, sizeof translated)) memcpy(host, translated, strlen(translated) + 1), kind = -1;
     switch (disposition) {
     case CREATE_NEW: flags |= O_CREAT | O_EXCL; break;
     case CREATE_ALWAYS: flags |= O_CREAT | O_TRUNC; break;
@@ -786,7 +843,7 @@ static uint64_t k_CreateFileA(const uint32_t* a, void* u) {
     memset(&h, 0, sizeof h);
     h.kind = H_FILE;
     h.fd = fd;
-    if (served) h.vfile = open_stream_view(fd);
+    if (kind >= 0) h.vfile = open_stream_view(fd, kind, overlaid);
     h.guest_name = strdup(name);
     {
         uint32_t v = new_handle(&h);
@@ -913,7 +970,7 @@ static uint64_t k_GetFileAttributesA(const uint32_t* a, void* u) {
     struct stat st;
     (void)u;
     if (!name || !s_vpath) return set_error(ERROR_INVALID_PARAMETER), INVALID_HANDLE;
-    if (!resolve(name, 0, host, sizeof host) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), INVALID_HANDLE;
+    if (!resolve_read(name, host, sizeof host, NULL) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), INVALID_HANDLE;
     return attributes_of(&st);
 }
 
@@ -922,7 +979,8 @@ static uint64_t k_SetFileAttributesA(const uint32_t* a, void* u) {
     char host[JPT_PATH_MAX];
     struct stat st;
     (void)u;
-    if (!name || !s_vpath || !resolve(name, 0, host, sizeof host) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), 0;
+    if (!name || !s_vpath || write_refused(name)) return 0;
+    if (!resolve(name, 0, host, sizeof host) || stat(host, &st) != 0) return set_error(ERROR_FILE_NOT_FOUND), 0;
     if (a[1] & FILE_ATTRIBUTE_READONLY) chmod(host, st.st_mode & ~(mode_t)(S_IWUSR | S_IWGRP | S_IWOTH));
     else chmod(host, st.st_mode | S_IWUSR);
     return 1;
@@ -932,7 +990,7 @@ static uint64_t k_DeleteFileA(const uint32_t* a, void* u) {
     const char* name = cstr(a[0]);
     char host[JPT_PATH_MAX];
     (void)u;
-    if (!name || !s_vpath || !resolve(name, 0, host, sizeof host)) return 0;
+    if (!name || !s_vpath || write_refused(name) || !resolve(name, 0, host, sizeof host)) return 0;
     if (unlink(host) != 0) return set_error(error_of_errno()), 0;
     jpt_vpath_invalidate(s_vpath, host);
     lx_frontend_file_deleted(name);
@@ -1051,6 +1109,22 @@ static int fill_find_data(handle_t* h, uint32_t data_va) {
     return gp_copy_out(data_va, data, sizeof data);
 }
 
+/* The game's list keeps what it read before for a file it cannot read. */
+static void keep_readable_saves(const char* folder, find_collect_t* c) {
+    int kept = 0;
+    for (int i = 0; i < c->count; i++) {
+        char path[JPT_PATH_MAX], why[160];
+        const int n = snprintf(path, sizeof path, "%s/%s", folder, c->names[i]);
+        if (n > 0 && n < (int)sizeof path && jpt_gate_lists(path, why, sizeof why)) {
+            c->names[kept++] = c->names[i];
+            continue;
+        }
+        lx_log("save", "%s is not listed: %s", c->names[i], why);
+        free(c->names[i]);
+    }
+    c->count = kept;
+}
+
 /* The collected listing of a pattern as a find handle (kernel32 and the C runtime share it); INVALID_HANDLE with the error set. */
 static uint32_t find_open(const char* pattern) {
     char dir[JPT_PATH_MAX], host[JPT_PATH_MAX];
@@ -1070,6 +1144,7 @@ static uint32_t find_open(const char* pattern) {
     if (!resolve(dir, 0, host, sizeof host)) return set_error(ERROR_PATH_NOT_FOUND), INVALID_HANDLE;
     c.pattern = last;
     if (!jpt_fs_list(host, find_visit, &c)) return set_error(ERROR_PATH_NOT_FOUND), INVALID_HANDLE;
+    if (!strcasecmp(last, "SAVEGAME.*")) keep_readable_saves(host, &c);
     if (!c.count) {
         free(c.names);
         return set_error(ERROR_FILE_NOT_FOUND), INVALID_HANDLE;

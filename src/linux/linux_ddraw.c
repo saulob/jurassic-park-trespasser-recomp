@@ -6,18 +6,21 @@
 
 #include "guest_memory.h"
 #include "guest_ptr.h"
+#include "linux_d3d.h"
 #include "linux_gdi32.h"
 #include "linux_log.h"
 #include "linux_screen.h"
 #include "linux_spine.h"
 #include "linux_user32.h"
-#include "linux_vulkan.h"
 #include "linux_window.h"
 
-#define MAX_OBJECTS 256
+#define MAX_OBJECTS LX_DDRAW_OBJECTS
 #define MAX_SURFACE_SIDE 8192u
+#define MAX_CHAIN 8u
 #define FACE_BYTES 16u
 #define FACE_MAGIC 0x43464444u /* 'DDFC' */
+#define FACE_DIRECT3D 5        /* IDirect3D3, a face of the DirectDraw object */
+#define FACE_VERSIONS 6
 #define DISPLAY_BPP 16u
 #define DEVICE_IDENTIFIER_BYTES 1064u /* DDDEVICEIDENTIFIER: two 512-byte strings, the driver version, four ids and a GUID */
 
@@ -30,6 +33,7 @@
 #define DDERR(n) (0x88760000u | (n))
 #define DDERR_ALREADYINITIALIZED_ DDERR(5)
 #define DDERR_CANNOTATTACHSURFACE_ DDERR(10)
+#define DDERR_CANNOTDETACHSURFACE_ DDERR(20)
 #define DDERR_INVALIDCAPS_ DDERR(100)
 #define DDERR_INVALIDMODE_ DDERR(120)
 #define DDERR_INVALIDOBJECT_ DDERR(130)
@@ -39,6 +43,7 @@
 #define DDERR_NOCOLORKEY_ DDERR(215)
 #define DDERR_NOEXCLUSIVEMODE_ DDERR(225)
 #define DDERR_NOTFOUND_ DDERR(255)
+#define DDERR_SURFACEALREADYATTACHED_ DDERR(410)
 #define DDERR_SURFACEBUSY_ DDERR(430)
 #define DDERR_SURFACELOST_ DDERR(450)
 #define DDERR_TOOBIGSIZE_ DDERR(480)
@@ -113,6 +118,7 @@
 #define DDENUMRET_CANCEL 0u
 #define DDEDM_REFRESHRATES 1u
 
+#define DDCAPS_3D 0x1u
 #define DDCAPS_BLT 0x40u
 #define DDCAPS_BLTSTRETCH 0x200u
 #define DDCAPS_COLORKEY 0x00400000u
@@ -124,6 +130,8 @@
 #define DDFXCAPS_BLTSHRINKY 0x1000u
 #define DDFXCAPS_BLTSTRETCHX 0x4000u
 #define DDFXCAPS_BLTSTRETCHY 0x10000u
+#define DDBD_16_OR_24 0x600u
+#define DDCAPS_DWORDS 95 /* DDCAPS of DirectX 6 */
 #define DDPCAPS_8BIT 0x4u
 #define DDPCAPS_ALLOW256 0x40u
 
@@ -135,7 +143,7 @@ typedef struct {
 } device_t;
 
 typedef struct {
-    int device, root, next, orphaned, lost, locked, dc_out, has_src_key, has_dst_key, clipper, palette;
+    int device, root, next, orphaned, lost, locked, dc_out, has_src_key, has_dst_key, clipper, palette, zbuffer;
     uint32_t caps, back_buffers, width, height, bits, lock_flags;
     int32_t pitch;
     uint32_t pf[8];
@@ -147,7 +155,7 @@ typedef struct {
 } clipper_t;
 
 typedef struct {
-    uint32_t caps, entries[256];
+    uint32_t caps, *entries;
 } palette_t;
 
 typedef struct {
@@ -170,6 +178,7 @@ typedef struct {
 
 static object_t s_obj[MAX_OBJECTS];
 static uint32_t s_generation = 1;
+static int s_free_hint;
 static unsigned s_devices, s_surfaces, s_presents, s_restores;
 static uint8_t* s_convert;
 static size_t s_convert_cap;
@@ -190,26 +199,28 @@ unsigned lx_ddraw_present_count(void) { return s_presents; }
 /* ---- objects and faces ---- */
 
 static int slot_of_token(uint32_t token) {
-    uint32_t slot = token & 0xFFu;
+    uint32_t slot = token & 0xFFFFu;
     if (!slot || slot > MAX_OBJECTS) return -1;
-    return s_obj[slot - 1].used && s_obj[slot - 1].generation == (token >> 8) ? (int)slot - 1 : -1;
+    return s_obj[slot - 1].used && s_obj[slot - 1].generation == (token >> 16) ? (int)slot - 1 : -1;
 }
 
-static uint32_t token_of(int slot) { return (s_obj[slot].generation << 8) | (uint32_t)(slot + 1); }
+static uint32_t token_of(int slot) { return (s_obj[slot].generation << 16) | (uint32_t)(slot + 1); }
 
 static uint32_t vtable_for(int kind, int version);
 
 static int new_object(int kind, int nfaces, const int* versions) {
-    for (int i = 0; i < MAX_OBJECTS; i++) {
+    for (int k = 0; k < MAX_OBJECTS; k++) {
+        int i = (s_free_hint + k) % MAX_OBJECTS;
         uint32_t face[4];
         object_t* o = &s_obj[i];
         if (o->used) continue;
+        s_free_hint = (i + 1) % MAX_OBJECTS;
         memset(o, 0, sizeof *o);
         o->faces = gm_heap_alloc(FACE_BYTES * (uint32_t)nfaces, 1);
         if (!o->faces) return -1;
         o->used = 1, o->kind = kind, o->nfaces = nfaces, o->refs = 1;
-        o->generation = s_generation++ & 0xFFFFFFu;
-        if (!o->generation) o->generation = s_generation++;
+        o->generation = s_generation++ & 0xFFFFu;
+        if (!o->generation) o->generation = s_generation++ & 0xFFFFu;
         for (int f = 0; f < nfaces; f++) {
             face[0] = vtable_for(kind, versions[f]), face[1] = token_of(i), face[2] = (uint32_t)versions[f], face[3] = FACE_MAGIC;
             gp_copy_out(o->faces + FACE_BYTES * (uint32_t)f, face, sizeof face);
@@ -241,10 +252,12 @@ static void format_rgb565(uint32_t pf[8]) {
     pf[0] = 32, pf[1] = DDPF_RGB, pf[3] = 16, pf[4] = 0xF800, pf[5] = 0x07E0, pf[6] = 0x001F;
 }
 
-static int format_bytes(const uint32_t pf[8]) { return (int)((pf[3] + 7) / 8); }
+static int format_bytes(const uint32_t pf[8]) {
+    if (pf[1] & DDPF_ZBUFFER) return pf[3] > 16 ? 4 : 2;
+    return (int)((pf[3] + 7) / 8);
+}
 
 static int format_supported(const uint32_t pf[8]) {
-    if ((pf[1] & DDPF_ZBUFFER) && lx_vk_active()) return pf[3] == 16 || pf[3] == 24 || pf[3] == 32;
     if (!(pf[1] & DDPF_RGB)) return (pf[1] & DDPF_PALETTEINDEXED8) != 0;
     return pf[3] == 16 || pf[3] == 24 || pf[3] == 32;
 }
@@ -285,12 +298,12 @@ static int alloc_pixels(surface_t* s) {
 }
 
 static int new_surface(int device, uint32_t w, uint32_t h, const uint32_t pf[8], uint32_t caps) {
-    static const int versions[4] = { 1, 2, 3, 4 };
-    int slot = new_object(O_SURFACE, 4, versions);
+    static const int versions[5] = { 1, 2, 3, 4, LX_DDRAW_FACE_TEXTURE2 };
+    int slot = new_object(O_SURFACE, 5, versions);
     surface_t* s;
     if (slot < 0) return -1;
     s = surf(slot);
-    s->device = device, s->root = -1, s->next = -1, s->clipper = -1, s->palette = -1;
+    s->device = device, s->root = -1, s->next = -1, s->clipper = -1, s->palette = -1, s->zbuffer = -1;
     s->caps = caps, s->width = w, s->height = h;
     memcpy(s->pf, pf, sizeof s->pf);
     s->pf[0] = 32;
@@ -306,12 +319,14 @@ static int new_surface(int device, uint32_t w, uint32_t h, const uint32_t pf[8],
 
 static void free_surface(int slot) {
     surface_t* s = surf(slot);
-    lx_vk_surface_notify_destroy((uint32_t)slot);
+    int z = s->zbuffer;
+    lx_d3d_surface_freed(slot);
     if (s->bits) gm_heap_free(s->bits);
     if (dev(s->device)->surfaces > 0) dev(s->device)->surfaces--;
     gm_heap_free(s_obj[slot].faces);
     s_obj[slot].used = 0;
     if (s_surfaces) s_surfaces--;
+    if (z >= 0) lx_ddraw_surface_release(z);
 }
 
 static int is_front(int slot) { return (surf(slot)->caps & DDSCAPS_PRIMARYSURFACE) != 0; }
@@ -441,8 +456,12 @@ static uint32_t blt(int dslot, const int32_t* dst_rect, int sslot, const int32_t
     if (dst_rect) memcpy(d, dst_rect, sizeof d);
     if (!rect_inside(d, dst)) return DDERR_INVALIDRECT_;
     if (flags & DDBLT_COLORFILL) {
-        hr = fill_rect(dst, d, fx[20]);
-        if (hr) return hr;
+        if (!lx_d3d_fill(dslot, d, fx[20])) {
+            lx_d3d_cpu_access(dslot, CPU_ACCESS_BLT_DEST);
+            hr = fill_rect(dst, d, fx[20]);
+            if (hr) return hr;
+            lx_d3d_cpu_written(dslot, d);
+        }
     } else {
         if (!src) return E_INVALIDARG_;
         s[0] = 0, s[1] = 0, s[2] = (int32_t)src->width, s[3] = (int32_t)src->height;
@@ -450,8 +469,11 @@ static uint32_t blt(int dslot, const int32_t* dst_rect, int sslot, const int32_t
         if (!rect_inside(s, src)) return DDERR_INVALIDRECT_;
         if (flags & DDBLT_KEYSRCOVERRIDE) key.use_key = 1, key.low = fx[23], key.high = fx[24];
         else if ((flags & DDBLT_KEYSRC) && src->has_src_key) key.use_key = 1, key.low = src->src_key[0], key.high = src->src_key[1];
+        lx_d3d_cpu_access(sslot, CPU_ACCESS_BLT_SOURCE);
+        lx_d3d_cpu_access(dslot, src == dst ? CPU_ACCESS_BLT_SOURCE : CPU_ACCESS_BLT_DEST);
         hr = copy_rect(dst, d, src, s, &key);
         if (hr) return hr;
+        lx_d3d_cpu_written(dslot, d);
     }
     if (is_front(dslot)) present_surface(dslot);
     return DD_OK;
@@ -529,28 +551,28 @@ static void destroy_device_if_unused(int slot) {
     }
 }
 
-static uint64_t dd_QueryInterface(const uint32_t* a, void* u) {
-    int slot = object_of(a[0], O_DEVICE, NULL), face = -1;
-    (void)u;
-    if (slot < 0 || !a[2]) return E_INVALIDARG_;
-    gp_write_u32(a[2], 0);
-    if (IID_UNKNOWN(a[1]) || IID_DD(a[1])) face = 0;
-    else if (IID_DD2(a[1])) face = 1;
-    else if (IID_DD4(a[1])) face = 2;
-    else if (IID_D3D3(a[1]) && lx_vk_active()) {
-        uint32_t d3d = lx_vk_query_direct3d3();
-        if (d3d) {
-            gp_write_u32(a[2], d3d);
-            return DD_OK;
-        }
-    }
+uint32_t lx_ddraw_device_query(int slot, uint32_t iid, uint32_t out) {
+    int face = -1;
+    if (!out) return E_INVALIDARG_;
+    gp_write_u32(out, 0);
+    if (IID_UNKNOWN(iid) || IID_DD(iid)) face = 0;
+    else if (IID_DD2(iid)) face = 1;
+    else if (IID_DD4(iid)) face = 2;
+    else if (IID_D3D3(iid) && lx_d3d_hardware()) face = 3;
     if (face < 0) {
-        lx_log("Linux DDRAW", "QueryInterface on the DirectDraw object: interface not provided (Direct3D is not part of the software renderer)");
+        lx_log("Linux DDRAW", "QueryInterface on the DirectDraw object: interface not provided%s",
+               lx_d3d_hardware() ? "" : " (Direct3D is not part of the software renderer)");
         return E_NOINTERFACE_;
     }
     s_obj[slot].refs++;
-    gp_write_u32(a[2], face_va(slot, face));
+    gp_write_u32(out, face_va(slot, face));
     return DD_OK;
+}
+
+static uint64_t dd_QueryInterface(const uint32_t* a, void* u) {
+    int slot = object_of(a[0], O_DEVICE, NULL);
+    (void)u;
+    return slot < 0 ? E_INVALIDARG_ : lx_ddraw_device_query(slot, a[1], a[2]);
 }
 
 static uint64_t dd_AddRef(const uint32_t* a, void* u) {
@@ -558,17 +580,29 @@ static uint64_t dd_AddRef(const uint32_t* a, void* u) {
     return obj_addref(a, O_DEVICE);
 }
 
-static uint64_t dd_Release(const uint32_t* a, void* u) {
-    int slot = object_of(a[0], O_DEVICE, NULL);
-    (void)u;
-    if (slot < 0) return 0;
-    if (--s_obj[slot].refs > 0) return (uint64_t)(uint32_t)s_obj[slot].refs;
+uint32_t lx_ddraw_device_addref(int slot) { return (uint32_t)++s_obj[slot].refs; }
+
+uint32_t lx_ddraw_device_release(int slot) {
+    if (--s_obj[slot].refs > 0) return (uint32_t)s_obj[slot].refs;
     dev(slot)->mode_set = 0;
     dev(slot)->released = 1;
     lx_log("Linux DDRAW", "DirectDraw object released (%d surfaces still alive)", dev(slot)->surfaces);
     destroy_device_if_unused(slot);
     return 0;
 }
+
+static uint64_t dd_Release(const uint32_t* a, void* u) {
+    int slot = object_of(a[0], O_DEVICE, NULL);
+    (void)u;
+    return slot < 0 ? 0 : lx_ddraw_device_release(slot);
+}
+
+int lx_ddraw_device_from(uint32_t direct3d) {
+    int version = 0, slot = direct3d ? object_of(direct3d, O_DEVICE, &version) : -1;
+    return slot >= 0 && version == FACE_DIRECT3D ? slot : -1;
+}
+
+uint32_t lx_ddraw_direct3d_face(int slot) { return face_va(slot, 3); }
 
 static uint64_t dd_CreateClipper(const uint32_t* a, void* u) {
     static const int versions[1] = { 1 };
@@ -590,6 +624,12 @@ static uint64_t dd_CreatePalette(const uint32_t* a, void* u) {
     if (!a[3]) return E_INVALIDARG_;
     slot = new_object(O_PALETTE, 1, versions);
     if (slot < 0) return E_OUTOFMEMORY_;
+    s_obj[slot].u.palette.entries = (uint32_t*)calloc(256, sizeof(uint32_t));
+    if (!s_obj[slot].u.palette.entries) {
+        gm_heap_free(s_obj[slot].faces);
+        s_obj[slot].used = 0;
+        return E_OUTOFMEMORY_;
+    }
     s_obj[slot].u.palette.caps = a[1];
     if (a[2]) gp_copy_in(s_obj[slot].u.palette.entries, a[2], 256 * 4);
     gp_write_u32(a[3], face_va(slot, 0));
@@ -642,7 +682,7 @@ static uint64_t create_surface(const uint32_t* a, int version) {
     if (!gp_copy_in(desc, a[1], desc_size(version) < sizeof desc ? desc_size(version) : sizeof desc) || desc[0] != desc_size(version)) return E_INVALIDARG_;
     gp_write_u32(a[2], 0);
     caps = (desc[1] & DDSD_CAPS) ? desc[26] : DDSCAPS_OFFSCREENPLAIN;
-    if ((caps & (DDSCAPS_OVERLAY | DDSCAPS_MODEX)) || ((caps & DDSCAPS_ZBUFFER) && !lx_vk_active())) {
+    if ((caps & (DDSCAPS_OVERLAY | DDSCAPS_MODEX)) || ((caps & DDSCAPS_ZBUFFER) && !lx_d3d_hardware())) {
         lx_log("Linux DDRAW", "CreateSurface caps 0x%08X: overlays, Mode X and z-buffers are not provided", caps);
         return DDERR_INVALIDCAPS_;
     }
@@ -656,7 +696,12 @@ static uint64_t create_surface(const uint32_t* a, int version) {
     } else {
         if ((desc[1] & (DDSD_WIDTH | DDSD_HEIGHT)) != (DDSD_WIDTH | DDSD_HEIGHT) || !desc[3] || !desc[2]) return E_INVALIDARG_;
         width = desc[3], height = desc[2];
-        if (desc[1] & DDSD_PIXELFORMAT) {
+        if (caps & DDSCAPS_ZBUFFER) {
+            memset(pf, 0, sizeof pf);
+            pf[0] = 32, pf[1] = DDPF_ZBUFFER, pf[3] = 16, pf[5] = 0xFFFF;
+            if ((desc[1] & DDSD_PIXELFORMAT) && (desc[19] & DDPF_ZBUFFER)) memcpy(pf + 1, desc + 19, 7 * sizeof pf[0]);
+            if (pf[3] != 16 && pf[3] != 24 && pf[3] != 32) return DDERR_INVALIDPIXELFORMAT_;
+        } else if (desc[1] & DDSD_PIXELFORMAT) {
             memcpy(pf, desc + 18, sizeof pf);
             pf[0] = 32;
             if (!format_supported(pf)) {
@@ -684,9 +729,10 @@ static uint64_t create_surface(const uint32_t* a, int version) {
     }
     if (caps & DDSCAPS_PRIMARYSURFACE) d->primary = s + 1;
     out_face = face_va(s, version == 4 ? 3 : 0);
-    lx_log("Linux DDRAW", "%s surface %ux%u, %u bpp RGB %X/%X/%X, pitch %d, caps 0x%08X, %u back buffer%s at guest 0x%08X",
-           (caps & DDSCAPS_PRIMARYSURFACE) ? "primary" : "offscreen", width, height, pf[3], pf[4], pf[5], pf[6], surf(s)->pitch, surf(s)->caps,
-           surf(s)->back_buffers, surf(s)->back_buffers == 1 ? "" : "s", surf(s)->bits);
+    if (!(caps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER)))
+        lx_log("Linux DDRAW", "%s surface %ux%u, %u bpp RGB %X/%X/%X, pitch %d, caps 0x%08X, %u back buffer%s at guest 0x%08X",
+               (caps & DDSCAPS_PRIMARYSURFACE) ? "primary" : "offscreen", width, height, pf[3], pf[4], pf[5], pf[6], surf(s)->pitch, surf(s)->caps,
+               surf(s)->back_buffers, surf(s)->back_buffers == 1 ? "" : "s", surf(s)->bits);
     gp_write_u32(a[2], out_face);
     return DD_OK;
 }
@@ -749,27 +795,29 @@ static uint64_t dd_FlipToGDISurface(const uint32_t* a, void* u) {
 }
 
 static uint64_t dd_GetCaps(const uint32_t* a, void* u) {
-    uint32_t caps[79], surface_caps;
+    uint32_t caps[DDCAPS_DWORDS], surface_caps;
     uint32_t size;
     (void)u;
     if (!a[1] && !a[2]) return E_INVALIDARG_;
     memset(caps, 0, sizeof caps);
     surface_caps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_BACKBUFFER | DDSCAPS_FRONTBUFFER | DDSCAPS_FLIP | DDSCAPS_COMPLEX | DDSCAPS_OFFSCREENPLAIN |
                    DDSCAPS_SYSTEMMEMORY | DDSCAPS_VIDEOMEMORY | DDSCAPS_LOCALVIDMEM | DDSCAPS_PALETTE | DDSCAPS_VISIBLE;
-    caps[0] = 316;
+    if (lx_d3d_hardware()) surface_caps |= DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER;
+    caps[0] = sizeof caps;
     caps[1] = DDCAPS_BLT | DDCAPS_BLTCOLORFILL | DDCAPS_BLTSTRETCH | DDCAPS_COLORKEY | DDCAPS_CANBLTSYSMEM;
     caps[3] = DDCKEYCAPS_SRCBLT | DDCKEYCAPS_SRCBLTCLRSPACE;
     caps[4] = DDFXCAPS_BLTSTRETCHX | DDFXCAPS_BLTSTRETCHY | DDFXCAPS_BLTSHRINKX | DDFXCAPS_BLTSHRINKY;
     caps[6] = DDPCAPS_8BIT | DDPCAPS_ALLOW256;
     caps[15] = caps[16] = 0x04000000u;
-    caps[33] = surface_caps;
+    if (lx_d3d_hardware()) caps[1] |= DDCAPS_3D, caps[14] = DDBD_16_OR_24, caps[15] = caps[16] = 0x10000000u;
+    caps[33] = caps[91] = surface_caps;
     caps[43] = caps[65] = caps[1], caps[44] = caps[66] = caps[3], caps[45] = caps[67] = caps[4];
     caps[54] = caps[1], caps[55] = caps[3], caps[56] = caps[4];
     for (int i = 0; i < 2; i++) {
         uint32_t va = a[1 + (uint32_t)i];
         if (!va) continue;
         if (!gp_read_u32(va, &size) || size < 116 || size > 512) return E_INVALIDARG_;
-        gp_copy_out(va + 4, caps + 1, (size < 316 ? size : 316) - 4);
+        gp_copy_out(va + 4, caps + 1, (size < sizeof caps ? size : (uint32_t)sizeof caps) - 4);
     }
     return DD_OK;
 }
@@ -906,7 +954,8 @@ static uint64_t dd4_GetDeviceIdentifier(const uint32_t* a, void* u) {
     (void)u;
     if (!id) return E_INVALIDARG_;
     memset(id, 0, DEVICE_IDENTIFIER_BYTES);
-    snprintf(id, 512, "Linux software DirectDraw compatibility layer");
+    snprintf(id, 512, lx_d3d_hardware() ? "%s (Trespasser DirectDraw compatibility layer)" : "Linux software DirectDraw compatibility layer",
+             lx_d3d_hardware() ? lx_d3d_gpu()->name : "");
     snprintf(id + 512, 512, "Virtual RGB565 display");
     return DD_OK;
 }
@@ -915,31 +964,59 @@ static uint64_t dd4_GetDeviceIdentifier(const uint32_t* a, void* u) {
 
 static int surface_of(uint32_t face, int* version) { return object_of(face, O_SURFACE, version); }
 
-static uint64_t s_QueryInterface(const uint32_t* a, void* u) {
-    int slot = surface_of(a[0], NULL), face = -1;
-    (void)u;
-    if (slot < 0 || !a[2]) return E_INVALIDARG_;
-    gp_write_u32(a[2], 0);
-    if (IID_UNKNOWN(a[1]) || IID_SURF1(a[1])) face = 0;
-    else if (IID_SURF2(a[1])) face = 1;
-    else if (IID_SURF3(a[1])) face = 2;
-    else if (IID_SURF4(a[1])) face = 3;
-    else if (IID_TEX2(a[1]) && lx_vk_active()) {
-        surface_t* sf = surf(slot);
-        uint32_t tex = lx_vk_surface_query_texture2((uint32_t)slot, sf->width, sf->height, (uint32_t)sf->pitch,
-                                                    sf->bits, sf->pf, sf->has_src_key, sf->src_key[0], sf->src_key[1]);
-        if (tex) {
-            gp_write_u32(a[2], tex);
-            return DD_OK;
-        }
-    }
+uint32_t lx_ddraw_surface_query(int slot, uint32_t iid, uint32_t out) {
+    int face = -1;
+    if (!out) return E_INVALIDARG_;
+    gp_write_u32(out, 0);
+    if (IID_UNKNOWN(iid) || IID_SURF1(iid)) face = 1;
+    else if (IID_SURF2(iid)) face = 2;
+    else if (IID_SURF3(iid)) face = 3;
+    else if (IID_SURF4(iid)) face = 4;
+    else if (IID_TEX2(iid) && lx_d3d_hardware() && (surf(slot)->caps & DDSCAPS_TEXTURE)) face = LX_DDRAW_FACE_TEXTURE2;
     if (face < 0) {
         lx_log("Linux DDRAW", "surface QueryInterface: interface not provided");
         return E_NOINTERFACE_;
     }
     s_obj[slot].refs++;
-    gp_write_u32(a[2], face_va(slot, face));
+    gp_write_u32(out, lx_ddraw_surface_face(slot, face));
     return DD_OK;
+}
+
+static uint64_t s_QueryInterface(const uint32_t* a, void* u) {
+    int slot = surface_of(a[0], NULL);
+    (void)u;
+    return slot < 0 ? E_INVALIDARG_ : lx_ddraw_surface_query(slot, a[1], a[2]);
+}
+
+int lx_ddraw_surface_from(uint32_t iface) { return iface ? surface_of(iface, NULL) : -1; }
+
+int lx_ddraw_texture_from(uint32_t iface) {
+    int version = 0, slot = iface ? surface_of(iface, &version) : -1;
+    return slot >= 0 && version == LX_DDRAW_FACE_TEXTURE2 ? slot : -1;
+}
+
+uint32_t lx_ddraw_surface_face(int slot, int face) { return face_va(slot, face - 1); }
+
+int lx_ddraw_surface_view(int slot, lx_surface_view_t* v) {
+    const surface_t* s;
+    if (slot < 0 || slot >= MAX_OBJECTS || !s_obj[slot].used || s_obj[slot].kind != O_SURFACE) return 0;
+    s = surf(slot);
+    v->width = s->width, v->height = s->height, v->caps = s->caps, v->pitch = s->pitch;
+    v->bytes = (uint32_t)format_bytes(s->pf);
+    v->bits = (uint8_t*)gm_ptr_checked(s->bits, (uint32_t)s->pitch * s->height, 1);
+    memcpy(v->pf, s->pf, sizeof v->pf);
+    v->palette = s->palette >= 0 ? s_obj[s->palette].u.palette.entries : NULL;
+    v->has_src_key = s->has_src_key != 0, v->locked = s->locked, v->busy = s->locked || s->dc_out, v->zbuffer = s->zbuffer >= 0;
+    v->root = s->root;
+    memcpy(v->src_key, s->src_key, sizeof v->src_key);
+    v->lock_flags = s->lock_flags;
+    memcpy(v->lock_rect, s->lock_rect, sizeof v->lock_rect);
+    return 1;
+}
+
+void lx_ddraw_surface_set_src_key(int slot, const uint32_t key[2]) {
+    surf(slot)->has_src_key = 1;
+    memcpy(surf(slot)->src_key, key, sizeof surf(slot)->src_key);
 }
 
 static uint64_t s_AddRef(const uint32_t* a, void* u) {
@@ -947,15 +1024,20 @@ static uint64_t s_AddRef(const uint32_t* a, void* u) {
     return obj_addref(a, O_SURFACE);
 }
 
-static uint64_t s_Release(const uint32_t* a, void* u) {
-    int slot = surface_of(a[0], NULL);
-    (void)u;
-    if (slot < 0) return 0;
-    if (--s_obj[slot].refs > 0) return (uint64_t)(uint32_t)s_obj[slot].refs;
+uint32_t lx_ddraw_surface_addref(int slot) { return (uint32_t)++s_obj[slot].refs; }
+
+uint32_t lx_ddraw_surface_release(int slot) {
+    if (--s_obj[slot].refs > 0) return (uint32_t)s_obj[slot].refs;
     s_obj[slot].refs = 0;
     if (surf(slot)->orphaned) free_surface(slot);
     else if (surf(slot)->root < 0) destroy_root(slot);
     return 0;
+}
+
+static uint64_t s_Release(const uint32_t* a, void* u) {
+    int slot = surface_of(a[0], NULL);
+    (void)u;
+    return slot < 0 ? 0 : lx_ddraw_surface_release(slot);
 }
 
 static uint64_t s_Blt(const uint32_t* a, void* u) {
@@ -993,20 +1075,29 @@ static uint64_t s_BltFast(const uint32_t* a, void* u) {
 }
 
 static uint64_t s_AddAttachedSurface(const uint32_t* a, void* u) {
+    int slot = surface_of(a[0], NULL), z = lx_ddraw_surface_from(a[1]);
     (void)u;
-    if (lx_vk_active()) {
-        int dst = surface_of(a[0], NULL);
-        int z = surface_of(a[1], NULL);
-        if (dst >= 0 && z >= 0 && (surf(z)->caps & DDSCAPS_ZBUFFER)) return DD_OK;
+    if (slot < 0 || z < 0) return E_INVALIDARG_;
+    if (!lx_d3d_hardware() || !(surf(z)->caps & DDSCAPS_ZBUFFER)) {
+        lx_log("Linux DDRAW", "AddAttachedSurface: only z-buffers attach, and the software renderer has none");
+        return DDERR_CANNOTATTACHSURFACE_;
     }
-    lx_log("Linux DDRAW", "AddAttachedSurface: only z-buffers attach, and the software renderer has none");
-    return DDERR_CANNOTATTACHSURFACE_;
+    if (surf(slot)->zbuffer >= 0) return DDERR_SURFACEALREADYATTACHED_;
+    if (surf(z)->width != surf(slot)->width || surf(z)->height != surf(slot)->height) return DDERR_CANNOTATTACHSURFACE_;
+    s_obj[z].refs++;
+    surf(slot)->zbuffer = z;
+    return DD_OK;
 }
 
 static uint64_t s_DeleteAttachedSurface(const uint32_t* a, void* u) {
-    (void)a;
+    int slot = surface_of(a[0], NULL), z;
     (void)u;
-    return DDERR_NOTFOUND_;
+    if (slot < 0) return DDERR_INVALIDOBJECT_;
+    z = a[2] ? lx_ddraw_surface_from(a[2]) : surf(slot)->zbuffer;
+    if (z < 0 || z != surf(slot)->zbuffer) return DDERR_CANNOTDETACHSURFACE_;
+    surf(slot)->zbuffer = -1;
+    lx_ddraw_surface_release(z);
+    return DD_OK;
 }
 
 static void exchange_pixels(surface_t* x, surface_t* y) {
@@ -1016,7 +1107,8 @@ static void exchange_pixels(surface_t* x, surface_t* y) {
 }
 
 static uint64_t s_Flip(const uint32_t* a, void* u) {
-    int front = surface_of(a[0], NULL), target = -1, m;
+    int front = surface_of(a[0], NULL), target = -1, m, scene = 0, chain[MAX_CHAIN];
+    unsigned count = 0;
     (void)u;
     if (front < 0) return DDERR_INVALIDOBJECT_;
     if (!(surf(front)->caps & DDSCAPS_FLIP) || surf(front)->root >= 0 || surf(front)->next < 0) return DDERR_NOTFLIPPABLE_;
@@ -1028,12 +1120,20 @@ static uint64_t s_Flip(const uint32_t* a, void* u) {
     do {
         if (surf(m)->lost) return DDERR_SURFACELOST_;
         if (surf(m)->locked || surf(m)->dc_out) return DDERR_SURFACEBUSY_;
+        if (count < MAX_CHAIN) chain[count++] = m;
         m = surf(m)->next;
     } while (m != front);
+    if (is_front(front)) scene = lx_d3d_flip(chain, count);
     if (target >= 0) exchange_pixels(surf(front), surf(target));
     else
         for (m = front; surf(m)->next != front; m = surf(m)->next) exchange_pixels(surf(m), surf(surf(m)->next));
-    if (is_front(front)) present_surface(front);
+    if (scene) {
+        s_presents++;
+        lx_d3d_flipped(front, chain, count);
+        lx_screen_present_scene((int)surf(front)->width, (int)surf(front)->height);
+    } else if (is_front(front)) {
+        present_surface(front);
+    }
     return DD_OK;
 }
 
@@ -1045,6 +1145,11 @@ static uint64_t s_GetAttachedSurface(const uint32_t* a, void* u) {
     surface_of(a[0], &version);
     gp_write_u32(a[2], 0);
     gp_read_u32(a[1], &caps);
+    if (surf(slot)->zbuffer >= 0 && (caps & DDSCAPS_ZBUFFER)) {
+        s_obj[surf(slot)->zbuffer].refs++;
+        gp_write_u32(a[2], face_va(surf(slot)->zbuffer, version - 1));
+        return DD_OK;
+    }
     for (int m = surf(slot)->next; m >= 0 && m != slot; m = surf(m)->next) {
         if ((surf(m)->caps & caps) == caps) {
             s_obj[m].refs++;
@@ -1157,6 +1262,7 @@ static uint64_t s_Lock(const uint32_t* a, void* u) {
     if (a[1] && (!read_rect(a[1], rect) || !rect_inside(rect, s))) return DDERR_INVALIDRECT_;
     s->lock_flags = a[3];
     memcpy(s->lock_rect, rect, sizeof rect);
+    lx_d3d_cpu_access(slot, CPU_ACCESS_LOCK);
     describe(s, desc, size);
     desc[1] |= DDSD_LPSURFACE;
     desc[9] = s->bits + (uint32_t)rect[1] * (uint32_t)s->pitch + (uint32_t)rect[0] * (uint32_t)format_bytes(s->pf);
@@ -1170,6 +1276,8 @@ static uint64_t s_Unlock(const uint32_t* a, void* u) {
     if (slot < 0) return DDERR_INVALIDOBJECT_;
     if (!surf(slot)->locked) return DDERR_NOTLOCKED_;
     surf(slot)->locked = 0;
+    if (!lx_d3d_unlocked(slot) && !(surf(slot)->lock_flags & DDLOCK_READONLY))
+        lx_d3d_cpu_written(slot, (const int32_t*)surf(slot)->lock_rect);
     if (is_front(slot)) present_surface(slot);
     return DD_OK;
 }
@@ -1185,6 +1293,7 @@ static uint64_t s_GetDC(const uint32_t* a, void* u) {
     if (s->lost) return DDERR_SURFACELOST_;
     if (s->dc_out) return DDERR_DCALREADYCREATED_;
     if (s->locked) return DDERR_SURFACEBUSY_;
+    lx_d3d_cpu_access(slot, CPU_ACCESS_GETDC);
     dc = lx_gdi_surface_dc(s->bits, (int)s->width, (int)s->height, s->pitch, (int)s->pf[3], s->pf[5]);
     if (!dc) return DDERR_CANTCREATEDC_;
     s->dc_out = (int)dc;
@@ -1200,6 +1309,7 @@ static uint64_t s_ReleaseDC(const uint32_t* a, void* u) {
     if (!s->dc_out || a[1] != (uint32_t)s->dc_out) return E_INVALIDARG_;
     lx_gdi_release_surface_dc(a[1]);
     s->dc_out = 0;
+    lx_d3d_cpu_written(slot, NULL);
     if (is_front(slot)) present_surface(slot);
     return DD_OK;
 }
@@ -1243,8 +1353,10 @@ static uint64_t s_SetColorKey(const uint32_t* a, void* u) {
         if (!(a[1] & DDCKEY_COLORSPACE)) key[1] = key[0];
     }
     if (which == DDCKEY_SRCBLT) {
+        lx_d3d_cpu_access(slot, CPU_ACCESS_BLT_DEST);
         surf(slot)->has_src_key = a[2] != 0;
         if (a[2]) memcpy(surf(slot)->src_key, key, sizeof key);
+        lx_d3d_cpu_written(slot, NULL);
     } else {
         surf(slot)->has_dst_key = a[2] != 0;
         if (a[2]) memcpy(surf(slot)->dst_key, key, sizeof key);
@@ -1331,6 +1443,7 @@ static uint64_t p_Release(const uint32_t* a, void* u) {
     (void)u;
     if (slot < 0) return 0;
     if (--s_obj[slot].refs > 0) return (uint64_t)(uint32_t)s_obj[slot].refs;
+    free(s_obj[slot].u.palette.entries);
     gm_heap_free(s_obj[slot].faces);
     s_obj[slot].used = 0;
     return 0;
@@ -1435,11 +1548,13 @@ static uint32_t build_vtable(const method_t* const* parts, const size_t* counts,
 
 #define PART(a) a, sizeof a / sizeof a[0]
 
-static uint32_t s_vtable[5][5];
+static uint32_t s_vtable[5][FACE_VERSIONS];
 
 static uint32_t vtable_for(int kind, int version) {
-    uint32_t* slot = &s_vtable[kind][version < 0 || version > 4 ? 0 : version];
+    uint32_t* slot = &s_vtable[kind][version < 0 || version >= FACE_VERSIONS ? 0 : version];
     if (*slot) return *slot;
+    if (kind == O_DEVICE && version == FACE_DIRECT3D) return lx_d3d_vtable(LX_D3D_DIRECT3D3);
+    if (kind == O_SURFACE && version == LX_DDRAW_FACE_TEXTURE2) return lx_d3d_vtable(LX_D3D_TEXTURE2);
     switch (kind) {
     case O_DEVICE: {
         static const method_t dd2_override[] = { { "IDirectDraw::SetDisplayMode", dd2_SetDisplayMode, 6 } };
@@ -1480,12 +1595,12 @@ static uint32_t vtable_for(int kind, int version) {
 /* ---- the entry points ---- */
 
 static uint64_t d_DirectDrawCreate(const uint32_t* a, void* u) {
-    static const int versions[3] = { 1, 2, 4 };
+    static const int versions[4] = { 1, 2, 4, FACE_DIRECT3D };
     int slot;
     (void)u;
     if (!a[1]) return E_INVALIDARG_;
     if (a[2]) return CLASS_E_NOAGGREGATION_;
-    slot = new_object(O_DEVICE, 3, versions);
+    slot = new_object(O_DEVICE, 4, versions);
     if (slot < 0) return E_OUTOFMEMORY_;
     s_devices++;
     gp_write_u32(a[1], face_va(slot, 0));
@@ -1524,9 +1639,12 @@ void hle_ddraw_init(void) {
     memset(s_logged_unsupported, 0, sizeof s_logged_unsupported);
     s_generation = 1;
     s_devices = s_surfaces = s_presents = s_restores = 0;
+    s_free_hint = 0;
+    lx_d3d_reset();
 }
 
 void hle_ddraw_shutdown(void) {
+    lx_d3d_log_summary();
     free(s_convert);
     s_convert = NULL;
     s_convert_cap = 0;

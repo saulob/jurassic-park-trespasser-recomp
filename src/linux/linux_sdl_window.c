@@ -141,6 +141,7 @@ static int sdl_open(lx_window_backend_t* b, const lx_window_desc_t* d) {
     s.window = create_window(d, flags, display);
     if (!s.window && want_vk) {
         lx_log("Linux presentation", "SDL3 Vulkan window failed (%s); retrying Software window", SDL_GetError());
+        lx_vk_window_failed(SDL_GetError());
         want_vk = 0;
         flags &= ~SDL_WINDOW_VULKAN;
         s.window = create_window(d, flags, display);
@@ -240,10 +241,12 @@ static int sdl_next_event(lx_window_backend_t* b, int timeout_ms, lx_event_t* ev
     SDL_Event e;
     (void)b;
     lx_crash_present_stage(LX_PRESENT_EVENT_PUMP);
-    ev->kind = LX_EV_NONE;
+    memset(ev, 0, sizeof *ev);
     if (!s.window) return 0;
     while (timeout_ms > 0 ? SDL_WaitEventTimeout(&e, timeout_ms) : SDL_PollEvent(&e)) {
         timeout_ms = 0;
+        /* Every field is defined: the caller's event is not cleared, and a stale `relative` made an absolute position a look. */
+        memset(ev, 0, sizeof *ev);
         switch (e.type) {
         case SDL_EVENT_QUIT:
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -357,6 +360,13 @@ static void sdl_present(lx_window_backend_t* b, const lx_frame_t* f) {
     SDL_RenderPresent(s.renderer);
 }
 
+static void sdl_present_scene(lx_window_backend_t* b, const lx_scene_frame_t* f) {
+    (void)b;
+    if (!s.using_vulkan) return;
+    lx_crash_present_stage(LX_PRESENT_RENDER_PRESENT);
+    lx_vk_present_scene(f);
+}
+
 static void sdl_set_cursor_visible(lx_window_backend_t* b, int visible) {
     (void)b;
     if (visible) SDL_ShowCursor();
@@ -381,6 +391,15 @@ static void sdl_set_relative_mouse(lx_window_backend_t* b, int on) {
     memset(&s.counts, 0, sizeof s.counts);
 }
 
+static int sdl_pointer_position(lx_window_backend_t* b, int* x, int* y) {
+    float wx = 0.0f, wy = 0.0f;
+    (void)b;
+    if (!s.window || SDL_GetMouseFocus() != s.window) return 0;
+    SDL_GetMouseState(&wx, &wy);
+    to_client(wx, wy, x, y);
+    return 1;
+}
+
 static void sdl_destroy(lx_window_backend_t* b) {
     sdl_close(b);
     if (s.video_up) SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -388,6 +407,7 @@ static void sdl_destroy(lx_window_backend_t* b) {
 }
 
 static lx_window_backend_t s_backend = { "SDL3", sdl_open, sdl_close, sdl_set_title, sdl_set_client_size, sdl_client_size, sdl_set_visible,
-                                         sdl_next_event, sdl_present, sdl_set_cursor_visible, sdl_set_mouse_grab, sdl_set_relative_mouse, sdl_destroy, sdl_toggle_fullscreen };
+                                         sdl_next_event, sdl_present, sdl_set_cursor_visible, sdl_set_mouse_grab, sdl_set_relative_mouse, sdl_destroy, sdl_toggle_fullscreen, sdl_present_scene,
+                                         sdl_pointer_position };
 
 lx_window_backend_t* lx_sdl_backend(void) { return &s_backend; }

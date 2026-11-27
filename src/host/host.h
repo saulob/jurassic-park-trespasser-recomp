@@ -29,8 +29,8 @@ void shim_MessageBoxA(void);
 void shim_DialogBoxParamA(void);
 void shim_OutputDebugStringA(void);
 
-/* The store lives in user_dir. Installed Directory (saves, level swap files) is user_dir, Data Drive is game_dir. */
-void guest_registry_init(const char* game_dir, const char* user_dir);
+/* The store lives in store_dir. Installed Directory (saves, level swap files) is user_dir, Data Drive is game_dir. */
+void guest_registry_init(const char* game_dir, const char* store_dir, const char* user_dir);
 void registry_show_ddraw_cert_dialog(void);
 void registry_software_water(void);
 /* While on, the game's "NoVideo" reads 1: CVideoWnd::Play returns at once, as it does with the value stored. */
@@ -50,6 +50,7 @@ void shim_CreateFileA(void);
 void shim_CloseHandle(void);
 void shim_GetFileAttributesA(void);
 void shim_FindFirstFileA(void);
+void shim_FindNextFileA(void);
 void shim_LZOpenFileA(void);
 void shim_LZRead(void);
 void shim_LZSeek(void);
@@ -59,7 +60,23 @@ void shim_GetProcAddress(void);
 void shim_FreeLibrary(void);
 void shim_fopen(void);
 void shim_open(void);
+void shim_close(void);
 void shim_DeleteFileA(void);
+void shim_mkdir(void);
+void shim_remove(void);
+void shim_rename(void);
+
+int custom_level_files_start(const char* game_dir);
+/* The active package's file for a guest path that only reads. */
+int custom_level_file(const char* path, char* out, size_t cap);
+/* While a package is active nothing under the game's data folder is created, changed or removed. */
+int custom_level_write_refused(const char* path);
+/* Ends the process in an orderly way: the level being loaded cannot be. */
+/* -2: LZ32 opens the file; else a handle for the calls below, or a negative LZ error. */
+int custom_level_lz_open(const char* path, int for_reading);
+int custom_level_lz_read(int handle, char* buffer, int wanted, int* result);
+int custom_level_lz_seek(int handle, long offset, int origin, int* result);
+int custom_level_lz_close(int handle);
 
 void milestones_init(void);
 void milestones_observe(uint32_t target);
@@ -115,6 +132,8 @@ void window_host_frame_commit(unsigned generation);
 void window_host_clear_display(HWND window);
 HWND window_host_surface(HWND window);
 void window_host_frame_presented(void);
+/* A swap chain was made for the presentation surface (1) or released (0). */
+void window_host_presentation_target(int ready);
 void window_host_release_cursor(void);
 /* The host's menu opened or closed: the pointer is freed for it, or captured again for the game. */
 void window_host_input_changed(void);
@@ -413,6 +432,12 @@ void shim_exit(void);
 void shim__exit(void);
 void shim_ExitProcess(void);
 void shim_CreateThread(void);
+void shim_VirtualAlloc(void);
+void shim_operator_new(void);
+void shim_malloc(void);
+void shim_set_new_handler(void);
+void shim__set_new_handler(void);
+void shim__set_new_mode(void);
 /* Guest threads (CreateThread from lifted code) still running, the main guest thread included. */
 unsigned guest_threads_alive(void);
 /* diagnostics.c: lifted indirect calls answered from the dispatch cache, and the ones that searched the table. */

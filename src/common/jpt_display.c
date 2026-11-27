@@ -340,3 +340,37 @@ int jpt_parse_size(const char* text, int* width, int* height) {
     *height = h;
     return 1;
 }
+
+void jpt_surface_init(jpt_surface_t* s) { memset(s, 0, sizeof *s); }
+
+void jpt_surface_window_created(jpt_surface_t* s) {
+    jpt_surface_init(s);
+    s->window = 1;
+}
+
+void jpt_surface_target_created(jpt_surface_t* s) {
+    if (!s->window || s->target) return;
+    s->target = 1;
+    s->presented = 0;
+}
+
+void jpt_surface_target_lost(jpt_surface_t* s) {
+    s->target = 0;
+    s->presented = 0;
+}
+
+void jpt_surface_frame_presented(jpt_surface_t* s) {
+    if (s->window && s->target) s->presented = 1;
+}
+
+int jpt_surface_paints_black(const jpt_surface_t* s) { return s->window && !s->presented; }
+
+jpt_surface_source_t jpt_surface_shown(const jpt_surface_t* s, int frame_ready, int frame_held) {
+    int fresh = frame_ready && !frame_held && s->window && s->target;
+    if (fresh) return JPT_SURFACE_NEW_FRAME;
+    return s->presented ? JPT_SURFACE_LAST_FRAME : JPT_SURFACE_BLACK;
+}
+
+int jpt_surface_source_allowed(jpt_surface_source_t source) {
+    return source == JPT_SURFACE_BLACK || source == JPT_SURFACE_LAST_FRAME || source == JPT_SURFACE_NEW_FRAME;
+}

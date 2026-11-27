@@ -161,6 +161,38 @@ unsigned jpt_msaa_pick(unsigned requested, unsigned supported_mask);
 /* "1920x1080" or "1920 x 1080"-style parsing: 1 when both numbers are in 320..16384 x 240..16384. */
 int jpt_parse_size(const char* text, int* width, int* height);
 
+/* What the presentation surface (the child window the swap chain is made for) shows. Under DWM a region nobody has
+ * painted is white, and once a flip-model swap chain has presented, GDI painting must not touch the surface again, so
+ * the host paints it black exactly while no frame of the current swap chain has reached the screen. */
+typedef enum {
+    JPT_SURFACE_UNINITIALIZED = 0, /* never painted: white under DWM */
+    JPT_SURFACE_SYSTEM_DEFAULT,    /* DefWindowProc and a class without a brush */
+    JPT_SURFACE_BLACK,             /* painted black by the host */
+    JPT_SURFACE_LAST_FRAME,        /* the last frame the swap chain presented, kept by the compositor */
+    JPT_SURFACE_NEW_FRAME          /* a frame presented now, every pixel written (cleared or covered) */
+} jpt_surface_source_t;
+
+typedef struct {
+    int window;    /* the surface exists */
+    int target;    /* a swap chain is attached to it */
+    int presented; /* that swap chain has presented */
+} jpt_surface_t;
+
+void jpt_surface_init(jpt_surface_t* s);
+void jpt_surface_window_created(jpt_surface_t* s);
+/* A new swap chain on the surface; resizing or recreating one with the old as predecessor keeps what is shown. */
+void jpt_surface_target_created(jpt_surface_t* s);
+/* The swap chain is gone: the window shows its own pixels again. */
+void jpt_surface_target_lost(jpt_surface_t* s);
+/* Ignored without a swap chain on the surface (another window's present is not this surface's frame). */
+void jpt_surface_frame_presented(jpt_surface_t* s);
+/* 1 when erase, paint, resize and target loss must fill the surface black. */
+int jpt_surface_paints_black(const jpt_surface_t* s);
+/* What reaches the screen when the renderer is asked to show a frame (frame_ready) that a hold may keep back. */
+jpt_surface_source_t jpt_surface_shown(const jpt_surface_t* s, int frame_ready, int frame_held);
+/* BLACK and presented frames only. */
+int jpt_surface_source_allowed(jpt_surface_source_t source);
+
 #ifdef __cplusplus
 }
 #endif

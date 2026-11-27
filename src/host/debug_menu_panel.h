@@ -6,6 +6,7 @@
 
 #include "debug_menu_layout.h"
 #include "debug_menu_policy.h"
+#include "jpt_script_draw.h"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -40,6 +41,7 @@ typedef struct {
     const cp_hud_t* hud; /* the compass and its notice; NULL when the HUD is not on screen */
     const dmp_text_layer_t* text_layer; /* drawn over the HUD; NULL for none */
     const char* counter;                /* the frame counter's text; NULL for none */
+    const jpt_draw_frame_t* script;     /* what game scripts drew this frame (OnPaintHW3D), under everything else; NULL for none */
 } dmp_frame_t;
 
 typedef struct {
@@ -47,6 +49,7 @@ typedef struct {
     uint32_t idx_offset, idx_count;
     int32_t vtx_offset;
     uint32_t texture;
+    uint32_t blend; /* 0 alpha, 1 additive (a script's DrawTexture mode 2) */
 } dmp_gpu_cmd_t;
 
 typedef struct {
@@ -54,6 +57,9 @@ typedef struct {
     const uint8_t* pixels;
     uint32_t revision;
 } dmp_gpu_texture_t;
+
+/* Textures one GPU overlay frame may hold, the white texel included (jpt_vk_renderer_submit_ui's limit). */
+#define DMP_GPU_TEXTURES 33
 
 typedef struct dmp_gpu_draw_s {
     float display_pos[2], display_size[2];

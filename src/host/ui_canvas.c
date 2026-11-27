@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "ddraw/target_sync.h"
+#include "debug_menu.h"
 #include "frontend_hd.h"
 #include "gamepad.h"
 #include "jpt_display.h"
@@ -105,6 +106,7 @@ int ui_canvas_present_held(void) {
     uint32_t screen_w = 0, screen_h = 0;
     guest_ui_view_t view;
     int menu;
+    if (debug_menu_start_holds_present()) return 1;
     if (s_in_frame) return 0;
     menu = scaling_wanted_for(&screen_w, &screen_h, &view);
     return ui_present_held(s_in_frame, menu, view.kind);

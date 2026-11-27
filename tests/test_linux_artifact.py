@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import linux_artifact  # noqa: E402
+import linux_elf_check  # noqa: E402
 import source_fingerprint  # noqa: E402
 
 
@@ -184,6 +185,23 @@ class Wiring(unittest.TestCase):
         body = body[: body.index("\n}\n")].split("\n", 1)[1]
         self.assertEqual(len(re.findall(r"s_cursor_[xy] = ", body)), 2)
         self.assertNotRegex(body, r"static|count|\+\+")
+
+
+class NoWindowsDll(unittest.TestCase):
+    def test_every_dll_name_is_found_even_next_to_another(self):
+        names = linux_elf_check.dll_names_in(b"\x00kernel32.dll\x00d3d11.dll\x00dxgi.dll\x00ddraw.dll\x00")
+        self.assertEqual(names, {"kernel32.dll", "d3d11.dll", "dxgi.dll", "ddraw.dll"})
+        self.assertEqual(linux_elf_check.stray_dll_names(names), ["d3d11.dll", "dxgi.dll"])
+
+    def test_only_guest_module_names_are_allowed(self):
+        self.assertEqual(linux_elf_check.stray_dll_names(linux_elf_check.dll_names_in(b"\x00Fkernel32.dll\x00user32.dll\x00")), [])
+        self.assertEqual(linux_elf_check.dll_names_in(b"\x48\x8bd3d11.dll\x00"), set())
+
+    def test_the_launcher_keeps_windows_modules_out_of_linux(self):
+        header = (ROOT / "launcher" / "launcher_renderer.h").read_text(encoding="utf-8")
+        windows_only = re.search(r"#ifdef _WIN32\s*\n(.*?)#else", header, re.S)
+        self.assertTrue(windows_only and '"d3d11.dll", "dxgi.dll"' in windows_only.group(1))
+        self.assertEqual(header.count('"d3d11.dll"'), 1)
 
 
 if __name__ == "__main__":

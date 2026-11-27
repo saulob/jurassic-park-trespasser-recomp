@@ -24,6 +24,7 @@
 #include <tuple>
 #include <vector>
 
+#include "frame_pacer.h"
 #include "game_files.h"
 #include "game_install.h"
 #include "inflate.h"
@@ -38,6 +39,7 @@
 #include "jpt_l10n.h"
 #include "jpt_prompt_text.h"
 #include "jpt_string_table.h"
+#include "launcher_renderer.h"
 #include "jpt_user_data.h"
 #include "options.h"
 #include "user_data.h"
@@ -45,6 +47,7 @@
 #include "play_gate.h"
 #include "settings.h"
 #include "system_info.h"
+#include "trg/layout.h"
 #include "utf8.h"
 
 namespace fs = std::filesystem;
@@ -451,7 +454,7 @@ static void TestMigration(const fs::path& dir) {
 }
 
 static void TestPages() {
-    const char* expected[] = {"Play", "Display", "Graphics", "Gameplay", "Controls", "Cheats", "Bug Report", "About"};
+    const char* expected[] = {"Play", "Custom Levels", "Display", "Graphics", "Gameplay", "Controls", "Cheats", "Bug Report", "About"};
     CHECK(std::size(kPageOrder) == std::size(expected));
     for (size_t i = 0; i < std::size(kPageOrder) && i < std::size(expected); ++i) {
         const std::string name = PageName(kPageOrder[i]);
@@ -1634,7 +1637,7 @@ static void TestUiCoverage() {
     const std::regex group(R"re("(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)re");
     const std::regex piece(R"re("((?:[^"\\]|\\.)*)")re");
     for (const char* file : {"launcher/launcher.cpp", "launcher/options.cpp", "launcher/incident_page.cpp", "launcher/my_reports_page.cpp",
-                              "launcher/incident_client.cpp", "launcher/updater/update_ui.cpp"}) {
+                              "launcher/incident_client.cpp", "launcher/updater/update_ui.cpp", "launcher/custom_levels_page.cpp"}) {
         std::string source = ReadSource(file);
         const size_t stop = source.find("extern \"C\" jpt_launcher_result_t jpt_launcher_run");
         if (stop != std::string::npos) source.resize(stop);
@@ -1714,6 +1717,251 @@ static void TestLanguageNames() {
         CHECK(std::string(Tr("Gameplay")) == (std::string(language) == "pt-BR" ? "Jogabilidade" : "Gameplay"));
     }
     SetLauncherLanguage("en");
+}
+
+// ---- Launcher window: renderer choice, frame pacing, scrolling sidebar, Custom Levels page
+
+static size_t At(const std::string& text, const char* needle, size_t from = 0) { return text.find(needle, from); }
+
+static void TestLauncherRenderer() {
+    using Names = std::vector<std::string_view>;
+    CHECK(LauncherRendererOrder(true) == Names({"direct3d11", "software"}));
+    CHECK(LauncherRendererOrder(false) == Names({"", "software"}));
+    CHECK(RendererModulesToPin("direct3d11") == Names({"d3d11.dll", "dxgi.dll"}));
+    for (const char* other : {"software", "opengl", "vulkan", ""}) CHECK(RendererModulesToPin(other).empty());
+    CHECK(RendererSelectedLine("direct3d11", false, 2) == "renderer=direct3d11 fallback=0 pinned_modules=2");
+    CHECK(RendererSelectedLine("software", true, 2) == "renderer=software fallback=1 pinned_modules=2");
+    CHECK(RendererLabel("Direct 3D!") == "direct_3d_" && RendererLabel("") == "unknown");
+
+    const std::string host = ReadSource("launcher/host.cpp");
+    const size_t create = At(host, "LauncherHost::OpenRenderer(");
+    const size_t pin = At(host, "PinRendererModules(name, pinned_modules_)", create), make = At(host, "SDL_CreateRenderer(window_", create);
+    CHECK(create != std::string::npos && pin != std::string::npos && pin < make);
+    CHECK(At(host, "GET_MODULE_HANDLE_EX_FLAG_PIN") != std::string::npos && At(host, "LOAD_LIBRARY_SEARCH_SYSTEM32") != std::string::npos);
+    CHECK(At(host, "return RendererFailure{RendererStage::kPin", pin) < make);
+    CHECK(At(host, "RendererSelectedLine(renderer_name_, selection.fallback, pinned_modules_)") != std::string::npos);
+
+    const size_t close = At(host, "void LauncherHost::ReleaseWindow()");
+    const size_t textures = At(host, "SDL_DestroyTexture(texture)", close), backend = At(host, "ImGui_ImplSDLRenderer3_Shutdown", close),
+                 renderer = At(host, "SDL_DestroyRenderer(renderer_)", close), window = At(host, "SDL_DestroyWindow(window_)", close),
+                 quit = At(host, "SDL_Quit()", close);
+    CHECK(close != std::string::npos && textures < backend && backend < renderer && renderer < window && window < quit);
+
+    const std::string header = ReadSource("launcher/host.h") + host + ReadSource("launcher/frame_pacer.h") + ReadSource("launcher/launcher_renderer.h");
+    CHECK(header.find("DEBUG_SAULO") == std::string::npos);
+    CHECK(ReadSource("docs/LAUNCHER.md").find("Direct3D 11") != std::string::npos);
+}
+
+static void TestFramePacing() {
+    FramePacer pacer;
+    CHECK(pacer.interval_ns() == kLauncherFrameNs && kLauncherTargetHz == 60);
+    FrameWait wait = pacer.Next(1000);
+    CHECK(wait.draw && wait.wait_ns == 0);
+    wait = pacer.Next(1000 + kNsPerMs);
+    CHECK(!wait.draw && wait.wait_ns == kLauncherFrameNs - kNsPerMs);
+    CHECK(pacer.Next(1000 + kLauncherFrameNs).draw);
+
+    // A loop that polls every 100 microseconds while it waits still draws about 60 frames a second.
+    FramePacer polled;
+    int drawn = 0;
+    for (int64_t now = 0; now < kNsPerSecond; now += 100'000) drawn += polled.Next(now).draw ? 1 : 0;
+    CHECK(drawn >= 59 && drawn <= 61);
+
+    // Sleeping exactly as long as asked also gives 60, so the loop does not spin between frames.
+    FramePacer sleeping;
+    int64_t now = 0;
+    int64_t polls = 0;
+    drawn = 0;
+    while (now < kNsPerSecond) {
+        const FrameWait next = sleeping.Next(now);
+        ++polls;
+        if (next.draw) {
+            ++drawn;
+            now += kNsPerMs;
+        } else {
+            now += next.wait_ns;
+        }
+    }
+    CHECK(drawn >= 59 && drawn <= 61 && polls <= 2 * 61 + 2);
+
+    // A stall is not followed by a burst of frames.
+    FramePacer stalled;
+    stalled.Next(0);
+    CHECK(stalled.Next(kNsPerSecond).draw);
+    CHECK(!stalled.Next(kNsPerSecond + kNsPerMs).draw);
+    // A clock that went back does not freeze the loop.
+    FramePacer back;
+    back.Next(10 * kNsPerSecond);
+    const FrameWait early = back.Next(0);
+    CHECK(early.wait_ns <= kLauncherFrameNs);
+    // Minimising starts the schedule again; a hidden window is not limited.
+    pacer.Reset();
+    CHECK(pacer.Next(5).draw);
+    FramePacer hidden(0);
+    for (int i = 0; i < 100; ++i) CHECK(hidden.Next(i).draw);
+
+    LoopMonitor monitor;
+    const FrameTimes frame{2 * kNsPerMs, kNsPerMs, 3 * kNsPerMs};
+    std::optional<LoopSample> sample;
+    int samples = 0;
+    for (int64_t t = 0; t <= 20 * kNsPerSecond; t += kLauncherFrameNs) {
+        monitor.Waited(kNsPerMs);
+        sample = monitor.FrameDrawn(t, frame, t / 10);
+        samples += sample ? 1 : 0;
+        if (sample) {
+            CHECK(sample->hz > 59.0 && sample->hz < 61.0 && sample->frames > 290 && sample->cpu_pct >= 9 && sample->cpu_pct <= 10);
+            const std::string line = LoopSampleLine("direct3d11", *sample);
+            CHECK(line.find("renderer=direct3d11") != std::string::npos && line.find("present_ms=3.0") != std::string::npos);
+        }
+    }
+    CHECK(samples == 1);
+    monitor.Reset();
+    CHECK(!monitor.FrameDrawn(30 * kNsPerSecond, frame));
+
+    VsyncState vsync;
+    vsync.requested = true;
+    CHECK(PacingLine("software", vsync) == "frame pacing: renderer=software requested_vsync=1 effective_vsync=0 target_hz=60");
+
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t loop = At(launcher, "while (outcome == Outcome::kRunning)");
+    CHECK(loop != std::string::npos);
+    const std::string body = launcher.substr(loop, At(launcher, "host_.EndFrame", loop) - loop);
+    CHECK(body.find("host_.WaitForFrame()") != std::string::npos && body.find("SDL_Delay") == std::string::npos &&
+          body.find("PumpEvents") == std::string::npos);
+    const std::string host = ReadSource("launcher/host.cpp");
+    const size_t waiting = At(host, "bool LauncherHost::WaitForFrame()");
+    const std::string wait_body = host.substr(waiting, At(host, "void LauncherHost::NoteFrameDrawn", waiting) - waiting);
+    CHECK(wait_body.find("PumpEvents()") != std::string::npos && wait_body.find("SDL_DelayNS") != std::string::npos &&
+          wait_body.find("SDL_Delay(kMinimizedSleepMs)") != std::string::npos);
+    CHECK(At(host, "SDL_SetRenderVSync(renderer_, 0)") != std::string::npos && At(host, "SDL_GetWindowSurfaceVSync") != std::string::npos);
+}
+
+static void TestSidebarScroll() {
+    constexpr int kPages = 9;
+    const float full = trg::layout::SidebarHeight(kPages), least = trg::layout::SidebarHeight(kPages, trg::layout::kSidebarRowMin);
+    CHECK(trg::layout::SidebarScrollMax(kPages, trg::layout::kSidebarRow, full) == 0.0f);
+    CHECK(trg::layout::SidebarRowFor(kPages, full) == trg::layout::kSidebarRow);
+    CHECK(trg::layout::SidebarRowFor(kPages, least) == trg::layout::kSidebarRowMin);
+
+    // Logical heights of a 560 px window at 100%, 150% and 225% display scale, and shorter ones that need the bar.
+    for (const float scale : {1.0f, 1.5f, 2.25f}) {
+        for (const float physical : {1080.0f, 560.0f, 420.0f, 360.0f, 300.0f, 240.0f}) {
+            const float body = std::floor(physical * scale) / scale;
+            const float row = trg::layout::SidebarRowFor(kPages, body);
+            const float max = trg::layout::SidebarScrollMax(kPages, row, body);
+            CHECK(row >= trg::layout::kSidebarRowMin && row <= trg::layout::kSidebarRow);
+            CHECK((max > 0.0f) == (trg::layout::SidebarHeight(kPages, row) > body));
+            float scroll = 0.0f;
+            for (int page = 0; page < kPages; ++page) {
+                scroll = trg::layout::SidebarScrollToShow(page, kPages, row, body, scroll);
+                const float top = trg::layout::SidebarRowTop(page, row);
+                CHECK(scroll >= 0.0f && scroll <= max + 0.001f);
+                CHECK(top - scroll >= -0.001f && top + row - scroll <= body + 0.001f);
+            }
+            for (int page = kPages - 1; page >= 0; --page) {
+                scroll = trg::layout::SidebarScrollToShow(page, kPages, row, body, scroll);
+                const float top = trg::layout::SidebarRowTop(page, row);
+                CHECK(top - scroll >= -0.001f && top + row - scroll <= body + 0.001f);
+            }
+            // A page that is already in view leaves the scroll where the player put it.
+            if (max > 0.0f) {
+                const float mid = max / 2.0f;
+                for (int page = 0; page < kPages; ++page) {
+                    const float top = trg::layout::SidebarRowTop(page, row) - trg::layout::kSidebarPadding;
+                    const bool inside = top >= mid && top + row + trg::layout::kSidebarPadding * 2.0f - mid <= body;
+                    if (inside) CHECK(trg::layout::SidebarScrollToShow(page, kPages, row, body, mid) == mid);
+                }
+            }
+        }
+    }
+    const float bar = 14.0f;
+    CHECK(trg::layout::SidebarRowWidth(168.0f, 0.0f) == 168.0f - trg::layout::kSidebarPadding * 2.0f);
+    CHECK(trg::layout::SidebarRowWidth(168.0f, bar) == 168.0f - trg::layout::kSidebarPadding - bar);
+
+    const std::string patch = ReadSource("launcher/patches/trg-launcher/0020-sidebar-scroll.patch");
+    for (const char* text : {"SetNextWindowScroll", "SetNextWindowContentSize", "ImGuiButtonFlags_EnableNav", "sidebar_scroll_ = ImGui::GetScrollY()",
+                             "SidebarScrollToShow", "SidebarRowWidth", "navigation_.current() != sidebar_shown_"})
+        CHECK(patch.find(text) != std::string::npos);
+    CHECK(patch.find("-  ImGui::BeginChild(\"##sidebar\", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);") != std::string::npos);
+}
+
+static void TestCustomLevelsPageUi() {
+    const std::string page = ReadSource("launcher/custom_levels_page.cpp"), header = ReadSource("launcher/custom_levels_page.h"),
+                      launcher = ReadSource("launcher/launcher.cpp"), incident = ReadSource("launcher/incident_page.cpp");
+    CHECK(page.find("Game version") == std::string::npos && page.find("version_selector") == std::string::npos &&
+          page.find("several_versions") == std::string::npos && header.find("version_selector") == std::string::npos &&
+          header.find("several_versions") == std::string::npos);
+    const size_t hooks = At(launcher, "CustomLevelsHooks MakeCustomLevelsHooks()");
+    const std::string made = launcher.substr(hooks, At(launcher, "void BrowseForLevel", hooks) - hooks);
+    CHECK(made.find("VersionCombo") == std::string::npos && made.find("SelectVersion") == std::string::npos &&
+          made.find("JPT_KEY_GAME_VERSION") == std::string::npos && made.find("Selected()") != std::string::npos);
+    CHECK(At(launcher, "ui.Row(\"Game version\", kGameVersionHelp)") != std::string::npos);
+
+    // The readme goes to the system's own application, through the helper "View selected log" uses.
+    CHECK(incident.find("trg::OpenUrl(Utf8(log.path))") != std::string::npos);
+    CHECK(made.find("hooks.open_file = [](const std::filesystem::path& file) { trg::OpenUrl(Utf8(file)); };") != std::string::npos);
+    CHECK(page.find("ResolveReadme(user_dir_, package, file)") != std::string::npos && page.find("hooks_.open_file(file)") != std::string::npos);
+    for (const char* text : {"BeginPopupModal(kPopup, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize", "level_readme", "readme_text_"})
+        CHECK(page.find(text) == std::string::npos && header.find(text) == std::string::npos);
+    CHECK(page.find("const RowActions actions = ActionsOf(scene, !package.readme.empty());") != std::string::npos);
+    // The outcome of an import stays below the import buttons until it is closed; Bug Report opens its page on this session's log.
+    const size_t import = At(page, "void CustomLevelsPage::DrawImport("), notice = At(page, "void CustomLevelsPage::DrawNotice(");
+    const std::string drawn = page.substr(notice, At(page, "void CustomLevelsPage::DrawSort(") - notice);
+    CHECK(At(page, "Import Folder", import) < At(page, "DrawNotice(ui);", import) && At(page, "DrawNotice(ui);", import) < At(page, "ui.Help(kImportHelp);", import));
+    CHECK(drawn.find("Tr(\"Bug Report\"))) hooks_.open_bug_report(\"\", \"\");") != std::string::npos && drawn.find("Tr(\"Close\"))) notice_ = {};") != std::string::npos);
+    const size_t report = At(made, "hooks.open_bug_report = [this](const std::string& package, const std::string& scene) {");
+    CHECK(At(made, "incident_page_->ChooseRunningLog();", report) < At(made, "launcher_->GoToPage(launcher_->FindPage(PageName(PageId::kBugReport)));", report));
+    CHECK(incident.find("wanted_log_ = places_.running_log;") != std::string::npos && incident.find("SelectLog(DefaultGameLog(logs_))") == std::string::npos);
+    // A refused import or start says one plain sentence; the reasons (actions, texhw, versions, files) stay in the log.
+    CHECK(page.find("notice_ = ImportNotice(outcome->status);") != std::string::npos && page.find("ImportStatusTitle(ImportStatus::kNotSupported)") != std::string::npos);
+    CHECK(page.find("scene_version") == std::string::npos && page.find("scene.version") == std::string::npos && page.find("JPT_SCENE") == std::string::npos && page.find("scene.note") == std::string::npos &&
+          page.find("issue.code") == std::string::npos && page.find("ActionType") == std::string::npos && page.find("texhw") == std::string::npos && page.find("detail") == std::string::npos);
+    CHECK(page.find("for (const std::string& line : outcome->log) Log(") != std::string::npos);
+    // The key that logs a level's class once is that class, never a phrase of its own that the page would have to translate.
+    CHECK(page.find("scene.path + \": \" + LevelClassName(scene.level_class())") != std::string::npos && page.find("\" class\"") == std::string::npos);
+    for (const char* language : {"en", "pt-BR", "fr", "de", "es", "ru", "it"}) {
+        SetLauncherLanguage(language);
+        for (const char* text : {"Installed levels (%d)", "Ready", "Not supported", "Bug Report", "Close", "Loading custom levels..."}) CHECK(Tr(text)[0] != '\0');
+    }
+    SetLauncherLanguage("en");
+    for (const char* text : {"Installed levels (%d)", "Could not import this custom level", "This custom level is not fully supported", "This custom level cannot be played", "This level is missing required files",
+                             "This level cannot be loaded safely", "No playable level was found", "Newest first", "Oldest first", "Name A to Z", "Name Z to A", "Ready", "Not supported", "Unsafe path in archive",
+                             "Custom level installed", "This level is not supported by this port yet", "Bug Report", "Close", "Loading custom levels...", "Reading the package...", "Copying the level files...", "Checking the level files...",
+                             "The custom levels could not be listed"})
+        CHECK(HasRow(text));
+    for (const char* text : {"Ready with warnings", "Missing files", "Unsupported feature", "Damaged file", "Could not install this custom level"}) CHECK(!HasRow(text) && page.find(text) == std::string::npos);
+    CHECK(page.find("TrFormat(\"Installed levels (%d)\", int(PlayableLevels(packages)))") != std::string::npos);
+    // A row that cannot be played has Bug Report on this session's log, where its reasons were just written: never an older run.
+    const std::string reported = page.substr(At(page, "void CustomLevelsPage::ReportLevel("), At(page, "void CustomLevelsPage::DrawRow(") - At(page, "void CustomLevelsPage::ReportLevel("));
+    CHECK(At(reported, "for (const std::string& line : ReportLines(package, scene, hooks_.data_dir())) Log(\"%s\", line.c_str());") < At(reported, "hooks_.open_bug_report(\"\", \"\");") &&
+          reported.find("hooks_.open_bug_report(\"\", \"\");") != std::string::npos && reported.find("LevelProblems(") == std::string::npos &&
+          reported.find("open_bug_report(package.id") == std::string::npos);
+    CHECK(made.find("settings_.Get(kLauncherLevelSortKey)") != std::string::npos && made.find("settings_.SaveNow({{kLauncherLevelSortKey, sort}})") != std::string::npos);
+    for (const char* text : {"Untested level format", "Unsupported level format", "This level uses scene format version %d", "This port currently supports up to version %d"})
+        CHECK(page.find(text) == std::string::npos && !HasRow(text));
+    // A row names the package, the scene and a short status; a level is asked for before it is started.
+    CHECK(page.find("Start level") == std::string::npos && page.find("version()") == std::string::npos && header.find("version;") == std::string::npos && !HasRow("Start level"));
+    const std::string play = page.substr(At(page, "void CustomLevelsPage::Play("), At(page, "void CustomLevelsPage::ReportLevel(") - At(page, "void CustomLevelsPage::Play("));
+    CHECK(At(play, "CheckBeforePlay(") < At(play, "return;") && At(play, "return;") < At(play, "hooks_.play(request)"));
+    CHECK(page.find("if (actions.play) {\n        ImGui::BeginDisabled(!hooks_.game_ready() || import_.running() || pending_play_.has_value());\n        if (ui.AccentButton(Tr(\"Play\")") != std::string::npos);
+    // A Play waits for the listing job, which may be writing the same package's records.
+    CHECK(At(page, "if (pending_play_ && !listing_.busy()) {") < At(page, "void CustomLevelsPage::DrawImporting("));
+    // The list is made off the UI thread: the page draws the loading view, and only adopts what the job made.
+    const std::string draw = page.substr(At(page, "void CustomLevelsPage::Draw("), At(page, "void CustomLevelsPage::DrawImport(") - At(page, "void CustomLevelsPage::Draw("));
+    CHECK(page.find("ListLevelPackages(") == std::string::npos && page.find("AnalyzePackage(") == std::string::npos && page.find("std::thread") == std::string::npos && page.find("detach") == std::string::npos);
+    CHECK(At(draw, "listing_.Advance(") < At(draw, "DrawLoadingView(ui, \"Loading custom levels...\");") && At(draw, "DrawLoadingView(ui, \"Loading custom levels...\");") < At(draw, "DrawImport(ui);"));
+    // An import shows the launcher's own task bar in place of the import buttons: its phase, its percentage and Cancel.
+    const std::string imported = page.substr(At(page, "void CustomLevelsPage::DrawImport("), At(page, "void CustomLevelsPage::DrawNotice(") - At(page, "void CustomLevelsPage::DrawImport("));
+    CHECK(At(imported, "if (ui.TaskProgress(import_)) {") < At(imported, "Import ZIP / 7z / RAR") && draw.find("DrawImporting") == std::string::npos && page.find("Importing custom level") == std::string::npos);
+    CHECK(page.find("import_.Start(kImportPhases[0],") != std::string::npos && page.find("RunImport(request, publish,") != std::string::npos && page.find("task.Progress(done, total);") != std::string::npos);
+    CHECK(At(page, "if (import_.running() && import_shown_done_ && ImGui::GetFrameCount() > last_frame_ + 1)") < At(page, "if (import_.Finish() == trg::Task::State::kIdle) return;"));
+    const std::string trg = ReadSource("external/trg-launcher/src/launcher.cpp");
+    CHECK(trg.find("\"%s %.0f%%\", task_label, double(f) * 100.0") != std::string::npos && trg.find("const float cancel_w = 90 * scale_;") != std::string::npos);
+    const std::string view = ReadSource("launcher/loading_view.h"), job = ReadSource("launcher/background_job.h");
+    CHECK(view.find("angle, angle + 4.2f, 24)") != std::string::npos && view.find("ui.theme().accent") != std::string::npos && view.find("LayOutLoading(ui.scale()") != std::string::npos);
+    CHECK(job.find("detach") == std::string::npos && job.find("worker_.join();") != std::string::npos && job.find("imgui") == std::string::npos && job.find("ImTextureID") == std::string::npos);
+    CHECK(HasRow("The readme could not be opened.") && !HasRow("This file could not be read.") &&
+          !HasRow("The installed version the levels below are played with. Each version keeps its own saves."));
 }
 
 static void TestGoreAndTitleOptions() {
@@ -1813,12 +2061,12 @@ static void TestNoLanguagePage() {
     for (size_t at = launcher.find("\"Language\""); at != std::string::npos; at = launcher.find("\"Language\"", at + 1)) ++combos;
     CHECK(combos == 1);
     for (const char* forbidden : {"\"game_text_language\"", "\"subtitle_language\"", "JPT_KEY_LEGACY", "Install downloaded",
-                                  "Open TresCom", "BrowseForFolder"})
+                                  "Open TresCom"})
         CHECK(launcher.find(forbidden) == std::string::npos);
     CHECK(launcher.find("Translation credits") != std::string::npos);
     std::size_t sections = 0;
     for (const PageId page : kPageOrder) sections += std::string(PageName(page)) == "Language";
-    CHECK(sections == 0 && std::size(kPageOrder) == 8);
+    CHECK(sections == 0 && std::size(kPageOrder) == 9);
 }
 
 static std::vector<jpt_gpu_t> Gpus(std::initializer_list<const char*> names) {
@@ -1959,11 +2207,15 @@ static void TestGraphicsCard(const fs::path& dir) {
     CHECK(renderer != std::string::npos && renderer < card && card < resolution && resolution != std::string::npos);
     CHECK(launcher.find("ui.Info(\"Graphics card\"") == std::string::npos);
     CHECK(launcher.find("BeginCombo(\"##graphics_card\"") != std::string::npos);
-    CHECK(launcher.find("\"No graphics card found\"") != std::string::npos);
+    CHECK(launcher.find("Tr(GraphicsCardsProblem(cards_))") != std::string::npos);
+    GraphicsCards unknown;
+    CHECK(HasRow(GraphicsCardsProblem(unknown)));
+    unknown.state = GraphicsCards::State::kSkipped;
+    CHECK(HasRow(GraphicsCardsProblem(unknown)));
     CHECK(launcher.find("NormalizeGraphicsCard();") != std::string::npos);
     for (const char* gone : {"Render size", "RenderSizeText", "Not detected", "QueryGpu", "\"Automatic\", \"Auto\""})
         CHECK(launcher.find(gone) == std::string::npos && ReadSource("launcher/options.cpp").find(gone) == std::string::npos);
-    CHECK(!HasRow("Render size") && !HasRow("Not detected") && HasRow("No graphics card found") && HasRow("Graphics card"));
+    CHECK(!HasRow("Render size") && !HasRow("Not detected") && HasRow("Graphics card"));
     SetLauncherLanguage("pt-BR");
     CHECK(std::string(Tr("Selects which graphics card renders the game. If the selected card is no longer available, the "
                          "first available card is used.")) ==
@@ -2091,6 +2343,22 @@ static void TestDirect3DEffectsPolicy() {
           end != std::string::npos);
     CHECK(launcher.find("Set(JPT_KEY_WATER_REFRACTION") == std::string::npos &&
           launcher.find("Set(JPT_KEY_ENHANCED_SKY") == std::string::npos);
+}
+
+static void TestFogAndShadowsRows() {
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t page = launcher.find("void PageGraphics(");
+    const size_t fog = launcher.find("ui.Toggle(\"Fog\", kFogHelp, JPT_KEY_FOG_ENABLED, true, \"Off\", \"On\")", page);
+    const size_t shadows =
+        launcher.find("ui.Toggle(\"Shadows\", kShadowsHelp, JPT_KEY_SHADOWS_ENABLED, true, \"Off\", \"On\")", fog);
+    const size_t ao = launcher.find("JPT_KEY_AMBIENT_OCCLUSION", page);
+    const size_t gate = launcher.find("Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER))", page);
+    CHECK(page != std::string::npos && ao < fog && fog < shadows && shadows < gate && gate != std::string::npos);
+    CHECK(HasRow("Fog") && HasRow("Shadows"));
+    CHECK(HasRow("The original game's distance fog over objects, terrain and water, in every renderer. Off draws them without "
+                 "it; the sky keeps its own haze, and the draw distance does not change."));
+    CHECK(HasRow("The original game's shadows of objects and dinosaurs on the ground, in every renderer. Off draws the ground "
+                 "without them. Ambient occlusion is a separate setting."));
 }
 
 static std::vector<int> CheatValues(const fs::path& ini) {
@@ -2278,7 +2546,12 @@ int main() {
     TestUiCoverage();
     TestNoLanguagePage();
     TestDirect3DEffectsPolicy();
+    TestFogAndShadowsRows();
     TestLanguageNames();
+    TestLauncherRenderer();
+    TestFramePacing();
+    TestSidebarScroll();
+    TestCustomLevelsPageUi();
     TestGoreAndTitleOptions();
     TestGameplayOrder();
     TestGraphicsCard(dir);

@@ -210,8 +210,8 @@ void IncidentPage::Draw(trg::Ui& ui, const ReportFacts& facts) {
 void IncidentPage::StartLogScan() {
     if (scan_) return;
     scan_ = std::make_shared<LogScan>();
-    std::thread([scan = scan_, folder = places_.logs_dir, running_log = places_.running_log] {
-        scan->logs = FindGameLogs(folder, running_log);
+    std::thread([scan = scan_, folder = places_.logs_dir, running_log = places_.running_log, wanted = wanted_log_] {
+        scan->logs = FindGameLogs(folder, running_log, kMostGameLogs, wanted);
         scan->done = true;
     }).detach();
 }
@@ -221,13 +221,27 @@ void IncidentPage::CollectLogScan() {
     logs_ = std::move(scan_->logs);
     scan_.reset();
     logs_found_ = true;
-    SelectLog(DefaultGameLog(logs_));
+    SelectLog(ChooseGameLog(logs_, wanted_log_));
 }
 
 void IncidentPage::FindLogs() {
-    logs_ = FindGameLogs(places_.logs_dir, places_.running_log);
+    logs_ = FindGameLogs(places_.logs_dir, places_.running_log, kMostGameLogs, wanted_log_);
     logs_found_ = true;
-    SelectLog(DefaultGameLog(logs_));
+    SelectLog(ChooseGameLog(logs_, wanted_log_));
+}
+
+void IncidentPage::ChooseRunningLog() {
+    wanted_log_ = places_.running_log;
+    ForgetPreview();
+    if (logs_found_) FindLogs();
+}
+
+void IncidentPage::ChooseLevelLog(const std::string& package, const std::string& scene) {
+    const std::filesystem::path log = FindLevelLog(places_.logs_dir, places_.running_log, package, scene);
+    if (log.empty()) return ChooseRunningLog();
+    wanted_log_ = log;
+    ForgetPreview();
+    if (logs_found_) FindLogs();
 }
 
 void IncidentPage::SelectLog(size_t index) {
@@ -366,6 +380,7 @@ void IncidentPage::DrawLogs(trg::Ui& ui, bool sending) {
         ImGui::AlignTextToFramePadding();
         if (ImGui::RadioButton(Tr("Send this log"), selected_ == i) && selected_ != i) {
             SelectLog(i);
+            wanted_log_ = logs_[i].path;
             ForgetPreview();
         }
         ImGui::EndDisabled();

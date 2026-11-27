@@ -19,6 +19,7 @@
 #define FAKE_WNDPROC 0x005000D0u
 #define FAKE_ENUMCB 0x005000E0u
 #define FAKE_WAITER 0x005000F0u
+#define FAKE_ENUMDEVICE 0x00500100u
 
 typedef struct {
     uint32_t va;
@@ -35,6 +36,9 @@ extern unsigned g_fake_wp_count;
 /* A (pointer, context) stdcall callback that counts its calls and answers 1; the first pointer argument's first dword is saved. */
 extern unsigned g_fake_enum_count;
 extern uint32_t g_fake_enum_first_dword[64];
+/* An EnumDevices callback (six arguments): its calls, the hardware description's size and device caps, the context, the software
+ * description's size. */
+extern uint32_t g_fake_enum_device[5];
 
 /* The thunks the fake guest code calls, set by the test. */
 extern uint32_t g_fake_callback_thunk, g_fake_add_thunk, g_fake_block_thunk, g_fake_cdecl_thunk, g_fake_wait_thunk;

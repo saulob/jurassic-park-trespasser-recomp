@@ -26,6 +26,9 @@ struct jpt_vpath {
     dir_cache_t dirs[MAX_DIRS];
     int next_slot;
     unsigned listings, hits;
+    char overlay_drive;
+    char overlay_folder[MAX_NAME + 1];
+    jpt_vpath_overlay_fn overlay, drive_find, relative_find;
 };
 
 static int fold(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
@@ -242,6 +245,61 @@ static const char* lookup(jpt_vpath_t* v, const char* host_dir, const char* name
     }
     slot = list_dir(v, host_dir);
     return slot < 0 ? NULL : find_in(&v->dirs[slot], name);
+}
+
+void jpt_vpath_set_overlay(jpt_vpath_t* v, char drive, const char* folder, jpt_vpath_overlay_fn find) {
+    v->overlay = find;
+    v->overlay_drive = drive_letter(drive);
+    snprintf(v->overlay_folder, sizeof v->overlay_folder, "%s", folder);
+}
+
+/* The path's elements below the overlay's folder; -1 when it lies elsewhere. */
+static int below_overlay(const jpt_vpath_t* v, const char* guest_path, char names[][MAX_NAME + 1]) {
+    char drive;
+    int n = 0;
+    if (!v->overlay || normalise(v, guest_path, &drive, names, &n) != JPT_VP_OK) return -1;
+    return drive == v->overlay_drive && n > 0 && same_name(names[0], v->overlay_folder) ? n - 1 : -1;
+}
+
+void jpt_vpath_set_drive_overlay(jpt_vpath_t* v, jpt_vpath_overlay_fn find, jpt_vpath_overlay_fn relative) {
+    v->drive_find = find;
+    v->relative_find = relative;
+}
+
+static int found_on_drive(jpt_vpath_t* v, const char* guest_path, char* host_path, size_t cap) {
+    char names[MAX_ELEMENTS][MAX_NAME + 1], relative[JPT_PATH_MAX], drive;
+    int n = 0;
+    size_t len = 0;
+    if (!v->drive_find || normalise(v, guest_path, &drive, names, &n) != JPT_VP_OK || drive != v->overlay_drive || n < 1) return 0;
+    relative[0] = 0;
+    for (int i = 0; i < n && len < sizeof relative; i++)
+        len += (size_t)snprintf(relative + len, sizeof relative - len, "%s%s", i ? "/" : "", names[i]);
+    return len < sizeof relative && v->drive_find(relative, host_path, cap);
+}
+
+int jpt_vpath_resolve_read(jpt_vpath_t* v, const char* guest_path, char* host_path, size_t cap, int* overlaid) {
+    char names[MAX_ELEMENTS][MAX_NAME + 1], relative[JPT_PATH_MAX];
+    int n = guest_path ? below_overlay(v, guest_path, names) : -1;
+    size_t len = 0;
+    if (overlaid) *overlaid = 0;
+    relative[0] = 0;
+    for (int i = 1; i <= n && len < sizeof relative; i++)
+        len += (size_t)snprintf(relative + len, sizeof relative - len, "%s%s", i > 1 ? "/" : "", names[i]);
+    if (n > 0 && len < sizeof relative && v->overlay(relative, host_path, cap)) {
+        if (overlaid) *overlaid = 1;
+        return JPT_VP_OK;
+    }
+    if (n < 0 && v->overlay && guest_path &&
+        (found_on_drive(v, guest_path, host_path, cap) || (v->relative_find && v->relative_find(guest_path, host_path, cap)))) {
+        if (overlaid) *overlaid = 1;
+        return JPT_VP_OK;
+    }
+    return jpt_vpath_resolve(v, guest_path, 0, host_path, cap);
+}
+
+int jpt_vpath_write_refused(jpt_vpath_t* v, const char* guest_path) {
+    char names[MAX_ELEMENTS][MAX_NAME + 1];
+    return guest_path && below_overlay(v, guest_path, names) >= 0;
 }
 
 void jpt_vpath_invalidate(jpt_vpath_t* v, const char* host_dir) {

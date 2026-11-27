@@ -4,6 +4,7 @@
     py -3 -m unittest tests.test_lifts
 """
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,19 @@ class LiftArtifacts(unittest.TestCase):
             self.assertIn("recomp_dispatch.c", names)
             self.assertIn("recomp_funcs.h", names)
             self.assertIn("recomp_selfmod.c", names)
+
+    def test_every_listed_override_is_a_renamed_body_in_the_packed_lift(self):
+        listed = {"lift116": "src/host/guest_override_list.h", "lift_es117": "src/host/profiles/lift_es117/guest_override_list.h",
+                  "lift_ptbr117": "src/host/profiles/lift_ptbr117/guest_override_list.h"}
+        for lift, entry in lifts.read_manifest()["lifts"].items():
+            text = "".join(data.decode("utf-8", "replace") for name, data in lifts.archive_files(lifts.LIFTS_DIR / entry["archive"])
+                           if name.endswith(".c"))
+            vas = re.findall(r"^GUEST_OVERRIDE\(([0-9A-F]{8}),", (ROOT / listed[lift]).read_text(encoding="utf-8"), re.M)
+            self.assertTrue(vas, lift)
+            for va in vas:
+                lifted = len(re.findall(rf"^void {lift}_lifted_sub_{va}\(void\) \{{", text, re.M))
+                plain = len(re.findall(rf"^void {lift}_sub_{va}\(void\) \{{", text, re.M))
+                self.assertEqual((lifted, plain), (1, 0), f"{lift} sub_{va}: {lifted} lifted, {plain} plain definitions")
 
     def test_a_tampered_archive_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:

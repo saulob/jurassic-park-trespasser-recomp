@@ -30,6 +30,8 @@ const char k_glue_hlsl[] =
     "#endif\n"
     "Texture2D<float> ao_term : register(t2);\n"
     "Texture2D<float> ao_mask : register(t3);\n"
+    "Texture2D<float4> scene_color : register(t4);\n"
+    "cbuffer Apply : register(b0) { float3 fog_color; float apply_pad; };\n"
     "struct Prepared { float depth : SV_Target0; float mask : SV_Target1; };\n"
     "float4 vs_full(uint id : SV_VertexID) : SV_Position {\n"
     "  float2 k = float2((id << 1) & 2, id & 2);\n"
@@ -53,10 +55,14 @@ const char k_glue_hlsl[] =
     "  o.depth = max(o.depth, AO_DEPTH_FLOOR);\n"
     "  return o;\n"
     "}\n"
+    /* Only the part of the pixel that is not fog darkens, as if the occlusion had been applied before the fog. */
     "float4 ps_apply(float4 pos : SV_Position) : SV_Target {\n"
     "  int3 p = int3(pos.xy, 0);\n"
-    "  float k = lerp(1.0, ao_term.Load(p), ao_mask.Load(p));\n"
-    "  return float4(k, k, k, 1.0);\n"
+    "  float4 scene = scene_color.Load(p);\n"
+    "  float open = ao_mask.Load(p), visible = min(open, scene.a);\n"
+    "  float3 fog = (open - visible) * fog_color;\n"
+    "  float3 weight = min(visible.xxx, saturate(1.0 - fog / max(scene.rgb, 1.0 / 255.0)));\n"
+    "  return float4(lerp(float3(1.0, 1.0, 1.0), ao_term.Load(p).xxx, weight), 1.0);\n"
     "}\n";
 
 struct Surface {
@@ -71,6 +77,7 @@ struct State {
     ID3D11VertexShader* vs;
     ID3D11PixelShader* prepare[2];
     ID3D11PixelShader* apply;
+    ID3D11Buffer* apply_constants;
     ID3D11BlendState* multiply;
     ID3D11RasterizerState* raster;
     ID3D11DepthStencilState* no_depth;
@@ -146,6 +153,11 @@ bool make_glue() {
     ok = ok && make_pixel_shader("ps_prepare", false, &S.prepare[0]) && make_pixel_shader("ps_prepare", true, &S.prepare[1]) &&
          make_pixel_shader("ps_apply", false, &S.apply);
     if (!ok) return false;
+    D3D11_BUFFER_DESC constants = {};
+    constants.ByteWidth = 4 * sizeof(float);
+    constants.Usage = D3D11_USAGE_DYNAMIC;
+    constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    constants.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     D3D11_BLEND_DESC blend = {};
     blend.RenderTarget[0].BlendEnable = TRUE;
     blend.RenderTarget[0].SrcBlend = D3D11_BLEND_ZERO;
@@ -160,7 +172,8 @@ bool make_glue() {
     raster.CullMode = D3D11_CULL_NONE;
     raster.DepthClipEnable = TRUE;
     D3D11_DEPTH_STENCIL_DESC depth = {};
-    return SUCCEEDED(S.device->CreateBlendState(&blend, &S.multiply)) &&
+    return SUCCEEDED(S.device->CreateBuffer(&constants, nullptr, &S.apply_constants)) &&
+           SUCCEEDED(S.device->CreateBlendState(&blend, &S.multiply)) &&
            SUCCEEDED(S.device->CreateRasterizerState(&raster, &S.raster)) &&
            SUCCEEDED(S.device->CreateDepthStencilState(&depth, &S.no_depth));
 }
@@ -206,10 +219,19 @@ void fullscreen_pass(ID3D11DeviceContext* ctx, ID3D11PixelShader* ps, ID3D11Blen
 }
 
 void unbind(ID3D11DeviceContext* ctx) {
-    ID3D11ShaderResourceView* none[4] = {};
+    ID3D11ShaderResourceView* none[5] = {};
     ID3D11UnorderedAccessView* no_uav[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
-    ctx->PSSetShaderResources(0, 4, none);
+    ctx->PSSetShaderResources(0, 5, none);
     ctx->OMSetRenderTargetsAndUnorderedAccessViews(0, nullptr, nullptr, 0, D3D11_PS_CS_UAV_REGISTER_COUNT, no_uav, nullptr);
+}
+
+void set_apply_constants(ID3D11DeviceContext* ctx, const float fog[3]) {
+    D3D11_MAPPED_SUBRESOURCE m;
+    if (SUCCEEDED(ctx->Map(S.apply_constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+        memcpy(m.pData, fog, 3 * sizeof(float));
+        ctx->Unmap(S.apply_constants, 0);
+    }
+    ctx->PSSetConstantBuffers(0, 1, &S.apply_constants);
 }
 
 void log_quality(unsigned w, unsigned h) {
@@ -294,8 +316,9 @@ extern "C" int assao_render(ID3D11DeviceContext* ctx, const assao_scene_t* scene
     static const float k_unoccluded[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
     ao_preset_t preset;
     float projection[16];
-    if (!S.effect || !ctx || !scene || !out || !scene->depth || !scene->stencil || !ao_preset(S.quality, &preset) ||
-        !(scene->tan_half_x > 0.0f) || !(scene->tan_half_y > 0.0f) || !assao_resize(scene->width, scene->height))
+    if (!S.effect || !ctx || !scene || !out || !scene->depth || !scene->stencil || !scene->color ||
+        !ao_preset(S.quality, &preset) || !(scene->tan_half_x > 0.0f) || !(scene->tan_half_y > 0.0f) ||
+        !assao_resize(scene->width, scene->height))
         return 0;
     log_quality(scene->width, scene->height);
 
@@ -323,10 +346,11 @@ extern "C" int assao_render(ID3D11DeviceContext* ctx, const assao_scene_t* scene
     S.effect->Draw(settings_for(preset), &inputs);
     unbind(ctx);
 
-    ID3D11ShaderResourceView* results[2] = { S.term.srv, S.mask.srv };
+    ID3D11ShaderResourceView* results[3] = { S.term.srv, S.mask.srv, scene->color };
     ctx->OMSetRenderTargets(1, &out, nullptr);
     set_viewport(ctx, scene->width, scene->height);
-    ctx->PSSetShaderResources(2, 2, results);
+    ctx->PSSetShaderResources(2, 3, results);
+    set_apply_constants(ctx, scene->fog);
     fullscreen_pass(ctx, S.apply, S.multiply);
     unbind(ctx);
     ctx->OMSetRenderTargets(1, &out, nullptr);
@@ -343,6 +367,7 @@ extern "C" void assao_shutdown(void) {
     release(S.prepare[0]);
     release(S.prepare[1]);
     release(S.apply);
+    release(S.apply_constants);
     release(S.multiply);
     release(S.raster);
     release(S.no_depth);

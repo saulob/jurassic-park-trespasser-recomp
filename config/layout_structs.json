@@ -379,10 +379,12 @@
    "names": [
     "QUALITY_DISTANCE_SCALE",
     "QUALITY_PIXEL_TOL_ADJ",
-    "ROOT_QUALITY"
+    "ROOT_QUALITY",
+    "QUALITY_SHADOWS"
    ],
    "files": [
-    "terrain_quality.c"
+    "terrain_quality.c",
+    "scene_options.c"
    ],
    "set": "QualityTable"
   },
@@ -391,7 +393,8 @@
     "QUALITY_STRIDE"
    ],
    "files": [
-    "terrain_quality.c"
+    "terrain_quality.c",
+    "scene_options.c"
    ],
    "set": "QualityTable",
    "kind": "size"
@@ -1084,10 +1087,12 @@
   },
   {
    "names": [
-    "PROPS_IN_CAMERA"
+    "PROPS_IN_CAMERA",
+    "CAMERA_PROPS"
    ],
    "files": [
-    "widescreen.c"
+    "widescreen.c",
+    "terrain_shadows.c"
    ],
    "class": "CCamera"
   },
@@ -1272,9 +1277,498 @@
    ],
    "category": "HOST_CONSTANT",
    "reason": "the largest laid-out text blob the host reads"
+  },
+  {
+   "names": [
+    "PLAYER_HAND_OBJECT",
+    "PLAYER_BELT",
+    "PLAYER_BACK"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CPlayer"
+  },
+  {
+   "names": [
+    "INSTANCE_POSITION",
+    "INSTANCE_ROTATION"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CInstance"
+  },
+  {
+   "names": [
+    "GUN_MAX_AMMO",
+    "GUN_AMMO"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CGun"
+  },
+  {
+   "names": [
+    "TRIGGER_ACTION_COUNT"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "set": "TriggerActions"
+  },
+  {
+   "names": [
+    "VALUE_DATA"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "set": "ScriptValue"
+  },
+  {
+   "names": [
+    "SYMBOLS"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "set": "ScriptSymbols"
+  },
+  {
+   "names": [
+    "APP_SCENE"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "set": "AppScene"
+  },
+  {
+   "names": [
+    "ACTION_BYTES"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "set": "ActionFactory",
+   "kind": "size"
+  },
+  {
+   "names": [
+    "INSTANCE_INFO"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CInstance"
+  },
+  {
+   "names": [
+    "INFO_FLAGS",
+    "INFO_SHAPE",
+    "INFO_PHYSICS",
+    "INFO_AI"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CInfo"
+  },
+  {
+   "names": [
+    "AI_INFO_TYPE"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CAIInfo"
+  },
+  {
+   "names": [
+    "VF_DELETE"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CRefObj",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_SEND"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CMessageUse",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_AS_TRIGGER"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CTrigger",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_AS_ANIMAL"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CAnimal",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_USE"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CGun",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "VF_ANIMATES"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CAnimateTextureAction"
+  },
+  {
+   "names": [
+    "ANIMATE_HP",
+    "ANIMATE_HP_MAX",
+    "ANIMATE_PARTS"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CAnimate"
+  },
+  {
+   "names": [
+    "TRIGGER_FIRE_COUNT",
+    "TRIGGER_PROBABILITY",
+    "TRIGGER_FIRES_AT_ZERO",
+    "TRIGGER_RESET_COUNT"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CTrigger"
+  },
+  {
+   "names": [
+    "MESH_MATERIALS",
+    "MESH_TEXTURES",
+    "MESH_FRAMES",
+    "MESH_FRAME_TEXTURES"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CMeshAnimating"
+  },
+  {
+   "names": [
+    "PARTICLES_COLOUR"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "set": "Particles"
+  },
+  {
+   "names": [
+    "WND_OWNER"
+   ],
+   "files": [
+    "level_actions.c"
+   ],
+   "class": "CUIWnd"
+  },
+  {
+   "names": [
+    "SKY_TEXTURE_SCALE",
+    "SKY_FOG_FAR",
+    "SKY_FOG_NEAR",
+    "SKY_HEIGHT",
+    "SKY_WIND_U",
+    "SKY_WIND_V"
+   ],
+   "files": [
+    "sky_layers.c"
+   ],
+   "set": "CSky"
+  },
+  {
+   "names": [
+    "POLYGON_TEXTURE",
+    "POLYGON_MIP",
+    "POLYGON_DRAW",
+    "TEXTURE_MIPS",
+    "TEXTURE_MIP_COUNT",
+    "RASTER_LINKED"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "PolygonUpload"
+  },
+  {
+   "names": [
+    "TEXTURE_HASH"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "SetTexture"
+  },
+  {
+   "names": [
+    "RASTER_WIDTH",
+    "RASTER_HEIGHT",
+    "RASTER_D3D_TEXTURE"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "RasterD3D"
+  },
+  {
+   "names": [
+    "POLYGON_VERTICES",
+    "VERTEX_VALUE",
+    "VERTEX_U",
+    "TEXTURE_COLORS",
+    "COLORS_TABLE",
+    "TABLE_DARK",
+    "TABLE_FULL",
+    "TABLE_SHADED",
+    "TABLE_LEAST"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "PolygonSubmit"
+  },
+  {
+   "names": [
+    "POLYGON_FEATURES",
+    "POLYGON_VALUE"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "PolygonDraw"
+  },
+  {
+   "names": [
+    "MATERIAL_SPECULAR",
+    "MATERIAL_HIGHLIGHT",
+    "MATERIAL_FLAGS",
+    "MATERIAL_EMISSIVE"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "SurfaceLight"
+  },
+  {
+   "names": [
+    "GAMMA_EXPONENT",
+    "GAMMA_SCALE"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "Gamma"
+  },
+  {
+   "names": [
+    "NODE_VALUE",
+    "INSTANCE_RENDER",
+    "RENDER_LIGHT",
+    "LIGHT_INTENSITY"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "LightList"
+  },
+  {
+   "names": [
+    "LIGHT_PRESENCE",
+    "PRESENCE_TURN"
+   ],
+   "files": [
+    "texhw_guest.c"
+   ],
+   "set": "LightDirection"
+  },
+  {
+   "names": [
+    "INSTANCE_HANDLE",
+    "INSTANCE_POSITION",
+    "INSTANCE_ROTATION"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CInstance"
+  },
+  {
+   "names": [
+    "ANIMATE_BOXES",
+    "ANIMATE_HIT_POINTS"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAnimate"
+  },
+  {
+   "names": [
+    "ANIMAL_BRAIN"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAnimal"
+  },
+  {
+   "names": [
+    "VF_DEAD"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAnimal",
+   "kind": "slot"
+  },
+  {
+   "names": [
+    "SYSTEM_BRAIN"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CAISystem"
+  },
+  {
+   "names": [
+    "BRAIN_ANIMAL"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "set": "AIBrain"
+  },
+  {
+   "names": [
+    "INFLUENCE_*"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CInfluence"
+  },
+  {
+   "names": [
+    "PLAYER_HAND_OBJECT",
+    "PLAYER_HEAD"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CPlayer"
+  },
+  {
+   "names": [
+    "GUN_MAX_AMMO",
+    "GUN_AMMO"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CGun"
+  },
+  {
+   "names": [
+    "OVERLAY_LIST",
+    "NODE_HANDLE"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CTextOverlay"
+  },
+  {
+   "names": [
+    "SINPUT_*"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "set": "SInput"
+  },
+  {
+   "names": [
+    "RASTER_WIDTH",
+    "RASTER_HEIGHT"
+   ],
+   "files": [
+    "script_engine.c"
+   ],
+   "class": "CRaster"
   }
  ],
  "sets": {
+  "PolygonSubmit": {
+   "functions": [
+    "00559240"
+   ]
+  },
+  "PolygonDraw": {
+   "functions": [
+    "0055F540"
+   ]
+  },
+  "SurfaceLight": {
+   "functions": [
+    "00539190",
+    "0052DE70",
+    "0055AE00"
+   ]
+  },
+  "Gamma": {
+   "functions": [
+    "0050CC30"
+   ]
+  },
+  "LightList": {
+   "functions": [
+    "00538D70",
+    "0044CB60",
+    "00539BD0",
+    "00538A30"
+   ]
+  },
+  "LightDirection": {
+   "functions": [
+    "00538A30"
+   ]
+  },
   "CWorld": {
    "global": "0073F444"
   },
@@ -1551,6 +2045,56 @@
     "00414EF0",
     "0043CE40",
     "0043D7E0"
+   ]
+  },
+  "TriggerActions": {
+   "functions": [
+    "0046C6D0"
+   ]
+  },
+  "ScriptValue": {
+   "functions": [
+    "004AD050",
+    "004ACED0",
+    "004ACF30"
+   ]
+  },
+  "ScriptSymbols": {
+   "functions": [
+    "004BBD30"
+   ]
+  },
+  "AppScene": {
+   "functions": [
+    "00414480"
+   ]
+  },
+  "ActionFactory": {
+   "functions": [
+    "0046BE90"
+   ]
+  },
+  "Particles": {
+   "functions": [
+    "0053D780"
+   ]
+  },
+  "PolygonUpload": {
+   "functions": [
+    "0055A4E0"
+   ]
+  },
+  "SetTexture": {
+   "functions": [
+    "004C9D90"
+   ]
+  },
+  "RasterD3D": {
+   "functions": [
+    "005123A0",
+    "0050FF90",
+    "005100A0",
+    "00510240"
    ]
   }
  }

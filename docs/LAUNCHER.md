@@ -1,19 +1,54 @@
 # Launcher, display and graphics
 
-`trespasser_recomp.exe` opens the launcher before the game, in the same process, and runs the lifted build of the version you play. Pages: Play, Display, Graphics, Gameplay,
+`trespasser_recomp.exe` opens the launcher before the game, in the same process, and runs the lifted build of the version you play. Pages: Play, Custom Levels, Display, Graphics, Gameplay,
 Controls, Cheats, Bug Report and About. There is no online or multiplayer page.
 
 ## Architecture
 
 The launcher is the one of Dragon's Crown Pro PC and 13 Sentinels: Aegis Rim PC.
 [TRG Launcher](https://github.com/TekRantGaming/trg-launcher) 1.1.0 with their patch series
-(`launcher/patches/trg-launcher`, the 19 patches of 13 Sentinels), in an SDL3 window with SDL's software renderer and
-Dear ImGui's SDL3 backends. The host, placement, header art, page icons, Play gate and page layout are their files
+(`launcher/patches/trg-launcher`, the 19 patches of 13 Sentinels and the scrolling sidebar), in an SDL3 window with an SDL renderer (Direct3D 11, or
+SDL's software renderer when it is unavailable) and Dear ImGui's SDL3 backends. The host, placement, header art, page icons, Play gate and page layout are their files
 with this port's names. SDL 3.4.20, Dear ImGui and TRG are fetched by `tools\build.ps1` at the commits
 in `config/launcher_deps.txt` into `external\` (not committed); SDL is built as a static library, since MSVC x86 has
 no SDL package. TRG's downloader is built for the update check and the update download; the launcher makes no other request unless you press Send report or Refresh on the Bug Report page ([Updates](#updates), [BUG_REPORTS](BUG_REPORTS.md)). Only one SDL window and one ImGui
 context exist at a time, and all of SDL is shut down (`SDL_Quit`) before the game's window and Direct3D 11 device
 exist; the game starts SDL again on its own thread (docs/ARCHITECTURE.md, Platform).
+
+The launcher window's renderer is its own choice and does not touch the game's. On Windows it tries Direct3D 11 first and
+falls back to the software renderer; on Linux it takes SDL's first working renderer, then the software one. `d3d11.dll` and
+`dxgi.dll` are pinned in the process before the device exists, because SDL unloads them right after the device's last
+Release while a driver thread may still be returning through them (the NVIDIA shutdown crash of the sibling ports); if they
+cannot be pinned, Direct3D 11 is skipped. The log shows `renderer=... fallback=... pinned_modules=...`, the VSync outcome
+and, once, a loop sample after the window has been visible for five seconds. Frames are capped at 60 a second by a deadline
+pacer that sleeps between frames, wakes for input and does not draw while the window is minimised; the software renderer's
+simulated VSync is turned off so that it cannot slow the loop. Imports and other tasks run on their own threads.
+
+### Recovery without graphics support
+
+Opening the launcher does not depend on being able to run the game. Each renderer is tried on a window of its own: pin, window,
+renderer, a texture with a clear, a draw and a present, then Dear ImGui's backends. A failure at any of these, or in the
+launcher's own first frame, releases what was opened and moves on to the software renderer. The log has one `startup:` line per
+step (requested, tried, failed with its reason, effective).
+
+| `--launcher-renderer` | Tried |
+|---|---|
+| `auto` (default) | Windows: Direct3D 11, then software. Linux: SDL's first working renderer, then software |
+| `software` | software only; graphics card detection (Direct3D, Vulkan) is skipped |
+| `direct3d11` | Direct3D 11 only (Windows) |
+
+```
+trespasser_recomp.exe --launcher --launcher-renderer software
+```
+
+The option holds for that run, is never saved and does not change the game's `renderer`. On Linux the software renderer asks for
+X11 (or XWayland), because SDL presents software frames through an accelerated texture on Wayland; with no X server it stays on
+Wayland and still needs a working driver there. `SDL_VIDEO_DRIVER` set by the player wins.
+
+A graphics card list that cannot be made (no Vulkan, no adapter, a failed instance or enumeration) leaves the Graphics page usable:
+it says so, keeps the saved card and anti-aliasing, and the log has `startup: gpu enumeration result=... reason=...`. Failures
+are handled from return codes; a driver that crashes the process cannot be caught this way, which is what
+`--launcher-renderer software` is for.
 
 What differs, because the game differs: the game window is the host's Win32 window, so the Monitor list is the one
 that window uses (primary first, then the system's order); images are decoded with SDL's own `SDL_LoadPNG` instead of
@@ -24,7 +59,7 @@ On Linux the same sources are built into `trespasser_recomp` (`cmake/JptLinux.cm
 small: `launcher/os_file.cpp` (random reads and part-file writes), `launcher/pe_resources.cpp` (the Russian release's string table
 without Win32's resource functions), `launcher/system_info.cpp` (the Vulkan device list instead of DXGI), `src/common/jpt_monitors_sdl.c`
 (SDL displays for the Monitor list), `launcher/file_picker.cpp` (zenity or kdialog present on the PATH) and `jpt_port_folder` for
-the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.2 (any release without a lifted build would be listed as not playable yet).
+the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.3 (any release without a lifted build would be listed as not playable yet).
 
 | Path | Purpose |
 |---|---|
@@ -40,7 +75,8 @@ the folder the program lives in. The Direct3D 11 renderer is not offered there; 
 | `assets/launcher/` | header art, sponsor heart, page icons with `SOURCES.md` (README.md there) |
 | `src/common/` (C) | `trespasser.ini` parsing and writing, render sizes, presentation, monitors, user files: shared by host, launcher and tests |
 | `src/host/widescreen.c` | the gameplay mode and the Hor+ camera |
-| `tests/launcher_tests.cpp` | headless tests (docs/BUILD.md) |
+| `launcher/launcher_renderer.h`, `graphics_cards.h` | the launcher window's renderer choice and fallback; the Graphics page's card list |
+| `tests/launcher_tests.cpp`, `tests/launcher_startup_tests.cpp` | headless tests (docs/BUILD.md) |
 
 ## Folders
 
@@ -67,7 +103,8 @@ from `game\` to `user_data\saves` when it has no file of that name.
 | ready | any, with Shift held or `--launcher` | the launcher opens |
 | ready | any, with `--skip-launcher` | the game starts directly (a skip wins over Shift, as in the other ports) |
 
-`--dry-run` never opens it. When its window cannot be opened, the game starts if the files are ready.
+`--dry-run` never opens it. When its window cannot be opened, a system message box says why, the program ends with exit code 1
+and the game is not started; `--skip-launcher` and Show this launcher Off still start it directly.
 
 The host reserves the game's fixed address range by restarting itself before anything loads
 (`native32_hold_range`): `0x00400000` up to the largest guest image of any lift the program carries (their `SizeOfImage`
@@ -77,14 +114,15 @@ range is held even with nothing installed, so no second process is started after
 ## Pages
 
 The header reads **JURASSIC PARK: TRESPASSER** over `RECOMPILED · v<version> · BY SAULOB`, over the header art.
-The sidebar has the other ports' icons; the footer has the hints, **Sponsor on GitHub** (with the heart, left of Quit,
+The sidebar has the other ports' icons and gets its own scroll bar when the pages do not fit (mouse wheel, keyboard and controller focus; the selected page is kept in view); the footer has the hints, **Sponsor on GitHub** (with the heart, left of Quit,
 opening `https://github.com/sponsors/saulob` in the browser and nothing else), Quit, Save and PLAY.
 
 | Page | Rows |
 |---|---|
 | Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
+| Custom Levels | Import ZIP / 7z / RAR, Import Folder and their outcome (reason, Bug Report, Close), Installed levels (N) and their order (newest, oldest, name), listed off the UI thread behind `Loading custom levels...` (imports show their phase, percentage and Cancel in place of the import buttons), one row per level, the start level first: name, scene, status (Ready, Not supported); Play and Readme only when Ready, Bug Report only when not (this session's log), Readme (only with instructions; opens the original file in the system's application), Open Folder, Delete ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)) |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
-| Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
+| Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Fog, Shadows, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Enable Minimap, Enable Compass, Enable Waypoints, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
 | Controls | Gamepad (the controller connected now and its status, Controller glyphs, Look sensitivity X/Y, Invert look Y, Stick and Trigger deadzone); Gamepad controls (what every button does with the current bindings, in the shown glyph style); Gamepad bindings (one per action, Gamepad defaults); Keyboard & Mouse (Mouse sensitivity, Invert mouse, then every action with the keys the game loads from its `KeyMap`, including the mouse combinations for the hand); Port hotkeys (Quick Save and Quick Load, which can be changed, then the fixed ones; [CONTROLS](CONTROLS.md)) |
 | Cheats | Movement Speed, Jump Height, Invulnerability, Infinite Ammo, Freeze Dinosaurs, Super Health: what every session starts with ([Cheats](#cheats)) |
@@ -113,7 +151,9 @@ The card shows **Ready to play · English · Build 116** with the game's languag
 yet, why (see [GAME_VERSIONS](GAME_VERSIONS.md)). With more than one version installed, **Game version** chooses which
 one Play starts (setting `game_version`; empty: the first ready one the port runs). A selected version that is removed
 or broken is replaced by another ready one. The launcher's own language stays the one chosen in Gameplay. PLAY saves the pending settings once ("Settings saved. Starting game..."),
-closes the launcher and the game starts. It is refused, with the reason, while the files are not ready or an install
+closes the launcher and the game starts. On Windows a handoff window in the launcher's place and colours ("Starting game...",
+"Loading <package>..." and the real start-up phases, with a spinner) shows until the game window is shown; a start that fails before it
+says so there until it is closed, and the log has `[launch] failed stage=... reason=...`. It is refused, with the reason, while the files are not ready or an install
 runs; a failed save keeps the launcher open. **Save** writes without starting; **Quit** (Alt+F4) closes without saving.
 
 ## Import game
@@ -188,6 +228,8 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
 | `msaa` | 0, 2, 4, 8 | 4 |
 | `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `medium` |
+| `fog_enabled` | 1, 0 | 1 |
+| `shadows_enabled` | 1, 0 | 1 |
 | `water_refraction` | 1, 0 | 1 |
 | `enhanced_sky` | 1, 0 | 1 |
 | `max_object_detail` | 1, 0 | 0 |
@@ -419,7 +461,29 @@ is not part of this work.
   for one run). Intel ASSAO over the D3D11 3D scene only: Low, Medium, High and Ultra are ASSAO's quality levels 0-3
   (Ultra is its adaptive level). It needs feature level 11.0; without it, or if the effect cannot be created, it stays
   Off and the log says why.
-- **Water refraction** (key `water_refraction`, On by default; Direct3D 11 only, greyed out with Software and kept):
+- **Fog** (key `fog_enabled`, On by default; every renderer, Windows and Linux). On is the game's own fog, untouched:
+  `CFog::SetProperties` (0x00521500) builds its two tables (1024 steps of the distance as a share of the far clip, 8 bands)
+  from the level's `SET_FOG` (`FogHalf`, `FogPower`, colour). Direct3D takes the terrain table per vertex into the specular
+  alpha (1 + 0.5/6.5 - level/6.5, 255 unfogged, 0 the fog colour) and `D3DRENDERSTATE_FOGCOLOR`; the software polygons take
+  the objects' table as a CLUT band. Off clears both tables and the terrain's fog start after the game builds them
+  (`scene_options.c`, every frame, only when they hold fog): objects, terrain, water, impostors and CPU-drawn meshes are
+  drawn unfogged in every renderer. The far clip, culling, LOD, geometry, sorting, physics and the level's fog properties
+  (also in saves) are not changed. The sky keeps its own haze (it does not read these tables) and the frame is still cleared
+  to the level's fog colour, so the far clip's edge shows against it. Read at start.
+- **Shadows** (key `shadows_enabled`, On by default; every renderer, Windows and Linux). The original shadows are drawn into
+  the terrain's own textures by 0x0052F210: static objects once (from 0x00493C30), moving objects and dinosaurs every frame
+  through the moving-shadow pool, near the camera only (the level's `TrrNoShadowDist` times the quality's scale) and only
+  where `qdQualitySettings[quality].bShadows` is set. Off clears that flag in the five quality rows, which is how the retail
+  game's two lowest qualities have no shadows; nothing else reads it. Ambient occlusion is independent. The game draws no
+  shadows on objects (its object shadow buffer is never filled) and none for Anne. Read at start. With Direct3D
+  a shadow is never lighter than 0.63 of the lit ground, its value at the game's default brightness (`Gamma` 5 of 0 to 9); the game
+  alone lightens it with the slider (0.88 at 7). `terrain_shadows.c` keeps row 0 of the terrain's colour ramp for it, the ground's own
+  light using rows 1 to 31, and gives that row to ShadowLighting, for static objects, plants with see-through textures and moving
+  ones alike. The game's table ends in zeros, so 8 and 9 light everything alike; the game reads those two as 7 (`registry.c`,
+  `linux_advapi32.c`; the stored value is kept). An object casts one unless its level says `Shadow` = False or it is beyond its
+  `ShadowCulling` (30 or 40 m for most plants).
+- **Water refraction** (key `water_refraction`, On by default; Direct3D 11 and Vulkan, greyed out with Software and kept; on Linux
+  it needs the Vulkan renderer, docs/LINUX.md):
   after Trespasser CE's refractive water. The game writes CEntityWater's rows (`water_rows`, 0x0060E3F0, from
   `FillWaterTexture`, 0x0060E590) into the system-memory source surface of its water raster (the pointer
   `CRasterD3D::Lock` got), then `CRasterD3D` vtbl+0x1C (0x00510240) copies that surface into the Direct3D texture the
@@ -444,14 +508,15 @@ is not part of this work.
   wave difference and the shift in pixels of the water's pixels (average, p95, p99, largest, with the wave and distance
   of the largest), sampled per triangle and weighted by area. With Software, the launcher greys it out ("Available with the Direct3D 11
   renderer") and keeps its value.
-- **Enhanced sky** (key `enhanced_sky`, On by default; Direct3D 11 only): the retail hardware sky (`CSkyRender::DrawD3D`,
+- **Enhanced sky** (key `enhanced_sky`, On by default; Direct3D 11 and Vulkan): the retail hardware sky (`CSkyRender::DrawD3D`,
   0x005242C0) is one textured plane fogged per vertex by depth, so its horizon haze ignores the level's sky fog band.
   CE's enhanced sky fogs by view direction instead: with v the horizontal length of the unit view direction (0 straight
   up, 1 at the horizon), none up to the band's low edge (CSkyRender +0x30), all of it from the high edge (+0x2C),
   linear between; equal or inverted edges give a step and never a division, and unusable values (NaN, infinite, far
   out of range) keep the retail sky. The port draws the same retail plane and texture and takes v per pixel from the
   plane point the texture coordinates give (u = x · 1e-4 + 1.5 + scroll, v = y · 1e-4 + scroll) against the camera.
-  Object, terrain and water fog are unchanged.
+  Object, terrain and water fog are unchanged, and so is this haze with Fog Off. (The retail hardware haze is at most half
+  fog, 1 - 1.5 x distance / 50 km clamped to 0.5; the software sky uses the same band on 1 - |z|.)
 - **Maximum object detail** (key `max_object_detail`, Off by default; a saved value is kept): as Trespasser CE's `ForceMaxObjectDetail`, the
   renderer's `bDetailReduce` (render settings `[[0x006D2224]]+0x33`) is cleared, so the object pipeline (0x00519B20)
   and the terrain shadow pass always take an object's top mesh instead of the lower-detail one 0x004A7F10 would pick
@@ -560,7 +625,7 @@ Quick Save and Quick Load are not options: they are always available, with their
   re-files it with `CPartition::bAddChild(object, test_priority = 1)` (0x00475F60, from the move path 0x00605AF0): a
   partition refuses an object of lower priority (bits 0-3 of +0x10) and otherwise offers it to its children first. Build
   116 asks the children with the test off, so a moved object could be filed under a child of higher priority, which the
-  render traversal (0x00519B20) and the shadow pass (0x00543C20) skip with everything under it when the render quality
+  render traversal (0x00519B20, the shadow pass with it) skips with everything under it when the render quality
   is below that priority: the object and its shadow vanished. Build 117 passes the caller's flag down; the port's
   override of 0x00475F60 does the same when the setting is On and leaves every call as retail when Off. Loading and
   rebuilding the partitions pass the flag off in both builds and are unchanged.

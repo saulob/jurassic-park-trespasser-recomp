@@ -41,6 +41,7 @@ HWND window_host_surface(HWND window) { return window; }
 int window_host_frames_allowed(void) { return 0; }
 void window_host_frame_commit(unsigned generation) { (void)generation; }
 void window_host_frame_presented(void) {}
+void window_host_presentation_target(int ready) { (void)ready; }
 void video_hd_main_presented(void) {}
 int video_hd_present(HWND window, const BYTE* bits, LONG pitch, const RECT* source, int rgb565, const uint16_t* gamma) {
     (void)window; (void)bits; (void)pitch; (void)source; (void)rgb565; (void)gamma;

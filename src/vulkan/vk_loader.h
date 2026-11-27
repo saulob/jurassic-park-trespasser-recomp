@@ -178,6 +178,8 @@ typedef struct {
 } jpt_vk_loader_t;
 
 int jpt_vk_loader_open(jpt_vk_loader_t* l, int use_sdl_video, char* err, size_t err_cap);
+/* Uses an entry point that is already loaded; closes `l` on failure. */
+int jpt_vk_loader_bind(jpt_vk_loader_t* l, PFN_vkGetInstanceProcAddr get, char* err, size_t err_cap);
 int jpt_vk_loader_load_instance(jpt_vk_loader_t* l, VkInstance instance, char* err, size_t err_cap);
 int jpt_vk_loader_load_device(jpt_vk_loader_t* l, VkDevice device, char* err, size_t err_cap);
 void jpt_vk_loader_close(jpt_vk_loader_t* l);

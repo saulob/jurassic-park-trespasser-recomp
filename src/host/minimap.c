@@ -11,19 +11,36 @@ static const minimap_bounds_t k_levels[MM_LEVEL_COUNT] = {
 #include "minimap_map.inc"
 
 static int s_enabled = 1;
+static minimap_source_fn s_source;
 
-const minimap_bounds_t* minimap_bounds(const char* level_id) {
+void minimap_set_source(minimap_source_fn source) { s_source = source; }
+
+const minimap_bounds_t* minimap_retail_bounds(const char* level_id) {
     if (!level_id) return NULL;
     for (int i = 0; i < MM_LEVEL_COUNT; i++)
         if (k_levels[i].id && !_stricmp(k_levels[i].id, level_id)) return &k_levels[i];
     return NULL;
 }
 
-const minimap_level_map_t* minimap_map(const char* level_id) {
+const minimap_level_map_t* minimap_retail_map(const char* level_id) {
     if (!level_id) return NULL;
     for (int i = 0; i < MM_LEVEL_COUNT; i++)
         if (k_maps[i].id && !_stricmp(k_maps[i].id, level_id)) return &k_maps[i];
     return NULL;
+}
+
+const minimap_bounds_t* minimap_bounds(const char* level_id) {
+    const minimap_bounds_t* bounds;
+    const minimap_level_map_t* map;
+    if (s_source && s_source(level_id, &bounds, &map)) return bounds;
+    return minimap_retail_bounds(level_id);
+}
+
+const minimap_level_map_t* minimap_map(const char* level_id) {
+    const minimap_bounds_t* bounds;
+    const minimap_level_map_t* map;
+    if (s_source && s_source(level_id, &bounds, &map)) return map;
+    return minimap_retail_map(level_id);
 }
 
 static float clamp_zoom(float zoom) {
@@ -497,3 +514,15 @@ int minimap_toggle(void) {
 void minimap_configure(int enabled) { s_enabled = enabled != 0; }
 
 int minimap_enabled(void) { return s_enabled; }
+
+int minimap_picture_run(const minimap_frame_t* f, const minimap_picture_t* p, int row, int from, int to, minimap_point_t out[MM_CLIP_MAX]) {
+    const float w = (p->x1 - p->x0) / (float)p->cols, h = (p->y1 - p->y0) / (float)p->rows;
+    const float left = p->x0 + w * (float)from, right = p->x0 + w * (float)to, top = p->y0 + h * (float)row, bottom = top + h;
+    const float world[4][2] = { { left, top }, { right, top }, { right, bottom }, { left, bottom } };
+    const float reach = f->radius / f->scale;
+    minimap_point_t corners[4];
+    if ((left < f->player_x - reach && right < f->player_x - reach) || (left > f->player_x + reach && right > f->player_x + reach)) return 0;
+    if ((top < f->player_y - reach && bottom < f->player_y - reach) || (top > f->player_y + reach && bottom > f->player_y + reach)) return 0;
+    for (int i = 0; i < 4; i++) minimap_to_screen(f, world[i][0], world[i][1], &corners[i].x, &corners[i].y);
+    return minimap_clip_polygon(f, corners, 4, out);
+}

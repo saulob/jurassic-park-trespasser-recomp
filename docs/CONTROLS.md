@@ -53,6 +53,13 @@ closes the other first, and while any is up Anne gets no input at all. Controls 
 mouse button, a gamepad button, a trigger, a stick) does nothing until it is released. A hint naming the card's key (F2, or View with a gamepad) shows for a few seconds at the
 start of a level.
 
+### Trespasser CE script commands
+
+A custom level whose Trespasser CE scripts read `uCMD_USER1` to `uCMD_USER8` (the Cloning Facility: sprint and map) gets keys for those
+commands only: `script_user1_key` to `script_user8_key` in `trespasser.ini`, Shift and M for the first two by default, the others
+unbound. No other level and never the campaign has them. While such a script shows a screen of its own (modal mode) the player's
+controls do nothing and the keys go to it; Escape closes it.
+
 ### Minimap
 
 A circular map of the level sits in the bottom-left corner of the picture, centred on Anne, with her heading always up

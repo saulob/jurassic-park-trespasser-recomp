@@ -92,10 +92,20 @@ Teleport failed	Teleport failed
 Freeze AI failed	Freeze AI failed
 No objective	No objective
 Objective updated	Objective updated
+No map information	No map information
+No objective information	No objective information
+Find the way out	Find the way out
+Objective %d	Objective %d
 Quick Save	Quick Save
 Quick saved	Quick saved
 Quick Save failed	Quick Save failed
 Quick Load failed	Quick Load failed
+This save is damaged and was not loaded	This save is damaged and was not loaded
+This save is not compatible with the current level	This save is not compatible with the current level
+This level is missing required files	This level is missing required files
+This level cannot be loaded safely	This level cannot be loaded safely
+The next level is not included in this package	The next level is not included in this package
+The game could not be saved. The previous save was kept.	The game could not be saved. The previous save was kept.
 No Quick Save yet	No Quick Save yet
 Quick Save works in a level	Quick Save works in a level
 Quick Save is not available now	Quick Save is not available now

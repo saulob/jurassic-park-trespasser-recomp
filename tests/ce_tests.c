@@ -248,6 +248,83 @@ static void test_ce9_settings(void) {
     }
 }
 
+static void test_fog_shadow_settings(void) {
+    static const char* const keys[] = { JPT_KEY_FOG_ENABLED, JPT_KEY_SHADOWS_ENABLED };
+    jpt_config_t c;
+    char path[] = "fog_shadow_settings.ini", value[16];
+    FILE* f;
+    CHECK(!strcmp(JPT_KEY_FOG_ENABLED, "fog_enabled") && !strcmp(JPT_KEY_SHADOWS_ENABLED, "shadows_enabled"));
+    jpt_config_defaults(&c);
+    CHECK(c.fog_enabled == 1 && c.shadows_enabled == 1);
+    for (int i = 0; i < 2; i++) {
+        CHECK(!strcmp(jpt_default_value(keys[i]), "1"));
+        CHECK(jpt_config_valid(keys[i], "0") && jpt_config_valid(keys[i], "On") && !jpt_config_valid(keys[i], "auto") &&
+              !jpt_config_valid(keys[i], "2") && !jpt_config_valid(keys[i], ""));
+    }
+    CHECK(jpt_config_apply(&c, JPT_KEY_FOG_ENABLED, "0") && !c.fog_enabled && c.shadows_enabled);
+    CHECK(jpt_config_apply(&c, JPT_KEY_SHADOWS_ENABLED, "off") && !c.shadows_enabled);
+    CHECK(!jpt_config_apply(&c, JPT_KEY_FOG_ENABLED, "maybe") && !c.fog_enabled);
+    f = fopen(path, "w");
+    CHECK(f != NULL);
+    if (!f) return;
+    fputs("ambient_occlusion = high\nenhanced_sky = 0\nsettings_version = 3\n", f);
+    fclose(f);
+    CHECK(jpt_config_load(path, &c) && c.fog_enabled && c.shadows_enabled && !c.enhanced_sky &&
+          c.ambient_occlusion == JPT_AO_HIGH);
+    {
+        const char* const off[] = { "0", "0" };
+        CHECK(jpt_ini_set(path, keys, off, 2));
+    }
+    CHECK(jpt_config_load(path, &c) && !c.fog_enabled && !c.shadows_enabled && !c.enhanced_sky &&
+          c.ambient_occlusion == JPT_AO_HIGH);
+    CHECK(jpt_ini_get(path, "ambient_occlusion", value, sizeof value) && !strcmp(value, "high"));
+    f = fopen(path, "w");
+    if (f) {
+        fputs("fog_enabled = thick\nshadows_enabled = 7\nsettings_version = 3\n", f);
+        fclose(f);
+        CHECK(jpt_config_load(path, &c) && c.fog_enabled && c.shadows_enabled);
+    }
+    remove(path);
+}
+
+/* The engine's vertex fog (d3dGetFog): the specular alpha of a vertex at a fog level of the terrain's 8 bands. */
+static float vertex_share(float level) {
+    const float scale = 1.0f / 6.5f;
+    float share = 1.0f + 0.5f * scale - level * scale;
+    return share < 0.0f ? 0.0f : share > 1.0f ? 1.0f : share;
+}
+
+static float level_fog(float half, float power, float y) {
+    float level = powf(y / (half * powf(2.0f, 1.0f / power)), power) * 8.0f;
+    return level > 8.0f - 1.001f ? 8.0f - 1.001f : level;
+}
+
+static void test_fog_tables(void) {
+    int32_t bands[1024];
+    float values[1024], terrain = 0.03f, earlier = 1.0f;
+    for (int i = 0; i < 1024; i++) {
+        values[i] = level_fog(0.22f, 0.8f, (float)i / 1024.0f); /* Beach's SET_FOG */
+        bands[i] = (int32_t)values[i];
+    }
+    CHECK(vertex_share(values[0]) == 1.0f && vertex_share(values[1023]) < 0.005f);
+    for (int i = 0; i < 1024; i++) {
+        float share = vertex_share(values[i]);
+        CHECK(share <= earlier);
+        earlier = share;
+    }
+    CHECK(fabsf(vertex_share(level_fog(0.22f, 0.8f, 0.22f)) - 0.4615f) < 0.001f);
+    CHECK(vertex_share(level_fog(0.12f, 0.8f, 0.10f)) < vertex_share(level_fog(0.22f, 0.8f, 0.10f)));
+    CHECK(scene_fog_clear(bands, values, 1024, &terrain) == 1);
+    for (int i = 0; i < 1024; i++) CHECK(bands[i] == 0 && values[i] == 0.0f && vertex_share(values[i]) == 1.0f);
+    CHECK(terrain == SCENE_FOG_NEVER && terrain > 1.0f);
+    CHECK(scene_fog_clear(bands, values, 1024, &terrain) == 0);
+    values[1023] = 6.999f; /* the game built them again */
+    CHECK(scene_fog_clear(bands, values, 1024, &terrain) == 1 && values[1023] == 0.0f);
+    terrain = 0.05f;
+    CHECK(scene_fog_clear(bands, values, 1024, &terrain) == 1 && terrain == SCENE_FOG_NEVER);
+    CHECK(scene_fog_clear(bands, values, 0, &terrain) == 0);
+}
+
 /* F5 changes the running state only; a new run starts from the setting again. */
 static void test_live_switches(void) {
     fx_switch_t s;
@@ -675,6 +752,22 @@ static char* read_source(const char* relative) {
     return text;
 }
 
+/* The options change what the engine reads, on both hosts, and nothing that decides distance, detail or geometry. */
+static void test_fog_shadow_sources(void) {
+    char *options = read_source("src/host/scene_options.c"), *features = read_source("src/host/guest_features.c"),
+         *window = read_source("src/host/window_host.c"), *linux_sources = read_source("cmake/JptLinux.cmake"),
+         *windows_sources = read_source("CMakeLists.txt");
+    CHECK(options && features && window && linux_sources && windows_sources);
+    if (options && features && window && linux_sources && windows_sources) {
+        CHECK(strstr(options, "QUALITY_SHADOWS") && strstr(options, "scene_fog_clear(") && !strstr(options, "guest_override_install"));
+        CHECK(strstr(features, "scene_options_configure(cfg->fog_enabled, cfg->shadows_enabled);") &&
+              strstr(features, "scene_options_step();"));
+        CHECK(strstr(window, "scene_options_step();"));
+        CHECK(strstr(linux_sources, "src/host/scene_options.c") && strstr(windows_sources, "src/host/scene_options.c"));
+    }
+    free(options), free(features), free(window), free(linux_sources), free(windows_sources);
+}
+
 /* Quick Save pauses and resumes the game from the UI loop's GetCursorPos: the state that call returns the cursor for
  * must be the one after the hooks, and taking the pointer back must set the virtual cursor before the state changes. */
 static void test_quick_save_input_order(void) {
@@ -763,6 +856,9 @@ int main(void) {
     test_footsteps();
     test_settings();
     test_ce9_settings();
+    test_fog_shadow_settings();
+    test_fog_tables();
+    test_fog_shadow_sources();
     test_live_switches();
     test_sky();
     test_water_shadow();

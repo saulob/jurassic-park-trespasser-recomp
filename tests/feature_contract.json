@@ -1788,7 +1788,7 @@
    "linux": {
     "status": "PLATFORM_ONLY",
     "evidence": [],
-    "reason": "Direct3D 11 is Windows only; Linux presents the software renderer through SDL3 and Vulkan is future work"
+    "reason": "Direct3D 11 is Windows only; the guest's Direct3D 6 reaches Vulkan on Linux through linux-direct3d-bridge"
    }
   },
   {
@@ -2438,9 +2438,9 @@
   },
   {
    "id": "water-refraction",
-   "name": "Water Refraction: Direct3D 11 pass and host water kernels",
+   "name": "Water Refraction: the renderer pass, the wave link and the host water kernels",
    "owner": "render",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -2459,16 +2459,24 @@
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_water"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
    "id": "enhanced-sky",
    "name": "Enhanced Sky",
    "owner": "render",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -2487,16 +2495,24 @@
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_sky"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
    "id": "ambient-occlusion",
    "name": "Ambient occlusion Off, Low, Medium, High, Ultra",
    "owner": "render",
-   "scope": "windows",
+   "scope": "global",
    "requirement": "none",
    "shared": [],
    "windows": {
@@ -2506,13 +2522,26 @@
       "suite": "ao_tests",
       "file": "tests/ao_tests.cpp",
       "pattern": "JPT_AO_ULTRA"
+     },
+     {
+      "suite": "ao_fog_tests",
+      "file": "tests/ao_fog_tests.c",
+      "pattern": "test_fog_exact"
      }
     ]
    },
    "linux": {
-    "status": "PLATFORM_ONLY",
-    "evidence": [],
-    "reason": "a Direct3D 11 / DXGI effect: Windows only"
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "ao_level == 2"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
@@ -3698,6 +3727,39 @@
    }
   },
   {
+   "id": "fog-shadows-options",
+   "name": "Fog and Shadows On/Off: the engine's fog tables and shadow quality flag",
+   "owner": "render",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "test_fog_tables"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestFogAndShadowsRows"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "ce_tests",
+      "file": "tests/ce_tests.c",
+      "pattern": "test_fog_shadow_sources"
+     }
+    ]
+   }
+  },
+  {
    "id": "footstep-fix",
    "name": "Footstep and collision sounds after load or restart",
    "owner": "gameplay",
@@ -4628,7 +4690,7 @@
    },
    "linux": {
     "status": "PLATFORM_ONLY",
-    "reason": "the Direct3D 6 translation layer of the Windows backend; Linux reaches Vulkan through its own DirectDraw layer and vulkan_render_tests"
+    "reason": "the Windows host's Direct3D 6 objects; Linux has its own (linux-direct3d-bridge)"
    }
   },
   {
@@ -4650,7 +4712,52 @@
    },
    "linux": {
     "status": "PLATFORM_ONLY",
-    "reason": "the hybrid CPU/GPU target of the Windows Direct3D layer"
+    "reason": "the Windows renderer's target; the Linux one is in linux-direct3d-bridge"
+   }
+  },
+  {
+   "id": "linux-direct3d-bridge",
+   "name": "Direct3D 6 of the guest on Linux: d3d.h vtables, HRESULTs, device life, states, textures and the hybrid CPU/GPU target over Vulkan",
+   "owner": "render",
+   "scope": "linux",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PLATFORM_ONLY",
+    "reason": "Windows uses the host's own COM objects (d3d_objects.c, com_tests)"
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_vtables"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_essential_slots"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_scene_and_draws"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_textures"
+     },
+     {
+      "suite": "linux_d3d_tests",
+      "file": "tests/linux_d3d_tests.c",
+      "pattern": "test_hybrid"
+     }
+    ],
+    "runtime": [
+     "vulkan_backend"
+    ]
    }
   },
   {
@@ -6198,6 +6305,777 @@
      }
     ]
    }
+  },
+  {
+   "id": "launcher-recovery",
+   "name": "The launcher opens without modern graphics support: renderer fallback, --launcher-renderer software, safe graphics card detection; a launcher that cannot open never starts the game",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "launcher_startup_tests",
+     "file": "tests/launcher_startup_tests.cpp",
+     "pattern": "TestSelection"
+    },
+    {
+     "suite": "launcher_startup_tests",
+     "file": "tests/launcher_startup_tests.cpp",
+     "pattern": "TestFailureDoesNotStartTheGame"
+    },
+    {
+     "suite": "vulkan_policy_tests",
+     "file": "tests/vulkan_policy_tests.c",
+     "pattern": "test_launcher_probe_failures"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-levels",
+   "name": "Custom Levels: packages imported from ZIP, 7z or a folder into user_data/custom_levels, read through the game's own loader without touching the installed versions",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestMapPictures"
+    },
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestRestart"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_tests.cpp",
+     "pattern": "TestImportKinds"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_tests.cpp",
+     "pattern": "TestRollback"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_tests.cpp",
+     "pattern": "TestGuestPaths"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestFanMissions"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestTpaMerge"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestManifest"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestActivePackage"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestTextureRoots"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSessionLimits"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestLevelStates"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestImportLog"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSceneFormats"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestMissingTexture"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestListedLevels"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCampaignHasNoCapability"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestOnlyRequiredCapabilities"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestNoInheritanceBetweenPackages"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCampaignAfterCustomLevel"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestTexhwStaysInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSoundsStayInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSettingsStayInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestLimitsReturn"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestSavesStayInSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCampaignPaths"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestCustomToRetail"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestFeaturesOfUnknownPackages"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "TestNamesDecideNothing"
+    },
+    {
+     "suite": "texhw_tests",
+     "file": "tests/texhw_tests.c",
+     "pattern": "main"
+    },
+    {
+     "suite": "sky_tests",
+     "file": "tests/sky_tests.c",
+     "pattern": "main"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestFaults"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestMissingTerrain"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestCurvedMaps"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestSaves"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestGate"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestOutOfMemory"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestSorting"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/level_check_tests.cpp",
+     "pattern": "TestCorpus"
+    },
+    {
+     "suite": "bug_report_tests",
+     "file": "tests/bug_report_tests.cpp",
+     "pattern": "ChooseGameLog"
+    },
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestRestartLifecycle"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "custom_level_tests",
+      "file": "tests/custom_level_tests.cpp",
+      "pattern": "TestWindowsHost"
+     },
+     {
+      "suite": "debug_menu_tests",
+      "file": "tests/debug_menu_tests.c",
+      "pattern": "test_start_level"
+     },
+     {
+      "suite": "engine_heaps_tests",
+      "file": "tests/engine_heaps_tests.c",
+      "pattern": "test_mesh_halfway"
+     },
+     {
+      "suite": "engine_heaps_tests",
+      "file": "tests/engine_heaps_tests.c",
+      "pattern": "test_session_end"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_hint"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_teleport"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_saves"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_retail_session"
+     },
+     {
+      "suite": "tests\\test_trescom_levels.py",
+      "file": "tests/test_trescom_levels.py",
+      "pattern": "test_only_documented_files_are_put_together"
+     },
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_restart"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_level_abort_tests",
+      "file": "tests/linux_level_abort_tests.c",
+      "pattern": "test_regions"
+     }
+    ]
+   }
+  },
+  {
+   "id": "level-session-log",
+   "name": "Session and level log: one [session] block per run (campaign or custom, package, layout, start level, build, renderer, capabilities) and [level] and [restart] lines at each load with its reason and source",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "level_session_tests",
+     "file": "tests/level_session_tests.c",
+     "pattern": "test_custom_session"
+    },
+    {
+     "suite": "level_session_tests",
+     "file": "tests/level_session_tests.c",
+     "pattern": "test_campaign_session"
+    },
+    {
+     "suite": "level_session_tests",
+     "file": "tests/level_session_tests.c",
+     "pattern": "test_campaign_after_custom"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-interpreter",
+   "name": "Interpreter of Trespasser CE scripts (Squirrel, custom levels only): language with math, string and blob libraries only, an instruction budget per entry, a memory budget per VM, errors named with level, script, file, callback and line, the failing script stopped until the level ends, instances, methods and nvram values, print() capped and never forging a log line",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_budget"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_runtime_error_stops_owner_for_the_level"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_libraries"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_print_lines_and_log_text"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_instances"
+    },
+    {
+     "suite": "script_vm_tests",
+     "file": "tests/script_vm_tests.cpp",
+     "pattern": "test_nvram"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-lifecycle",
+   "name": "Trespasser CE scripts in custom sessions: a VM only for a level whose scripts act in it (decided per level, never per package; a refused level never refuses its siblings), CE's load steps and callbacks, OnSimStep per frame, transitions, Restart Level, game script nvram across levels, saves and loads with a versioned script block, errors and budgets per script and per VM, the required CE functions per level; the campaign never creates one",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_plan_tests",
+     "file": "tests/script_plan_tests.cpp",
+     "pattern": "test_level_decides"
+    },
+    {
+     "suite": "script_plan_tests",
+     "file": "tests/script_plan_tests.cpp",
+     "pattern": "test_required"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_level_without_scripts"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_restart"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_campaign_and_package"
+    },
+    {
+     "suite": "script_save_tests",
+     "file": "tests/script_save_tests.cpp",
+     "pattern": "test_save_and_load"
+    },
+    {
+     "suite": "script_save_tests",
+     "file": "tests/script_save_tests.cpp",
+     "pattern": "test_save_file_block"
+    },
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestLevelsApart"
+    },
+    {
+     "suite": "script_session_tests",
+     "file": "tests/script_session_tests.cpp",
+     "pattern": "test_per_level_files"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-api",
+   "name": "Trespasser CE's script API for custom levels: one registry the launcher and the VM share (a level is refused while its scripts use a name it lacks), Vector3 and Rotate3, the world's objects as handles looked up at every call (a gone object, an older world or a world being loaded is a script error), TP_Engine's time, random numbers, player, colours and the game's text overlay, guns and health, SendLGMessage and SendMessage, nvram values of those types",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_registry_in_runtime"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_rotate3"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_entity_handles"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_text"
+    },
+    {
+     "suite": "script_bindings_tests",
+     "file": "tests/script_bindings_tests.cpp",
+     "pattern": "test_player_and_guns"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-instance-scripts",
+   "name": "Trespasser CE instance scripts: the objects the world names get their class (its engine class checked), OnScriptInit, OnPostLoad, OnActBite from the AI's bite and feint, OnSimStep after ActivateSimStep, OnMessage, nvram saved by object, errors and budgets per object, Restart and transitions destroying them; Spitter-style animals launching projectiles with Teleport and MoveWithFixedVelocity",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_spitter"
+    },
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_lifecycle"
+    },
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_messages_and_steps"
+    },
+    {
+     "suite": "script_instance_tests",
+     "file": "tests/script_instance_tests.cpp",
+     "pattern": "test_budgets"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-drawing",
+   "name": "Trespasser CE scripts' drawing: GetTexture as a logical texture of the level's VM (null when missing, gone at Restart), its size, the game's screen size, OnPaintHW3D over gameplay only, DrawTexture's commands with CE's blend modes (opaque, alpha, additive) drawn alike by the software overlay, the GPU list of Vulkan and Direct3D 11; a failing or exhausted paint draws nothing",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_draw_tests",
+     "file": "tests/script_draw_tests.cpp",
+     "pattern": "test_textures_and_commands"
+    },
+    {
+     "suite": "script_draw_tests",
+     "file": "tests/script_draw_tests.cpp",
+     "pattern": "test_paint_errors"
+    },
+    {
+     "suite": "script_draw_tests",
+     "file": "tests/script_draw_tests.cpp",
+     "pattern": "test_backends"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-input",
+   "name": "Trespasser CE scripts' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only for a level whose scripts name them, bKeyHit, bKeyPressed and the movement input in OnHandleInput, modal mode with OnModalKey, OnHandleModalInput and OnModalAborted, released when its script stops, at Restart, transitions and the player's death; never in the campaign",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_user_commands"
+    },
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_input"
+    },
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_modal"
+    },
+    {
+     "suite": "script_input_tests",
+     "file": "tests/script_input_tests.cpp",
+     "pattern": "test_modal_owner_dies"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-player",
+   "name": "Trespasser CE's CPlayer script hooks: fGetSpeedFactor and fGetJumpFactor where CE asks them (the movement request of CPlayer::Process), OnJump when the player's own jump leaves the ground, Say through the game's voice, r3HeadRotRel as the view relative to the body; defaults, clamping, handles refused after Restart, loads and transitions; never in the campaign",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_speed"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_factor_failures"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_jump"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_say"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_head"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_handles"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_stale_world"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_restart_clears"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_level_together"
+    },
+    {
+     "suite": "script_player_tests",
+     "file": "tests/script_player_tests.cpp",
+     "pattern": "test_campaign"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "ce-script-console",
+   "name": "Trespasser CE's OnConsoleCommand: the internal dispatcher of a console command the game does not know, to the game scripts in order until one handles it; the port has no console, so no game command reaches it; never in the campaign",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "script_console_tests",
+     "file": "tests/script_console_tests.cpp",
+     "pattern": "test_order"
+    },
+    {
+     "suite": "script_console_tests",
+     "file": "tests/script_console_tests.cpp",
+     "pattern": "test_failures"
+    },
+    {
+     "suite": "script_console_tests",
+     "file": "tests/script_console_tests.cpp",
+     "pattern": "test_lifecycle"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-level-full-restart",
+   "name": "Restart Level of a custom session is a full level cycle: the world purged and the current level loaded whole again through the game's level load, the session kept; the campaign keeps the game's own restart",
+   "owner": "lifecycle",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "CheckRestart"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "level_actions_tests",
+      "file": "tests/level_actions_tests.c",
+      "pattern": "test_restart"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-level-guide",
+   "name": "Custom level minimap and objectives: a guide made from each level's world by the campaign's rules; the campaign's own only where the world is the game's, else \"No map information\" / \"No objective information\"",
+   "owner": "gameplay",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_session_tests",
+     "file": "tests/custom_level_session_tests.cpp",
+     "pattern": "TestLevelGuides"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "launch-handoff",
+   "name": "Launch handoff: from PLAY until the game window is ready one of our windows is always shown (launcher, then a handoff window with a spinner, then the game window); a failure before the window is shown there",
+   "owner": "window",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "launch_handoff_tests",
+     "file": "tests/launch_handoff_tests.c",
+     "pattern": "invariant"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
   }
  ],
  "infrastructure": [
@@ -6208,6 +7086,10 @@
   {
    "suite": "linux feature coverage",
    "reason": "the Linux half of that check"
+  },
+  {
+   "suite": "tests\\link_recovery_tests.ps1",
+   "reason": "the build script's recovery from a corrupt PDB link: build tooling, no player feature"
   }
  ]
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetches the sources of config/launcher_deps.txt (SDL3, Dear ImGui, TRG Launcher) into external/ at their pinned commits and
+"""Fetches the sources of config/launcher_deps.txt (SDL3, Dear ImGui, TRG Launcher, Squirrel) into external/ at their pinned commits and
 applies launcher/patches/<name>/*.patch, the same result as Sync-LauncherDependencies in tools/build.ps1 (the stamp
 external/<name>/.jpt_commit is the same text, so either tool leaves a tree the other accepts).
 
@@ -51,9 +51,19 @@ def git(*args, cwd):
 def fetch(path, url, commit, patches):
     folder = ROOT / path
     if folder.exists():
+        import os
         import shutil
+        import stat
 
-        shutil.rmtree(folder)
+        # git keeps its objects read-only, which Windows refuses to delete.
+        def writable(remove, name, _):
+            os.chmod(name, stat.S_IWRITE)
+            remove(name)
+
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(folder, onexc=writable)
+        else:
+            shutil.rmtree(folder, onerror=writable)
     folder.mkdir(parents=True)
     print(f"fetching {path} ({commit[:7]})")
     git("init", "--quiet", cwd=folder)

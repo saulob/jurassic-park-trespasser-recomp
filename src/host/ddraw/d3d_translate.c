@@ -100,6 +100,31 @@ int d3dt_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src
     return *src11 && *dst11;
 }
 
+static int ao_blend_factor(int factor) {
+    enum { ZERO = 1, ONE = 2, SRC_ALPHA = 5, INV_SRC_ALPHA = 6, DEST_ALPHA = 7, INV_DEST_ALPHA = 8, SRC_ALPHA_SAT = 11,
+           SRC1_ALPHA = 18, INV_SRC1_ALPHA = 19 };
+    switch (factor) {
+    case SRC_ALPHA: return SRC1_ALPHA;
+    case INV_SRC_ALPHA: return INV_SRC1_ALPHA;
+    case DEST_ALPHA: return ONE;
+    case INV_DEST_ALPHA:
+    case SRC_ALPHA_SAT: return ZERO;
+    default: return factor;
+    }
+}
+
+int d3dt_ao_blend_pair(uint32_t src, uint32_t dst, int* src11, int* dst11, int* src_alpha11, int* dst_alpha11) {
+    static const int mixes[4][2] = { { 2, 1 }, { 1, 2 }, { 18, 19 }, { 19, 18 } };
+    if (!d3dt_blend_pair(src, dst, src11, dst11, src_alpha11, dst_alpha11)) return 0;
+    *src11 = ao_blend_factor(*src11);
+    *dst11 = ao_blend_factor(*dst11);
+    *src_alpha11 = 1;
+    *dst_alpha11 = 2;
+    for (int i = 0; i < 4; i++)
+        if (*src11 == mixes[i][0] && *dst11 == mixes[i][1]) *src_alpha11 = *src11, *dst_alpha11 = *dst11;
+    return 1;
+}
+
 int d3dt_compare(uint32_t value) { return value >= 1 && value <= 8 ? (int)value : 0; }
 
 int d3dt_address(uint32_t value) { return value >= 1 && value <= 4 ? (int)value : 0; }
@@ -202,6 +227,25 @@ uint32_t d3dt_texture_blend(uint32_t mode, uint32_t texel, uint32_t diffuse, int
     default: /* MODULATE: texture alpha when the format has one, else the vertex alpha */
         return pack_argb(texture_alpha ? ta : da, mul8(tr, dr), mul8(tg, dg), mul8(tb, db));
     }
+}
+
+enum { RS_SHADEMODE = 9, RS_ALPHATESTENABLE = 15, RS_TEXTUREMAPBLEND = 21, RS_ALPHAREF = 24, RS_ALPHAFUNC = 25,
+       RS_FOGENABLE = 28, RS_SPECULARENABLE = 29, RS_FOGCOLOR = 34 };
+
+void d3dt_draw_constants(const uint32_t* render, d3dt_draw_constants_t* out) {
+    const uint32_t fog = render[RS_FOGCOLOR];
+    memset(out, 0, sizeof *out);
+    if (render[RS_ALPHATESTENABLE]) out->flags |= D3D11_PS_ALPHA_TEST;
+    if (render[RS_FOGENABLE]) out->flags |= D3D11_PS_FOG;
+    if (render[RS_SPECULARENABLE]) out->flags |= D3D11_PS_SPECULAR;
+    if (render[RS_SHADEMODE] == 1) out->flags |= D3D11_PS_FLAT;
+    out->blend_mode = render[RS_TEXTUREMAPBLEND];
+    out->alpha_func = render[RS_ALPHAFUNC];
+    out->alpha_ref = (float)d3dt_alpha_ref(render[RS_ALPHAREF]) / 255.0f;
+    out->fog[0] = ((fog >> 16) & 0xFF) / 255.0f;
+    out->fog[1] = ((fog >> 8) & 0xFF) / 255.0f;
+    out->fog[2] = (fog & 0xFF) / 255.0f;
+    out->fog[3] = 1.0f;
 }
 
 uint32_t d3dt_apply_fog(uint32_t color, uint32_t fog_color, uint32_t fog_alpha) {

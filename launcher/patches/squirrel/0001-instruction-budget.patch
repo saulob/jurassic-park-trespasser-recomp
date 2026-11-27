@@ -1,0 +1,66 @@
+diff --git a/include/squirrel.h b/include/squirrel.h
+index 251128a..b414e2b 100644
+--- a/include/squirrel.h
++++ b/include/squirrel.h
+@@ -367,6 +367,8 @@ SQUIRREL_API void sq_free(void *p,SQUnsignedInteger size);
+ SQUIRREL_API SQRESULT sq_stackinfos(HSQUIRRELVM v,SQInteger level,SQStackInfos *si);
+ SQUIRREL_API void sq_setdebughook(HSQUIRRELVM v);
+ SQUIRREL_API void sq_setnativedebughook(HSQUIRRELVM v,SQDEBUGHOOK hook);
++SQUIRREL_API void sq_setinstructionbudget(HSQUIRRELVM v,SQInteger budget);
++SQUIRREL_API SQInteger sq_getinstructionbudget(HSQUIRRELVM v);
+ 
+ /*UTILITY MACRO*/
+ #define sq_isnumeric(o) ((o)._type&SQOBJECT_NUMERIC)
+diff --git a/squirrel/sqapi.cpp b/squirrel/sqapi.cpp
+index 54eecac..ca6a250 100644
+--- a/squirrel/sqapi.cpp
++++ b/squirrel/sqapi.cpp
+@@ -101,6 +101,16 @@ void sq_setnativedebughook(HSQUIRRELVM v,SQDEBUGHOOK hook)
+     v->_debughook = hook?true:false;
+ }
+ 
++void sq_setinstructionbudget(HSQUIRRELVM v,SQInteger budget)
++{
++    v->_budget = budget;
++}
++
++SQInteger sq_getinstructionbudget(HSQUIRRELVM v)
++{
++    return v->_budget;
++}
++
+ void sq_setdebughook(HSQUIRRELVM v)
+ {
+     SQObject o = stack_get(v,-1);
+diff --git a/squirrel/sqvm.cpp b/squirrel/sqvm.cpp
+index 25249f6..b05896b 100644
+--- a/squirrel/sqvm.cpp
++++ b/squirrel/sqvm.cpp
+@@ -116,6 +116,7 @@ SQVM::SQVM(SQSharedState *ss)
+     _suspended_traps = -1;
+     _foreignptr = NULL;
+     _nnativecalls = 0;
++    _budget = -1;
+     _nmetamethodscall = 0;
+     _lasterror.Null();
+     _errorhandler.Null();
+@@ -740,6 +741,7 @@ exception_restore:
+         for(;;)
+         {
+             const SQInstruction &_i_ = *ci->_ip++;
++            if(_budget >= 0 && _budget-- == 0) { _budget = 0; Raise_Error(_SC("instruction budget exceeded")); SQ_THROW(); }
+             //dumpstack(_stackbase);
+             //scprintf("\n[%d] %s %d %d %d %d\n",ci->_ip-_closure(ci->_closure)->_function->_instructions,g_InstrDesc[_i_.op].name,arg0,arg1,arg2,arg3);
+             switch(_i_.op)
+diff --git a/squirrel/sqvm.h b/squirrel/sqvm.h
+index 5092750..f3ec33e 100644
+--- a/squirrel/sqvm.h
++++ b/squirrel/sqvm.h
+@@ -170,6 +170,7 @@ public:
+     //VMs sharing the same state
+     SQSharedState *_sharedstate;
+     SQInteger _nnativecalls;
++    SQInteger _budget;
+     SQInteger _nmetamethodscall;
+     SQRELEASEHOOK _releasehook;
+     //suspend infos

@@ -1,4 +1,4 @@
-/* The host functions the Direct3D 11 backend calls, for the benchmark and nothing else. */
+/* The host functions the Direct3D 11 backend calls, for the benchmark and ao_fog_tests. */
 #include <windows.h>
 
 #include <d3d11.h>
@@ -18,6 +18,8 @@ uint32_t g_icall_trace[128];
 uint32_t g_icall_from[128];
 uint32_t g_icall_trace_idx;
 uint32_t jpt_gva[JPT_GVA_COUNT];
+int g_stub_frames_allowed;
+guest_ui_t g_stub_ui;
 
 void host_log(const char* tag, const char* fmt, ...) { (void)tag; (void)fmt; }
 void host_log_perf(const char* tag, const char* fmt, ...) { (void)tag; (void)fmt; }
@@ -25,9 +27,10 @@ int host_perf_logging(void) { return 0; }
 jpt_lift_t jpt_active_lift(void) { return (jpt_lift_t)0; }
 
 HWND window_host_surface(HWND window) { return window; }
-int window_host_frames_allowed(void) { return 0; }
+int window_host_frames_allowed(void) { return g_stub_frames_allowed; }
 void window_host_frame_commit(unsigned generation) { (void)generation; }
 void window_host_frame_presented(void) {}
+void window_host_presentation_target(int ready) { (void)ready; }
 void window_host_view_size(int* width, int* height) { if (width) *width = 0; if (height) *height = 0; }
 float widescreen_view_tan_half_height(void) { return 0.57735f; }
 
@@ -51,7 +54,11 @@ void debug_menu_release(void) {}
 int loading_hd_present_held(void) { return 0; }
 int ui_canvas_present_held(void) { return 0; }
 int ui_screen_blt_writes_only(void) { return 0; }
-int guest_ui_probe(guest_ui_view_t* out) { (void)out; return 0; }
+int guest_ui_probe(guest_ui_view_t* out) {
+    memset(out, 0, sizeof *out);
+    out->ui = g_stub_ui;
+    return 1;
+}
 int game_text_drawing(void) { return 0; }
 int game_text_boxes_known(void) { return 0; }
 

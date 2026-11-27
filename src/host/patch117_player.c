@@ -17,6 +17,7 @@
 #define JUMP_Z GVA(0x0067AFA8)
 #define JUMP_VOLUNTARY GVA(0x0067AF5D)
 #define REQUEST_AMOUNT 0x84u
+#define REQUEST_SCALE 0x88u
 #define REQUEST_NEW 0x8Cu
 #define MSG_HELD 0x24u
 #define MSG_HIT 0x28u
@@ -135,6 +136,7 @@ static void jump_handoff(void) {
     request = GUEST_ARG(0);
     r.amount = rdf(request + REQUEST_AMOUNT);
     r.is_new = MEM8(request + REQUEST_NEW) != 0;
+    r.scale = rdf(request + REQUEST_SCALE);
     j = jump_read();
     s_handoff_lifted();
     patch117_jump_frame(1, &j, r);
@@ -151,7 +153,7 @@ void GHOOK(0x00455B6B)(void) {
     r = patch117_jump_request(1, 0, MEM32(msg + MSG_HELD) & 1u);
     if (r.amount == 0.0f) return;
     wrf(g_ebp - 0x94, r.amount);
-    wrf(g_ebp - 0x90, 1.0f);
+    wrf(g_ebp - 0x90, r.scale);
     MEM8(g_ebp - 0x8C) = (uint8_t)r.is_new;
 }
 
