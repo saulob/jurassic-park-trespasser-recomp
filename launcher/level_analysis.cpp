@@ -205,7 +205,7 @@ private:
             a_.readmes.push_back(path);
             std::string text;
             if (a_.readmes.size() > 16 || (score < 60 && path != a_.readme) || !ReadText(path, kReadmeLimit, text)) continue;
-            Merge(ReadReadme(text, paths_, folders_));
+            Merge(ReadReadme(text, paths_, folders_, path));
         }
         for (const std::string& name : notes_.ambiguous) Warn("readme_not_followed", name);
         for (const std::string& name : notes_.absent) Warn("readme_file_absent", name);

@@ -324,46 +324,61 @@ void CustomLevelsPage::DrawRow(trg::Ui& ui, const LevelPackage& package, const L
     if (scene)
         for (const std::string& next : LevelNotes(*scene)) Colored(ui.theme().dim, TrFormat("Leads to %s, which is not included: the level ends there", next.c_str()));
 
-    const int buttons = (package.available ? 2 : 1) + (package.linked ? 1 : 0) + (actions.play ? 1 : 0) + (anyway ? 1 : 0) + (actions.readme ? 1 : 0) + (actions.report ? 1 : 0);
+    std::vector<const char*> labels;
+    if (actions.play) labels.push_back("Play");
+    if (anyway) labels.push_back("Play Anyway");
+    if (actions.readme) labels.push_back("Readme");
+    if (actions.report) labels.push_back("Bug Report");
+    if (package.available) labels.push_back("Open Folder");
+    if (package.linked) labels.insert(labels.end(), {package.available ? "Rescan" : "Relocate Folder", "Unlink"});
+    else labels.push_back("Delete");
+    float label_w = 0.0f;
+    for (const char* label : labels) label_w = std::max(label_w, ImGui::CalcTextSize(Tr(label)).x + ImGui::GetStyle().FramePadding.x * 2.0f);
     const float available = ImGui::GetContentRegionAvail().x;
-    const float width = std::min(128.0f * scale, (available - spacing * float(buttons - 1)) / float(buttons));
+    const RowButtonsLayout row = LayOutRowButtons(int(labels.size()), available, spacing, label_w, 128.0f * scale);
+    const ImVec2 size(row.width, 0.0f);
+    int placed = 0;
+    const auto next = [&placed, &row] {
+        if (placed++ % row.per_line) ImGui::SameLine();
+    };
     if (actions.play) {
+        next();
         ImGui::BeginDisabled(!hooks_.game_ready() || import_.running() || pending_play_.has_value());
-        if (ui.AccentButton(Tr("Play"), ImVec2(width, 0))) pending_play_ = PendingPlay{package.id, scene->path, false, std::nullopt};
+        if (ui.AccentButton(Tr("Play"), size)) pending_play_ = PendingPlay{package.id, scene->path, false, std::nullopt};
         ImGui::EndDisabled();
-        ImGui::SameLine();
     }
     if (anyway) {
+        next();
         ImGui::BeginDisabled(!hooks_.game_ready() || import_.running() || pending_play_.has_value() || warning_.has_value());
-        if (ImGui::Button(Tr("Play Anyway"), ImVec2(width, 0))) pending_play_ = PendingPlay{package.id, scene->path, true, std::nullopt};
+        if (ImGui::Button(Tr("Play Anyway"), size)) pending_play_ = PendingPlay{package.id, scene->path, true, std::nullopt};
         ImGui::EndDisabled();
-        ImGui::SameLine();
     }
     if (actions.readme) {
-        if (ImGui::Button(Tr("Readme"), ImVec2(width, 0))) OpenReadme(ui, package);
-        ImGui::SameLine();
+        next();
+        if (ImGui::Button(Tr("Readme"), size)) OpenReadme(ui, package);
     }
     if (actions.report) {
-        if (ImGui::Button(Tr("Bug Report"), ImVec2(width, 0))) ReportLevel(package, scene);
-        ImGui::SameLine();
+        next();
+        if (ImGui::Button(Tr("Bug Report"), size)) ReportLevel(package, scene);
     }
     if (package.available) {
-        if (ImGui::Button(Tr("Open Folder"), ImVec2(width, 0))) hooks_.open_folder(package.dir);
-        ImGui::SameLine();
+        next();
+        if (ImGui::Button(Tr("Open Folder"), size)) hooks_.open_folder(package.dir);
     }
     ImGui::BeginDisabled(import_.running());
+    next();
     if (package.linked) {
-        if (package.available && ImGui::Button(Tr("Rescan"), ImVec2(width, 0))) pending_rescan_ = package.id;
-        if (!package.available && ImGui::Button(Tr("Relocate Folder"), ImVec2(width, 0))) {
+        if (package.available && ImGui::Button(Tr("Rescan"), size)) pending_rescan_ = package.id;
+        if (!package.available && ImGui::Button(Tr("Relocate Folder"), size)) {
             relocate_id_ = package.id;
             hooks_.choose(LevelPick::kRelocate);
         }
-        ImGui::SameLine();
-        if (ImGui::Button(Tr("Unlink"), ImVec2(width, 0))) {
+        next();
+        if (ImGui::Button(Tr("Unlink"), size)) {
             unlink_id_ = package.id;
             open_unlink_ = true;
         }
-    } else if (ImGui::Button(Tr("Delete"), ImVec2(width, 0))) {
+    } else if (ImGui::Button(Tr("Delete"), size)) {
         delete_id_ = package.id;
         open_delete_ = true;
     }

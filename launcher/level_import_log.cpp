@@ -9,7 +9,6 @@ namespace jpt {
 namespace {
 
 constexpr size_t kGroupLines = 400;
-constexpr size_t kTextColumns = 400;
 
 class Lines {
 public:
@@ -19,15 +18,6 @@ public:
         Add(title + " (" + std::to_string(items.size()) + "):");
         for (size_t i = 0; i < items.size() && i < kGroupLines; ++i) Add("  " + items[i]);
         if (items.size() > kGroupLines) Add("  ... and " + std::to_string(items.size() - kGroupLines) + " more");
-    }
-    void Text(const std::string& text) {
-        for (size_t at = 0; at < text.size();) {
-            const size_t end = std::min(text.find('\n', at), text.size());
-            size_t cut = std::min(end, at + kTextColumns);
-            while (cut < end && cut > at + 1 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) --cut;
-            Add("| " + text.substr(at, cut - at));
-            at = cut == end ? end + 1 : cut;
-        }
     }
     std::vector<std::string> Take() { return std::move(lines_); }
 
@@ -127,19 +117,12 @@ const char* StateName(LevelState state) {
 }
 
 void AddDocuments(const ImportRecord& r, Lines& lines) {
-    for (const LogDocument& d : r.documents) {
-        const std::string kind = d.readme ? "README" : "TXT";
-        lines.Add(kind + " BEGIN " + d.path + " (" + std::to_string(d.bytes) + " bytes" + (d.sha256.empty() ? "" : ", SHA-256 " + d.sha256) + ")");
-        if (d.readable) lines.Text(d.text);
-        else lines.Add("| not a readable text");
-        if (d.truncated) lines.Add("| ... truncated: the first " + std::to_string(kLogDocumentBytes) + " of " + std::to_string(d.bytes) + " bytes");
-        lines.Add(kind + " END " + d.path);
-    }
-    if (r.documents_skipped) lines.Add(std::to_string(r.documents_skipped) + " more text(s) are not logged");
-    std::vector<std::string> readmes;
+    std::vector<std::string> texts;
     for (const LogDocument& d : r.documents)
-        if (d.readme) readmes.push_back(d.path);
-    lines.Group("README", readmes);
+        texts.push_back(std::string(d.readme ? "README " : "TXT ") + d.path + " (" + std::to_string(d.bytes) + " bytes" + (d.sha256.empty() ? "" : ", SHA-256 " + d.sha256) +
+                        (d.readable ? "" : ", not a readable text") + ")");
+    lines.Group("Texts, not copied into the log", texts);
+    if (r.documents_skipped) lines.Add(std::to_string(r.documents_skipped) + " more text(s) are not listed");
 }
 
 void AddLevels(const ImportRecord& r, Lines& lines) {
@@ -202,7 +185,7 @@ std::vector<std::string> ImportLog(const ImportRecord& r) {
     lines.Group("Session", settings);
     lines.Group("Warnings", warnings);
     const bool linked = r.status == ImportStatus::kLinked, ok = r.status == ImportStatus::kInstalled || linked;
-    // A report carries the end of the log alone, which a long readme would otherwise fill.
+    // A report carries the end of the log alone, which a long list of texts would otherwise fill.
     if (!r.documents.empty()) lines.Add("source: " + r.type + " \"" + r.name + "\"" + (r.sha256.empty() ? "" : ", SHA-256 " + r.sha256));
     size_t counts[3] = {};
     for (const LevelScene& scene : r.scenes)

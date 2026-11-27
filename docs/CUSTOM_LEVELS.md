@@ -171,10 +171,14 @@ The outcome of an import stays below the import buttons until it is closed or an
 the log.
 
 The log holds the whole import under `custom level import:`: source, size and SHA-256 of the archive, every text of the package
-(a readme between `README BEGIN` and `README END`, any other between `TXT BEGIN` and `TXT END`, each once, up to 64 KB of each;
-never run or followed from the log), every file by type, what was ignored or rejected and why, runtime paths, each level with
-its scene version, files, what of its format is left out and its compatibility, settings files, dependencies, session settings and
-the result (`installed`, `rejected`, with the number of levels in each state).
+by path, size and SHA-256 (`README` or `TXT`; their words are never copied into the log, and the launcher's **Readme** button
+reads them where they are), every file by type, what was ignored or rejected and why, runtime paths, each level with its scene
+version, files, what of its format is left out and its compatibility, settings files, dependencies, session settings and the
+result (`installed`, `rejected`, with the number of levels in each state). A reason taken from a readme names the readme and the
+number of its sentence, never the sentence itself.
+
+Logs written by v0.1.3 copied each readme between `README BEGIN` and `README END` and quoted readme sentences as reasons. Those
+logs stay on disk as they are; Bug Report leaves those lines and quotes out of what it previews and sends.
 
 ```text
 user_data\custom_levels\<package>\
@@ -204,7 +208,7 @@ tree. It is searched as the corpus scanner searches one (8 levels deep, 5,000 fo
 with a scene, `fm.ini` or `tp_mod.ini` is a package. Archives in it are not linked (the log counts them): import them.
 
 Each package goes through the checks of an import (unsafe names, links, sizes, the analysis and the `READY` rule) on the files an
-import would copy; a package without a `READY` level is not linked. A linked package's folder in `user_data` holds only records:
+import would copy; a package without a `READY` or `LIMITED COMPATIBILITY` level is not linked. A linked package's folder in `user_data` holds only records:
 
 ```text
 user_data\custom_levels\<package>\
@@ -258,8 +262,11 @@ trespasser_recomp.exe --analyze-custom-levels <folder of packages> [--report <fo
 
 It installs nothing, opens no window and runs nothing of a package. The second form reads every package below a folder (ZIP, 7z, RAR,
 extracted folders, at most 12 levels deep), tells copies apart, and reports for each level its files and where they come from, its
-class (`READY`, `REJECTED_MISSING`, `REJECTED_UNSUPPORTED`, `REJECTED_MALFORMED`, `REJECTED_OTHER`) and its package's, its
+compatibility (`ready`, `limited`, `invalid`: READY, LIMITED COMPATIBILITY, INVALID / UNSAFE), its class (`READY`,
+`REJECTED_MISSING`, `REJECTED_UNSUPPORTED`, `REJECTED_MALFORMED`, `REJECTED_OTHER`, the technical reason) and its package's, its
 sizes against the 1998 limits and the most frequent problems; with `-Report`, as text and JSON.
+`tools/community_level_compatibility.py` groups a corpus by that compatibility; a failed download or extraction stays under
+`Not analyzed`, never a state, and a state file of v0.1.3, which has classes alone, keeps its READY and leaves the rest unclassified.
 
 | Layout | Mod folder |
 |---|---|
@@ -323,7 +330,7 @@ the package and copied nowhere; nothing is saved to the launcher's settings or t
 A fixed set of sentence shapes over the package's own file and folder names (`launcher/level_readme.*`); the text is never
 run. The destinations are `data`, `data/anim`, `data/menu`, `data/texhw`, `maps`, and "in the mods folder", which names the
 mod. A file named twice, a destination that is not one of these or a file that does not fit it moves nothing and is noted
-(`readme_not_followed`).
+(`readme_not_followed`, with the readme's path and the sentence's number).
 
 ## Play
 

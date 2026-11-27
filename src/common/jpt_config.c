@@ -317,8 +317,8 @@ int jpt_config_valid(const char* key, const char* value) {
 void jpt_config_defaults(jpt_config_t* c) {
     memset(c, 0, sizeof *c);
     for (int i = 0; i < JPT_SETTING_COUNT; i++) apply(c, jpt_settings[i].key, jpt_settings[i].default_value);
-    c->script_user_vk[0] = 0x10; /* uCMD_USER1: Shift */
-    c->script_user_vk[1] = 'M';  /* uCMD_USER2 */
+    /* uCMD_USER1 to uCMD_USER8 on 1 to 8: none of the game's default controls or the port's hotkeys. */
+    for (int n = 0; n < JPT_SCRIPT_USER_KEYS; n++) c->script_user_vk[n] = (uint32_t)('1' + n);
 }
 
 static char* trim(char* s) {

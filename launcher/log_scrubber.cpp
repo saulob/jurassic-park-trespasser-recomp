@@ -31,6 +31,17 @@ constexpr std::string_view kRoom = "<room>";
 constexpr std::string_view kIpv4 = "<ipv4>";
 constexpr std::string_view kIpv6 = "<ipv6>";
 constexpr std::string_view kChatLine = "Chat: <message removed>";
+constexpr std::string_view kLevelText = "<level text removed>";
+
+// Logs of v0.1.3 copied a custom level's texts: each readme line by line, and its sentences as reasons. The player keeps
+// reading them in the launcher; a report carries none of their words.
+constexpr std::string_view kLevelTextLine = "custom level import: |";
+constexpr std::string_view kLevelQuoteAfter[] = {
+    "readme_not_followed: ",     "README_NOT_FOLLOWED package: ", "depends on: ",
+    "Trespasser CE mentioned: ", "Trespasser CE optional: ",      "Trespasser CE recommended: ", "Trespasser CE required: ",
+    "ATX mentioned: ",           "ATX optional: ",                "ATX recommended: ",           "ATX required: ",
+    "Trespasser CE: required (", "ATX: required (",
+};
 
 constexpr std::string_view kSecretWords[] = {
     "secret",     "password",    "passwd",      "passphrase", "pwd",         "token",  "api_key", "apikey",
@@ -638,10 +649,26 @@ std::vector<KnownName> KnownNames(const PrivateFacts& facts) {
     return names;
 }
 
+bool IsLevelTextLine(std::string_view line) { return line.find(kLevelTextLine) != std::string_view::npos; }
+
+std::string_view WithoutLevelQuote(std::string_view line, std::string& out) {
+    if (line.find("custom level") == std::string_view::npos) return line;
+    for (std::string_view marker : kLevelQuoteAfter) {
+        const size_t at = line.find(marker);
+        if (at == std::string_view::npos) continue;
+        out.assign(line.substr(0, at + marker.size()));
+        out += kLevelText;
+        if (marker.back() == '(') out += ')';
+        return out;
+    }
+    return line;
+}
+
 std::string ScrubLine(std::string_view raw, const std::vector<KnownFolder>& folders,
                       const std::vector<KnownName>& names) {
     if (raw.starts_with("Chat:")) return std::string(kChatLine);
-    std::string line(raw);
+    std::string unquoted;
+    std::string line(WithoutLevelQuote(raw, unquoted));
     line = ReplaceKnownFolders(line, folders);
     line = ReplaceProfilePaths(line);
     line = ReplaceLocalFolders(line);
@@ -719,10 +746,15 @@ std::string ScrubText(std::string_view text, const PrivateFacts& facts) {
         const size_t end = std::min(text.find('\n', start), text.size());
         std::string_view line = text.substr(start, end - start);
         if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        start = end + 1;
+        if (IsLevelTextLine(line)) {
+            if (end != text.size()) continue;
+            if (!out.empty() && out.back() == '\n') out.pop_back();
+            break;
+        }
         out += ScrubLine(line, folders, names);
         if (end == text.size()) break;
         out += '\n';
-        start = end + 1;
     }
     return CleanCharacters(out);
 }

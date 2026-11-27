@@ -59,7 +59,7 @@ On Linux the same sources are built into `trespasser_recomp` (`cmake/JptLinux.cm
 small: `launcher/os_file.cpp` (random reads and part-file writes), `launcher/pe_resources.cpp` (the Russian release's string table
 without Win32's resource functions), `launcher/system_info.cpp` (the Vulkan device list instead of DXGI), `src/common/jpt_monitors_sdl.c`
 (SDL displays for the Monitor list), `launcher/file_picker.cpp` (zenity or kdialog present on the PATH) and `jpt_port_folder` for
-the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.3 (any release without a lifted build would be listed as not playable yet).
+the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.4 (any release without a lifted build would be listed as not playable yet).
 
 | Path | Purpose |
 |---|---|
@@ -218,7 +218,8 @@ opened by the system or written: not the game's executables, setup programs, DLL
    and in the log. **Add the Disc's Folder...** then picks a second folder, read after the first: the original disc copied to a
    folder completes an installation that keeps its levels on the CD, was patched or has a modified executable. No ISO is needed.
 5. Then the steps of a disc import: free space, staging, digests, check, activation, rollback. A version already installed
-   copies nothing; the version folder itself, or a folder that holds it, is refused as a source.
+   copies nothing; the version folder itself, its `.install-temp` and `.install-backup` folders (which an install empties
+   before it copies), or a folder that holds one of them, is refused as a source.
 
 Every executable in the folders is named in the log by what it is: the retail `tpassp6.exe` of a version (the guest image's
 source), the Russian release's text source, the retail `tpassp5.exe` or `tpassk6.exe`, the official Patch 1.1 `trespass.exe`, or

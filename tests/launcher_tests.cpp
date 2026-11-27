@@ -895,11 +895,16 @@ static void TestInstaller(const fs::path& dir) {
     CHECK(r.status == InstallStatus::kActivateFailed && ReadFile(target / JPT_GUEST_IMAGE) == "abc");
     CHECK(!fs::exists(StagingFolder(target)) && !fs::exists(BackupFolder(target)));
 
-    // An image inside the version folder is refused (reinstalling would remove it).
+    // An image inside the version folder is refused (reinstalling would remove it), and so is one in its staging folder.
     fs::copy_file(iso, target / "inside.iso");
     r = InstallFromIso(target / "inside.iso", root, replace, profiles);
     CHECK(r.status == InstallStatus::kInsideGameFolder);
     fs::remove(target / "inside.iso");
+    fs::create_directories(StagingFolder(target));
+    fs::copy_file(iso, StagingFolder(target) / "left.iso");
+    CHECK(InstallFromIso(StagingFolder(target) / "left.iso", root, replace, profiles).status == InstallStatus::kInsideGameFolder);
+    CHECK(fs::exists(StagingFolder(target) / "left.iso"));
+    fs::remove_all(StagingFolder(target));
 
     // The ISO is only read.
     const auto stamp = fs::last_write_time(iso);
@@ -1063,6 +1068,14 @@ static void TestFolderInstall(const fs::path& dir) {
     // The version folder itself, or a folder holding it, is never a source.
     CHECK(InstallFromFolders({target}, root, replace, profiles).status == InstallStatus::kInsideGameFolder);
     CHECK(InstallFromFolders({root}, root, replace, profiles).status == InstallStatus::kInsideGameFolder);
+    // Nor a leftover staging or backup folder, which the install empties before it copies.
+    for (const fs::path& leftover : {StagingFolder(target), BackupFolder(target)}) {
+        fs::copy(cd, leftover, fs::copy_options::recursive);
+        const auto before = Snapshot(leftover);
+        CHECK(InstallFromFolders({leftover}, root, replace, profiles).status == InstallStatus::kInsideGameFolder);
+        CHECK(Snapshot(leftover) == before);
+        fs::remove_all(leftover);
+    }
 
     // A link inside a folder is not followed (when this account may make one).
     const fs::path linked = dir / "folder-linked";
@@ -2172,6 +2185,15 @@ static void TestCompatibilityWarning() {
         }
     }
     CHECK(!LayOutWarning(2.25f, 1024.0f, 600.0f, 500.0f, 18.0f, 18.0f).row && LayOutWarning(2.25f, 1024.0f, 600.0f, 300.0f, 18.0f, 18.0f).row && LayOutWarning(1.0f, 1280.0f, 720.0f, 100.0f, 8.0f, 8.0f).row);
+    // A level row's buttons (six for a linked level) keep their longest label whole and wrap when the row is narrow.
+    for (const float scale : {1.0f, 1.5f, 2.25f})
+        for (const float available : {300.0f * scale, 640.0f * scale, 1200.0f * scale}) {
+            const float label = 112.0f * scale, spacing = 8.0f * scale;
+            const RowButtonsLayout r = LayOutRowButtons(6, available, spacing, label, 128.0f * scale);
+            CHECK(r.width >= label - 0.01f && r.per_line >= 1 && r.per_line <= 6 && r.width * float(r.per_line) + spacing * float(r.per_line - 1) <= available + 0.01f);
+        }
+    CHECK(LayOutRowButtons(6, 1200.0f, 8.0f, 100.0f, 128.0f).per_line == 6 && LayOutRowButtons(6, 1200.0f, 8.0f, 100.0f, 128.0f).width == 128.0f);
+    CHECK(LayOutRowButtons(6, 400.0f, 8.0f, 100.0f, 128.0f).per_line == 3 && LayOutRowButtons(1, 80.0f, 8.0f, 100.0f, 128.0f).width == 80.0f);
     const std::string page = ReadSource("launcher/custom_levels_page.cpp");
     const std::string warning = page.substr(At(page, "void CustomLevelsPage::DrawWarning("), At(page, "void CustomLevelsPage::DrawOrigin(") - At(page, "void CustomLevelsPage::DrawWarning("));
     CHECK(At(warning, "ImGui::Button(Tr(\"Cancel\")") < At(warning, "ImGui::SetItemDefaultFocus();") &&
@@ -2256,7 +2278,7 @@ static void TestCustomLevelsPageUi() {
     CHECK(page.find("Start level") == std::string::npos && page.find("version()") == std::string::npos && header.find("version;") == std::string::npos && !HasRow("Start level"));
     const std::string play = page.substr(At(page, "void CustomLevelsPage::Play("), At(page, "void CustomLevelsPage::ReportLevel(") - At(page, "void CustomLevelsPage::Play("));
     CHECK(At(play, "CheckBeforePlay(") < At(play, "return;") && At(play, "return;") < At(play, "hooks_.play(request)"));
-    CHECK(page.find("if (actions.play) {\n        ImGui::BeginDisabled(!hooks_.game_ready() || import_.running() || pending_play_.has_value());\n        if (ui.AccentButton(Tr(\"Play\")") != std::string::npos);
+    CHECK(page.find("if (actions.play) {\n        next();\n        ImGui::BeginDisabled(!hooks_.game_ready() || import_.running() || pending_play_.has_value());\n        if (ui.AccentButton(Tr(\"Play\")") != std::string::npos);
     // A Play waits for the listing job, which may be writing the same package's records.
     CHECK(At(page, "if (pending_play_ && !listing_.busy()) {") < At(page, "void CustomLevelsPage::DrawImporting("));
     // The list is made off the UI thread: the page draws the loading view, and only adopts what the job made.

@@ -9,3 +9,10 @@ packaging/linux/*.appdata.xml text eol=lf
 packaging/README-linux.txt text eol=lf
 packaging/licenses/*.txt text eol=lf
 patches/appimage-runtime/*.env text eol=lf
+# Stored with CRLF in the repository: a CR at a line end is that convention, not trailing whitespace.
+assets/translations/*.interface.txt whitespace=cr-at-eol
+docs/GAME_VERSIONS.md whitespace=cr-at-eol
+src/host/compass_policy.[ch] whitespace=cr-at-eol
+src/host/ddraw/d3d_translate.[ch] whitespace=cr-at-eol
+tests/compass_tests.c whitespace=cr-at-eol
+tests/ce_tests.c whitespace=cr-at-eol

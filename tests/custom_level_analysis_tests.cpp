@@ -340,8 +340,12 @@ static void TestReadmeRules() {
     CHECK(read("Find 'trespasser.mine.ini' in the folder and move it to the main Trespasser directory, then rename that to 'trespasser.ini'").configs.size() == 1);
     CHECK(read("Copy engine.ini into the data directory").rules.empty());
     CHECK(read("This level requires the ATX patch.").atx == Need::kRequired && read("ATX is not required.").atx == Need::kOptional && read("Thanks to ATX").atx == Need::kMentioned);
-    CHECK(read("Thanks to Lee for Trespasser CE").ce == Need::kMentioned && read("Use the CE patch").ce == Need::kMentioned && read("nice spaces").ce == Need::kNone);
+    CHECK(read("Thanks to the authors of Trespasser CE").ce == Need::kMentioned && read("Use the CE patch").ce == Need::kMentioned && read("nice spaces").ce == Need::kNone);
     CHECK(read("Trespasser CE is recommended.").ce == Need::kRecommended && read("It needs Trespasser CE.").ce == Need::kRequired);
+    // A reason names where the sentence is, never its words.
+    const ReadmeNotes cited = ReadReadme("Hello there. It needs Trespasser CE. Move same.asa into the anim directory. Move storm.asa into the anim folder.", paths, folders, "Docs/readme.txt");
+    CHECK(cited.ce_evidence == "Docs/readme.txt, sentence 2" && cited.ambiguous == std::vector<std::string>{"Docs/readme.txt, sentence 3"} && cited.rules.size() == 1 &&
+          cited.rules[0].sentence == "Docs/readme.txt, sentence 4");
     const std::string flood(400000, 'x');
     CHECK(ReadReadme(flood + " Move storm.asa into the anim folder.", paths, folders).rules.empty());
 }
@@ -907,8 +911,8 @@ static void TestImportLog() {
                              "level M/data/m.scn - Limited compatibility", "  scene version 22, StartLevel", "  class: REJECTED_UNSUPPORTED", "  compatibility: limited (LIMITED COMPATIBILITY)",
                              "[missing feature, limited]",
                              "  UNSUPPORTED_FEATURE CE_SKY_STARS: ", "  GRF m.grf: M/data/m.grf", "  PID m-130.pid: M/data/m-130.pid", "  SWP m-130.swp: M/data/m-130.swp",
-                             "  WTD m.wtd: M/data/m.wtd", "  config: M/fm.ini", "stream += More.tpa (ready)", "README BEGIN M/Readme.txt (40 bytes, SHA-256 ", "| Put the level in data.", "| === fault caf\xC3\xA9", "README END M/Readme.txt",
-                             "README BEGIN M/INSTALL.txt", "| Wide \xC3\xA9", "| caf\xC3\xA9", "| ... truncated: the first 65536 of 70000 bytes", "| not a readable text", "README BEGIN M/manual.txt", "TXT BEGIN M/data/notes.txt (5 bytes, SHA-256 ", "| hello", "TXT END M/data/notes.txt", "README (", "Configs (1):", "result: installed; levels ready 0, limited 1, invalid 0"})
+                             "  WTD m.wtd: M/data/m.wtd", "  config: M/fm.ini", "stream += More.tpa (ready)", "Texts, not copied into the log (", "  README M/Readme.txt (40 bytes, SHA-256 ",
+                             "  README M/INSTALL.txt (", "  README M/manual.txt (7 bytes, SHA-256 ", ", not a readable text)", "  TXT M/data/notes.txt (5 bytes, SHA-256 ", "M/Guide.md (70000 bytes", "Configs (1):", "result: installed; levels ready 0, limited 1, invalid 0"})
     {
         const bool logged = Logged(result.log, line);
         if (!logged) std::printf("  not logged: %s\n", line);
@@ -918,7 +922,8 @@ static void TestImportLog() {
     const auto times = [&result](const std::string& text) {
         return std::count_if(result.log.begin(), result.log.end(), [&text](const std::string& line) { return line.find(text) != std::string::npos; });
     };
-    CHECK(times("BEGIN M/Readme.txt") == 1 && times("BEGIN M/data/notes.txt") == 1 && times("| hello") == 1 && times(" BEGIN ") == times(" END "));
+    CHECK(times("README M/Readme.txt (") == 1 && times("TXT M/data/notes.txt (") == 1);
+    for (const char* words : {"Put the level", "fault caf", "Wide", "hello", "ggggg", "| "}) CHECK(times(words) == 0);
     const ImportResult again = ImportFiles(user, "Mission", files, game);
     CHECK(again.status == ImportStatus::kAlreadyInstalled && Left(user, "Mission"));
     files.erase(std::remove_if(files.begin(), files.end(), [](const auto& f) { return f.first.find("texhw") != std::string::npos || PathType(f.first) == ".sky" || PathType(f.first) == ".nut"; }), files.end());
@@ -932,15 +937,17 @@ static void TestImportLog() {
     CHECK(!broken.ok() && Logged(broken.log, "archive \"bad.zip\", 14 bytes") && Logged(broken.log, "source SHA-256: ") && Logged(broken.log, "result: rejected"));
     const ImportResult gone = ImportLevelArchive(user / "gone.zip", user, {});
     CHECK(gone.status == ImportStatus::kUnreadable && Logged(gone.log, "gone.zip") && Logged(gone.log, "result: rejected"));
-    CHECK(Logged(ImportFiles(user, "Text", {{"readme.txt", "only words"}}, game).log, "| only words"));
+    const ImportResult text = ImportFiles(user, "Text", {{"readme.txt", "only words"}}, game);
+    CHECK(Logged(text.log, "  README readme.txt (10 bytes, SHA-256 ") && !Logged(text.log, "only words"));
     Files refused = {{"N.scn", Scene("N.grf", 27)}, {"N.grf", World("N")}, {"N-130.pid", "p"}, {"N-130.swp", "s"}, {"N.wtd", "t"}, {"N.txt", "the author's words"}, {"readme.txt", "how to install"}};
     const ImportResult unsupported = ImportFiles(user, "Refused", refused, game);
-    for (const char* line : {"N.scn - Unsupported, scene version 27 is newer than 26", "  scene version 27", "  GRF N.grf: N.grf", "  PID N-130.pid: N-130.pid", "  SWP N-130.swp: N-130.swp", "  WTD N.wtd: N.wtd", "TXT BEGIN N.txt", "| the author's words",
-                             "TXT END N.txt", "README BEGIN readme.txt", "| how to install", "layout loose", "SCN (1):", "result: rejected, This level is not supported by this port yet (N.scn)"}) {
+    for (const char* line : {"N.scn - Unsupported, scene version 27 is newer than 26", "  scene version 27", "  GRF N.grf: N.grf", "  PID N-130.pid: N-130.pid", "  SWP N-130.swp: N-130.swp", "  WTD N.wtd: N.wtd", "  TXT N.txt (18 bytes, SHA-256 ",
+                             "  README readme.txt (14 bytes, SHA-256 ", "layout loose", "SCN (1):", "result: rejected, This level is not supported by this port yet (N.scn)"}) {
         const bool logged = Logged(unsupported.log, line);
         if (!logged) std::printf("  not logged: %s\n", line);
         CHECK(logged);
     }
+    CHECK(!Logged(unsupported.log, "the author's words") && !Logged(unsupported.log, "how to install"));
     CHECK(AnalyzeLevelSource(Fresh("none"), game).import.status != ImportStatus::kInstalled);
 }
 

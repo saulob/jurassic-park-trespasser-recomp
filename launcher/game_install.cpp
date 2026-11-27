@@ -112,6 +112,13 @@ bool SamePlace(const fs::path& a, const fs::path& b) {
     return fs::equivalent(a, b, ec);
 }
 
+// The install empties the version folder's staging and backup folders before it copies: a source there would be lost.
+bool WithinInstallPlaces(const fs::path& source, const fs::path& target) {
+    for (const fs::path& place : {target, StagingFolder(target), BackupFolder(target)})
+        if (Inside(source, place) || Inside(place, source) || SamePlace(source, place)) return true;
+    return false;
+}
+
 std::string Lowered(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](char c) { return char(std::tolower((unsigned char)c)); });
     return text;
@@ -818,7 +825,7 @@ InstallResult InstallFromIso(const fs::path& iso, const fs::path& game_root, con
     }
 
     const fs::path target = VersionFolder(game_root, profile);
-    if (Inside(iso, target)) return Fail(InstallStatus::kInsideGameFolder, Utf8(iso));
+    if (WithinInstallPlaces(iso, target)) return Fail(InstallStatus::kInsideGameFolder, Utf8(iso));
     Cabinet cabinet;
     if (!OpenCabinet(image, profile, cabinet, why)) return Fail(InstallStatus::kDamagedDisc, why);
     const std::vector<PlannedFile> plan = PlanInstall(image, profile.cabinet ? &cabinet : nullptr, profile, why);
@@ -878,8 +885,7 @@ InstallResult InstallFromFolders(const std::vector<fs::path>& folders, const fs:
 
     const fs::path target = VersionFolder(game_root, profile);
     for (const fs::path& folder : folders)
-        if (Inside(folder, target) || Inside(target, folder) || SamePlace(folder, target))
-            return Fail(InstallStatus::kInsideGameFolder, Utf8(folder));
+        if (WithinInstallPlaces(folder, target)) return Fail(InstallStatus::kInsideGameFolder, Utf8(folder));
     uint64_t total = 0;
     for (const PlannedFile& f : match.plan) total += SourceSize(*f.file);
     FolderSource source(index, profile);

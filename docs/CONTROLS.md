@@ -56,8 +56,10 @@ start of a level.
 ### Trespasser CE script commands
 
 A custom level whose Trespasser CE scripts read `uCMD_USER1` to `uCMD_USER8` gets keys for those
-commands only: `script_user1_key` to `script_user8_key` in `trespasser.ini`, Shift and M for the first two by default, the others
-unbound. Those two defaults will be reviewed for v0.1.4 ([LEGAL](LEGAL.md#community-levels)). No other level and never the campaign has them. While such a script shows a screen of its own (modal mode) the player's
+commands only: `script_user1_key` to `script_user8_key` in `trespasser.ini`, the keys 1 to 8 by default (none of the game's
+default controls or the port's hotkeys use them; `None` unbinds one). v0.1.3 had Shift and M for the first two: Shift is also
+the wrist and dual stow modifier, and both came from work on a level now excluded ([LEGAL](LEGAL.md#community-levels)). A key
+set in `trespasser.ini` stays as it is. No other level and never the campaign has them. While such a script shows a screen of its own (modal mode) the player's
 controls do nothing and the keys go to it; Escape closes it.
 
 ### Minimap

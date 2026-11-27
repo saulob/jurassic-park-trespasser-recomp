@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(trespasser_recomp VERSION 0.1.3 LANGUAGES C CXX)
+project(trespasser_recomp VERSION 0.1.4 LANGUAGES C CXX)
 
 # The version of the executable's resources (src/trespasser_recomp.rc).
 if(NOT PROJECT_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")

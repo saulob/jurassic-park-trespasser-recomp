@@ -30,4 +30,20 @@ inline WarningLayout LayOutWarning(float scale, float view_w, float view_h, floa
     return l;
 }
 
+// A level row's buttons share one width that keeps the longest label whole; those that do not fit go to the next line.
+struct RowButtonsLayout {
+    float width = 0;
+    int per_line = 1;
+};
+
+inline RowButtonsLayout LayOutRowButtons(int count, float available, float spacing, float label_w, float cap) {
+    RowButtonsLayout l;
+    if (count <= 0 || available <= 0) return l;
+    const float least = std::min(label_w, available);
+    l.per_line = std::max(1, std::min(count, int((available + spacing) / (least + spacing))));
+    const float share = (available - spacing * float(l.per_line - 1)) / float(l.per_line);
+    l.width = std::max(least, std::min(cap, share));
+    return l;
+}
+
 } // namespace jpt

@@ -957,8 +957,6 @@ LogDocument DocumentOf(ArchiveReader& reader, size_t index) {
     if (error != ArchiveError::kNone) return document;
     jpt_sha256_buffer_hex(bytes.data(), bytes.size(), hex);
     document.sha256 = hex;
-    document.text = DecodeText(bytes.substr(0, kLogDocumentBytes));
-    document.truncated = bytes.size() > kLogDocumentBytes;
     document.readable = IsText(bytes);
     document.readme = LevelReadmeScore(entry.name) >= kInstructionsScore;
     return document;
@@ -971,18 +969,16 @@ bool IsTextDocument(const std::string& path) {
 }
 
 void Describe(ArchiveReader& reader, ImportRecord& record) {
-    size_t total = 0;
     for (size_t i = 0; i < reader.entries().size(); ++i) {
         const ArchiveEntry& entry = reader.entries()[i];
         if (entry.directory) continue;
         ++record.found;
         if (entry.link || entry.encrypted || !IsTextDocument(entry.name)) continue;
-        if (record.documents.size() >= kLogDocuments || total >= kLogDocumentsBytes) {
+        if (record.documents.size() >= kLogDocuments) {
             ++record.documents_skipped;
             continue;
         }
         record.documents.push_back(DocumentOf(reader, i));
-        total += record.documents.back().text.size();
     }
 }
 
