@@ -474,7 +474,17 @@ feature by feature against `tests\feature_contract.json`. It ends with `ALL TEST
 .\tools\test.ps1 -Detail            # also show the output of passing suites
 .\tools\test.ps1 -Release           # also validate the release artifacts already in dist\ (never packages)
 .\tools\test.ps1 -Full              # water_tests without --quick (about five minutes more)
+.\tools\test.ps1 -TestJobs 2 -BuildJobs 2   # more jobs by hand (or JPT_TEST_JOBS and JPT_BUILD_JOBS); the memory limits still hold
+.\tools\test.ps1 -Sequential        # diagnostic: one suite at a time in strict list order
+.\tools\test.ps1 -Resume            # go on after the last suite that passed, only with the same sources and parameters
 ```
+
+Every run is memory-limited and finishes on a busy desktop: one suite and one compiler at a time, the Windows half before the
+Linux half, and a watch over the RAM of the gate's own process tree. When that tree passes 30% of the RAM the stage is stopped
+and fails with `MEMORY LIMIT EXCEEDED`, and the next suites go on. Other applications using the RAM never stop a running stage:
+under 2 GB free it is reported (`LOW SYSTEM MEMORY`, `CRITICAL SYSTEM MEMORY` at 0.5 GB), and at 0.5 GB free no new stage
+starts until the RAM is back. Every row shows the progress, the ETA, the finish time and the memory, from the durations kept in `build\test-history`
+(ignored by Git). `-Resume` reads the checkpoint there and refuses when anything that could change a result differs.
 
 It is headless: it never starts the game or the launcher, opens a window, reads a controller, plays audio or uses the
 network (the Linux half runs on SDL's dummy drivers), and it works from any folder. Without WSL the Linux rows are BLOCKED, never

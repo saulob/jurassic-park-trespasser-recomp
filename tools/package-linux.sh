@@ -63,6 +63,8 @@ fixed_needles=(VisualStudio DEBUG_SAULO build/cmake build/linux-work jpt-recomp/
 newer_than() { [[ $1 != "$2" && $(printf '%s\n' "$1" "$2" | sort -V | tail -1) == "$1" ]]; }
 magic_of() { head -c 4 -- "$1" | od -An -tx1 | tr -d ' \n'; }
 is_elf() { [[ $(magic_of "$1") == 7f454c46 ]]; }
+# The quoted value of a C #define; a Windows checkout may end the line with CR.
+define_of() { sed -n "s/^#define $1 \"\([^\"]*\)\".*/\1/p" -- "$2" | head -1; }
 # The newest GLIBC_ version in `readelf --version-info` text: the dynamic loader refuses to start an ELF without it.
 newest_glibc_in() {
     awk '/^Version needs section/ {needs = 1; next} /^Version / {needs = 0} needs' |
@@ -265,6 +267,13 @@ run_self_test() {
             echo "ok: $what"
         fi
     }
+    application_id_is() { [[ $(define_of JPT_APPLICATION_ID "$1") == "$2" ]]; }
+    printf '#define JPT_PORT_X 1\r\n#define JPT_APPLICATION_ID "io.example.app"\r\n' > "$work/crlf.h"
+    printf '#define JPT_APPLICATION_ID "io.example.app" /* the id */\n' > "$work/lf.h"
+    printf '#define JPT_PORT_X 1\n' > "$work/none.h"
+    expect pass 'the application id of a header with CRLF lines' application_id_is "$work/crlf.h" io.example.app
+    expect pass 'the application id of a header with LF lines' application_id_is "$work/lf.h" io.example.app
+    expect fail 'a header without the application id' application_id_is "$work/none.h" io.example.app
     make_fixture
     expect pass 'a clean AppDir' check_appdir "$work/app"
     make_fixture; mkdir "$work/app/usr/bin/game"
@@ -349,7 +358,7 @@ version=$(sed -nE 's/^project\(trespasser_recomp VERSION ([0-9]+\.[0-9]+\.[0-9]+
 asset_prefix=$(sed -n 's/.*"asset_prefix"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' config/release.json | head -1)
 linux_suffix=$(sed -n 's/.*"linux_suffix"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' config/release.json | head -1)
 [[ -n $asset_prefix && -n $linux_suffix ]] || die 'asset_prefix or linux_suffix not found in config/release.json'
-app_id=$(sed -n 's/^#define JPT_APPLICATION_ID "\(.*\)"$/\1/p' src/common/jpt_port.h)
+app_id=$(define_of JPT_APPLICATION_ID src/common/jpt_port.h)
 [[ -n $app_id ]] || die 'JPT_APPLICATION_ID not found in src/common/jpt_port.h'
 desktop_file=$app_id.desktop
 appdata_file=$app_id.appdata.xml

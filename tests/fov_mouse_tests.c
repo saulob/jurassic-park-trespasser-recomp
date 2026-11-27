@@ -270,9 +270,10 @@ static void test_no_controls_row(void) {
 static void test_sources(void) {
     char *debug = read_source("src/host/debug_menu.c"), *wide = read_source("src/host/widescreen.c"),
          *window = read_source("src/host/window_host.c"),
-         *launcher = read_source("launcher/launcher.cpp"), *policy = read_source("src/host/debug_menu_policy.c");
-    CHECK(debug && wide && window && launcher && policy, "sources found");
-    if (!debug || !wide || !window || !launcher || !policy) return;
+         *launcher = read_source("launcher/launcher.cpp"), *policy = read_source("src/host/debug_menu_policy.c"),
+         *cards = read_source("launcher/graphics_cards.h");
+    CHECK(debug && wide && window && launcher && policy && cards, "sources found");
+    if (!debug || !wide || !window || !launcher || !policy || !cards) return;
     CHECK(!strstr(debug, "jpt_ini_set") && !strstr(debug, "JPT_KEY_FOV") && !strstr(wide, "jpt_ini_set") &&
               !strstr(policy, "jpt_ini_set"),
           "no host menu writes the settings file for the field of view");
@@ -302,7 +303,9 @@ static void test_sources(void) {
         CHECK(aa_rows == 1 && filter_rows == 1 && strstr(launcher, "{\"anisotropic16\", \"Anisotropic 16x\"}") &&
                   !strstr(launcher, "\"Anisotropic filtering\""),
               "one Anti-aliasing row, one Texture filtering row reaching 16x, no separate AF row");
-        CHECK(strstr(launcher, "samples <= 8; samples *= 2") && strstr(launcher, "if (msaa & (1u << samples))"),
+        CHECK(strstr(launcher, "AntiAliasingLevels(cards_, settings_.Get(JPT_KEY_GRAPHICS_CARD), current)") &&
+                  strstr(launcher, "for (const unsigned samples : levels.levels)") && strstr(cards, "samples <= 8; samples *= 2") &&
+                  strstr(cards, "(cards.msaa[size_t(gpu)] & (1u << samples)) != 0"),
               "anti-aliasing lists only the levels the card supports");
         CHECK(!strstr(launcher, "Safe Mode") && !strstr(launcher, "DisableSafeMode") && !strstr(debug, "Safe Mode") &&
                   !strstr(policy, "Safe Mode"),
@@ -313,6 +316,7 @@ static void test_sources(void) {
     free(window);
     free(launcher);
     free(policy);
+    free(cards);
 }
 
 int main(void) {

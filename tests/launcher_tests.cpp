@@ -1933,7 +1933,9 @@ static void TestCustomLevelsPageUi() {
     CHECK(page.find("TrFormat(\"Installed levels (%d)\", int(PlayableLevels(packages)))") != std::string::npos);
     // A row that cannot be played has Bug Report on this session's log, where its reasons were just written: never an older run.
     const std::string reported = page.substr(At(page, "void CustomLevelsPage::ReportLevel("), At(page, "void CustomLevelsPage::DrawRow(") - At(page, "void CustomLevelsPage::ReportLevel("));
-    CHECK(At(reported, "LevelProblems(") < At(reported, "hooks_.open_bug_report(\"\", \"\");") && reported.find("open_bug_report(package.id") == std::string::npos);
+    CHECK(At(reported, "for (const std::string& line : ReportLines(package, scene, hooks_.data_dir())) Log(\"%s\", line.c_str());") < At(reported, "hooks_.open_bug_report(\"\", \"\");") &&
+          reported.find("hooks_.open_bug_report(\"\", \"\");") != std::string::npos && reported.find("LevelProblems(") == std::string::npos &&
+          reported.find("open_bug_report(package.id") == std::string::npos);
     CHECK(made.find("settings_.Get(kLauncherLevelSortKey)") != std::string::npos && made.find("settings_.SaveNow({{kLauncherLevelSortKey, sort}})") != std::string::npos);
     for (const char* text : {"Untested level format", "Unsupported level format", "This level uses scene format version %d", "This port currently supports up to version %d"})
         CHECK(page.find(text) == std::string::npos && !HasRow(text));

@@ -3,9 +3,10 @@
 # driver, no window, no sound. Builds outside the repository (JPT_PROBE_BUILD, default ~/.cache/jpt_audio_probe_<cc>).
 # FFmpeg for the Smacker boundary test: pkg-config, or JPT_FFMPEG_ROOT (include/ and lib/); otherwise that suite says
 # DATA UNAVAILABLE.
-#   usage: tools/linux_audio_probe.sh <repository root>
+#   usage: tools/linux_audio_probe.sh <repository root> [compile jobs, default 1]
 set -u
-repo=${1:?usage: linux_audio_probe.sh <repository root>}
+repo=${1:?usage: linux_audio_probe.sh <repository root> [jobs]}
+jobs=${2:-1}
 export SDL_AUDIODRIVER=dummy
 total=0
 failures=0
@@ -27,7 +28,7 @@ for cc in gcc clang; do
     failures=$((failures + 1))
     continue
   fi
-  if ! ninja -C "$build" $tests jpt_audio_portable >"$build.build.log" 2>&1; then
+  if ! ninja -j "$jobs" -C "$build" $tests jpt_audio_portable >"$build.build.log" 2>&1; then
     echo "FAIL linux audio probe: $cc: build failed"
     tail -40 "$build.build.log"
     failures=$((failures + 1))

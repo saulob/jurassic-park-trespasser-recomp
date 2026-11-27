@@ -1,5 +1,5 @@
 /* Custom skies: the file and its defaults, Trespasser CE's shapes, the projection on the engine's view, and which level of which
- * session has one. Headless; with file names as arguments, reports what each sky file holds. */
+ * session has one. Headless; `--report file...` reports what each sky file holds. */
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -400,9 +400,10 @@ static int report(const char* file) {
 
 int main(int argc, char** argv) {
     const char* temp = getenv("TEMP") ? getenv("TEMP") : "/tmp";
-    if (argc > 1) {
+    /* Any other argument is the game folder every gate passes to its suites: the suite runs. */
+    if (argc > 2 && strcmp(argv[1], "--report") == 0) {
         int bad = 0;
-        for (int i = 1; i < argc; i++) bad |= report(argv[i]);
+        for (int i = 2; i < argc; i++) bad |= report(argv[i]);
         return bad;
     }
     snprintf(g_root, sizeof g_root, "%s/jpt_sky_tests_%u", temp, (unsigned)((uintptr_t)&temp >> 4));

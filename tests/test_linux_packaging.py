@@ -431,6 +431,12 @@ class Executed(unittest.TestCase):
             done = subprocess.run(["bash", "-n", str(ROOT / script)], capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, script + "\n" + done.stdout + done.stderr)
 
+    def test_package_reads_the_one_application_id(self):
+        script = raw("tools/package-linux.sh")
+        self.assertIn("app_id=$(define_of JPT_APPLICATION_ID src/common/jpt_port.h)", script)
+        self.assertNotIn(application_id(), script)
+        self.assertIn("the application id of a header with CRLF lines", script)
+
     @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "needs Linux bash")
     def test_package_linux_self_test(self):
         done = subprocess.run(["bash", str(ROOT / "tools/package-linux.sh"), "--self-test"],

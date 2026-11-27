@@ -25,9 +25,14 @@ inline std::vector<std::string_view> LauncherRendererOrder(bool windows, std::st
 }
 
 // System modules a renderer loads that must stay mapped until the process exits: SDL unloads d3d11.dll and dxgi.dll right
-// after the device's last Release, while an NVIDIA driver thread can still be returning through them.
+// after the device's last Release, while an NVIDIA driver thread can still be returning through them. Windows only: no
+// Windows DLL name may reach the Linux executable.
 inline std::vector<std::string_view> RendererModulesToPin(std::string_view renderer) {
+#ifdef _WIN32
     if (renderer == kLauncherRendererDirect3D11) return {"d3d11.dll", "dxgi.dll"};
+#else
+    (void)renderer;
+#endif
     return {};
 }
 

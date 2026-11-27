@@ -5,12 +5,15 @@
 # running it by hand gives the same result.
 #
 #   tools/test-linux.sh [--build-dir DIR | --native-build] [--no-build] [--config CONFIG] [--cc COMPILER] [--elf-baseline 2.31]
-#                       [--machine] [--filter TEXT] [--list] [--sanitize] [--stage] [--import-dir DIR]
+#                       [--machine] [--filter TEXT] [--list] [--sanitize] [--stage] [--import-dir DIR] [--jobs N] [--test-jobs N]
+#                       [--pid-file FILE] | --stop FILE
 #
 # --native-build builds under ~/.cache/jpt-recomp, on the Linux file system, which is much faster than a Windows drive in WSL.
 # --import-dir imports the supported disc images it finds into the checkout's game/ before the suites (read only on the images).
 # --stage copies the validated executable to build/linux/bin (with its build manifest) when every row passed.
 # --sanitize builds a separate AddressSanitizer + UndefinedBehaviorSanitizer tree and runs only the Linux-specific suites in it.
+# --jobs bounds the compilers of the build and its FFmpeg and OpenSSL bootstraps (default 1); --test-jobs the Python workers beside the
+# suite programs (default 0: one process at a time). --pid-file records this run's PID; --stop FILE kills that run's process tree only.
 # Exit code 0 when every row passes; a suite that needs data that is absent says DATA UNAVAILABLE and is never counted as a pass.
 set -uo pipefail
 
@@ -27,6 +30,16 @@ native=0
 sanitize=0
 stage=0
 import_dir=""
+jobs=(--jobs 1)
+test_jobs=(--jobs 0)
+pid_file=""
+
+stop_tree() {
+  local child
+  for child in $(ps -o pid= --ppid "$1"); do stop_tree "$child"; done
+  kill -KILL "$1" 2>/dev/null
+}
+
 while [ $# -gt 0 ]; do
   case $1 in
     --build-dir) build_dir=$2; shift 2 ;;
@@ -41,12 +54,27 @@ while [ $# -gt 0 ]; do
     --sanitize) sanitize=1; shift ;;
     --stage) stage=1; shift ;;
     --import-dir) import_dir=$2; shift 2 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    --jobs) jobs=(--jobs "$2"); shift 2 ;;
+    --test-jobs) test_jobs=(--jobs "$2"); shift 2 ;;
+    --pid-file) pid_file=$2; shift 2 ;;
+    --stop)
+      if [ -r "$2" ]; then
+        pid=$(cat "$2")
+        grep -qa test-linux.sh "/proc/$pid/cmdline" 2>/dev/null && stop_tree "$pid"
+        rm -f "$2"
+      fi
+      exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "test-linux: unknown option $1" >&2; exit 2 ;;
   esac
 done
 
 emit() { [ ${#machine[@]} -gt 0 ] && echo "@@$*" || echo "  $*"; }
+
+if [ -n "$pid_file" ]; then
+  echo $$ >"$pid_file"
+  trap 'rm -f "$pid_file"' EXIT
+fi
 
 if [ -z "$cc" ]; then
   for candidate in gcc-13 gcc-12 gcc-11 gcc clang; do
@@ -74,7 +102,7 @@ emit "INFO|build_dir|$build_dir"
 if [ "${JPT_FFMPEG_PINNED:-0}" = 1 ] ||
    { [ "${JPT_FFMPEG_BOOTSTRAP:-1}" = 1 ] && [ -z "${JPT_CMAKE_ARGS:-}" ] && ! pkg-config --exists libavformat libavcodec libavutil 2>/dev/null; }; then
   started=$(date +%s)
-  if ffmpeg_prefix=$(bash "$repo/tools/ffmpeg-bootstrap.sh" --cc "$cc" 2>/tmp/jpt-ffmpeg-bootstrap.$$); then
+  if ffmpeg_prefix=$(bash "$repo/tools/ffmpeg-bootstrap.sh" --cc "$cc" "${jobs[@]}" 2>/tmp/jpt-ffmpeg-bootstrap.$$); then
     emit "INFO|ffmpeg|$(basename "$ffmpeg_prefix") ($(( $(date +%s) - started )) s)"
     export JPT_CMAKE_ARGS="-DFFMPEG_ROOT=$ffmpeg_prefix"
   else
@@ -98,7 +126,7 @@ if [ "$build" = 1 ]; then
   started=$(date +%s)
   extra=()
   [ "$sanitize" = 1 ] && extra=(--sanitize)
-  if output=$(bash "$repo/tools/build-linux.sh" --tests --config "$config" --cc "$cc" --build-dir "$build_dir" "${extra[@]}" 2>&1); then
+  if output=$(bash "$repo/tools/build-linux.sh" --tests --config "$config" --cc "$cc" --build-dir "$build_dir" "${jobs[@]}" "${extra[@]}" 2>&1); then
     emit "BUILD|PASS|$(( $(date +%s) - started ))|$(echo "$output" | grep -E '^build-linux: OK' | head -1)"
   else
     emit "BUILD|FAIL|$(( $(date +%s) - started ))|build failed"
@@ -127,7 +155,7 @@ if [ "$sanitize" = 1 ]; then
 fi
 gate_args=()
 [ "$sanitize" = 1 ] && gate_args=(--sanitize)
-python3 -I "$repo/tools/linux_gate.py" --build-dir "$build_dir" --elf-baseline "$baseline" "${gate_args[@]}" "${machine[@]}" "${filter[@]}"
+python3 -I "$repo/tools/linux_gate.py" --build-dir "$build_dir" --elf-baseline "$baseline" "${gate_args[@]}" "${test_jobs[@]}" "${machine[@]}" "${filter[@]}"
 code=$?
 if [ "$stage" = 1 ] && [ $code -eq 0 ] && [ "$sanitize" = 0 ] && [ ${#filter[@]} -eq 0 ]; then
   python3 -I "$repo/tools/linux_artifact.py" stage --elf "$build_dir/bin/trespasser_recomp" --dest-dir "$repo/build/linux/bin" || code=$?

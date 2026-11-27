@@ -94,7 +94,11 @@ static void TestOrder() {
     for (const bool windows : {true, false})
         for (const char* request : {"auto", "software", "direct3d11", "vulkan", ""})
             for (const std::string_view name : LauncherRendererOrder(windows, request)) CHECK(name != "vulkan");
-    CHECK(RendererModulesToPin("software").empty() && RendererModulesToPin("direct3d11").size() == 2);
+#ifdef _WIN32
+    CHECK(RendererModulesToPin("software").empty() && RendererModulesToPin("direct3d11") == Names({"d3d11.dll", "dxgi.dll"}));
+#else
+    CHECK(RendererModulesToPin("software").empty() && RendererModulesToPin("direct3d11").empty() && RendererModulesToPin("").empty());
+#endif
 }
 
 static void TestSelection() {
@@ -164,6 +168,7 @@ static void TestSelection() {
 struct ScriptedCards {
     std::vector<std::string> names;
     std::string detail;
+    unsigned msaa = 4u | 16u; // sample counts as bits, as jpt_gpu reports them: 4 = 2x, 16 = 4x, 256 = 8x
     int lists = 0, samples = 0;
 
     GraphicsCards Detect(bool skip) {
@@ -178,7 +183,7 @@ struct ScriptedCards {
                                           },
                                           [this](int) {
                                               ++samples;
-                                              return 4u | 16u;
+                                              return msaa;
                                           }});
     }
 };
@@ -217,6 +222,23 @@ static void TestGraphicsCards() {
         }
     }
     CHECK(std::string(GraphicsCardsResult(GraphicsCards{})) == "not_asked");
+    struct Expected {
+        unsigned msaa;
+        std::vector<unsigned> levels;
+    };
+    for (const Expected& card : {Expected{4u, {2}}, Expected{4u | 16u, {2, 4}}, Expected{0u, {}}, Expected{4u | 16u | 256u, {2, 4, 8}},
+                                 Expected{2u | 16u | 512u | 65536u, {4}}}) {
+        ScriptedCards system;
+        system.names = {saved};
+        system.msaa = card.msaa;
+        const GraphicsCards cards = system.Detect(false);
+        const SampleLevels levels = AntiAliasingLevels(cards, saved, "0");
+        CHECK(levels.levels == card.levels && AntiAliasingLevels(cards, saved, "0").levels == levels.levels && !levels.unsupported);
+        for (const unsigned level : {2u, 4u, 8u}) {
+            const bool supported = std::find(card.levels.begin(), card.levels.end(), level) != card.levels.end();
+            CHECK(AntiAliasingLevels(cards, saved, std::to_string(level)).unsupported == !supported);
+        }
+    }
 }
 
 // ---- wiring

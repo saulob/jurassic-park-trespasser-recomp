@@ -279,8 +279,8 @@ two together.
   `build`, `user_data`, `logs`, `game`, `.git` never take part. `tools/gen_build_info.py` writes the header during the build and
   rewrites it only when it changed. No clock goes into the binary.
 * **Self-check.** `trespasser_recomp --self-check` opens no window, no audio device, no log and writes no file; no guest code runs.
-  Each capability is a real call into its module: SelfMod entries, the override registry (72 listed, the number Linux can install, the
-  number installed with default settings), the 27 lift hooks, the host features, the audio pacer (policy version, queue target,
+  Each capability is a real call into its module: SelfMod entries, the override registry (81 listed, the number Linux can install, the
+  number installed with default settings), the 29 lift hooks, the host features, the audio pacer (policy version, queue target,
   periods that follow the mixer rate) and SDL's audio stream, the input context (menus: free absolute pointer; gameplay: relative
   motion), the gamepad layer and its menu step, the HD front end and loading screen, the controls card, Russian text, FFmpeg Smacker,
   the virtual Stream.tpa, video subtitles and save pictures.
@@ -293,8 +293,8 @@ two together.
   the last validated binary alone. `tools/package-linux.sh --skip-build` verifies the artifact against its manifest and the current
   sources (`linux_artifact.py verify`), requires the Release configuration and packages it; it never builds. Without `--skip-build`,
   the script runs the Release gate first.
-* **Boot log.** After the features are installed: `Linux features: 33/72 overrides installed (N required), 27/27 lift hooks active`
-  (with the host features off it says so). 33 is what Linux can install with every option on; the number installed follows the
+* **Boot log.** After the features are installed: `Linux features: 34/81 overrides installed (N required), 29/29 lift hooks active`
+  (with the host features off it says so). 34 is what Linux can install with every option on; the number installed follows the
   settings (29 with the defaults).
 * **Audio log.** One line after the device opens (`SDL3 pacer active (policy 1): source 22050 Hz ..., device N Hz, ..., queue target N
   periods`) and one at shutdown with the underruns, backlog drops, queue minimum and maximum and the longest wake-up gap; they

@@ -190,7 +190,7 @@ def main():
     parser.add_argument("--filter", default="")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--elf-baseline", default="2.31")
-    parser.add_argument("--jobs", type=int, default=3)
+    parser.add_argument("--jobs", type=int, default=0, help="Python workers beside the suite programs; 0 (the default) runs one process at a time")
     parser.add_argument("--sanitize", action="store_true", help="only the suites of an AddressSanitizer + UndefinedBehaviorSanitizer build")
     args = parser.parse_args()
 
@@ -214,9 +214,9 @@ def main():
         print("@@PLAN|%d" % (len(rows) + (1 if any(k == "elf" for k, _ in rows) else 0) * 9), flush=True)
 
     background = [(kind, name) for kind, name in rows if kind in ("python", "tool")]
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs))
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) if args.jobs > 0 else None
     futures = {}
-    for kind, name in background:
+    for kind, name in background if pool else []:
         futures[(kind, name)] = pool.submit(python_row if kind == "python" else tool_row, name, env)
 
     highest = None
@@ -225,14 +225,15 @@ def main():
             reporter.row(exe_row(build_dir, name, env))
     for kind, name in rows:
         if kind in ("python", "tool"):
-            reporter.row(futures[(kind, name)].result())
+            reporter.row(futures[(kind, name)].result() if pool else (python_row if kind == "python" else tool_row)(name, env))
         elif kind == "elf":
             elf, highest = elf_rows(build_dir, args.elf_baseline)
             for r in elf + artifact_rows(build_dir):
                 reporter.row(r)
         elif kind == "link":
             reporter.row(link_row(build_dir))
-    pool.shutdown()
+    if pool:
+        pool.shutdown()
     if highest:
         reporter.info("glibc_max", highest)
     seconds = time.monotonic() - started

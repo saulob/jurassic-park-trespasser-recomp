@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
            r.overrides_installed, r.overrides_listed, r.lift_hooks);
     CHECK(r.status == LX_BOOT_FRAME_PRESENTED && s.evaluated, "the guest plays New Game into the first level with the features on: %s (%s)",
           lx_boot_status_name(r.status), r.detail);
-    CHECK(r.overrides_listed == 78 && r.lift_hooks == 27, "lift116 carries 78 override sites and 27 lift hook sites (%u, %u)", r.overrides_listed, r.lift_hooks);
+    CHECK(r.overrides_listed == 81 && r.lift_hooks == 29, "lift116 carries 81 override sites and 29 lift hook sites (%u, %u)", r.overrides_listed, r.lift_hooks);
     CHECK(s.shared_installed == s.shared_total && s.shared_total == sizeof k_shared / sizeof k_shared[0],
           "every shared override is installed on the lifted game (%u of %u)", s.shared_installed, s.shared_total);
     CHECK(r.overrides_installed >= s.shared_installed, "the boot reports the installed count (%u)", r.overrides_installed);
