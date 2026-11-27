@@ -153,7 +153,7 @@ the game.
 | `--renderer software\|d3d11` | `d3d11` (default): the game's Direct3D 6 path on the GPU; `software`: its SelfMod rasteriser |
 | `--render-resolution original\|720p\|1080p\|1440p\|4k\|native\|WxH` | d3d11 render resolution (default `native`; `auto` means `original`, the compatibility size) |
 | `--aspect-ratio 4:3\|16:9\|16:10\|21:9\|32:9` | gameplay shape, Hor+ (default 16:9; `4:3` is the original shape) |
-| `--texture-filter original\|bilinear\|anisotropic4\|anisotropic8\|anisotropic16` | d3d11 texture filtering (default anisotropic16; `point`, `trilinear` for diagnostics) |
+| `--texture-filter original\|nearest\|bilinear\|anisotropic4\|anisotropic8\|anisotropic16` | d3d11 and Vulkan texture filtering (default anisotropic16; `point`, `trilinear` for diagnostics) |
 | `--msaa 0\|2\|4\|8` | d3d11 multisampling (default 4; reduced to what the GPU supports, and logged) |
 | `--vsync on\|off`, `--show-fps on\|off` | VSync (default on), FPS in the title (default on) |
 | `--display-mode windowed\|borderless`, `--monitor N`, `--window-size auto\|WxH`, `--presentation letterbox\|stretch` | window settings (defaults windowed, 1, auto, letterbox) |

@@ -2154,7 +2154,7 @@
   },
   {
    "id": "vulkan-filtering",
-   "name": "Vulkan texture filtering (point/bilinear/anisotropic clamped) and wrap/clamp samplers",
+   "name": "Vulkan texture filtering (point/nearest/bilinear/anisotropic clamped) and wrap/clamp samplers",
    "owner": "render",
    "scope": "global",
    "requirement": "none",
@@ -2166,6 +2166,16 @@
       "suite": "vulkan_policy_tests",
       "file": "tests/vulkan_policy_tests.c",
       "pattern": "jpt_vk_clamp_anisotropy"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_world_samplers"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_nearest_sampling"
      }
     ]
    },
@@ -2176,6 +2186,11 @@
       "suite": "vulkan_policy_tests",
       "file": "tests/vulkan_policy_tests.c",
       "pattern": "jpt_vk_clamp_anisotropy"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_world_samplers"
      }
     ],
     "runtime": [
@@ -2546,7 +2561,7 @@
   },
   {
    "id": "texture-filtering",
-   "name": "Texture filtering Original to Anisotropic 16x",
+   "name": "Texture filtering Original, Nearest (Unfiltered), Bilinear and Anisotropic 4x to 16x",
    "owner": "render",
    "scope": "windows",
    "requirement": "none",
@@ -2563,6 +2578,16 @@
       "suite": "host_tests",
       "file": "tests/host_tests.c",
       "pattern": "(?i)anisotropic|filter"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestTextureFilterNearest"
+     },
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "test_sampler_choice_nearest"
      }
     ]
    },

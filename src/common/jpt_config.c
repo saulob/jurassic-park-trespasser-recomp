@@ -13,8 +13,8 @@
 #define MAX_LINE 1024
 #define APPEND_HEADER "# Set by Trespasser Recompiled"
 
-const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic4", "anisotropic8",
-                                                        "anisotropic16" };
+const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original",     "nearest",      "bilinear",
+                                                        "anisotropic4", "anisotropic8", "anisotropic16" };
 const char* const jpt_active_ai_keys[JPT_ACTIVE_AI_COUNT] = { "original", "enhanced" };
 const int jpt_active_ai_limits[JPT_ACTIVE_AI_COUNT] = { 3, 6 };
 const char* const jpt_ao_keys[JPT_AO_COUNT] = { "off", "low", "medium", "high", "ultra" };

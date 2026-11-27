@@ -105,8 +105,12 @@ constexpr char kFieldOfViewHelp[] =
 constexpr char kAntiAliasingHelp[] =
     "Multisample anti-aliasing of the 3D world. Only the levels this graphics card supports are listed.";
 constexpr char kTextureFilteringHelp[] =
-    "Sharper, steadier textures at a distance and on the ground seen at an angle, with mipmaps generated for the 3D "
-    "world. Original uses the game's own filtering without them; Bilinear smooths every texture.";
+    "How the 3D world's textures are drawn. Original uses the game's own filtering. Nearest (Unfiltered) keeps them "
+    "sharp and pixelated, without smoothing. Bilinear smooths every texture. Anisotropic keeps the ground and walls "
+    "seen at an angle clearer. All but Original generate mipmaps, so distant textures stay steady.";
+constexpr char kTextureFilteringSoftwareHelp[] =
+    "The Software renderer draws textures unfiltered, as the original game. Texture filtering applies to the "
+    "hardware renderers.";
 #ifdef _WIN32
 constexpr char kAmbientOcclusionHelp[] =
     "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
@@ -1178,12 +1182,19 @@ private:
             ImGui::EndDisabled();
         }
         ui.Toggle("Maximum object detail", kMaxObjectDetailHelp, JPT_KEY_MAX_OBJECT_DETAIL, false, "Off", "On");
-        ui.Combo("Texture filtering", kTextureFilteringHelp, JPT_KEY_TEXTURE_FILTER, "anisotropic16",
-                 {{"original", "Original"},
-                  {"bilinear", "Bilinear"},
-                  {"anisotropic4", "Anisotropic 4x"},
-                  {"anisotropic8", "Anisotropic 8x"},
-                  {"anisotropic16", "Anisotropic 16x"}});
+        {
+            const bool available = Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER));
+            ImGui::BeginDisabled(!available);
+            ui.Combo("Texture filtering", available ? kTextureFilteringHelp : kTextureFilteringSoftwareHelp,
+                     JPT_KEY_TEXTURE_FILTER, "anisotropic16",
+                     {{"original", "Original"},
+                      {"nearest", "Nearest (Unfiltered)"},
+                      {"bilinear", "Bilinear"},
+                      {"anisotropic4", "Anisotropic 4x"},
+                      {"anisotropic8", "Anisotropic 8x"},
+                      {"anisotropic16", "Anisotropic 16x"}});
+            ImGui::EndDisabled();
+        }
         ui.Toggle("VSync", kVSyncHelp, JPT_KEY_VSYNC, true, "Off", "On");
         ui.EndRows();
     }

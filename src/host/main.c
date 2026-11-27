@@ -182,7 +182,7 @@ static void usage(void) {
            "                  [--native-trace] [--callbacks] [--renderer auto|d3d11|vulkan|software]\n"
            "                  [--render-resolution original|720p|1080p|1440p|4k|native|WxH]\n"
            "                  [--aspect-ratio 4:3|16:9|16:10|21:9|32:9]\n"
-           "                  [--texture-filter original|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
+           "                  [--texture-filter original|nearest|bilinear|anisotropic4|anisotropic8|anisotropic16]\n"
            "                  [--msaa 0|2|4|8] [--vsync on|off] [--display-mode windowed|borderless] [--monitor N]\n"
            "                  [--window-size auto|WxH] [--presentation letterbox|stretch] [--show-fps on|off]\n"
            "                  [--skip-intro on|off] [--ambient-occlusion off|low|medium|high|ultra]\n"
@@ -461,9 +461,10 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
     const jpt_size_t menus = jpt_render_target(box, 640, 480);
     const char* preset = c->render_preset >= 0 ? jpt_render_presets[c->render_preset].label : "custom";
     char save[16], load[16];
-    host_log("settings", "renderer %s, texture filter %s, MSAA %ux, VSync %s, Ambient Occlusion %s",
-             jpt_renderer_key((jpt_renderer_t)c->renderer), jpt_filter_keys[c->texture_filter], c->msaa,
-             c->vsync ? "on" : "off", jpt_ao_names[c->ambient_occlusion]);
+    host_log("settings", "renderer %s, texture filter %s%s, MSAA %ux, VSync %s, Ambient Occlusion %s",
+             jpt_renderer_key((jpt_renderer_t)c->renderer), jpt_filter_keys[c->texture_filter],
+             c->renderer == JPT_RENDERER_SOFTWARE ? " (not used: the software renderer samples textures itself)" : "",
+             c->msaa, c->vsync ? "on" : "off", jpt_ao_names[c->ambient_occlusion]);
     if (box.width > 0) {
         const char* hw_name = (c->renderer == JPT_RENDERER_VULKAN)  ? "Vulkan"
                               : (c->renderer == JPT_RENDERER_D3D11) ? "D3D11"
@@ -498,16 +499,17 @@ static void log_settings(const jpt_config_t* c, jpt_size_t box, int monitor_w, i
 }
 
 static const char* filter_label(const jpt_config_t* c) {
-    static const char* const labels[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic 4x", "anisotropic 8x",
-                                                         "anisotropic 16x" };
+    static const char* const labels[JPT_FILTER_COUNT] = { "original", "nearest", "bilinear", "anisotropic 4x",
+                                                         "anisotropic 8x", "anisotropic 16x" };
     return labels[c->texture_filter];
 }
 
 static void renderer_filter(const jpt_config_t* c, int dev_filter, int* filter, unsigned* anisotropy) {
-    static const unsigned levels[JPT_FILTER_COUNT] = { 0, 0, 4, 8, 16 };
+    static const unsigned levels[JPT_FILTER_COUNT] = { 0, 0, 0, 4, 8, 16 };
     *anisotropy = levels[c->texture_filter];
     if (dev_filter >= 0) *filter = dev_filter;
     else if (c->texture_filter == JPT_FILTER_ORIGINAL) *filter = D3DR_FILTER_ORIGINAL;
+    else if (c->texture_filter == JPT_FILTER_NEAREST) *filter = D3DR_FILTER_NEAREST;
     else if (c->texture_filter == JPT_FILTER_BILINEAR) *filter = D3DR_FILTER_BILINEAR;
     else *filter = D3DR_FILTER_ANISOTROPIC;
 }

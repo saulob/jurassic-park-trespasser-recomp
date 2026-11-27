@@ -261,7 +261,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `graphics_card` | the card's name as the launcher lists it | empty: the first usable card |
 | `render_resolution` | `original`, `720p`, `1080p`, `1440p`, `4k`, `native`, `WxH` | `native` |
 | `aspect_ratio` | `4:3`, `16:9`, `16:10`, `21:9`, `32:9` | `16:9` |
-| `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
+| `texture_filter` | `original`, `nearest`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
 | `msaa` | 0, 2, 4, 8 | 4 |
 | `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `medium` |
 | `fog_enabled` | 1, 0 | 1 |
@@ -485,10 +485,14 @@ is not part of this work.
   Software uses it too: its picture and the videos are shown through the same device. Anti-aliasing lists the
   chosen card's levels. Without a usable card the page says No graphics card found and Direct3D picks the device.
 - **Field of view**: a slider (60-110 degrees across the 4:3 view) with its value and Default (75); see True widescreen.
-- **Texture filtering**: Original (the filters the game asks for, its single texture level), Bilinear (every
-  texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game filters, with generated
-  mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where a card has less and
-  logs it once.
+- **Texture filtering**: Original (the filters the game asks for, its single texture level), Nearest (Unfiltered)
+  (every texture point-sampled, sharp and pixelated: no bilinear, trilinear or anisotropic filtering; generated
+  mipmaps are kept and the nearest level is picked without blending between levels, so distant textures do not
+  shimmer), Bilinear (every texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game
+  filters, with generated mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where
+  a card has less and logs it once. Direct3D 11 and Vulkan (Windows and Linux) behave the same. Only the 3D world's
+  textures change: menus, text, videos, water refraction, the sky, ambient occlusion and the other graphics settings
+  are not affected. The Software renderer draws the game's textures itself, so the row is greyed out there.
 - **Anti-aliasing**: Off, 2x, 4x, 8x MSAA. The launcher lists only the levels the graphics card supports for the
   game's colour and depth formats (asked of a short-lived device); a saved level that is not supported is pointed
   out, the game falls back 8x, 4x, 2x, off and logs it once, and a multisampled target that cannot be created is

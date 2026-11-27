@@ -182,7 +182,9 @@ path on the GPU. The registry shim answers `Use D3D` (1 or 0) and `D3D GUID`
   moves to a one-level array of its size, shared with the other textures of that size. Texture memory is allocated write-watched
   (`MEM_WRITE_WATCH`), so rows changed without any of those are found before each use, uploaded and
   logged (`changed without Lock/Unlock`). `--texture-filter` (default anisotropic, 16x) applies where
-  the game asks for linear filtering. With bilinear or anisotropic filtering each texture gets a full mip chain
+  the game asks for linear filtering; `nearest` point-samples every draw (`D3D11_FILTER_MIN_MAG_MIP_POINT`, Vulkan
+  nearest/nearest with `VK_SAMPLER_MIPMAP_MODE_NEAREST`, anisotropy off) and keeps the mip chain, picking the nearest
+  level. With nearest, bilinear or anisotropic filtering each texture gets a full mip chain
   built on the CPU from its single level (`d3dt_build_mips`): colour weighted by alpha so transparent texels never
   darken edges, binary alpha kept binary at the coverage of the level above (ordered dither), so alpha-tested
   foliage keeps its density. A texture re-uploaded in consecutive frames (water, impostors) becomes dynamic and keeps

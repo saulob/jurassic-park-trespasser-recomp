@@ -1727,6 +1727,61 @@ static size_t Spaces(const char* text, bool leading) {
     return count;
 }
 
+// Nearest (Unfiltered): a saved key of its own; every earlier key keeps its filter, the default stays Anisotropic 16x.
+static void TestTextureFilterNearest(const fs::path& dir) {
+    const std::vector<std::string> order = {"original", "nearest", "bilinear", "anisotropic4", "anisotropic8", "anisotropic16"};
+    CHECK(size_t(JPT_FILTER_COUNT) == order.size());
+    for (size_t i = 0; i < order.size() && i < size_t(JPT_FILTER_COUNT); ++i) CHECK(order[i] == jpt_filter_keys[i]);
+    jpt_config_t c;
+    jpt_config_defaults(&c);
+    CHECK(c.texture_filter == JPT_FILTER_ANISO16 && std::string(jpt_default_value(JPT_KEY_TEXTURE_FILTER)) == "anisotropic16");
+    CHECK(jpt_config_valid(JPT_KEY_TEXTURE_FILTER, "nearest"));
+    CHECK(jpt_config_apply(&c, JPT_KEY_TEXTURE_FILTER, "nearest") && c.texture_filter == JPT_FILTER_NEAREST);
+    for (const char* other : {"point", "unfiltered", "nearest16", ""})
+        CHECK(!jpt_config_apply(&c, JPT_KEY_TEXTURE_FILTER, other) && c.texture_filter == JPT_FILTER_NEAREST);
+
+    // v0.1.3 files: each saved key keeps its filter.
+    const int expected[] = {JPT_FILTER_ORIGINAL, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4, JPT_FILTER_ANISO8, JPT_FILTER_ANISO16};
+    const char* saved[] = {"original", "bilinear", "anisotropic4", "anisotropic8", "anisotropic16"};
+    const fs::path old = dir / "filter_v013.ini";
+    for (size_t i = 0; i < std::size(saved); ++i) {
+        WriteFile(old, std::string("# Set by Trespasser Recompiled\nsettings_version = 3\ntexture_filter = ") + saved[i] + "\n");
+        CHECK(jpt_config_migrate(old.string().c_str()) == 0);
+        jpt_config_load(old.string().c_str(), &c);
+        CHECK(c.texture_filter == expected[i]);
+        CHECK(LauncherSettings(old).Get(JPT_KEY_TEXTURE_FILTER) == saved[i]);
+    }
+    WriteFile(old, "settings_version = 3\ntexture_filter = sharp\n");
+    jpt_config_load(old.string().c_str(), &c);
+    CHECK(c.texture_filter == JPT_FILTER_ANISO16 && LauncherSettings(old).Get(JPT_KEY_TEXTURE_FILTER) == "anisotropic16");
+    WriteFile(old, "settings_version = 2\ntexture_filter = nearest\n");
+    CHECK(jpt_config_migrate(old.string().c_str()) == JPT_MIGRATED_VERSION_ONLY);
+    jpt_config_load(old.string().c_str(), &c);
+    CHECK(c.texture_filter == JPT_FILTER_NEAREST);
+
+    const fs::path ini = dir / "filter_nearest.ini";
+    WriteFile(ini, "# notes\nmsaa = 8\nambient_occlusion = high\nwater_refraction = 1\nenhanced_sky = 1\n");
+    LauncherSettings s(ini);
+    s.Set(JPT_KEY_TEXTURE_FILTER, "nearest");
+    CHECK(s.Save());
+    CHECK(ReadFile(ini).find("texture_filter = nearest") != std::string::npos && ReadFile(ini).find("# notes") != std::string::npos);
+    CHECK(LauncherSettings(ini).Get(JPT_KEY_TEXTURE_FILTER) == "nearest");
+    jpt_config_load(ini.string().c_str(), &c);
+    CHECK(c.texture_filter == JPT_FILTER_NEAREST && c.msaa == 8 && c.ambient_occlusion == 3 && c.water_refraction &&
+          c.enhanced_sky && c.render_preset == JPT_RENDER_NATIVE && c.aspect == JPT_ASPECT_16_9);
+
+    const std::string launcher = ReadSource("launcher/launcher.cpp");
+    const size_t original = launcher.find("{\"original\", \"Original\"},\n                      {\"nearest\", \"Nearest (Unfiltered)\"},\n"
+                                          "                      {\"bilinear\", \"Bilinear\"},");
+    CHECK(original != std::string::npos);
+    CHECK(launcher.find("available ? kTextureFilteringHelp : kTextureFilteringSoftwareHelp") != std::string::npos);
+    for (const char* text : {"Nearest (Unfiltered)", "Texture filtering"}) CHECK(HasRow(text));
+    SetLauncherLanguage("pt-BR");
+    CHECK(std::string(Tr("Nearest (Unfiltered)")) == "Nearest (sem filtragem)");
+    SetLauncherLanguage("en");
+    CHECK(std::string(Tr("Nearest (Unfiltered)")) == "Nearest (Unfiltered)");
+}
+
 static void TestUiTable() {
     std::map<std::string, int> seen;
     for (size_t i = 0; i < kPtBrUiTextCount; ++i) {
@@ -2799,6 +2854,7 @@ int main() {
     TestHostResolution(dir);
     TestUserFiles(dir);
     TestMigration(dir);
+    TestTextureFilterNearest(dir);
     TestPages();
     TestAssets();
     TestUiTable();

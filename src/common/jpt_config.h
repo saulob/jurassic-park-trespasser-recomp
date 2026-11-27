@@ -86,7 +86,16 @@ float jpt_mouse_sensitivity_clamp(float value);
 /* "1.00": the text the settings file keeps. */
 void jpt_mouse_sensitivity_text(float value, char* out, size_t cap);
 
-enum { JPT_FILTER_ORIGINAL, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4, JPT_FILTER_ANISO8, JPT_FILTER_ANISO16, JPT_FILTER_COUNT };
+/* In the launcher's order; texture_filter is saved by key, never by number. */
+enum {
+    JPT_FILTER_ORIGINAL,
+    JPT_FILTER_NEAREST,
+    JPT_FILTER_BILINEAR,
+    JPT_FILTER_ANISO4,
+    JPT_FILTER_ANISO8,
+    JPT_FILTER_ANISO16,
+    JPT_FILTER_COUNT
+};
 extern const char* const jpt_filter_keys[JPT_FILTER_COUNT];
 
 enum { JPT_ACTIVE_AI_ORIGINAL, JPT_ACTIVE_AI_ENHANCED, JPT_ACTIVE_AI_COUNT };

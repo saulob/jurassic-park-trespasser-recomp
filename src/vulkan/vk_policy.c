@@ -228,6 +228,29 @@ float jpt_vk_clamp_anisotropy(int filter_setting, int device_supports_aniso, flo
     return requested > device_max_aniso ? device_max_aniso : requested;
 }
 
+uint32_t jpt_vk_world_sampler_class(int filter_setting, int game_mag, int game_min) {
+    const int forced = filter_setting == JPT_FILTER_NEAREST || filter_setting == JPT_FILTER_BILINEAR;
+    const int mag = forced || game_mag, min = forced || game_min;
+    if (!mag && !min) return JPT_VK_SAMPLER_POINT;
+    if (mag && min) return filter_setting == JPT_FILTER_ORIGINAL ? JPT_VK_SAMPLER_LINEAR : JPT_VK_SAMPLER_MIPS;
+    return mag ? JPT_VK_SAMPLER_MAG_LINEAR : JPT_VK_SAMPLER_MIN_LINEAR;
+}
+
+/* Nearest turns the mipmapped class into point sampling at the nearest level, as Direct3D 11's MIN_MAG_MIP_POINT. */
+jpt_vk_world_sampler_t jpt_vk_world_sampler(int filter_setting, uint32_t sampler_class, float active_aniso) {
+    static const int k_class[JPT_VK_SAMPLER_CLASSES][3] = { { 1, 1, 1 }, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 },
+                                                             { 1, 1, 0 } };
+    const int* c = k_class[sampler_class < JPT_VK_SAMPLER_CLASSES ? sampler_class : JPT_VK_SAMPLER_POINT];
+    const int nearest = filter_setting == JPT_FILTER_NEAREST;
+    jpt_vk_world_sampler_t s;
+    s.mag = c[0] && !nearest ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    s.min = c[1] && !nearest ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    s.mipmap = c[2] && !nearest ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    s.max_lod = c[2] ? 12.0f : 0.0f;
+    s.anisotropy = c[2] && !nearest && active_aniso > 1.0f ? active_aniso : 1.0f;
+    return s;
+}
+
 uint32_t jpt_vk_clamp_msaa(uint32_t requested_msaa, VkSampleCountFlags color_counts, VkSampleCountFlags depth_counts) {
     VkSampleCountFlags both = color_counts & depth_counts;
     if (requested_msaa >= 8 && (both & VK_SAMPLE_COUNT_8_BIT)) return 8;

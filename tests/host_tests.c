@@ -2559,11 +2559,25 @@ static void test_sampler_choice(void) {
     CHECK(c.filter == D3D11_FILTER_MIN_MAG_MIP_POINT && !c.mips);
     CHECK(!d3dt_filter_uses_mips(D3DT_FILTER_ORIGINAL) && !d3dt_filter_uses_mips(D3DT_FILTER_POINT));
     CHECK(d3dt_filter_uses_mips(D3DT_FILTER_BILINEAR) && d3dt_filter_uses_mips(D3DT_FILTER_ANISOTROPIC));
+    CHECK(D3DT_FILTER_ORIGINAL == 0 && D3DT_FILTER_POINT == 1 && D3DT_FILTER_BILINEAR == 2 &&
+          D3DT_FILTER_TRILINEAR == 3 && D3DT_FILTER_ANISOTROPIC == 4 && D3DT_FILTER_NEAREST == 5);
     CHECK(d3dt_pick_anisotropy(16, 16) == 16 && d3dt_pick_anisotropy(16, 8) == 8 && d3dt_pick_anisotropy(16, 5) == 4);
     CHECK(d3dt_pick_anisotropy(16, 2) == 2 && d3dt_pick_anisotropy(16, 1) == 1 && d3dt_pick_anisotropy(3, 16) == 2);
     CHECK(d3dt_pick_msaa(4, (1u << 2) | (1u << 8)) == 2);
     CHECK(d3dt_pick_msaa(4, 1u << 3) == 1);
     CHECK(d3dt_pick_msaa(4, (1u << 2) | (1u << 4)) == 4);
+}
+
+/* Nearest: point min, mag and mip whatever the game asks for, the generated chain kept, never anisotropic. */
+static void test_sampler_choice_nearest(void) {
+    for (int mag = 0; mag < 2; mag++)
+        for (int min = 0; min < 2; min++) {
+            d3dt_sampler_choice_t c = d3dt_choose_sampler(D3DT_FILTER_NEAREST, mag, min, 16);
+            CHECK(c.filter == D3D11_FILTER_MIN_MAG_MIP_POINT && c.mips && c.anisotropy == 1);
+        }
+    CHECK(d3dt_filter_uses_mips(D3DT_FILTER_NEAREST));
+    CHECK(d3dt_choose_sampler(D3DT_FILTER_BILINEAR, 1, 1, 16).filter == D3D11_FILTER_MIN_MAG_MIP_LINEAR);
+    CHECK(d3dt_choose_sampler(D3DT_FILTER_ANISOTROPIC, 1, 1, 8).filter == D3D11_FILTER_ANISOTROPIC);
 }
 
 static void test_readback_regions(void) {
@@ -4688,6 +4702,7 @@ int main(void) {
     test_mip_downsample_exact();
     test_dynamic_textures();
     test_sampler_choice();
+    test_sampler_choice_nearest();
     test_readback_regions();
     test_write_only_locks();
     test_ui_frame_without_readback();
