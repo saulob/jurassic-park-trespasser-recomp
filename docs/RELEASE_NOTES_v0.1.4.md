@@ -118,7 +118,7 @@ Each version can be installed from its disc image or from an existing installati
 ## Compatibility
 
 - **Windows 10 and 11 (x86)** is the primary platform.
-- **Linux x86_64 and Steam Deck** run the experimental AppImage with the Vulkan or software renderer. The AppImage keeps its glibc 2.31 baseline (Ubuntu 20.04).
+- **Linux x86_64 and Steam Deck** run the experimental AppImage with the Vulkan or software renderer. The AppImage keeps its glibc 2.31 baseline (Ubuntu 20.04): the executable needs at most glibc 2.30.
 - Settings, saves, custom level packages and their saves from v0.1.3 are kept. Custom level packages are checked again once with the new rules.
 
 ## Known Limitations
@@ -152,8 +152,11 @@ Each version can be installed from its disc image or from an existing installati
 ## Testing
 
 - Installation from folders, external folders, Trespasser CE mod folders, the three compatibility states, Play Anyway, sessions, saves, restarts and transitions, the compatibility tools, Nearest filtering and the objective notifications are covered by headless test suites on Windows and Linux.
-- Gameplay, real GPU rendering, audio, controllers, Linux desktops, the Steam Deck and full play-throughs of custom levels need manual testing; headless tests are not a substitute for it.
-- **To be completed before publication:** the results of the full release gate (`tools\test.ps1`) and of the release validators.
+- **Full headless gate (Windows and Linux):** 255 passing results and 3 failures, with 853,281 checks counted and no compiler warnings. The three failures had one cause: the generated Linux feature parity inventory (`docs/LINUX_PARITY.md`) was out of date. It was regenerated, and the parity test then passed on Windows and on Linux (29 tests each). The full Windows gate was not run again after that fix.
+- **Full Linux gate after the fix:** 123 passing results, 0 failures and 74,742 checks counted, with no compiler warnings, on Ubuntu 20.04 (glibc 2.31) with GCC 13.1.0. The executable needs at most glibc 2.30; the self-check found all 21 runtime capabilities and 29 of 29 lift hooks; all four supported game versions passed.
+- **Release builds:** the Windows x86 Release (clang-cl) and the Linux x86_64 Release (GCC 13.1.0, Ubuntu 20.04) built with no warnings. The Linux Release executable passed its own headless gate before packaging (120 passing results, 0 failures); the suites that need game data or a real GPU reported them as unavailable.
+- **Release validators:** the final Windows ZIP and Linux AppImage passed the project's release checks: contents, versions, architectures, licences, checksums, the AppImage runtime and a headless start of the AppImage in every start mode.
+- Gameplay, real GPU rendering, audio, controllers, Linux desktops, the Steam Deck and full play-throughs of custom levels need manual testing; headless tests are not a substitute for it. Vulkan on a real Linux GPU and the Steam Deck were not tested for this release.
 
 ## Credits and Acknowledgements
 
@@ -163,19 +166,38 @@ Thanks to everyone who tested v0.1.3, reported problems and asked for these feat
 
 | Platform | File | Checksum file |
 |---|---|---|
-| Windows 10 / 11 (x86) | [`JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip) (size: to be filled after packaging) | [`JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip.sha256`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip.sha256) |
-| Linux x86_64 / Steam Deck (experimental) | [`JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage) (size: to be filled after packaging) | [`JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage.sha256`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage.sha256) |
+| Windows 10 / 11 (x86) | [`JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip) (30,596,476 bytes) | [`JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip.sha256`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip.sha256) |
+| Linux x86_64 / Steam Deck (experimental) | [`JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage) (50,567,488 bytes) | [`JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage.sha256`](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/download/v0.1.4/JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage.sha256) |
 
 Debug symbols, development builds, game data, community levels, saves and logs are not published.
 
 ## Checksums
 
-To be filled after packaging, from the `.sha256` files that `tools\package-release.ps1` writes: the SHA-256 of the Windows ZIP and the Linux AppImage, and of `trespasser_recomp.exe` and `trg-updater.exe` inside the ZIP.
+The two `.sha256` files published with the release contain:
+
+```
+e2027381cc637d1e9fa43d781beb5bf80df9e8531a1ebba80338efb85fffca0d  JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip
+7a26c2e4d44df51bb9bcfbb5f267704d950ae0bf80553654e4b4ef6bd2956095  JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage
+```
+
+Inside the Windows ZIP:
+
+| File | SHA-256 |
+|---|---|
+| `trespasser_recomp.exe` | `8e7c0c65b8f83b084f1bdab8350237de3a78376f6dd247fd4d815170980dd872` |
+| `trg-updater.exe` | `d6ac87ddab783f39dfe25f01872e428f107c6a84f3223be964bada950d527caf` |
 
 ## Security
 
-To be filled before publication: the VirusTotal reports for the Windows ZIP, the Linux AppImage, `trespasser_recomp.exe` and `trg-updater.exe`, by their exact SHA-256.
+The four final files were checked manually on VirusTotal, and the project maintainer reported them approved on 2026-11-27. The links below are the reports for the exact file hashes.
 
 VirusTotal is an additional verification step, not an absolute guarantee of safety. Verify the SHA-256 values before running a file, and download only from this repository's Releases page.
+
+| File | SHA-256 | VirusTotal |
+|---|---|---|
+| Windows ZIP: `JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip` | `e2027381cc637d1e9fa43d781beb5bf80df9e8531a1ebba80338efb85fffca0d` | [VirusTotal](https://www.virustotal.com/gui/file/e2027381cc637d1e9fa43d781beb5bf80df9e8531a1ebba80338efb85fffca0d?nocache=1) |
+| Linux AppImage: `JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage` | `7a26c2e4d44df51bb9bcfbb5f267704d950ae0bf80553654e4b4ef6bd2956095` | [VirusTotal](https://www.virustotal.com/gui/file/7a26c2e4d44df51bb9bcfbb5f267704d950ae0bf80553654e4b4ef6bd2956095?nocache=1) |
+| Windows program: `trespasser_recomp.exe` (inside the ZIP) | `8e7c0c65b8f83b084f1bdab8350237de3a78376f6dd247fd4d815170980dd872` | [VirusTotal](https://www.virustotal.com/gui/file/8e7c0c65b8f83b084f1bdab8350237de3a78376f6dd247fd4d815170980dd872?nocache=1) |
+| Windows updater: `trg-updater.exe` (inside the ZIP) | `d6ac87ddab783f39dfe25f01872e428f107c6a84f3223be964bada950d527caf` | [VirusTotal](https://www.virustotal.com/gui/file/d6ac87ddab783f39dfe25f01872e428f107c6a84f3223be964bada950d527caf?nocache=1) |
 
 The project does not distribute commercial game files or community levels. You must supply your own legally obtained copy of the game.
