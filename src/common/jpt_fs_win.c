@@ -30,6 +30,19 @@ int jpt_fs_remove(const char* path) { return DeleteFileA(path) != 0; }
 int jpt_fs_remove_dir(const char* path) { return RemoveDirectoryA(path) != 0; }
 int jpt_fs_copy_new(const char* src, const char* dst) { return CopyFileA(src, dst, TRUE) != 0; }
 
+int jpt_fs_from_utf8(const char* utf8, char* out, size_t cap) {
+    WCHAR wide[JPT_PATH_MAX];
+    BOOL lossy = FALSE;
+    int n;
+    if (!cap || !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, JPT_PATH_MAX)) return 0;
+    n = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide, -1, out, (int)(cap > 0x7FFFFFFF ? 0x7FFFFFFF : cap), NULL, &lossy);
+    if (!n || lossy) {
+        out[0] = 0;
+        return 0;
+    }
+    return 1;
+}
+
 jpt_fs_file_t* jpt_fs_open_read(const char* path, uint64_t* size) {
     LARGE_INTEGER bytes;
     HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);

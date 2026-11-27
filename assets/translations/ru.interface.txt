@@ -105,6 +105,7 @@ This save is not compatible with the current level	Это сохранение �
 This level is missing required files	Этому уровню не хватает необходимых файлов
 This level cannot be loaded safely	Этот уровень нельзя загрузить безопасно
 The next level is not included in this package	Следующий уровень не входит в этот пакет
+This level needs Play Anyway in the launcher	Для этого уровня нужно "Всё равно играть" в лаунчере
 The game could not be saved. The previous save was kept.	Не удалось сохранить игру. Предыдущее сохранение оставлено.
 No Quick Save yet	Быстрого сохранения ещё нет
 Quick Save works in a level	Быстрое сохранение работает только на уровне

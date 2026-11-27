@@ -48,12 +48,14 @@ audio diagnostics, error messages, and the names (not the folders) of files. **A
 every private value**, which is why the page shows the preview and says so.
 
 - No telemetry, no usage statistics, no player counters, no heartbeat, no background traffic and no sessions are sent.
-- There is no installation, player or account identity. Each report gets a random ticket and a random receipt; the
-  service keeps only a salted hash of the receipt. Ownership is shown by presenting the receipt, nothing else.
+- There is no player or account identity. Each report gets a random ticket and a random receipt; the service keeps only a
+  salted hash of the receipt. Ownership is shown by presenting the receipt, nothing else. The launcher sends a random
+  identifier of its own (`user\bug_report_client_id`) with a report only so that the service can limit how many reports
+  one launcher files; the service keeps a salted hash of it for one day, never with the report.
 - The service sees the connection's address while it answers, to limit abuse. It does not store it with the report: the
   per-address quota keeps a salted hash for one day, and the in-memory limits hold nothing after the object is evicted.
   The network is not anonymous: the address is visible to the connection's path and to Cloudflare.
-- The newest 500 reports are kept for 180 days; their statuses for 365 days.
+- The newest 500 reports and the newest 100 crash dumps are kept; the statuses of the newest 5000 tickets.
 
 ## Network behaviour
 
@@ -71,7 +73,7 @@ every private value**, which is why the page shows the preview and says so.
 
 ## Admin secret
 
-The dashboard token is the Cloudflare secret `JPT_BUG_REPORT_ADMIN_TOKEN` (set with `npx wrangler secret put JPT_BUG_REPORT_ADMIN_TOKEN` or `toolsworker.ps1`); it is never stored in the repository.
+The dashboard token is the Cloudflare secret `JPT_BUG_REPORT_ADMIN_TOKEN` (set with `npx wrangler secret put JPT_BUG_REPORT_ADMIN_TOKEN` in `server\trespasser-bug-reports` after `npm ci`); it is never stored in the repository.
 
 ## Service address
 

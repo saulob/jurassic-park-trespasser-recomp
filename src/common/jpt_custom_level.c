@@ -6,6 +6,7 @@
 
 #include "jpt_compat.h"
 #include "jpt_fs.h"
+#include "jpt_level_compat.h"
 #include "jpt_scene.h"
 #include "jpt_szdd.h"
 
@@ -39,6 +40,8 @@ typedef struct {
     const char* file;
     char name[JPT_CUSTOM_LEVEL_SCENE_CAP];
     int configured; /* in the active mod: the map's files come first, and its sounds and pictures apply */
+    int compat;     /* jpt_compat_t the launcher recorded; -1 for none */
+    int authorized; /* covered by this launch's Play Anyway */
 } scene_t;
 
 typedef struct {
@@ -63,6 +66,11 @@ static struct {
     char package[JPT_CUSTOM_LEVEL_ID_MAX + 1];
     char layout[24];
     char dir[JPT_PATH_MAX];
+    char records[JPT_PATH_MAX];
+    int linked;
+    char* link;
+    const char* scopes[JPT_CUSTOM_LEVEL_LINK_SCOPES_MAX];
+    int scope_count;
     char** files;
     int count, overflow;
     scene_t scenes[JPT_CUSTOM_LEVEL_SCENES_MAX];
@@ -99,6 +107,7 @@ static struct {
         const char *scene, *file;
     } script_uses[SCRIPT_REFS_MAX];
     int script_use_count;
+    int compat_known, experimental;
 } C;
 
 static jpt_custom_level_game_fn s_game;
@@ -177,6 +186,7 @@ void jpt_custom_level_deactivate(void) {
     free(C.files);
     free(C.mapped);
     free(C.map);
+    free(C.link);
     memset(&C, 0, sizeof C);
     s_game = NULL;
 }
@@ -215,12 +225,33 @@ const char* jpt_custom_level_scene_file_at(int index) {
 
 const char* jpt_custom_level_current_scene(void) { return C.active && C.current >= 0 ? C.scenes[C.current].file : ""; }
 const char* jpt_custom_level_dir(void) { return C.dir; }
+const char* jpt_custom_level_records_dir(void) { return C.records; }
+int jpt_custom_level_linked(void) { return C.active && C.linked; }
+
+/* What the launcher writes about a package. A linked package's copy of these names is never its own file. */
+static int generated(const char* relative) {
+    const size_t n = sizeof JPT_CUSTOM_LEVEL_GENERATED_DIR - 1;
+    if (!_strnicmp(relative, JPT_CUSTOM_LEVEL_GENERATED_DIR, n) && (relative[n] == 0 || relative[n] == '/')) return 1;
+    return !_stricmp(relative, JPT_CUSTOM_LEVEL_RUNTIME_MAP) || !_stricmp(relative, "manifest.json") ||
+           !_stricmp(relative, JPT_CUSTOM_LEVEL_LINK_FILE);
+}
+
+/* Programs and scripts are never level data; the importer leaves them out, and a linked folder's are not listed. */
+static int program(const char* name) {
+    static const char* const k_types[] = { ".exe", ".dll", ".com", ".scr", ".msi", ".asi", ".so",  ".sys", ".ocx", ".cpl", ".pif", ".bat",
+                                           ".cmd", ".ps1", ".vbs", ".js",  ".wsf", ".hta", ".sh",  ".lnk", ".reg", ".url", ".jar", ".py" };
+    const char* dot = strrchr(name, '.');
+    for (size_t i = 0; dot && i < sizeof k_types / sizeof k_types[0]; i++)
+        if (!_stricmp(dot, k_types[i])) return 1;
+    return 0;
+}
 
 static int host_path(const char* relative, char* out, size_t cap) {
-    int n = snprintf(out, cap, "%s%s%s", C.dir, relative[0] ? SEP : "", relative);
+    const char* base = C.linked && generated(relative) ? C.records : C.dir;
+    int n = snprintf(out, cap, "%s%s%s", base, relative[0] ? SEP : "", relative);
     if (n < 0 || (size_t)n >= cap) return 0;
 #ifdef _WIN32
-    for (char* c = out + strlen(C.dir); *c; c++)
+    for (char* c = out + strlen(base); *c; c++)
         if (*c == '/') *c = '\\';
 #endif
     return 1;
@@ -229,19 +260,12 @@ static int host_path(const char* relative, char* out, size_t cap) {
 typedef struct {
     const char* prefix;
     int depth;
+    int records; /* the records folder's own files, of a linked package */
 } walk_t;
 
-static void walk(const char* relative, int depth);
+static void walk(const char* relative, int depth, int records);
 
-static void visit(const char* name, int is_dir, void* user) {
-    const walk_t* w = (const walk_t*)user;
-    char path[JPT_CUSTOM_LEVEL_PATH_MAX], host[JPT_PATH_MAX];
-    int n = snprintf(path, sizeof path, "%s%s%s", w->prefix, w->prefix[0] ? "/" : "", name);
-    if (n < 0 || n >= (int)sizeof path || !host_path(path, host, sizeof host) || jpt_fs_is_link(host)) return;
-    if (is_dir) {
-        walk(path, w->depth + 1);
-        return;
-    }
+static void add_file(const char* path) {
     if (C.count == JPT_CUSTOM_LEVEL_FILES_MAX || (C.files[C.count] = _strdup(path)) == NULL) {
         C.overflow = 1;
         return;
@@ -249,13 +273,42 @@ static void visit(const char* name, int is_dir, void* user) {
     C.count++;
 }
 
-static void walk(const char* relative, int depth) {
+static void visit(const char* name, int is_dir, void* user) {
+    const walk_t* w = (const walk_t*)user;
+    char path[JPT_CUSTOM_LEVEL_PATH_MAX], host[JPT_PATH_MAX];
+    int n = snprintf(path, sizeof path, "%s%s%s", w->prefix, w->prefix[0] ? "/" : "", name);
+    if (n < 0 || n >= (int)sizeof path || !host_path(path, host, sizeof host) || jpt_fs_is_link(host)) return;
+    if (C.linked && !w->records && generated(path)) return;
+    if (is_dir) {
+        walk(path, w->depth + 1, w->records);
+        return;
+    }
+    if (!program(name)) add_file(path);
+}
+
+static void walk(const char* relative, int depth, int records) {
     char dir[JPT_PATH_MAX];
     walk_t w;
     if (depth > JPT_CUSTOM_LEVEL_DEPTH_MAX || !host_path(relative, dir, sizeof dir)) return;
     w.prefix = relative;
     w.depth = depth;
+    w.records = records;
     jpt_fs_list(dir, visit, &w);
+}
+
+/* A linked package is the parts of its folder the link names, or all of it, and the records' own generated files. */
+static void walk_package(void) {
+    if (!C.linked || !C.scope_count) walk("", 0, 0);
+    if (!C.linked) return;
+    for (int i = 0; i < C.scope_count; i++) {
+        char host[JPT_PATH_MAX];
+        int depth = 1;
+        for (const char* c = C.scopes[i]; *c; c++) depth += *c == '/';
+        if (!host_path(C.scopes[i], host, sizeof host) || jpt_fs_is_link(host) || generated(C.scopes[i])) continue;
+        if (jpt_fs_is_dir(host)) walk(C.scopes[i], depth, 0);
+        else if (jpt_fs_exists(host) && !program(C.scopes[i])) add_file(C.scopes[i]);
+    }
+    walk(JPT_CUSTOM_LEVEL_GENERATED_DIR, 1, 1);
 }
 
 static int by_path(const void* a, const void* b) {
@@ -264,11 +317,25 @@ static int by_path(const void* a, const void* b) {
     return c ? c : strcmp(x, y);
 }
 
+/* Scopes that hold one another would list a file twice. */
+static void drop_repeats(void) {
+    int kept = 0;
+    for (int i = 0; i < C.count; i++) {
+        if (kept && !strcmp(C.files[kept - 1], C.files[i])) {
+            free(C.files[i]);
+            continue;
+        }
+        C.files[kept++] = C.files[i];
+    }
+    C.count = kept;
+}
+
 static void name_scenes(void) {
     for (int i = 0; i < C.count && C.scene_count < JPT_CUSTOM_LEVEL_SCENES_MAX; i++) {
         scene_t* s = &C.scenes[C.scene_count];
         if (!is_scene(C.files[i])) continue;
         s->file = C.files[i];
+        s->compat = -1;
         jpt_custom_level_scene_name(base_name(s->file), C.scene_count, s->name, sizeof s->name);
         for (int k = 0; k < C.scene_count; k++)
             if (!_stricmp(C.scenes[k].name, s->name)) snprintf(s->name, sizeof s->name, "LEVEL%d.SCN", C.scene_count + 1);
@@ -336,9 +403,14 @@ static void map_line(const char* kind, char* rest) {
     char *a = next_field(&rest), *b = next_field(&rest), *c = next_field(&rest), *d = next_field(&rest);
     const char* file;
     jpt_level_tpa_t pack;
+    jpt_compat_t compat;
     if (!strcmp(kind, "scene") && a) {
         for (int i = 0; i < C.scene_count; i++)
             if (!strcmp(C.scenes[i].file, a)) C.scenes[i].configured = 1;
+    } else if (!strcmp(kind, "compat") && a && b && jpt_compat_parse(b, &compat)) {
+        C.compat_known = 1;
+        for (int i = 0; i < C.scene_count; i++)
+            if (!strcmp(C.scenes[i].file, a)) C.scenes[i].compat = (int)compat;
     } else if (!strcmp(kind, "file") && a && b && (file = own_file(b)) != NULL && is_clean_path(a)) {
         C.mapped[C.mapped_count].target = a;
         C.mapped[C.mapped_count++].file = file;
@@ -462,19 +534,122 @@ static int refuse(char* error, size_t cap, const char* text, const char* subject
     return 0;
 }
 
+/* The package's own folder, or the folder its link names. 0 for a link that cannot be followed. */
+static int read_link(void) {
+    char file[JPT_PATH_MAX];
+    size_t size = 0;
+    uint8_t* bytes;
+    int n = snprintf(file, sizeof file, "%s" SEP JPT_CUSTOM_LEVEL_LINK_FILE, C.records), head = 1, found = 0;
+    if (n < 0 || n >= (int)sizeof file || !jpt_fs_exists(file)) {
+        memcpy(C.dir, C.records, sizeof C.dir);
+        return 1;
+    }
+    if (jpt_fs_is_link(file) || (bytes = read_whole(file, MAP_LIMIT, &size)) == NULL) return 0;
+    C.link = (char*)malloc(size + 1);
+    if (C.link) {
+        memcpy(C.link, bytes, size);
+        C.link[size] = 0;
+    }
+    free(bytes);
+    if (!C.link) return 0;
+    C.linked = 1;
+    for (char *line = C.link, *next; line; line = next) {
+        next = strchr(line, '\n');
+        if (next) *next++ = 0;
+        line[strcspn(line, "\r")] = 0;
+        if (head) {
+            if (strcmp(line, JPT_CUSTOM_LEVEL_LINK_HEAD)) return 0;
+            head = 0;
+        } else if (!strncmp(line, "path ", 5)) {
+            found = jpt_fs_from_utf8(line + 5, C.dir, sizeof C.dir);
+        } else if (!strncmp(line, "scope ", 6)) {
+            if (!is_clean_path(line + 6) || C.scope_count == JPT_CUSTOM_LEVEL_LINK_SCOPES_MAX) return 0;
+            C.scopes[C.scope_count++] = line + 6;
+        }
+    }
+    return found && jpt_fs_is_dir(C.dir) && !jpt_fs_is_link(C.dir);
+}
+
+static int scene_index(const char* name);
+
+static void authorize(const char* list, size_t cap) {
+    char path[JPT_CUSTOM_LEVEL_PATH_MAX];
+    const char* end = memchr(list, 0, cap);
+    for (const char* line = list; end && line < end;) {
+        const char* next = memchr(line, '\n', (size_t)(end - line));
+        const size_t length = (size_t)((next ? next : end) - line);
+        if (length < sizeof path) {
+            memcpy(path, line, length);
+            path[length] = 0;
+            for (int i = 0; i < C.scene_count; i++)
+                if (!strcmp(C.scenes[i].file, path)) C.scenes[i].authorized = 1;
+        }
+        line += length + 1;
+    }
+}
+
+static jpt_admit_t admit_index(int index) {
+    const scene_t* s = &C.scenes[index];
+    if (!C.compat_known) return JPT_ADMIT_OPEN;
+    switch (s->compat) {
+    case JPT_COMPAT_READY: return JPT_ADMIT_OPEN;
+    case JPT_COMPAT_LIMITED: return C.experimental && s->authorized ? JPT_ADMIT_OPEN : JPT_ADMIT_NEEDS_CONSENT;
+    case JPT_COMPAT_INVALID: return JPT_ADMIT_INVALID;
+    default: break;
+    }
+    return JPT_ADMIT_UNRECORDED;
+}
+
+int jpt_custom_level_admit_start(char* line, size_t cap) {
+    int covered = 0;
+    const char* file;
+    if (!C.active) return snprintf(line, cap, "launch blocked: no custom level is active"), 0;
+    file = C.scenes[C.scene].file;
+    for (int i = 0; i < C.scene_count; i++) covered += C.scenes[i].authorized && C.scenes[i].compat == JPT_COMPAT_LIMITED;
+    if (!C.compat_known || C.scenes[C.scene].compat < 0) {
+        snprintf(line, cap, "launch blocked: no compatibility was recorded for %s; open Custom Levels to check it again", file);
+    } else if (C.scenes[C.scene].compat == JPT_COMPAT_INVALID) {
+        snprintf(line, cap, "launch blocked: structural validation failed, %s is INVALID / UNSAFE", file);
+    } else if (admit_index(C.scene) != JPT_ADMIT_OPEN) {
+        snprintf(line, cap, "launch blocked: %s has limited compatibility and Play Anyway was not confirmed for this launch", file);
+    } else {
+        if (C.scenes[C.scene].compat == JPT_COMPAT_LIMITED)
+            snprintf(line, cap, "experimental launch authorized: Play Anyway for %s, %d limited level(s) of the package covered", file, covered);
+        else if (cap)
+            line[0] = 0;
+        return 1;
+    }
+    jpt_custom_level_deactivate();
+    return 0;
+}
+
+jpt_admit_t jpt_custom_level_admits(const char* scene_name) {
+    const int index = C.active && scene_name ? scene_index(scene_name) : -1;
+    return index < 0 ? JPT_ADMIT_OPEN : admit_index(index);
+}
+
+const char* jpt_custom_level_compat_name(void) {
+    if (!C.active || !C.compat_known || C.scenes[C.scene].compat < 0) return "unknown";
+    return jpt_compat_name((jpt_compat_t)C.scenes[C.scene].compat);
+}
+
+int jpt_custom_level_experimental(void) { return C.active && C.experimental && C.scenes[C.scene].compat == JPT_COMPAT_LIMITED; }
+
 int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_request_t* request, char* error, size_t cap) {
     int n;
     jpt_custom_level_deactivate();
     if (!jpt_custom_level_id_valid(request->package))
         return refuse(error, cap, "invalid custom level package", request->package);
-    n = snprintf(C.dir, sizeof C.dir, "%s" SEP JPT_CUSTOM_LEVELS_DIR SEP "%s", user_root, request->package);
-    if (n < 0 || n >= (int)sizeof C.dir || !jpt_fs_is_dir(C.dir) || jpt_fs_is_link(C.dir))
+    n = snprintf(C.records, sizeof C.records, "%s" SEP JPT_CUSTOM_LEVELS_DIR SEP "%s", user_root, request->package);
+    if (n < 0 || n >= (int)sizeof C.records || !jpt_fs_is_dir(C.records) || jpt_fs_is_link(C.records))
         return refuse(error, cap, "the custom level package is not installed", request->package);
+    if (!read_link()) return refuse(error, cap, "the linked folder of the custom level is not available", request->package);
     C.files = (char**)calloc(JPT_CUSTOM_LEVEL_FILES_MAX, sizeof *C.files);
     if (!C.files) return refuse(error, cap, "out of memory for the custom level package", request->package);
-    walk("", 0);
+    walk_package();
     if (C.overflow) return refuse(error, cap, "the custom level package has too many files", request->package);
     qsort(C.files, (size_t)C.count, sizeof *C.files, by_path);
+    drop_repeats();
     name_scenes();
     for (C.scene = 0; C.scene < C.scene_count; C.scene++)
         if (!_stricmp(C.scenes[C.scene].file, request->scene)) break;
@@ -482,6 +657,8 @@ int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_requ
     if (!scene_readable(C.scenes[C.scene].file))
         return refuse(error, cap, "unsupported level format", request->scene);
     read_map();
+    C.experimental = request->experimental != 0;
+    if (C.experimental) authorize(request->authorized, sizeof request->authorized);
     C.current = C.context = C.scene;
     snprintf(C.current_name, sizeof C.current_name, "%s", base_name(C.scenes[C.scene].file));
     snprintf(C.package, sizeof C.package, "%s", request->package);

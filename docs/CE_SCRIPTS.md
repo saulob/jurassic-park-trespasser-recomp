@@ -269,8 +269,8 @@ textures are released when the next level's are drawn.
 * After the game read its controls (`CInput`, Windows and Linux alike), `OnHandleInput` on the game scripts that declare it, where
   `bKeyHit`, `bKeyPressed` (of `uCMD_USER1` to `uCMD_USER8`) and `fGetInputMoveAmountY` (the movement input before any speed factor) may be
   read; elsewhere they are a script error. A USER key is bound only in a level whose scripts name that command
-  (`LevelPlan::user_commands`); the keys are `script_user1_key` to `script_user8_key` of `trespasser.ini` (Shift and M for the first two;
-  the others unbound; letters, digits, Shift, Control, Alt, Tab, Space, Enter, Backspace, the arrows, Insert, Delete, Home, End,
+  (`LevelPlan::user_commands`); the keys are `script_user1_key` to `script_user8_key` of `trespasser.ini` (1 to 8 by default;
+  letters, digits, Shift, Control, Alt, Tab, Space, Enter, Backspace, the arrows, Insert, Delete, Home, End,
   PageUp, PageDown or None). They still reach the game. No USER command exists in the campaign.
 * `bSetModalMode(true)` succeeds unless another game script is modal; then the player's controls do nothing, keys of the keyboard go
   to `OnModalKey(vk, pressed, shift, control, alt)` (virtual key codes, `VK_LEFT`, `VK_RIGHT`, `VK_HOME`, `VK_END`, `VK_PRIOR`, `VK_NEXT`

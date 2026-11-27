@@ -105,8 +105,12 @@ constexpr char kFieldOfViewHelp[] =
 constexpr char kAntiAliasingHelp[] =
     "Multisample anti-aliasing of the 3D world. Only the levels this graphics card supports are listed.";
 constexpr char kTextureFilteringHelp[] =
-    "Sharper, steadier textures at a distance and on the ground seen at an angle, with mipmaps generated for the 3D "
-    "world. Original uses the game's own filtering without them; Bilinear smooths every texture.";
+    "How the 3D world's textures are drawn. Original uses the game's own filtering. Nearest (Unfiltered) keeps them "
+    "sharp and pixelated, without smoothing. Bilinear smooths every texture. Anisotropic keeps the ground and walls "
+    "seen at an angle clearer. All but Original generate mipmaps, so distant textures stay steady.";
+constexpr char kTextureFilteringSoftwareHelp[] =
+    "The Software renderer draws textures unfiltered, as the original game. Texture filtering applies to the "
+    "hardware renderers.";
 #ifdef _WIN32
 constexpr char kAmbientOcclusionHelp[] =
     "Soft shadows where the 3D world's surfaces meet: trees and rocks on the ground, corners and walls (Intel ASSAO). "
@@ -275,11 +279,38 @@ ImTextureID LoadSponsorIcon(LauncherHost& host) {
 }
 
 std::string GameFilesHelp() {
-    return Tr("Select your own disc image (.iso): English 1.0.116 (UK or US disc), Russian (Fargus), Spanish or "
-              "Brazilian Portuguese. The version is recognised from its files, never from the file name. The image is "
-              "only read: nothing is mounted and no setup program runs. Each version is copied into its own folder in "
-              "the game folder (about 600 MB) and every file is checked before it can be played. No game files are "
-              "included. Importing a version that is already installed copies nothing.");
+    return Tr("Select your own disc image (.iso), or the folder of a game you already have: a copy of the disc or an "
+              "installation. English 1.0.116 (UK or US disc), Russian (Fargus), Spanish or Brazilian Portuguese. The "
+              "version is recognised from its files, never from a file or folder name. Sources are only read: nothing is "
+              "mounted and no setup program or executable runs. Each version is copied into its own folder in the game "
+              "folder (about 600 MB) and every file is checked before it can be played. No game files are included. "
+              "Importing a version that is already installed copies nothing.");
+}
+
+// What an installation lacks, by name; the disc's folder usually has it.
+std::string MissingFilesHelp(const std::vector<std::string>& missing) {
+    std::string names;
+    for (size_t i = 0; i < missing.size() && i < 8; ++i) names += (i ? ", " : "") + missing[i];
+    if (missing.size() > 8) names += ", ...";
+    return TrFormat("Missing or different from the retail files (%d): %s. Add the folder of the original disc to complete them.", int(missing.size()),
+                    names.c_str());
+}
+
+LevelPick PickOf(const BrowsePurpose& purpose) {
+    if (&purpose == &kBrowseLevelArchive) return LevelPick::kArchive;
+    if (&purpose == &kBrowseLinkFolder) return LevelPick::kLink;
+    if (&purpose == &kBrowseRelocateFolder) return LevelPick::kRelocate;
+    return LevelPick::kFolder;
+}
+
+const BrowsePurpose& PurposeOf(LevelPick pick) {
+    switch (pick) {
+    case LevelPick::kArchive: return kBrowseLevelArchive;
+    case LevelPick::kLink: return kBrowseLinkFolder;
+    case LevelPick::kRelocate: return kBrowseRelocateFolder;
+    case LevelPick::kFolder: break;
+    }
+    return kBrowseLevelFolder;
 }
 
 constexpr char kGameVersionHelp[] =
@@ -509,8 +540,11 @@ private:
         if (disc_browser_.active()) {
             if (const std::optional<std::filesystem::path> picked =
                     disc_browser_.Draw(fonts_.regular, fonts_.size, launcher_->config().theme)) {
-                if (&disc_browser_.purpose() == &kBrowseDisc) StartInstall(Utf8(*picked), browse_replace_);
-                else custom_levels_->Picked(Utf8(*picked), disc_browser_.purpose().folder);
+                const BrowsePurpose& purpose = disc_browser_.purpose();
+                if (&purpose == &kBrowseDisc) StartInstall(Utf8(*picked), browse_replace_);
+                else if (&purpose == &kBrowseInstallFolder) StartFolderInstall({*picked}, browse_replace_);
+                else if (&purpose == &kBrowseDiscFolder) AddDiscFolder(*picked);
+                else custom_levels_->Picked(Utf8(*picked), PickOf(purpose));
             }
         }
         if (result == trg::Result::kNone && !play_.starting() &&
@@ -750,14 +784,16 @@ private:
         ui.Row("Game files");
         if (!ui.TaskProgress(install_)) {
             const bool repair = selected && selected->profile && selected->check.state != GameState::kReady;
-            const bool clicked = repair              ? ui.AccentButton("Reinstall game...")
-                                 : versions_.empty() ? ui.AccentButton("Import game...")
-                                                     : ImGui::Button(Tr("Import game..."), ImVec2(-FLT_MIN, 0));
-            if (clicked) {
-                BrowseAndInstall(repair);
-            }
+            const bool accent = repair || versions_.empty();
+            const char* disc = repair ? "Reinstall from Disc Image..." : "Import Disc Image...";
+            const char* folder = repair ? "Reinstall from Existing Installation..." : "Import Existing Installation...";
+            if (accent ? ui.AccentButton(Tr(disc)) : ImGui::Button(Tr(disc), ImVec2(-FLT_MIN, 0))) BrowseAndInstall(repair);
+            if (ImGui::Button(Tr(folder), ImVec2(-FLT_MIN, 0))) BrowseInstallFolder(repair);
+            if (!install_missing_.empty() && !install_folders_.empty() && ImGui::Button(Tr("Add the Disc's Folder..."), ImVec2(-FLT_MIN, 0)))
+                BrowseDiscFolder();
         }
         ui.EndRows();
+        if (!install_missing_.empty() && !install_.running()) ui.Help(MissingFilesHelp(install_missing_).c_str());
         ui.Help(GameFilesHelp().c_str());
         if (selected && selected->profile && !install_.running() &&
             ui.ConfirmRow("Remove version", kRemoveVersionHelp, "Remove this version...",
@@ -789,7 +825,7 @@ private:
 
     CustomLevelsHooks MakeCustomLevelsHooks() {
         CustomLevelsHooks hooks;
-        hooks.choose = [this](bool folder) { BrowseForLevel(folder); };
+        hooks.choose = [this](LevelPick pick) { BrowseForLevel(pick); };
         hooks.game_ready = [this] { return Ready(); };
         hooks.data_dir = [this] {
             const InstalledVersion* selected = Selected();
@@ -810,10 +846,11 @@ private:
         return hooks;
     }
 
-    void BrowseForLevel(bool folder) {
+    void BrowseForLevel(LevelPick pick) {
         if (custom_levels_->importing() || disc_browser_.active()) return;
+        const BrowsePurpose& purpose = PurposeOf(pick);
         if (UseBuiltInChooser()) {
-            disc_browser_.Open(PortFolder(), folder ? kBrowseLevelFolder : kBrowseLevelArchive);
+            disc_browser_.Open(PortFolder(), purpose);
             return;
         }
         if (!FilePickerAvailable()) {
@@ -821,9 +858,80 @@ private:
             launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the level."), 10.0);
             return;
         }
-        custom_levels_->Picked(folder ? trg::BrowseForFolder(Tr("Select the folder of a custom level"))
-                                      : trg::BrowseForFile(Tr("Select a custom level (.zip, .7z or .rar)"), {{Tr("Level packages (*.zip, *.7z, *.rar)"), "*.zip;*.7z;*.rar"}}),
-                               folder);
+        custom_levels_->Picked(pick == LevelPick::kArchive
+                                   ? trg::BrowseForFile(Tr("Select a custom level (.zip, .7z or .rar)"), {{Tr("Level packages (*.zip, *.7z, *.rar)"), "*.zip;*.7z;*.rar"}})
+                                   : trg::BrowseForFolder(Tr(purpose.title)),
+                               pick);
+    }
+
+    // The folders of the game the player already has: an installation, the disc copied to a folder, or both.
+    void BrowseInstallFolder(bool replace) {
+        if (install_.running() || disc_browser_.active()) return;
+        browse_replace_ = replace;
+        if (UseBuiltInChooser()) {
+            disc_browser_.Open(PortFolder(), kBrowseInstallFolder);
+            return;
+        }
+        if (!FilePickerAvailable()) {
+            Log("no file picker: neither zenity nor kdialog is on the PATH");
+            launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the folder."), 10.0);
+            return;
+        }
+        const std::string picked = trg::BrowseForFolder(Tr(kBrowseInstallFolder.title));
+        if (!picked.empty()) StartFolderInstall({PathFromUtf8(picked)}, replace);
+    }
+
+    void BrowseDiscFolder() {
+        if (install_.running() || disc_browser_.active() || install_folders_.empty()) return;
+        if (UseBuiltInChooser()) {
+            disc_browser_.Open(PortFolder(), kBrowseDiscFolder);
+            return;
+        }
+        if (!FilePickerAvailable()) {
+            launcher_->SetStatus(Tr("No file picker was found. Install zenity or kdialog to choose the folder."), 10.0);
+            return;
+        }
+        const std::string picked = trg::BrowseForFolder(Tr(kBrowseDiscFolder.title));
+        if (!picked.empty()) AddDiscFolder(PathFromUtf8(picked));
+    }
+
+    // The disc's folder completes the installation chosen before; it is read after it.
+    void AddDiscFolder(const std::filesystem::path& folder) {
+        std::vector<std::filesystem::path> folders = install_folders_;
+        if (std::find(folders.begin(), folders.end(), folder) == folders.end()) folders.push_back(folder);
+        StartFolderInstall(folders, browse_replace_);
+    }
+
+    static InstallHooks TaskHooks(trg::Task& task, bool replace) {
+        InstallHooks hooks;
+        hooks.replace = replace;
+        hooks.phase = [&task](const char* text) {
+            task.SetLabel(text);
+            task.Progress(0, 0);
+        };
+        hooks.progress = [&task](uint64_t done, uint64_t total) {
+            task.Progress(static_cast<long long>(done), static_cast<long long>(total));
+            return !task.cancelled();
+        };
+        hooks.log = [](const std::string& line) { Log("%s", line.c_str()); };
+        return hooks;
+    }
+
+    void StartFolderInstall(const std::vector<std::filesystem::path>& folders, bool replace) {
+        if (folders.empty() || install_.running() || play_.starting()) return;
+        install_failure_.clear();
+        install_failure_text_.clear();
+        install_missing_.clear();
+        install_folders_ = folders;
+        outcome_ = std::make_shared<InstallResult>();
+        const bool started = install_.Start("Reading the folders...", [outcome = outcome_, folders, root = game_root_, replace](trg::Task& task) {
+            *outcome = InstallFromFolders(folders, root, TaskHooks(task, replace));
+            return outcome->ok() ? std::string() : std::string(InstallStatusTitle(outcome->status));
+        });
+        if (!started) return;
+        std::string list;
+        for (const std::filesystem::path& folder : folders) list += (list.empty() ? "" : ", ") + Utf8(folder);
+        Log("importing the game%s from the folder(s) %s into %s", replace ? " (reinstall)" : "", list.c_str(), Utf8(game_root_).c_str());
     }
 
     static bool UseBuiltInChooser() {
@@ -873,22 +981,13 @@ private:
         }
         install_failure_.clear();
         install_failure_text_.clear();
+        install_missing_.clear();
+        install_folders_.clear();
         outcome_ = std::make_shared<InstallResult>();
         const bool started = install_.Start(
             "Reading the disc image...",
             [outcome = outcome_, iso = PathFromUtf8(picked), root = game_root_, replace](trg::Task& task) {
-                InstallHooks hooks;
-                hooks.replace = replace;
-                hooks.phase = [&task](const char* text) {
-                    task.SetLabel(text);
-                    task.Progress(0, 0);
-                };
-                hooks.progress = [&task](uint64_t done, uint64_t total) {
-                    task.Progress(static_cast<long long>(done), static_cast<long long>(total));
-                    return !task.cancelled();
-                };
-                hooks.log = [](const std::string& line) { Log("%s", line.c_str()); };
-                *outcome = InstallFromIso(iso, root, hooks);
+                *outcome = InstallFromIso(iso, root, TaskHooks(task, replace));
                 return outcome->ok() ? std::string() : std::string(InstallStatusTitle(outcome->status));
             });
         if (started) {
@@ -907,6 +1006,8 @@ private:
             return;
         }
         if (outcome->ok()) {
+            install_folders_.clear();
+            install_missing_.clear();
             settings_.Set(JPT_KEY_GAME_VERSION, outcome->profile->id());
             Recheck();
             if (outcome->status == InstallStatus::kUpToDate) {
@@ -932,6 +1033,8 @@ private:
         Log("game install failed: %s (%s)", InstallStatusTitle(outcome->status), outcome->detail.c_str());
         install_failure_ = InstallStatusTitle(outcome->status);
         install_failure_text_ = outcome->detail;
+        install_missing_ = outcome->missing;
+        if (outcome->status != InstallStatus::kIncompleteInstallation) install_folders_.clear();
         launcher_->SetStatus(Tr("Install failed: ") + Tr(install_failure_), 8.0);
     }
 
@@ -1079,12 +1182,19 @@ private:
             ImGui::EndDisabled();
         }
         ui.Toggle("Maximum object detail", kMaxObjectDetailHelp, JPT_KEY_MAX_OBJECT_DETAIL, false, "Off", "On");
-        ui.Combo("Texture filtering", kTextureFilteringHelp, JPT_KEY_TEXTURE_FILTER, "anisotropic16",
-                 {{"original", "Original"},
-                  {"bilinear", "Bilinear"},
-                  {"anisotropic4", "Anisotropic 4x"},
-                  {"anisotropic8", "Anisotropic 8x"},
-                  {"anisotropic16", "Anisotropic 16x"}});
+        {
+            const bool available = Direct3DEffectsAvailable(settings_.Get(JPT_KEY_RENDERER));
+            ImGui::BeginDisabled(!available);
+            ui.Combo("Texture filtering", available ? kTextureFilteringHelp : kTextureFilteringSoftwareHelp,
+                     JPT_KEY_TEXTURE_FILTER, "anisotropic16",
+                     {{"original", "Original"},
+                      {"nearest", "Nearest (Unfiltered)"},
+                      {"bilinear", "Bilinear"},
+                      {"anisotropic4", "Anisotropic 4x"},
+                      {"anisotropic8", "Anisotropic 8x"},
+                      {"anisotropic16", "Anisotropic 16x"}});
+            ImGui::EndDisabled();
+        }
         ui.Toggle("VSync", kVSyncHelp, JPT_KEY_VSYNC, true, "Off", "On");
         ui.EndRows();
     }
@@ -1642,6 +1752,9 @@ private:
     bool browse_replace_ = false;
     std::shared_ptr<InstallResult> outcome_;
     std::string install_failure_, install_failure_text_;
+    // An incomplete folder import: its folders, which the disc's folder can complete, and what they lack.
+    std::vector<std::filesystem::path> install_folders_;
+    std::vector<std::string> install_missing_;
     std::vector<jpt_monitor_t> monitors_;
     GraphicsCards cards_;
     PlayGate play_;

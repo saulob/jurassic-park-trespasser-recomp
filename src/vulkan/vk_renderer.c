@@ -11,7 +11,7 @@
 #include "jpt_config.h"
 
 #define JPT_VK_MAX_POOLS 128
-#define JPT_VK_WORLD_SAMPLERS 20
+#define JPT_VK_WORLD_SAMPLERS (JPT_VK_SAMPLER_CLASSES * 4)
 #define JPT_VK_POOL_MIN_SLICES 64u
 #define JPT_VK_POOL_MAX_SLICES 2048u
 #define JPT_VK_POOL_BUDGET (16u * 1024u * 1024u)
@@ -876,24 +876,20 @@ static int create_samplers(jpt_vk_renderer_t* r) {
         { VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0 },
         { VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0 },
     };
-    /* mag, min, mips */
-    static const int k_class[5][3] = { { 1, 1, 1 }, { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 }, { 1, 1, 0 } };
-
     for (int i = 0; i < JPT_VK_WORLD_SAMPLERS; i++) {
         VkSamplerCreateInfo sci;
-        const int* c = k_class[i / 4];
-        const int aniso = c[2] && r->active_aniso > 1.0f;
+        const jpt_vk_world_sampler_t s = jpt_vk_world_sampler(r->cfg.texture_filter, (uint32_t)i / 4u, r->active_aniso);
         memset(&sci, 0, sizeof sci);
         sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sci.magFilter = c[0] ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-        sci.minFilter = c[1] ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-        sci.mipmapMode = c[2] ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sci.magFilter = s.mag;
+        sci.minFilter = s.min;
+        sci.mipmapMode = s.mipmap;
         sci.addressModeU = k_specs[i % 4].u;
         sci.addressModeV = k_specs[i % 4].v;
         sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sci.anisotropyEnable = aniso ? VK_TRUE : VK_FALSE;
-        sci.maxAnisotropy = aniso ? r->active_aniso : 1.0f;
-        sci.maxLod = c[2] ? 12.0f : 0.0f;
+        sci.anisotropyEnable = s.anisotropy > 1.0f ? VK_TRUE : VK_FALSE;
+        sci.maxAnisotropy = s.anisotropy;
+        sci.maxLod = s.max_lod;
         if (vk->vkCreateSampler(r->ctx.device, &sci, NULL, &r->world_samplers[i]) != VK_SUCCESS) return 0;
         r->ctx.lifetime.samplers++;
     }
@@ -915,6 +911,15 @@ static int create_samplers(jpt_vk_renderer_t* r) {
     if (vk->vkCreateSampler(r->ctx.device, &lci, NULL, &r->nearest_clamp_sampler) != VK_SUCCESS) return 0;
     r->ctx.lifetime.samplers++;
     return 1;
+}
+
+static void log_world_filter(const jpt_vk_renderer_t* r) {
+    const int f = r->cfg.texture_filter;
+    const jpt_vk_world_sampler_t s = jpt_vk_world_sampler(f, JPT_VK_SAMPLER_MIPS, r->active_aniso);
+    jpt_vk_log(&r->ctx, "texture filter %s: mipmapped world samplers mag %s, min %s, mip %s, anisotropy %.0fx",
+               f >= 0 && f < JPT_FILTER_COUNT ? jpt_filter_keys[f] : "unknown",
+               s.mag == VK_FILTER_LINEAR ? "linear" : "nearest", s.min == VK_FILTER_LINEAR ? "linear" : "nearest",
+               s.mipmap == VK_SAMPLER_MIPMAP_MODE_LINEAR ? "linear" : "nearest", s.anisotropy);
 }
 
 static void world_ds_invalidate(jpt_vk_renderer_t* r) {
@@ -2218,6 +2223,7 @@ jpt_vk_renderer_t* jpt_vk_renderer_create(const jpt_vk_renderer_desc_t* desc, ch
         jpt_vk_format_startup_summary(&r->ctx, r->sc.present_mode, r->sc.format, r->rt_w, r->rt_h, r->active_msaa,
                                       r->active_aniso, summary, sizeof summary);
         jpt_vk_log(&r->ctx, "%s", summary);
+        log_world_filter(r);
         r->startup_logged = 1;
     }
     return r;
@@ -3228,12 +3234,8 @@ static uint32_t encode_layer_word(const jpt_vk_renderer_t* r, const jpt_render_s
     int cv = (st->tex_addr_v == 3u);
     int game_mag = st->tex_mag_filter >= 2u && st->tex_mag_filter <= 5u;
     int game_min = st->tex_min_filter == 2u || st->tex_min_filter == 3u;
-    int forced = r->cfg.texture_filter == JPT_FILTER_BILINEAR;
-    int mag = forced ? 1 : game_mag, min = forced ? 1 : game_min;
-    int mips = r->cfg.texture_filter != JPT_FILTER_ORIGINAL && mag && min;
     uint32_t addr = (cu && cv) ? 3u : cv ? 2u : cu ? 1u : 0u;
-    uint32_t filter_class = (!mag && !min) ? 1u : (mag && min) ? (mips ? 0u : 4u) : mag ? 2u : 3u;
-    samp = filter_class * 4u + addr;
+    samp = jpt_vk_world_sampler_class(r->cfg.texture_filter, game_mag, game_min) * 4u + addr;
     uint32_t slice = t->standalone ? 0u : t->slice;
     return (slice & 0xFFFFu) | ((batch_slot & 15u) << 16u) | ((tf & 7u) << 20u) | ((samp & 31u) << 24u);
 }

@@ -415,7 +415,7 @@ static void flush_for(int cause);
 static void fx_release(void);
 static void fx_release_wave(int i);
 
-static const char* const k_filter_names[] = { "original", "point", "bilinear", "trilinear", "anisotropic" };
+static const char* const k_filter_names[] = { "original", "point", "bilinear", "trilinear", "anisotropic", "nearest" };
 
 static void log_hr(const char* what, HRESULT hr) { host_log("d3d11", "%s failed, HRESULT 0x%08lX", what, (unsigned long)hr); }
 
@@ -1468,7 +1468,9 @@ static HRESULT d3d11_be_attach(d3d_device_t* dev) {
     host_log("d3d", "Direct3D device #%u: %lux%lu target at %ux%u, %ux MSAA, %u textures alive, texture filter %s%s, "
              "mipmaps %s", R.devices, s->width, s->height, t->width, t->height, t->samples, R.textures_alive,
              k_filter_names[R.filter], anisotropy_text(),
-             d3dt_filter_uses_mips(R.filter) ? "generated for the 3D world's textures" : "none (as the game's textures)");
+             !d3dt_filter_uses_mips(R.filter)    ? "none (as the game's textures)"
+             : R.filter == D3DR_FILTER_NEAREST ? "generated for the 3D world's textures, nearest level without blending"
+                                               : "generated for the 3D world's textures");
     return DD_OK;
 }
 

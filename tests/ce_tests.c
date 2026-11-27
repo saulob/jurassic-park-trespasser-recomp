@@ -805,6 +805,16 @@ static void test_keys(void) {
     key_policy_set_quick_keys(VK_F7_, VK_F8_);
 }
 
+/* USER1 to USER8 default to 1 to 8, free of Shift (wrist, dual stow) and of every default control; trespasser.ini still chooses. */
+static void test_script_user_keys(void) {
+    jpt_config_t c;
+    jpt_config_defaults(&c);
+    for (int n = 0; n < JPT_SCRIPT_USER_KEYS; n++) CHECK(c.script_user_vk[n] == (uint32_t)('1' + n));
+    CHECK(jpt_config_apply(&c, "script_user1_key", "Shift") && c.script_user_vk[0] == 0x10);
+    CHECK(jpt_config_apply(&c, "script_user2_key", "None") && c.script_user_vk[1] == 0);
+    CHECK(!jpt_config_apply(&c, "script_user3_key", "F1") && c.script_user_vk[2] == '3');
+}
+
 static int table_has(const char* code, const char* line) {
     char path[512], buf[1024];
     int found = 0;
@@ -879,6 +889,7 @@ int main(void) {
     test_migration_and_reset();
     test_max_object_detail();
     test_keys();
+    test_script_user_keys();
     test_quick_save_input_order();
     test_interface_text();
     printf("ce_tests: %d checks, %d failures\n", s_checks, s_failures);

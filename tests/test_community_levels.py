@@ -553,11 +553,42 @@ class Compatibility(Base):
         item = catalog.catalog_item(entry)
         packages = [compatibility.package_row({'path': 'some-level/f.zip', 'sha256': '', 'duplicate_of': '', 'unread': '', 'import': '', 'levels': [level, bad]})]
         rows = compatibility.levels_of([item], packages)
-        text = compatibility.markdown([item], rows, packages, [], [dict(rows[0], **{'class': 'REJECTED_UNSUPPORTED'}, blockers=['CE_SKY'])])
+        text = compatibility.markdown([item], rows, packages, [], [dict(rows[0], **{'class': 'REJECTED_UNSUPPORTED', 'compatibility': 'limited'}, blockers=['CE_SKY'])])
         self.assertNotRegex(text, re.compile(r'^\|', re.M))
-        for part in ('## Summary', '## Progress', '## Ready', '## Rejected: missing files', '## Rejected: unsupported features', '## Not analyzed', '## Generic blockers', 'READY: 1', 'ActionType 99', 'Gain: +1',
-                     '#### CE_SKY', f']({entry["source_page"]})'):
+        for part in ('## Summary', '## Progress', '## Ready', '## Limited compatibility (Play Anyway)', '## Invalid / unsafe: missing files', '## Invalid / unsafe: unsupported features', '## Not analyzed',
+                     '## Generic blockers', 'READY: 1', 'Not classified (state of an earlier version): 1', 'ActionType 99', 'Gain: +1', '#### CE_SKY', f']({entry["source_page"]})'):
             self.assertIn(part, text)
+
+    def test_three_states_from_the_runtime_codes(self):
+        entry = self.entry()
+        entry['parts'][0].update(status=catalog.DOWNLOADED, file='downloads/some-level/f.zip')
+        entry['download_status'] = catalog.DOWNLOADED
+        issue = {'code': 'UNSUPPORTED_ACTION', 'subject': 'ActionType 99', 'detail': 'one trigger', 'blocks': True, 'policy': 'unsupported'}
+        missing = {'code': 'MISSING_FILE', 'subject': 'x.wtd', 'detail': 'not in the package', 'blocks': True, 'policy': 'missing'}
+        levels = [{'scn': 'a.scn', 'class': 'READY', 'compatibility': 'ready', 'scene_version': 22, 'issues': []},
+                  {'scn': 'b.scn', 'class': 'REJECTED_UNSUPPORTED', 'compatibility': 'limited', 'scene_version': 22, 'issues': [issue]},
+                  {'scn': 'c.scn', 'class': 'REJECTED_UNSUPPORTED', 'compatibility': 'invalid', 'scene_version': 22, 'issues': [issue]},
+                  {'scn': 'd.scn', 'class': 'REJECTED_MISSING', 'compatibility': 'invalid', 'scene_version': 22, 'issues': [missing]}]
+        item = catalog.catalog_item(entry)
+        packages = [compatibility.package_row({'path': 'some-level/f.zip', 'sha256': '', 'duplicate_of': '', 'unread': '', 'import': '', 'levels': levels})]
+        rows = compatibility.levels_of([item], packages)
+        self.assertEqual(sorted(r['compatibility'] for r in rows), ['invalid', 'invalid', 'limited', 'ready'])
+        text = compatibility.markdown([item], rows, packages, [], [])
+        for part in ('- READY: 1', '- LIMITED COMPATIBILITY: 1', '- INVALID / UNSAFE: 2', 'REJECTED_UNSUPPORTED 2', 'Now: 1 READY of 4'):
+            self.assertIn(part, text)
+        self.assertNotIn('Not classified', text)
+        limited = text.split('## Limited compatibility (Play Anyway)')[1].split('\n## ')[0]
+        unsupported = text.split('## Invalid / unsafe: unsupported features')[1].split('\n## ')[0]
+        self.assertIn('b.scn', limited)
+        self.assertNotIn('c.scn', limited)
+        self.assertIn('c.scn', unsupported)
+        self.assertNotIn('b.scn', unsupported)
+        self.assertIn('d.scn', text.split('## Invalid / unsafe: missing files')[1].split('\n## ')[0])
+        # A state of v0.1.3 has classes alone: its READY counts, nothing else is guessed.
+        self.assertEqual([compatibility.compatibility_of(r) for r in ({'class': 'READY'}, {'class': 'REJECTED_UNSUPPORTED'}, {'class': 'X', 'compatibility': 'bogus'})],
+                         ['ready', compatibility.UNCLASSIFIED, compatibility.UNCLASSIFIED])
+        self.assertIn('Baseline: 1 READY of 2', compatibility.markdown([item], rows, packages, [], [{'class': 'READY', 'entry': 'x', 'scn': 'a.scn', 'package': 'p', 'blockers': []},
+                                                                                                  {'class': 'REJECTED_OTHER', 'entry': 'x', 'scn': 'z.scn', 'package': 'p', 'blockers': []}]))
 
 
 def sha(data):

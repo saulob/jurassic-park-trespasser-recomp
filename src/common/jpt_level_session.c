@@ -48,7 +48,10 @@ void jpt_session_begin(const jpt_session_info_t* info) {
     say("session", "renderer=%s", text_or(info->renderer, "unknown"));
     if (info->language && *info->language) say("session", "language=%s", info->language);
     say("session", "saves=%s", S.kind == JPT_SESSION_CUSTOM ? "custom package namespace" : "game");
-    if (S.kind == JPT_SESSION_CUSTOM) say("session", "capabilities=%s", text_or(info->capabilities, "none"));
+    if (S.kind == JPT_SESSION_CUSTOM) {
+        say("session", "capabilities=%s", text_or(info->capabilities, "none"));
+        say("session", "compatibility=%s experimental=%d", text_or(info->compatibility, "unknown"), info->experimental ? 1 : 0);
+    }
 }
 
 void jpt_session_end(void) {

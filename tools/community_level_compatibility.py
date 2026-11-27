@@ -17,6 +17,9 @@ import community_level_report as report  # noqa: E402
 from community_level_fetch import safe_name, sha256_of  # noqa: E402
 
 CLASSES = ('READY', 'REJECTED_MISSING', 'REJECTED_UNSUPPORTED', 'REJECTED_MALFORMED', 'REJECTED_OTHER')
+# The runtime's codes and titles (jpt_compat_name / jpt_compat_title in src/common/jpt_level_compat.c).
+COMPATIBILITY = (('ready', 'READY'), ('limited', 'LIMITED COMPATIBILITY'), ('invalid', 'INVALID / UNSAFE'))
+UNCLASSIFIED = ''
 HAVE = (catalog.DOWNLOADED, catalog.DUPLICATE)
 
 
@@ -33,9 +36,17 @@ def blocker_of(issue):
     return issue['subject'] if issue['code'] in ('UNSUPPORTED_ACTION', 'UNSUPPORTED_FEATURE') else issue['code']
 
 
+def compatibility_of(level):
+    """The runtime's code; a scan or state of v0.1.3 has none, and only its READY can be told apart."""
+    code = level.get('compatibility', '')
+    if code in dict(COMPATIBILITY):
+        return code
+    return 'ready' if level.get('class') == 'READY' else UNCLASSIFIED
+
+
 def level_row(level):
     blocking = [i for i in level['issues'] if i['blocks']]
-    return {'scn': level['scn'], 'class': level['class'], 'version': level['scene_version'], 'features': level.get('features', []),
+    return {'scn': level['scn'], 'class': level['class'], 'compatibility': compatibility_of(level), 'version': level['scene_version'], 'features': level.get('features', []),
             'blockers': sorted({blocker_of(i) for i in blocking}), 'issues': [dict({k: i[k] for k in ('code', 'subject', 'detail')}, policy=i.get('policy', '')) for i in blocking]}
 
 
@@ -322,22 +333,28 @@ def source_of(blocker):
 def markdown(entries, rows, packages, notes, baseline, excluded=0):
     by_id = {e['id']: e for e in entries}
     count = lambda name, chosen=rows: sum(row['class'] == name for row in chosen)
+    ready = lambda chosen: sum(compatibility_of(row) == 'ready' for row in chosen)
     analysed = {row['entry'] for row in rows}
     duplicates = [p for p in packages if p['duplicate_of'] and not p['path'].startswith('composed/')]
     covered = analysed | {p['path'].split('/')[0] for p in duplicates}
     outside = [e for e in entries if e['id'] not in covered]
     sources = sum(1 for e in entries for p in e['parts'] if p['status'] in HAVE)
     lines = ['# Community Level Compatibility', '', f'Generated: {time.strftime("%Y-%m-%d %H:%M")}', '',
-             'READY means that the automated scanner found no known blocking issue. It does not mean that the level was played or that it works in full.', '',
+             'READY means that the automated scanner found no known blocking issue. It does not mean that the level was played or that it works in full.',
+             'LIMITED COMPATIBILITY means that the level uses features this port leaves out; the launcher starts it only with Play Anyway.',
+             'INVALID / UNSAFE levels are never started. A failed download or extraction is not a classification: such entries are under Not analyzed.', '',
              '## Summary', '', f'- Downloaded files: {sources}', f'- Entries analysed: {len(covered)} of {len(entries)}', f'- Entries excluded (not read): {excluded}',
              f'- Packages with levels: {len({row["package"] for row in rows})}', f'- Levels: {len(rows)}']
-    lines += [f'- {name}: {count(name)}' for name in CLASSES]
+    lines += [f'- {title}: {sum(compatibility_of(row) == code for row in rows)}' for code, title in COMPATIBILITY]
+    unclassified = sum(compatibility_of(row) == UNCLASSIFIED for row in rows)
+    lines += [f'- Not classified (state of an earlier version): {unclassified}'] if unclassified else []
+    lines += ['- Scanner classes: ' + ', '.join(f'{name} {count(name)}' for name in CLASSES)]
     lines += [f'- Not analyzed (entries): {len(outside)}', '', '## Progress', '']
     was = {(r['entry'], r['scn'].rpartition('/')[2].lower(), r['package']): r for r in baseline} if baseline else {}
     before = lambda row: was.get((row['entry'], row['scn'].rpartition('/')[2].lower(), row['package']))
     if baseline:
-        lines += [f'- Baseline: {sum(r["class"] == "READY" for r in baseline)} READY of {len(baseline)}', f'- Now: {count("READY")} READY of {len(rows)}',
-                  f'- Gain: {count("READY") - sum(r["class"] == "READY" for r in baseline):+d}', '', '### Features implemented in this run', '']
+        lines += [f'- Baseline: {ready(baseline)} READY of {len(baseline)}', f'- Now: {ready(rows)} READY of {len(rows)}',
+                  f'- Gain: {ready(rows) - ready(baseline):+d}', '', '### Features implemented in this run', '']
         solved = {}
         for row in rows:
             old = before(row)
@@ -345,14 +362,14 @@ def markdown(entries, rows, packages, notes, baseline, excluded=0):
                 solved.setdefault(name, []).append(row)
         for name, users in sorted(solved.items(), key=lambda item: (-len(item[1]), item[0])):
             feature = feature_of(name)
-            unlocked = [r for r in users if r['class'] == 'READY']
+            unlocked = [r for r in users if compatibility_of(r) == 'ready']
             lines += [f'#### {name}' + (f' ({feature["title"]})' if feature else ''), '', f'- Levels it no longer blocks: {len(users)}', f'- Levels now READY among them: {len(unlocked)}',
                       f'- Packages: {", ".join(package_names(users))}', '']
-        together = [row for row in rows if row['together'] and row['class'] == 'READY']
+        together = [row for row in rows if row['together'] and compatibility_of(row) == 'ready']
         if together:
             lines += ['#### Bases, patches and requirements put together', '', f'- Levels now READY: {len(together)}', f'- Packages: {", ".join(package_names(together))}', '']
     else:
-        lines += [f'- Now: {count("READY")} READY of {len(rows)}', '']
+        lines += [f'- Now: {ready(rows)} READY of {len(rows)}', '']
     lines += ['### Remaining blockers', '']
     lines += [f'- {name}: {len(users)} level(s), {sum(1 for r in users if r["blockers"] == [name])} of them blocked by nothing else' for name, users in ranked(rows)] + ['']
 
@@ -367,15 +384,19 @@ def markdown(entries, rows, packages, notes, baseline, excluded=0):
         return [f'### {entry["title"]}', '', f'- Source: {report.link("Source page", entry["source_page"])}']
 
     lines += ['## Ready', '']
-    for entry_id, group in grouped([r for r in rows if r['class'] == 'READY']):
+    for entry_id, group in grouped([r for r in rows if compatibility_of(r) == 'ready']):
         lines += head(entry_id)
         lines += [f'- {r["scn"].rpartition("/")[2]}: READY' + (' (base, patches and requirements put together)' if r['together'] else '') for r in group]
         features = sorted({f for r in group for f in r['features']})
         lines += ([f'- Features: {", ".join(features)}'] if features else []) + ['']
-    for title, name, policy in (('Rejected: missing files', 'REJECTED_MISSING', 'missing'), ('Rejected: unsupported features', 'REJECTED_UNSUPPORTED', ''), ('Rejected: malformed', 'REJECTED_MALFORMED', ''),
-                                ('Rejected: other', 'REJECTED_OTHER', '')):
+    sections = [('Limited compatibility (Play Anyway)', lambda r: compatibility_of(r) == 'limited')]
+    sections += [(f'Invalid / unsafe: {title}', lambda r, name=name: compatibility_of(r) == 'invalid' and r['class'] == name)
+                 for title, name in (('missing files', 'REJECTED_MISSING'), ('unsupported features', 'REJECTED_UNSUPPORTED'), ('malformed', 'REJECTED_MALFORMED'), ('other', 'REJECTED_OTHER'))]
+    if unclassified:
+        sections.append(('Not classified (state of an earlier version)', lambda r: compatibility_of(r) == UNCLASSIFIED))
+    for title, chosen_by in sections:
         lines += [f'## {title}', '']
-        chosen = grouped([r for r in rows if r['class'] == name])
+        chosen = grouped([r for r in rows if chosen_by(r)])
         if not chosen:
             lines += ['None.', '']
         for entry_id, group in chosen:
@@ -442,8 +463,9 @@ def main(arguments=None):
     if not options.no_report:
         catalog.write_text(os.path.join(root, 'COMMUNITY_LEVEL_COMPATIBILITY.md'), markdown(entries, rows, packages, notes, baseline, excluded))
     print(f'{len(packages)} packages, {len(rows)} levels')
-    for name in CLASSES:
-        print(f'{name}: {sum(row["class"] == name for row in rows)}')
+    for code, title in COMPATIBILITY:
+        print(f'{title}: {sum(compatibility_of(row) == code for row in rows)}')
+    print('scanner classes: ' + ', '.join(f'{name} {sum(row["class"] == name for row in rows)}' for name in CLASSES))
     for name, users in ranked(rows)[:25]:
         print(f'  {len(users):4} {name}')
     return 0

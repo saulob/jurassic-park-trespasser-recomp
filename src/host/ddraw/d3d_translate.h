@@ -173,7 +173,15 @@ unsigned d3dt_pick_msaa(unsigned requested, uint32_t supported);
 unsigned d3dt_pick_anisotropy(unsigned requested, unsigned device_max);
 
 /* Texture filter settings; d3d_legacy.h's D3DR_FILTER_* are these. */
-enum { D3DT_FILTER_ORIGINAL, D3DT_FILTER_POINT, D3DT_FILTER_BILINEAR, D3DT_FILTER_TRILINEAR, D3DT_FILTER_ANISOTROPIC };
+/* POINT samples level 0 only (diagnostics); NEAREST point-samples the nearest generated level, without blending. */
+enum {
+    D3DT_FILTER_ORIGINAL,
+    D3DT_FILTER_POINT,
+    D3DT_FILTER_BILINEAR,
+    D3DT_FILTER_TRILINEAR,
+    D3DT_FILTER_ANISOTROPIC,
+    D3DT_FILTER_NEAREST
+};
 int d3dt_filter_uses_mips(int filter);
 
 typedef struct {

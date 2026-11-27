@@ -65,6 +65,13 @@ int jpt_fs_copy_new(const char* src, const char* dst) {
     return ok;
 }
 
+int jpt_fs_from_utf8(const char* utf8, char* out, size_t cap) {
+    const size_t n = strlen(utf8);
+    if (n >= cap) return 0;
+    memcpy(out, utf8, n + 1);
+    return 1;
+}
+
 /* The descriptor plus one, so that descriptor 0 is not NULL. */
 jpt_fs_file_t* jpt_fs_open_read(const char* path, uint64_t* size) {
     struct stat st;

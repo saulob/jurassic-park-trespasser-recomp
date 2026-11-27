@@ -153,7 +153,7 @@ the game.
 | `--renderer software\|d3d11` | `d3d11` (default): the game's Direct3D 6 path on the GPU; `software`: its SelfMod rasteriser |
 | `--render-resolution original\|720p\|1080p\|1440p\|4k\|native\|WxH` | d3d11 render resolution (default `native`; `auto` means `original`, the compatibility size) |
 | `--aspect-ratio 4:3\|16:9\|16:10\|21:9\|32:9` | gameplay shape, Hor+ (default 16:9; `4:3` is the original shape) |
-| `--texture-filter original\|bilinear\|anisotropic4\|anisotropic8\|anisotropic16` | d3d11 texture filtering (default anisotropic16; `point`, `trilinear` for diagnostics) |
+| `--texture-filter original\|nearest\|bilinear\|anisotropic4\|anisotropic8\|anisotropic16` | d3d11 and Vulkan texture filtering (default anisotropic16; `point`, `trilinear` for diagnostics) |
 | `--msaa 0\|2\|4\|8` | d3d11 multisampling (default 4; reduced to what the GPU supports, and logged) |
 | `--vsync on\|off`, `--show-fps on\|off` | VSync (default on), FPS in the title (default on) |
 | `--display-mode windowed\|borderless`, `--monitor N`, `--window-size auto\|WxH`, `--presentation letterbox\|stretch` | window settings (defaults windowed, 1, auto, letterbox) |
@@ -195,8 +195,8 @@ ninja -C build\cmake\msvc-x86 bug_report_tests update_tests update_network_tests
 .\build\cmake\msvc-x86\update_network_tests.exe # update failures against a scripted loopback HTTP server
 .\build\cmake\msvc-x86\update_helper_tests.exe  # the real trg-updater.exe: waits, replaces, rolls back, restarts
 $env:JPT_CPP_REQUEST = "$PWD\bug-report-request.json"; (cd server\trespasser-bug-reports; npm test)  # the Worker accepts the request the launcher builds (docs/BUG_REPORTS.md)
-.\tools\worker.ps1 -DryRun   # bundles the Worker with Wrangler, uploads nothing; without -DryRun it deploys (docs/BUG_REPORTS.md)
-.\tools\worker.ps1 -Test     # the Worker's node tests through the script, nothing remote
+npm ci --prefix server\trespasser-bug-reports   # once: the Worker's dependencies, Wrangler pinned by its package-lock.json
+.\tools\worker.ps1 -DryRun   # bundles the Worker with that local Wrangler, uploads nothing; without -DryRun it deploys (docs/BUG_REPORTS.md)
 .\tools\build-updater.ps1      # the release update helper: MSYS2 CLANG64 x64, static, debug outside the package
 .\tools\package-release.ps1   # Release build for Windows and Linux: ZIP and AppImage, each with .sha256 (local only)
 .\tools\verify-release.ps1 -Path dist\<asset>.zip   # the same check on an existing ZIP

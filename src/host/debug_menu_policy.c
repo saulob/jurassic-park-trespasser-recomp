@@ -651,9 +651,23 @@ static void items_rows(const dm_state_t* s, const dm_world_t* w, dm_row_t* rows,
 void dm_notice_for(dm_state_t* s, const char* text, uint32_t now_ms, uint32_t duration_ms) {
     snprintf(s->notice, sizeof s->notice, "%s", text);
     s->notice_until = now_ms + duration_ms;
+    s->notice_guidance = 0;
 }
 
 void dm_notice(dm_state_t* s, const char* text, uint32_t now_ms) { dm_notice_for(s, text, now_ms, DM_FEEDBACK_MS); }
+
+void dm_guidance_notice(dm_state_t* s, const char* text, uint32_t now_ms) {
+    if (!text || !cp_waypoints_enabled()) return;
+    dm_notice(s, text, now_ms);
+    s->notice_guidance = 1;
+}
+
+void dm_guidance_sync(dm_state_t* s) {
+    if (!s->notice_guidance || cp_waypoints_enabled()) return;
+    s->notice[0] = 0;
+    s->notice_until = 0;
+    s->notice_guidance = 0;
+}
 
 void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* scene, const cp_goal_t* goal,
                  uint32_t now_ms, cp_hud_t* hud) {

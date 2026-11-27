@@ -396,6 +396,7 @@ static uint8_t* ensure_buf(uint8_t** ptr, size_t* cap, size_t need) {
 
 static int map_d3dr_filter_to_cfg(int filter, unsigned aniso) {
     if (filter == D3DR_FILTER_ORIGINAL || filter == D3DR_FILTER_POINT) return JPT_FILTER_ORIGINAL;
+    if (filter == D3DR_FILTER_NEAREST) return JPT_FILTER_NEAREST;
     if (filter == D3DR_FILTER_BILINEAR || filter == D3DR_FILTER_TRILINEAR) return JPT_FILTER_BILINEAR;
     if (filter == D3DR_FILTER_ANISOTROPIC) {
         if (aniso >= 16) return JPT_FILTER_ANISO16;
@@ -412,6 +413,7 @@ static const char* filter_name(int filter) {
     case D3DR_FILTER_BILINEAR: return "bilinear";
     case D3DR_FILTER_TRILINEAR: return "trilinear";
     case D3DR_FILTER_ANISOTROPIC: return "anisotropic";
+    case D3DR_FILTER_NEAREST: return "nearest";
     default: return "bilinear";
     }
 }
@@ -3770,7 +3772,8 @@ void vk_win_test_shutdown(void) {
 void vk_win_test_set_filter(int jpt_filter) {
     release_vk_instance();
     V.filter_cfg = jpt_filter;
-    V.filter_d3dr = jpt_filter == JPT_FILTER_ORIGINAL ? D3DR_FILTER_ORIGINAL
+    V.filter_d3dr = jpt_filter == JPT_FILTER_ORIGINAL  ? D3DR_FILTER_ORIGINAL
+                    : jpt_filter == JPT_FILTER_NEAREST  ? D3DR_FILTER_NEAREST
                     : jpt_filter == JPT_FILTER_BILINEAR ? D3DR_FILTER_BILINEAR
                                                         : D3DR_FILTER_ANISOTROPIC;
 }

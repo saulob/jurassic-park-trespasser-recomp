@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(trespasser_recomp VERSION 0.1.3 LANGUAGES C CXX)
+project(trespasser_recomp VERSION 0.1.4 LANGUAGES C CXX)
 
 # The version of the executable's resources (src/trespasser_recomp.rc).
 if(NOT PROJECT_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
@@ -262,7 +262,7 @@ set(PCRECOMP_SOURCES
 # Settings file, display arithmetic, monitors and user data: shared by the host, the launcher and the tests.
 add_library(jpt_common STATIC src/common/jpt_hash.c src/common/jpt_game_version.c src/common/jpt_lift_meta.c src/common/jpt_string_table.c src/common/jpt_restored_audio.c src/common/jpt_cheats.c src/common/jpt_config.c src/common/jpt_display.c src/common/jpt_gamepad.c src/common/jpt_gpu.c src/common/jpt_renderer.c src/common/jpt_present_policy.c
   src/common/jpt_prompt_text.c src/common/jpt_monitors.c src/common/jpt_user_data.c src/common/jpt_port.c src/common/jpt_l10n.c src/common/jpt_tr.c src/common/jpt_fs_win.c
-  src/common/jpt_custom_level.c src/common/jpt_sky.c src/common/jpt_picture.c src/common/jpt_lit.c src/common/jpt_texhw.c src/common/jpt_szdd.c src/common/jpt_scene.c src/common/jpt_level_features.c src/common/jpt_alloc.c src/common/jpt_groff.c src/common/jpt_level_world.c src/common/jpt_save.c src/common/jpt_level_gate.c src/common/jpt_video_subtitles.c src/common/jpt_level_session.c src/common/jpt_launch_handoff.c)
+  src/common/jpt_custom_level.c src/common/jpt_sky.c src/common/jpt_picture.c src/common/jpt_lit.c src/common/jpt_texhw.c src/common/jpt_szdd.c src/common/jpt_scene.c src/common/jpt_level_features.c src/common/jpt_level_compat.c src/common/jpt_alloc.c src/common/jpt_groff.c src/common/jpt_level_world.c src/common/jpt_save.c src/common/jpt_level_gate.c src/common/jpt_video_subtitles.c src/common/jpt_level_session.c src/common/jpt_launch_handoff.c)
 target_include_directories(jpt_common PUBLIC src/common)
 target_link_libraries(jpt_common PUBLIC d3d11 dxgi dxguid)
 target_compile_options(jpt_common PRIVATE /W4)
@@ -345,7 +345,7 @@ list(TRANSFORM JPT_LZMA_SOURCES PREPEND launcher/third_party/lzma/)
 add_library(jpt_lzma STATIC ${JPT_LZMA_SOURCES})
 target_compile_options(jpt_lzma PRIVATE /W3)
 set(JPT_ARCHIVE_SOURCES launcher/archive_reader.cpp launcher/archive_spool.cpp launcher/rar_blake2.cpp launcher/rar_ppm.cpp launcher/rar_reader.cpp launcher/rar_stream.cpp launcher/rar_unpack.cpp launcher/seven_zip_block.cpp)
-set(JPT_CUSTOM_LEVEL_SOURCES launcher/custom_levels.cpp launcher/level_analysis.cpp launcher/level_check.cpp launcher/level_corpus.cpp launcher/level_import_log.cpp launcher/level_ini.cpp launcher/level_limits.cpp launcher/level_listing.cpp launcher/level_manifest.cpp
+set(JPT_CUSTOM_LEVEL_SOURCES launcher/custom_levels.cpp launcher/level_analysis.cpp launcher/level_check.cpp launcher/level_corpus.cpp launcher/level_import_log.cpp launcher/level_ini.cpp launcher/level_limits.cpp launcher/level_link.cpp launcher/level_listing.cpp launcher/level_manifest.cpp
   launcher/level_picture.cpp launcher/level_readme.cpp launcher/level_settings.cpp launcher/level_guide.cpp)
 add_library(jpt_launcher STATIC launcher/launcher.cpp launcher/disc_browser.cpp ${JPT_ARCHIVE_SOURCES} ${JPT_CUSTOM_LEVEL_SOURCES} launcher/custom_levels_page.cpp launcher/level_analyze_cli.cpp launcher/host.cpp launcher/incident_page.cpp launcher/my_reports_page.cpp
   launcher/update_config.cpp launcher/updater/github_release.cpp launcher/updater/json.cpp launcher/updater/sha256.cpp
@@ -622,7 +622,7 @@ set_target_properties(launcher_startup_tests PROPERTIES CXX_STANDARD 20 CXX_STAN
 
 # Custom levels: the package import (ZIP, 7z, RAR, folder), its limits and rollback, the listing and README, and the file overlay the
 # game reads an active package through, on scratch folders (headless): ninja -C <build dir> custom_level_tests
-add_executable(custom_level_tests EXCLUDE_FROM_ALL tests/custom_level_tests.cpp tests/custom_level_analysis_tests.cpp tests/level_check_tests.cpp tests/custom_level_listing_tests.cpp ${JPT_ARCHIVE_SOURCES}
+add_executable(custom_level_tests EXCLUDE_FROM_ALL tests/custom_level_tests.cpp tests/custom_level_analysis_tests.cpp tests/level_check_tests.cpp tests/custom_level_listing_tests.cpp tests/custom_level_link_tests.cpp tests/custom_level_compat_tests.cpp ${JPT_ARCHIVE_SOURCES}
   ${JPT_CUSTOM_LEVEL_SOURCES} launcher/updater/json.cpp launcher/updater/update_paths.cpp launcher/updater/update_zip.cpp
   src/common/jpt_vpath.c src/host/custom_level_files.c src/host/tpa_merge.c
   src/host/audio/audio_policy.c src/host/audio/platform/windows_dsound_imports.c)

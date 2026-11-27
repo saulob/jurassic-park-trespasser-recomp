@@ -59,7 +59,7 @@ On Linux the same sources are built into `trespasser_recomp` (`cmake/JptLinux.cm
 small: `launcher/os_file.cpp` (random reads and part-file writes), `launcher/pe_resources.cpp` (the Russian release's string table
 without Win32's resource functions), `launcher/system_info.cpp` (the Vulkan device list instead of DXGI), `src/common/jpt_monitors_sdl.c`
 (SDL displays for the Monitor list), `launcher/file_picker.cpp` (zenity or kdialog present on the PATH) and `jpt_port_folder` for
-the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.3 (any release without a lifted build would be listed as not playable yet).
+the folder the program lives in. The Direct3D 11 renderer is not offered there; all four supported releases are playable in v0.1.4 (any release without a lifted build would be listed as not playable yet).
 
 | Path | Purpose |
 |---|---|
@@ -119,8 +119,8 @@ opening `https://github.com/sponsors/saulob` in the browser and nothing else), Q
 
 | Page | Rows |
 |---|---|
-| Play | status card, Game version (with more than one installed), Game files (Import / Reinstall, progress and Cancel), Remove version, Show this launcher |
-| Custom Levels | Import ZIP / 7z / RAR, Import Folder and their outcome (reason, Bug Report, Close), Installed levels (N) and their order (newest, oldest, name), listed off the UI thread behind `Loading custom levels...` (imports show their phase, percentage and Cancel in place of the import buttons), one row per level, the start level first: name, scene, status (Ready, Not supported); Play and Readme only when Ready, Bug Report only when not (this session's log), Readme (only with instructions; opens the original file in the system's application), Open Folder, Delete ([CUSTOM_LEVELS](CUSTOM_LEVELS.md)) |
+| Play | status card, Game version (with more than one installed), Game files (Import Disc Image, Import Existing Installation, Add the Disc's Folder for an incomplete one, Reinstall, progress and Cancel), Remove version, Show this launcher |
+| Custom Levels | Import ZIP / 7z / RAR, Import Folder, Link External Folder and their outcome (reason, Bug Report, Close), Installed levels (N) and their order (newest, oldest, name), listed off the UI thread behind `Loading custom levels...` (imports show their phase, percentage and Cancel in place of the import buttons), one row per level, the start level first: name, scene, where it comes from (Imported Archive, Imported Folder, External Folder and its path), status in its colour (Ready in green, Limited Compatibility in yellow, Invalid / Unsafe in red, Folder unavailable) and Compatibility details with each reason and its kind; Play when Ready, Play Anyway when Limited Compatibility or when a Ready level leads to such levels (Compatibility Warning: the reasons, Cancel by default, Play Anyway for that start alone; mouse, keyboard and controller), nothing that starts an Invalid / Unsafe level; Readme when it can be played; Bug Report, the compatibility report, when it is not Ready (this session's log, [CUSTOM_LEVELS](CUSTOM_LEVELS.md#compatibility-report-and-bug-report)), Readme (only with instructions; opens the original file in the system's application), Open Folder, Delete for an imported package; Rescan and Unlink for a linked one, Relocate Folder and Unlink when its folder is gone ([CUSTOM_LEVELS](CUSTOM_LEVELS.md#linked-folders)) |
 | Display | Display mode, Window size, Monitor, Aspect ratio, Presentation |
 | Graphics | Renderer, Graphics card, Render resolution, Field of view, Anti-aliasing, Ambient occlusion, Fog, Shadows, Water refraction, Enhanced sky, Maximum object detail, Texture filtering, VSync |
 | Gameplay | Language, Enable Minimap, Enable Compass, Enable Waypoints, Skip Intro, Video subtitles, Frame rate in title, Frame counter, Render resolution in title; Trespasser CE: Dual stow, Active AI |
@@ -158,9 +158,12 @@ runs; a failed save keeps the launcher open. **Save** writes without starting; *
 
 ## Import game
 
-**Import game...** opens the file dialog for the player's own disc image (`.iso`); **Reinstall game...** replaces a
-selected version whose files are no longer valid. The disc is recognised by the SHA-256 of one data file that differs in every version (never an executable) and by the
-presence of every file of that version, never by its file name or volume label ([GAME_VERSIONS](GAME_VERSIONS.md)).
+The Play page has two sources. **Import Disc Image...** opens the file dialog for the player's own disc image (`.iso`).
+**Import Existing Installation...** opens a folder dialog for the game the player already has on disk: the disc copied to a
+folder, or an installation (see [below](#import-existing-installation)). When the selected version's files are no longer valid
+the buttons read **Reinstall from Disc Image...** and **Reinstall from Existing Installation...**. The disc is recognised by the
+SHA-256 of one data file that differs in every version (never an executable) and by the presence of every file of that version,
+never by its file name, folder name or volume label ([GAME_VERSIONS](GAME_VERSIONS.md)).
 
 | Disc | Version | Installed into |
 |---|---|---|
@@ -198,6 +201,40 @@ generated by `tools/make_game_manifests.py` from the discs (names, sizes and dig
 Any failure or Cancel before step 5 deletes the staging folder and leaves every installed version as it was. If the
 second rename fails, the backup is renamed back. The image is opened for reading only and never written.
 
+### Import existing installation
+
+The same installer, with folders as its source (`InstallFromFolders`, `launcher/game_install.cpp`). Nothing in a folder is run,
+opened by the system or written: not the game's executables, setup programs, DLLs, batch files or `Autorun.inf`.
+
+1. Every plain file below the chosen folders is listed (at most 8 levels and 60,000 files; links, junctions and other reparse
+   points are never followed).
+2. A version is identified by its identity data file and SHA-256, as on a disc, wherever the folder keeps it.
+3. Each file of that version is taken from a copy with the pressed size and SHA-256: a data file by its name, the disc's place
+   (`data/be.scn`, `setup/MSVCIRT.DLL`) or an installation's (`be.scn` or `menu/loader.ddf` at the root) first; the guest image and
+   the Russian text source by their bytes alone, whatever their name (an installation calls `tpassp6.exe` `trespass.exe`). The
+   Russian cabinet `setup/data1.cab` is read when the loose files are not there. A file present with other bytes (a patch, a mod,
+   Trespasser CE's own files) is never taken.
+4. Anything missing stops before a file is copied: **The installation is incomplete**, with the files named on the Play page
+   and in the log. **Add the Disc's Folder...** then picks a second folder, read after the first: the original disc copied to a
+   folder completes an installation that keeps its levels on the CD, was patched or has a modified executable. No ISO is needed.
+5. Then the steps of a disc import: free space, staging, digests, check, activation, rollback. A version already installed
+   copies nothing; the version folder itself, its `.install-temp` and `.install-backup` folders (which an install empties
+   before it copies), or a folder that holds one of them, is refused as a source.
+
+Every executable in the folders is named in the log by what it is: the retail `tpassp6.exe` of a version (the guest image's
+source), the Russian release's text source, the retail `tpassp5.exe` or `tpassk6.exe`, the official Patch 1.1 `trespass.exe`, or
+an executable the port does not know (size and SHA-256). None is a substitute for the guest image: the port runs the retail
+`tpassp6.exe` of the version and makes the 1.1 fixes itself.
+
+| What the folder holds | Result |
+|---|---|
+| The disc copied as it is (`setup\`, `data\`, `Readme.txt`) | the version is installed |
+| A retail installation with its levels on the disk and the retail `tpassp6.exe` (as `trespass.exe`) | the version is installed |
+| An installation that keeps its levels on the CD, or one with the Patch 1.1 `trespass.exe` | incomplete: add the disc's folder |
+| An installation patched to 1.1 (its level files changed) | incomplete: add the disc's folder for the retail level files |
+| The disc with Trespasser CE copied over it | incomplete for the files CE replaced; the disc's folder completes it |
+| Another game, or a Trespasser build no profile knows | refused, with the data files' fingerprints in the log |
+
 **Remove version** (with confirmation) deletes the selected version's folder; for an installation made before versions
 existed, only the files of its manifest are deleted from `game\`. Disc images, saves, settings and other versions are
 never touched.
@@ -225,7 +262,7 @@ for one run (`--renderer`, `--render-resolution`, `--aspect-ratio`, `--texture-f
 | `graphics_card` | the card's name as the launcher lists it | empty: the first usable card |
 | `render_resolution` | `original`, `720p`, `1080p`, `1440p`, `4k`, `native`, `WxH` | `native` |
 | `aspect_ratio` | `4:3`, `16:9`, `16:10`, `21:9`, `32:9` | `16:9` |
-| `texture_filter` | `original`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
+| `texture_filter` | `original`, `nearest`, `bilinear`, `anisotropic4`, `anisotropic8`, `anisotropic16` | `anisotropic16` |
 | `msaa` | 0, 2, 4, 8 | 4 |
 | `ambient_occlusion` | `off`, `low`, `medium`, `high`, `ultra` | `medium` |
 | `fog_enabled` | 1, 0 | 1 |
@@ -449,10 +486,14 @@ is not part of this work.
   Software uses it too: its picture and the videos are shown through the same device. Anti-aliasing lists the
   chosen card's levels. Without a usable card the page says No graphics card found and Direct3D picks the device.
 - **Field of view**: a slider (60-110 degrees across the 4:3 view) with its value and Default (75); see True widescreen.
-- **Texture filtering**: Original (the filters the game asks for, its single texture level), Bilinear (every
-  texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game filters, with generated
-  mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where a card has less and
-  logs it once.
+- **Texture filtering**: Original (the filters the game asks for, its single texture level), Nearest (Unfiltered)
+  (every texture point-sampled, sharp and pixelated: no bilinear, trilinear or anisotropic filtering; generated
+  mipmaps are kept and the nearest level is picked without blending between levels, so distant textures do not
+  shimmer), Bilinear (every texture, filtered between generated mipmaps too), Anisotropic 4x/8x/16x (where the game
+  filters, with generated mipmaps; its point-sampled draws stay point). The renderer falls back 16x, 8x, 4x, 2x where
+  a card has less and logs it once. Direct3D 11 and Vulkan (Windows and Linux) behave the same. Only the 3D world's
+  textures change: menus, text, videos, water refraction, the sky, ambient occlusion and the other graphics settings
+  are not affected. The Software renderer draws the game's textures itself, so the row is greyed out there.
 - **Anti-aliasing**: Off, 2x, 4x, 8x MSAA. The launcher lists only the levels the graphics card supports for the
   game's colour and depth formats (asked of a short-lived device); a saved level that is not supported is pointed
   out, the game falls back 8x, 4x, 2x, off and logs it once, and a multisampled target that cannot be created is

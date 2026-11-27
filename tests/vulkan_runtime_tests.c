@@ -1551,6 +1551,44 @@ static void test_mipmaps(rig_t* g) {
 }
 
 
+/* Nearest: hard edges where the game asks for linear filtering; a distant checker still reaches a generated level. */
+static void test_nearest_sampling(rig_t* g) {
+    tex_t t;
+    uint16_t texels[4] = { 0x0000, 0xFFFF, 0xFFFF, 0x0000 };
+    int grey = 1;
+    vk_win_test_set_filter(JPT_FILTER_NEAREST);
+    set_defaults(&g->dev);
+    g->dev.stage[0][D3DTSS_MAGFILTER] = 2;
+    g->dev.stage[0][D3DTSS_MINFILTER] = 2;
+    tex_init(&t, 2, 2, DDPF_RGB, 16, 0xF800, 0x07E0, 0x001F, 0);
+    tex_fill16(&t, texels);
+    g->dev.texture = &t.s;
+    begin_frame(g, 0xFF000000u);
+    draw_quad(g, 0, 0, 32, 32, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+    CHECK(end_frame(g), "nearest magnification frame");
+    for (int x = 0; x < 32; x++) {
+        const uint8_t r = px(g, x, 8)[0];
+        CHECK(r < 20 || r > 235, "Nearest magnifies without interpolation (x %d got %u)", x, r);
+    }
+    g->dev.texture = NULL;
+    tex_free(&t);
+
+    tex_init(&t, 64, 64, DDPF_RGB, 16, 0xF800, 0x07E0, 0x001F, 0);
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++) ((uint16_t*)(t.bits + (size_t)y * t.s.pitch))[x] = ((x + y) & 1) ? 0xFFFF : 0x0000;
+    g->dev.texture = &t.s;
+    begin_frame(g, 0xFF000000u);
+    draw_quad(g, 8, 8, 16, 16, 0.5f, 0xFFFFFFFFu, 0xFF000000u);
+    CHECK(end_frame(g), "nearest minification frame");
+    for (int y = 10; y < 14; y++)
+        for (int x = 10; x < 14; x++)
+            if (abs((int)px(g, x, y)[0] - 127) > 40) grey = 0;
+    CHECK(grey, "Nearest keeps the generated mip levels: the distant checker is grey, not aliased (got %u)",
+          px(g, 11, 11)[0]);
+    g->dev.texture = NULL;
+    tex_free(&t);
+}
+
 /* The sampler the game's own filters and the chosen filter give (d3dt_choose_sampler): point stays point, linear without a
  * chain is linear level 0 only. */
 static void test_sampler_policy(rig_t* g) {
@@ -1601,6 +1639,7 @@ static void test_sampler_policy(rig_t* g) {
             tex_free(&t);
         }
     }
+    test_nearest_sampling(g);
     vk_win_test_set_filter(JPT_FILTER_BILINEAR);
 }
 

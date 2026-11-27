@@ -83,6 +83,9 @@ static int start_custom_level(jpt_vpath_t* vp, const lx_boot_options_t* o, char*
     jpt_custom_level_deactivate();
     if (!o->custom_level || !o->custom_level->scene[0]) return 1;
     if (!jpt_custom_level_activate(user_root, o->custom_level, error, cap)) return 0;
+    lx_log("custom-level", "compatibility=%s", jpt_custom_level_compat_name());
+    if (!jpt_custom_level_admit_start(error, cap)) return lx_log("custom-level", "%s", error), 0;
+    if (error[0]) lx_log("custom-level", "%s", error);
     jpt_vpath_set_overlay(vp, 'C', "data", jpt_custom_level_find);
     s_game_paths = vp;
     jpt_custom_level_set_game(game_file);

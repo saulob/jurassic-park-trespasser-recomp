@@ -137,6 +137,7 @@ typedef struct {
     dm_repeat_t repeat;
     char notice[DM_TEXT_MAX]; /* the HUD's line under the compass */
     uint32_t notice_until;
+    int notice_guidance;      /* the notice belongs to the waypoint guidance */
 } dm_state_t;
 
 typedef enum { DM_ROW_TITLE, DM_ROW_INFO, DM_ROW_SECTION, DM_ROW_ITEM, DM_ROW_GOAL, DM_ROW_NOTE } dm_row_kind_t;
@@ -210,6 +211,10 @@ void dm_navigate(const dm_state_t* s, const dm_world_t* w, const cp_scene_t* sce
                  uint32_t now_ms, cp_hud_t* hud);
 void dm_notice(dm_state_t* s, const char* text, uint32_t now_ms);
 void dm_notice_for(dm_state_t* s, const char* text, uint32_t now_ms, uint32_t duration_ms);
+/* Objective notices follow the Waypoints setting: dropped (never queued) while it is off. */
+void dm_guidance_notice(dm_state_t* s, const char* text, uint32_t now_ms);
+/* Dismisses a guidance notice still on screen once Waypoints is off. */
+void dm_guidance_sync(dm_state_t* s);
 
 /* "be.scn" -> "BE"; 0 for a name that is not a scene file. */
 int dm_level_id(const char* scene, char* out, size_t cap);

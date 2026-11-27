@@ -337,11 +337,11 @@ Add-Python $s @(
 Add-Suite $s 'check' 'linux audio probe' 'the portable audio and Smacker layers built (-Werror) and run natively on Linux with GCC and Clang, on SDL3 dummy audio (WSL; DATA UNAVAILABLE without it)' @{ Run = 'Test-LinuxAudioProbe' }
 
 $s = 'Launcher'
-Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, render sizes, Hor+, GPU choice, ISO reader, installer, play gate, translations', 9000))
+Add-Exes $s @(, @('launcher_tests', 'pages, settings and migration, Compatibility Warning (Cancel default, Escape and B, layout at 100/150/225% DPI), render sizes, Hor+, GPU choice, ISO reader, installer from a disc image and from existing installations (a disc copied to a folder, an installation, a second folder completing it), play gate, translations', 9000))
 Add-Exes $s @(, @('launcher_startup_tests', 'launcher start without graphics support: renderer order and fallback, --launcher-renderer, graphics card list failures, a failed launcher never starts the game', 120))
 Add-Exes $s @(, @('sky_tests', 'custom skies: the file, the layers'' shapes, projection and clipping, package lookup, session', 1000))
 Add-Exes $s @(, @('texhw_tests', 'custom level pictures (BMP, TGA, DDS) and their hardware texture overrides', 60))
-Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths; package analysis: fm.ini, tp_mod.ini, trespasser.ini, tpass.ini, readme rules, manifest and migration, added sound files, loading pictures, session settings', 400))
+Add-Exes $s @(, @('custom_level_tests', 'custom levels: ZIP, 7z and folder import, unsafe paths, links, limits, rollback, duplicates, listing, README, removal, and the file overlay of an active package on Windows and Linux paths; linked external folders (several packages, Trespasser CE tp_mod.ini trees and their shared folders, records and saves in user_data, Rescan, a folder that is gone, Relocate Folder, Unlink, refused paths); package analysis: fm.ini, tp_mod.ini, trespasser.ini, tpass.ini, readme rules, manifest and migration, added sound files, loading pictures, session settings; compatibility: READY, LIMITED COMPATIBILITY and INVALID / UNSAFE from one classification, imports of each state and source, Play Anyway consent for one start, what the game admits at start, transition, restart and load, compatibility report lines, v0.1.3 records read again', 400))
 $s = 'Custom level session'
 Add-Exes $s @(, @('custom_level_session_tests', 'an active custom level session as the game reads it: BMP layouts, ATX map pictures below the package''s MAPS (map actions, README, case, separators, traversal, absent or unreadable pictures, session end); Restart Level as a full level cycle over a fake engine and real packages (loose and fan mission, scenes 22, 25 and 26, own PID and SWP, game SPZ, texhw, MAPS, added TPA, custom to custom and custom to retail transitions, restart after a transition and twice, a save made before, the campaign afterwards); level guides: minimap and objectives made from a level''s world, the campaign''s only over the game''s own world, no information otherwise; a fan mission with a Trespasser CE script one level needs: the script installed and listed in the runtime map, read back by the game, a VM only while that level is played; one package of four levels judged apart (no script, a supported script, a refused script API, an unused script): installed for its READY levels, listing, cache, manifest, runtime map, Play preflight and Bug Report per level, a VM only for the level that needs it', 250))
 
@@ -394,7 +394,7 @@ Add-Exes $s @(
     , @('update_network_tests', 'auto update failures against a scripted loopback HTTP server: 504, dropped connections, stalls, redirects, retries', 20)
     , @('update_helper_tests', 'the update helper as a real process: waits for its parent, replaces files, rolls back, restarts the program', 10)
 )
-Add-Suite $s 'script' 'tests\worker_script_tests.ps1' 'tools\worker.ps1 against a stand-in npx: arguments, dry run, missing folder, missing Wrangler configuration; nothing is deployed' @{}
+Add-Suite $s 'script' 'tests\worker_script_tests.ps1' 'tools\worker.ps1 on synthetic trees: the locked local Wrangler only (never npx or a global one), arguments, dry run, exit codes, spaces and Unicode, missing Node.js, npm, dependencies, lockfile, folder or configuration, Node.js too old, version mismatch; nothing is deployed' @{}
 Add-Suite $s 'check' 'bug report worker' 'server\trespasser-bug-reports: its own node test suite (API, limits, reports, admin, dashboard); DATA UNAVAILABLE without Node.js' @{ Run = 'Test-BugReportWorker' }
 
 $s = 'Vulkan renderer'
@@ -519,7 +519,7 @@ $toolRole = @{
     'tools\build-clang-cl.ps1' = 'maintainer: builds the clang-cl x86 Release executable; never run by this gate'
     'tools\package.ps1' = 'maintainer: builds the clang-cl Release and the CLANG64 helper, stages the Windows release ZIP: never run by the gate; checked statically by tests\test_player_polish.py and through tools\verify-release.ps1'
     'tools\package-release.ps1' = 'maintainer: package.ps1 plus the Linux AppImage through WSL and the final gates on both: never run by the gate; checked by tests\test_player_polish.py'
-    'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a stand-in npx'
+    'tools\worker.ps1' = 'maintainer: deploys the bug report Worker with Wrangler (network); exercised by tests\worker_script_tests.ps1 with a fake local Wrangler'
     'tools\ffmpeg-bootstrap.sh' = 'a pinned LGPL-only FFmpeg for the Smacker tests, built once into the cache: run by tools/test-linux.sh when the machine has none'
     'tools\openssl-bootstrap.sh' = 'a pinned static OpenSSL for the Bug Report HTTPS, built once into the cache: run by tools/build-linux.sh when the machine has no development files'
     'tools\linux_elf_check.py' = 'static checks of a Linux executable, run by tools/test-linux.sh'

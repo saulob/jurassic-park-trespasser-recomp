@@ -23,6 +23,10 @@ struct BrowsePurpose {
 extern const BrowsePurpose kBrowseDisc;
 extern const BrowsePurpose kBrowseLevelArchive;
 extern const BrowsePurpose kBrowseLevelFolder;
+extern const BrowsePurpose kBrowseLinkFolder;
+extern const BrowsePurpose kBrowseRelocateFolder;
+extern const BrowsePurpose kBrowseInstallFolder;
+extern const BrowsePurpose kBrowseDiscFolder;
 
 class DiscBrowser {
 public:

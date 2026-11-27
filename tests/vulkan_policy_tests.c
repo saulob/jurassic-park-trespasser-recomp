@@ -255,6 +255,54 @@ static void test_gpu_selection(void) {
           "Duplicate GPU names disambiguated: '%s' / '%s'", dup[0].label, dup[1].label);
 }
 
+/* The world sampler table: Nearest point-samples at the nearest generated level without anisotropy; the other
+ * settings keep their classes and samplers. */
+static void test_world_samplers(void) {
+    static const int settings[] = { JPT_FILTER_ORIGINAL, JPT_FILTER_NEAREST, JPT_FILTER_BILINEAR, JPT_FILTER_ANISO4,
+                                    JPT_FILTER_ANISO8, JPT_FILTER_ANISO16 };
+    const uint32_t table = JPT_VK_SAMPLER_CLASSES * 4u;
+    jpt_vk_world_sampler_t s;
+    CHECK(table == 20u, "the shaders' world_samp[20] still matches the table (%u)", table);
+    for (int mag = 0; mag < 2; mag++)
+        for (int min = 0; min < 2; min++) {
+            const uint32_t nearest = jpt_vk_world_sampler_class(JPT_FILTER_NEAREST, mag, min);
+            const uint32_t bilinear = jpt_vk_world_sampler_class(JPT_FILTER_BILINEAR, mag, min);
+            const uint32_t original = jpt_vk_world_sampler_class(JPT_FILTER_ORIGINAL, mag, min);
+            const uint32_t aniso = jpt_vk_world_sampler_class(JPT_FILTER_ANISO16, mag, min);
+            CHECK(nearest == JPT_VK_SAMPLER_MIPS, "nearest overrides the game's mag %d min %d", mag, min);
+            CHECK(bilinear == JPT_VK_SAMPLER_MIPS, "bilinear overrides the game's mag %d min %d", mag, min);
+            const uint32_t one_axis = mag ? JPT_VK_SAMPLER_MAG_LINEAR : JPT_VK_SAMPLER_MIN_LINEAR;
+            const uint32_t game_point = !mag && !min;
+            CHECK(original == (game_point ? JPT_VK_SAMPLER_POINT : mag && min ? JPT_VK_SAMPLER_LINEAR : one_axis),
+                  "original follows the game (mag %d min %d -> %u)", mag, min, original);
+            CHECK(aniso == (game_point ? JPT_VK_SAMPLER_POINT : mag && min ? JPT_VK_SAMPLER_MIPS : one_axis),
+                  "anisotropic keeps the game's point draws (mag %d min %d -> %u)", mag, min, aniso);
+        }
+    for (uint32_t c = 0; c < JPT_VK_SAMPLER_CLASSES; c++) {
+        s = jpt_vk_world_sampler(JPT_FILTER_NEAREST, c, 16.0f);
+        CHECK(s.mag == VK_FILTER_NEAREST && s.min == VK_FILTER_NEAREST && s.mipmap == VK_SAMPLER_MIPMAP_MODE_NEAREST &&
+                  s.anisotropy == 1.0f,
+              "nearest class %u never interpolates", c);
+    }
+    s = jpt_vk_world_sampler(JPT_FILTER_NEAREST, JPT_VK_SAMPLER_MIPS, 16.0f);
+    CHECK(s.max_lod == 12.0f, "nearest keeps the generated levels");
+    s = jpt_vk_world_sampler(JPT_FILTER_BILINEAR, JPT_VK_SAMPLER_MIPS, 1.0f);
+    CHECK(s.mag == VK_FILTER_LINEAR && s.min == VK_FILTER_LINEAR && s.mipmap == VK_SAMPLER_MIPMAP_MODE_LINEAR &&
+              s.anisotropy == 1.0f && s.max_lod == 12.0f,
+          "bilinear: trilinear through the chain");
+    s = jpt_vk_world_sampler(JPT_FILTER_ANISO16, JPT_VK_SAMPLER_MIPS, 16.0f);
+    CHECK(s.mag == VK_FILTER_LINEAR && s.anisotropy == 16.0f, "anisotropic 16x keeps its anisotropy");
+    s = jpt_vk_world_sampler(JPT_FILTER_ANISO16, JPT_VK_SAMPLER_POINT, 16.0f);
+    CHECK(s.mag == VK_FILTER_NEAREST && s.min == VK_FILTER_NEAREST && s.max_lod == 0.0f && s.anisotropy == 1.0f,
+          "a point draw stays point at level 0");
+    s = jpt_vk_world_sampler(JPT_FILTER_ORIGINAL, JPT_VK_SAMPLER_LINEAR, 1.0f);
+    CHECK(s.mag == VK_FILTER_LINEAR && s.min == VK_FILTER_LINEAR && s.max_lod == 0.0f, "original linear: level 0");
+    for (size_t i = 0; i < sizeof settings / sizeof settings[0]; i++) {
+        s = jpt_vk_world_sampler(settings[i], JPT_VK_SAMPLER_MAG_LINEAR, 16.0f);
+        CHECK(s.anisotropy == 1.0f && s.max_lod == 0.0f, "unmipmapped classes never use anisotropy (%d)", settings[i]);
+    }
+}
+
 static void test_device_capabilities(void) {
     VkFormat fmt = VK_FORMAT_UNDEFINED;
     int has_stencil = -1;
@@ -277,6 +325,7 @@ static void test_device_capabilities(void) {
     CHECK(jpt_vk_clamp_anisotropy(JPT_FILTER_ANISO16, 1, 8.0f) == 8.0f, "clamp 16x -> 8x");
     CHECK(jpt_vk_clamp_anisotropy(JPT_FILTER_ANISO4, 1, 16.0f) == 4.0f, "4x stays 4x");
     CHECK(jpt_vk_clamp_anisotropy(JPT_FILTER_BILINEAR, 1, 16.0f) == 1.0f, "bilinear -> 1x");
+    CHECK(jpt_vk_clamp_anisotropy(JPT_FILTER_NEAREST, 1, 16.0f) == 1.0f, "nearest -> 1x");
 
     CHECK(jpt_vk_clamp_msaa(8, VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT,
                             VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT) == 4,
@@ -824,6 +873,7 @@ int main(void) {
     test_renderer_selection_precedence();
     test_gpu_selection();
     test_device_capabilities();
+    test_world_samplers();
     test_present_mode_and_swapchain_stress();
     test_pipeline_key_and_barriers();
     test_shaders_and_misc();

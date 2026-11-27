@@ -2154,7 +2154,7 @@
   },
   {
    "id": "vulkan-filtering",
-   "name": "Vulkan texture filtering (point/bilinear/anisotropic clamped) and wrap/clamp samplers",
+   "name": "Vulkan texture filtering (point/nearest/bilinear/anisotropic clamped) and wrap/clamp samplers",
    "owner": "render",
    "scope": "global",
    "requirement": "none",
@@ -2166,6 +2166,16 @@
       "suite": "vulkan_policy_tests",
       "file": "tests/vulkan_policy_tests.c",
       "pattern": "jpt_vk_clamp_anisotropy"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_world_samplers"
+     },
+     {
+      "suite": "vulkan_runtime_tests",
+      "file": "tests/vulkan_runtime_tests.c",
+      "pattern": "test_nearest_sampling"
      }
     ]
    },
@@ -2176,6 +2186,11 @@
       "suite": "vulkan_policy_tests",
       "file": "tests/vulkan_policy_tests.c",
       "pattern": "jpt_vk_clamp_anisotropy"
+     },
+     {
+      "suite": "vulkan_policy_tests",
+      "file": "tests/vulkan_policy_tests.c",
+      "pattern": "test_world_samplers"
      }
     ],
     "runtime": [
@@ -2546,7 +2561,7 @@
   },
   {
    "id": "texture-filtering",
-   "name": "Texture filtering Original to Anisotropic 16x",
+   "name": "Texture filtering Original, Nearest (Unfiltered), Bilinear and Anisotropic 4x to 16x",
    "owner": "render",
    "scope": "windows",
    "requirement": "none",
@@ -2563,6 +2578,16 @@
       "suite": "host_tests",
       "file": "tests/host_tests.c",
       "pattern": "(?i)anisotropic|filter"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestTextureFilterNearest"
+     },
+     {
+      "suite": "host_tests",
+      "file": "tests/host_tests.c",
+      "pattern": "test_sampler_choice_nearest"
      }
     ]
    },
@@ -3386,6 +3411,11 @@
       "pattern": "(?i)objective"
      },
      {
+      "suite": "debug_menu_tests",
+      "file": "tests/compass_tests.c",
+      "pattern": "waypoints turned off while the objective notice shows"
+     },
+     {
       "suite": "tests\\test_objectives_retail.py",
       "file": "tests/test_objectives_retail.py",
       "pattern": "(?i)objective"
@@ -3399,6 +3429,11 @@
       "suite": "linux_panel_tests",
       "file": "tests/linux_panel_tests.c",
       "pattern": "Objectives is a window in the middle of the picture"
+     },
+     {
+      "suite": "linux_panel_tests",
+      "file": "tests/linux_panel_tests.c",
+      "pattern": "waypoints turned off: the visible objective notice goes at once"
      },
      {
       "suite": "linux_features_tests",
@@ -5781,6 +5816,44 @@
    }
   },
   {
+   "id": "game-import-folders",
+   "name": "Import Existing Installation: a game version imported from folders (the disc copied to a folder, an installation) by the retail files' digests, completed by the disc's folder, its sources only read and nothing in them run",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestFolderInstall"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestFolderShapes"
+     },
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "Nor a leftover staging or backup folder"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "linux_launcher_tests",
+      "file": "tests/linux_launcher_tests.cpp",
+      "pattern": "TestFolderInstall"
+     }
+    ]
+   }
+  },
+  {
    "id": "handheld-1280x800",
    "name": "A 1280x800 (16:10) display: the picture is centred with bars, 16:10 fills the window, the pointer maps back",
    "owner": "window",
@@ -5956,7 +6029,7 @@
   },
   {
    "id": "bug-report",
-   "name": "Launcher Bug Report page: description, one scrubbed game log, preview, send, My Reports, and the Worker with its admin dashboard; nothing is sent without a button press",
+   "name": "Launcher Bug Report page: description, one scrubbed game log (custom level texts left out, also from older logs), preview, send, My Reports, and the Worker with its admin dashboard; nothing is sent without a button press",
    "owner": "launcher",
    "scope": "global",
    "requirement": "none",
@@ -5965,6 +6038,11 @@
      "suite": "bug_report_tests",
      "file": "tests/bug_report_tests.cpp",
      "pattern": "TestNothingSentOnItsOwn"
+    },
+    {
+     "suite": "bug_report_tests",
+     "file": "tests/bug_report_tests.cpp",
+     "pattern": "custom level texts removed from an old log"
     }
    ],
    "windows": {
@@ -6549,6 +6627,16 @@
      "suite": "custom_level_session_tests",
      "file": "tests/custom_level_session_tests.cpp",
      "pattern": "TestRestartLifecycle"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "Texts, not copied into the log"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_analysis_tests.cpp",
+     "pattern": "A reason names where the sentence is"
     }
    ],
    "windows": {
@@ -6615,6 +6703,111 @@
       "pattern": "test_regions"
      }
     ]
+   }
+  },
+  {
+   "id": "custom-level-links",
+   "name": "Link External Folder: custom level packages played where they are (one folder, a folder of several, each fan mission of a Trespasser CE tp_mod.ini tree with its shared folders), never copied or written; records and saves in user_data; Rescan, Relocate Folder, Unlink",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestLinkFolder"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestLinkedSession"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestModTree"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestRescanRelocateUnlink"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_link_tests.cpp",
+     "pattern": "TestLinkRefusals"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": []
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
+   }
+  },
+  {
+   "id": "custom-level-compatibility",
+   "name": "Custom level compatibility in three states (READY, LIMITED COMPATIBILITY, INVALID / UNSAFE) from one typed classification; packages with a READY or LIMITED level installed from ZIP, 7z, RAR, folders, external folders and CE fan missions; Play Anyway after Compatibility Warning for one start; the game admits only recorded, authorized levels at start, transitions and loads; compatibility report lines; v0.1.3 records read again",
+   "owner": "launcher",
+   "scope": "global",
+   "requirement": "none",
+   "shared": [
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestClassification"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestImports"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestLinks"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestPlayAnyway"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestSessionsAndSaves"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestReports"
+    },
+    {
+     "suite": "custom_level_tests",
+     "file": "tests/custom_level_compat_tests.cpp",
+     "pattern": "TestOldRecords"
+    }
+   ],
+   "windows": {
+    "status": "PASS",
+    "evidence": [
+     {
+      "suite": "launcher_tests",
+      "file": "tests/launcher_tests.cpp",
+      "pattern": "TestCompatibilityWarning"
+     },
+     {
+      "suite": "tests\\test_community_levels.py",
+      "file": "tests/test_community_levels.py",
+      "pattern": "test_three_states_from_the_runtime_codes"
+     }
+    ]
+   },
+   "linux": {
+    "status": "PASS",
+    "evidence": []
    }
   },
   {
@@ -6871,7 +7064,7 @@
   },
   {
    "id": "ce-script-input",
-   "name": "Trespasser CE scripts' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only for a level whose scripts name them, bKeyHit, bKeyPressed and the movement input in OnHandleInput, modal mode with OnModalKey, OnHandleModalInput and OnModalAborted, released when its script stops, at Restart, transitions and the player's death; never in the campaign",
+   "name": "Trespasser CE scripts' input and modal mode: uCMD_USER1 to uCMD_USER8 bound only for a level whose scripts name them (keys 1 to 8 by default), bKeyHit, bKeyPressed and the movement input in OnHandleInput, modal mode with OnModalKey, OnHandleModalInput and OnModalAborted, released when its script stops, at Restart, transitions and the player's death; never in the campaign",
    "owner": "gameplay",
    "scope": "global",
    "requirement": "none",
@@ -6895,6 +7088,11 @@
      "suite": "script_input_tests",
      "file": "tests/script_input_tests.cpp",
      "pattern": "test_modal_owner_dies"
+    },
+    {
+     "suite": "ce_tests",
+     "file": "tests/ce_tests.c",
+     "pattern": "test_script_user_keys"
     }
    ],
    "windows": {

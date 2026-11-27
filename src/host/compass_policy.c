@@ -143,6 +143,10 @@ float cp_reminder_step(cp_reminder_t* r, uint32_t now_ms, const cp_goal_t* goal)
         return 0.0f;
     }
     if (strcmp(goal->title, r->title)) {
+        if (!s_waypoints) {
+            memset(r, 0, sizeof *r);
+            return 0.0f;
+        }
         snprintf(r->title, sizeof r->title, "%s", goal->title);
         r->start_ms = now_ms;
     }

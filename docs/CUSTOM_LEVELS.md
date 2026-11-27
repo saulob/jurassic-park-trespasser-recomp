@@ -19,8 +19,16 @@ package cannot be read, the analysis says so (unreadable, damaged, unsupported) 
 A level that is already extracted does not need an archive: Import Folder reads that folder and installs a copy of the files the
 level needs under `user_data\custom_levels\<package>`, which is what the port plays. The folder chosen is only read, never moved or
 changed. The copy keeps the package's saves, settings and checks apart from everything else, and takes disk space of its own; Delete
-removes it and keeps its saves. Playing from an external folder without a copy is not implemented. The game itself is installed from a
-disc image only ([LAUNCHER](LAUNCHER.md#import-game)).
+removes it and keeps its saves. To play a folder where it is, without a copy, use Link External Folder ([Linked folders](#linked-folders)).
+The game itself is installed from a disc image or from a folder of the game ([LAUNCHER](LAUNCHER.md#import-game)).
+
+| | Import Folder | Link External Folder |
+|---|---|---|
+| level files | copied into `user_data\custom_levels\<package>` | read where they are, never copied |
+| the folder chosen | read once, can be deleted afterwards | read every time the level plays: it must stay where it is |
+| several packages in it | refused: choose one | each one is linked on its own |
+| removing it | Delete removes the copy | Unlink forgets the folder; nothing in it is deleted |
+| saves, records, checks | in `user_data` | the same, in `user_data` |
 
 | Refused | |
 |---|---|
@@ -31,38 +39,78 @@ disc image only ([LAUNCHER](LAUNCHER.md#import-game)).
 
 Level data, texts, pictures and Trespasser CE scripts (`.nut`, never run unless a level needs them) are kept; everything else
 (programs, libraries, other scripts, ATX or CE components, shipped saves) is left out, counted and named with the reason in the
-manifest. In a package that an earlier version installed without its `.nut` files, a level whose world names a script class is refused as
-`CE_SCRIPT_FILES` until the package is imported again; its other levels are not. A package with the same files as an installed one is refused
-as a duplicate.
+manifest. In a package that an earlier version installed without its `.nut` files, a level whose world names a script class is
+`LIMITED COMPATIBILITY` (`CE_SCRIPT_FILES`) until the package is imported again; its other levels are not. A package with the same
+files as an installed one is refused as a duplicate.
+
+### Compatibility
+
+Every level of a package is in one of three states, judged on its own: a sibling never changes it.
+
+| State | Colour | Meaning | Play |
+|---|---|---|---|
+| `READY` | green | the automated scan found no known problem | **Play** |
+| `LIMITED COMPATIBILITY` | yellow | the level uses something the port does not have, or whose effect it cannot confirm, and the game can leave it out without risk | **Play Anyway**, after a warning |
+| `INVALID / UNSAFE` | red | a file it needs is missing or damaged, a format or a limit the engine cannot take, or a security problem | never |
 
 `READY` is the result of an automated scan: no known blocking issue was found. It does not mean the level was played, or that its
 scripts, triggers, graphics and performance behave as intended.
 
-The rule is binary per level: each scene is `READY` or refused on its own, and a sibling's state never changes it. A package is
-analysed in a staging folder first and installed (one rename) when at least one of its levels is `READY`; its list shows every
-level, with Play for the `READY` ones and Bug Report for the others (the reasons, of that level only, are in the log). A package
-without a `READY` level leaves nothing behind and the page says `Could not import this custom level` / `This custom level is not
-fully supported`, with Bug Report and Close. The listing record and `manifest.json` (`level_status`) keep each level's state,
-blockers and scripts; the preflight of Play judges the level asked for.
+One classification decides the state everywhere: the importer, the listing, Play, the compatibility report and the game read
+it from `src/common/jpt_level_compat.c`, never from translated text. Each problem has a stable code (`UNSUPPORTED_ACTION`,
+`MISSING_REQUIRED_TERRAIN`, ...) and a kind; a level takes the most restrictive state of its problems. A code that is not classified
+there is `INVALID / UNSAFE` until it is.
 
-| Class | |
-|---|---|
-| `READY` | its worlds (`.grf`) are in the package or the game; each world of the package has its texture set (`<world>-130.pid` and `.swp`/`.spz`/`.spp`), or the installed game has the set of that name, or loose pictures are in `Map\<world>`; the terrain data its world names (`.wtd`) is there; its textures are found, or only some are not (see below); no feature, setting or ActionType the port does not have |
-| `REJECTED_MISSING` | a required file, texture set or terrain is nowhere, or none of a world's textures is found (its texture set is not that world's) |
-| `REJECTED_UNSUPPORTED` | something its content requires is not `FULLY_SUPPORTED` or `NOT_REQUIRED` in `src/common/jpt_level_features.c`, a scene format newer than 26, or content beyond the engine's limits |
-| `REJECTED_MALFORMED` | a scene or world that cannot be read |
-| `REJECTED_OTHER` | anything else the port cannot vouch for: settings files in conflict or unreadable, a readme instruction that cannot be followed, two files for one game path |
+| Kind | State | Problems |
+|---|---|---|
+| missing feature | limited | ActionType 99 (an action script: the action does nothing); ATX jumps, projectiles, plugins (programs are never run) and rules in `ATXconfig.ini`; `EndGameDDF`; `EnableAiActivityEx`, `MaxAiActivateOnRenderDist`, `EnableWoodSapParticles`; Trespasser CE script functions the port does not have yet, scripts it cannot plan or that an earlier version left out (the level runs without a script VM, never with a stub); texhw over a texture the engine draws on the CPU or whose sides are no powers of two (the level's own texture stays); STARS and METEORS sky layers (not drawn) |
+| cannot be confirmed | limited | a file a readme names that is nowhere, a readme instruction that cannot be followed, two files for one game path, pictures that are not 8 bit uncompressed BMP (the grey texture or the game's stands for them), settings files that are unreadable, set twice, in conflict or with a value that is not one of the key |
+| missing required file | invalid | a world, terrain data or texture set the level cannot be built without; none of a world's textures found |
+| damaged file | invalid | a scene or world that cannot be read, an index past its table, two files told apart only by case |
+| incompatible format | invalid | a scene format newer than 26, curved bump maps that the texture set lacks (the engine would build them from nothing), a feature the runtime cannot leave out |
+| engine limit exceeded | invalid | content beyond the engine's limits (see [Before Play](#before-play)) |
+| security problem | invalid | a settings path outside the package |
 
-Information never refuses: a readme, the author's own note (Restart Level does not work), a world without terrain as the level
-was made, a scene 23 to 26 read as the game's own, a dependency only mentioned or recommended, heaps and texture pool sized for the
-level, and some textures of a world that are nowhere (`MISSING_TEXTURES`): the level plays as in Trespasser CE, which draws its grey
-texture for each of them; and a level a trigger loads that neither the package nor the game has (`MISSING_TRANSITION_LEVEL`):
-the launcher's row says where the level leads, and when the trigger fires the game stays in the current level with the notice
-"The next level is not included in this package". Such lines are logged with `info:`.
+Some features are `FULLY_SUPPORTED` or `NOT_REQUIRED` in `src/common/jpt_level_features.c` and never appear. A feature that is
+`NOT_SUPPORTED` there is `LIMITED COMPATIBILITY` only when `jpt_level_compat.c` names it, after its effect was checked where it
+would take effect; otherwise it blocks the level.
 
-A package installed by an earlier version is analysed with today's rule: refused, it shows `Not supported` with Bug Report, Open
-Folder and Delete, and no Play. Nothing of it is removed. The list is ordered by the date of import (newest or oldest first) or by
-name; a package of an earlier version takes the date of its oldest file.
+Information never changes the state: a readme, the author's own note (Restart Level does not work), a world without terrain as
+the level was made, a scene 23 to 26 read as the game's own, a dependency only mentioned or recommended, heaps and texture pool
+sized for the level, and some textures of a world that are nowhere (`MISSING_TEXTURES`): the level plays as in Trespasser CE, which
+draws its grey texture for each of them; and a level a trigger loads that neither the package nor the game has
+(`MISSING_TRANSITION_LEVEL`): the launcher's row says where the level leads, and when the trigger fires the game stays in the
+current level with the notice "The next level is not included in this package". Such lines are logged with `info:`.
+
+A package is analysed in a staging folder first and installed (one rename) when at least one of its levels is `READY` or
+`LIMITED COMPATIBILITY`, whatever the source: ZIP, 7z, RAR, Import Folder, Link External Folder or a fan mission of a Trespasser CE
+tree. A package with only `INVALID / UNSAFE` levels leaves nothing behind and the page says `Could not import this custom level`,
+with Bug Report and Close. A problem of the whole package (an unsafe path, a link, a size limit, encryption, a duplicate) refuses it
+whatever its levels are. After an import the page says how many levels need Play Anyway.
+
+Each row shows the level's state in its colour and **Compatibility details**: every reason with its kind, a missing feature apart
+from a missing or damaged file and a security problem. The listing record and `manifest.json` (`level_status`: `status`,
+`compatibility`, `blockers`, `limitations`) keep each level's state; `runtime.map` has a `compat <scene>|<state>` line per level,
+which the game checks.
+
+### Play Anyway
+
+**Play Anyway** shows **Compatibility Warning**: the level's reasons in a list that scrolls, and **Cancel** (the default, also
+Escape and a controller's B) or **Play Anyway**. It works with the mouse, the keyboard and a controller, and fits the window at any
+DPI. The answer counts for that start alone: nothing is saved, no setting, file or command-line option gives it, and the next start
+asks again. Play Anyway never starts an `INVALID / UNSAFE` level.
+
+One confirmation covers the level and the `LIMITED COMPATIBILITY` levels of its package that it leads to, directly or through
+other levels: the warning lists their reasons too. A `READY` level that leads to such levels plays with Play and has Play Anyway
+as well, to cover them. Before the game starts, the level is analysed again when any of its files changed (a linked folder
+included); a level that became `INVALID / UNSAFE` is not started, and one whose reasons changed asks again.
+
+Levels played this way may show graphical issues, broken or missing scripts, gameplay problems or crashes: the port leaves out
+what it does not have, and the level was not made for that.
+
+A package installed by an earlier version is analysed again with today's rule (see [Records of v0.1.3](#records-of-v013)); nothing of it
+is removed and it is never imported again. The list is ordered by the date of import (newest or oldest first) or by name; a
+package of an earlier version takes the date of its oldest file.
 
 The page lists the packages off the UI thread. Its first frame shows `Loading custom levels...` with a spinner, the scan starts
 on the next one and the page adopts the result when the job ends (a result asked for before a newer request is dropped). An
@@ -74,9 +122,19 @@ holds, the package is not analysed again. The log has one line per refresh with 
 
 ### Before Play
 
-When Play is pressed the level is checked with the runtime's own lookup, and again by the game's host before every level
-load (`src/common/jpt_level_gate.c`), while the game is still as it was. A level that fails is not started: one sentence, Bug
-Report and Close. Bug Report selects this session's log, where the reasons were just written. The log has the package, the level, the file, its type, where it was looked for and what it is needed for.
+When Play or Play Anyway is pressed the level is checked with the runtime's own lookup and admission, and again by the game's
+host before every level load (`src/common/jpt_level_gate.c`), while the game is still as it was. A level that fails is not started:
+one sentence, Bug Report and Close. Bug Report selects this session's log, where the reasons were just written. The log has the
+package, the level, the file, its type, where it was looked for and what it is needed for.
+
+The game does not take the launcher's word alone. At its start it reads each level's state from `runtime.map`: a level without a
+recorded state, an `INVALID / UNSAFE` one, or a `LIMITED COMPATIBILITY` one that this launch's Play Anyway does not cover is not
+started (`[custom-level] launch blocked: ...`, with a message box on Windows). The same holds at every level load of the session:
+a trigger that leads to an `INVALID / UNSAFE` level is refused as unsafe, one that leads to a `LIMITED COMPATIBILITY` level the
+confirmation did not cover is refused with "This level needs Play Anyway in the launcher"; the game stays in the current level, as
+for any refused transition. A save holds the level it was made in, and is judged the same way when it is loaded, so a save of an
+earlier Play Anyway does not open that level in a `READY` start. Restart Level and Quick Load keep the session what it was. The
+structural checks below run in every case: a state never replaces them.
 
 | Checked | |
 |---|---|
@@ -93,31 +151,103 @@ the world. Polygons with a curved bump map that such a set lacks would be built 
 the world is read, they are lit flat when their texture has a picture of its own; a texture without one is read as a missing
 texture (`src/common/jpt_level_world.c`). The files stay as they are.
 
-### Bug Report
+### Compatibility report and Bug Report
 
-Levels with warnings or errors have their own Bug Report button, with the log of that level's last run chosen, else this
-session's. A failed import or Play chooses this session's. A log picked by hand stays chosen.
+A level that is not `READY` has its own **Bug Report** button: the compatibility report. It is there for `LIMITED COMPATIBILITY`
+and `INVALID / UNSAFE` levels, before any attempt to play them, and after a refused import (the notice's Bug Report). It writes the
+level's reasons to this session's log and opens the Bug Report page on it, with its preview, privacy filter and consent: nothing
+is sent unless the player sends it, through the same service as any Bug Report.
 
-The outcome of an import stays below the import buttons until it is closed or another import starts. The technical side is in the
-log alone.
+| In the report | |
+|---|---|
+| state and reasons | `compatibility=limited (LIMITED COMPATIBILITY)`, each reason with its code, subject, kind and state |
+| origin and platform | imported archive, imported folder or external folder (never the folder's path); Windows or Linux |
+| versions | the launcher's version, the game version and the operating system, as every Bug Report has them |
+| after a run | the `[session]` block (`compatibility=limited experimental=1`, renderer, build), `[custom-level] experimental launch authorized`, the `[level]` lines with the result of each load, and the crash dump when there is one: Bug Report chooses the log of that level's last run |
+
+Scripts, assets, saves and the package's files are never part of it. A log picked by hand stays chosen.
+
+The outcome of an import stays below the import buttons until it is closed or another import starts; the technical side is in
+the log.
 
 The log holds the whole import under `custom level import:`: source, size and SHA-256 of the archive, every text of the package
-(a readme between `README BEGIN` and `README END`, any other between `TXT BEGIN` and `TXT END`, each once, up to 64 KB of each;
-never run or followed from the log), every file by type, what was ignored or rejected and why, runtime paths, each level with
-its scene version, files and what of its format is left out, settings files, dependencies, session settings and the result
-(`installed`, `rejected`).
+by path, size and SHA-256 (`README` or `TXT`; their words are never copied into the log, and the launcher's **Readme** button
+reads them where they are), every file by type, what was ignored or rejected and why, runtime paths, each level with its scene
+version, files, what of its format is left out and its compatibility, settings files, dependencies, session settings and the
+result (`installed`, `rejected`, with the number of levels in each state). A reason taken from a readme names the readme and the
+number of its sentence, never the sentence itself.
+
+Logs written by v0.1.3 copied each readme between `README BEGIN` and `README END` and quoted readme sentences as reasons. Those
+logs stay on disk as they are; Bug Report leaves those lines and quotes out of what it previews and sends.
 
 ```text
 user_data\custom_levels\<package>\
     ...            the package's own files, folders and names, never changed
     manifest.json  what the analysis found (schema_version, source_hash, levels, settings, actions, warnings)
-    runtime.map    what the game reads of it: each game path and the package's file that answers it
+    runtime.map    what the game reads of it: each game path and the package's file that answers it, each level's state
     .runtime\      loading pictures in the game's own format, the world facts and the listing record
 ```
 
 `manifest.json`, `runtime.map` and `.runtime` are generated. The launcher makes them again when they are missing, damaged or
 no longer match the package, which is how a package installed by an earlier version gets them. A manifest of a newer schema
-is left alone. Without a `runtime.map` a package is still read by its folders.
+is left alone. Without a `runtime.map` that records the level's state the game does not start it.
+
+### Records of v0.1.3
+
+Packages, links, saves and settings of v0.1.3 are kept as they are; nothing is imported again. Their listing records are of an
+older version, so every package is analysed again the first time the page lists it, and its manifest and `runtime.map` are
+written anew with each level's state. A level v0.1.3 called `Not supported` becomes `LIMITED COMPATIBILITY` only when that analysis
+finds nothing but problems the port can leave out; it is never converted by its old label. The package keeps its name, its date
+of import and its saves. A linked folder that is away shows the row its older record describes, and is analysed when it is back.
+
+### Linked folders
+
+**Link External Folder** registers levels where they already are (`launcher/level_link.*`, `LinkLevelFolder` in
+`launcher/custom_levels.cpp`). The folder may be one level, a fan mission, a folder of several of them, or a Trespasser CE mod
+tree. It is searched as the corpus scanner searches one (8 levels deep, 5,000 folders): a folder with a scene, a `data` folder
+with a scene, `fm.ini` or `tp_mod.ini` is a package. Archives in it are not linked (the log counts them): import them.
+
+Each package goes through the checks of an import (unsafe names, links, sizes, the analysis and the `READY` rule) on the files an
+import would copy; a package without a `READY` or `LIMITED COMPATIBILITY` level is not linked. A linked package's folder in `user_data` holds only records:
+
+```text
+user_data\custom_levels\<package>\
+    external.link  the linked folder (UTF-8), the parts of it that are the package, its fan mission, its scenes' identity
+    manifest.json  source_type "external"
+    runtime.map
+    .runtime\
+```
+
+The linked folder is only read: no record, cache, guide, loading picture or save is ever written to it, and the game writes
+nothing under `data` while a package plays. Its own files named `manifest.json`, `runtime.map`, `external.link` or `.runtime` are
+not part of the package. Programs and scripts in it (`.exe`, `.dll`, `.bat`, `.ps1`, `.sh`, ...) are never listed or run.
+
+**Trespasser CE mod trees.** A folder with `tp_mod.ini` whose `FMPath` holds several fan missions becomes one package per fan
+mission (a folder that has a scene within 3 levels; `data` and the shared folders are not missions). Each one sees its own folder,
+`tp_mod.ini` and the folders `UberModPaths` and `ModPaths` name, never the other missions or the tree's own copy of the game. The
+mission plays as the tree's `ActiveFM`, whatever that key says. Files are found in Trespasser CE's order: `UberModPaths`, the
+mission (its `data` folder, then its own), `ModPaths`, then the installed game. `fm.ini`, `trespasser.ini` and `tpass.ini` are read
+inside the package for its session only, as for an imported one. Nothing has to be moved, renamed or packed.
+
+| Row | |
+|---|---|
+| External Folder: `<path>` | and ` · <fan mission>` for one of a tree |
+| Play, Readme | the files where they are |
+| Open Folder | the linked folder |
+| Rescan | drops the package's listing record and world cache: the next list reads the folder again |
+| Unlink | confirmation; removes the records folder, only when it holds nothing but the launcher's records. The linked folder and the saves stay |
+| Folder unavailable | the folder was moved, renamed, or is on a drive that is not connected. The row keeps what was last read, Play is off, **Relocate Folder** and Unlink remain |
+| Relocate Folder | the folder's new place, accepted only when it holds the same scenes (by path, any case). The package keeps its name, so its saves stay its own |
+
+Changes made outside the launcher are found without a scan of the whole library: the listing key of a linked package is its
+link and its files (path, size, time). A folder that changed is analysed again at the next list, and Play checks the level with the
+runtime's own lookup first. When its scenes change, the link's identity follows and the log says that a save of a level that is gone
+cannot be loaded. A folder that is the port's own (`user_data`, the game's version folders) or holds it is refused, and so is the
+same folder linked again, however its path is spelled (one canonical path, the same file system object).
+
+On Windows the game opens a level's files by ANSI paths of at most 250 characters: a folder whose path the system's code page
+cannot spell, or whose deepest file passes that length, is refused with `The game cannot open this folder's path` (Import Folder
+works there). Linux takes UTF-8 paths of any length the game's limits allow.
 
 ## Analysis
 
@@ -132,8 +262,11 @@ trespasser_recomp.exe --analyze-custom-levels <folder of packages> [--report <fo
 
 It installs nothing, opens no window and runs nothing of a package. The second form reads every package below a folder (ZIP, 7z, RAR,
 extracted folders, at most 12 levels deep), tells copies apart, and reports for each level its files and where they come from, its
-class (`READY`, `REJECTED_MISSING`, `REJECTED_UNSUPPORTED`, `REJECTED_MALFORMED`, `REJECTED_OTHER`) and its package's, its
+compatibility (`ready`, `limited`, `invalid`: READY, LIMITED COMPATIBILITY, INVALID / UNSAFE), its class (`READY`,
+`REJECTED_MISSING`, `REJECTED_UNSUPPORTED`, `REJECTED_MALFORMED`, `REJECTED_OTHER`, the technical reason) and its package's, its
 sizes against the 1998 limits and the most frequent problems; with `-Report`, as text and JSON.
+`tools/community_level_compatibility.py` groups a corpus by that compatibility; a failed download or extraction stays under
+`Not analyzed`, never a state, and a state file of v0.1.3, which has classes alone, keeps its READY and leaves the rest unclassified.
 
 | Layout | Mod folder |
 |---|---|
@@ -197,7 +330,7 @@ the package and copied nowhere; nothing is saved to the launcher's settings or t
 A fixed set of sentence shapes over the package's own file and folder names (`launcher/level_readme.*`); the text is never
 run. The destinations are `data`, `data/anim`, `data/menu`, `data/texhw`, `maps`, and "in the mods folder", which names the
 mod. A file named twice, a destination that is not one of these or a file that does not fit it moves nothing and is noted
-(`readme_not_followed`).
+(`readme_not_followed`, with the readme's path and the sentence's number).
 
 ## Play
 
@@ -221,7 +354,11 @@ guide.
 A package is active for one run. The game still asks for `<Data Drive>\data\X` and the package answers first
 (`src/common/jpt_custom_level.c`), the original files second. The names in a package may differ from each other
 (`MyLevel.scn` with `ML.wtd`) and be in any case; two files told apart only by case answer by their exact name alone.
-Files outside `data` (`Map\<level>\x.bmp`, any other folder of the mod) are answered by their path below the game's folder.
+Files outside `data` (`Map\<level>\x.bmp`, any other folder of the mod) are answered by their path below the game's folder. A
+linked package answers from its own folder, limited to the parts its link names, and reads `runtime.map`, loading pictures and
+guides from its records in `user_data` (`jpt_custom_level_dir`, `jpt_custom_level_records_dir`); a link that names a path with
+`..`, a drive, or a folder that is a link is refused before anything is read. Transitions to the package's other levels and
+Restart Level read the same files.
 
 A texture the level's set (`.pid`, `.swp`) lacks is asked for by its path, `Map\<level>\<name>.bmp`; `<level>` is the folder in the
 request, from the name of the world, and the game's current directory plays no part. The places are Trespasser CE's
@@ -251,8 +388,8 @@ game's own `.asb`, `.gop` and `Map` files are refused.
 
 The scene is loaded by the same calls as Level Select (Direct Load) on the main menu's first turn, when the engine is ready and
 before the menu has drawn. Nothing is presented until then (5 seconds at most), so the loading screen is the first picture. The
-opening video is skipped for that run. Saves and level swap files go to `<saves>\custom_levels\<package>`; the game's own settings stay
-the version's. A scene whose name the game cannot keep in a save (more than 16 characters, or other than letters,
+opening video is skipped for that run. Saves and level swap files go to `<saves>\custom_levels\<package>`, for a linked package as for
+an imported one (never into its folder); the game's own settings stay the version's. A scene whose name the game cannot keep in a save (more than 16 characters, or other than letters,
 digits, `_` and `-`) is loaded as `LEVELn.SCN`.
 
 A package that names its `StartLevel` is one row, which starts it; its other scenes stay installed for the mission's own
@@ -316,7 +453,9 @@ The game's reader trusts every size and count of a save. One whose sections or n
 objects is neither listed nor loaded. A save is written to another file and takes the place of the previous one when it is
 whole; otherwise the previous one stays and the player is told. In a custom level's session the package and the content of its
 worlds are kept behind the save's own data, which the game does not read: a save of another package, or of one whose worlds
-changed, is refused (`save incompatible with current custom level`). Saves without that mark, made earlier, are taken.
+changed, is refused (`save incompatible with current custom level`). Saves without that mark, made earlier, are taken. A save of a
+`LIMITED COMPATIBILITY` level loads only in a start that Play Anyway covers ([Before Play](#before-play)); the package's saves stay
+in its own folder whatever its state.
 
 ### ActionTypes, skies and menus
 

@@ -105,6 +105,7 @@ This save is not compatible with the current level	This save is not compatible w
 This level is missing required files	This level is missing required files
 This level cannot be loaded safely	This level cannot be loaded safely
 The next level is not included in this package	The next level is not included in this package
+This level needs Play Anyway in the launcher	This level needs Play Anyway in the launcher
 The game could not be saved. The previous save was kept.	The game could not be saved. The previous save was kept.
 No Quick Save yet	No Quick Save yet
 Quick Save works in a level	Quick Save works in a level

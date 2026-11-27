@@ -11,16 +11,16 @@
       replacement for the Windows system libraries, with a Vulkan renderer and a software fallback.
     </p>
     <p>
-      No game files are included. Import your own Trespasser disc image (.iso) from the launcher: English 1.0.116
-      (UK or US disc), Russian (Fargus), Spanish or Brazilian Portuguese. The version is recognised from its files,
-      never from the file name.
+      No game files are included. Import your own Trespasser disc image (.iso), or the game you already have on
+      disk, from the launcher: English 1.0.116 (UK or US disc), Russian (Fargus), Spanish or Brazilian Portuguese. The
+      version is recognised from its files, never from the file name.
     </p>
     <ul>
       <li>Launcher with game import, graphics, controls and gameplay settings</li>
       <li>Vulkan renderer and a software fallback that needs no GPU driver</li>
       <li>Widescreen, field of view, anti-aliasing, texture filtering and frame rate options</li>
       <li>Controller, keyboard and mouse, with Xbox and PlayStation button prompts</li>
-      <li>Trophies, saves per game version, a Bug Report page and a built-in updater</li>
+      <li>Community custom levels, saves per game version, a Bug Report page and a built-in updater</li>
     </ul>
     <p>
       The same AppImage is intended for desktop Linux and the Steam Deck; Steam Deck hardware validation is still

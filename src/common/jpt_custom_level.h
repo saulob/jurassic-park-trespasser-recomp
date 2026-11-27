@@ -30,6 +30,13 @@ extern "C" {
 #define JPT_CUSTOM_LEVEL_RUNTIME_MAP "runtime.map"
 #define JPT_CUSTOM_LEVEL_RUNTIME_VERSION 1
 #define JPT_CUSTOM_LEVEL_GENERATED_DIR ".runtime"
+/* A package played from a folder outside user_data: this file of its records folder (user_data/custom_levels/<package>)
+ * names the folder ("path <UTF-8 folder>") and, for one fan mission of a larger tree, the parts of it that are the package
+ * ("scope <relative path>", none for the whole folder). The records stay in user_data; the folder is only read. */
+#define JPT_CUSTOM_LEVEL_LINK_FILE "external.link"
+#define JPT_CUSTOM_LEVEL_LINK_HEAD "trespasser-link 1"
+#define JPT_CUSTOM_LEVEL_LINK_SCOPES_MAX 32
+#define JPT_CUSTOM_LEVEL_AUTHORIZED_CAP 2048
 
 typedef enum { JPT_LEVEL_TPA_STREAM, JPT_LEVEL_TPA_EFFECTS, JPT_LEVEL_TPA_AMBIENT, JPT_LEVEL_TPA_KINDS } jpt_level_tpa_t;
 
@@ -37,7 +44,14 @@ typedef struct {
     char package[JPT_CUSTOM_LEVEL_ID_MAX + 1];
     char scene[JPT_CUSTOM_LEVEL_PATH_MAX]; /* relative to the package, '/' separators; empty: no custom level */
     char layout[24];                       /* the launcher's analysis: loose, fan_mission, ...; may be empty */
+    /* Play Anyway, confirmed for this launch only: the LIMITED COMPATIBILITY scenes it covers, one path a line. Never read from
+     * a file or the command line. */
+    int experimental;
+    char authorized[JPT_CUSTOM_LEVEL_AUTHORIZED_CAP];
 } jpt_custom_level_request_t;
+
+/* Whether the session may load a scene of its package, by the compatibility the launcher recorded in runtime.map. */
+typedef enum { JPT_ADMIT_OPEN, JPT_ADMIT_NEEDS_CONSENT, JPT_ADMIT_INVALID, JPT_ADMIT_UNRECORDED } jpt_admit_t;
 
 typedef enum {
     JPT_LEVEL_CAP_SCENE_FORMAT, /* a scene of version 23 to 26 */
@@ -78,7 +92,8 @@ int jpt_custom_level_scene_name(const char* file_name, int index, char* out, siz
 /* <saves>/custom_levels/<package>: the Installed Directory while the package is active. */
 int jpt_custom_level_saves_dir(const char* saves_dir, const char* package, char* out, size_t cap);
 
-/* 1 when the package and its scene exist; the error says why otherwise. Replaces an earlier activation. */
+/* 1 when the package and its scene exist (in its linked folder, for a linked one); the error says why otherwise.
+ * Replaces an earlier activation. */
 int jpt_custom_level_activate(const char* user_root, const jpt_custom_level_request_t* request, char* error, size_t cap);
 void jpt_custom_level_deactivate(void);
 int jpt_custom_level_active(void);
@@ -97,7 +112,19 @@ int jpt_custom_level_script_reference(int index, const char** scene, const char*
 int jpt_custom_level_script_use(int index, const char** scene, const char** file);
 /* The scene being loaded or played, a file of the package; "" for a level of the original game. */
 const char* jpt_custom_level_current_scene(void);
+/* The package's files, and the launcher's records of it (runtime.map, .runtime): the same folder unless it is linked. */
 const char* jpt_custom_level_dir(void);
+const char* jpt_custom_level_records_dir(void);
+int jpt_custom_level_linked(void);
+
+/* The start scene of a real launch: its compatibility must be recorded, INVALID never starts and LIMITED starts only when this
+ * launch's Play Anyway covers it. line: what the log says, "" for a READY one. */
+int jpt_custom_level_admit_start(char* line, size_t cap);
+/* A scene the game is asked to load in the session, by its name or file: OPEN for one that is not the package's. */
+jpt_admit_t jpt_custom_level_admits(const char* scene_name);
+/* "ready", "limited" or "invalid" of the start scene; "unknown" without a record. */
+const char* jpt_custom_level_compat_name(void);
+int jpt_custom_level_experimental(void);
 
 /* The level the game starts to load, by its file or path: loading pictures and sound files of one level follow it. */
 void jpt_custom_level_scene_loading(const char* scene);

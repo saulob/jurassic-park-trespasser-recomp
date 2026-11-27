@@ -910,7 +910,7 @@ static void TestReadmeOpening() {
 
 static void TestTranslations() {
     SetLauncherLanguage("pt-BR");
-    for (int status = 0; status <= int(ImportStatus::kWriteFailed); ++status) {
+    for (int status = 0; status <= int(ImportStatus::kPathNotUsable); ++status) {
         const char* english = ImportStatusTitle(static_cast<ImportStatus>(status));
         CHECK(english[0] && std::string(Tr(english)) != english);
     }
@@ -1069,6 +1069,8 @@ static void TestWindowsHost() {
 void RunAnalysisTests(const fs::path& scratch, int& checks, int& failures);
 void RunLevelCheckTests(const fs::path& scratch, int& checks, int& failures);
 void RunListingTests(const fs::path& scratch, int& checks, int& failures);
+void RunLinkTests(const fs::path& scratch, int& checks, int& failures);
+void RunCompatTests(const fs::path& scratch, int& checks, int& failures);
 
 static int ReportPackages(const fs::path& dir) {
     const fs::path user = Fresh("packages");
@@ -1122,6 +1124,8 @@ int main(int argc, char** argv) {
     RunAnalysisTests(Scratch(), g_checks, g_failures);
     RunLevelCheckTests(Scratch(), g_checks, g_failures);
     RunListingTests(Scratch(), g_checks, g_failures);
+    RunLinkTests(Scratch(), g_checks, g_failures);
+    RunCompatTests(Scratch(), g_checks, g_failures);
 #ifdef _WIN32
     TestWindowsHost();
 #endif

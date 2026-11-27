@@ -11,9 +11,10 @@ https://github.com/saulob/jurassic-park-trespasser-recomp
 
 THE GAME ITSELF IS NOT INCLUDED
 -------------------------------
-No game file is included. You need your own legally obtained Trespasser disc image (.iso): English 1.0.116 (UK or US
-disc), Russian (Fargus), Spanish or Brazilian Portuguese. The version is recognised from the disc's files, never from
-its file name. The image is only read; it can be kept wherever you like.
+No game file is included. You need your own legally obtained Trespasser disc image (.iso), or the game you already
+have on disk (a copy of the disc, or an installation): English 1.0.116 (UK or US disc), Russian (Fargus), Spanish or
+Brazilian Portuguese. The version is recognised from the disc's files, never from its file name. The image or folder
+is only read; it can be kept wherever you like.
 
 
 REQUIREMENTS
@@ -38,21 +39,24 @@ INSTALL
      chmod +x JurassicParkTrespasserRecompiled-v@VERSION@-x86_64.AppImage
 
 2. Run it (double-click, or from a terminal). The launcher opens, also before the game is installed: the Play page
-   then shows "Game not installed" until you import a disc image.
-3. On the Play page, click "Import game..." and select your .iso disc image. The launcher uses the desktop's chooser
+   then shows "Game not installed" until you import the game.
+3. On the Play page, click "Import Disc Image..." and select your .iso disc image, or "Import Existing
+   Installation..." and select the folder of the game you already have. The launcher uses the desktop's chooser
    (zenity or kdialog) when there is one, and its own controller-friendly file browser otherwise (mouse, keyboard or
    controller).
-4. Wait while the launcher checks the disc and copies the game files into the "game" folder next to the AppImage. The
-   .iso file is only read and can be kept anywhere.
+4. Wait while the launcher checks the files and copies them into the "game" folder next to the AppImage. The .iso
+   file or the folder is only read and can be kept anywhere.
 5. When the Play page says the game is ready, press PLAY.
 
-To repair an installation, use "Reinstall game..." on the Play page. Your saves and settings are kept.
+To repair an installation, use "Reinstall from Disc Image..." or "Reinstall from Existing Installation..." on the
+Play page. Your saves and settings are kept.
 
 
 CUSTOM LEVELS
 -------------
-The launcher's Custom Levels page imports community levels from a ZIP, 7z or RAR file or from a folder, checks each
-level before anything is installed and lists it as Ready or Not supported, with the reason. Imported levels go to
+The launcher's Custom Levels page imports community levels from a ZIP, 7z or RAR file or from a folder, or links a
+folder to play its levels where they are, checks each level first and lists it as Ready, Limited Compatibility (Play
+Anyway, after a warning) or Invalid / Unsafe (never started), with the reasons. Imported levels go to
 user_data/custom_levels, and their saves are kept apart from the campaign's. Ready means that the automated
 compatibility scanner found no known blocking issues; it does not guarantee full gameplay compatibility.
 

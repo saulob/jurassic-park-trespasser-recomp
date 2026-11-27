@@ -367,6 +367,30 @@ void TestPrivacyScrubber() {
         Check(out.find("AlicePlayer") == std::string::npos, "mixed-separator profile scrubbed");
         Check(out.find("<home>") != std::string::npos, "mixed-separator home placeholder");
     }
+    // Custom level texts in a log of v0.1.3: the readme's lines and the sentences quoted as reasons stay out.
+    {
+        const std::string old_log =
+            "[   1.000] [launcher] custom level import: README BEGIN M/Readme.txt (40 bytes, SHA-256 abc)\n"
+            "[   1.001] [launcher] custom level import: | Put the level in data. Synthetic author words.\n"
+            "[   1.002] [launcher] custom level import: README END M/Readme.txt\n"
+            "[   1.003] [launcher] custom level import:   depends on: Trespasser CE required (Synthetic needs CE sentence)\n"
+            "[   1.004] [launcher] custom level import:   Trespasser CE required: Synthetic needs CE sentence\n"
+            "[   1.005] [launcher] custom level m: readme_not_followed: Move synthetic.asa into the anim directory\n"
+            "[   1.006] [launcher] custom level:   DEPENDENCY_CE Trespasser CE: required (Synthetic needs CE sentence); what of it\n"
+            "[   1.007] [launcher] custom level:   README_NOT_FOLLOWED package: Move synthetic.asa into the anim directory\n"
+            "[   1.008] [launcher] depends on: an unrelated line keeps its words\n"
+            "[   1.009] [launcher] custom level import: | last line";
+        const std::string out = ScrubText(old_log, facts);
+        Check(out.find("Synthetic") == std::string::npos && out.find("Move synthetic") == std::string::npos && out.find("| ") == std::string::npos &&
+                  out.find("last line") == std::string::npos,
+              "custom level texts removed from an old log");
+        Check(out.find("README BEGIN M/Readme.txt (40 bytes, SHA-256 abc)") != std::string::npos && out.find("README END M/Readme.txt") != std::string::npos,
+              "custom level text descriptions kept");
+        Check(out.find("depends on: <level text removed>") != std::string::npos && out.find("readme_not_followed: <level text removed>") != std::string::npos &&
+                  out.find("Trespasser CE: required (<level text removed>)") != std::string::npos && out.find("README_NOT_FOLLOWED package: <level text removed>") != std::string::npos,
+              "custom level reasons keep their codes");
+        Check(out.find("an unrelated line keeps its words") != std::string::npos && out.back() != '\n', "other lines untouched");
+    }
     // GatherPrivateFacts returns install folder passed in.
     {
         const PrivateFacts gathered = GatherPrivateFacts({fs::path("D:/CustomInstallFolder")});

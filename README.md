@@ -18,7 +18,7 @@
 
 ## Status
 
-**v0.1.3 is the current release, the Custom Levels update** (community levels imported from ZIP, 7z, RAR or a folder and checked before they are installed, support for many Trespasser CE and ATX features and their Squirrel scripts, graphics options and Linux fixes; see the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
+**v0.1.4, the Compatibility and Quality of Life Update** (the game imported from an existing installation or a copy of the disc without an ISO, custom levels played from external folders and Trespasser CE mod folders, Limited Compatibility levels started with Play Anyway, Nearest (Unfiltered) texture filtering and fixes; see the [v0.1.4 release notes](docs/RELEASE_NOTES_v0.1.4.md)). It follows v0.1.3, the Custom Levels update ([v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md)). Windows is the primary platform; the native Linux x86_64 build (AppImage), which also targets the Steam Deck, is experimental. The game installs from your disc image or an existing installation, starts, and runs its menus and levels with the Direct3D 11, Vulkan or software renderer.
 
 | Milestone | State |
 |---|---|
@@ -49,7 +49,7 @@
 - **Cheats panel** (F10) with movement speed, jump height, invulnerability, infinite ammo, frozen dinosaurs, health, noclip, stealth, teleport, Level Select and a free camera
 - **Modern controls**: keyboard, mouse and SDL3 gamepads (Xbox, PlayStation, Switch, Steam Deck) with hotplug, glyphs and rebindable buttons
 - **Custom Levels**: community levels and fan missions imported from ZIP, 7z, RAR or a folder, checked level by level before they are installed, with support for many Trespasser CE and ATX features and their own saves
-- **TRG launcher** that imports your disc image, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
+- **TRG launcher** that imports your disc image or existing installation, selects the installed version, saves its settings, updates the port, and sends privacy-filtered bug reports
 - **Seven languages**, video subtitles, restored English dialogue and corrected caption timings
 - **Portable**: saves, settings and logs stay next to the program
 - **Experimental native Linux and Steam Deck** AppImage
@@ -60,20 +60,24 @@ The launcher's **Custom Levels** page plays community levels and fan missions, o
 
 1. Open the launcher.
 2. Select **Custom Levels** in the sidebar.
-3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package.
-4. Check the status of each level: **Ready**, or **Not supported** with the reason.
-5. Select a Ready level and press **Play**.
+3. Choose **Import ZIP / 7z / RAR** or **Import Folder** and select the level package, or **Link External Folder** to play a folder where it is.
+4. Check the status of each level: **Ready** (green), **Limited Compatibility** (yellow) or **Invalid / Unsafe** (red), and open **Compatibility details** for the reasons.
+5. Press **Play** on a Ready level, or **Play Anyway** on a Limited Compatibility level and confirm the warning.
 
-- **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready; the others stay listed as Not supported.
+- **Checked before installing.** Every level of a package is judged on its own: missing files, damaged or unsupported archives, unsupported features and readme instructions are reported per level. A package installs when at least one of its levels is Ready or Limited Compatibility; a package with only Invalid / Unsafe levels, or with an unsafe file, is refused.
 - **Ready** means that the automated compatibility scanner found no known blocking issues. It does not guarantee full gameplay compatibility: most Ready levels have not been played from start to finish in the port.
-- **Levels you already have**: you do not need a ZIP. **Import Folder** installs a copy of an extracted level's files in `user_data\custom_levels`; your folder is not changed. Playing directly from an external folder, without a copy, is not available yet.
+- **Limited Compatibility** means the level uses something the port does not have yet, such as a Trespasser CE script function or an ATX option, and the game can leave it out. **Play Anyway** shows a **Compatibility Warning** with the reasons; **Cancel** is the default, and the answer counts for that start only. Expect graphical issues, broken scripts, gameplay problems or crashes.
+- **Invalid / Unsafe** levels (missing or damaged files, formats or limits the engine cannot take, unsafe paths) are never started, by the launcher or by the game.
+- **Compatibility report**: a level that is not Ready has **Bug Report**, which puts its compatibility reasons in a report you can preview and choose to send; after a problem in a level, Bug Report picks the log of its last run. Nothing is sent automatically.
+- **Levels you already have**: you do not need a ZIP. **Import Folder** installs a copy of an extracted level's files in `user_data\custom_levels`; your folder is not changed. **Link External Folder** plays one or several levels where they already are, without a copy: the folder is only read, it must stay where it is, and **Unlink** forgets it without deleting anything in it. A moved folder shows **Folder unavailable** and can be found again with **Relocate Folder**; its saves stay.
+- **Trespasser CE mod folders**: link a folder with `tp_mod.ini` and each fan mission of its `FMPath` becomes a package, with the shared folders `ModPaths` and `UberModPaths` name and nothing reorganised, copied or packed. Not every mod is supported: each mission goes through the same checks.
 - **Trespasser CE and ATX**: most of their ActionTypes, textures (BMP, TGA, DDS DXT1-DXT5 with mipmaps and alpha), normal maps, custom skies (including the `2X_ALPHA` and `2X_BURN` blend modes), scene formats 23-26 and larger engine limits for custom sessions.
 - **Scripts**: the port embeds the Squirrel interpreter and implements part of Trespasser CE's scripting API, so a level's scripts can call into the game. Each level gets its own script machine with memory and instruction budgets.
 - **Isolated from the campaign**: levels are installed in `user_data\custom_levels`, saves go to their own folder per package, and nothing in the installed game is changed. No program inside a package is ever run.
-- **Readme**, **Open Folder** and **Delete** for each package; **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
-- **Bug Report** includes the selected level's analysis.
+- **Readme**, **Open Folder** and **Delete** for each imported package (**Rescan** and **Unlink** for a linked one); **Restart** reloads the level completely; a generated minimap and objectives appear when the level has the information for them.
+- **Bug Report** includes the selected level's analysis and compatibility.
 
-- **Script keys**: a level whose Trespasser CE scripts read the USER commands gets keys for them (`script_user1_key` to `script_user8_key` in `trespasser.ini`; Shift and M for the first two by default).
+- **Script keys**: a level whose Trespasser CE scripts read the USER commands gets keys for them (`script_user1_key` to `script_user8_key` in `trespasser.ini`; the keys 1 to 8 by default).
 - On Linux and the Steam Deck, the launcher's own file browser chooses the package when `zenity` or `kdialog` is not available.
 
 See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
@@ -81,8 +85,8 @@ See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
 **Custom level limitations**
 
 - Not every community level is supported, and most Ready levels have not been played from start to finish in the port. No scripted community level has been confirmed in a full play-through yet.
-- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles, `EndGameDDF`, texhw textures on meshes the original game bump-maps, stars and meteors sky layers, scripted actions (ActionType 99), the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks and the rest of CE's scripting API the port does not have yet. A level that needs one is listed as Not supported, with the reason. The full list is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations).
-- The game must be installed from a disc image (ISO); importing an existing Trespasser installation is not supported yet.
+- Not implemented: Trespasser CE's extended AI (`EnableAiActivityEx`), `MaxAiActivateOnRenderDist`, wood sap particles, `EndGameDDF`, texhw textures on meshes the original game bump-maps, stars and meteors sky layers, scripted actions (ActionType 99), the `OnLevelTransitionRequested` and `OnGameCompleted` script callbacks and the rest of CE's scripting API the port does not have yet. A level that needs one is listed as Limited Compatibility, with the reason, and plays without it only through Play Anyway. The full list is in the [v0.1.4 release notes](docs/RELEASE_NOTES_v0.1.4.md#known-limitations).
+- A linked folder on Windows must have a path the system's code page can spell and its files at most 250 characters deep; otherwise use **Import Folder**.
 - Encrypted, multi-volume and RAR 1.5 archives, and RAR dictionaries over 256 MB, are refused: extract them and use **Import Folder**.
 - Scripts run with memory and instruction budgets and without file, system or thread access; that limits what a script can reach, but it is not a guarantee that a faulty script cannot slow down or stop the game.
 
@@ -91,7 +95,7 @@ See [CUSTOM_LEVELS](docs/CUSTOM_LEVELS.md) and [CE_SCRIPTS](docs/CE_SCRIPTS.md).
 - **Renderers**: Direct3D 11 is the Windows default; Vulkan 1.2 is a native backend on Windows and Linux (the Linux default); Software is the game's own renderer and the fallback. The renderer is chosen at start and stays for the run. On Windows, D3D11 is the recommended path.
 - **Native resolution** (Windows): 720p, 1080p, 1440p, 4K, Native and custom sizes; the 3D world, text and viewport use the render size, which does not depend on the window size. Menus and videos keep their 4:3 canvas, centred and scaled.
 - **Field of view**: 60 to 110 degrees across the 4:3 view (75, the original, by default).
-- **Texture filtering and anti-aliasing**: anisotropic filtering up to 16x, MSAA up to 8x where the card supports it, and generated mipmaps (the game's files are never changed).
+- **Texture filtering and anti-aliasing**: anisotropic filtering up to 16x, MSAA up to 8x where the card supports it, and generated mipmaps (the game's files are never changed). **Nearest (Unfiltered)** keeps the 3D world's textures sharp and pixelated while every other graphics improvement stays on.
 - **Draw distance, LOD and terrain**: objects stay drawn 1.2 times as far and stay 3D models out to 25-150 m before becoming flat impostors (15 m in 1998); the terrain keeps its textures out to 750 m; textures and impostors use 256 pixels instead of the 1998 limit of 128; optional Maximum object detail.
 - **Ambient occlusion** (Off to Ultra), **water refraction** and **enhanced sky**, as Direct3D 11 and Vulkan passes. Ambient occlusion respects the fog.
 - **Fog and Shadows**: the original distance fog and the shadows of objects and dinosaurs can each be turned off, in every renderer; terrain shadows keep their contrast at the default brightness, and Gamma 8 and 9 no longer remove them.
@@ -107,7 +111,7 @@ The Linux Vulkan build has its own filtering, MSAA, ambient occlusion, water, sk
 - **True Ultrawide** is this Hor+ rendering at 21:9 and 32:9: a 21:9 screen shows more than 16:9, and 32:9 more than 21:9. It is supported on **Windows**.
 - **Stretch is not ultrawide.** The launcher's Presentation setting has Letterbox (keeps the picture's shape, with bars) and Stretch (fills the window by stretching the finished picture). Stretch does not add any world to the sides; use Letterbox for correct geometry.
 - Menus and dialogs stay 4:3 and are pillarboxed. There is no dedicated ultrawide HUD layout.
-- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.3.
+- On **Linux**, the guest stays at its 4:3 mode and is scaled to the window; native 4K and 21:9 / 32:9 gameplay are Windows-only in v0.1.4.
 
 ## Navigation
 
@@ -369,9 +373,11 @@ translations of the same captions where they exist, and the rest was translated 
 | Spanish (`TRESPASSER_S`) | 1.1.117 | Yes | Yes |
 | Brazilian Portuguese | 1.1.117 | Yes | Yes |
 
-The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only. No demo or total conversion is supported as a game version; community levels are played from the [Custom Levels](#custom-levels) page. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
+The disc is recognised by file sizes and SHA-256, never by its name. The original executables are import inputs only.
 
-The Windows and Linux executables in v0.1.3 carry the same three lifted builds: `lift116` serves English (1.0.116) and Russian Fargus (1.0.116), `lift_es117` serves Spanish (1.1.117), and `lift_ptbr117` serves Brazilian Portuguese (1.1.117). The installed version selects the active lift, and Linux also maps the lifted MSVCIRT module shared by all four releases.
+**Import Existing Installation** takes the same files from folders instead of an image: the disc copied to a folder, or an installation, with no ISO needed. Each file must have the retail bytes, wherever and however it is named; nothing in the folder is run or changed. An installation that keeps its levels on the CD, was patched to 1.1 or carries Trespasser CE's files is incomplete on its own: the launcher names the missing files and **Add the Disc's Folder...** completes it with a folder copy of the original disc. The guest image is always made from the retail `tpassp6.exe`; Patch 1.1, CE and other modified executables are never used. See [LAUNCHER](docs/LAUNCHER.md#import-existing-installation). No demo or total conversion is supported as a game version; community levels are played from the [Custom Levels](#custom-levels) page. See [GAME_VERSIONS](docs/GAME_VERSIONS.md).
+
+The Windows and Linux executables in v0.1.4 carry the same three lifted builds: `lift116` serves English (1.0.116) and Russian Fargus (1.0.116), `lift_es117` serves Spanish (1.1.117), and `lift_ptbr117` serves Brazilian Portuguese (1.1.117). The installed version selects the active lift, and Linux also maps the lifted MSVCIRT module shared by all four releases.
 
 All four versions pass the headless first-frame boot tests on Linux. Full gameplay, interface, audio and input on real Linux hardware still require manual validation. (The earlier published **v0.1.0** Linux AppImage predated this parity fix and ran English and Russian only.)
 
@@ -379,9 +385,9 @@ All four versions pass the headless first-frame boot tests on Linux. Full gamepl
 
 Windows 10 or 11, 64-bit. The Windows program is a 32-bit (x86) host that runs on 64-bit Windows.
 
-1. Download **JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
+1. Download **JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip** from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) and extract it into a writable folder.
 2. Run **trespasser_recomp.exe**, keeping `trg-updater.exe` beside it.
-3. On the **Play** page choose **Import game...** and select your own Trespasser `.iso` disc image. It is only read.
+3. On the **Play** page choose **Import Disc Image...** and select your own Trespasser `.iso` disc image, or **Import Existing Installation...** and select the folder of the game you already have (a copy of the disc, or an installation). Both are only read.
 4. When Play says the game is ready, press **PLAY**.
 
 The Windows executable is not code-signed, so SmartScreen may warn on the first start; choose **More info**, then **Run anyway** if you downloaded it from this repository's releases.
@@ -392,7 +398,7 @@ The Windows executable is not code-signed, so SmartScreen may warn on the first 
 
 - **Vulkan** is the Linux GPU renderer; Software is the fallback. If Vulkan cannot start, the run falls back to Software and says why.
 - **AppImage**: make it executable and run it. Without FUSE it extracts itself and runs automatically (`APPIMAGE_EXTRACT_AND_RUN=1` forces that).
-- **Import** your disc image from the launcher's Play page, as on Windows.
+- **Import** your disc image or an existing installation from the launcher's Play page, as on Windows.
 - **`game`, `user_data` and `logs`** live next to the AppImage file, never inside it.
 - **Controllers** work through SDL3, including Steam Deck glyphs; the launcher is usable with a gamepad and has a built-in file browser when `zenity` or `kdialog` is missing.
 - **Updates** replace the AppImage itself after checking its SHA-256, and restart it.
@@ -400,7 +406,7 @@ The Windows executable is not code-signed, so SmartScreen may warn on the first 
 
 **Steam Deck** support is experimental and uses the same AppImage: add it with **Games > Add a Non-Steam Game to My Library**. It has **not been validated on Steam Deck hardware**, and it is not Steam Deck Verified. See [docs/LINUX.md](docs/LINUX.md) and [docs/LINUX_PARITY.md](docs/LINUX_PARITY.md).
 
-Verified limits on Linux in v0.1.3:
+Verified limits on Linux in v0.1.4:
 
 - Linux support is still experimental, and the Steam Deck has not been validated on physical hardware.
 - The guest keeps its 4:3 presentation, scaled to the window; there is no native True Ultrawide on Linux.
@@ -412,11 +418,11 @@ Verified limits on Linux in v0.1.3:
 - **No validated high frame rate.** VSync Off removes the present wait, but there is no uncapped-frame-rate mode and no 120 FPS guarantee.
 - **"HD" means the front end, loading screens and videos**, not a texture pack; the 3D world uses the original textures.
 - No dedicated ultrawide HUD, no HDR, no vibration, no mods other than custom levels, no custom waypoints.
-- **Custom levels:** not every community level is supported, and Ready is a scanner result, not a play-through. Some Trespasser CE features are not implemented ([Custom Levels](#custom-levels)); encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
+- **Custom levels:** not every community level is supported, Ready is a scanner result, not a play-through, and Limited Compatibility levels play without what the port lacks. Some Trespasser CE features are not implemented ([Custom Levels](#custom-levels)); encrypted, multi-volume and RAR 1.5 archives must be extracted and imported as a folder.
 - Windows Vulkan is selectable but D3D11 is recommended; the playable host is 32-bit (the 64-bit host is groundwork only).
 - The Windows executable and updater are unsigned.
 
-See the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations), the [v0.1.2 release notes](docs/RELEASE_NOTES_v0.1.2.md#known-limitations), the [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md#known-limitations) and the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) for the full list.
+See the [v0.1.4 release notes](docs/RELEASE_NOTES_v0.1.4.md#known-limitations), the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#known-limitations), the [v0.1.2 release notes](docs/RELEASE_NOTES_v0.1.2.md#known-limitations), the [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md#known-limitations) and the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#known-issues-and-limitations) for the full list.
 
 ## Bug reports
 
@@ -426,18 +432,18 @@ Use the launcher's **Bug Report** page: describe the problem, choose a log and p
 
 Get the published release files from the [latest release](https://github.com/saulob/jurassic-park-trespasser-recomp/releases/latest) page. The Windows port is x86; the Linux build is x86_64.
 
-v0.1.3 release assets:
+v0.1.4 release assets:
 
 | Platform | File | Checksum |
 |---|---|---|
-| Windows 10 / 11 | `JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip` | `JurassicParkTrespasserRecompiled-v0.1.3-windows-x86.zip.sha256` |
-| Linux x86_64 / Steam Deck (experimental) | `JurassicParkTrespasserRecompiled-v0.1.3-x86_64.AppImage` | `JurassicParkTrespasserRecompiled-v0.1.3-x86_64.AppImage.sha256` |
+| Windows 10 / 11 | `JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip` | `JurassicParkTrespasserRecompiled-v0.1.4-windows-x86.zip.sha256` |
+| Linux x86_64 / Steam Deck (experimental) | `JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage` | `JurassicParkTrespasserRecompiled-v0.1.4-x86_64.AppImage.sha256` |
 
 No game files are in the downloads.
 
 ## Security
 
-SHA-256 checksums for v0.1.3 are published alongside the release artifacts; the per-file table is in the [v0.1.3 release notes](docs/RELEASE_NOTES_v0.1.3.md#security). A clean scan is an additional verification step, not an absolute guarantee of safety: verify the SHA-256 values before running a file, and download only from this repository's Releases page.
+SHA-256 checksums for v0.1.4 are published alongside the release artifacts; the per-file table is in the [v0.1.4 release notes](docs/RELEASE_NOTES_v0.1.4.md#security). A clean scan is an additional verification step, not an absolute guarantee of safety: verify the SHA-256 values before running a file, and download only from this repository's Releases page.
 
 For the published **v0.1.0** release, the four files (the Windows ZIP, `trespasser_recomp.exe`, `trg-updater.exe` and the Linux AppImage) were scanned on VirusTotal with no detections: [ZIP](https://www.virustotal.com/gui/file/4b677fb36519f63221ff25dffd5b5a50a250672db56658b07865810649bc1a36), [EXE](https://www.virustotal.com/gui/file/52b4dc10c9da024b1c10ef152615f1235d21301f9bcacf0d1d6f742f91c0d7fd), [updater](https://www.virustotal.com/gui/file/ba019e55a195d234c8f6b02e6f2bc2dc04aeb0df27ac3aa3570c29cb514c4be6), [AppImage](https://www.virustotal.com/gui/file/eb4e8d6308fa41407b503668e59536c387da654baf0ffa87bc88b2e4447856d9). A clean scan is an additional signal, not a guarantee of safety: verify the SHA-256 and download only from this repository. The full v0.1.0 table is in the [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md#security-and-virustotal); see also [RELEASE_SECURITY](docs/RELEASE_SECURITY.md).
 
@@ -467,7 +473,7 @@ original code, and which are Windows.
 Nothing that is already current is redone, so the same command is the normal way to build and to play.
 `.\tools\run.ps1` is an optional shortcut that starts the existing build without checking for changes.
 
-The build needs no game files. To play, import your own disc image from the launcher's Play page. Details, options and
+The build needs no game files. To play, import your own disc image or existing installation from the launcher's Play page. Details, options and
 what to do when a run stops: [BUILD](docs/BUILD.md).
 
 ### Layout

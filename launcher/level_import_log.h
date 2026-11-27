@@ -10,15 +10,14 @@
 
 namespace jpt {
 
-inline constexpr size_t kLogDocumentBytes = 64 * 1024;
-inline constexpr size_t kLogDocumentsBytes = 1024 * 1024;
 inline constexpr size_t kLogDocuments = 256;
 inline constexpr int kInstructionsScore = 60; // LevelReadmeScore from here on: a readme or installation notes
 
+// A text of the package is described, never copied: its words belong to its author.
 struct LogDocument {
-    std::string path, sha256, text;
+    std::string path, sha256;
     uint64_t bytes = 0;
-    bool truncated = false, readable = false, readme = false;
+    bool readable = false, readme = false;
 };
 
 struct ImportRecord {

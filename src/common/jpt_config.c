@@ -13,8 +13,8 @@
 #define MAX_LINE 1024
 #define APPEND_HEADER "# Set by Trespasser Recompiled"
 
-const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original", "bilinear", "anisotropic4", "anisotropic8",
-                                                        "anisotropic16" };
+const char* const jpt_filter_keys[JPT_FILTER_COUNT] = { "original",     "nearest",      "bilinear",
+                                                        "anisotropic4", "anisotropic8", "anisotropic16" };
 const char* const jpt_active_ai_keys[JPT_ACTIVE_AI_COUNT] = { "original", "enhanced" };
 const int jpt_active_ai_limits[JPT_ACTIVE_AI_COUNT] = { 3, 6 };
 const char* const jpt_ao_keys[JPT_AO_COUNT] = { "off", "low", "medium", "high", "ultra" };
@@ -317,8 +317,8 @@ int jpt_config_valid(const char* key, const char* value) {
 void jpt_config_defaults(jpt_config_t* c) {
     memset(c, 0, sizeof *c);
     for (int i = 0; i < JPT_SETTING_COUNT; i++) apply(c, jpt_settings[i].key, jpt_settings[i].default_value);
-    c->script_user_vk[0] = 0x10; /* uCMD_USER1: Shift */
-    c->script_user_vk[1] = 'M';  /* uCMD_USER2 */
+    /* uCMD_USER1 to uCMD_USER8 on 1 to 8: none of the game's default controls or the port's hotkeys. */
+    for (int n = 0; n < JPT_SCRIPT_USER_KEYS; n++) c->script_user_vk[n] = (uint32_t)('1' + n);
 }
 
 static char* trim(char* s) {

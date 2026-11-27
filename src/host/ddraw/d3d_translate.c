@@ -753,7 +753,8 @@ unsigned d3dt_pick_anisotropy(unsigned requested, unsigned device_max) {
 }
 
 int d3dt_filter_uses_mips(int filter) {
-    return filter == D3DT_FILTER_BILINEAR || filter == D3DT_FILTER_TRILINEAR || filter == D3DT_FILTER_ANISOTROPIC;
+    return filter == D3DT_FILTER_NEAREST || filter == D3DT_FILTER_BILINEAR || filter == D3DT_FILTER_TRILINEAR ||
+           filter == D3DT_FILTER_ANISOTROPIC;
 }
 
 enum {
@@ -765,14 +766,15 @@ enum {
     D3D11_ANISOTROPIC = 0x55
 };
 
-/* Original and point keep the game's own filters and never reach a generated level; the others filter between
- * levels too. A draw the game point-samples stays point-sampled unless bilinear is forced. */
+/* Original and point keep the game's own filters and never reach a generated level; nearest point-samples every
+ * draw at the nearest level; the others filter between levels too. A draw the game point-samples stays
+ * point-sampled unless bilinear is forced. */
 d3dt_sampler_choice_t d3dt_choose_sampler(int filter, int mag_linear, int min_linear, unsigned anisotropy) {
-    d3dt_sampler_choice_t c = { D3D11_MIN_MAG_MIP_POINT, 1, 0 };
+    d3dt_sampler_choice_t c = { D3D11_MIN_MAG_MIP_POINT, 1, filter == D3DT_FILTER_NEAREST };
     int forced = filter == D3DT_FILTER_POINT || filter == D3DT_FILTER_BILINEAR;
     int mag = forced ? filter == D3DT_FILTER_BILINEAR : mag_linear;
     int min = forced ? filter == D3DT_FILTER_BILINEAR : min_linear;
-    if (!mag && !min) return c;
+    if (c.mips || (!mag && !min)) return c;
     c.mips = d3dt_filter_uses_mips(filter) && mag && min;
     if (c.mips && filter == D3DT_FILTER_ANISOTROPIC && anisotropy > 1) {
         c.filter = D3D11_ANISOTROPIC;

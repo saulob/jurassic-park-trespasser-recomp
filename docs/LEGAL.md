@@ -114,7 +114,8 @@ permit the use of their work with generative AI tools.
 v0.1.3 shipped script tests modelled on that level's behaviour. They have been replaced by independent synthetic tests
 written from Trespasser CE's scripting documentation and the port's own interfaces. The earlier tests, and the earlier
 documentation that described the level, remain in this repository's Git history and in the v0.1.3 source archives. The
-default keys of the first two script commands (Shift and M) were chosen during that work and will be reviewed for v0.1.4.
+default keys of the first two script commands (Shift and M) were chosen during that work; since v0.1.4 the eight script
+commands default to the keys 1 to 8, a generic choice independent of any level (a key set in `trespasser.ini` is kept).
 None of the release programs contains any of that level's files or names.
 
 The development corpus is under review. Packages by that author, including co-authored ones, and packages whose

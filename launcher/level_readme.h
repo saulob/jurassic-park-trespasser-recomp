@@ -17,7 +17,7 @@ struct ReadmeRule {
     std::string folder; // a folder of the package ("anim", "Mods/MyMod")
     bool level_files = false; // "the level files", without names
     bool optional = false;
-    std::string sentence;
+    std::string sentence; // where the instruction is: "<source>, sentence <n>"
 };
 
 enum class Need { kNone, kMentioned, kOptional, kRecommended, kRequired };
@@ -34,7 +34,7 @@ struct ReadmeNotes {
     bool no_restart = false;
 };
 
-// paths: every file of the package; folders: every folder of it. Both with '/'.
-ReadmeNotes ReadReadme(const std::string& text, const std::vector<std::string>& paths, const std::vector<std::string>& folders);
+// paths: every file of the package; folders: every folder of it. Both with '/'. source: the text's path, cited in place of its words.
+ReadmeNotes ReadReadme(const std::string& text, const std::vector<std::string>& paths, const std::vector<std::string>& folders, const std::string& source = {});
 
 } // namespace jpt

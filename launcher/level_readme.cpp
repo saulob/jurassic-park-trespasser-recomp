@@ -14,7 +14,6 @@ constexpr size_t kTextLimit = 256 * 1024;
 constexpr size_t kSentenceTokens = 80;
 constexpr size_t kObjectTokens = 20;
 constexpr size_t kTargetTokens = 8;
-constexpr size_t kQuoteLength = 160;
 
 struct Token {
     std::string raw;  // without the punctuation around it
@@ -86,15 +85,6 @@ std::vector<Sentence> Sentences(const std::string& source) {
     }
     if (sentences.back().empty()) sentences.pop_back();
     return sentences;
-}
-
-std::string Quote(const Sentence& sentence) {
-    std::string text;
-    for (const Token& token : sentence) text += (text.empty() ? "" : " ") + token.raw;
-    if (text.size() <= kQuoteLength) return text;
-    size_t cut = kQuoteLength;
-    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) --cut;
-    return text.substr(0, cut) + "...";
 }
 
 bool Has(const Sentence& sentence, const char* word) {
@@ -177,10 +167,11 @@ bool FitsTarget(ReadmeTarget target, const std::string& file) {
 
 class Reader {
 public:
-    Reader(const std::vector<std::string>& paths, const std::vector<std::string>& folders, ReadmeNotes& notes)
-        : paths_(paths), folders_(folders), notes_(notes) {}
+    Reader(const std::vector<std::string>& paths, const std::vector<std::string>& folders, const std::string& source, ReadmeNotes& notes)
+        : paths_(paths), folders_(folders), source_(source), notes_(notes) {}
 
     void Read(const Sentence& sentence) {
+        ++number_;
         Dependencies(sentence);
         Configs(sentence);
         for (size_t verb = 0; verb < sentence.size(); ++verb) {
@@ -211,15 +202,18 @@ private:
         rule.folder = folder;
         rule.level_files = level_files;
         rule.optional = Optional(sentence);
-        rule.sentence = Quote(sentence);
+        rule.sentence = Cite();
         notes_.rules.push_back(std::move(rule));
     }
 
     static bool Optional(const Sentence& sentence) { return Has(sentence, "optional") || Has(sentence, "if"); }
 
-    void Ambiguous(const Sentence& sentence) {
-        const std::string quote = Quote(sentence);
-        if (std::find(notes_.ambiguous.begin(), notes_.ambiguous.end(), quote) == notes_.ambiguous.end()) notes_.ambiguous.push_back(quote);
+    // Where a sentence is, never its words: the author's text stays in the package and out of logs and reports.
+    std::string Cite() const { return (source_.empty() ? std::string() : source_ + ", ") + "sentence " + std::to_string(number_); }
+
+    void Ambiguous() {
+        const std::string where = Cite();
+        if (std::find(notes_.ambiguous.begin(), notes_.ambiguous.end(), where) == notes_.ambiguous.end()) notes_.ambiguous.push_back(where);
     }
 
     void Instruction(const Sentence& sentence, size_t verb, size_t into, const Place& place) {
@@ -253,7 +247,7 @@ private:
             return;
         }
         if (LowerAscii(name.substr(name.rfind('.') + 1)) == "ini") return;
-        if (files.size() > 1 || !place.known || !FitsTarget(place.target, name)) return Optional(sentence) ? void() : Ambiguous(sentence);
+        if (files.size() > 1 || !place.known || !FitsTarget(place.target, name)) return Optional(sentence) ? void() : Ambiguous();
         Add(sentence, place.target, files[0], "", false);
     }
 
@@ -262,9 +256,9 @@ private:
             std::erase_if(folders, [this](const std::string& f) { return std::find(paths_.begin(), paths_.end(), f + "/fm.ini") == paths_.end(); });
         ReadmeTarget own = ReadmeTarget::kData;
         if (!place.known && TargetNamed(LowerAscii(LastSegment(folders[0])), own) && own != ReadmeTarget::kModRoot) return; // already laid out as in the game's folder
-        if (folders.size() != 1 || !place.known) return Optional(sentence) ? void() : Ambiguous(sentence);
+        if (folders.size() != 1 || !place.known) return Optional(sentence) ? void() : Ambiguous();
         const bool content = place.target == ReadmeTarget::kData || place.target == ReadmeTarget::kModRoot;
-        if (!content) return Ambiguous(sentence);
+        if (!content) return Ambiguous();
         Add(sentence, place.target, "", folders[0], false);
     }
 
@@ -278,10 +272,10 @@ private:
         }
     }
 
-    static void Raise(Need& need, std::string& evidence, Need found, const Sentence& sentence) {
+    void Raise(Need& need, std::string& evidence, Need found) const {
         if (found <= need) return;
         need = found;
-        evidence = Quote(sentence);
+        evidence = Cite();
     }
 
     static bool MentionsCe(const Sentence& sentence) {
@@ -304,11 +298,11 @@ private:
         if (MentionsCe(sentence)) {
             const bool only = Has(sentence, "only") && (Has(sentence, "run") || Has(sentence, "played") || Has(sentence, "works"));
             const Need found = !negated && (needs || only) ? Need::kRequired : recommended ? Need::kRecommended : optional || (needs && negated) ? Need::kOptional : Need::kMentioned;
-            Raise(notes_.ce, notes_.ce_evidence, found, sentence);
+            Raise(notes_.ce, notes_.ce_evidence, found);
         }
         if (Has(sentence, "atx")) {
             const Need found = needs && !negated ? Need::kRequired : recommended ? Need::kRecommended : needs || optional ? Need::kOptional : Need::kMentioned;
-            Raise(notes_.atx, notes_.atx_evidence, found, sentence);
+            Raise(notes_.atx, notes_.atx_evidence, found);
         }
         const bool cannot = Has(sentence, "cannot") || Has(sentence, "can't") || Has(sentence, "not") || Has(sentence, "doesn't");
         if (cannot && (Has(sentence, "restarted") || Has(sentence, "restart"))) notes_.no_restart = true;
@@ -316,7 +310,9 @@ private:
 
     const std::vector<std::string>& paths_;
     const std::vector<std::string>& folders_;
+    const std::string& source_;
     ReadmeNotes& notes_;
+    size_t number_ = 0;
 };
 
 } // namespace
@@ -344,9 +340,9 @@ const char* NeedName(Need need) {
     return "none";
 }
 
-ReadmeNotes ReadReadme(const std::string& text, const std::vector<std::string>& paths, const std::vector<std::string>& folders) {
+ReadmeNotes ReadReadme(const std::string& text, const std::vector<std::string>& paths, const std::vector<std::string>& folders, const std::string& source) {
     ReadmeNotes notes;
-    Reader reader(paths, folders, notes);
+    Reader reader(paths, folders, source, notes);
     for (const Sentence& sentence : Sentences(text)) reader.Read(sentence);
     return notes;
 }

@@ -151,6 +151,26 @@ int jpt_vk_gpu_select(const jpt_vk_gpu_info_t* gpus, int count, const char* requ
 
 int jpt_vk_pick_depth_format(uint32_t supported_mask, VkFormat* out_format, int* out_has_stencil);
 float jpt_vk_clamp_anisotropy(int filter_setting, int device_supports_aniso, float device_max_aniso);
+
+/* The world sampler table is class * 4 + address mode; the shaders index it, so the count is fixed. */
+enum {
+    JPT_VK_SAMPLER_MIPS,
+    JPT_VK_SAMPLER_POINT,
+    JPT_VK_SAMPLER_MAG_LINEAR,
+    JPT_VK_SAMPLER_MIN_LINEAR,
+    JPT_VK_SAMPLER_LINEAR,
+    JPT_VK_SAMPLER_CLASSES
+};
+typedef struct {
+    VkFilter mag;
+    VkFilter min;
+    VkSamplerMipmapMode mipmap;
+    float max_lod;
+    float anisotropy; /* 1: anisotropic filtering off */
+} jpt_vk_world_sampler_t;
+/* game_mag/game_min: the game asked for linear filtering. */
+uint32_t jpt_vk_world_sampler_class(int filter_setting, int game_mag, int game_min);
+jpt_vk_world_sampler_t jpt_vk_world_sampler(int filter_setting, uint32_t sampler_class, float active_aniso);
 uint32_t jpt_vk_clamp_msaa(uint32_t requested_msaa, VkSampleCountFlags color_counts, VkSampleCountFlags depth_counts);
 VkPolygonMode jpt_vk_resolve_fill_mode(uint32_t d3d_fill_mode, int supports_non_solid);
 

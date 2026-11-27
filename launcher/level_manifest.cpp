@@ -178,8 +178,8 @@ std::string ManifestJson(const PackageManifest& manifest) {
     json.List("missing_required", manifest.missing);
     json.Open("level_status", '[');
     for (const LevelVerdict& v : manifest.verdicts) {
-        json.Open(nullptr, '{').Text("scn", v.scn).Text("status", v.status).Flag("playable", v.playable).Flag("scripted", v.scripted);
-        json.List("script_files", v.script_files).List("script_required", v.script_required).List("blockers", v.blockers).Close();
+        json.Open(nullptr, '{').Text("scn", v.scn).Text("status", v.status).Text("compatibility", v.compatibility).Flag("playable", v.playable).Flag("scripted", v.scripted);
+        json.List("script_files", v.script_files).List("script_required", v.script_required).List("blockers", v.blockers).List("limitations", v.limitations).Close();
     }
     json.Close();
     json.Close();
@@ -204,7 +204,7 @@ bool ReadManifestOrigin(const std::string& text, PackageOrigin& origin) {
 
 std::string LoadingPictureFile(size_t index) { return std::string(JPT_CUSTOM_LEVEL_GENERATED_DIR) + "/loading" + std::to_string(index) + ".tga"; }
 
-std::string RuntimeMap(const PackageAnalysis& a) {
+std::string RuntimeMap(const PackageAnalysis& a, const std::vector<LevelVerdict>& verdicts) {
     std::string map = "trespasser-runtime " + std::to_string(JPT_CUSTOM_LEVEL_RUNTIME_VERSION) + "\n";
     const auto line = [&map](const char* kind, std::initializer_list<std::string> fields) {
         map += kind;
@@ -217,6 +217,7 @@ std::string RuntimeMap(const PackageAnalysis& a) {
     };
     for (const LevelInfo& level : a.levels)
         if (level.configured) line("scene", {level.path});
+    for (const LevelVerdict& v : verdicts) line("compat", {v.scn, v.compatibility});
     for (const RuntimeFile& file : a.runtime)
         if (file.active) line("file", {file.target, file.source});
     for (const AudioPack& pack : a.audio)
@@ -270,7 +271,8 @@ bool RuntimeIsSafe(const PackageAnalysis& a, const std::vector<PackageFile>& fil
 
 bool IsGeneratedPath(const std::string& path) {
     const std::string lower = LowerAscii(path), folder = std::string(JPT_CUSTOM_LEVEL_GENERATED_DIR) + "/";
-    return lower == kManifestFile || lower == JPT_CUSTOM_LEVEL_RUNTIME_MAP || lower.rfind(folder, 0) == 0 || lower + "/" == folder;
+    return lower == kManifestFile || lower == JPT_CUSTOM_LEVEL_RUNTIME_MAP || lower == JPT_CUSTOM_LEVEL_LINK_FILE || lower.rfind(folder, 0) == 0 ||
+           lower + "/" == folder;
 }
 
 std::string AnalysisReport(const PackageManifest& manifest) {
